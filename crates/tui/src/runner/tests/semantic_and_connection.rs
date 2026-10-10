@@ -1059,6 +1059,7 @@ fn repair_account_action_queues_pending_repair_for_config_account() {
             auth_required: true,
             use_tls: true,
             max_connections: 4,
+            sync_since: None,
         }),
         send: Some(mxr_protocol::AccountSendConfigData::Smtp {
             host: "smtp.example.com".into(),
@@ -1085,6 +1086,73 @@ fn repair_account_action_queues_pending_repair_for_config_account() {
     assert_eq!(
         app.accounts.page.status.as_deref(),
         Some("Repairing account...")
+    );
+}
+
+/// **Editing an IMAP account keeps its `sync_since`**: the form does not show
+/// the date, so opening a config-backed account and sending it back must
+/// carry the date, or the next sync would fetch the whole mailbox.
+#[test]
+fn editing_an_imap_account_keeps_its_sync_since() {
+    use crate::action::Action;
+    let since = chrono::NaiveDate::from_ymd_opt(2026, 8, 28);
+    let mut app = App::new();
+    app.screen = Screen::Accounts;
+    app.accounts.page.accounts = vec![mxr_protocol::AccountSummaryData {
+        account_id: mxr_core::AccountId::new(),
+        key: Some("gmail".into()),
+        name: "Gmail".into(),
+        email: "me@gmail.com".into(),
+        provider_kind: "imap".into(),
+        sync_kind: Some("imap".into()),
+        send_kind: Some("smtp".into()),
+        enabled: true,
+        is_default: true,
+        source: mxr_protocol::AccountSourceData::Config,
+        editable: mxr_protocol::AccountEditModeData::Full,
+        sync: Some(mxr_protocol::AccountSyncConfigData::Imap {
+            host: "imap.gmail.com".into(),
+            port: 993,
+            username: "me@gmail.com".into(),
+            password_ref: "mxr/gmail".into(),
+            password: None,
+            auth_required: true,
+            use_tls: true,
+            max_connections: 4,
+            sync_since: since,
+        }),
+        send: Some(mxr_protocol::AccountSendConfigData::Smtp {
+            host: "smtp.gmail.com".into(),
+            port: 465,
+            username: "me@gmail.com".into(),
+            password_ref: "mxr/gmail".into(),
+            password: None,
+            auth_required: true,
+            use_tls: true,
+        }),
+        capabilities: Default::default(),
+    }];
+    app.accounts.page.selected_index = 0;
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(
+        app.accounts.page.form.visible,
+        "Enter opens the account for editing"
+    );
+    app.apply(Action::TestAccountForm);
+
+    let pending = app
+        .accounts
+        .pending_test
+        .take()
+        .expect("testing the form queues the account");
+    assert!(
+        matches!(
+            pending.sync,
+            Some(mxr_protocol::AccountSyncConfigData::Imap { sync_since, .. }) if sync_since == since
+        ),
+        "{:?}",
+        pending.sync
     );
 }
 

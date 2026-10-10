@@ -559,4 +559,43 @@ use_tls = true
             Some(SendProviderConfig::Smtp { .. })
         ));
     }
+
+    /// An IMAP account's `sync_since` is a quoted date, and an account
+    /// without one is written back without one.
+    #[test]
+    fn imap_sync_since_parses_and_is_left_out_when_unset() {
+        let toml_str = r#"
+[accounts.gmail]
+name = "Gmail"
+email = "me@gmail.com"
+
+[accounts.gmail.sync]
+type = "imap"
+host = "imap.gmail.com"
+port = 993
+username = "me@gmail.com"
+password_ref = "keyring:gmail-imap"
+use_tls = true
+sync_since = "2026-08-28"
+"#;
+        let config = load_config_from_str(toml_str).expect("parse imap account");
+        let Some(SyncProviderConfig::Imap { sync_since, .. }) = &config.accounts["gmail"].sync
+        else {
+            panic!("expected an imap account");
+        };
+        assert_eq!(*sync_since, chrono::NaiveDate::from_ymd_opt(2026, 8, 28));
+
+        let unset = SyncProviderConfig::Imap {
+            host: "imap.gmail.com".into(),
+            port: 993,
+            username: "me@gmail.com".into(),
+            password_ref: "keyring:gmail-imap".into(),
+            auth_required: true,
+            use_tls: true,
+            max_connections: 4,
+            sync_since: None,
+        };
+        let written = toml::to_string(&unset).expect("serialize");
+        assert!(!written.contains("sync_since"), "{written}");
+    }
 }

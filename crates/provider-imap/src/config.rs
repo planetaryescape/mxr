@@ -28,6 +28,12 @@ pub struct ImapConfig {
     pub use_tls: bool,
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
+    /// Fetch only mail on or after this date, compared with each message's
+    /// internal date (IMAP `SINCE`). Mail from before it is never fetched, and
+    /// nothing already synced is dropped as it ages. `None`: the whole
+    /// mailbox.
+    #[serde(default)]
+    pub sync_since: Option<chrono::NaiveDate>,
     #[serde(skip, default = "default_password_cache")]
     password_cache: Arc<OnceCell<String>>,
     #[serde(skip, default = "default_password_reader")]
@@ -71,6 +77,7 @@ impl ImapConfig {
             auth_required,
             use_tls,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            sync_since: None,
             password_cache: default_password_cache(),
             password_reader: default_password_reader(),
         }
@@ -83,6 +90,11 @@ impl ImapConfig {
 
     pub fn with_max_connections(mut self, max_connections: usize) -> Self {
         self.max_connections = max_connections.max(1);
+        self
+    }
+
+    pub fn with_sync_since(mut self, sync_since: Option<chrono::NaiveDate>) -> Self {
+        self.sync_since = sync_since;
         self
     }
 
@@ -109,6 +121,7 @@ impl std::fmt::Debug for ImapConfig {
             .field("auth_required", &self.auth_required)
             .field("use_tls", &self.use_tls)
             .field("max_connections", &self.max_connections)
+            .field("sync_since", &self.sync_since)
             .finish_non_exhaustive()
     }
 }
@@ -134,6 +147,31 @@ mod tests {
         assert!(config.auth_required);
         assert!(config.use_tls);
         assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
+    }
+
+    #[test]
+    fn sync_since_parses_and_is_unset_by_default() {
+        let json = r#"{
+            "host": "imap.fastmail.com",
+            "port": 993,
+            "username": "user@fastmail.com",
+            "password_ref": "mxr/fastmail-imap",
+            "sync_since": "2026-08-28"
+        }"#;
+        let config: ImapConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            config.sync_since,
+            chrono::NaiveDate::from_ymd_opt(2026, 8, 28)
+        );
+        let unset = ImapConfig::new(
+            "imap.fastmail.com".into(),
+            993,
+            "user@fastmail.com".into(),
+            "mxr/fastmail-imap".into(),
+            true,
+            true,
+        );
+        assert_eq!(unset.sync_since, None);
     }
 
     #[test]

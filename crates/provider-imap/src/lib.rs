@@ -15,6 +15,7 @@ pub mod session;
 pub mod types;
 
 use async_trait::async_trait;
+use chrono::NaiveDate;
 use config::ImapConfig;
 use cursor::{ImapBackfillCursor, ImapCursor};
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -62,6 +63,8 @@ pub struct ImapProvider {
     account_id: AccountId,
     trash_folder: String,
     max_connections: usize,
+    /// Fetch only mail on or after this date; see [`ImapConfig::sync_since`].
+    sync_since: Option<NaiveDate>,
     session_factory: Box<dyn ImapSessionFactory>,
 }
 
@@ -73,6 +76,7 @@ impl ImapProvider {
             account_id,
             trash_folder: "Trash".to_string(),
             max_connections,
+            sync_since: config.sync_since,
             session_factory,
         }
     }
@@ -87,6 +91,7 @@ impl ImapProvider {
             account_id,
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
+            sync_since: config.sync_since,
             session_factory,
         }
     }
@@ -149,6 +154,38 @@ impl ImapProvider {
 
     fn imap_fetch_query() -> &'static str {
         "(FLAGS INTERNALDATE BODY.PEEK[] RFC822.SIZE)"
+    }
+
+    /// The `SEARCH` criterion for this account's mail: `SINCE` its
+    /// `sync_since` date, or `ALL` without one.
+    fn since_criterion(&self) -> String {
+        match self.sync_since {
+            Some(date) => format!("SINCE {}", imap_date(date)),
+            None => "ALL".to_string(),
+        }
+    }
+
+    /// The sets to fetch for `uid_set`. Without a `sync_since` date, `uid_set`
+    /// itself. With one, only the UIDs among it whose internal date is on or
+    /// after the date, in sets of at most [`IMAP_FETCH_UID_BATCH_SIZE`]. Every
+    /// sync fetch of message content goes through this, so mail from before
+    /// the date is never fetched on any path: a UIDVALIDITY reset, an old
+    /// message moved or imported into a mailbox, a flag change on an old one.
+    async fn since_sets(
+        &self,
+        session: &mut dyn session::ImapSession,
+        uid_set: &str,
+    ) -> mxr_core::provider::Result<Vec<String>> {
+        if self.sync_since.is_none() {
+            return Ok(vec![uid_set.to_string()]);
+        }
+        let mut uids = session
+            .uid_search(&format!("UID {uid_set} {}", self.since_criterion()))
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        uids.sort_unstable();
+        uids.dedup();
+        Ok(uid_sets(&uids))
     }
 
     fn capability_state(capabilities: &ImapCapabilities) -> ImapCapabilityState {
@@ -575,7 +612,7 @@ impl ImapProvider {
         let mut min_failed_uid = None;
         if mailbox_info.exists > 0 {
             let mut uids = session
-                .uid_search("ALL")
+                .uid_search(&self.since_criterion())
                 .await
                 .map_err(mxr_core::error::MxrError::from)?;
             uids.sort_unstable();
@@ -625,7 +662,34 @@ impl ImapProvider {
             mailbox = %all_mail.name,
             "Starting Gmail-over-IMAP initial sync from All Mail"
         );
-        self.gmail_all_mail_page(all_mail, capabilities, 1, None)
+        let start_uid = match self.sync_since {
+            None => 1,
+            // Straight to the first message on or after the date, rather than
+            // paging through every older UID to find nothing.
+            Some(_) => {
+                let mut session = self
+                    .session_factory
+                    .create_session()
+                    .await
+                    .map_err(mxr_core::error::MxrError::from)?;
+                Self::enable_session(&mut *session, &capabilities).await?;
+                let mailbox_info = session
+                    .select(&all_mail.name)
+                    .await
+                    .map_err(mxr_core::error::MxrError::from)?;
+                let first = session
+                    .uid_search(&self.since_criterion())
+                    .await
+                    .map_err(mxr_core::error::MxrError::from)?
+                    .into_iter()
+                    .min();
+                let _ = session.logout().await;
+                // None on or after the date: start past the last message, so
+                // the backfill completes having fetched nothing.
+                first.unwrap_or_else(|| mailbox_info.uid_next.max(1))
+            }
+        };
+        self.gmail_all_mail_page(all_mail, capabilities, start_uid, None)
             .await
     }
 
@@ -710,11 +774,18 @@ impl ImapProvider {
             .min(end_uid);
 
         if start_uid <= page_end && mailbox_info.exists > 0 {
-            let uid_set = format!("{start_uid}:{page_end}");
-            let fetched = session
-                .uid_fetch(&uid_set, Self::gmail_fetch_query())
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
+            let mut fetched = Vec::new();
+            for uid_set in self
+                .since_sets(&mut *session, &format!("{start_uid}:{page_end}"))
+                .await?
+            {
+                fetched.extend(
+                    session
+                        .uid_fetch(&uid_set, Self::gmail_fetch_query())
+                        .await
+                        .map_err(mxr_core::error::MxrError::from)?,
+                );
+            }
 
             for msg in &fetched {
                 match parse::imap_fetch_to_synced_message(msg, &all_mail.name, &self.account_id) {
@@ -907,22 +978,24 @@ impl ImapProvider {
                 1
             };
             let mut seen_uids = HashSet::new();
-            session = self
-                .collect_synced_messages(
-                    session,
-                    &capabilities,
-                    CollectSyncedMessages {
-                        mailbox: &all_mail.name,
-                        uid_set: &uid_set,
-                        query: Self::gmail_fetch_query(),
-                        min_uid,
-                        seen_uids: &mut seen_uids,
-                        account_id: &self.account_id,
-                        synced: &mut synced,
-                        min_failed_uid: &mut min_failed_uid,
-                    },
-                )
-                .await?;
+            for uid_set in self.since_sets(&mut *session, &uid_set).await? {
+                session = self
+                    .collect_synced_messages(
+                        session,
+                        &capabilities,
+                        CollectSyncedMessages {
+                            mailbox: &all_mail.name,
+                            uid_set: &uid_set,
+                            query: Self::gmail_fetch_query(),
+                            min_uid,
+                            seen_uids: &mut seen_uids,
+                            account_id: &self.account_id,
+                            synced: &mut synced,
+                            min_failed_uid: &mut min_failed_uid,
+                        },
+                    )
+                    .await?;
+            }
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
@@ -990,22 +1063,24 @@ impl ImapProvider {
                                     .map(u32::to_string)
                                     .collect::<Vec<_>>()
                                     .join(",");
-                                session = self
-                                    .collect_synced_messages(
-                                        session,
-                                        &capabilities,
-                                        CollectSyncedMessages {
-                                            mailbox: &folder.name,
-                                            uid_set: &uid_set,
-                                            query: Self::imap_fetch_query(),
-                                            min_uid: 1,
-                                            seen_uids: &mut seen_uids,
-                                            account_id: &self.account_id,
-                                            synced: &mut synced,
-                                            min_failed_uid: &mut min_failed_uid,
-                                        },
-                                    )
-                                    .await?;
+                                for uid_set in self.since_sets(&mut *session, &uid_set).await? {
+                                    session = self
+                                        .collect_synced_messages(
+                                            session,
+                                            &capabilities,
+                                            CollectSyncedMessages {
+                                                mailbox: &folder.name,
+                                                uid_set: &uid_set,
+                                                query: Self::imap_fetch_query(),
+                                                min_uid: 1,
+                                                seen_uids: &mut seen_uids,
+                                                account_id: &self.account_id,
+                                                synced: &mut synced,
+                                                min_failed_uid: &mut min_failed_uid,
+                                            },
+                                        )
+                                        .await?;
+                                }
                             }
                             response.mailbox
                         }
@@ -1065,22 +1140,24 @@ impl ImapProvider {
                     let changed_since_query = Self::fetch_query_for_changed_since(
                         old_mailbox.highest_modseq.expect("checked is_some"),
                     );
-                    session = self
-                        .collect_synced_messages(
-                            session,
-                            &capabilities,
-                            CollectSyncedMessages {
-                                mailbox: &folder.name,
-                                uid_set: "1:*",
-                                query: &changed_since_query,
-                                min_uid: 1,
-                                seen_uids: &mut seen_uids,
-                                account_id: &self.account_id,
-                                synced: &mut synced,
-                                min_failed_uid: &mut min_failed_uid,
-                            },
-                        )
-                        .await?;
+                    for uid_set in self.since_sets(&mut *session, "1:*").await? {
+                        session = self
+                            .collect_synced_messages(
+                                session,
+                                &capabilities,
+                                CollectSyncedMessages {
+                                    mailbox: &folder.name,
+                                    uid_set: &uid_set,
+                                    query: &changed_since_query,
+                                    min_uid: 1,
+                                    seen_uids: &mut seen_uids,
+                                    account_id: &self.account_id,
+                                    synced: &mut synced,
+                                    min_failed_uid: &mut min_failed_uid,
+                                },
+                            )
+                            .await?;
+                    }
                 }
             }
         }
@@ -1159,22 +1236,24 @@ impl ImapProvider {
                 _ => 1,
             };
 
-            session = self
-                .collect_synced_messages(
-                    session,
-                    &capabilities,
-                    CollectSyncedMessages {
-                        mailbox: &folder.name,
-                        uid_set: &query,
-                        query: Self::imap_fetch_query(),
-                        min_uid,
-                        seen_uids: &mut seen_uids,
-                        account_id: &self.account_id,
-                        synced: &mut synced,
-                        min_failed_uid: &mut min_failed_uid,
-                    },
-                )
-                .await?;
+            for uid_set in self.since_sets(&mut *session, &query).await? {
+                session = self
+                    .collect_synced_messages(
+                        session,
+                        &capabilities,
+                        CollectSyncedMessages {
+                            mailbox: &folder.name,
+                            uid_set: &uid_set,
+                            query: Self::imap_fetch_query(),
+                            min_uid,
+                            seen_uids: &mut seen_uids,
+                            account_id: &self.account_id,
+                            synced: &mut synced,
+                            min_failed_uid: &mut min_failed_uid,
+                        },
+                    )
+                    .await?;
+            }
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
@@ -1836,6 +1915,24 @@ fn is_valid_imap_keyword(atom: &str) -> bool {
         })
 }
 
+/// An IMAP `date` (RFC 3501): day, English month abbreviation, year.
+fn imap_date(date: NaiveDate) -> String {
+    date.format("%-d-%b-%Y").to_string()
+}
+
+/// `uids` as comma-separated sets of at most [`IMAP_FETCH_UID_BATCH_SIZE`].
+fn uid_sets(uids: &[u32]) -> Vec<String> {
+    uids.chunks(IMAP_FETCH_UID_BATCH_SIZE)
+        .map(|chunk| {
+            chunk
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -2401,6 +2498,360 @@ mod tests {
             .any(|command| command.contains("X-GM-LABELS")));
         assert!(!commands.contains(&"SELECT INBOX".to_string()));
         assert!(!commands.contains(&"SELECT Sent Mail".to_string()));
+    }
+
+    // -- sync_since: mail from before the date is never fetched ----------------
+
+    fn since_config() -> ImapConfig {
+        test_config().with_sync_since(NaiveDate::from_ymd_opt(2026, 8, 28))
+    }
+
+    fn fetch_commands(commands: &[String]) -> Vec<String> {
+        commands
+            .iter()
+            .filter(|c| c.starts_with("UID FETCH"))
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn imap_date_is_the_rfc_3501_form() {
+        assert_eq!(
+            imap_date(NaiveDate::from_ymd_opt(2026, 8, 28).unwrap()),
+            "28-Aug-2026"
+        );
+        assert_eq!(
+            imap_date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
+            "5-Jan-2026"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_sync_with_sync_since_fetches_only_mail_since_the_date() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 8, 2),
+            vec![vec![make_fetched_message(7, "Recent", "alice@example.com")]],
+            vec![folder_info("INBOX", Some("\\Inbox"))],
+        )
+        .with_uid_search("INBOX", vec![5, 7])
+        .with_uid_search_since("INBOX", vec![7]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+
+        provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        assert!(
+            !commands.iter().any(|c| c == "UID SEARCH ALL"),
+            "{commands:?}"
+        );
+        let fetches = fetch_commands(&log.lock().unwrap().commands);
+        assert!(!fetches.is_empty(), "{commands:?}");
+        assert!(
+            fetches.iter().all(|c| c.starts_with("UID FETCH 7 ")),
+            "fetched mail from before the date: {fetches:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_sync_without_sync_since_is_unchanged() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 8, 2),
+            vec![vec![make_fetched_message(7, "Recent", "alice@example.com")]],
+            vec![folder_info("INBOX", Some("\\Inbox"))],
+        )
+        .with_uid_search("INBOX", vec![5, 7])
+        .with_uid_search_since("INBOX", vec![7]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH ALL".to_string()),
+            "{commands:?}"
+        );
+        assert!(
+            !commands.iter().any(|c| c.contains("SINCE")),
+            "{commands:?}"
+        );
+        assert!(
+            fetch_commands(&log.lock().unwrap().commands)
+                .iter()
+                .any(|c| c.starts_with("UID FETCH 5,7 ")),
+            "{commands:?}"
+        );
+    }
+
+    /// New mail since the last sync, and a mailbox whose UIDVALIDITY changed,
+    /// are both searched for `SINCE` before anything is fetched: an old
+    /// message moved or imported into a mailbox arrives under a new UID.
+    #[tokio::test]
+    async fn new_mail_and_a_resync_fetch_only_mail_since_the_date() {
+        for (cursor_validity, searched) in [
+            (1, "UID SEARCH UID 5:* SINCE 28-Aug-2026"),
+            (7, "UID SEARCH UID 1:* SINCE 28-Aug-2026"),
+        ] {
+            let factory = MockImapSessionFactory::new(
+                mailbox_info(1, 9, 8),
+                vec![vec![make_fetched_message(8, "Recent", "alice@example.com")]],
+                vec![],
+            )
+            .with_uid_search_since("INBOX", vec![8]);
+            let log = factory.log.clone();
+            let provider = ImapProvider::with_session_factory(
+                AccountId::new(),
+                since_config(),
+                Box::new(factory),
+            );
+
+            provider
+                .sync_messages(&imap_cursor(cursor_validity, 5))
+                .await
+                .unwrap();
+
+            let commands = log.lock().unwrap().commands.clone();
+            assert!(commands.contains(&searched.to_string()), "{commands:?}");
+            let fetches = fetch_commands(&log.lock().unwrap().commands);
+            assert!(!fetches.is_empty(), "{commands:?}");
+            assert!(
+                fetches.iter().all(|c| c.starts_with("UID FETCH 8 ")),
+                "fetched mail from before the date: {fetches:?}"
+            );
+        }
+    }
+
+    /// A flag change on an old message must not fetch it (CONDSTORE).
+    #[tokio::test]
+    async fn changed_messages_are_fetched_only_since_the_date_under_condstore() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(30),
+            },
+            vec![vec![make_fetched_message(4, "Recent", "alice@example.com")]],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            ..Default::default()
+        })
+        .with_uid_search_since("INBOX", vec![4]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
+            uid_validity: 1,
+            uid_next: 5,
+            highest_modseq: Some(20),
+        }]);
+
+        provider.sync_messages(&cursor).await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH UID 1:* SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        let fetches = fetch_commands(&log.lock().unwrap().commands);
+        assert!(
+            fetches
+                .iter()
+                .any(|c| c.starts_with("UID FETCH 4 ") && c.contains("CHANGEDSINCE 20")),
+            "{fetches:?}"
+        );
+        assert!(
+            !fetches.iter().any(|c| c.starts_with("UID FETCH 1:*")),
+            "{fetches:?}"
+        );
+    }
+
+    /// And the same under QRESYNC, whose changed messages come by UID.
+    #[tokio::test]
+    async fn changed_messages_are_fetched_only_since_the_date_under_qresync() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vec![vec![make_fetched_message(3, "Recent", "alice@example.com")]],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            qresync: true,
+            ..Default::default()
+        })
+        .with_qresync(QresyncInfo {
+            mailbox: MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vanished: vec![],
+            changed: vec![1, 3],
+        })
+        .with_uid_search_since("INBOX", vec![3]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
+            mailbox: "INBOX".into(),
+            uid_validity: 1,
+            uid_next: 5,
+            highest_modseq: Some(10),
+        }]);
+
+        provider.sync_messages(&cursor).await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH UID 1,3 SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        let fetches = fetch_commands(&log.lock().unwrap().commands);
+        assert!(!fetches.is_empty(), "{commands:?}");
+        assert!(
+            fetches.iter().all(|c| c.starts_with("UID FETCH 3 ")),
+            "fetched mail from before the date: {fetches:?}"
+        );
+    }
+
+    /// Gmail's All Mail backfill starts at the first message on or after the
+    /// date instead of paging up from UID 1, and each page fetches only mail
+    /// since the date.
+    #[tokio::test]
+    async fn gmail_backfill_starts_at_the_first_message_since_the_date() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 900, 800),
+            vec![],
+            vec![folder_info("All Mail", Some("\\All"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches(
+            "All Mail",
+            vec![vec![make_fetched_message(
+                640,
+                "Recent",
+                "alice@example.com",
+            )]],
+        )
+        .with_uid_search_since("All Mail", vec![640, 700]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert!(!batch.has_more);
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        assert!(
+            commands.contains(&"UID SEARCH UID 640:899 SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        let fetches = fetch_commands(&log.lock().unwrap().commands);
+        assert!(!fetches.is_empty(), "{commands:?}");
+        assert!(
+            fetches.iter().all(|c| c.starts_with("UID FETCH 640,700 ")),
+            "{fetches:?}"
+        );
+    }
+
+    /// New mail in Gmail's All Mail is searched for `SINCE` too: an old
+    /// message imported into Gmail arrives under a new UID.
+    #[tokio::test]
+    async fn gmail_new_mail_is_fetched_only_since_the_date() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 105, 104),
+            vec![],
+            vec![folder_info("All Mail", Some("\\All"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_mailbox_fetches(
+            "All Mail",
+            vec![vec![make_fetched_message(
+                103,
+                "Recent",
+                "alice@example.com",
+            )]],
+        )
+        .with_uid_search_since("All Mail", vec![103]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+
+        provider
+            .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
+                mailbox: "All Mail".to_string(),
+                uid_validity: 1,
+                uid_next: 100,
+                highest_modseq: None,
+            }]))
+            .await
+            .unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.contains(&"UID SEARCH UID 100:* SINCE 28-Aug-2026".to_string()),
+            "{commands:?}"
+        );
+        let fetches = fetch_commands(&log.lock().unwrap().commands);
+        assert!(!fetches.is_empty(), "{commands:?}");
+        assert!(
+            fetches.iter().all(|c| c.starts_with("UID FETCH 103 ")),
+            "fetched mail from before the date: {fetches:?}"
+        );
+    }
+
+    /// No mail since the date: the backfill completes having fetched nothing.
+    #[tokio::test]
+    async fn gmail_backfill_with_nothing_since_the_date_fetches_nothing() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 900, 800),
+            vec![],
+            vec![folder_info("All Mail", Some("\\All"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            x_gm_ext_1: true,
+            ..Default::default()
+        })
+        .with_uid_search_since("All Mail", vec![]);
+        let log = factory.log.clone();
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), since_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
+
+        assert!(!batch.has_more);
+        assert!(batch.upserted.is_empty());
+        assert!(
+            fetch_commands(&log.lock().unwrap().commands).is_empty(),
+            "{:?}",
+            fetch_commands(&log.lock().unwrap().commands)
+        );
     }
 
     #[tokio::test]

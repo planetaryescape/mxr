@@ -684,6 +684,12 @@ pub enum SyncProviderConfig {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Fetch only mail on or after this date (`"2026-08-28"`), compared
+        /// with each message's internal date (IMAP `SINCE`). Mail from before
+        /// it is never fetched, and nothing already synced is dropped as it
+        /// ages. Unset: the whole mailbox.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sync_since: Option<chrono::NaiveDate>,
     },
     OutlookPersonal {
         /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.

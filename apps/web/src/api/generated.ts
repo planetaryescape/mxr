@@ -3874,6 +3874,12 @@ export interface components {
             password_ref: string;
             /** Format: int32 */
             port: number;
+            /**
+             * Format: date
+             * @description Fetch only mail on or after this date, compared with each
+             *     message's internal date (IMAP `SINCE`). Unset: the whole mailbox.
+             */
+            sync_since?: string | null;
             /** @enum {string} */
             type: "imap";
             use_tls: boolean;

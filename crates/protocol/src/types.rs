@@ -4727,6 +4727,10 @@ pub enum AccountSyncConfigData {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Fetch only mail on or after this date, compared with each
+        /// message's internal date (IMAP `SINCE`). Unset: the whole mailbox.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sync_since: Option<chrono::NaiveDate>,
     },
     OutlookPersonal {
         client_id: Option<String>,

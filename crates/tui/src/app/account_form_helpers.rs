@@ -121,6 +121,7 @@ impl App {
                 },
                 auth_required: form.imap_auth_required,
                 use_tls: true,
+                sync_since: form.imap_sync_since,
             }),
             AccountFormMode::SmtpOnly => None,
             AccountFormMode::OutlookPersonal => {

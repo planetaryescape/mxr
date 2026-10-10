@@ -442,6 +442,7 @@ mod tests {
                     auth_required: true,
                     use_tls: true,
                     max_connections: 4,
+                    sync_since: None,
                 }),
                 send: Some(SendProviderConfig::Smtp {
                     host: "smtp.example.com".into(),
@@ -472,6 +473,7 @@ mod tests {
                     auth_required: true,
                     use_tls: true,
                     max_connections: 4,
+                    sync_since: None,
                 }),
                 send: None,
             },

@@ -1229,6 +1229,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             auth_required,
             use_tls,
             max_connections,
+            sync_since,
         } => AccountSyncConfigData::Imap {
             host,
             port,
@@ -1238,6 +1239,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             auth_required,
             use_tls,
             max_connections,
+            sync_since,
         },
         mxr_config::SyncProviderConfig::OutlookPersonal {
             client_id,
@@ -1417,6 +1419,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
             max_connections,
+            sync_since,
             ..
         } => Ok(mxr_config::SyncProviderConfig::Imap {
             host,
@@ -1426,6 +1429,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
             max_connections,
+            sync_since,
         }),
         AccountSyncConfigData::OutlookPersonal {
             client_id,
@@ -1696,6 +1700,33 @@ where
 mod tests {
     use super::*;
 
+    /// An IMAP account's `sync_since` survives the round trip clients make
+    /// when they edit an account: config to protocol data and back.
+    #[test]
+    fn an_imap_accounts_sync_since_survives_the_protocol_round_trip() {
+        let since = chrono::NaiveDate::from_ymd_opt(2026, 8, 28);
+        let config = mxr_config::SyncProviderConfig::Imap {
+            host: "imap.gmail.com".to_string(),
+            port: 993,
+            username: "me@gmail.com".to_string(),
+            password_ref: "mxr/gmail".to_string(),
+            auth_required: true,
+            use_tls: true,
+            max_connections: 4,
+            sync_since: since,
+        };
+        let data = sync_config_to_data(config);
+        assert!(
+            matches!(data, AccountSyncConfigData::Imap { sync_since, .. } if sync_since == since),
+            "{data:?}"
+        );
+        let back = sync_data_to_config(data);
+        assert!(
+            matches!(back, Ok(mxr_config::SyncProviderConfig::Imap { sync_since, .. }) if sync_since == since),
+            "{back:?}"
+        );
+    }
+
     #[test]
     fn keychain_write_failure_does_not_fail_persist_and_disk_wins() {
         #![expect(
@@ -1736,6 +1767,7 @@ mod tests {
             auth_required: true,
             use_tls: true,
             max_connections: 4,
+            sync_since: None,
         });
 
         assert!(capabilities.push);

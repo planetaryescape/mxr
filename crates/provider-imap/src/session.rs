@@ -1221,6 +1221,9 @@ pub mod mock {
         /// Per-mailbox UID set returned by `UID SEARCH ALL`. None means an empty
         /// set; tests opt in by inserting via `MockImapSessionFactory`.
         pub(crate) uid_search_results: HashMap<String, Vec<u32>>,
+        /// Per-mailbox UID set returned by a `UID SEARCH` carrying `SINCE`.
+        /// Unset: such a search gets `uid_search_results`, like any other.
+        pub(crate) uid_search_since_results: HashMap<String, Vec<u32>>,
         /// UID returned by `uid_append` (simulating a UIDPLUS server's
         /// APPENDUID). `None` mimics a server that does not report the UID.
         pub(crate) append_uid: Option<u32>,
@@ -1361,10 +1364,13 @@ pub mod mock {
                 .selected_mailbox
                 .clone()
                 .unwrap_or_else(|| "INBOX".to_string());
-            Ok(self
-                .state
-                .lock()
-                .unwrap()
+            let state = self.state.lock().unwrap();
+            if query.contains("SINCE ") {
+                if let Some(uids) = state.uid_search_since_results.get(&mailbox) {
+                    return Ok(uids.clone());
+                }
+            }
+            Ok(state
                 .uid_search_results
                 .get(&mailbox)
                 .cloned()
@@ -1501,6 +1507,7 @@ pub mod mock {
                 folders,
                 log: Arc::new(Mutex::new(CommandLog::default())),
                 state: Arc::new(Mutex::new(MockSessionState {
+                    uid_search_since_results: HashMap::new(),
                     fetch_queues_by_mailbox,
                     uid_search_results,
                     append_uid: None,
@@ -1546,6 +1553,18 @@ pub mod mock {
                 .lock()
                 .unwrap()
                 .uid_search_results
+                .insert(mailbox.to_string(), uids);
+            self
+        }
+
+        /// Inject the UID set returned by a `UID SEARCH` carrying `SINCE`, as a
+        /// server would answer a `sync_since` date. Used by the `sync_since`
+        /// tests.
+        pub fn with_uid_search_since(self, mailbox: &str, uids: Vec<u32>) -> Self {
+            self.state
+                .lock()
+                .unwrap()
+                .uid_search_since_results
                 .insert(mailbox.to_string(), uids);
             self
         }
@@ -1719,6 +1738,7 @@ mod tests {
         folders: Vec<FolderInfo>,
     ) -> Arc<Mutex<MockSessionState>> {
         Arc::new(Mutex::new(MockSessionState {
+            uid_search_since_results: HashMap::new(),
             fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
             uid_search_results: HashMap::new(),
             append_uid: None,

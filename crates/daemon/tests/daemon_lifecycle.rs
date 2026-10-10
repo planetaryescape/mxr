@@ -328,6 +328,10 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     std::fs::create_dir_all(&config_dir).expect("config dir");
     std::fs::create_dir_all(&xdg_config_home).expect("fixture XDG config dir");
     mxr_test_support::daemon::write_fake_account_config(&config_dir);
+    let config_path = config_dir.join("config.toml");
+    let mut config = std::fs::read_to_string(&config_path).expect("read fake account config");
+    config.push_str("\n[search.semantic]\nenabled = false\nauto_download_models = false\n\n[llm]\nenabled = false\n");
+    std::fs::write(&config_path, config).expect("disable model downloads for fixture");
     let mut daemon = TestDaemon::new(socket_path.clone(), pid_path.clone());
     let inherited_env = std::env::vars_os()
         .filter(|(key, _)| !key.to_string_lossy().starts_with("MXR_"))

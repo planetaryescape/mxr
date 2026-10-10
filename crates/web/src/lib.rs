@@ -3104,7 +3104,7 @@ async fn copy_recovery_attachments(
     content: &str,
     observed: &Draft,
 ) -> Result<(String, Draft, Vec<PathBuf>), BridgeError> {
-    let (mut frontmatter, body) = parse_compose_content(content)?;
+    let (mut frontmatter, _) = parse_compose_content(content)?;
     let managed_root = std::env::temp_dir().join("mxr-compose-attachments");
     let destination_dir = compose_attachment_dir(destination)?;
     let mut copied = Vec::new();
@@ -3147,9 +3147,22 @@ async fn copy_recovery_attachments(
             };
             *attachment = target.display().to_string();
         }
-        let context = extract_compose_context(content);
-        let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
+        // The compose parser trims body whitespace for the draft codec. Only
+        // replace the YAML header here: preserved editor text stays verbatim.
+        let suffix = content
+            .trim_start()
+            .strip_prefix("---")
+            .and_then(|rest| rest.split_once("\n---"))
+            .map(|(_, suffix)| suffix)
+            .ok_or(BridgeError::UnexpectedResponse)?;
+        let header = render_compose_file(&frontmatter, "", None)
             .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+        let rendered = format!(
+            "{}{suffix}",
+            header
+                .strip_suffix("\n\n")
+                .ok_or(BridgeError::UnexpectedResponse)?
+        );
         let draft = mxr_compose::draft_codec::apply_edited_compose_file(
             observed,
             &rendered,

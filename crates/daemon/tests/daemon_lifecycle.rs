@@ -9,6 +9,55 @@ use tempfile::TempDir;
 
 static DAEMON_LIFECYCLE_LOCK: Mutex<()> = Mutex::new(());
 
+fn shutdown_warning_records(log: &str) -> Vec<(String, String)> {
+    log.lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("daemon file log should be JSON"))
+        .filter_map(|entry| {
+            let fields = entry.get("fields")?;
+            let message = fields.get("message")?.as_str()?;
+            let (kind, field) = if message == "client connection drain timed out" {
+                ("client drain timeout", None)
+            } else if message == "service shutdown signal timed out" {
+                ("service timeout", Some("service"))
+            } else if message == "service shutdown signal failed" {
+                ("service failure", Some("service"))
+            } else if message == "runtime task drain timed out" {
+                ("runtime task timeout", Some("task"))
+            } else if message.starts_with("runtime task join failed") {
+                ("runtime task failure", Some("task"))
+            } else {
+                return None;
+            };
+            Some((
+                kind.to_owned(),
+                field
+                    .and_then(|field| fields.get(field))
+                    .and_then(Value::as_str)
+                    .unwrap_or("<missing>")
+                    .to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn assert_shutdown_warnings(log: &str, allowed: &[(&str, &str)]) {
+    let warnings = shutdown_warning_records(log);
+    for warning in &warnings {
+        assert!(
+            allowed.contains(&(warning.0.as_str(), warning.1.as_str())),
+            "unexpected shutdown warning {warning:?}; all warnings: {warnings:?}"
+        );
+    }
+    let mut unique = warnings.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        warnings.len(),
+        "duplicate shutdown warnings: {warnings:?}"
+    );
+}
+
 struct TestDaemon {
     socket_path: PathBuf,
     pid_path: PathBuf,
@@ -359,6 +408,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
             .env("MXR_CONFIG_DIR", &config_dir)
             .env("MXR_SOCKET_PATH", &socket_path)
             .env("MXR_ACTIVITY", "off")
+            .env("NO_COLOR", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::from(stderr))
             .env("RUST_LOG", "info")
@@ -549,6 +599,14 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
         log.contains("daemon shutdown drain completed"),
         "ordered runtime drain should complete"
     );
+    assert_shutdown_warnings(
+        &log,
+        &[
+            ("service timeout", "relationship"),
+            ("runtime task timeout", "relationship_worker"),
+        ],
+    );
+    let first_log_length = log.len();
 
     let mut second = spawn();
     daemon.set_pid(second.id() as u64);
@@ -576,6 +634,18 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     );
 
     stop_and_wait(&mut second, &mut daemon, Signal::SIGINT);
+    let log = std::fs::read_to_string(data_dir.join("logs").join("mxr.log"))
+        .expect("read idle restart shutdown log");
+    let idle_shutdown_log = &log[first_log_length..];
+    assert!(
+        idle_shutdown_log.contains("SIGINT received"),
+        "restarted daemon should log SIGINT"
+    );
+    assert!(
+        idle_shutdown_log.contains("daemon shutdown drain completed"),
+        "restarted daemon should complete its idle runtime drain"
+    );
+    assert_shutdown_warnings(idle_shutdown_log, &[]);
 }
 
 fn daemon_lifecycle_guard() -> MutexGuard<'static, ()> {

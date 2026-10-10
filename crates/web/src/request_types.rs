@@ -432,12 +432,27 @@ pub(super) struct DraftConflictDetails {
     expected_revision: Option<i64>,
     current_revision: Option<i64>,
 }
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub(super) struct AcceptedComposeDraft {
+    pub(super) draft_id: mxr_core::DraftId,
+    pub(super) revision: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub(super) struct RecoveredComposeSession {
+    pub(super) draft_path: String,
+    pub(super) draft_id: mxr_core::DraftId,
+    pub(super) revision: Option<i64>,
+}
+
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct DraftConflictResponse {
     error: String,
     code: String,
     details: Option<DraftConflictDetails>,
+    accepted_draft: Option<AcceptedComposeDraft>,
+    recovery_session: Option<RecoveredComposeSession>,
 }
 
 #[derive(utoipa::ToSchema)]

@@ -104,6 +104,8 @@ use utoipa::{
         mail_move_undo, mail_corrections
     ),
     components(schemas(
+        crate::request_types::AcceptedComposeDraft,
+        crate::request_types::RecoveredComposeSession,
         Request,
         Response,
         ResponseData,
@@ -1285,16 +1287,20 @@ fn compose_session_refresh() {}
 )]
 #[allow(dead_code)]
 fn compose_session_restore() {}
-#[utoipa::path(post, path = "/api/v1/mail/compose/session/update", request_body = ComposeSessionUpdateRequest, responses((status = 200, description = "Saved draft session", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/update", request_body = ComposeSessionUpdateRequest, responses((status = 200, description = "Saved draft session", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn compose_session_update() {}
-endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send compose session");
-endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/send", summary = "Send compose session", request_body = ComposeSessionSendRequest, responses((status = 200, description = "Sent compose session"), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_send() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/safety-check", summary = "Run the pre-send safety report for a compose session", request_body = ComposeSessionSendRequest, responses((status = 200, description = "Compose safety report"), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_safety_check() {}
 endpoint!(post compose_session_collaborators "/api/v1/mail/compose/session/collaborators", "Suggest maybe-include recipients for a compose session");
-#[utoipa::path(post, path = "/api/v1/mail/compose/session/save", request_body = ComposeSessionSendRequest, responses((status = 200, description = "Saved draft session", body = SavedDraftResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/save", request_body = ComposeSessionSendRequest, responses((status = 200, description = "Saved draft session", body = SavedDraftResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn compose_session_save() {}
-#[utoipa::path(post, path = "/api/v1/mail/compose/session/schedule", request_body = ComposeSessionScheduleRequest, responses((status = 200, description = "Saved draft session", body = ScheduledComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/schedule", request_body = ComposeSessionScheduleRequest, responses((status = 200, description = "Saved draft session", body = ScheduledComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn compose_session_schedule() {}
 endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");

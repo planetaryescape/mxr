@@ -142,11 +142,34 @@ pub use router::{app, bind_and_serve, bind_listener, serve, DEFAULT_BRIDGE_PORT}
 #[derive(Clone)]
 struct AppState {
     config: WebServerConfig,
+    compose_files: std::sync::Arc<
+        tokio::sync::Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+    >,
 }
 
 impl AppState {
     fn new(config: WebServerConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            compose_files: Default::default(),
+        }
+    }
+
+    async fn lock_compose_file(
+        &self,
+        path: &Path,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, BridgeError> {
+        let key = tokio::fs::canonicalize(path)
+            .await
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+        let lock = self
+            .compose_files
+            .lock()
+            .await
+            .entry(key)
+            .or_default()
+            .clone();
+        Ok(lock.lock_owned().await)
     }
 }
 
@@ -700,6 +723,9 @@ async fn refresh_compose_session(
     Json(request): Json<ComposeSessionPathRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let session = load_compose_session(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "session": session })))
 }
@@ -743,6 +769,9 @@ async fn update_compose_session(
     Json(request): Json<ComposeSessionUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     let path = Path::new(&request.draft_path);
     let draft_file = path
@@ -790,56 +819,63 @@ async fn update_compose_session(
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    if let Err(error) = write_compose_file(path, rendered).await {
-        tracing::warn!(
-            request_id,
-            endpoint = "compose/update",
-            draft_file,
-            stage = "write",
-            error_kind = bridge_error_kind(&error),
-            missing_file = bridge_error_is_missing_file(&error),
-            draft_exists = path.exists(),
-            parent_exists = path.parent().is_some_and(std::path::Path::exists),
-            "bridge compose update failed"
-        );
-        return Err(error);
-    }
-    let metadata = read_draft_session_metadata(path).await?.ok_or_else(|| {
-        BridgeError::BadRequest("compose session is missing its draft identity; reopen it".into())
-    })?;
-    let draft = compose_draft_from_file(
+    let metadata = match read_draft_session_metadata(path).await? {
+        Some(metadata) => metadata,
+        None => {
+            // Pre-upgrade windows keep their text but cannot infer a durable token.
+            replace_compose_file(path, rendered).await?;
+            return Err(BridgeError::BadRequest(
+                "compose session is missing its draft identity; reopen it".into(),
+            ));
+        }
+    };
+    let mut candidate = compose_draft_from_snapshot(
         &request.draft_path,
         request
             .account_id
             .as_deref()
             .unwrap_or(&metadata.account_id.to_string()),
-        Some(metadata.id),
+        Some(metadata.id.clone()),
         ComposeDraftValidation::Incomplete,
+        &rendered,
+        Some(metadata.clone()),
     )
     .await?;
-    persist_compose_draft(
+    candidate.revision = request.expected_revision;
+    let accepted = match submit_compose_draft(
         &state.config.socket_path,
-        path,
-        draft,
+        candidate.clone(),
         request.expected_revision,
     )
-    .await?;
-    let session = match load_compose_session(path).await {
-        Ok(session) => session,
+    .await
+    {
+        Ok(accepted) => accepted,
         Err(error) => {
-            tracing::warn!(
-                request_id,
-                endpoint = "compose/update",
-                draft_file,
-                stage = "reload",
-                error_kind = bridge_error_kind(&error),
-                missing_file = bridge_error_is_missing_file(&error),
-                draft_exists = path.exists(),
-                "bridge compose update failed"
-            );
-            return Err(error);
+            let recovery = preserve_compose_snapshot(&rendered, &candidate).await;
+            if let Err(ref failure) = recovery {
+                tracing::warn!(request_id, error = %failure, "could not preserve rejected compose snapshot");
+            }
+            return Err(error.with_compose_evidence(None, recovery.ok()));
         }
     };
+    let committed = async {
+        replace_compose_file(path, rendered.clone()).await?;
+        write_draft_session_metadata(path, &accepted).await
+    }
+    .await;
+    if let Err(error) = committed {
+        // The metadata writer is atomic; restore the previous coherent file if
+        // the second replace failed, while preserving the accepted snapshot.
+        if let Err(failure) = replace_compose_file(path, content).await {
+            tracing::warn!(request_id, error = %failure, "could not restore compose file after persistence failure");
+        }
+        let recovery = preserve_compose_snapshot(&rendered, &accepted).await;
+        if let Err(ref failure) = recovery {
+            tracing::warn!(request_id, error = %failure, "could not preserve accepted compose snapshot");
+        }
+        return Err(error.with_compose_evidence(Some(&accepted), recovery.ok()));
+    }
+    let session = compose_session_from_snapshot(path, &rendered, Some(&accepted))?;
     tracing::debug!(
         request_id,
         endpoint = "compose/update",
@@ -856,6 +892,9 @@ async fn send_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     let draft_file = Path::new(&request.draft_path)
         .file_name()
@@ -876,6 +915,7 @@ async fn send_compose_session(
         ComposeDraftValidation::Send,
     )
     .await?;
+    ensure_compose_revision(&draft, request.expected_revision)?;
     let draft_id = draft.id.clone();
     // The sent message id is what `POST /mail/reminders` keys on, so a client
     // can offer "send and remind" without re-finding the message. A bare `Ack`
@@ -988,6 +1028,9 @@ async fn check_compose_session_safety(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     // Nothing is stored, so the id never leaves this report: the safety
     // pipeline reads recipients and body only, and override tokens are keyed
@@ -999,6 +1042,7 @@ async fn check_compose_session_safety(
         ComposeDraftValidation::Send,
     )
     .await?;
+    ensure_compose_revision(&draft, request.expected_revision)?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -1025,6 +1069,9 @@ async fn suggest_compose_collaborators(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     // Read-only suggestion lookup; nothing is stored under this draft's id.
     let draft = compose_draft_from_file(
@@ -1056,6 +1103,9 @@ async fn save_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     let draft_file = Path::new(&request.draft_path)
         .file_name()
@@ -1098,12 +1148,16 @@ async fn save_compose_session(
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
-        Request::SaveDraftToServer { draft },
+        Request::SaveDraftToServer {
+            draft: draft.clone(),
+        },
     )
     .await
     {
         Ok(ResponseData::Draft { draft }) => {
-            write_draft_session_metadata(Path::new(&request.draft_path), &draft).await?;
+            write_draft_session_metadata(Path::new(&request.draft_path), &draft)
+                .await
+                .map_err(|error| error.with_compose_evidence(Some(&draft), None))?;
             tracing::info!(
                 request_id,
                 endpoint = "compose/save",
@@ -1111,8 +1165,11 @@ async fn save_compose_session(
                 draft_file,
                 "bridge compose save completed"
             );
+            Ok(Json(
+                json!({ "ok": true, "draft_id": draft.id, "revision": draft.revision }),
+            ))
         }
-        Ok(_) => return Err(BridgeError::UnexpectedResponse),
+        Ok(_) => Err(BridgeError::UnexpectedResponse.with_compose_evidence(Some(&draft), None)),
         Err(error) => {
             tracing::warn!(
                 request_id,
@@ -1122,13 +1179,9 @@ async fn save_compose_session(
                 error_kind = bridge_error_kind(&error),
                 "bridge compose save failed"
             );
-            return Err(error);
+            Err(error.with_compose_evidence(Some(&draft), None))
         }
     }
-    let saved = read_draft_session_metadata(Path::new(&request.draft_path)).await?;
-    Ok(Json(
-        json!({ "ok": true, "draft_id": draft_id, "revision": saved.and_then(|draft| draft.revision) }),
-    ))
 }
 
 /// Store the compose session as a local draft and schedule it, in one call.
@@ -1140,9 +1193,8 @@ async fn save_compose_session(
 /// from a stored draft (`draft_id`) updates that draft in place instead of
 /// storing a copy.
 ///
-/// One call rather than store-then-schedule so the client never holds a
-/// stored copy it failed to schedule, and so the bridge, not the browser,
-/// decides which draft id the schedule lands on.
+/// Persistence records the accepted revision before scheduling, so a failed
+/// schedule leaves the session able to edit or retry the same stored draft.
 async fn schedule_compose_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1150,6 +1202,9 @@ async fn schedule_compose_session(
     Json(request): Json<ComposeSessionScheduleRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let request_id = bridge_request_id(&headers);
     let draft_file = Path::new(&request.draft_path)
         .file_name()
@@ -1169,25 +1224,22 @@ async fn schedule_compose_session(
         editing_stored_draft,
         "bridge compose schedule requested"
     );
-    let mut draft = compose_draft_from_file(
+    let candidate = compose_draft_from_file(
         &request.draft_path,
         &request.account_id,
         stored_draft_id,
         ComposeDraftValidation::Send,
     )
     .await?;
-    draft.revision = request.expected_revision;
+    let draft = persist_compose_draft(
+        &state.config.socket_path,
+        Path::new(&request.draft_path),
+        candidate,
+        request.expected_revision,
+    )
+    .await?;
     let draft_id = draft.id.clone();
-    let store_request = if draft.revision.is_some() {
-        Request::UpdateDraft { draft }
-    } else {
-        Request::SaveDraft { draft }
-    };
     let stored = async {
-        match ipc_request_with_id(&state.config.socket_path, request_id, store_request).await? {
-            ResponseData::Draft { .. } => {}
-            _ => return Err(BridgeError::UnexpectedResponse),
-        }
         match ipc_request_with_id(
             &state.config.socket_path,
             request_id,
@@ -1212,7 +1264,7 @@ async fn schedule_compose_session(
             error_kind = bridge_error_kind(&error),
             "bridge compose schedule failed"
         );
-        return Err(error);
+        return Err(error.with_compose_evidence(Some(&draft), None));
     }
     // The stored draft now owns the content, so the session file and invite
     // sidecar go. The attachment directory stays: the stored draft points at
@@ -1246,6 +1298,9 @@ async fn upload_compose_attachment(
     Json(request): Json<ComposeSessionAttachmentRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     let bytes = general_purpose::STANDARD
         .decode(request.content_base64)
         .map_err(|error| BridgeError::BadRequest(format!("invalid attachment content: {error}")))?;
@@ -1273,6 +1328,9 @@ async fn discard_compose_session(
     Json(request): Json<ComposeSessionPathRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let _compose_guard = state
+        .lock_compose_file(Path::new(&request.draft_path))
+        .await?;
     if let Some(draft) = read_draft_session_metadata(Path::new(&request.draft_path)).await? {
         if draft.revision.is_some() {
             ipc_request(
@@ -2470,23 +2528,49 @@ async fn read_draft_session_metadata(path: &Path) -> Result<Option<Draft>, Bridg
 async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), BridgeError> {
     let bytes = serde_json::to_vec(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);
-    write_compose_file(
+    replace_compose_file(
         &metadata,
         String::from_utf8(bytes).map_err(|error| BridgeError::Ipc(error.to_string()))?,
     )
     .await
 }
 
+fn ensure_compose_revision(draft: &Draft, expected: Option<i64>) -> Result<(), BridgeError> {
+    // Older send clients remain a documented upgrade boundary; revised clients
+    // must never send the contents another tab wrote into their shared path.
+    if expected.is_some() && expected != draft.revision {
+        return Err(BridgeError::DraftConflict {
+            message: "Draft changed in another editor; preserve your unsent text".into(),
+            details: Some(
+                json!({ "expected_revision": expected, "current_revision": draft.revision }),
+            ),
+        });
+    }
+    Ok(())
+}
+
 async fn persist_compose_draft(
     socket_path: &Path,
     path: &Path,
-    mut draft: Draft,
+    draft: Draft,
     expected_revision: Option<i64>,
 ) -> Result<Draft, BridgeError> {
     // The initial identity is written before submission so a lost create response reuses it.
     if read_draft_session_metadata(path).await?.is_none() {
         write_draft_session_metadata(path, &draft).await?;
     }
+    let accepted = submit_compose_draft(socket_path, draft, expected_revision).await?;
+    write_draft_session_metadata(path, &accepted)
+        .await
+        .map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
+    Ok(accepted)
+}
+
+async fn submit_compose_draft(
+    socket_path: &Path,
+    mut draft: Draft,
+    expected_revision: Option<i64>,
+) -> Result<Draft, BridgeError> {
     if expected_revision.is_some() {
         if let ResponseData::Draft { draft: canonical } = ipc_request(
             socket_path,
@@ -2513,7 +2597,6 @@ async fn persist_compose_draft(
                 == serde_json::to_value(&canonical)
                     .map_err(|error| BridgeError::Ipc(error.to_string()))?
             {
-                write_draft_session_metadata(path, &canonical).await?;
                 return Ok(canonical);
             }
         }
@@ -2525,18 +2608,23 @@ async fn persist_compose_draft(
         Request::SaveDraft { draft }
     };
     match ipc_request(socket_path, request).await? {
-        ResponseData::Draft { draft } if draft.revision.is_some() => {
-            write_draft_session_metadata(path, &draft).await?;
-            Ok(draft)
-        }
+        ResponseData::Draft { draft } if draft.revision.is_some() => Ok(draft),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
 
 async fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
     let raw_content = read_compose_file(path).await?;
-    let (frontmatter, body) = parse_compose_content(&raw_content)?;
     let metadata = read_draft_session_metadata(path).await?;
+    compose_session_from_snapshot(path, &raw_content, metadata.as_ref())
+}
+
+fn compose_session_from_snapshot(
+    path: &Path,
+    raw_content: &str,
+    metadata: Option<&Draft>,
+) -> Result<serde_json::Value, BridgeError> {
+    let (frontmatter, body) = parse_compose_content(raw_content)?;
     let rendered = render_markdown(&body);
     let issues = validate_draft(&frontmatter, &body)
         .into_iter()
@@ -2661,9 +2749,29 @@ async fn compose_draft_from_file(
     validation: ComposeDraftValidation,
 ) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
-    let (frontmatter, body) = parse_compose_content(&raw_content)?;
+    let metadata = read_draft_session_metadata(Path::new(draft_path)).await?;
+    compose_draft_from_snapshot(
+        draft_path,
+        account_id,
+        draft_id,
+        validation,
+        &raw_content,
+        metadata,
+    )
+    .await
+}
+
+async fn compose_draft_from_snapshot(
+    draft_path: &str,
+    account_id: &str,
+    draft_id: Option<DraftId>,
+    validation: ComposeDraftValidation,
+    raw_content: &str,
+    metadata: Option<Draft>,
+) -> Result<Draft, BridgeError> {
+    let (frontmatter, body) = parse_compose_content(raw_content)?;
     validate_compose_submission(&frontmatter, &body, validation)?;
-    if let Some(mut existing) = read_draft_session_metadata(Path::new(draft_path)).await? {
+    if let Some(mut existing) = metadata {
         if draft_id.as_ref().is_some_and(|id| id != &existing.id)
             || (existing.revision.is_some() && existing.account_id != parse_account_id(account_id)?)
         {
@@ -2878,6 +2986,37 @@ fn snoozed_summary_view(entry: &Snoozed, envelope: &Envelope) -> serde_json::Val
         "unread": !envelope.flags.contains(mxr_core::MessageFlags::READ),
         "has_attachments": envelope.has_attachments,
     })
+}
+
+async fn preserve_compose_snapshot(
+    content: &str,
+    observed: &Draft,
+) -> Result<RecoveredComposeSession, BridgeError> {
+    let dir = mxr_compose::private_tmp::private_scratch_dir()
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let path = dir.join(format!("mxr-compose-recovery-{}.md", Uuid::now_v7()));
+    mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    write_draft_session_metadata(&path, observed).await?;
+    Ok(RecoveredComposeSession {
+        draft_path: path.display().to_string(),
+        draft_id: observed.id.clone(),
+        revision: observed.revision,
+    })
+}
+
+async fn replace_compose_file(path: &Path, content: String) -> Result<(), BridgeError> {
+    let temporary = path.with_extension(format!("tmp-{}", Uuid::now_v7()));
+    let result = async {
+        mxr_compose::private_tmp::write_private_async(&temporary, content.as_bytes()).await?;
+        tokio::fs::rename(&temporary, path).await
+    }
+    .await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&temporary).await;
+    }
+    result.map_err(|error| BridgeError::Ipc(error.to_string()))
 }
 
 async fn read_compose_file(path: &Path) -> Result<String, BridgeError> {

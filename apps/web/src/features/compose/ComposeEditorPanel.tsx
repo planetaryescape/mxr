@@ -391,6 +391,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         presets={REMIND_DIALOG_PRESETS}
       />
       <DiscardConfirmDialog
+        saved={controller.draft?.revision != null}
         open={controller.discardConfirmOpen}
         onOpenChange={controller.setDiscardConfirmOpen}
         discarding={controller.discarding}
@@ -456,11 +457,13 @@ function AttachmentList({
 }
 
 function DiscardConfirmDialog({
+  saved,
   open,
   onOpenChange,
   discarding,
   onConfirm,
 }: {
+  saved: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   discarding: boolean;
@@ -479,7 +482,9 @@ function DiscardConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Discard draft?</AlertDialogTitle>
           <AlertDialogDescription>
-            This deletes the local compose file and attachments for this draft.
+            {saved
+              ? "This deletes the saved draft and any linked provider copy, along with this compose file and its attachments."
+              : "This deletes the local compose file and attachments for this draft."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

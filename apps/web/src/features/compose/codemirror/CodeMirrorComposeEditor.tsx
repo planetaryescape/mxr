@@ -136,13 +136,6 @@ export function CodeMirrorComposeEditor({
                 return true;
               },
             },
-            {
-              key: "Mod-Backspace",
-              run: () => {
-                callbacksRef.current.onDiscard();
-                return true;
-              },
-            },
           ]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({

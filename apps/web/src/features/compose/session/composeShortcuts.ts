@@ -58,6 +58,7 @@ const WAITS_WHILE_BUSY = new Set<Command>([
 ]);
 
 interface ChordEvent {
+  target?: EventTarget | null;
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
@@ -68,9 +69,18 @@ interface ChordEvent {
 export function composeCommandOf(event: ChordEvent): Command | null {
   if (!(event.metaKey || event.ctrlKey)) return null;
   const chord = `${event.shiftKey ? "shift+" : ""}${event.key.toLowerCase()}`;
-  return Object.hasOwn(COMPOSE_CHORDS, chord)
+  // SAFETY: The own-property check limits chord to a key in this fixed command table.
+  const command = Object.hasOwn(COMPOSE_CHORDS, chord)
     ? COMPOSE_CHORDS[chord as keyof typeof COMPOSE_CHORDS]
     : null;
+  if (
+    command === "requestDiscard" &&
+    typeof Element !== "undefined" &&
+    event.target instanceof Element &&
+    event.target.closest("input, textarea, [contenteditable='true']")
+  )
+    return null;
+  return command;
 }
 
 /**

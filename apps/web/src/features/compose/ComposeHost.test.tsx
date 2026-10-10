@@ -9,7 +9,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import type { ComposeSessionResponse, DraftSafetyReport } from "./api";
 import { ComposeHost } from "./ComposeHost";
-import { inviteReplyIntent, useComposeUi } from "./composeUiStore";
+import { draftIntent, inviteReplyIntent, useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -740,8 +740,11 @@ describe("ComposeHost after a delayed send", () => {
     renderHost();
     openNewMessage();
 
-    const subject = await screen.findByLabelText("Subject");
-    fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
 
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
@@ -749,5 +752,80 @@ describe("ComposeHost after a delayed send", () => {
       }),
     );
     expect(screen.getByLabelText("Subject")).toBeInTheDocument();
+  });
+});
+
+describe("saved draft discard preview", () => {
+  test("a clean restored draft waits for confirmation, and Cancel keeps it", async () => {
+    api.restoreComposeSession.mockResolvedValue(
+      session({ draftId: "confirmed-draft", revision: 1 }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("confirmed-draft"), "overlay"));
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    expect(await screen.findByText(/saved draft and any linked provider copy/)).toBeVisible();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Subject")).toBeVisible();
+  });
+  test("an autosaved clean draft still requires destructive confirmation", async () => {
+    api.startComposeSession.mockResolvedValue(
+      session({ draftId: "autosaved-draft", revision: null }),
+    );
+    api.updateComposeSession.mockResolvedValue(
+      session({
+        draftId: "autosaved-draft",
+        revision: 1,
+        frontmatter: { ...session().session.frontmatter, subject: "Autosaved" },
+      }),
+    );
+    renderHost();
+    openNewMessage();
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Autosaved" } });
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Draft saved locally"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    expect(await screen.findByText(/saved draft and any linked provider copy/)).toBeVisible();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+  });
+  test("stale confirmed deletion reports the conflict and keeps the composer", async () => {
+    api.restoreComposeSession.mockResolvedValue(session({ draftId: "stale-delete", revision: 1 }));
+    api.discardComposeSession.mockRejectedValue(new Error("Draft revision conflict"));
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("stale-delete"), "overlay"));
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
+        description: "Draft revision conflict",
+      }),
+    );
+    expect(api.discardComposeSession).toHaveBeenCalledWith("/tmp/mxr-compose.md", 1);
+    expect(screen.getByLabelText("Subject")).toBeVisible();
+  });
+  test("editor deletion chords never ask to delete a saved draft", async () => {
+    api.restoreComposeSession.mockResolvedValue(
+      session({ draftId: "editing-delete", revision: 1 }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("editing-delete"), "overlay"));
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
+    fireEvent.keyDown(screen.getByLabelText("Message body"), { key: "Backspace", ctrlKey: true });
+    expect(screen.queryByText("Discard draft?")).not.toBeInTheDocument();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
   });
 });

@@ -29,6 +29,17 @@ mxr doctor --check --format json >/tmp/mxr-doctor.json \
   || jq '.findings[] | select(.severity == "error")' /tmp/mxr-doctor.json
 ```
 
+### Diagnostics for a selected daemon
+
+`mxr status` and `mxr doctor --check` / `--store-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`.
+
+```bash
+MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status --format json
+MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr doctor --check --format json
+```
+
+If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates only on the local default profile; repair a selected remote daemon's index on its host.
+
 ### Is my mail current?
 
 `mxr status --freshness` answers the quick "is new mail reaching me?" check: when the newest message arrived (any mailbox, any mode), each account's last good sync, the last sync error with its kind and retry time, and the last arrivals with the mode each one went to.

@@ -58,10 +58,20 @@ impl IpcClient {
         // loopback+token, or cmd:// spawn-and-pipe) so the request path agrees
         // with autostart / the liveness probe / doctor. A tcp:// connector
         // authenticates automatically inside `connect_with` when it has a token.
+        let is_cmd = matches!(
+            crate::server::resolve_daemon_addr()?,
+            mxr_transport::TransportAddr::Cmd(_)
+        );
         let connector = crate::server::build_cli_connector()?;
         let conn = IpcConnection::connect_with(connector.as_ref(), ClientKind::Cli)
             .await
-            .map_err(map_connect_error)?;
+            .map_err(|error| {
+                if is_cmd {
+                    anyhow::anyhow!("Cannot connect through the selected cmd:// daemon bridge. Check that the bridge command is available and speaks mxr IPC.")
+                } else {
+                    map_connect_error(error)
+                }
+            })?;
         Ok(Self { conn })
     }
 

@@ -19,6 +19,7 @@ pub mod demo;
 pub mod desk;
 pub mod desk_done;
 pub mod desk_later;
+pub(crate) mod diagnostics;
 pub mod doctor;
 pub mod draft;
 pub mod draft_assist;

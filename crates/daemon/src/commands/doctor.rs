@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::diagnostics::{client_local_metadata, selected_target_metadata};
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::handler::{
     build_doctor_findings, dir_size_sync, doctor_data_stats, file_size_sync, no_error_findings,
@@ -32,13 +33,19 @@ pub struct DoctorRunOptions {
 pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     let fmt = resolve_format(options.format);
     let json_mode = matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl);
+    let (selected_target, remote_target) = selected_target_metadata()?;
 
-    if options.rebuild_analytics
-        || options.refresh_contacts
-        || options.recompute_link_counts
-        || options.semantic_status
-        || options.reindex_semantic
-        || options.backfill_semantic
+    if options.reindex && remote_target {
+        anyhow::bail!("`mxr doctor --reindex` only supports the local default daemon; selected daemon diagnostics are read-only");
+    }
+
+    if !remote_target
+        && (options.rebuild_analytics
+            || options.refresh_contacts
+            || options.recompute_link_counts
+            || options.semantic_status
+            || options.reindex_semantic
+            || options.backfill_semantic)
     {
         crate::server::ensure_daemon_running().await?;
     }
@@ -226,13 +233,16 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         }
     }
 
-    let report = collect_report().await?;
-    let data_dir = mxr_config::data_dir();
-    let db_path = data_dir.join("mxr.db");
-    let index_path = data_dir.join("search_index");
+    let report = collect_selected_report(remote_target).await?;
 
     if options.check {
-        print_report(&report, fmt, options.verbose)?;
+        print_report_with_context(
+            &report,
+            fmt,
+            options.verbose,
+            remote_target,
+            &selected_target,
+        )?;
         if report.healthy {
             return Ok(());
         }
@@ -240,48 +250,140 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     }
 
     if options.index_stats {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "path": report.index_path,
-                "exists": report.index_exists,
-                "size_bytes": report.index_size_bytes,
-                "index_lock_held": report.index_lock_held,
-                "index_lock_error": report.index_lock_error,
-            }))?
-        );
+        let stats = serde_json::json!({
+            "path": report.index_path,
+            "exists": report.index_exists,
+            "size_bytes": report.index_size_bytes,
+            "index_lock_held": report.index_lock_held,
+            "index_lock_error": report.index_lock_error,
+        });
+        print_contextual_json(stats, fmt, remote_target, &selected_target)?;
         return Ok(());
     }
 
     if options.store_stats {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "database_path": report.database_path,
-                "database_size_bytes": report.database_size_bytes,
-                "log_path": report.log_path,
-                "log_size_bytes": report.log_size_bytes,
-                "accounts": report.sync_statuses.len(),
-            }))?
-        );
+        let stats = serde_json::json!({
+            "database_path": report.database_path,
+            "database_size_bytes": report.database_size_bytes,
+            "log_path": report.log_path,
+            "log_size_bytes": report.log_size_bytes,
+            "accounts": report.sync_statuses.len(),
+        });
+        print_contextual_json(stats, fmt, remote_target, &selected_target)?;
         return Ok(());
     }
 
-    print_report(&report, fmt, options.verbose)?;
+    print_report_with_context(
+        &report,
+        fmt,
+        options.verbose,
+        remote_target,
+        &selected_target,
+    )?;
 
-    if options.reindex {
-        println!("\nReindex requested - this requires daemon restart to take effect.");
-        if index_path.exists() {
-            std::fs::remove_dir_all(&index_path)?;
-            println!("Removed search index directory. Restart daemon to rebuild.");
+    if !remote_target {
+        let data_dir = mxr_config::data_dir();
+        let db_path = data_dir.join("mxr.db");
+        let index_path = data_dir.join("search_index");
+
+        if options.reindex {
+            println!("\nReindex requested - this requires daemon restart to take effect.");
+            if index_path.exists() {
+                std::fs::remove_dir_all(&index_path)?;
+                println!("Removed search index directory. Restart daemon to rebuild.");
+            }
+        }
+
+        if !db_path.exists() {
+            println!("\nNext: configure an account, then run `mxr daemon --foreground`.");
         }
     }
 
-    if !db_path.exists() {
-        println!("\nNext: configure an account, then run `mxr daemon --foreground`.");
-    }
-
     Ok(())
+}
+
+async fn collect_selected_report(remote_target: bool) -> anyhow::Result<DoctorReport> {
+    if !remote_target {
+        return collect_report().await;
+    }
+    let mut client = IpcClient::connect().await?;
+    match client.request(Request::GetDoctorReport).await? {
+        Response::Ok {
+            data: ResponseData::DoctorReport { report },
+        } => Ok(report),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        other => anyhow::bail!("unexpected doctor response: {other:?}"),
+    }
+}
+
+fn print_contextual_json(
+    value: serde_json::Value,
+    format: OutputFormat,
+    remote_target: bool,
+    target: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let value = if remote_target {
+        serde_json::json!({
+            "daemon_target": target,
+            "client_local": client_local_metadata()?,
+            "daemon": value,
+        })
+    } else {
+        value
+    };
+    match format {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&value)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&value)?),
+        _ => println!("{}", serde_json::to_string_pretty(&value)?),
+    }
+    Ok(())
+}
+
+fn print_report_with_context(
+    report: &DoctorReport,
+    format: OutputFormat,
+    verbose: bool,
+    remote_target: bool,
+    target: &serde_json::Value,
+) -> anyhow::Result<()> {
+    if !remote_target {
+        return print_report(report, format, verbose);
+    }
+    match format {
+        OutputFormat::Json | OutputFormat::Jsonl => {
+            let value = serde_json::json!({
+                "daemon_target": target,
+                "client_local": client_local_metadata()?,
+                "daemon": report,
+            });
+            if matches!(format, OutputFormat::Json) {
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                println!("{}", serde_json::to_string(&value)?);
+            }
+            Ok(())
+        }
+        _ => {
+            println!(
+                "Selected daemon: {}",
+                target["display"].as_str().unwrap_or("unknown")
+            );
+            let local = client_local_metadata()?;
+            println!(
+                "Client runtime: {}",
+                local["runtime_instance"].as_str().unwrap_or("unknown")
+            );
+            println!(
+                "Client config: {}",
+                local["config_path"].as_str().unwrap_or("unknown")
+            );
+            println!(
+                "Client data: {}",
+                local["data_dir"].as_str().unwrap_or("unknown")
+            );
+            print_report(report, format, verbose)
+        }
+    }
 }
 
 async fn collect_report() -> anyhow::Result<DoctorReport> {

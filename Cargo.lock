@@ -4386,6 +4386,7 @@ dependencies = [
  "mxr-core",
  "mxr-protocol",
  "mxr-transport",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
@@ -4416,6 +4417,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "url",
+ "utoipa",
  "uuid",
 ]
 

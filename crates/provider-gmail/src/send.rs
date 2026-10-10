@@ -255,6 +255,7 @@ mod tests {
 
     fn test_draft() -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

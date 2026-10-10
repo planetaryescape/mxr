@@ -169,7 +169,7 @@ impl super::Store {
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
                       body_html, body_text, content_kind,
                       attachments, inline_assets, inline_calendar_reply_json,
-                      created_at, updated_at
+                      created_at, updated_at, revision
                FROM drafts WHERE id = ?"#,
         )
         .bind(id_str)
@@ -179,6 +179,7 @@ impl super::Store {
 
         row.map(|r| {
             Ok(Draft {
+                revision: Some(r.get("revision")),
                 id: decode_id(&r.get::<String, _>("id"))?,
                 account_id: decode_id(&r.get::<String, _>("account_id"))?,
                 from: r
@@ -240,8 +241,8 @@ impl super::Store {
                     to_addrs = ?, cc_addrs = ?, bcc_addrs = ?, subject = ?,
                     body_markdown = ?, body_html = ?, body_text = ?, content_kind = ?,
                     attachments = ?, inline_assets = ?, inline_calendar_reply_json = ?,
-                    updated_at = ?
-              WHERE id = ? AND status = 'draft'",
+                    updated_at = ?, revision = revision + 1
+              WHERE id = ? AND status = 'draft' AND revision = ?",
         )
         .bind(account_id)
         .bind(from_addr)
@@ -260,6 +261,7 @@ impl super::Store {
         .bind(inline_calendar_reply_json)
         .bind(updated_at)
         .bind(id)
+        .bind(draft.revision)
         .execute(self.writer())
         .await?;
 
@@ -274,7 +276,7 @@ impl super::Store {
                       to_addrs, cc_addrs, bcc_addrs, subject, body_markdown,
                       body_html, body_text, content_kind,
                       attachments, inline_assets, inline_calendar_reply_json,
-                      created_at, updated_at
+                      created_at, updated_at, revision
                FROM drafts WHERE account_id = ? ORDER BY updated_at DESC"#,
         )
         .bind(aid)
@@ -285,6 +287,7 @@ impl super::Store {
         rows.into_iter()
             .map(|r| {
                 Ok(Draft {
+                    revision: Some(r.get("revision")),
                     id: decode_id(&r.get::<String, _>("id"))?,
                     account_id: decode_id(&r.get::<String, _>("account_id"))?,
                     from: r
@@ -311,6 +314,20 @@ impl super::Store {
                 })
             })
             .collect()
+    }
+
+    pub async fn delete_draft_at_revision(
+        &self,
+        id: &DraftId,
+        revision: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let result =
+            sqlx::query("DELETE FROM drafts WHERE id = ? AND revision = ? AND status = 'draft'")
+                .bind(id.as_str())
+                .bind(revision)
+                .execute(self.writer())
+                .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn delete_draft(&self, id: &DraftId) -> Result<(), sqlx::Error> {
@@ -385,14 +402,17 @@ impl super::Store {
         &self,
         id: &DraftId,
         headers: &ReplyHeaders,
+        revision: i64,
     ) -> Result<bool, sqlx::Error> {
         let encoded = encode_json(headers)?;
-        let result =
-            sqlx::query("UPDATE drafts SET in_reply_to = ? WHERE id = ? AND status = 'draft'")
-                .bind(encoded)
-                .bind(id.as_str())
-                .execute(self.writer())
-                .await?;
+        let result = sqlx::query(
+            "UPDATE drafts SET in_reply_to = ? WHERE id = ? AND status = 'draft' AND revision = ?",
+        )
+        .bind(encoded)
+        .bind(id.as_str())
+        .bind(revision)
+        .execute(self.writer())
+        .await?;
         Ok(result.rows_affected() > 0)
     }
 

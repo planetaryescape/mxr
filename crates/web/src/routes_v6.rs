@@ -2172,7 +2172,10 @@ async fn delete_draft_stored(
         &state,
         &headers,
         auth.token.as_deref(),
-        Request::DeleteDraft { draft_id: id },
+        Request::DeleteDraft {
+            expected_revision: auth.expected_revision,
+            draft_id: id,
+        },
     )
     .await?;
     passthrough(response)

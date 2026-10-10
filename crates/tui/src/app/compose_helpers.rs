@@ -63,6 +63,7 @@ impl App {
                 });
         let now = chrono::Utc::now();
         let draft = mxr_core::Draft {
+            revision: None,
             id: mxr_core::id::DraftId::new(),
             account_id: pending.account_id.clone(),
             // `fm.from` was validated when the PendingSend was built; a parse

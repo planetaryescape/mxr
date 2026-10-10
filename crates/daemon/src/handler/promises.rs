@@ -425,6 +425,7 @@ mod tests {
 
     fn draft(account_id: &AccountId, body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: mxr_core::DraftId::new(),
             account_id: account_id.clone(),
             from: None,

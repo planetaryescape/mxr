@@ -1579,6 +1579,9 @@ pub struct DraftContentSchema {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Draft {
+    /// Durable local content revision; absent only for unsaved or legacy drafts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<i64>,
     pub id: DraftId,
     pub account_id: AccountId,
     /// Per-message From override. `None` sends from the account's primary
@@ -2542,6 +2545,7 @@ mod draft_content_tests {
 
     fn draft_fixture(content: DraftContent) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

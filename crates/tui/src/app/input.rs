@@ -22,6 +22,7 @@ fn draft_from_pending(
                 thread_id: pending.fm.thread_id.clone(),
             });
     mxr_core::Draft {
+        revision: None,
         id: draft_id,
         account_id: pending.account_id.clone(),
         from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
@@ -770,6 +771,7 @@ impl App {
                         });
                         let now = chrono::Utc::now();
                         let draft = mxr_core::Draft {
+                            revision: None,
                             id: mxr_core::id::DraftId::new(),
                             account_id: pending.account_id.clone(),
                             from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)

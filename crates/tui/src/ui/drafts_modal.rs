@@ -284,6 +284,7 @@ mod tests {
     fn draft(subject: &str, to_email: &str, body: &str) -> Draft {
         let now: DateTime<Utc> = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

@@ -93,6 +93,8 @@ pub enum ClientError {
         kind: IpcErrorKind,
         /// Whether the daemon flagged the failure as retryable.
         retryable: bool,
+        code: String,
+        details: Option<serde_json::Value>,
     },
 
     /// A frame arrived that does not correlate to the in-flight request: a
@@ -205,6 +207,8 @@ impl IpcConnection {
                 message: format!("unexpected response to Authenticate: {other:?}"),
                 kind: IpcErrorKind::Auth,
                 retryable: false,
+                code: "auth".into(),
+                details: None,
             }),
         }
     }
@@ -253,6 +257,41 @@ impl IpcConnection {
     /// full envelope. Use [`Self::request`] for the [`ResponseData`]-or-
     /// [`ClientError::Daemon`] shape.
     pub async fn request_response<F>(
+        &mut self,
+        request: Request,
+        mut on_event: F,
+        request_timeout: Option<Duration>,
+    ) -> Result<Response, ClientError>
+    where
+        F: FnMut(DaemonEvent),
+    {
+        if matches!(
+            request,
+            Request::SaveDraft { .. }
+                | Request::UpdateDraft { .. }
+                | Request::DeleteDraft { .. }
+                | Request::SaveDraftToServer { .. }
+        ) {
+            let status = self
+                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .await?;
+            if !matches!(
+                status,
+                Response::Ok {
+                    data: ResponseData::Status {
+                        draft_revision_supported: true,
+                        ..
+                    }
+                }
+            ) {
+                return Ok(Response::error_kinded("Daemon does not support durable draft revisions; upgrade the daemon before saving or deleting drafts", mxr_protocol::IpcErrorKind::Unsupported));
+            }
+        }
+        self.request_response_unchecked(request, on_event, request_timeout)
+            .await
+    }
+
+    async fn request_response_unchecked<F>(
         &mut self,
         request: Request,
         mut on_event: F,
@@ -328,6 +367,15 @@ impl IpcConnection {
 
     /// Fire-and-forget: send `request` without awaiting a response.
     pub async fn notify(&mut self, request: Request) -> Result<(), ClientError> {
+        if matches!(
+            request,
+            Request::SaveDraft { .. }
+                | Request::UpdateDraft { .. }
+                | Request::DeleteDraft { .. }
+                | Request::SaveDraftToServer { .. }
+        ) {
+            return self.request(request).await.map(|_| ());
+        }
         let id = self.take_id();
         let message = self.envelope(id, request);
         self.framed.send(message).await?;
@@ -358,11 +406,14 @@ fn into_data(response: Response) -> Result<ResponseData, ClientError> {
             message,
             kind,
             retryable,
-            ..
+            code,
+            details,
         } => Err(ClientError::Daemon {
             message,
             kind,
             retryable,
+            code,
+            details,
         }),
     }
 }
@@ -594,6 +645,7 @@ mod tests {
                 message,
                 kind,
                 retryable,
+                ..
             } => {
                 assert_eq!(message, "mailbox not found");
                 assert_eq!(kind, IpcErrorKind::NotFound);
@@ -755,5 +807,95 @@ mod tests {
             Err(other) => panic!("expected Connect error, got {other:?}"),
             Ok(_) => panic!("expected connect to a missing socket to fail"),
         }
+    }
+}
+
+#[cfg(test)]
+mod draft_revision_compatibility_tests {
+    use super::*;
+    use futures::{SinkExt, StreamExt};
+    use mxr_core::{AccountId, DraftId};
+    use tokio::net::UnixListener;
+
+    #[tokio::test]
+    async fn legacy_daemon_is_readable_but_receives_no_unconditional_delete() {
+        let dir = tempfile::tempdir().expect("compatibility test fixture");
+        let sock = dir.path().join("legacy.sock");
+        let listener = UnixListener::bind(&sock).expect("compatibility test fixture");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("compatibility test fixture");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            let first = framed
+                .next()
+                .await
+                .expect("compatibility test fixture")
+                .expect("compatibility test fixture");
+            assert!(matches!(first.payload, IpcPayload::Request(Request::Ping)));
+            framed
+                .send(IpcMessage {
+                    id: first.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok {
+                        data: ResponseData::Pong,
+                    }),
+                })
+                .await
+                .expect("compatibility test fixture");
+            let negotiation = framed
+                .next()
+                .await
+                .expect("compatibility test fixture")
+                .expect("compatibility test fixture");
+            assert!(matches!(
+                negotiation.payload,
+                IpcPayload::Request(Request::GetStatus)
+            ));
+            // Missing capability evidence (representative of an older server).
+            framed
+                .send(IpcMessage {
+                    id: negotiation.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok {
+                        data: ResponseData::Accounts { accounts: vec![] },
+                    }),
+                })
+                .await
+                .expect("compatibility test fixture");
+            assert!(
+                tokio::time::timeout(Duration::from_millis(30), framed.next())
+                    .await
+                    .is_err()
+            );
+        });
+        let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
+            .await
+            .expect("compatibility test fixture");
+        assert!(matches!(
+            connection
+                .request(Request::Ping)
+                .await
+                .expect("compatibility test fixture"),
+            ResponseData::Pong
+        ));
+        let response = connection
+            .request_response(
+                Request::DeleteDraft {
+                    draft_id: DraftId::new(),
+                    expected_revision: Some(1),
+                },
+                |_| {},
+                Some(Duration::from_secs(1)),
+            )
+            .await
+            .expect("compatibility test fixture");
+        assert!(matches!(
+            response,
+            Response::Error {
+                kind: IpcErrorKind::Unsupported,
+                ..
+            }
+        ));
+        server.await.expect("compatibility test fixture");
+        let _ = AccountId::new();
     }
 }

@@ -192,6 +192,7 @@ mod tests {
 
     fn draft_to(account_id: &mxr_core::AccountId, recipient: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: mxr_core::DraftId::new(),
             account_id: account_id.clone(),
             from: None,

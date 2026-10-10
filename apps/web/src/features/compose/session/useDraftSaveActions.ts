@@ -29,7 +29,6 @@ interface DraftSaveActionsInput {
 }
 
 export function useDraftSaveActions({
-  intent,
   draftRef,
   setDraft,
   setDirty,
@@ -42,7 +41,12 @@ export function useDraftSaveActions({
     // Carry the local id so the daemon updates that row before making the
     // explicit provider copy. A new compose session has no local row to update.
     mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
-      saveComposeSession(draftPath, accountId, intent.draftId),
+      saveComposeSession(
+        draftPath,
+        accountId,
+        draftRef.current?.draftId,
+        draftRef.current?.revision,
+      ),
   });
 
   async function handleSaveClick() {

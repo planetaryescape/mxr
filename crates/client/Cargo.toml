@@ -16,6 +16,7 @@ mxr-protocol = { workspace = true }
 mxr-transport = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 

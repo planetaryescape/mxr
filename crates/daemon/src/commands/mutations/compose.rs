@@ -188,7 +188,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         )?;
         report_promises_after_send(&mut client, receipt.as_ref(), options.format).await;
     } else {
-        expect_ack(
+        let draft = expect_saved_draft(
             client
                 .request(Request::SaveDraft {
                     draft: draft.clone(),
@@ -273,6 +273,7 @@ fn compose_result_output(
     let payload = serde_json::json!({
         "action": action,
         "draft_id": draft.id.as_str(),
+        "revision": draft.revision,
         "account_id": draft.account_id.as_str(),
         "subject": draft.subject,
         "to": draft.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
@@ -661,7 +662,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         )?;
         report_promises_after_send(client, receipt.as_ref(), format).await;
     } else {
-        expect_ack(
+        let outgoing = expect_saved_draft(
             client
                 .request(Request::SaveDraft {
                     draft: outgoing.clone(),
@@ -884,7 +885,7 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => {
             println!("Draft {parsed} reset to 'draft' — retry with `mxr send {parsed}`");
             Ok(())
@@ -911,12 +912,13 @@ pub async fn drafts_discard(
     }
     let resp = client
         .request(Request::DeleteDraft {
+            expected_revision: draft.revision,
             draft_id: parsed.clone(),
         })
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => print_draft_delete_result(&draft, false, format),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
@@ -1096,15 +1098,19 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
         anyhow::bail!("Draft {parsed} belongs to a different account");
     }
 
+    if draft.revision.is_none() {
+        anyhow::bail!("Daemon does not support durable draft revisions; upgrade before editing");
+    }
     let from = resolve_account_email(&mut client, &draft.account_id).await?;
 
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &from)?;
     // A draft is unsent mail content; write it to the per-user private 0700
     // scratch dir with 0600 perms rather than the world-readable temp root.
-    let path = mxr_compose::private_tmp::private_scratch_dir()?
-        .join(format!("mxr-draft-edit-{}.md", draft.id));
-    // Clear any leftover from a prior aborted edit so the O_EXCL write succeeds.
-    let _ = std::fs::remove_file(&path);
+    let path = mxr_compose::private_tmp::private_scratch_dir()?.join(format!(
+        "mxr-draft-edit-{}-{}.md",
+        draft.id,
+        uuid::Uuid::new_v4()
+    ));
     mxr_compose::private_tmp::write_private(&path, content.as_bytes())?;
 
     let editor = mxr_compose::editor::resolve_editor(None);
@@ -1123,7 +1129,8 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
                 draft: updated.clone(),
             })
             .await?,
-    )?;
+    )
+    .map_err(|error| anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display()))?;
 
     let _ = std::fs::remove_file(&path);
     println!(
@@ -1426,7 +1433,7 @@ pub async fn schedule_send(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => {
             let pretty = send_at
                 .with_timezone(&chrono::Local)
@@ -1454,7 +1461,7 @@ pub async fn cancel_scheduled_send(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => {
             println!("Cancelled scheduled send for draft {draft_id}");
             Ok(())
@@ -1824,6 +1831,15 @@ fn strip_reply_forward_prefix(subject: &str) -> Option<String> {
     }
 }
 
+fn expect_saved_draft(response: Response) -> anyhow::Result<Draft> {
+    crate::commands::expect_response(response, |response| match response {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } if draft.revision.is_some() => Some(draft),
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
     expand_snippet_keywords_with_context(body, snippets, None)
@@ -1967,6 +1983,7 @@ fn draft_from_frontmatter(
             thread_id: frontmatter.thread_id.clone(),
         });
     Ok(Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)?,
@@ -2022,7 +2039,7 @@ fn validate_compose_draft(
 fn expect_ack(resp: Response) -> anyhow::Result<()> {
     crate::commands::expect_response(resp, |response| match response {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => Some(()),
         // SendReceipt is also an "ack-shaped" success for callers that don't
         // need the message id (e.g. SaveDraft, where receipt is None anyway).
@@ -2051,7 +2068,7 @@ fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>
             rfc2822_message_id,
         })),
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => Some(None),
         _ => None,
     })
@@ -2113,7 +2130,7 @@ async fn set_auto_reminder_after_send(
         .await?
     {
         Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Ack | ResponseData::Draft { .. },
         } => {
             println!("Reminder set for {}", remind.description);
             Ok(())
@@ -2564,6 +2581,7 @@ mod tests {
 
         fn draft_with(reply_headers: Option<ReplyHeaders>, intent: DraftIntent) -> Draft {
             Draft {
+                revision: Some(1),
                 id: DraftId::new(),
                 account_id: AccountId::new(),
                 from: None,
@@ -2716,6 +2734,7 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
 
         fn draft() -> Draft {
             Draft {
+                revision: Some(1),
                 id: DraftId::new(),
                 account_id: AccountId::new(),
                 from: None,

@@ -1725,6 +1725,7 @@ async fn dispatch_send_draft() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
         from: None,
@@ -1770,6 +1771,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
     state.set_config_for_test(config).await;
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
         from: None,
@@ -1812,7 +1814,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
     };
     match handle_request(&state, &save).await.payload {
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Draft { .. },
         }) => {}
         other => panic!("Expected SaveDraft Ack, got {other:?}"),
     }
@@ -2015,6 +2017,7 @@ async fn mcp_profile_send_gate_blocks_provider_send() {
     state.set_config_for_test(config).await;
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -2067,6 +2070,7 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -2478,6 +2482,7 @@ fn from_request(request: Request) -> IpcMessage {
 
 fn draft_from(account_id: mxr_core::AccountId, from: Option<&str>) -> mxr_core::types::Draft {
     mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: from.map(|email| mxr_core::types::Address {
@@ -2647,7 +2652,7 @@ async fn save_draft_to_server_validates_from_like_send() {
         matches!(
             resp.payload,
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack
+                data: ResponseData::Draft { .. }
             })
         ),
         "expected Ack, got {:?}",
@@ -2684,7 +2689,7 @@ async fn save_draft_to_server_caches_the_provider_thread_id_on_reply_drafts() {
         matches!(
             resp.payload,
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack
+                data: ResponseData::Draft { .. }
             })
         ),
         "expected Ack, got {:?}",

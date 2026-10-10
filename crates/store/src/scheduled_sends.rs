@@ -247,6 +247,7 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
         let draft = Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: account.id,
             from: None,
@@ -398,6 +399,7 @@ mod tests {
 
         let make = |i: u32| {
             let draft = Draft {
+                revision: Some(1),
                 id: DraftId::new(),
                 account_id: account.id.clone(),
                 from: None,

@@ -13,6 +13,8 @@ import type {
 } from "../api";
 
 export interface ComposeDraftState {
+  draftId?: string;
+  revision?: number | null;
   draftPath: string;
   rawContent: string;
   frontmatter: ComposeFrontmatter;
@@ -46,6 +48,7 @@ export interface ComposeIntent {
 }
 
 export interface ComposeSaveSnapshot {
+  revision?: number | null;
   draftPath: string;
   accountId: string;
   fingerprint: string;
@@ -89,6 +92,8 @@ export function draftFromSession(
   fallbackAccountId = "",
 ): ComposeDraftState {
   return {
+    draftId: session.draftId ?? undefined,
+    revision: session.revision,
     draftPath: session.draftPath,
     rawContent: session.rawContent,
     frontmatter: {
@@ -103,13 +108,14 @@ export function draftFromSession(
     issues: session.issues ?? [],
     accountId: session.accountId ?? fallbackAccountId,
     kind: session.kind ?? "new",
-    editorCommand: session.editorCommand,
-    cursorLine: session.cursorLine,
+    editorCommand: session.editorCommand ?? undefined,
+    cursorLine: session.cursorLine ?? undefined,
   };
 }
 
 export function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapshot {
   return {
+    revision: draft.revision,
     draftPath: draft.draftPath,
     accountId: draft.accountId,
     fingerprint: draftFingerprint(draft),
@@ -124,6 +130,7 @@ export function composeQueueKey(draftPath: string): string {
 
 export function draftFingerprint(draft: ComposeDraftState): string {
   return JSON.stringify({
+    accountId: draft.accountId,
     to: draft.frontmatter.to,
     cc: draft.frontmatter.cc,
     bcc: draft.frontmatter.bcc,

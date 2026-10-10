@@ -321,7 +321,7 @@ pub(crate) async fn handle_draft_edit_status(
 
             match ipc_call(bg, Request::UpdateDraft { draft: updated }).await {
                 Ok(Response::Ok {
-                    data: ResponseData::Ack,
+                    data: ResponseData::Ack | ResponseData::Draft { .. },
                 }) => {
                     app.status_message = Some("Draft updated".into());
                     app.schedule_draft_cleanup(data.path.clone());
@@ -727,6 +727,7 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             });
     let now = chrono::Utc::now();
     mxr_core::Draft {
+        revision: None,
         id: mxr_core::id::DraftId::new(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
@@ -929,6 +930,7 @@ mod tests {
     #[tokio::test]
     async fn prepare_draft_edit_refuses_an_html_draft_without_asking_the_daemon() {
         let draft = mxr_core::Draft {
+            revision: Some(1),
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::AccountId::new(),
             from: None,

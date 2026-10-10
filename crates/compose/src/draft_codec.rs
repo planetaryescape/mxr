@@ -136,6 +136,7 @@ pub fn apply_edited_compose_file(
         .or_else(|| existing.reply_headers.clone());
 
     Ok(Draft {
+        revision: existing.revision,
         id: existing.id.clone(),
         account_id: existing.account_id.clone(),
         from: parse_from_field(&frontmatter.from)?,
@@ -168,6 +169,7 @@ mod tests {
 
     fn sample_draft() -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

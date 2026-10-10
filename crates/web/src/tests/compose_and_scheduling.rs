@@ -479,6 +479,148 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
 }
 
 #[tokio::test]
+async fn failed_scheduling_keeps_the_accepted_revision_for_the_next_edit() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Schedule retry",
+        " original whitespace \n",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account_id));
+    let scheduled = Arc::new(Mutex::new(0_u32));
+    let scheduled_seen = scheduled.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ScheduleSend { .. } => {
+                *scheduled_seen.lock().unwrap() += 1;
+                Some(Response::error_kinded(
+                    "Scheduling unavailable",
+                    mxr_protocol::IpcErrorKind::Internal,
+                ))
+            }
+            Request::SendDraft { .. } => panic!("scheduling must never send mail"),
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &draft_id).await;
+    let response = client
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/schedule"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(
+            &json!({ "draft_path": path, "account_id": account_id, "draft_id": draft_id,
+            "expected_revision": 1, "send_at": "2027-01-01T09:00:00Z" }),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let failure: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(failure["code"], "internal");
+    assert_eq!(failure["accepted_draft"]["draft_id"], draft_id.to_string());
+    assert_eq!(failure["accepted_draft"]["revision"], 2);
+    assert!(
+        Path::new(&path).exists(),
+        "failed scheduling keeps the compose file"
+    );
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(2)
+    );
+    let accepted = store.snapshot();
+    assert_eq!(accepted.len(), 1);
+    assert_eq!(accepted[0].revision, Some(2));
+    edit_session(&client, addr, &path, "Schedule retry", "retry text").await;
+    let edited = store.snapshot();
+    assert_eq!(edited.len(), 1);
+    assert_eq!(edited[0].revision, Some(3));
+    assert_eq!(edited[0].content.analysis_text(), "retry text");
+    assert_eq!(*scheduled.lock().unwrap(), 1);
+    remove_compose_file(Path::new(&path)).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_discard_preserves_the_saved_draft_and_compose_file() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Retained",
+        "original",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account_id));
+    let deletes = Arc::new(Mutex::new(0_u32));
+    let deletes_seen = deletes.clone();
+    let deletion_store = store.clone();
+    let _ipc = spawn_fake_ipc_server(&socket_path, move |request| match request {
+        Request::DeleteDraft { expected_revision, .. } => {
+            let current_revision = deletion_store.snapshot()[0].revision;
+            if expected_revision != current_revision {
+                Some(Response::Error { message: "Draft revision conflict".into(),
+                    kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: "draft_revision_conflict".into(),
+                    retryable: false, details: Some(json!({ "expected_revision": expected_revision, "current_revision": current_revision })) })
+            } else {
+                *deletes_seen.lock().unwrap() += 1;
+                deletion_store.clear();
+                ok(ResponseData::Ack)
+            }
+        }
+        other => responder(other),
+    }, None).await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &draft_id).await;
+    let mut other_editor = store.snapshot()[0].clone();
+    other_editor.content = DraftContent::markdown("accepted elsewhere");
+    store.update(other_editor).unwrap();
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({ "draft_path": path, "expected_revision": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    assert!(Path::new(&path).exists());
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(1)
+    );
+    assert_eq!(
+        store.snapshot()[0].content.analysis_text(),
+        "accepted elsewhere"
+    );
+    assert_eq!(*deletes.lock().unwrap(), 0);
+    remove_compose_file(Path::new(&path)).await.unwrap();
+}
+
+#[tokio::test]
 async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
@@ -804,4 +946,178 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
         .unwrap()
         .starts_with("Couldn't remove the session file"));
     std::fs::remove_dir_all(&draft_path).unwrap();
+}
+
+#[tokio::test]
+async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed_token() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Shared",
+        "original",
+        Utc::now(),
+    )]);
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        draft_store_responder(store.clone(), sample_account(&account)),
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    let submit = |body: &'static str| {
+        client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({ "draft_path": path, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body }))
+            .send()
+    };
+    let (left, right) = tokio::join!(submit("left snapshot"), submit("right snapshot"));
+    let left = left.unwrap();
+    let right = right.unwrap();
+    let (accepted, rejected, winning, losing) = if left.status() == reqwest::StatusCode::OK {
+        (left, right, "left snapshot", "right snapshot")
+    } else {
+        (right, left, "right snapshot", "left snapshot")
+    };
+    assert_eq!(accepted.status(), reqwest::StatusCode::OK);
+    assert_eq!(rejected.status(), reqwest::StatusCode::CONFLICT);
+    let success: serde_json::Value = accepted.json().await.unwrap();
+    assert_eq!(success["session"]["bodyMarkdown"], winning);
+    assert_eq!(success["session"]["revision"], 2);
+    assert_eq!(store.snapshot()[0].content.analysis_text(), winning);
+    let failure: serde_json::Value = rejected.json().await.unwrap();
+    assert_eq!(failure["code"], "draft_revision_conflict");
+    assert_eq!(failure["details"]["current_revision"], 2);
+    assert!(failure.get("accepted_draft").is_none());
+    let recovered = failure["recovery_session"]["draft_path"].as_str().unwrap();
+    let refreshed = load_compose_session(Path::new(&path)).await.unwrap();
+    assert_eq!(refreshed["bodyMarkdown"], winning);
+    assert_eq!(refreshed["revision"], 2);
+    let losing_session = load_compose_session(Path::new(recovered)).await.unwrap();
+    assert_eq!(losing_session["bodyMarkdown"], losing);
+    assert_eq!(losing_session["revision"], 1);
+    remove_compose_file(Path::new(&path)).await.unwrap();
+    remove_compose_file(Path::new(recovered)).await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_provider_save_reports_its_accepted_revision_even_after_another_writer_advances() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Partial",
+        " original whitespace \n",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
+    let provider_store = store.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |request| match request {
+            Request::SaveDraftToServer { draft } => {
+                assert_eq!(draft.revision, Some(2));
+                let mut other = provider_store.snapshot()[0].clone();
+                other.content = DraftContent::markdown("another editor's newer text");
+                provider_store.update(other).unwrap();
+                Some(Response::Error {
+                    message: "Provider conflict".into(),
+                    kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+                    code: "draft_revision_conflict".into(),
+                    retryable: false,
+                    details: Some(json!({"expected_revision": 2, "current_revision": 3})),
+                })
+            }
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/save"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": path, "draft_id": id, "account_id": account, "expected_revision": 1, "save_to_server": true}))
+        .send().await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let failure: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(failure["error"], "Provider conflict");
+    assert_eq!(failure["code"], "draft_revision_conflict");
+    assert_eq!(failure["details"]["current_revision"], 3);
+    assert_eq!(failure["accepted_draft"]["draft_id"], id.to_string());
+    assert_eq!(failure["accepted_draft"]["revision"], 2);
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(2)
+    );
+    assert_eq!(store.snapshot()[0].revision, Some(3));
+    remove_compose_file(Path::new(&path)).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_shared_path_send_cannot_send_another_editors_message() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Reviewed",
+        "reviewed by old tab",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
+    let sends = Arc::new(Mutex::new(0));
+    let seen = sends.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |request| match request {
+            Request::SendDraft { .. } | Request::CheckDraftSafety { .. } => {
+                *seen.lock().unwrap() += 1;
+                ok(ResponseData::Ack)
+            }
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    edit_session(&client, addr, &path, "Reviewed", "another tab's message").await;
+    for route in ["send", "safety-check"] {
+        let response = client
+            .post(format!("http://{addr}/api/v1/mail/compose/session/{route}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({ "draft_path": path, "account_id": account, "expected_revision": 1 }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+        let failure: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(failure["code"], "draft_revision_conflict");
+        assert_eq!(failure["details"]["current_revision"], 2);
+    }
+    assert_eq!(*sends.lock().unwrap(), 0);
+    assert!(Path::new(&path).exists());
+    assert_eq!(
+        store.snapshot()[0].content.analysis_text(),
+        "another tab's message"
+    );
+    remove_compose_file(Path::new(&path)).await.unwrap();
 }

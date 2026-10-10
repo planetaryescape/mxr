@@ -9,8 +9,11 @@ import { useMutation } from "@tanstack/react-query";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { toast } from "sonner";
 
+import { acceptedDraftRevision } from "./acceptedDraftRevision";
+import { requestCoordinator } from "@/lib/requestCoordinator";
 import { refreshComposeSession, saveComposeSession } from "../api";
 import {
+  composeQueueKey,
   draftFromSession,
   errorMessage,
   type ComposeDraftState,
@@ -38,16 +41,31 @@ export function useDraftSaveActions({
   setLastSavedAt,
 }: DraftSaveActionsInput) {
   const serverSave = useMutation({
-    // Carry the local id so the daemon updates that row before making the
-    // explicit provider copy. A new compose session has no local row to update.
-    mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
-      saveComposeSession(
-        draftPath,
-        accountId,
-        draftRef.current?.draftId,
-        draftRef.current?.revision,
-      ),
+    mutationFn: (target: ComposeDraftState) =>
+      saveComposeSession(target.draftPath, target.accountId, target.draftId, target.revision),
   });
+
+  function adoptRevision(
+    target: ComposeDraftState,
+    draftId: string | null | undefined,
+    revision: number | null | undefined,
+  ) {
+    const latest = draftRef.current;
+    if (
+      revision == null ||
+      draftId !== target.draftId ||
+      latest?.draftPath !== target.draftPath ||
+      (target.draftId != null && latest.draftId !== target.draftId)
+    )
+      return;
+    draftRef.current = { ...latest, draftId: draftId ?? latest.draftId, revision };
+    setDraft((active) =>
+      active?.draftPath === target.draftPath &&
+      (target.draftId == null || active.draftId === target.draftId)
+        ? { ...active, draftId: draftId ?? active.draftId, revision }
+        : active,
+    );
+  }
 
   async function handleSaveClick() {
     try {
@@ -60,25 +78,45 @@ export function useDraftSaveActions({
   }
 
   async function handleServerSaveClick() {
+    const target = draftRef.current;
+    if (!target) return;
     try {
       await saveCurrentDraft();
       const current = draftRef.current;
-      if (!current || !isCurrentDraftSaved(current)) {
+      if (
+        current?.draftPath !== target.draftPath ||
+        (target.draftId != null && current.draftId !== target.draftId)
+      )
+        return;
+      if (!isCurrentDraftSaved(current)) {
         toast.error("Draft changed while saving", {
           description: "Save again before server draft.",
         });
         return;
       }
-      const accountId = current.accountId;
-      const draftPath = current.draftPath;
-      await serverSave.mutateAsync({ draftPath, accountId });
+      await requestCoordinator.queueComposeLatest(composeQueueKey(current.draftPath), async () => {
+        const active = draftRef.current;
+        const submitted =
+          active?.draftPath === current.draftPath && active.draftId === current.draftId
+            ? { ...current, revision: active.revision }
+            : current;
+        try {
+          const response = await serverSave.mutateAsync(submitted);
+          adoptRevision(current, response.draft_id, response.revision);
+        } catch (error) {
+          const accepted = acceptedDraftRevision(error);
+          if (accepted) adoptRevision(current, accepted.draft_id, accepted.revision);
+          throw error;
+        }
+      });
     } catch (error) {
       toast.error("Server draft save failed", { description: errorMessage(error) });
       return;
     }
-    toast.success("Draft copied to provider", {
-      description: "The local mxr draft was preserved.",
-    });
+    if (draftRef.current?.draftPath === target.draftPath)
+      toast.success("Draft copied to provider", {
+        description: "The local mxr draft was preserved.",
+      });
   }
 
   async function handleRefreshClick() {

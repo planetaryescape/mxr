@@ -17,8 +17,9 @@ when it pulls provider content. Send and orphan recovery share the draft lock;
 cached reply headers use the current revision without advancing content state.
 
 CLI editor files have unique names; conflicts report their preserved path.
-Browser autosave writes the scratch file first and retains one identity in private
-session metadata. A conflict preserves the browser buffer and scratch text.
+Browser autosave retains one identity in private session metadata. The bridge
+persists each submitted snapshot before replacing its shared scratch file. A
+conflict preserves the browser buffer and writes a unique private recovery file.
 Accounts can be selected before first persistence; a saved draft keeps its
 account. Stored HTML stays read-only in the browser composer, and existing HTML,
 inline assets and reply metadata remain covered by the draft tests.
@@ -26,7 +27,13 @@ inline assets and reply metadata remain covered by the draft tests.
 New clients negotiate `draft_revision_supported` before draft writes. A new daemon
 rejects unconditional edits/deletes. Reads remain compatible. An older binary can
 read the database but cannot enforce revision safety, so downgrade is unsupported;
-use a forward fix. Reviewed-send revision tokens and idempotency remain S03.
+use a forward fix. Close and reopen clients around an upgrade: already-running
+old clients cannot safely write, and old draft-creation handlers may reject the
+canonical response after the creation commits. Pre-upgrade browser windows lack
+session metadata; retain their text and copy it into a newly opened compose
+window before saving. No revision is inferred for the old window.
+Daemon-wide reviewed-send tokens and idempotency remain S03. S02 checks the
+observed revision on revised browser sends sharing a compose path.
 
 ## Verification uses synthetic content
 
@@ -108,3 +115,39 @@ was registered for the hook tests, but its caller timed out waiting on Pueue;
 inspect that job before retrying. Whole-queue status also timed out. The targeted
 compose suite did not start because the preceding queued formatting command
 timed out. No global queue settings or other jobs were changed.
+
+## Review round 2 preserves recovery paths
+
+TUI editors use a private unique scratch file per invocation. Opening the same
+draft again leaves an earlier conflict file intact. CLI editor, read, parse,
+validation, transport and daemon errors report the retained file path.
+
+Discard confirms deletion whenever the compose session has a saved revision,
+including after autosave clears the dirty flag. Its copy names the local draft
+and linked provider copy. Delete-word chords inside editors keep their native
+text-editing behavior. Close continues to save and close.
+
+Explicit provider saves serialize with autosave and adopt the canonical revision
+before a queued edit runs. A session switch cannot receive another session's
+token, and edits typed during the save stay in the editor. Scheduling persists
+that same canonical token into the private session metadata before dispatch;
+a failed schedule leaves the file recoverable. The browser adopts only the
+accepted token on failure before its next queued edit.
+
+Earlier round 2 typecheck passed at a dirty candidate; it does not certify the
+amendment. The resumed worker registered worktree-local dependency installation
+as task 4917 at 2026-10-10 21:33:21 UTC. Final Rust/TypeScript checks, regenerated
+contracts and consuming browser acceptance remain pending while the queue is
+paused. Installation runs from a persistent private staging directory with
+lifecycle scripts disabled, then replaces only this worktree's dependency symlink.
+
+The correction pass serializes bridge access to each compose path and constructs
+updates from the request's immutable rendered text. Rejected updates retain a
+unique private recovery file with their observed revision; the winning shared
+path retains its own accepted text and token. Explicit provider save and failed
+scheduling return `accepted_draft` only for persistence that this operation
+confirmed. Browser error handling reads that evidence (including a connection
+error's cause), keeps current editor text, and never refreshes a shared sidecar to
+infer acceptance. Revised send/safety requests also carry their observed revision
+so a shared-path update cannot substitute another tab's message before sending.
+The existing old-running-client upgrade boundary still applies.

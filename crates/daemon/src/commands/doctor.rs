@@ -36,7 +36,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     let (selected_target, remote_target) = selected_target_metadata()?;
 
     if options.reindex && remote_target {
-        anyhow::bail!("`mxr doctor --reindex` only supports the local default daemon; selected daemon diagnostics are read-only");
+        anyhow::bail!("`mxr doctor --reindex` only operates on the local profile. To select it, set `MXR_SOCKET_PATH` to its socket and unset `MXR_DAEMON_ADDR`; run the command on the daemon host to repair another profile.");
     }
 
     if !remote_target

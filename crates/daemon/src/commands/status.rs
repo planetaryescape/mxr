@@ -37,8 +37,6 @@ struct StatusRender<'a> {
 }
 
 fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
-    // Report the socket the daemon actually uses (single-source resolution,
-    // honors MXR_DAEMON_ADDR) so status agrees with autostart / probe / request.
     let mut data = serde_json::json!({
         "uptime_secs": view.uptime_secs,
         "accounts": view.accounts,
@@ -343,10 +341,23 @@ mod tests {
             OutputFormat::Json,
         )
         .unwrap();
-        assert!(rendered.contains("\"uptime_secs\": 42"));
-        assert!(rendered.contains("\"daemon_pid\": 999"));
-        assert!(rendered.contains("\"total_messages\": 10"));
-        assert!(rendered.contains("\"semantic_runtime\""));
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(value["uptime_secs"], 42);
+        assert_eq!(value["daemon_pid"], 999);
+        assert_eq!(value["total_messages"], 10);
+        assert_eq!(value["runtime_instance"], mxr_config::app_instance_name());
+        assert_eq!(
+            value["config_path"],
+            mxr_config::config_file_path().display().to_string()
+        );
+        assert_eq!(
+            value["data_dir"],
+            mxr_config::data_dir().display().to_string()
+        );
+        assert_eq!(value["socket_path"], "/tmp/mxr.sock");
+        assert!(value.get("daemon_target").is_none());
+        assert!(value.get("client_local").is_none());
+        assert!(value.get("semantic_runtime").is_some());
     }
 
     #[test]

@@ -31,14 +31,14 @@ mxr doctor --check --format json >/tmp/mxr-doctor.json \
 
 ### Diagnostics for a selected daemon
 
-`mxr status` and `mxr doctor --check` / `--store-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`. Any remediation and next-step commands in the daemon report, including table output, must be run on the selected daemon host.
+`mxr status` and `mxr doctor --check`, `--store-stats`, or `--index-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`. Any remediation and next-step commands in the daemon report, including table output, must be run on the selected daemon host.
 
 ```bash
 MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status --format json
 MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr doctor --check --format json
 ```
 
-If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates only on the local default profile; repair a selected remote daemon's index on its host.
+If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates on the local profile; set `MXR_SOCKET_PATH` to its socket and unset `MXR_DAEMON_ADDR`, or run the command on the host whose profile you intend to repair.
 
 ### Is my mail current?
 

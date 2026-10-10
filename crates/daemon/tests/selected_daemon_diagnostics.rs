@@ -39,6 +39,15 @@ fn isolated_env(root: &Path) -> Vec<(String, String)> {
             local.join("mxr.sock").display().to_string(),
         ),
         ("MXR_ACTIVITY".into(), "off".into()),
+        ("HOME".into(), local.join("home").display().to_string()),
+        (
+            "XDG_CONFIG_HOME".into(),
+            local.join("xdg-config").display().to_string(),
+        ),
+        (
+            "XDG_DATA_HOME".into(),
+            local.join("xdg-data").display().to_string(),
+        ),
     ]
 }
 
@@ -233,7 +242,13 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(2300)).await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while requests.load(Ordering::Relaxed) - before_watch < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("status watch did not poll the selected daemon twice");
     watch.kill().await.unwrap();
     watch.wait().await.unwrap();
     assert!(requests.load(Ordering::Relaxed) - before_watch >= 2);
@@ -263,7 +278,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
     let root = tempfile::tempdir().unwrap();
     let envs = isolated_env(root.path());
     std::fs::create_dir_all(Path::new(&envs[3].1).parent().unwrap()).unwrap();
-    let (_healthy_local_daemon, _) = spawn_fake_daemon(Path::new(&envs[3].1));
+    let (_healthy_local_daemon, local_requests) = spawn_fake_daemon(Path::new(&envs[3].1));
     let local_data = PathBuf::from(&envs[2].1);
     std::fs::create_dir_all(local_data.join("search_index")).unwrap();
     std::fs::write(local_data.join("search_index/keep"), b"client index").unwrap();
@@ -299,6 +314,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
         b"client index"
     );
     assert!(!local_data.join("mxr.db").exists());
+    assert_eq!(local_requests.load(Ordering::Relaxed), 0);
 
     let missing_status_target = root.path().join("missing-status.sock");
     let status = run_mxr(
@@ -322,6 +338,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
         b"client index"
     );
     assert!(!local_data.join("mxr.db").exists());
+    assert_eq!(local_requests.load(Ordering::Relaxed), 0);
 
     let private_command = "mxr-nonexistent-s01-probe --token=synthetic-s01-secret";
     let private_addr = format!("cmd://{private_command}");

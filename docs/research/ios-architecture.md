@@ -115,7 +115,7 @@ Use isolated test data and a scoped authenticated gateway. Complete only the sch
 
 This research verified source and first-party documentation. It did not compile an iOS target, test remote access, measure battery use or validate an always-on deployment. No application behavior changed. The independence requirement is now settled for the initial scope: a reachable daemon is acceptable. The next implementation step is daemon preparation under [blueprint 23](../blueprint/23-daemon-portability.md), starting with durable draft identity or its independent reliability fixes. The native read/reply validation slice follows that preparation when an iOS build is requested. VPS adoption additionally requires inspecting the actual host and validating the Mac client workflows. This note is the handover and its links are the evidence.
 
-BK requested a second opinion from Claude Opus 5.5 through OpenCode. The local OpenCode model inventory did not include Claude, and invoking `anthropic/claude-opus-5-5` returned `provider.no-route: Model unavailable`. The requested opinion has not been obtained; provider/host clarification is pending. No claim in this note is attributed to Opus.
+BK's second opinion was completed through a fresh, restricted OpenCode 1.18.35 session using Claude Opus 5.5 with maximum effort. The reviewer read only an isolated probe and had file-read/search permissions, with external-directory access and external plugins disabled. [Routing evidence](../build-log/daemon-portability/evidence/verifier-routing.json) records the requested and reported model, permissions, and successful probe. No global configuration or saved credentials were changed.
 
 Unresolved decisions:
 

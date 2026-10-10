@@ -364,7 +364,9 @@ for (const stored of [false, true]) {
         bodyMarkdown: latestText,
       });
       expect(hook.result.current.dirty).toBe(false);
-      expect(hook.result.current.saveError).toBe("first stale edit");
+      expect(hook.result.current.saveError).toBe(
+        "first stale edit Your edits are preserved locally.",
+      );
       expect(persisted.get(path)?.session).toMatchObject({
         revision: 2,
         bodyMarkdown: "winning tab text",

@@ -36,13 +36,13 @@ fn sample_scheduled_send(account_id: &AccountId) -> mxr_protocol::ScheduledSendD
 }
 
 /// Start a compose session, write recipients and a body into it, and return
-/// `(draft_path, account_id)`.
+/// `(draft_path, account_id, accepted_revision)`.
 async fn prepared_session(
     client: &reqwest::Client,
     addr: std::net::SocketAddr,
     start: serde_json::Value,
     to: &str,
-) -> (String, String) {
+) -> (String, String, Option<i64>) {
     let started: serde_json::Value = client
         .post(format!("http://{addr}/api/v1/mail/compose/session"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -79,7 +79,12 @@ async fn prepared_session(
         .await
         .unwrap();
     assert_eq!(updated.status(), reqwest::StatusCode::OK);
-    (draft_path, account_id)
+    let accepted: serde_json::Value = updated.json().await.unwrap();
+    (
+        draft_path,
+        account_id,
+        accepted["session"]["revision"].as_i64(),
+    )
 }
 
 #[tokio::test]
@@ -235,7 +240,7 @@ async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -246,7 +251,7 @@ async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
     let response = client
         .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
         .bearer_auth(TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision }))
         .send()
         .await
         .unwrap();
@@ -340,7 +345,7 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "reply", "message_id": source_message_id.to_string() }),
@@ -356,6 +361,7 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": expected_revision,
             "send_at": "2026-10-01T09:00:00Z",
         }))
         .send()
@@ -648,7 +654,7 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
     // No recipients: a draft error the user has to fix.
-    let (draft_path, account_id) =
+    let (draft_path, account_id, expected_revision) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
 
     *daemon_sends.lock().unwrap() = 0;
@@ -659,7 +665,7 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
             serde_json::json!({ "send_at": "2026-10-01T09:00:00Z" }),
         ),
     ] {
-        let mut body = serde_json::json!({ "draft_path": draft_path, "account_id": account_id });
+        let mut body = serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision });
         body.as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
@@ -789,7 +795,7 @@ async fn compose_promises_send_the_session_draft_and_the_browser_zone() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, _expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -915,7 +921,7 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -927,7 +933,7 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
     let response = client
         .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
         .bearer_auth(TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision }))
         .send()
         .await
         .unwrap();

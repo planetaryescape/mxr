@@ -897,6 +897,53 @@ describe("saved draft discard preview", () => {
     expect(await screen.findByText(/saved draft and any linked provider copy/)).toBeVisible();
     expect(api.discardComposeSession).not.toHaveBeenCalled();
   });
+  test("keyboard Save never reports canonical success for a conflicted preserved recovery", async () => {
+    const id = "keyboard-recovery";
+    api.restoreComposeSession.mockResolvedValue(session({ draftId: id, revision: 1 }));
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        recovery_session: {
+          draft_path: "/tmp/keyboard-recovery",
+          draft_id: id,
+          revision: 1,
+          attachment_paths: [],
+        },
+      }),
+    );
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        current_revision: 2,
+      }),
+    );
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        current_revision: 2,
+      }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent(id), "overlay"));
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Latest preserved subject" } });
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Save failed", {
+        description: "Draft revision conflict",
+      }),
+    );
+    expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
+    expect(subject).toHaveValue("Latest preserved subject");
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(3));
+    expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
+      draftPath: "/tmp/keyboard-recovery",
+      retryRecovery: true,
+      expectedRevision: 1,
+      frontmatter: { subject: "Latest preserved subject" },
+    });
+    expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
+    expect(subject).toHaveValue("Latest preserved subject");
+  });
   test("stale confirmed deletion reports the conflict and keeps the composer", async () => {
     api.restoreComposeSession.mockResolvedValue(session({ draftId: "stale-delete", revision: 1 }));
     api.discardComposeSession.mockRejectedValue(new Error("Draft revision conflict"));

@@ -16,6 +16,11 @@ const api = vi.hoisted(() => ({
   restoreComposeSession: vi.fn<typeof import("../api").restoreComposeSession>(),
 }));
 vi.mock("../api", () => api);
+const toasts = vi.hoisted(() => ({
+  error: vi.fn<(message: string, options?: unknown) => void>(),
+  success: vi.fn<(message: string) => void>(),
+}));
+vi.mock("sonner", () => ({ toast: toasts }));
 
 function session(path: string, body: string, attach: string[]): ComposeSessionResponse {
   return {
@@ -82,6 +87,7 @@ function setup(unsaved = false) {
 
 afterEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset());
+  Object.values(toasts).forEach((mock) => mock.mockReset());
   window.localStorage.clear();
 });
 
@@ -168,6 +174,88 @@ for (const unmount of [false, true]) {
       frontmatter: { attach: ["/uploads/reopened-a", "/uploads/reopened-b"] },
     });
     expect(api.restoreComposeSession).not.toHaveBeenCalled();
+  });
+}
+
+for (const conflict of [false, true]) {
+  test(`explicit Save retries a saved recovery at its observed revision (intervening writer: ${conflict})`, async () => {
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(503, "daemon unavailable", "internal", {
+        recovery_session: {
+          draft_path: "/tmp/saved-recovery",
+          draft_id: "attachment-draft",
+          revision: 1,
+          attachment_paths: ["/uploads/preserved-a"],
+        },
+      }),
+    );
+    const hook = setup();
+    await act(async () => {
+      await hook.result.current.saveCurrentDraft();
+    });
+    act(() =>
+      hook.result.current.setDraft((draft) =>
+        draft ? { ...draft, bodyMarkdown: "latest private text" } : draft,
+      ),
+    );
+    api.updateComposeSession.mockImplementationOnce(async (input) => {
+      expect(input).toMatchObject({
+        draftPath: "/tmp/saved-recovery",
+        expectedRevision: 1,
+        body: "latest private text",
+        frontmatter: { attach: ["/uploads/preserved-a"] },
+      });
+      expect(input.retryRecovery).toBeUndefined();
+      return session(input.draftPath, input.body, input.frontmatter.attach);
+    });
+    api.updateComposeSession.mockImplementationOnce(async (input) => {
+      expect(input).toMatchObject({
+        retryRecovery: true,
+        draftPath: "/tmp/saved-recovery",
+        expectedRevision: 1,
+        body: "latest private text",
+        frontmatter: { attach: ["/uploads/preserved-a"] },
+      });
+      if (conflict)
+        throw new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+          current_revision: 2,
+        });
+      return {
+        session: {
+          ...session("/tmp/accepted-retry", input.body, ["/uploads/canonical-a"]).session,
+          revision: 2,
+          recoverySourcePath: undefined,
+        },
+      };
+    });
+    await act(async () => {
+      await hook.result.current.handleSaveClick();
+    });
+    expect(api.updateComposeSession).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.draft).toMatchObject(
+      conflict
+        ? {
+            draftPath: "/tmp/saved-recovery",
+            revision: 1,
+            recoverySourcePath: "/tmp/attachments-shared",
+            bodyMarkdown: "latest private text",
+            frontmatter: { attach: ["/uploads/preserved-a"] },
+          }
+        : {
+            draftPath: "/tmp/accepted-retry",
+            revision: 2,
+            preservedRecoveryPath: "/tmp/saved-recovery",
+            bodyMarkdown: "latest private text",
+            frontmatter: { attach: ["/uploads/canonical-a"] },
+          },
+    );
+    expect(toasts.success.mock.calls).toEqual(conflict ? [] : [["Draft saved locally"]]);
+    expect(toasts.error.mock.calls).toEqual(
+      conflict ? [["Save failed", { description: "Draft revision conflict" }]] : [],
+    );
+    expect(api.restoreComposeSession).not.toHaveBeenCalled();
+    hook.result.current.markSessionFinished();
+    hook.unmount();
   });
 }
 
@@ -258,3 +346,103 @@ for (const conflict of [false, true]) {
     hook.unmount();
   });
 }
+
+test("typing during an explicit recovery retry keeps the latest private text and original token", async () => {
+  api.updateComposeSession.mockRejectedValueOnce(
+    new BridgeRequestError(503, "daemon unavailable", "internal", {
+      recovery_session: {
+        draft_path: "/tmp/typing-recovery",
+        draft_id: "attachment-draft",
+        revision: 1,
+        attachment_paths: ["/uploads/preserved-a"],
+      },
+    }),
+  );
+  const hook = setup();
+  await act(async () => {
+    await hook.result.current.saveCurrentDraft();
+  });
+  let accept!: (response: ComposeSessionResponse) => void;
+  api.updateComposeSession.mockReturnValueOnce(
+    new Promise((resolve) => {
+      accept = resolve;
+    }),
+  );
+  let saving!: Promise<void>;
+  act(() => {
+    saving = hook.result.current.handleSaveClick();
+  });
+  await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(2));
+  act(() =>
+    hook.result.current.setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: "typed during retry" } : draft,
+    ),
+  );
+  await act(async () => {
+    accept({
+      session: {
+        ...session("/tmp/accepted-before-typing", "first text", ["/uploads/canonical-a"]).session,
+        revision: 2,
+        recoverySourcePath: undefined,
+      },
+    });
+    await saving;
+  });
+  expect(hook.result.current.draft).toMatchObject({
+    draftPath: "/tmp/typing-recovery",
+    revision: 1,
+    bodyMarkdown: "typed during retry",
+    frontmatter: { attach: ["/uploads/preserved-a"] },
+  });
+  expect(toasts.success).not.toHaveBeenCalled();
+  api.updateComposeSession.mockImplementationOnce(async (input) =>
+    session(input.draftPath, input.body, input.frontmatter.attach),
+  );
+  await act(async () => {
+    await hook.result.current.saveCurrentDraft();
+  });
+  expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
+    draftPath: "/tmp/typing-recovery",
+    expectedRevision: 1,
+    body: "typed during retry",
+  });
+  expect(api.updateComposeSession.mock.calls[2]?.[0].retryRecovery).toBeUndefined();
+  hook.result.current.markSessionFinished();
+  hook.unmount();
+});
+
+test("a normal Save does not call newer in-flight typing saved or preserved", async () => {
+  let accept!: (response: ComposeSessionResponse) => void;
+  api.updateComposeSession.mockReturnValueOnce(
+    new Promise((resolve) => {
+      accept = resolve;
+    }),
+  );
+  const hook = setup();
+  let saving!: Promise<void>;
+  act(() => {
+    saving = hook.result.current.handleSaveClick();
+  });
+  await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(1));
+  act(() =>
+    hook.result.current.setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: "newer unsaved typing" } : draft,
+    ),
+  );
+  await act(async () => {
+    accept({
+      session: {
+        ...session("/tmp/attachments-shared", "first text", ["/uploads/source-a"]).session,
+        revision: 2,
+      },
+    });
+    await saving;
+  });
+  expect(hook.result.current.draft?.bodyMarkdown).toBe("newer unsaved typing");
+  expect(toasts.success).not.toHaveBeenCalled();
+  expect(toasts.error).toHaveBeenCalledWith("Latest edits are not saved", {
+    description: "Save again to save the current edits.",
+  });
+  hook.result.current.markSessionFinished();
+  hook.unmount();
+});

@@ -90,7 +90,7 @@ export function useDraftSaveActions({
           composeQueueKey(target.draftPath, target.recoverySourcePath)
       )
         return;
-      if (current?.recoverySourcePath && current.revision == null) {
+      if (current.recoverySourcePath) {
         const response = await requestCoordinator.queueComposeLatest(
           composeQueueKey(current.draftPath, current.recoverySourcePath),
           () =>
@@ -98,7 +98,7 @@ export function useDraftSaveActions({
               retryRecovery: true,
               draftPath: current.draftPath,
               accountId: current.accountId,
-              expectedRevision: null,
+              expectedRevision: current.revision,
               frontmatter: { ...current.frontmatter, attach: [...current.frontmatter.attach] },
               body: current.bodyMarkdown,
             }),
@@ -129,6 +129,13 @@ export function useDraftSaveActions({
         setDirty(false);
         setSaveError(null);
         setLastSavedAt(new Date());
+      }
+      const saved = draftRef.current;
+      if (!saved || !isCurrentDraftSaved(saved)) {
+        toast.error("Latest edits are not saved", {
+          description: "Save again to save the current edits.",
+        });
+        return;
       }
     } catch (error) {
       toast.error("Save failed", { description: errorMessage(error) });

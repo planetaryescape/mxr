@@ -184,9 +184,10 @@ Round 3 adds timer, queued snapshot, real Close/Discard/reopen and bridge/MCP
 coverage. CI at f8b326ea generated and checked the final contracts, checked all targets,
 and typechecked/linted the web client. The affected tests require another run
 after the CI corrections below; local gates, build and the two-tab browser
-journey remain pending while the shared queue is paused. Old/null-token
-shared-path send clients remain an upgrade boundary; S02 does not guarantee their
-reviewed content or add the S03 effect journal.
+journey remain pending while the shared queue is paused. Two unsaved views may both observe a null token. After the first canonical save,
+a stale null token conflicts against the accepted revision before send, safety,
+schedule or provider-copy effects. Pre-upgrade sessions without revision metadata
+remain an upgrade boundary; S02 does not add the S03 effect journal.
 
 
 ## Recovery copies own bridge-managed attachment bytes
@@ -251,3 +252,38 @@ The exact logs are `s02-ci-f8b326ea-clippy.log` and
 Scoped format/lint checks pass. This correction needs affected execution repeated
 in CI and through the paused local queue; local build and browser acceptance
 remain mandatory before integration.
+
+
+## Explicit Save retries the original recovery revision
+
+The review of 75e9225f identified that an existing saved draft could become
+stranded after a transient failure: its recovery held an accepted revision, while
+the explicit retry only allowed null. Explicit Save now retries either observed
+token through the existing request. Some uses UpdateDraft CAS; null uses the
+idempotent SaveDraft identity. Automatic saves and Close still only preserve.
+The latest private text and independent attachment payload survive conflicts and
+ambiguous responses. A successful retry adopts only its own response, guarded
+against edits or a session switch during the request. Save reports canonical
+success only when the current editor matches its confirmed saved fingerprint.
+
+The same revision equality check now covers shared-file send, safety, schedule
+and provider-copy candidates. A fresh null-token editor cannot use another tab's
+first saved snapshot for an effect. Both-null unsaved sessions retain their
+existing behavior. Fixtures carry revisions from their own update responses.
+Bridge, hook and keyboard-Save regressions cover retry success, an intervening
+writer, independent attachment bytes, delayed typing and false success feedback.
+These regressions await execution; the shared local queue remains paused.
+
+Web CI 38092599600 at 34b2bf3f reported 871 of 875 tests passing, with four
+failures at one assertion expecting the old recovery sentence and no unhandled
+exception. That assertion now includes the confirmed-preservation sentence.
+Those results do not validate the material retry and revision corrections here.
+The two request schema descriptions changed without changing fields or shapes;
+generated descriptions require the exact next CI OpenAPI artifact. Local Rust,
+web, build and two-tab browser gates remain pending.
+
+The review's remaining findings belong to S03 or later followups: deleted-draft
+send resurrection, ambiguous persistence/discard outcomes and CLI deletion using
+a freshly read revision rather than the preview token. Preserved explicit copies
+and the compose lock map retain their existing lifetime trade-offs. None of
+these adds an effect journal or changes the settled mixed-version boundary in S02.

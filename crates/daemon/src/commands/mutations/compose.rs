@@ -1128,7 +1128,10 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
             .request(Request::UpdateDraft {
                 draft: updated.clone(),
             })
-            .await?,
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display())
+            })?,
     )
     .map_err(|error| anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display()))?;
 

@@ -23,7 +23,7 @@ async fn explicit_unsaved_recovery_retry_preserves_identity_and_never_overwrites
                             saved.insert(draft.clone());
                         }
                         return Some(Response::error_kinded(
-                            "connection response lost".into(),
+                            "connection response lost",
                             mxr_protocol::IpcErrorKind::Internal,
                         ));
                     }

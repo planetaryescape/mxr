@@ -1,6 +1,6 @@
 # Each portability stage ships a usable workflow
 
-Status: S01 passed independent Claude review and full CI at `5de44f93`; small wording and test corrections are in final checks. Independent token-persistence and supervised-shutdown candidates are awaiting final review. No stage has merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
+Status: S01 merged as `f783d937` after independent Claude review and final CI. Release-please PR 332 prepares v0.6.62; publication and installed-client verification remain pending. Token persistence is in independent review, supervised shutdown has a tested candidate, and draft revision work can proceed independently. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
 
 The outcome is safer existing clients across disconnects, restarts and different daemon hosts, leaving a future native SwiftUI client and personal VPS deployment possible with one active daemon owner. The iOS app, Hostinger provisioning and public HTTP exposure remain outside this readiness run.
 
@@ -13,7 +13,7 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | Stage | After release, the user can | Release-defining journey | Depends on | Blueprint |
 | --- | --- | --- | --- | --- |
 | S01 | Diagnose the daemon they actually selected | With distinct local and target profiles, run status and doctor over cmd://; target fields are truthful and target failure never touches the local store | Existing transports | P06a |
-| S02 | Save and resume a draft without silent concurrent overwrites | Save, restart, reopen, then edit from two clients; preserve the stale editor's text while rejecting its stale revision | S01 deployed | P01 + P04 |
+| S02 | Save and resume a draft without silent concurrent overwrites | Save, restart, reopen, then edit from two clients; preserve the stale editor's text while rejecting its stale revision | Existing draft APIs; release after S01 | P01 + P04 |
 | S03 | Recover the outcome of sending a reviewed draft | Drop a send response; recover its stored receipt. Inject ambiguous provider acceptance; preserve uncertainty without automatic resend | S02 deployed | P01/P02 + P04 |
 | S04 | Retry a previewed mailbox action safely | Lose a batch-action response; retrieve per-item results with the same operation ID and reject changed payload reuse | S03 deployed | P02 + P04 |
 | S05 | Attach and download without shared host paths | From disjoint filesystems, upload, save, restart, preview/send, and download identical bytes on the client | S02/S03 deployed | P03 + P04 |
@@ -24,7 +24,7 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | S08c | Run unattended with useful dependency diagnostics | Start isolated Linux service without GUI secrets access, interrupt/restart and remove optional model service; inspect mail readiness | S08a/S08b and S03/S04 deployed | P07c |
 | S09 | Restore useful state without accidentally executing old work | Inspect/preview a secret-free backup, restore into another profile, recover drafts/bytes/search, and verify effectful work remains paused | Durable resource and lifecycle stages deployed | P08 |
 
-Independent S08a/S08b releases may land before S02. S08a reuses existing teardown; it does not claim recovery of ambiguous sends before S03/S04. Build S08a/S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
+S02 uses the existing draft APIs and has no contract dependency on S01 diagnostic output. Its implementation can proceed during S01 publication; release order remains S01 first. S03 still requires the deployed S02 draft revision contract. Independent S08a/S08b releases may land before S02. S08a reuses existing teardown; it does not claim recovery of ambiguous sends before S03/S04. Build S08a/S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
 
 R01 is conditional on selecting a remote HTTP consumer and network policy. It must precede that consumer's first off-machine HTTP release. This readiness run does not silently turn a loopback bridge into a public service.
 

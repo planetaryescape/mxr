@@ -144,7 +144,10 @@ export function useComposeSession(
     setSaveError,
     setLastSavedAt,
   });
-  const discardSession = useMutation({ mutationFn: discardComposeSession });
+  const discardSession = useMutation({
+    mutationFn: ({ draftPath, revision }: { draftPath: string; revision?: number | null }) =>
+      discardComposeSession(draftPath, revision),
+  });
 
   useEffect(() => {
     const session = sessionQuery.data?.session;
@@ -216,6 +219,12 @@ export function useComposeSession(
   }
 
   function updateAccount(accountId: string) {
+    if (draftRef.current?.revision != null || autosave.saving) {
+      toast.error("Saved drafts keep their account", {
+        description: "Start a new draft to use another account.",
+      });
+      return;
+    }
     const account = runtimeAccounts.find((item) => item.account_id === accountId);
     setDraft((current) =>
       current
@@ -304,7 +313,10 @@ export function useComposeSession(
     const current = draftRef.current;
     if (!current) return;
     try {
-      await discardSession.mutateAsync(current.draftPath);
+      await discardSession.mutateAsync({
+        draftPath: current.draftPath,
+        revision: current.revision,
+      });
     } catch (error) {
       toast.error("Discard failed", { description: errorMessage(error) });
       return;

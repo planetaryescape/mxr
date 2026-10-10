@@ -87,6 +87,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
     let record = change.records[0].id.clone();
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: account.clone(),
         from: None,

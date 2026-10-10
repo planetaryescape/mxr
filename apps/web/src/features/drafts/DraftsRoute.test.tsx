@@ -9,7 +9,7 @@ import { useComposeUi } from "@/features/compose/composeUiStore";
 import { DraftsRoute } from "./DraftsRoute";
 
 const api = vi.hoisted(() => ({
-  deleteDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
+  deleteDraft: vi.fn<typeof import("./api").deleteDraft>(),
   fetchDrafts: vi.fn<() => Promise<unknown>>(),
   fetchOrphanedDrafts: vi.fn<() => Promise<unknown[]>>(),
   resetOrphanedDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
@@ -99,6 +99,7 @@ describe("DraftsRoute", () => {
       drafts: [
         {
           id: "draft-1",
+          revision: 1,
           account_id: "account-1",
           subject: "Quarterly plan",
           recipients: "Buwang <buwang@example.com>",
@@ -139,6 +140,7 @@ describe("DraftsRoute", () => {
       drafts: [
         {
           id: "draft-1",
+          revision: 1,
           account_id: "account-1",
           subject: "Old version",
           recipients: "buwang@example.com",
@@ -158,7 +160,9 @@ describe("DraftsRoute", () => {
     expect(api.deleteDraft).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Delete draft" }));
 
-    await waitFor(() => expect(api.deleteDraft.mock.calls[0]?.[0]).toBe("draft-1"));
+    await waitFor(() =>
+      expect(api.deleteDraft.mock.calls[0]?.[0]).toMatchObject({ id: "draft-1", revision: 1 }),
+    );
   });
 
   describe("drafts stuck mid-send", () => {

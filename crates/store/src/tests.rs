@@ -941,6 +941,7 @@ async fn draft_crud() {
     store.insert_account(&account).await.unwrap();
 
     let draft = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: account.id.clone(),
         from: None,
@@ -978,6 +979,7 @@ async fn draft_from_override_round_trips_through_get_list_and_update() {
     store.insert_account(&account).await.unwrap();
 
     let mut draft = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: account.id.clone(),
         from: Some(Address {
@@ -1029,6 +1031,7 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
 
     let created = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
     let draft = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: account.id.clone(),
         from: None,
@@ -1075,6 +1078,7 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
 
     // Updating a non-existent draft reports no row touched.
     let ghost = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         ..edited
     };
@@ -1121,6 +1125,7 @@ async fn provider_draft_id_survives_local_edits_and_can_be_relinked() {
 
 fn draft_with(account_id: &AccountId, content: DraftContent, at: i64) -> Draft {
     Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -4052,4 +4057,41 @@ async fn dedup_lookup_uses_message_id_header_index() {
         !detail.contains("SCAN messages"),
         "dedup lookup should not full-scan messages, got plan: {detail}"
     );
+}
+
+#[tokio::test]
+async fn draft_revision_survives_restart_and_sql_cas_accepts_only_one_editor() {
+    let temp = tempfile::tempdir().unwrap();
+    let database = temp.path().join("drafts.db");
+    let account = test_account();
+    let original = draft_with(
+        &account.id,
+        DraftContent::markdown("durable original"),
+        1_700_000_000,
+    );
+    {
+        let store = Store::new(&database).await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        store.insert_draft(&original).await.unwrap();
+    }
+    let store = Store::new(&database).await.unwrap();
+    let stored = store.get_draft(&original.id).await.unwrap().unwrap();
+    assert_eq!(stored.revision, Some(1));
+    assert_eq!(stored.content.analysis_text(), "durable original");
+    let mut first = stored.clone();
+    first.content = DraftContent::markdown("first editor");
+    let mut second = stored.clone();
+    second.content = DraftContent::markdown("second editor");
+    let (a, b) = tokio::join!(store.update_draft(&first), store.update_draft(&second));
+    assert_ne!(a.unwrap(), b.unwrap());
+    let current = store.get_draft(&original.id).await.unwrap().unwrap();
+    assert_eq!(current.revision, Some(2));
+    let mut legacy = current.clone();
+    legacy.revision = None;
+    assert!(!store.update_draft(&legacy).await.unwrap());
+    assert!(!store
+        .delete_draft_at_revision(&current.id, 1)
+        .await
+        .unwrap());
+    assert!(store.get_draft(&current.id).await.unwrap().is_some());
 }

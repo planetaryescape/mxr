@@ -409,12 +409,22 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     let socket_path = temp.path().join("mxr.sock");
     let account = sample_account(&AccountId::new());
     let stored_id = DraftId::new();
+    let stored = markdown_draft(
+        &stored_id,
+        &account.account_id,
+        "Hello",
+        "original",
+        Utc::now(),
+    );
     let requests = Arc::new(Mutex::new(Vec::<Request>::new()));
     let seen = requests.clone();
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
             let response = match &request {
+                Request::ListDrafts => ok(ResponseData::Drafts {
+                    drafts: vec![stored.clone()],
+                }),
                 Request::ListAccounts => ok(ResponseData::Accounts {
                     accounts: vec![account.clone()],
                 }),
@@ -429,13 +439,13 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
-        &client,
-        addr,
-        serde_json::json!({ "kind": "new" }),
-        "alice@example.com",
-    )
-    .await;
+    let draft_path = restore_session_path(&client, addr, &stored_id).await;
+    edit_session(&client, addr, &draft_path, "Hello", "Body text").await;
+    let metadata = read_draft_session_metadata(Path::new(&draft_path))
+        .await
+        .unwrap()
+        .unwrap();
+    let account_id = metadata.account_id.to_string();
 
     let response = client
         .post(format!(
@@ -446,6 +456,7 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
             "draft_path": draft_path,
             "account_id": account_id,
             "draft_id": stored_id.to_string(),
+            "expected_revision": metadata.revision,
             "send_at": "2026-10-01T09:00:00Z",
         }))
         .send()
@@ -498,9 +509,9 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     let (draft_path, account_id) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
 
+    *daemon_sends.lock().unwrap() = 0;
     for (route, extra) in [
         ("send", serde_json::json!({})),
-        ("save", serde_json::json!({})),
         (
             "schedule",
             serde_json::json!({ "send_at": "2026-10-01T09:00:00Z" }),

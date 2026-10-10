@@ -651,7 +651,10 @@ pub async fn run() -> anyhow::Result<()> {
                         let draft_id = draft.id.clone();
                         let result = match ipc_call(
                             &bg,
-                            Request::DeleteDraft { draft_id: draft.id },
+                            Request::DeleteDraft {
+                                expected_revision: draft.revision,
+                                draft_id: draft.id,
+                            },
                         )
                         .await
                         {
@@ -688,7 +691,7 @@ pub async fn run() -> anyhow::Result<()> {
                         let result = match ipc_call(&bg, Request::SaveDraftToServer { draft }).await
                         {
                             Ok(Response::Ok {
-                                data: ResponseData::Ack,
+                                data: ResponseData::Ack | ResponseData::Draft { .. },
                             }) => Ok(()),
                             Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),
@@ -2389,7 +2392,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(&bg, req).await;
                 let outcome = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Ack,
+                        data: ResponseData::Ack | ResponseData::Draft { .. },
                     }) => Ok(effect),
                     Ok(Response::Ok {
                         data:

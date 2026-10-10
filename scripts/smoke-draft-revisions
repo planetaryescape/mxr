@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Exercise durable drafts against a supplied mxr binary, using synthetic mail only."""
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+source_binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "target-cli/debug/mxr").resolve())
+with tempfile.TemporaryDirectory(prefix="mxr-draft-revisions-") as temporary:
+    root = Path(temporary)
+    binary = str(root / "mxr")
+    shutil.copy2(source_binary, binary)
+    home = root / "home"
+    home.mkdir()
+    config = root / "config"
+    config.mkdir()
+    (config / "config.toml").write_text('''[general]
+sync_interval = 3600
+[search.semantic]
+enabled = false
+auto_download_models = false
+[bridge]
+enabled = false
+[llm]
+enabled = false
+[accounts.synthetic]
+name = "Synthetic"
+email = "synthetic@example.com"
+is_default = true
+[accounts.synthetic.sync]
+type = "fake"
+[accounts.synthetic.send]
+type = "fake"
+''')
+    environment = {**{key: value for key, value in os.environ.items() if not key.startswith("MXR_") and key not in {"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"}}, "HOME": str(home), "TMPDIR": str(home), "MXR_INSTANCE": "draft-revisions-" + root.name, "MXR_CONFIG_DIR": str(config), "MXR_DATA_DIR": str(root / "data"), "MXR_SOCKET_PATH": str(root / "mxr.sock"), "MXR_ACTIVITY": "off", "MXR_FAKE_DATASET": "small"}
+    environment.pop("MXR_DAEMON_ADDR", None)
+    environment.pop("MXR_PROFILE", None)
+    daemon = None
+    preserved = None
+    def cli(*arguments, extra=None, check=True):
+        result = subprocess.run([binary, *arguments], env={**environment, **(extra or {})}, text=True, capture_output=True, timeout=30)
+        if check and result.returncode:
+            raise RuntimeError(f"{' '.join(arguments)}: {result.stdout}\n{result.stderr}")
+        return result
+    def start():
+        global daemon
+        daemon = subprocess.Popen([binary, "daemon", "--foreground", "--no-bridge"], env=environment, stdout=log, stderr=log)
+        for _ in range(100):
+            if daemon.poll() is not None:
+                raise RuntimeError((root / "daemon.log").read_text())
+            pid_file = root / "data" / "daemon.pid"
+            if pid_file.exists() and pid_file.read_text().strip() == str(daemon.pid):
+                try:
+                    with socket.socket(socket.AF_UNIX) as probe:
+                        probe.connect(str(root / "mxr.sock"))
+                except OSError:
+                    time.sleep(0.05)
+                    continue
+                status = json.loads(cli("status", "--format", "json").stdout)
+                assert status["daemon_pid"] == daemon.pid, status
+                return
+            time.sleep(0.05)
+        raise RuntimeError("isolated daemon did not become ready")
+    def stop():
+        global daemon
+        if daemon is not None:
+            daemon.send_signal(signal.SIGINT)
+            try:
+                daemon.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+                daemon.wait(timeout=5)
+            daemon = None
+    with (root / "daemon.log").open("w") as log:
+        try:
+            start()
+            created = json.loads(cli("compose", "--to", "alice@example.com", "--subject", "Synthetic revision smoke", "--body", "original smoke body", "--draft", "--no-signature", "--format", "json").stdout)
+            draft_id = created["draft_id"]
+            assert created["revision"] == 1, created
+            stop()
+            start()
+            persisted = json.loads(cli("drafts", "--format", "json").stdout)
+            stored = next(draft for draft in persisted if draft["id"] == draft_id)
+            assert stored["revision"] == 1 and stored["body_markdown"] == "original smoke body", stored
+            print("Saved, restarted, read:", json.dumps(stored))
+            editor = root / "editor"
+            editor.write_text('''#!/usr/bin/env python3
+import os, pathlib, sys, time
+path = pathlib.Path(sys.argv[-1])
+ready = os.environ.get("MXR_SMOKE_READY")
+if ready:
+    pathlib.Path(ready).write_text(str(path))
+    deadline = time.monotonic() + 20
+    while not pathlib.Path(os.environ["MXR_SMOKE_RELEASE"]).exists():
+        if time.monotonic() > deadline: raise TimeoutError("editor release")
+        time.sleep(0.02)
+path.write_text(path.read_text().replace("original smoke body", os.environ["MXR_SMOKE_BODY"]))
+''')
+            editor.chmod(0o700)
+            ready, release = root / "ready", root / "release"
+            first_environment = {**environment, "EDITOR": str(editor), "MXR_SMOKE_READY": str(ready), "MXR_SMOKE_RELEASE": str(release), "MXR_SMOKE_BODY": "editor A unsent text"}
+            first = subprocess.Popen([binary, "drafts", "edit", draft_id], env=first_environment, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            for _ in range(200):
+                if ready.exists(): break
+                if first.poll() is not None: raise RuntimeError(first.communicate())
+                time.sleep(0.02)
+            assert ready.exists(), "first editor did not open"
+            preserved = Path(ready.read_text())
+            accepted = cli("drafts", "edit", draft_id, extra={"EDITOR": str(editor), "MXR_SMOKE_BODY": "editor B accepted text"})
+            release.touch()
+            output, error = first.communicate(timeout=30)
+            assert first.returncode != 0 and "revision conflict" in error.lower(), (output, error)
+            assert "editor A unsent text" in preserved.read_text(), preserved
+            print("Accepted edit:", accepted.stdout.strip())
+            print("Rejected stale edit:", error.strip())
+            print("Preserved scratch:", preserved.read_text().strip())
+            current = next(draft for draft in json.loads(cli("drafts", "--format", "json").stdout) if draft["id"] == draft_id)
+            assert current["revision"] == 2 and current["body_markdown"] == "editor B accepted text", current
+            print("Canonical saved content:", json.dumps(current))
+            preview = cli("drafts", "--format", "json", "delete", draft_id, "--dry-run")
+            print("Delete preview:", preview.stdout.strip())
+            assert next(draft for draft in json.loads(cli("drafts", "--format", "json").stdout) if draft["id"] == draft_id)["revision"] == 2
+            print("PASS: durable save/restart/read, stale conflict, preserved editor text, preview")
+        finally:
+            stop()
+            if preserved is not None: preserved.unlink(missing_ok=True)

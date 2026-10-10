@@ -1081,6 +1081,14 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::Sql(include_str!("../migrations/071_rule_treatments.sql")),
         ]),
     },
+    Migration {
+        version: 72,
+        name: "draft_revision",
+        kind: MigrationKind::Composite(&[MigrationStep::AddColumn {
+            table: "drafts", column: "revision",
+            sql: include_str!("../migrations/072_draft_revision.sql"),
+        }]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

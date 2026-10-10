@@ -1172,6 +1172,7 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
         .unwrap()
         .clone();
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
         from: None,
@@ -1277,6 +1278,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
         .unwrap()
         .clone();
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::id::DraftId::new(),
         account_id: account.id.clone(),
         from: None,
@@ -1342,6 +1344,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
 
 fn scheduled_test_draft(account_id: mxr_core::AccountId, subject: &str) -> mxr_core::types::Draft {
     mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::id::DraftId::new(),
         account_id,
         from: None,
@@ -1597,6 +1600,7 @@ fn invite_reply_draft(
 ) -> mxr_core::types::Draft {
     let now = chrono::Utc::now();
     mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: Some(mxr_core::types::Address {

@@ -437,6 +437,7 @@ pub struct AppState {
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
     runtime: RwLock<ProviderRuntime>,
+    draft_operation_locks: ParkingMutex<HashMap<mxr_core::DraftId, Arc<TokioMutex<()>>>>,
     provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
     /// Held by a mutation's search reindex from its store reads through its
     /// commit, so the last commit always comes from the freshest read. Holds
@@ -741,6 +742,7 @@ impl AppState {
                 default_provider: provider_setup.default_provider,
                 default_send_provider: provider_setup.default_send_provider,
             }),
+            draft_operation_locks: ParkingMutex::new(HashMap::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
@@ -1184,6 +1186,21 @@ impl AppState {
 
     pub fn sync_interval_secs(&self) -> u64 {
         self.config_snapshot().general.sync_interval
+    }
+
+    /// Draft locks precede account provider locks for every draft writer.
+    pub async fn acquire_draft_operation(
+        &self,
+        draft_id: &mxr_core::DraftId,
+    ) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.draft_operation_locks.lock();
+            locks
+                .entry(draft_id.clone())
+                .or_insert_with(|| Arc::new(TokioMutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
     }
 
     pub async fn acquire_provider_operation(&self, account_id: &AccountId) -> OwnedMutexGuard<()> {
@@ -1876,6 +1893,7 @@ impl AppState {
                 default_provider: Some(provider),
                 default_send_provider: send_provider,
             }),
+            draft_operation_locks: ParkingMutex::new(HashMap::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
@@ -1953,6 +1971,7 @@ impl AppState {
                 default_provider: None,
                 default_send_provider: None,
             }),
+            draft_operation_locks: ParkingMutex::new(HashMap::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
@@ -2056,6 +2075,7 @@ impl AppState {
                     default_provider: Some(provider),
                     default_send_provider: send_provider,
                 }),
+                draft_operation_locks: ParkingMutex::new(HashMap::new()),
                 provider_operation_locks: ParkingMutex::new(HashMap::new()),
                 search_reindex: TokioMutex::new(HashSet::new()),
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),

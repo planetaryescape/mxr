@@ -951,6 +951,7 @@ fn n_lets_a_promise_go_and_unanswered_prompts_expire() {
 fn test_draft(subject: &str) -> Draft {
     let now = chrono::Utc::now();
     Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: AccountId::new(),
         from: None,

@@ -127,7 +127,8 @@ export function useComposeSend({
       const response = await scheduleComposeSession({
         draftPath: current.draftPath,
         accountId: current.accountId,
-        draftId: intent.draftId,
+        draftId: current.draftId,
+        expectedRevision: current.revision,
         sendAt: at,
       });
       return response.draft_id;

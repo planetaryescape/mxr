@@ -703,6 +703,7 @@ impl MailSendProvider for FakeProvider {
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt, MxrError> {
         self.sent_guard().push(Draft {
+            revision: None,
             id: mxr_core::DraftId::new(),
             account_id: self.account_id.clone(),
             from: None,
@@ -1153,6 +1154,7 @@ mod tests {
     async fn send_recorded() {
         let provider = FakeProvider::new(AccountId::new());
         let draft = Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: provider.account_id().clone(),
             from: None,

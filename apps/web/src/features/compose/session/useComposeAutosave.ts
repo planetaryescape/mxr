@@ -72,15 +72,51 @@ export function useComposeAutosave({
     try {
       const result = await requestCoordinator.queueComposeLatest(
         composeQueueKey(snapshot.draftPath),
-        async () =>
-          await updateSession.mutateAsync({
+        async () => {
+          const activeDraft = draftRef.current;
+          const sameSession =
+            activeDraft?.draftPath === snapshot.draftPath &&
+            (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
+          const response = await updateSession.mutateAsync({
+            accountId: snapshot.accountId,
             draftPath: snapshot.draftPath,
             frontmatter: snapshot.frontmatter,
             body: snapshot.body,
-          }),
+            expectedRevision: sameSession
+              ? (activeDraft.revision ?? snapshot.revision)
+              : snapshot.revision,
+          });
+          const latest = draftRef.current;
+          if (
+            latest?.draftPath === snapshot.draftPath &&
+            (snapshot.draftId == null || latest.draftId === snapshot.draftId)
+          ) {
+            draftRef.current = {
+              ...latest,
+              draftId: response.session.draftId ?? undefined,
+              revision: response.session.revision,
+            };
+            setDraft((active) =>
+              active?.draftPath === snapshot.draftPath &&
+              (snapshot.draftId == null || active.draftId === snapshot.draftId)
+                ? {
+                    ...active,
+                    draftId: response.session.draftId ?? undefined,
+                    revision: response.session.revision,
+                  }
+                : active,
+            );
+          }
+          return response;
+        },
       );
       if (result.status !== "committed") return undefined;
       const response = result.value;
+      if (
+        draftRef.current?.draftPath !== snapshot.draftPath ||
+        (snapshot.draftId != null && draftRef.current.draftId !== snapshot.draftId)
+      )
+        return undefined;
       lastSavedFingerprintRef.current = snapshot.fingerprint;
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
@@ -90,14 +126,19 @@ export function useComposeAutosave({
         setDirty(false);
         rememberActiveDraft(intentKey, next);
       } else if (latest) {
-        setDraft({ ...latest, issues: response.session.issues });
+        setDraft({
+          ...latest,
+          draftId: response.session.draftId ?? undefined,
+          revision: response.session.revision,
+          issues: response.session.issues,
+        });
       }
       setLastSavedAt(new Date());
       void queryClient.invalidateQueries({ queryKey: ["drafts"] });
       return response.session;
     } catch (error) {
       const message = errorMessage(error);
-      setSaveError(message);
+      if (draftRef.current?.draftPath === snapshot.draftPath) setSaveError(message);
       throw error;
     }
   }, [draftRef, intentKey, queryClient, setDirty, setDraft, updateSession]);

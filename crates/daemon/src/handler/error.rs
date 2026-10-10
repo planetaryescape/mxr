@@ -1,15 +1,8 @@
 //! Internal error type for IPC request handlers.
 //!
-//! The wire contract is unchanged. Handler errors still serialise to the same
-//! `String` they always did: every variant's `Display` renders exactly what
-//! `e.to_string()` produced before, so swapping `Result<_, String>` for
-//! `Result<_, HandlerError>` is behaviour-preserving (see the `Display` test).
-//!
-//! The win is dropping the `.map_err(|e| e.to_string())` noise that wrapped
-//! nearly every fallible call. Store (`sqlx`) and provider/sync (`MxrError`)
-//! failures now flow through `?` via `#[from]`; ad-hoc validation messages go
-//! through `HandlerError::Message`. At the IPC boundary the error is turned
-//! back into a `String` via `From<HandlerError>` for `Response::error`.
+//! Store and provider failures keep their existing display messages. Draft
+//! revision conflicts additionally carry a machine-readable code and the
+//! expected/current revision so every client can preserve unsent edits.
 
 use mxr_core::error::MxrError;
 use mxr_protocol::{IpcErrorKind, Response};
@@ -24,6 +17,11 @@ pub(crate) enum HandlerError {
     /// string-sniffed into `Internal`.
     #[error("{0}")]
     InvalidRequest(String),
+    #[error("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved")]
+    DraftConflict {
+        expected: Option<i64>,
+        current: Option<i64>,
+    },
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -41,6 +39,12 @@ impl HandlerError {
     /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
+            Self::DraftConflict { expected, current } => Response::Error {
+                message: format!("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved"),
+                kind: IpcErrorKind::InvalidRequest,
+                code: "draft_revision_conflict".into(), retryable: false,
+                details: Some(serde_json::json!({"expected_revision": expected, "current_revision": current})),
+            },
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)
             }

@@ -8,6 +8,7 @@ pub(super) async fn status(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::GetStatus).await? {
         ResponseData::Status {
+            draft_revision_supported,
             uptime_secs,
             accounts,
             total_messages,
@@ -21,6 +22,7 @@ pub(super) async fn status(
             feature_health,
             degraded,
         } => Ok(Json(serde_json::json!({
+            "draft_revision_supported": draft_revision_supported,
             "uptime_secs": uptime_secs,
             "accounts": accounts,
             "total_messages": total_messages,

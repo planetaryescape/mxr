@@ -16,6 +16,11 @@ pub(super) enum BridgeError {
     /// class, so the HTTP status follows it instead of blaming the gateway.
     #[error("{message}")]
     Daemon { message: String, kind: IpcErrorKind },
+    #[error("{message}")]
+    DraftConflict {
+        message: String,
+        details: Option<serde_json::Value>,
+    },
     /// The HTTP request itself is malformed (bad id, unknown enum value,
     /// missing lens parameter). Never reaches the daemon.
     #[error("{0}")]
@@ -34,6 +39,7 @@ pub(super) enum BridgeError {
 impl BridgeError {
     pub(super) fn status(&self) -> StatusCode {
         match self {
+            Self::DraftConflict { .. } => StatusCode::CONFLICT,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -59,6 +65,7 @@ impl BridgeError {
     /// code for daemon errors, otherwise the bridge failure class.
     pub(super) fn code(&self) -> &'static str {
         match self {
+            Self::DraftConflict { .. } => "draft_revision_conflict",
             Self::Daemon { kind, .. } => kind.as_code(),
             // Same code the daemon uses for its own draft validation, so a
             // client handles "fix your draft" once whichever side caught it.
@@ -72,7 +79,7 @@ impl IntoResponse for BridgeError {
     fn into_response(self) -> Response {
         (
             self.status(),
-            Json(serde_json::json!({ "error": self.to_string(), "code": self.code() })),
+            Json(serde_json::json!({ "error": self.to_string(), "code": self.code(), "details": match &self { Self::DraftConflict { details, .. } => details.clone(), _ => None } })),
         )
             .into_response()
     }
@@ -80,6 +87,8 @@ impl IntoResponse for BridgeError {
 
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct AuthQuery {
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -175,6 +184,7 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Connect(_) => "connect",
         BridgeError::Ipc(_) => "ipc",
         BridgeError::Timeout(_) => "timeout",
+        BridgeError::DraftConflict { .. } => "draft_revision_conflict",
         BridgeError::Daemon { .. } => "daemon",
         BridgeError::BadRequest(_) => "bad_request",
         BridgeError::InvalidDraft(_) => "invalid_draft",

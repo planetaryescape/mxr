@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 /// YAML frontmatter for compose files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ComposeFrontmatter {
     pub to: String,
     #[serde(default)]

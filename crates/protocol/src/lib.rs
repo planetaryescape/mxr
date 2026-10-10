@@ -198,6 +198,7 @@ mod tests {
     fn sample_draft() -> Draft {
         let now = chrono::Utc::now();
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,
@@ -736,6 +737,7 @@ mod tests {
             ),
             (
                 Request::DeleteDraft {
+                    expected_revision: Some(1),
                     draft_id: DraftId::new(),
                 },
                 IpcCategory::CoreMail,
@@ -877,6 +879,7 @@ mod tests {
             ),
             (
                 ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 0,
                     accounts: Vec::new(),
                     total_messages: 0,
@@ -1606,6 +1609,7 @@ mod tests {
         use std::path::PathBuf;
 
         let draft = Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,
@@ -2149,6 +2153,7 @@ mod tests {
 
         pub(super) fn sample_draft(body: &str) -> Draft {
             Draft {
+                revision: Some(1),
                 id: DraftId::new(),
                 account_id: AccountId::new(),
                 from: None,

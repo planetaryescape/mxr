@@ -1429,6 +1429,7 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
     let now = chrono::Utc::now();
     let drafts: Vec<Draft> = vec![
         Draft {
+            revision: None,
             id: DraftId::from_provider_id("demo", "draft-q4-roadmap"),
             account_id: personal.clone(),
             from: None,
@@ -1449,6 +1450,7 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
             updated_at: now - chrono::Duration::hours(3),
         },
         Draft {
+            revision: None,
             id: DraftId::from_provider_id("demo", "draft-perf-followup"),
             account_id: personal,
             from: None,
@@ -1815,6 +1817,7 @@ mod tests {
     /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
     fn degraded_status() -> ResponseData {
         ResponseData::Status {
+            draft_revision_supported: true,
             uptime_secs: 1,
             accounts: Vec::new(),
             total_messages: 0,

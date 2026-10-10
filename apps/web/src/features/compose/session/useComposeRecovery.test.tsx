@@ -79,9 +79,9 @@ for (const disconnected of [false, true]) {
   test(`unchanged confirmed recovery stops autosave across two more windows (connection lost: ${disconnected})`, async () => {
     vi.useFakeTimers();
     const conflict = new BridgeRequestError(
-      409,
-      "Draft changed; text preserved",
-      "draft_revision_conflict",
+      disconnected ? 503 : 409,
+      disconnected ? "Daemon connection failed" : "Draft changed; text preserved",
+      disconnected ? "connect" : "draft_revision_conflict",
       {
         details: { current_revision: 2 },
         recovery_session: {
@@ -92,9 +92,8 @@ for (const disconnected of [false, true]) {
       },
     );
     // Every attempted canonical save would return a real-shaped recovery response.
-    update.mockRejectedValue(
-      disconnected ? new DaemonUnavailableError({ cause: conflict }) : conflict,
-    );
+    const failure = disconnected ? new DaemonUnavailableError({ cause: conflict }) : conflict;
+    update.mockRejectedValue(failure);
     const hook = setup();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3100);
@@ -104,6 +103,7 @@ for (const disconnected of [false, true]) {
     expect(hook.result.current.dirty).toBe(false);
     expect(hook.result.current.isCurrentDraftSaved(hook.result.current.draft)).toBe(false);
     expect(hook.result.current.saveError).toContain("preserved");
+    expect(hook.result.current.saveError).toContain(failure.message);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
@@ -118,13 +118,11 @@ for (const disconnected of [false, true]) {
     await act(async () => {
       await hook.result.current.saveCurrentDraft();
     });
-    expect(update).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        draftPath: "/tmp/timer-recovery",
-        expectedRevision: 1,
-        body: "latest before close",
-      }),
-    );
+    expect(update.mock.lastCall?.[0]).toMatchObject({
+      draftPath: "/tmp/timer-recovery",
+      expectedRevision: 1,
+      body: "latest before close",
+    });
     expect(hook.result.current.dirty).toBe(false);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7000);

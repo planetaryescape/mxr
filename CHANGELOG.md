@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.69](https://github.com/planetaryescape/mxr/compare/v0.6.68...v0.6.69) (2026-10-11)
+
+
+### Bug Fixes
+
+* improve mailbox spacing and setup recovery ([#351](https://github.com/planetaryescape/mxr/issues/351)) ([35c4f72](https://github.com/planetaryescape/mxr/commit/35c4f7232125cd595bc2169abbf951152a7aa06d))
+
+## [0.6.68](https://github.com/planetaryescape/mxr/compare/v0.6.67...v0.6.68) (2026-10-11)
+
+
+### Bug Fixes
+
+* align release smoke target directory ([#357](https://github.com/planetaryescape/mxr/issues/357)) ([86c9599](https://github.com/planetaryescape/mxr/commit/86c959921c7a7af16ad2f670411a404198e95c72))
+
 ## [0.6.67](https://github.com/planetaryescape/mxr/compare/v0.6.66...v0.6.67) (2026-10-11)
 
 

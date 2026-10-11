@@ -47,7 +47,10 @@ export function MessageBody({
   const prefersLight = useMediaQuery("(prefers-color-scheme: light)");
   const darkScheme =
     appTheme === "system" ? !prefersLight : document.documentElement.dataset.scheme === "dark";
-  const palette = readPalette();
+  const appPalette = readPalette();
+  // A message-local Dark choice must remain dark when the surrounding app is
+  // light. Reuse the product's Midnight tokens for that cross-scheme case.
+  const palette = theme === "dark" && !darkScheme ? MIDNIGHT_EMAIL_PALETTE : appPalette;
   const rendered = useMemo(
     () => renderHtmlDocument(html, allowRemoteImages, theme, darkScheme, palette),
     [allowRemoteImages, darkScheme, html, palette, theme],
@@ -189,6 +192,11 @@ interface EmailPalette {
   askMarkRule: string;
 }
 
+interface RenderedEmailDocument {
+  srcDoc: string;
+  canvas: EmailHtmlCanvas;
+}
+
 function readPalette(): EmailPalette {
   const style = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
@@ -231,7 +239,7 @@ function renderHtmlDocument(
   theme: EmailHtmlPreference,
   darkScheme: boolean,
   palette: EmailPalette,
-): { srcDoc: string; canvas: EmailHtmlCanvas } {
+): RenderedEmailDocument {
   const prepared = prepareEmailHtml(html, {
     allowRemoteImages,
     preference: theme,
@@ -273,6 +281,17 @@ const LIGHT_EMAIL = {
   rule: "#c9d4dc",
   askMark: "#fff0b3",
   askMarkRule: "#d9a400",
+};
+
+const MIDNIGHT_EMAIL_PALETTE: EmailPalette = {
+  background: "#0d161f",
+  foreground: "#e2e9f0",
+  muted: "#99a6b5",
+  link: "#5cd5fc",
+  rule: "#424f5c",
+  code: "#1c2632",
+  askMark: "rgb(248 202 101 / 0.18)",
+  askMarkRule: "rgb(248 202 101 / 0.85)",
 };
 
 /** The quiet note that stands in for a blocked remote image. */

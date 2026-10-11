@@ -2,6 +2,24 @@ import { expect, test } from "@playwright/test";
 
 import { openApp } from "./helpers/state";
 
+function contrastRatio(foreground: string, background: string): number {
+  const luminance = (color: string) => {
+    const channels = color
+      .match(/\d+(?:\.\d+)?/g)
+      ?.slice(0, 3)
+      .map(Number);
+    if (!channels || channels.length < 3) throw new Error(`could not read color: ${color}`);
+    const linear = channels.map((value) => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+  };
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
 // The white-panel check below is about the dark reader; on a light theme a
 // white panel is expected.
 test.use({ colorScheme: "dark" });
@@ -81,13 +99,43 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   expect(await page.evaluate(() => (window as { PWNED?: number }).PWNED)).toBeUndefined();
   const body = frame.contentFrame();
   await expect(body.getByText("visible body")).toBeVisible();
-  await expect(body.getByText("fine print")).toHaveCSS("color", "rgb(119, 119, 119)");
+  await expect(body.getByText("fine print")).toHaveCSS("color", "rgb(108, 108, 108)");
   await expect(body.getByText("fine print")).toHaveCSS("font-size", "12px");
   // A white panel from a light-theme email is not pasted onto the dark reader.
   await expect(body.locator("#white-panel")).not.toHaveCSS(
     "background-color",
     "rgb(255, 255, 255)",
   );
+  const paperContrast = await frame.evaluate((element) => {
+    if (!(element instanceof HTMLIFrameElement)) throw new Error("message frame not found");
+    const doc = element.contentDocument;
+    const view = doc?.defaultView;
+    const text = doc?.querySelector("#white-panel");
+    if (!doc || !view || !text) throw new Error("paper contrast fixture not found");
+    const foreground = view.getComputedStyle(text).color;
+    const background = view.getComputedStyle(text).backgroundColor;
+    const channel = (value: string) =>
+      value
+        .match(/\d+(?:\.\d+)?/g)
+        ?.slice(0, 3)
+        .map(Number);
+    const fg = channel(foreground);
+    const bg = channel(background);
+    if (!fg || !bg || fg.length < 3 || bg.length < 3)
+      throw new Error(`could not read paper colors: ${foreground} / ${background}`);
+    const luminance = ([red, green, blue]: number[]) => {
+      const linear = [red, green, blue].map((value) => {
+        const channel = value ?? 0;
+        const c = channel / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+    };
+    const first = luminance(fg);
+    const second = luminance(bg);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  });
+  expect(paperContrast).toBeGreaterThanOrEqual(4.5);
   await expect(body.locator("#modern-white")).toHaveCSS("background-color", "rgb(241, 238, 233)");
   await expect(body.getByRole("link", { name: "visible link" })).toHaveCSS(
     "text-decoration-line",
@@ -113,13 +161,28 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await page.getByRole("menuitemradio", { name: "Dark for this message" }).click();
   const callout = frame.contentFrame().locator("#inherited-callout");
   await expect(callout).toBeVisible();
+  await expect(frame.contentFrame().locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(13, 22, 31)",
+  );
   const contrast = await frame.evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument;
-    if (!doc) throw new Error("email frame is not readable");
+    if (!(element instanceof HTMLIFrameElement)) throw new Error("message frame not found");
+    const doc = element.contentDocument;
+    const view = doc?.defaultView;
+    if (!doc || !view) throw new Error("email frame is not readable");
     const calloutNode = doc.querySelector("#inherited-callout");
-    if (!(calloutNode instanceof HTMLElement)) throw new Error("callout not found");
-    const foreground = getComputedStyle(calloutNode).color;
-    const background = getComputedStyle(doc.body).backgroundColor;
+    if (!calloutNode) throw new Error("callout not found");
+    const foreground = view.getComputedStyle(calloutNode).color;
+    let backgroundNode: Element | null = calloutNode;
+    let background = "transparent";
+    while (backgroundNode) {
+      const candidate = view.getComputedStyle(backgroundNode).backgroundColor;
+      if (!candidate.endsWith(", 0)")) {
+        background = candidate;
+        break;
+      }
+      backgroundNode = backgroundNode.parentElement;
+    }
     const channels = (color: string): [number, number, number] | null => {
       const values = color
         .match(/\d+(?:\.\d+)?/g)
@@ -128,7 +191,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
       if (!values || values.length < 3 || values.some((value) => !Number.isFinite(value))) {
         return null;
       }
-      return [values[0]!, values[1]!, values[2]!];
+      return [values[0] ?? Number.NaN, values[1] ?? Number.NaN, values[2] ?? Number.NaN];
     };
     const fg = channels(foreground);
     const bg = channels(background);
@@ -156,12 +219,11 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await reader.getByRole("button", { name: "Email appearance: dark" }).click();
   await page.getByRole("menuitem", { name: "Always show Original" }).click();
   const storedSenders = await page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem("mxr.uiPrefs") ?? "{}") as {
-      state?: { emailHtmlSenderOverrides?: unknown };
-    };
-    return saved.state?.emailHtmlSenderOverrides;
+    return localStorage.getItem("mxr.uiPrefs");
   });
-  expect(storedSenders).toEqual([{ sender: "security@example.com", theme: "original" }]);
+  expect(storedSenders).toContain(
+    '"emailHtmlSenderOverrides":[{"sender":"security@example.com","theme":"original"}]',
+  );
 
   await page.reload();
   await page.getByRole("option", { name: /sandbox smoke/ }).click();
@@ -170,6 +232,18 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await expect(
     reloadedReader.getByRole("button", { name: "Email appearance: original" }),
   ).toBeVisible();
+  await expect(reloadedFrame.contentFrame().locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  await reloadedReader.getByRole("button", { name: "Email appearance: original" }).click();
+  await page.getByRole("menuitemradio", { name: "Auto for this message" }).click();
+  await expect(reloadedFrame.contentFrame().locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(241, 238, 233)",
+  );
+  await reloadedReader.getByRole("button", { name: "Email appearance: auto" }).click();
+  await page.getByRole("menuitemradio", { name: "Use sender/default" }).click();
   await expect(reloadedFrame.contentFrame().locator("body")).toHaveCSS(
     "background-color",
     "rgb(255, 255, 255)",
@@ -186,6 +260,34 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(reloadedBody).toHaveCSS("background-color", "rgb(241, 238, 233)");
 
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("mxr.uiPrefs") ?? "{}");
+    saved.state.theme = "light";
+    localStorage.setItem("mxr.uiPrefs", JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.getByRole("option", { name: /sandbox smoke/ }).click();
+  const lightReader = page.getByRole("article", { name: "Conversation: sandbox smoke" });
+  const lightFrame = lightReader.locator("iframe[sandbox]").first();
+  await lightReader.getByRole("button", { name: "Email appearance: auto" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark for this message" }).click();
+  await expect(lightFrame.contentFrame().locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(13, 22, 31)",
+  );
+  const colors = await lightFrame.evaluate((element) => {
+    if (!(element instanceof HTMLIFrameElement)) throw new Error("message frame not found");
+    const doc = element.contentDocument;
+    const view = doc?.defaultView;
+    const text = doc?.querySelector("#inherited-callout");
+    if (!doc || !view || !text) throw new Error("dark contrast fixture not found");
+    return [
+      view.getComputedStyle(text).color,
+      view.getComputedStyle(doc.body).backgroundColor,
+    ] as const;
+  });
+  expect(contrastRatio(colors[0], colors[1])).toBeGreaterThanOrEqual(4.5);
+
   // The frame sizes to its content, not to a fixed default.
   await expect
     .poll(() =>
@@ -198,12 +300,12 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     )
     .toBeLessThan(2);
 
-  await expect(reader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
+  await expect(lightReader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
   // The toolbar keeps the frequent verbs; the rest are in More.
   for (const name of ["Archive (e)", "Snooze (Z)", "More actions"]) {
-    await expect(reader.getByRole("button", { name, exact: true })).toBeVisible();
+    await expect(lightReader.getByRole("button", { name, exact: true })).toBeVisible();
   }
-  await expect(reader.getByRole("button", { name: "Reply…" })).toBeVisible();
+  await expect(lightReader.getByRole("button", { name: "Reply…" })).toBeVisible();
 });
 
 test("message attachments can be opened and downloaded", async ({ page }) => {

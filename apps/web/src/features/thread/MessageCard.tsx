@@ -261,9 +261,7 @@ export function MessageContent({
   const emailHtmlSenderOverrides = useUiPrefs((s) => s.emailHtmlSenderOverrides);
   const setEmailHtmlThemeForSender = useUiPrefs((s) => s.setEmailHtmlThemeForSender);
   const forgetEmailHtmlThemeForSender = useUiPrefs((s) => s.forgetEmailHtmlThemeForSender);
-  const [messageThemeOverride, setMessageThemeOverride] = useState<ExplicitEmailHtmlTheme | null>(
-    null,
-  );
+  const [messageThemeOverride, setMessageThemeOverride] = useState<EmailHtmlTheme | null>(null);
   const trustedSenders = useUiPrefs((s) => s.remoteImageSenders);
   const allowSender = useUiPrefs((s) => s.allowRemoteImagesFrom);
   const [showHtmlQuote, setShowHtmlQuote] = useState(false);
@@ -310,7 +308,7 @@ export function MessageContent({
             messageOverride={messageThemeOverride}
             senderEmail={senderEmail}
             hasSenderOverride={senderTheme !== undefined}
-            onChoose={(theme) => setMessageThemeOverride(theme === "auto" ? null : theme)}
+            onChoose={setMessageThemeOverride}
             onRemember={(theme) => {
               if (!senderEmail) return;
               setEmailHtmlThemeForSender(senderEmail, theme);
@@ -384,14 +382,14 @@ function EmailAppearanceMenu({
   onResetSender,
 }: {
   theme: EmailHtmlTheme;
-  messageOverride: ExplicitEmailHtmlTheme | null;
+  messageOverride: EmailHtmlTheme | null;
   senderEmail: string | null;
   hasSenderOverride: boolean;
-  onChoose: (theme: EmailHtmlTheme) => void;
+  onChoose: (theme: EmailHtmlTheme | null) => void;
   onRemember: (theme: ExplicitEmailHtmlTheme) => void;
   onResetSender: () => void;
 }) {
-  const choice = messageOverride ?? "auto";
+  const choice = messageOverride ?? "inherit";
   return (
     <div className="mb-1 flex items-center justify-end">
       <DropdownMenu>
@@ -407,12 +405,15 @@ function EmailAppearanceMenu({
           <DropdownMenuRadioGroup
             value={choice}
             onValueChange={(value) => {
-              if (value === "auto" || value === "dark" || value === "original") {
+              if (value === "inherit") {
+                onChoose(null);
+              } else if (value === "auto" || value === "dark" || value === "original") {
                 onChoose(value);
               }
             }}
           >
-            <DropdownMenuRadioItem value="auto">Auto / inherited</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="inherit">Use sender/default</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="auto">Auto for this message</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="original">
               Original for this message
             </DropdownMenuRadioItem>

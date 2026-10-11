@@ -161,4 +161,15 @@ describe("sanitizeHtml", () => {
     expect(prepared.canvas).toBe("original");
     expect(prepared.html).toMatch(/color:\s*#111/i);
   });
+
+  it("adapts simple personal mail with neutral authored text in Auto", () => {
+    const prepared = prepareEmailHtml(
+      `<div style="color:rgb(34,34,34);font-family:Arial">Hi Alex, Thursday works.</div>`,
+      { allowRemoteImages: false, preference: "auto", darkScheme: true },
+    );
+
+    expect(prepared.canvas).toBe("dark");
+    expect(prepared.html).not.toMatch(/color:\s*rgb\(34,\s*34,\s*34\)/i);
+    expect(prepared.html).toContain("Hi Alex, Thursday works.");
+  });
 });

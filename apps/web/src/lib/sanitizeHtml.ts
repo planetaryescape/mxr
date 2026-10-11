@@ -40,6 +40,17 @@ interface SanitizeOpts {
 export type EmailHtmlCanvas = "dark" | "paper" | "original";
 export type EmailHtmlPreference = "auto" | "dark" | "original";
 
+export interface PreparedEmailHtml {
+  html: string;
+  canvas: EmailHtmlCanvas;
+  designed: boolean;
+}
+
+interface SanitizedEmailHtml {
+  html: string;
+  designed: boolean;
+}
+
 export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
   return sanitizeHtmlWithDesign(html, opts).html;
 }
@@ -47,7 +58,7 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
 export function prepareEmailHtml(
   html: string,
   options: { allowRemoteImages: boolean; preference: EmailHtmlPreference; darkScheme: boolean },
-): { html: string; canvas: EmailHtmlCanvas; designed: boolean } {
+): PreparedEmailHtml {
   const sanitized = sanitizeHtmlWithDesign(html, { allowRemoteImages: options.allowRemoteImages });
   const canvas: EmailHtmlCanvas =
     options.preference === "original"
@@ -62,10 +73,7 @@ export function prepareEmailHtml(
   return { html: styleForCanvas(sanitized.html, canvas), canvas, designed: sanitized.designed };
 }
 
-function sanitizeHtmlWithDesign(
-  html: string,
-  opts: SanitizeOpts = {},
-): { html: string; designed: boolean } {
+function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): SanitizedEmailHtml {
   const dom = DOMPurify(window);
   let designed = false;
   const beforeSanitizeAttributes = (node: Element) => {
@@ -111,7 +119,7 @@ function sanitizeHtmlWithDesign(
   dom.addHook("afterSanitizeAttributes", hook);
   let clean: string;
   try {
-    clean = dom.sanitize(html, {
+    const sanitized = dom.sanitize(html, {
       ALLOWED_TAGS: [
         "a",
         "abbr",
@@ -204,7 +212,9 @@ function sanitizeHtmlWithDesign(
       FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "link", "meta", "form"],
       FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
       ADD_URI_SAFE_ATTR: ["target"],
-    }) as unknown as string;
+    });
+    // SAFETY: DOMPurify receives a string and returns serialized markup unless Trusted Types are requested.
+    clean = sanitized as string;
   } finally {
     dom.removeHook("beforeSanitizeAttributes");
     dom.removeHook("afterSanitizeAttributes");
@@ -226,9 +236,24 @@ function hasDesignSignal(node: Element): boolean {
   }
   if (node.hasAttribute("bgcolor")) return true;
   const style = node.getAttribute("style") ?? "";
-  if (/\bcolor\s*:/i.test(style)) return true;
+  const colorDeclaration = style
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => /^color\s*:/i.test(part));
+  const color = colorDeclaration
+    ?.slice(colorDeclaration.indexOf(":") + 1)
+    .replace(/!important/gi, "")
+    .trim();
+  if (color) {
+    const rgb = readBrowserColor(color)?.rgb;
+    if (!rgb || !isNeutralColor(rgb)) return true;
+  }
   const background = readInlineBackground(node);
   return background !== null && !isTransparent(background);
+}
+
+function isNeutralColor(rgb: [number, number, number]): boolean {
+  return Math.max(...rgb) - Math.min(...rgb) <= 12;
 }
 
 function readInlineBackground(node: Element): string | null {
@@ -276,6 +301,10 @@ function styleForCanvas(html: string, canvas: EmailHtmlCanvas): string {
     ) {
       if (canvas === "paper") style.background = "#f1eee9";
       else style.removeProperty("background");
+    }
+    if (canvas === "paper" && style.color && style.backgroundColor) {
+      const readableColor = readableNeutralForeground(style.color, style.backgroundColor);
+      if (readableColor) style.color = readableColor;
     }
   }
   return document.body.innerHTML;
@@ -372,6 +401,32 @@ function isLightNeutralBackground(value: string): boolean {
 function isDarkTextColor(value: string): boolean {
   const rgb = readBrowserColor(value)?.rgb;
   return isDarkRgb(rgb);
+}
+
+function readableNeutralForeground(foreground: string, background: string): string | undefined {
+  const fg = readBrowserColor(foreground);
+  const bg = readBrowserColor(background);
+  if (!fg || !bg || bg.alpha < 1) return undefined;
+  const [red, green, blue] = fg.rgb;
+  if (Math.max(red, green, blue) - Math.min(red, green, blue) > 12) return undefined;
+  return contrastRatio(fg.rgb, bg.rgb) < 4.5 ? "#6c6c6c" : undefined;
+}
+
+function contrastRatio(
+  foreground: [number, number, number],
+  background: [number, number, number],
+): number {
+  const first = relativeLuminance(foreground);
+  const second = relativeLuminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+function relativeLuminance([red, green, blue]: [number, number, number]): number {
+  const linear = [red, green, blue].map((value) => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
 }
 
 function readBrowserColor(

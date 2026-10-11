@@ -117,7 +117,8 @@ adapters: UDS (default) · in-memory duplex (tests) · TCP-loopback+token · std
 mxr                     # Opens TUI (starts daemon if needed)
 mxr daemon              # Start daemon explicitly
 mxr daemon --foreground # Start in foreground (for debugging / systemd)
-mxr sync                # Trigger one-shot sync for all accounts
+mxr sync                # Trigger one-shot sync for the default account
+mxr sync --all           # Trigger sync for all enabled sync-capable accounts
 mxr sync --account NAME # Sync specific account
 mxr search "query"      # CLI search, outputs results to stdout
 mxr compose             # Open $EDITOR for new message

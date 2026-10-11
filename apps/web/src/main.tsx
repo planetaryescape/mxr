@@ -6,11 +6,13 @@ import App from "@/App";
 import { bootstrapFromHash } from "@/lib/tokenStorage";
 import {
   applyDensityAttribute,
+  applyContrastAttribute,
   applyMotionAttribute,
   applyThemeAttribute,
   useUiPrefs,
   watchSystemMotion,
   watchSystemTheme,
+  watchSystemContrast,
 } from "@/state/uiPrefsStore";
 import "@/styles/app.css";
 
@@ -20,13 +22,16 @@ const prefs = useUiPrefs.getState();
 applyThemeAttribute(prefs.theme);
 applyDensityAttribute(prefs.density);
 applyMotionAttribute(prefs.motion);
+applyContrastAttribute(prefs.contrast);
 watchSystemTheme();
 watchSystemMotion();
+watchSystemContrast();
 
 useUiPrefs.subscribe((state, prev) => {
   if (state.theme !== prev.theme) applyThemeAttribute(state.theme);
   if (state.density !== prev.density) applyDensityAttribute(state.density);
   if (state.motion !== prev.motion) applyMotionAttribute(state.motion);
+  if (state.contrast !== prev.contrast) applyContrastAttribute(state.contrast);
 });
 
 registerSW({ immediate: true });

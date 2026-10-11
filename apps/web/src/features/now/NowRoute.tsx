@@ -344,7 +344,7 @@ function NowEmpty({ now }: { now: Now }) {
 function KeyLine({ guide }: { guide: ModeGuide }) {
   const keys = guide.keys.filter((key) => key.key !== "?" && key.key !== "u" && key.key !== "t");
   return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
+    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex lg:hidden">
       {keys.map((key) => (
         <span key={key.key} className="inline-flex items-center gap-1">
           <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}

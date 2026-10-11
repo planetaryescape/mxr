@@ -55,6 +55,9 @@ download_dir = "~/Downloads"
 reader_mode = true
 show_reader_stats = true
 
+[appearance]
+theme = "default" # ANSI terminal palette; midnight is also available
+
 [search]
 default_sort = "date_desc"
 max_results = 200
@@ -81,6 +84,12 @@ unsnoozed = "glass"
 reminder = "bell"
 error = "alert"
 ```
+
+`appearance.theme` accepts `default` (the terminal's ANSI colors; `dark` is an
+alias), `midnight`, `minimal`, `light`, `catppuccin`, or a custom theme file
+path. The ANSI default does not depend on truecolor support.
+
+Choose Midnight for the TUI with `mxr config set appearance.theme midnight`.
 
 ## IMAP connection limit
 

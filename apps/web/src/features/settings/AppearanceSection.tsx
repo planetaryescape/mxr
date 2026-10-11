@@ -2,6 +2,7 @@ import { SelectSetting } from "./settingsParts";
 import {
   useUiPrefs,
   type Density,
+  type ContrastPref,
   type HomeView,
   type MotionPref,
   type Theme,
@@ -32,6 +33,12 @@ const MOTION: { value: MotionPref; label: string }[] = [
   { value: "full", label: "Full" },
 ];
 
+const CONTRAST: { value: ContrastPref; label: string }[] = [
+  { value: "system", label: "Match the system" },
+  { value: "standard", label: "Default" },
+  { value: "increased", label: "Increased" },
+];
+
 export function AppearanceSection() {
   const theme = useUiPrefs((state) => state.theme);
   const setTheme = useUiPrefs((state) => state.setTheme);
@@ -39,6 +46,8 @@ export function AppearanceSection() {
   const setDensity = useUiPrefs((state) => state.setDensity);
   const motion = useUiPrefs((state) => state.motion);
   const setMotion = useUiPrefs((state) => state.setMotion);
+  const contrast = useUiPrefs((state) => state.contrast);
+  const setContrast = useUiPrefs((state) => state.setContrast);
   const home = useUiPrefs((state) => state.home);
   const setHome = useUiPrefs((state) => state.setHome);
   return (
@@ -70,6 +79,13 @@ export function AppearanceSection() {
         value={motion}
         options={MOTION}
         onChange={setMotion}
+      />
+      <SelectSetting
+        label="Contrast"
+        description="Use your system preference, or choose stronger text and control borders."
+        value={contrast}
+        options={CONTRAST}
+        onChange={setContrast}
       />
     </div>
   );

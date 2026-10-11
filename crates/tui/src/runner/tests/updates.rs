@@ -195,6 +195,198 @@ fn k_tunes_a_source_and_u_sets_it_back() {
 }
 
 #[test]
+fn p_pins_only_the_latest_email_and_u_restores_its_prior_value() {
+    let mut app = updates_app();
+    select_source(&mut app, "Stripe (stripe.com)");
+    let message_id = match app.selected_updates_row().unwrap() {
+        UpdatesRow::Line(line) => line.latest_message_id.clone().expect("latest email"),
+        _ => unreachable!(),
+    };
+    press(&mut app, KeyCode::Char('p'));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::PinMessages { message_ids, pinned: true }]
+            if message_ids == &vec![message_id.clone()]
+    ));
+    let effect = app.pending_mutation_queue[0].effect.clone();
+    let crate::app::MutationEffect::UpdatesPin {
+        message_id: effect_id,
+        prior_pinned: false,
+        status,
+    } = effect
+    else {
+        panic!("pin carries its precise undo context");
+    };
+    assert_eq!(effect_id, message_id);
+    let (effect, undo) = crate::runner::updates_pin_outcome(effect_id, false, status, 1);
+    assert!(matches!(
+        effect,
+        crate::app::MutationEffect::RefreshUpdates(_)
+    ));
+    app.set_pending_undo(undo.expect("changed pin offers Undo"));
+    press(&mut app, KeyCode::Char('u'));
+    assert!(matches!(
+        queued(&app).last(),
+        Some(Request::PinMessages { message_ids, pinned: false })
+            if message_ids == &vec![message_id.clone()]
+    ));
+    assert!(matches!(
+        app.pending_mutation_queue
+            .last()
+            .map(|queued| &queued.effect),
+        Some(crate::app::MutationEffect::RefreshUpdates(_))
+    ));
+
+    // A no-op still refreshes the digest, but leaves an older Undo intact.
+    let existing = crate::app::PendingUndo {
+        action: crate::app::UndoAction::Mutations(vec!["earlier".into()]),
+        verb_past: "Archived".into(),
+        count: 1,
+        applied_at: std::time::Instant::now(),
+    };
+    let (effect, undo) =
+        crate::runner::updates_pin_outcome(message_id, false, "Pinned latest email".into(), 0);
+    assert!(matches!(
+        effect,
+        crate::app::MutationEffect::RefreshUpdates(_)
+    ));
+    assert!(undo.is_none());
+    app.set_pending_undo(existing.clone());
+    assert!(matches!(
+        app.pending_undo.as_ref(),
+        Some(undo) if undo.verb_past == "Archived"
+            && matches!(&undo.action, crate::app::UndoAction::Mutations(ids) if ids.len() == 1 && ids[0] == "earlier")
+    ));
+}
+
+#[test]
+fn p_unpins_and_undo_restores_the_pinned_value() {
+    let mut app = updates_app();
+    let digest = app.mailbox.updates_page.digest.as_mut().unwrap();
+    let line = digest
+        .needs_a_look
+        .iter_mut()
+        .find(|line| line.source_name == "Stripe (stripe.com)")
+        .unwrap();
+    line.latest_message_pinned = true;
+    let message_id = line.latest_message_id.clone().unwrap();
+    select_source(&mut app, "Stripe (stripe.com)");
+    press(&mut app, KeyCode::Char('p'));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::PinMessages { message_ids, pinned: false }]
+            if message_ids == &vec![message_id.clone()]
+    ));
+    let (effect, undo) = crate::runner::updates_pin_outcome(
+        message_id.clone(),
+        true,
+        "Unpinned latest email".into(),
+        1,
+    );
+    assert!(matches!(
+        effect,
+        crate::app::MutationEffect::RefreshUpdates(_)
+    ));
+    app.set_pending_undo(undo.unwrap());
+    press(&mut app, KeyCode::Char('u'));
+    assert!(matches!(
+        queued(&app).last(),
+        Some(Request::PinMessages { message_ids, pinned: true })
+            if message_ids == &vec![message_id]
+    ));
+}
+
+#[test]
+fn p_does_not_pin_a_tracker_without_a_latest_message() {
+    let mut app = updates_app();
+    select_source(&mut app, "Bookshop");
+    press(&mut app, KeyCode::Char('p'));
+    assert!(queued(&app).is_empty());
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("This update has no email to pin")
+    );
+}
+
+#[test]
+fn uppercase_s_previews_an_account_sender_sweep_and_cancel_or_apply_uses_that_preview() {
+    let mut app = updates_app();
+    select_source(&mut app, "Stripe (stripe.com)");
+    let (account_id, sender_email) = match app.selected_updates_row().unwrap() {
+        UpdatesRow::Line(line) => (line.account_id.clone(), line.sender_email.clone()),
+        _ => unreachable!(),
+    };
+    press(&mut app, KeyCode::Char('S'));
+    let target = app
+        .mailbox
+        .pending_sweep_preview
+        .take()
+        .expect("S requests a preview");
+    assert_eq!(target.account_id, Some(account_id));
+    assert_eq!(target.sender_email.as_deref(), Some(sender_email.as_str()));
+    assert!(matches!(
+        crate::runner::sweep_request(&target, true, None),
+        Request::SweepPlace {
+            account_id: Some(ref account),
+            sender_email: Some(ref sender),
+            dry_run: true,
+            preview_token: None,
+            ..
+        } if account == &target.account_id.clone().unwrap() && sender == &sender_email
+    ));
+
+    let confirm = || crate::app::PendingSweepConfirm {
+        target: target.clone(),
+        preview: mxr_protocol::SweepPreviewData {
+            place: mxr_protocol::MailPlaceData::PaperTrail,
+            sender_email: Some(sender_email.clone()),
+            count: 8,
+            pinned_excluded: 2,
+            senders: vec![],
+            sample_subjects: vec!["A result".into()],
+            preview_token: Some("updates-selection".into()),
+        },
+        shown: 99,
+        sweep_focused: false,
+        from_updates: true,
+    };
+
+    app.show_sweep_preview(confirm());
+    assert_eq!(app.mailbox.sweep_confirm.as_ref().unwrap().shown, 0);
+    press(&mut app, KeyCode::Esc);
+    assert!(app.mailbox.sweep_confirm.is_none());
+    assert!(app.mailbox.pending_sweep.is_none(), "cancel does not apply");
+
+    app.show_sweep_preview(confirm());
+    press(&mut app, KeyCode::Enter);
+    let apply = app
+        .mailbox
+        .pending_sweep
+        .as_ref()
+        .expect("Enter applies preview");
+    assert_eq!(
+        apply.preview.preview_token.as_deref(),
+        Some("updates-selection")
+    );
+    assert!(matches!(
+        crate::runner::sweep_request(
+            &apply.target,
+            false,
+            apply.preview.preview_token.clone()
+        ),
+        Request::SweepPlace {
+            account_id: Some(ref account),
+            sender_email: Some(ref sender),
+            dry_run: false,
+            preview_token: Some(ref token),
+            ..
+        } if account == &target.account_id.clone().unwrap()
+            && sender == &sender_email
+            && token == "updates-selection"
+    ));
+}
+
+#[test]
 fn enter_unfolds_the_quieter_sources_and_o_opens_the_email() {
     let mut app = updates_app();
     let fold = app.mailbox.updates_page.row_count() - 1;

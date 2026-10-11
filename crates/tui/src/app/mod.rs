@@ -133,6 +133,14 @@ pub enum MutationEffect {
         flag: bool,
         status: String,
     },
+    RefreshUpdates(String),
+    /// A pin requested from an Updates row: only the daemon's changed count
+    /// can make the prior value an available undo.
+    UpdatesPin {
+        message_id: MessageId,
+        prior_pinned: bool,
+        status: String,
+    },
     RefreshList,
     StatusOnly(String),
     /// A pin or a sender-kind change: refetch the place on screen and the
@@ -237,6 +245,8 @@ pub enum UndoAction {
         source_key: String,
         prior: mxr_protocol::UpdateSourceSettingData,
     },
+    /// A pin on an Updates line: restore exactly the previous value.
+    UpdatesPin { message_id: MessageId, pinned: bool },
     /// A move of an email or a sender (`MoveMessage`): put back exactly
     /// as it was (`UndoMove`).
     Move(i64),

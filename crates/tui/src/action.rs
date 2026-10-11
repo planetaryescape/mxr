@@ -127,6 +127,8 @@ pub enum Action {
     UpdatesNeedsMe,
     /// `K` on Updates: tune this source.
     UpdatesTune,
+    /// Sweep this update's sender from Paper trail after a preview.
+    UpdatesSweep,
     /// A digit in the tune menu: set that setting.
     UpdatesTuneChoice(usize),
     /// `L` on Updates: open the line's link.

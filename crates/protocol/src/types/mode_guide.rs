@@ -351,6 +351,8 @@ pub const ARCHIVE_GUIDE: ModeGuideCopy = ModeGuideCopy {
 const UPDATES_KEYS: &[(&str, &str)] = &[
     ("A", "let go of digest"),
     ("e", "let go of this source"),
+    ("p", "pin latest email"),
+    ("S", "sweep sender"),
     ("t", "this needs me"),
     ("K", "tune a source"),
     ("L", "open the link"),

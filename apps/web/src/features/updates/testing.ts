@@ -25,6 +25,7 @@ export function lineFixture(overrides: Partial<UpdateLine> = {}): UpdateLine {
     message_ids: ["m1"],
     thread_ids: ["t1"],
     latest_message_id: "m1",
+    latest_message_pinned: false,
     latest_thread_id: "t1",
     latest_at: "2026-10-07T05:00:00Z",
     link: { url: "https://www.strava.com/athlete/training", domain: "strava.com" },

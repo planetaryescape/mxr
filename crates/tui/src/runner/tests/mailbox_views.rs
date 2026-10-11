@@ -377,7 +377,7 @@ fn mail_list_rows_include_open_commitment_counts() {
 }
 
 #[test]
-fn archive_removes_from_list() {
+fn archive_keeps_row_until_confirmed_completion() {
     let mut app = App::new();
     set_active_inbox(&mut app);
     app.mailbox.envelopes = make_test_envelopes(5);
@@ -385,12 +385,12 @@ fn archive_removes_from_list() {
     let removed_id = app.mailbox.envelopes[0].id.clone();
     app.apply(Action::Archive);
     assert_eq!(app.pending_mutation_queue.len(), 1);
-    assert_eq!(app.mailbox.envelopes.len(), 4);
-    assert!(!app
-        .mailbox
-        .envelopes
-        .iter()
-        .any(|envelope| envelope.id == removed_id));
+    assert_eq!(app.mailbox.envelopes.len(), 5);
+    assert!(!app.pending_optimistic.is_removed(&removed_id));
+    assert!(matches!(
+        app.pending_mutation_queue[0].effect,
+        MutationEffect::RemoveFromList(_)
+    ));
 }
 
 #[test]
@@ -430,78 +430,34 @@ fn archive_in_threads_mode_targets_every_message_in_thread() {
 }
 
 #[test]
-fn stale_label_refresh_does_not_revive_optimistically_archived_envelope() {
-    // Reproduces the bounce-back bug: user presses `e` on a message,
-    // it disappears optimistically, then a label-refresh response
-    // (sync- or mutation-triggered) lands with the still-present
-    // envelope because the daemon hasn't yet processed the archive.
-    // Before the fix, the response unconditionally replaced
-    // `mailbox.envelopes` and the row came back. With the fix, the
-    // pending optimistic state masks the refresh until the mutation
-    // acks.
+fn archive_row_remains_visible_during_a_stale_refresh() {
     let mut app = App::new();
     set_active_inbox(&mut app);
     app.mailbox.envelopes = make_test_envelopes(3);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    let before_archive = app.mailbox.envelopes.clone();
     let archived_id = app.mailbox.envelopes[0].id.clone();
-
     app.apply(Action::Archive);
-    assert_eq!(app.mailbox.envelopes.len(), 2, "optimistic remove fired");
-    assert!(app.pending_optimistic.is_removed(&archived_id));
-
-    // Stale refresh from the daemon: it hasn't processed the archive
-    // yet, so it returns every envelope including the archived one.
-    let mut refresh = before_archive.clone();
+    let mut refresh = app.mailbox.all_envelopes.clone();
     app.pending_optimistic.apply(&mut refresh);
-    assert_eq!(
-        refresh.len(),
-        2,
-        "stale refresh must be filtered to honor the pending archive"
-    );
-    assert!(!refresh.iter().any(|env| env.id == archived_id));
-
-    // Once the daemon acks, future refreshes are unmasked again.
-    let mutation_id = app.pending_mutation_queue[0].id;
-    app.pending_optimistic.clear(mutation_id);
-    let mut after_ack = before_archive;
-    app.pending_optimistic.apply(&mut after_ack);
-    assert_eq!(
-        after_ack.len(),
-        3,
-        "after mutation ack, refresh is no longer masked"
-    );
+    assert_eq!(refresh.len(), 3);
+    assert!(refresh.iter().any(|envelope| envelope.id == archived_id));
+    assert!(!app.pending_optimistic.is_removed(&archived_id));
 }
 
 #[test]
-fn archived_message_stays_hidden_while_transient_failure_retries() {
+fn archive_response_loss_keeps_the_row_without_a_fresh_identity_retry() {
     let mut app = App::new();
     set_active_inbox(&mut app);
     app.mailbox.envelopes = make_test_envelopes(3);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
     let archived_id = app.mailbox.envelopes[0].id.clone();
-
     app.apply(Action::Archive);
-
-    assert_eq!(app.mailbox.envelopes.len(), 2);
-    assert!(app.pending_optimistic.is_removed(&archived_id));
     let queued = app.pending_mutation_queue.remove(0);
-    assert!(!queued.best_effort);
-
-    let error = MxrError::Ipc("mutation skipped 1 message(s): pool timed out".into());
+    assert!(!super::super::mutation_can_auto_retry(&queued.request));
     app.finish_pending_mutation();
-    app.schedule_mutation_retry(queued, &error);
-
-    assert!(app.modals.error.is_none());
-    assert_eq!(
-        app.mailbox.envelopes.len(),
-        2,
-        "retrying a transient failure must not bounce the archived row back into view"
-    );
-    assert!(app.pending_optimistic.is_removed(&archived_id));
-    assert_eq!(app.pending_mutation_queue.len(), 1);
-    assert_eq!(app.pending_mutation_queue[0].attempts, 1);
-    assert_eq!(app.pending_mutation_count, 1);
+    assert_eq!(app.mailbox.envelopes.len(), 3);
+    assert!(!app.pending_optimistic.is_removed(&archived_id));
+    assert!(app.pending_mutation_queue.is_empty());
 }
 
 #[test]

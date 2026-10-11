@@ -244,6 +244,10 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo nextest run --workspace
+      - name: Verify supervised Linux ownership and optional model diagnostics
+        run: |
+          cargo build -p mxr
+          python3 scripts/s08c_headless_smoke.py target/debug/mxr
 
   test-semantic:
     name: Test (semantic-local)

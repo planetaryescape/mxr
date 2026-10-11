@@ -637,10 +637,22 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         return Ok(());
     }
     let sock_path = resolve_daemon_socket()?;
+    let autostart_enabled = mxr_client::daemon_autostart_enabled();
 
     let socket_state = inspect_socket_state(&sock_path).await;
     if matches!(socket_state, SocketState::Reachable) {
+        if !autostart_enabled {
+            return ensure_supervised_daemon_compatible(&sock_path).await;
+        }
         return ensure_current_daemon_matches_binary(&sock_path).await;
+    }
+
+    if !autostart_enabled {
+        anyhow::bail!(
+            "{} ({})",
+            mxr_client::daemon_autostart_disabled_message(),
+            sock_path.display()
+        );
     }
 
     match recover_from_broken_socket(&sock_path).await {
@@ -664,6 +676,29 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     }
 
     spawn_daemon_process(&sock_path, "Starting daemon...").await
+}
+
+async fn ensure_supervised_daemon_compatible(sock_path: &std::path::Path) -> anyhow::Result<()> {
+    let snapshot = fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "{} ({}) — daemon status failed: {error}",
+                mxr_client::daemon_autostart_disabled_message(),
+                sock_path.display()
+            )
+        })?;
+    if daemon_requires_restart(
+        snapshot.protocol_version,
+        snapshot.daemon_version.as_deref(),
+        snapshot.daemon_build_id.as_deref(),
+    ) {
+        anyhow::bail!(
+            "The supervised daemon at {} is incompatible with this mxr binary. Update or restart it through the service manager; mxr did not replace the supervised process.",
+            sock_path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Work out how to recover a socket that just failed its liveness probe.

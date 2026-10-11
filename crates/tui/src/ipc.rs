@@ -178,6 +178,13 @@ async fn connect_ipc_client(
     match Client::connect(socket_path).await {
         Ok(client) => Ok(client.with_event_channel(event_tx)),
         Err(error) if should_autostart_daemon(&error) => {
+            if !mxr_client::daemon_autostart_enabled() {
+                return Err(MxrError::Ipc(format!(
+                    "{} ({})",
+                    mxr_client::daemon_autostart_disabled_message(),
+                    socket_path.display()
+                )));
+            }
             start_daemon_process(socket_path).await?;
             wait_for_daemon_client(socket_path, START_DAEMON_TIMEOUT)
                 .await

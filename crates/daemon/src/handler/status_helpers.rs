@@ -283,6 +283,8 @@ pub(super) fn feature_health_report(
             }
         },
     );
+    let summarize_health =
+        llm_feature_health(state, mxr_llm::LlmFeature::Summarize, llm_health.clone());
     let commitments_health = llm_feature_health(
         state,
         mxr_llm::LlmFeature::Commitments,
@@ -300,6 +302,9 @@ pub(super) fn feature_health_report(
         FeatureHealth::Healthy,
     );
 
+    let draft_assist_health =
+        llm_feature_health(state, mxr_llm::LlmFeature::DraftAssist, llm_health.clone());
+
     FeatureHealthReport {
         search: search_feature_health(search_worker_failed),
         semantic: if config.search.semantic.enabled {
@@ -307,10 +312,10 @@ pub(super) fn feature_health_report(
         } else {
             FeatureHealth::Disabled
         },
-        summarize: llm_health.clone(),
+        summarize: summarize_health,
         relationship_profile: relationship_summary_health,
         commitments: commitments_health,
-        draft_assist: llm_health,
+        draft_assist: draft_assist_health,
         voice_match: voice_match_health,
         humanizer: if config.humanizer.enabled {
             if config.humanizer.auto_fix && !config.llm.enabled {
@@ -352,10 +357,37 @@ fn llm_feature_health(
     feature: mxr_llm::LlmFeature,
     default: FeatureHealth,
 ) -> FeatureHealth {
-    state
-        .llm
-        .feature_block_reason(feature)
-        .map_or(default, |reason| FeatureHealth::Degraded { reason })
+    if let Some(reason) = state.llm.feature_block_reason(feature) {
+        return FeatureHealth::Degraded { reason };
+    }
+    feature_health_for_observation(state.llm.observation(Some(feature)), default)
+}
+
+fn feature_health_for_observation(
+    observation: Option<mxr_llm::CompletionObservation>,
+    default: FeatureHealth,
+) -> FeatureHealth {
+    match observation {
+        Some(mxr_llm::CompletionObservation::Succeeded) => FeatureHealth::Healthy,
+        Some(mxr_llm::CompletionObservation::Failed(kind)) => FeatureHealth::Degraded {
+            reason: format!(
+                "last observed model request failed: {}",
+                failure_label(kind)
+            ),
+        },
+        None => default,
+    }
+}
+
+fn failure_label(kind: mxr_llm::LlmFailureKind) -> &'static str {
+    match kind {
+        mxr_llm::LlmFailureKind::Unreachable => "endpoint unreachable",
+        mxr_llm::LlmFailureKind::RateLimited => "rate limited",
+        mxr_llm::LlmFailureKind::Timeout => "request timed out",
+        mxr_llm::LlmFailureKind::Unauthorized => "authentication failed",
+        mxr_llm::LlmFailureKind::Empty => "empty response",
+        mxr_llm::LlmFailureKind::Other => "provider error",
+    }
 }
 
 /// Classify the doctor's raw signals into structured findings with
@@ -490,6 +522,17 @@ pub(crate) fn build_doctor_findings(
 fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding {
     use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
     let lower = err.to_lowercase();
+    if lower.contains("no credential found") || lower.contains("no usable credential found") {
+        return DoctorFinding {
+            category: DoctorFindingCategory::Sync,
+            severity: DoctorFindingSeverity::Error,
+            message: format!("Missing mail credential for {account}"),
+            remediation: vec![
+                "Add the account password to the resolved config directory's secrets.toml (mode 0600), or enable the OS keychain; headless disk-only setups can set MXR_KEYCHAIN=off".into(),
+                format!("mxr sync --account {account} --wait --wait-timeout-secs 120"),
+            ],
+        };
+    }
     let (category, remediation) = if lower.contains("oauth")
         || lower.contains("invalid_grant")
         || lower.contains("token")
@@ -723,7 +766,78 @@ pub(super) fn semantic_freshness_from_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use mxr_protocol::{DoctorFindingCategory, DoctorFindingSeverity};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    struct RouteProvider(bool);
+
+    #[async_trait]
+    impl mxr_llm::LlmProvider for RouteProvider {
+        async fn complete(
+            &self,
+            _request: mxr_llm::CompletionRequest,
+        ) -> Result<mxr_llm::CompletionResponse, mxr_llm::LlmError> {
+            if !self.0 {
+                return Err(mxr_llm::LlmError::Unreachable("fixture".into()));
+            }
+            Ok(mxr_llm::CompletionResponse {
+                content: "ok".into(),
+                model: "test".into(),
+                finish_reason: None,
+            })
+        }
+
+        fn capabilities(&self) -> mxr_llm::LlmCapabilities {
+            mxr_llm::LlmCapabilities {
+                context_window: 1,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "test"
+        }
+    }
+
+    #[tokio::test]
+    async fn draft_assist_health_stays_degraded_when_another_route_succeeds() {
+        let runtime = Arc::new(mxr_llm::LlmRuntime::new(Arc::new(RouteProvider(true))));
+        let mut providers = HashMap::new();
+        providers.insert(
+            mxr_llm::LlmFeature::DraftAssist,
+            Arc::new(RouteProvider(false)) as Arc<dyn mxr_llm::LlmProvider>,
+        );
+        runtime.replace_feature_providers(providers, HashMap::new());
+        let request = || mxr_llm::CompletionRequest {
+            messages: vec![mxr_llm::ChatMessage::user("fixture")],
+            max_tokens: None,
+            temperature: None,
+        };
+
+        assert!(runtime
+            .for_feature(mxr_llm::LlmFeature::DraftAssist)
+            .complete(request())
+            .await
+            .is_err());
+        runtime.complete(request()).await.unwrap();
+
+        let default = FeatureHealth::Healthy;
+        assert_eq!(
+            feature_health_for_observation(
+                runtime.observation(Some(mxr_llm::LlmFeature::DraftAssist)),
+                default.clone(),
+            ),
+            FeatureHealth::Degraded {
+                reason: "last observed model request failed: endpoint unreachable".into(),
+            }
+        );
+        assert_eq!(
+            feature_health_for_observation(runtime.observation(None), default),
+            FeatureHealth::Healthy
+        );
+    }
 
     #[test]
     fn classify_sync_error_maps_oauth_failures_to_reauth_remediation() {
@@ -754,6 +868,28 @@ mod tests {
                 "mxr doctor".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn classify_sync_error_gives_headless_credential_recovery_without_echoing_details() {
+        let finding = classify_sync_error(
+            "imap",
+            "no credential found on disk for mxr/private-account (keychain disabled via MXR_KEYCHAIN=off)",
+        );
+
+        assert_eq!(finding.category, DoctorFindingCategory::Sync);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Error);
+        assert_eq!(finding.message, "Missing mail credential for imap");
+        assert!(finding.message.contains("imap"));
+        assert!(finding
+            .remediation
+            .iter()
+            .any(|step| step.contains("secrets.toml")));
+        assert!(finding
+            .remediation
+            .iter()
+            .any(|step| step.contains("MXR_KEYCHAIN=off")));
+        assert!(!finding.message.contains("mxr/private-account"));
     }
 
     #[test]

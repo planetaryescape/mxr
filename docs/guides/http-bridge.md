@@ -33,6 +33,12 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Architecture
 
+`/api/v1/admin/diagnostics` and `/api/v1/platform/llm/status` expose the same
+no-probe diagnostic data as the CLI. LLM outcomes are observed only when a
+feature makes a real completion request, separated by provider route, and held
+in process memory. A successful request does not mark another feature's
+provider healthy. Optional model failures do not change core mail readiness.
+
 Two ways to run the bridge — both serve the same router code:
 
 | Mode | When to use |

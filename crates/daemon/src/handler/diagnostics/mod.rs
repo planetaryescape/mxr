@@ -849,6 +849,38 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
         supports_streaming: capabilities.supports_streaming,
         request_timeout_secs: config.request_timeout_secs,
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
+        observations: state
+            .llm
+            .observations()
+            .into_iter()
+            .map(|(feature, outcome)| {
+                use mxr_llm::{CompletionObservation, LlmFailureKind};
+                use mxr_protocol::{LlmFailureKindData, LlmObservationData, LlmObservationStatus};
+                let feature = feature.map_or_else(
+                    || "default".to_string(),
+                    |feature| feature.key().to_string(),
+                );
+                match outcome {
+                    CompletionObservation::Succeeded => LlmObservationData {
+                        feature,
+                        status: LlmObservationStatus::Succeeded,
+                        failure: None,
+                    },
+                    CompletionObservation::Failed(kind) => LlmObservationData {
+                        feature,
+                        status: LlmObservationStatus::Failed,
+                        failure: Some(match kind {
+                            LlmFailureKind::Unreachable => LlmFailureKindData::Unreachable,
+                            LlmFailureKind::RateLimited => LlmFailureKindData::RateLimited,
+                            LlmFailureKind::Timeout => LlmFailureKindData::Timeout,
+                            LlmFailureKind::Unauthorized => LlmFailureKindData::Unauthorized,
+                            LlmFailureKind::Empty => LlmFailureKindData::Empty,
+                            LlmFailureKind::Other => LlmFailureKindData::Other,
+                        }),
+                    },
+                }
+            })
+            .collect(),
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }

@@ -18,8 +18,9 @@ mxr mcp serve
 ```
 
 The command speaks MCP over stdin/stdout. It connects to the active mxr daemon
-socket; normal daemon auto-start behavior still applies through other CLI
-commands, so run `mxr status` first if you want to verify the runtime.
+socket and does not start or replace daemon processes. For a supervised daemon,
+the MCP client and the `mxr` CLI both connect to the service-owned process. If
+the service is unavailable, MCP reports the IPC connection error.
 
 ## Required profile
 

@@ -49,6 +49,37 @@ use tokio_util::codec::Framed;
 // without taking a direct `mxr-transport` dependency.
 pub use mxr_transport::TransportAddr;
 
+/// Whether a client may start a local daemon when its selected Unix socket is
+/// unavailable. Supervised installations set this to `off` so only their
+/// service manager owns daemon creation and replacement.
+pub fn daemon_autostart_enabled() -> bool {
+    daemon_autostart_enabled_for(std::env::var("MXR_DAEMON_AUTOSTART").ok().as_deref())
+}
+
+fn daemon_autostart_enabled_for(value: Option<&str>) -> bool {
+    !value.is_some_and(|value| value.eq_ignore_ascii_case("off"))
+}
+
+/// Remediation shared by clients that cannot reach a daemon while autostart
+/// is disabled.
+pub fn daemon_autostart_disabled_message() -> &'static str {
+    "MXR_DAEMON_AUTOSTART=off and no compatible daemon is available; check the service manager and its logs, then restart the supervised service"
+}
+
+#[cfg(test)]
+mod daemon_autostart_policy_tests {
+    use super::daemon_autostart_enabled_for;
+
+    #[test]
+    fn autostart_stays_compatible_unless_explicitly_disabled() {
+        assert!(daemon_autostart_enabled_for(None));
+        assert!(daemon_autostart_enabled_for(Some("on")));
+        assert!(daemon_autostart_enabled_for(Some("false")));
+        assert!(!daemon_autostart_enabled_for(Some("off")));
+        assert!(!daemon_autostart_enabled_for(Some("OFF")));
+    }
+}
+
 /// Resolve `MXR_DAEMON_ADDR` to a Unix socket path for unix-only clients. Thin
 /// wrapper over [`TransportAddr::resolve_unix_socket`] so callers depend only on
 /// `mxr-client`.

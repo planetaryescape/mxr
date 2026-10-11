@@ -9,6 +9,7 @@
 
 import { expect, test, type Page, type Response } from "@playwright/test";
 
+import { acceptArchiveReview, archiveViaBridge, type ArchiveOperation } from "./helpers/archive";
 import { expectCursorOn, mailList, openList, reader } from "./helpers/mail";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
 
@@ -56,15 +57,22 @@ async function waitForPeople(page: Page) {
 interface Tracked {
   /** One per request, in the order the page sent them. */
   pending: Promise<string | null>[];
+  /** Archive identities that may still be running when a test exits early. */
+  archiveIdentities: Map<string, ArchiveOperation["identity"]>;
 }
 
 /** Mode done answers `{ mutation_id }`; mail mutations `{ result: { mutation_id } }`. */
 interface MutationAnswer {
   mutation_id?: string | null;
   result?: { mutation_id?: string | null } | null;
+  operation?: { mutation_id?: string | null; undo_available?: boolean } | null;
 }
 
-const idOf = (answer: MutationAnswer) => answer.mutation_id ?? answer.result?.mutation_id ?? null;
+const idOf = (answer: MutationAnswer) =>
+  answer.mutation_id ??
+  answer.result?.mutation_id ??
+  (answer.operation?.undo_available ? answer.operation.mutation_id : null) ??
+  null;
 
 async function mutationId(response: Response | null): Promise<string | null> {
   if (!response) return null;
@@ -74,11 +82,21 @@ async function mutationId(response: Response | null): Promise<string | null> {
 }
 
 function trackMutations(page: Page): Tracked {
-  const tracked: Tracked = { pending: [] };
+  const tracked: Tracked = { pending: [], archiveIdentities: new Map() };
   // From the request, so one still on its way when the test ends is waited for.
   page.on("request", (request) => {
     if (request.method() !== "POST") return;
-    if (!/\/modes\/[a-z]+\/done$|\/mutations\/(archive|trash)$/.test(request.url())) return;
+    if (
+      !/\/modes\/[a-z]+\/done$|\/mutations\/(archive|trash)$|\/archive-operations\/(submit|query)$/.test(
+        request.url(),
+      )
+    )
+      return;
+    if (request.url().includes("/archive-operations/")) {
+      // SAFETY: this listener only handles the app's typed archive request bodies.
+      const body = request.postDataJSON() as { identity?: ArchiveOperation["identity"] };
+      if (body.identity) tracked.archiveIdentities.set(body.identity.operation_id, body.identity);
+    }
     tracked.pending.push(
       request
         .response()
@@ -93,8 +111,32 @@ async function undoAll(page: Page, tracked: Tracked) {
   // In request order, not the order the answers came back: the daemon takes
   // overlapping requests in any order, and undoing in the wrong order leaves
   // an earlier state behind.
-  const ids = (await Promise.all(tracked.pending)).filter((id): id is string => id !== null);
-  for (const id of ids.toReversed()) {
+  const ids = new Set(
+    (await Promise.all(tracked.pending)).filter((id): id is string => id !== null),
+  );
+  // The first terminal receipt owns the only available Undo ID.
+  // oxlint-disable no-await-in-loop
+  for (const identity of tracked.archiveIdentities.values()) {
+    let operation: ArchiveOperation | undefined;
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      const response = await page.request.post(
+        `${readE2EState().bridgeUrl}/api/v1/mail/archive-operations/query`,
+        { headers: bridgeAuth(), data: { identity } },
+      );
+      if (!response.ok()) break;
+      // SAFETY: the query route returns the generated ArchiveOperation response envelope.
+      const body = (await response.json()) as { operation: ArchiveOperation };
+      operation = body.operation;
+      if (!operation.running) break;
+      // oxlint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (operation?.running)
+      throw new Error(`Archive operation ${identity.operation_id} stayed running for 30 seconds`);
+    if (operation?.undo_available) ids.add(operation.mutation_id);
+  }
+  // oxlint-enable no-await-in-loop
+  for (const id of [...ids].toReversed()) {
     // One already undone from the page answers with an error; that's fine.
     // oxlint-disable-next-line no-await-in-loop
     await page.request
@@ -132,7 +174,10 @@ test.describe("Messages: done here moves on", () => {
     // where they were, so the test that leaves somebody behind is the one
     // that fails.
     await expect
-      .poll(() => bandsByPerson(page), { timeout: 10_000, message: "everyone is back in their band" })
+      .poll(() => bandsByPerson(page), {
+        timeout: 10_000,
+        message: "everyone is back in their band",
+      })
       .toEqual(bandsBefore);
   });
 
@@ -434,7 +479,9 @@ test.describe("Inbox: the reader after archive", () => {
     const openedUrl = page.url();
     const openedTitle = await reader(page).getAttribute("aria-label");
     await page.keyboard.press("h");
+    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
+    await consent;
     await expect(page).not.toHaveURL(openedUrl);
     await expect(reader(page)).not.toHaveAttribute("aria-label", openedTitle!);
     await expect(reader(page)).toBeVisible();
@@ -453,7 +500,9 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
     const lastUrl = page.url();
     const lastTitle = await reader(page).getAttribute("aria-label");
+    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
+    await consent;
     await expect(page).not.toHaveURL(lastUrl);
     await expect(reader(page)).toBeVisible();
     await expect(reader(page)).not.toHaveAttribute("aria-label", lastTitle!);
@@ -475,11 +524,11 @@ test.describe("Inbox: the reader after archive", () => {
       `/api/v1/mail/threads/${encodeURIComponent(thread)}`,
     );
     // Another client archives the whole conversation.
-    const result = await bridge<MutationAnswer>(page, "/api/v1/mail/mutations/archive", {
-      message_ids: messages.map((message) => message.id),
-    });
-    const archived = idOf(result);
-    if (archived) mutations.pending.push(Promise.resolve(archived));
+    const result = await archiveViaBridge(
+      page,
+      messages.map((message) => message.id),
+    );
+    if (result.undo_available) mutations.pending.push(Promise.resolve(result.mutation_id));
     // This page hears about it the way it hears about any outside change:
     // a sync finishing refetches the lists.
     await bridge(page, "/api/v1/mail/sync", {});

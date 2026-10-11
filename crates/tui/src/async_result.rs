@@ -12,6 +12,11 @@ use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
     SendIdentityRetained(mxr_core::AccountId, mxr_core::SendIdentity),
+    ScheduledIdentityRetained(
+        mxr_core::AccountId,
+        mxr_core::SendIdentity,
+        mxr_core::DraftId,
+    ),
     Search {
         target: app::SearchTarget,
         append: bool,

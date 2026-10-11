@@ -657,6 +657,9 @@ impl App {
                             );
                             if let Some(dispatch) = self.modals.pending_platform_dispatch.last_mut()
                             {
+                                self.compose
+                                    .pending_schedule_files
+                                    .insert(pending.draft_path.clone());
                                 dispatch.compose = Some(Box::new(pending));
                             }
                         }

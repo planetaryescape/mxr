@@ -3341,10 +3341,11 @@ pub enum ResponseData {
         provider_message_id: Option<String>,
         rfc2822_message_id: String,
     },
-    /// Returned by `Request::ExtractDraftCommitments`.
+    /// Durable result of `Request::GetSendOutcome`.
     SendOutcome {
         outcome: Option<mxr_core::DraftSendOutcome>,
     },
+    /// Returned by `Request::ExtractDraftCommitments`.
     DraftCommitments {
         candidates: Vec<DraftCommitmentCandidateData>,
     },

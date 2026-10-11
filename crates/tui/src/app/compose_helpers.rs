@@ -19,7 +19,22 @@ impl App {
             })
         {
             self.compose.last_send_identity = Some((account, identity));
+            self.compose.last_send_query = None;
         }
+    }
+    pub(crate) fn compose_file_owned(&self, path: &std::path::Path) -> bool {
+        self.compose.active_draft_cleanup.contains(path)
+            || self.compose.pending_schedule_files.contains(path)
+            || self
+                .compose
+                .pending_send_mutations
+                .values()
+                .any(|(pending, _)| pending.draft_path == path)
+            || self
+                .compose
+                .pending_draft_cleanup
+                .iter()
+                .any(|pending| pending == path)
     }
     pub(crate) fn restore_failed_compose(&mut self, pending: PendingSend) {
         if self.compose.pending_send_confirm.is_none() && self.compose.pending_compose.is_none() {
@@ -30,6 +45,9 @@ impl App {
     }
 
     pub(crate) fn finish_compose_schedule(&mut self, pending: PendingSend, accepted: bool) {
+        self.compose
+            .pending_schedule_files
+            .remove(&pending.draft_path);
         if accepted {
             self.schedule_draft_cleanup(pending.draft_path);
         } else {
@@ -44,7 +62,11 @@ impl App {
     }
 
     pub(crate) fn take_pending_draft_cleanup(&mut self) -> Vec<std::path::PathBuf> {
-        std::mem::take(&mut self.compose.pending_draft_cleanup)
+        let paths = std::mem::take(&mut self.compose.pending_draft_cleanup);
+        self.compose
+            .active_draft_cleanup
+            .extend(paths.iter().cloned());
+        paths
     }
 
     /// First default-and-enabled account id, if any. Used by IPC
@@ -148,6 +170,7 @@ impl App {
             |(_, identity)| identity,
         );
         self.compose.last_send_identity = Some((draft.account_id.clone(), identity.clone()));
+        self.compose.last_send_query = None;
         #[cfg(not(test))]
         {
             if let Err(error) = crate::send_recovery_state::retain_compose(

@@ -327,7 +327,10 @@ pub async fn run() -> anyhow::Result<()> {
 
     let mut app = App::from_config(&config);
     match crate::send_recovery_state::last() {
-        Ok(identity) => app.compose.last_send_identity = identity,
+        Ok(identity) => {
+            app.compose.last_send_identity = identity;
+            app.compose.last_send_query = crate::send_recovery_state::last_query().ok().flatten();
+        }
         Err(error) => app.push_toast(crate::app::Toast::error(format!(
             "Cannot read send recovery; do not resend: {error}"
         ))),
@@ -1457,12 +1460,13 @@ pub async fn run() -> anyhow::Result<()> {
                 let mut pending = pending;
                 let compose = pending.compose.clone();
                 let result = async {
-                    if let Some((account, identity)) =
+                    if let Some((account, identity, draft_id)) =
                         crate::compose_persistence::prepare_compose_schedule(&bg, &mut pending)
                             .await?
                     {
-                        let _ = result_tx_inner
-                            .send(AsyncResult::SendIdentityRetained(account, identity));
+                        let _ = result_tx_inner.send(AsyncResult::ScheduledIdentityRetained(
+                            account, identity, draft_id,
+                        ));
                     }
                     for request in pending.prelude.drain(..) {
                         match ipc_call(&bg, request).await {
@@ -2457,12 +2461,26 @@ pub async fn run() -> anyhow::Result<()> {
                         *draft = reviewed_draft;
                         *identity = reviewed;
                         #[cfg(not(test))]
-                        crate::send_recovery_state::retain(&draft.account_id, &draft.id, identity)
-                            .map_err(|error| {
+                        {
+                            let retained = match compose_file.as_deref() {
+                                Some(file) => crate::send_recovery_state::retain_reviewed_compose(
+                                    &draft.account_id,
+                                    &draft.id,
+                                    identity,
+                                    file,
+                                ),
+                                None => crate::send_recovery_state::retain_reviewed(
+                                    &draft.account_id,
+                                    &draft.id,
+                                    identity,
+                                ),
+                            };
+                            retained.map_err(|error| {
                                 MxrError::Ipc(format!(
                                     "Cannot retain reviewed send identity: {error}"
                                 ))
                             })?;
+                        }
                         {
                             let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
                                 draft.account_id.clone(),
@@ -3016,6 +3034,11 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.search.page.ui_status = app::SearchUiStatus::Error;
                             }
                             app.status_message = Some(format!("Search count failed: {error}"));
+                        }
+                        AsyncResult::ScheduledIdentityRetained(account, identity, draft_id) => {
+                            let alias = format!("draft:{draft_id}");
+                            app.apply_retained_send_identity(account.clone(),identity.clone());
+                            if app.compose.last_send_identity.as_ref()==Some(&(account,identity)) { app.compose.last_send_query=Some(alias); }
                         }
                         AsyncResult::SendIdentityRetained(account, identity) => {
                             app.apply_retained_send_identity(account, identity);
@@ -4139,9 +4162,11 @@ pub async fn run() -> anyhow::Result<()> {
                                 format!("The daemon returned: {e}"),
                             );
                         }
-                        AsyncResult::PlatformModalLoaded { compose, title, result } => {
+                        AsyncResult::PlatformModalLoaded { compose, title, mut result } => {
                             if let Some(pending) = compose {
-                                app.finish_compose_schedule(*pending, result.is_ok());
+                                let pending = *pending;
+                                result = result.map(|body| format!("{body}\n\nQuery scheduled delivery with draft:{} for account {}", pending.draft_id(), pending.account_id));
+                                app.finish_compose_schedule(pending, result.is_ok());
                             }
                             app.modals.platform.title = title;
                             match result {

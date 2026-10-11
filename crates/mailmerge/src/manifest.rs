@@ -18,11 +18,15 @@ use std::path::{Path, PathBuf};
 pub enum RecordStatus {
     /// A local mxr draft exists for this record. Nothing has been sent.
     Drafted,
+    /// Submission identity retained; query before any further effect.
+    Uncertain,
+    /// Schedule acknowledgement was lost; never automatically reschedule.
+    ScheduleUncertain,
     /// `mxr send --at` accepted this draft for later delivery.
     Scheduled,
     /// `mxr send` reported success.
     Sent,
-    /// Draft creation, send, or scheduling failed; retryable.
+    /// A confirmed rejection or failure before submission; explicit retry required.
     Failed,
 }
 
@@ -45,6 +49,9 @@ pub enum FailureReason {
     /// `mxr send --at` did not schedule an existing draft.
     #[serde(rename = "schedule_refused")]
     Schedule,
+    Preview,
+    Outcome,
+    ScheduleOutcome,
 }
 
 impl FailureReason {
@@ -53,8 +60,22 @@ impl FailureReason {
             Self::Draft => "mxr refused to create the draft",
             Self::Send => "mxr refused to send the draft",
             Self::Schedule => "mxr refused to schedule the draft",
+            Self::Preview => "reviewed draft preview unavailable",
+            Self::Outcome => "send outcome needs checking; do not resend",
+            Self::ScheduleOutcome => "schedule acknowledgement needs checking; do not reschedule",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendReview {
+    pub account_id: String,
+    pub expected_revision: i64,
+    pub operation_id: String,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduled_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +85,8 @@ pub struct RecordEntry {
     pub to: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub draft_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<SendReview>,
     pub status: RecordStatus,
     /// Why this record failed. A fixed reason, never text from a subprocess.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -169,10 +192,20 @@ impl Manifest {
         std::fs::create_dir_all(state_dir)
             .with_context(|| format!("creating state dir {}", state_dir.display()))?;
         let path = Self::path_in(state_dir, &self.campaign_id);
-        let temp = path.with_extension("json.tmp");
-        std::fs::write(&temp, serde_json::to_string_pretty(self)?)
-            .with_context(|| format!("writing {}", temp.display()))?;
-        std::fs::rename(&temp, &path).with_context(|| format!("finalising {}", path.display()))?;
+        use std::io::Write;
+        let mut temp =
+            tempfile::NamedTempFile::new_in(state_dir).context("creating manifest checkpoint")?;
+        temp.write_all(serde_json::to_string_pretty(self)?.as_bytes())
+            .context("writing manifest checkpoint")?;
+        temp.as_file()
+            .sync_all()
+            .context("syncing manifest checkpoint")?;
+        temp.persist(&path)
+            .map_err(|error| error.error)
+            .context("committing manifest checkpoint")?;
+        std::fs::File::open(state_dir)?
+            .sync_all()
+            .context("syncing manifest directory")?;
         Ok(())
     }
 }
@@ -186,6 +219,7 @@ mod tests {
     fn entry(hash: &str, status: RecordStatus, draft: Option<&str>) -> RecordEntry {
         RecordEntry {
             record_hash: hash.to_string(),
+            review: None,
             to: format!("{hash}@example.com"),
             draft_id: draft.map(str::to_string),
             status,

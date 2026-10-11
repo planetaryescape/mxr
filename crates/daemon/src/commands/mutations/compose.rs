@@ -305,7 +305,7 @@ fn compose_result_output(
                 out
             } else {
                 format!(
-                    "Draft saved: {}\nSend with: mxr send {}\n",
+                    "Draft saved: {}\nReview with: mxr send {} --dry-run\nThen send with --expected-revision and --operation-id from that preview.\n",
                     draft.id, draft.id
                 )
             }
@@ -3048,7 +3048,7 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 "saved={saved}"
             );
             assert!(
-                saved.contains(&format!("Send with: mxr send {}", draft.id)),
+                saved.contains(&format!("Review with: mxr send {} --dry-run", draft.id)),
                 "saved={saved}"
             );
 

@@ -83,7 +83,7 @@ pub(crate) async fn prepare_reviewed_compose(
 pub(crate) async fn prepare_compose_schedule(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     pending: &mut crate::app::PendingPlatformDispatch,
-) -> Result<Option<(mxr_core::AccountId, SendIdentity)>, MxrError> {
+) -> Result<Option<(mxr_core::AccountId, SendIdentity, mxr_core::DraftId)>, MxrError> {
     let Some(compose) = &pending.compose else {
         return Ok(None);
     };
@@ -105,10 +105,15 @@ pub(crate) async fn prepare_compose_schedule(
     let send_at = *send_at;
     let (draft, identity) = prepare_reviewed_compose(bg, draft, &compose.draft_path).await?;
     pending.request = Request::ScheduleSend {
-        draft_id,
+        draft_id: draft_id.clone(),
         send_at,
         expected_revision: draft.revision,
     };
     pending.prelude.clear();
-    Ok(Some((draft.account_id, identity)))
+    #[cfg(not(test))]
+    crate::send_recovery_state::retain_schedule_query(&draft.account_id, &draft.id, &identity)
+        .map_err(|error| {
+            MxrError::Ipc(format!("Cannot retain scheduled outcome query: {error}"))
+        })?;
+    Ok(Some((draft.account_id, identity, draft_id)))
 }

@@ -9,6 +9,8 @@ struct Recovery {
     compose: Option<(AccountId, std::path::PathBuf)>,
     #[serde(default)]
     compose_files: Vec<(AccountId, std::path::PathBuf)>,
+    #[serde(default)]
+    query: Option<String>,
     last: Option<(AccountId, SendIdentity)>,
     operations: HashMap<DraftId, (AccountId, SendIdentity)>,
 }
@@ -25,9 +27,47 @@ fn load_at(path: &Path) -> std::io::Result<Recovery> {
 pub(crate) fn last() -> std::io::Result<Option<(AccountId, SendIdentity)>> {
     Ok(load_at(&path())?.last)
 }
-pub(crate) fn last_compose() -> std::io::Result<Option<(AccountId, std::path::PathBuf)>> {
-    Ok(reopenable_compose(load_at(&path())?))
+pub(crate) fn last_query() -> std::io::Result<Option<String>> {
+    Ok(load_at(&path())?.query)
 }
+#[cfg(not(test))]
+pub(crate) fn retain_schedule_query(
+    account: &AccountId,
+    draft: &DraftId,
+    identity: &SendIdentity,
+) -> std::io::Result<()> {
+    retain_query_at(&path(), account, draft, identity)
+}
+fn retain_query_at(
+    path: &Path,
+    account: &AccountId,
+    draft: &DraftId,
+    identity: &SendIdentity,
+) -> std::io::Result<()> {
+    let _guard = WRITER
+        .lock()
+        .map_err(|_| std::io::Error::other("send recovery lock poisoned"))?;
+    let mut recovery = load_at(path)?;
+    if recovery.last.as_ref() == Some(&(account.clone(), identity.clone()))
+        && recovery.operations.get(draft) == recovery.last.as_ref()
+    {
+        recovery.query = Some(format!("draft:{draft}"));
+        write_recovery(path, &recovery)?;
+    }
+    Ok(())
+}
+pub(crate) fn last_compose_excluding(
+    owned: &[std::path::PathBuf],
+) -> std::io::Result<Option<(AccountId, std::path::PathBuf)>> {
+    let recovery = load_at(&path())?;
+    Ok(recovery
+        .compose_files
+        .into_iter()
+        .rev()
+        .chain(recovery.compose)
+        .find(|(_, file)| file.is_file() && !owned.contains(file)))
+}
+#[cfg(test)]
 fn reopenable_compose(recovery: Recovery) -> Option<(AccountId, std::path::PathBuf)> {
     recovery
         .compose_files
@@ -40,12 +80,12 @@ pub(crate) fn for_draft(draft: &DraftId) -> std::io::Result<Option<(AccountId, S
     Ok(load_at(&path())?.operations.get(draft).cloned())
 }
 #[cfg(not(test))]
-pub(crate) fn retain(
+pub(crate) fn retain_reviewed(
     account: &AccountId,
     draft: &DraftId,
     identity: &SendIdentity,
 ) -> std::io::Result<()> {
-    retain_at(&path(), account, draft, identity, None)
+    retain_at_owned(&path(), account, draft, identity, None, false)
 }
 #[cfg(not(test))]
 pub(crate) fn retain_compose(
@@ -121,10 +161,14 @@ fn retain_at_owned(
     }
     if promote || recovery.last.is_none() || recovery.last.as_ref() == previous {
         recovery.last = Some((account.clone(), identity.clone()));
+        recovery.query = None;
     }
     recovery
         .operations
         .insert(draft.clone(), (account.clone(), identity.clone()));
+    write_recovery(path, &recovery)
+}
+fn write_recovery(path: &Path, recovery: &Recovery) -> std::io::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| std::io::Error::other("missing recovery directory"))?;
@@ -268,5 +312,48 @@ mod revision_owner_tests {
         assert_eq!(recovery.last, Some((account.clone(), b_identity)));
         assert_eq!(recovery.operations[&draft_a].1.expected_revision, 2);
         assert_eq!(reopenable_compose(recovery), Some((account, b)));
+    }
+    #[test]
+    fn scheduled_alias_survives_reload_and_late_send_cannot_replace_newer_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("recovery.json");
+        let account = AccountId::new();
+        let draft_a = DraftId::new();
+        let draft_b = DraftId::new();
+        let a = dir.path().join("a.md");
+        let b = dir.path().join("b.md");
+        std::fs::write(&a, "A").unwrap();
+        std::fs::write(&b, "B").unwrap();
+        retain_at(
+            &state,
+            &account,
+            &draft_a,
+            &SendIdentity::for_revision(&draft_a, 1),
+            Some(&a),
+        )
+        .unwrap();
+        let identity = SendIdentity::for_revision(&draft_b, 2);
+        retain_at(&state, &account, &draft_b, &identity, Some(&b)).unwrap();
+        retain_query_at(&state, &account, &draft_b, &identity).unwrap();
+        retain_at_owned(
+            &state,
+            &account,
+            &draft_a,
+            &SendIdentity::for_revision(&draft_a, 2),
+            None,
+            false,
+        )
+        .unwrap();
+        retain_query_at(
+            &state,
+            &account,
+            &draft_a,
+            &SendIdentity::for_revision(&draft_a, 2),
+        )
+        .unwrap();
+        let reloaded = load_at(&state).unwrap();
+        assert_eq!(reloaded.query, Some(format!("draft:{draft_b}")));
+        assert_eq!(reloaded.last, Some((account.clone(), identity)));
+        assert_eq!(reopenable_compose(reloaded), Some((account, b)));
     }
 }

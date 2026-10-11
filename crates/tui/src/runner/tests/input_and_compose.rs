@@ -2426,3 +2426,111 @@ async fn stale_provider_save_keeps_edited_file_and_has_no_provider_effect() {
     drop(tx);
     server.await.unwrap();
 }
+
+#[test]
+fn retained_file_cannot_reopen_during_send_save_or_cleanup() {
+    let directory = tempfile::tempdir().unwrap();
+    for key in ['s', 'd'] {
+        let file = directory.path().join(format!("{key}.md"));
+        std::fs::write(&file, "reviewed text").unwrap();
+        let pending = recovery_pending(file.clone());
+        let mut app = App::new();
+        app.compose.pending_send_confirm = Some(pending.clone());
+        app.handle_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+        let queued = app.pending_mutation_queue.pop().unwrap();
+        app.compose.failed_send = Some(pending);
+        app.apply(Action::ReopenLastSendDraft);
+        assert!(
+            app.compose.pending_compose.is_none(),
+            "same file is owned by submission"
+        );
+        assert!(app.compose.failed_send.is_some());
+        app.finish_compose_mutation(queued.id);
+        app.apply_mutation_completion(queued.effect, true);
+        assert_eq!(app.take_pending_draft_cleanup(), vec![file.clone()]);
+        app.apply(Action::ReopenLastSendDraft);
+        assert!(
+            app.compose.pending_compose.is_none(),
+            "cleanup owns it after queue drain"
+        );
+        crate::local_io::handle_result(
+            &mut app,
+            crate::async_result::AsyncResult::DraftCleanup {
+                path: file.clone(),
+                result: Err("synthetic failure".into()),
+            },
+        );
+        app.apply(Action::ReopenLastSendDraft);
+        assert!(
+            matches!(app.compose.pending_compose, Some(ComposeAction::EditDraft { path, .. }) if path == file)
+        );
+    }
+}
+
+#[test]
+fn in_flight_schedule_keeps_file_owned_after_dispatch_drains_and_allows_another_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("schedule.md");
+    std::fs::write(&file, "review").unwrap();
+    let pending = recovery_pending(file.clone());
+    let mut app = App::new();
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    app.compose.pending_send_at_input = Some("in 2h".into());
+    app.compose
+        .pending_time
+        .update("in 2h", &app.modals.snooze_config);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let dispatch = app.take_pending_platform_dispatch().pop().unwrap();
+    app.compose.failed_send = Some(pending);
+    app.apply(Action::ReopenLastSendDraft);
+    assert!(app.compose.pending_compose.is_none());
+    let another = directory.path().join("another.md");
+    std::fs::write(&another, "another review").unwrap();
+    app.compose.failed_send = Some(recovery_pending(another.clone()));
+    app.apply(Action::ReopenLastSendDraft);
+    assert!(
+        matches!(app.compose.pending_compose, Some(ComposeAction::EditDraft { path, .. }) if path == another)
+    );
+    app.compose.pending_compose = None;
+    app.finish_compose_schedule(*dispatch.compose.unwrap(), false);
+    app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    assert!(
+        matches!(app.compose.pending_compose, Some(ComposeAction::EditDraft { path, .. }) if path == file)
+    );
+}
+
+#[test]
+fn scheduled_outcome_action_queries_alias_without_changing_send_identity() {
+    let mut app = App::new();
+    let account = AccountId::new();
+    let draft = mxr_core::DraftId::new();
+    let identity = mxr_core::SendIdentity::for_revision(&draft, 2);
+    app.compose.last_send_identity = Some((account.clone(), identity.clone()));
+    app.compose.last_send_query = Some(format!("draft:{draft}"));
+    app.apply(Action::CheckLastSendOutcome);
+    let request = app.take_pending_platform_dispatch().pop().unwrap().request;
+    assert!(
+        matches!(request, Request::GetSendOutcome { account_id, operation_id } if account_id == account && operation_id == format!("draft:{draft}"))
+    );
+    assert_eq!(app.compose.last_send_identity, Some((account, identity)));
+}
+
+#[test]
+fn cleanup_submission_failure_releases_file_without_deleting_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("retained.md");
+    std::fs::write(&path, "retained text").unwrap();
+    let mut app = App::new();
+    app.compose.failed_send = Some(recovery_pending(path.clone()));
+    app.schedule_draft_cleanup(path.clone());
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    drop(rx);
+    crate::local_io::submit_pending_work(&mut app, &tx);
+    assert!(!app.compose_file_owned(&path));
+    assert!(path.exists());
+    app.apply(Action::ReopenLastSendDraft);
+    assert!(
+        matches!(app.compose.pending_compose,Some(ComposeAction::EditDraft{path:opened,..}) if opened==path)
+    );
+}

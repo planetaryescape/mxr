@@ -80,8 +80,9 @@ jobs:
       - name: Run v1 launch proof (fake provider, daemon, CLI, MCP)
         if: needs.plan.outputs.cli_changed == 'true'
         run: |
-          cargo build -p mxr
+          cargo build -p mxr -p mxr-mailmerge
           bash scripts/v1_launch_proof.sh
+          python3 scripts/verify-mailmerge-outcomes.py --mxr target/debug/mxr --mailmerge target/debug/mxr-mailmerge --runtime "$RUNNER_TEMP/mxr-mailmerge-proof" --evidence "$RUNNER_TEMP/mxr-mailmerge-proof.json"
       - name: Record live provider credential evidence
         if: needs.plan.outputs.cli_changed == 'true'
         run: bash scripts/live_provider_smoke_evidence.sh

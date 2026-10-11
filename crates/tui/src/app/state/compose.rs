@@ -130,9 +130,12 @@ pub struct DeferredCompose {
 #[derive(Default)]
 pub struct ComposeState {
     pub failed_send: Option<PendingSend>,
+    pub pending_schedule_files: std::collections::HashSet<std::path::PathBuf>,
+    pub last_send_query: Option<String>,
     pub pending_send_mutations: HashMap<crate::app::MutationId, (PendingSend, bool)>,
     pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
+    pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_send_at_input: Option<String>,

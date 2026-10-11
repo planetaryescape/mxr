@@ -35,7 +35,7 @@ The outcome query distinguishes three results:
 
 An accepted or unknown operation remains tied to its original draft and
 account, including after draft cleanup and daemon restart. Reusing the same
-operation ID retrieves that operation's result; a different ID does not make
+operation ID with `mxr send-outcome` retrieves its result; a different ID does not make
 an uncertain send safe to repeat.
 
 ## Find an interrupted send
@@ -64,7 +64,10 @@ mxr send DRAFT_ID --at "tomorrow 9am" \
   --expected-revision REVISION_FROM_PREVIEW
 ```
 
-The scheduler records its attempt before sending. An uncertain attempt must be
-resolved by its retained send outcome; it is not safe to schedule the draft
+The scheduler assigns a separate operation identity and records its attempt
+before sending. Query the latest attempt with
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
+The ordinary send preview's ID does not identify a scheduled attempt.
+An uncertain attempt must be resolved by its retained send outcome; it is not safe to schedule the draft
 again under a new identity. The [automated follow-ups guide](/guides/automated-followups/)
 shows the scheduling flow.

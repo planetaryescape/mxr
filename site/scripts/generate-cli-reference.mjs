@@ -104,7 +104,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   send: {
-    use: 'Preview a saved draft, then send or schedule the reviewed revision. Keep the displayed operation ID and query it after a lost response; `unknown` is not permission to retry. Reusing the same operation ID retrieves its recorded result. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` with the reviewed revision and operation ID to bypass a Blocker the previous `--check` minted.',
+    use: 'Preview a saved draft, then send or schedule the reviewed revision. For an immediate send, keep the preview operation ID and query it with `mxr send-outcome` after a lost response; `unknown` is not permission to retry. The scheduler assigns a separate identity: query its latest outcome with `mxr send-outcome "draft:DRAFT_ID" --account ACCOUNT_ID`. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` with the reviewed revision and operation ID to bypass a Blocker the previous `--check` minted.',
     examples: [
       "mxr send DRAFT_ID --dry-run --format json   # retain the reviewed revision and operation ID",
       "mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --operation-id OPERATION_ID_FROM_PREVIEW",

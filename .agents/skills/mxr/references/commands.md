@@ -312,10 +312,12 @@ mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
 mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
 ```
 
-`--at` requires `--expected-revision` from the preview. The scheduled operation
-uses the operation identity shown by that preview. After a lost response, query
-the retained operation instead of rerunning the command. `unknown` means do not
-resend; only explicit `not_accepted` evidence allows a newly reviewed operation.
+`--at` requires `--expected-revision` from the preview. The scheduler assigns a
+separate operation identity. Query its latest outcome with
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`; the
+ordinary send preview's operation ID does not identify a scheduled attempt.
+`unknown` means do not resend; only explicit `not_accepted` evidence allows a
+newly reviewed operation.
 
 ### `mxr send-outcome <OPERATION_ID> --account <ACCOUNT_ID>`
 Inspect a retained send after a disconnect, including after draft cleanup.

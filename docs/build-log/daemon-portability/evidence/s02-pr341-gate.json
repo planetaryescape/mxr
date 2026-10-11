@@ -1,0 +1,351 @@
+{
+  "pr": "https://github.com/planetaryescape/mxr/pull/341",
+  "base": "6ed0554c24df5bfbb99aaaebec5fdfab38254f50",
+  "head": "3d338bebfa9e6b714b6f9503ed5546c037d5eef1",
+  "tree": "3a903ddea1843b4c380cd81adf344882e7d39c42",
+  "files": [
+    "Cargo.lock",
+    "apps/web/scripts/gen-bridge-types.mjs",
+    "apps/web/src/api/client.ts",
+    "apps/web/src/api/generated.ts",
+    "apps/web/src/features/compose/ComposeEditorFlow.test.tsx",
+    "apps/web/src/features/compose/ComposeEditorPanel.tsx",
+    "apps/web/src/features/compose/ComposeHost.test.tsx",
+    "apps/web/src/features/compose/ComposeTopBar.tsx",
+    "apps/web/src/features/compose/HtmlDraftNotice.test.tsx",
+    "apps/web/src/features/compose/api.ts",
+    "apps/web/src/features/compose/codemirror/CodeMirrorComposeEditor.tsx",
+    "apps/web/src/features/compose/session/acceptedDraftRevision.test.ts",
+    "apps/web/src/features/compose/session/acceptedDraftRevision.ts",
+    "apps/web/src/features/compose/session/activeDrafts.test.ts",
+    "apps/web/src/features/compose/session/activeDrafts.ts",
+    "apps/web/src/features/compose/session/composeController.ts",
+    "apps/web/src/features/compose/session/composeDraft.ts",
+    "apps/web/src/features/compose/session/composeShortcuts.ts",
+    "apps/web/src/features/compose/session/useComposeAutosave.test.tsx",
+    "apps/web/src/features/compose/session/useComposeAutosave.ts",
+    "apps/web/src/features/compose/session/useComposeRecovery.test.tsx",
+    "apps/web/src/features/compose/session/useComposeSend.ts",
+    "apps/web/src/features/compose/session/useDraftSaveActions.test.tsx",
+    "apps/web/src/features/compose/session/useDraftSaveActions.ts",
+    "apps/web/src/features/compose/session/useRecoveryActions.test.tsx",
+    "apps/web/src/features/compose/session/useRecoveryAttachments.test.tsx",
+    "apps/web/src/features/compose/tiptap/TiptapComposeEditor.test.tsx",
+    "apps/web/src/features/compose/useComposeSession.test.ts",
+    "apps/web/src/features/compose/useComposeSession.ts",
+    "apps/web/src/features/drafts/DraftsRoute.test.tsx",
+    "apps/web/src/features/drafts/DraftsRoute.tsx",
+    "apps/web/src/features/drafts/api.ts",
+    "crates/client/Cargo.toml",
+    "crates/client/src/lib.rs",
+    "crates/compose/Cargo.toml",
+    "crates/compose/src/draft_codec.rs",
+    "crates/compose/src/email.rs",
+    "crates/compose/src/frontmatter.rs",
+    "crates/core/src/types.rs",
+    "crates/daemon/src/activity/mapper.rs",
+    "crates/daemon/src/commands/demo.rs",
+    "crates/daemon/src/commands/mutations/compose.rs",
+    "crates/daemon/src/commands/status.rs",
+    "crates/daemon/src/commands/suggest_recipients.rs",
+    "crates/daemon/src/handler/account_scope.rs",
+    "crates/daemon/src/handler/commitments_extract.rs",
+    "crates/daemon/src/handler/diagnostics/mod.rs",
+    "crates/daemon/src/handler/draft_compose.rs",
+    "crates/daemon/src/handler/draft_refine.rs",
+    "crates/daemon/src/handler/error.rs",
+    "crates/daemon/src/handler/messages_ack.rs",
+    "crates/daemon/src/handler/mod.rs",
+    "crates/daemon/src/handler/mutations.rs",
+    "crates/daemon/src/handler/promises.rs",
+    "crates/daemon/src/handler/safety_llm.rs",
+    "crates/daemon/src/handler/safety_timing.rs",
+    "crates/daemon/src/handler/suggest_recipients.rs",
+    "crates/daemon/src/handler/tests.rs",
+    "crates/daemon/src/handler/tests/account_scope.rs",
+    "crates/daemon/src/handler/tests/body_and_invites.rs",
+    "crates/daemon/src/handler/tests/draft_revisions.rs",
+    "crates/daemon/src/handler/tests/html_drafts.rs",
+    "crates/daemon/src/handler/tests/mutations_and_delivery.rs",
+    "crates/daemon/src/handler/tests/platform_and_export.rs",
+    "crates/daemon/src/handler/tests/routing_and_search.rs",
+    "crates/daemon/src/server.rs",
+    "crates/daemon/src/state.rs",
+    "crates/daemon/tests/selected_daemon_diagnostics.rs",
+    "crates/mcp/src/lib.rs",
+    "crates/outbound/src/email.rs",
+    "crates/protocol/src/lib.rs",
+    "crates/protocol/src/types.rs",
+    "crates/provider-fake/src/fixtures.rs",
+    "crates/provider-fake/src/lib.rs",
+    "crates/provider-gmail/src/provider.rs",
+    "crates/provider-gmail/src/send.rs",
+    "crates/provider-smtp/src/lib.rs",
+    "crates/provider-smtp/tests/live_smoke.rs",
+    "crates/safety/src/attachment.rs",
+    "crates/safety/src/commitments.rs",
+    "crates/safety/src/pii.rs",
+    "crates/safety/src/recipients.rs",
+    "crates/safety/src/reply_all.rs",
+    "crates/safety/src/tone.rs",
+    "crates/safety/tests/no_raw_secrets.rs",
+    "crates/store/migrations/072_draft_revision.sql",
+    "crates/store/src/diagnostics.rs",
+    "crates/store/src/draft.rs",
+    "crates/store/src/draft_recovery.rs",
+    "crates/store/src/pool.rs",
+    "crates/store/src/scheduled_sends.rs",
+    "crates/store/src/tests.rs",
+    "crates/tui/src/app/compose_helpers.rs",
+    "crates/tui/src/app/input.rs",
+    "crates/tui/src/app/platform_actions.rs",
+    "crates/tui/src/compose_flow.rs",
+    "crates/tui/src/runner.rs",
+    "crates/tui/src/runner/tests/accounts_and_delivery.rs",
+    "crates/tui/src/ui/drafts_modal.rs",
+    "crates/web/Cargo.toml",
+    "crates/web/src/admin_handlers.rs",
+    "crates/web/src/auth.rs",
+    "crates/web/src/lib.rs",
+    "crates/web/src/openapi.rs",
+    "crates/web/src/promise_routes.rs",
+    "crates/web/src/request_types.rs",
+    "crates/web/src/routes_v6.rs",
+    "crates/web/src/snapshots/mxr_web__tests__openapi_spec_summary.snap",
+    "crates/web/src/tests.rs",
+    "crates/web/src/tests/compose_and_scheduling.rs",
+    "crates/web/src/tests/recovery_attachments.rs",
+    "crates/web/src/tests/recovery_retry.rs",
+    "crates/web/src/tests/unsaved_recovery.rs",
+    "crates/web/tests/integration.rs",
+    "docs/blueprint/06-compose.md",
+    "docs/implementation/daemon-portability/s02-draft-revisions.md",
+    "scripts/smoke-draft-revisions"
+  ],
+  "checks": [
+    {
+      "name": "Vercel Agent Review",
+      "result": "NEUTRAL",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://vercel.com/github"
+    },
+    {
+      "name": "cubic \u00b7 AI code reviewer",
+      "result": "NEUTRAL",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://www.cubic.dev/pr/planetaryescape/mxr/pull/341"
+    },
+    {
+      "name": "CodeRabbit",
+      "result": "SUCCESS",
+      "status": "SUCCESS",
+      "workflow": null,
+      "url": ""
+    },
+    {
+      "name": "Vercel",
+      "result": "SUCCESS",
+      "status": "SUCCESS",
+      "workflow": null,
+      "url": "https://vercel.com/planetaryescape/mxr-mail/88cdxPQqTRXoPcmAK7D99Bj7gUcd"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://vercel.com/github"
+    },
+    {
+      "name": "approve-and-enable",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "Dependabot Auto-Merge",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130634528/job/114444068272"
+    },
+    {
+      "name": "Detect Changes",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444093897"
+    },
+    {
+      "name": "Bridge integration tests",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "OpenAPI Conformance",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635939/job/114444094443"
+    },
+    {
+      "name": "Secret Scan",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444093878"
+    },
+    {
+      "name": "Spec validates as OpenAPI 3.1",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "OpenAPI Conformance",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635939/job/114444094297"
+    },
+    {
+      "name": "Release Gate Scripts",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444093703"
+    },
+    {
+      "name": "cargo deny",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444132938"
+    },
+    {
+      "name": "Check",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444132929"
+    },
+    {
+      "name": "Architecture Boundaries",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133023"
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133035"
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444132972"
+    },
+    {
+      "name": "Format",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444132956"
+    },
+    {
+      "name": "Clippy",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133136"
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133143"
+    },
+    {
+      "name": "Test (semantic-local)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133015"
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133118"
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133060"
+    },
+    {
+      "name": "Web Unit Tests",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133050"
+    },
+    {
+      "name": "Web E2E",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133095"
+    },
+    {
+      "name": "Coverage",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444134152"
+    },
+    {
+      "name": "SQLx Offline",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133073"
+    },
+    {
+      "name": "Docs Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444134051"
+    },
+    {
+      "name": "Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133822"
+    },
+    {
+      "name": "Rustdoc",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133024"
+    },
+    {
+      "name": "MSRV (1.94)",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444133635"
+    },
+    {
+      "name": "Install Smoke Test",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937/job/114444134012"
+    }
+  ],
+  "authoritative_patch_matches": true,
+  "merge_tree_matches": true,
+  "unready": [],
+  "superseded_checks": [],
+  "merged_commit": "a631583c8fd8438abc6892fdf10fb49dc09e3748",
+  "current_main": "a631583c8fd8438abc6892fdf10fb49dc09e3748",
+  "integrated_tree_matches": true
+}

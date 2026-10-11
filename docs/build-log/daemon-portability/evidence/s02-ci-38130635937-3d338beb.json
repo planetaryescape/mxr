@@ -1,0 +1,349 @@
+{
+  "runId": 38130635937,
+  "headSha": "3d338bebfa9e6b714b6f9503ed5546c037d5eef1",
+  "headTree": "3a903ddea1843b4c380cd81adf344882e7d39c42",
+  "baseSha": "6ed0554c24df5bfbb99aaaebec5fdfab38254f50",
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38130635937",
+  "status": "completed",
+  "conclusion": "success",
+  "createdAt": "2026-10-11T10:04:24Z",
+  "completedAt": "2026-10-11T10:20:10Z",
+  "wallDurationSeconds": 946,
+  "jobCounts": {
+    "success": 18,
+    "failed": 0,
+    "skipped": 5,
+    "total": 23
+  },
+  "jobs": [
+    {
+      "name": "Release Gate Scripts",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444093703,
+      "startedAt": "2026-10-11T10:04:48Z",
+      "completedAt": "2026-10-11T10:04:56Z",
+      "durationSeconds": 8
+    },
+    {
+      "name": "Secret Scan",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444093878,
+      "startedAt": "2026-10-11T10:04:48Z",
+      "completedAt": "2026-10-11T10:05:13Z",
+      "durationSeconds": 25
+    },
+    {
+      "name": "Detect Changes",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444093897,
+      "startedAt": "2026-10-11T10:04:48Z",
+      "completedAt": "2026-10-11T10:04:54Z",
+      "durationSeconds": 6
+    },
+    {
+      "name": "Check",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444132929,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:06:45Z",
+      "durationSeconds": 103
+    },
+    {
+      "name": "cargo deny",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444132938,
+      "startedAt": "2026-10-11T10:05:01Z",
+      "completedAt": "2026-10-11T10:05:26Z",
+      "durationSeconds": 25
+    },
+    {
+      "name": "Format",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444132956,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:16Z",
+      "durationSeconds": 14
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444132972,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:22Z",
+      "durationSeconds": 20
+    },
+    {
+      "name": "Test (semantic-local)",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133015,
+      "startedAt": "2026-10-11T10:05:01Z",
+      "completedAt": "2026-10-11T10:10:04Z",
+      "durationSeconds": 303
+    },
+    {
+      "name": "Architecture Boundaries",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133023,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:10Z",
+      "durationSeconds": 8
+    },
+    {
+      "name": "Rustdoc",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133024,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:06:29Z",
+      "durationSeconds": 87
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133035,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:24Z",
+      "durationSeconds": 22
+    },
+    {
+      "name": "Web Unit Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133050,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:51Z",
+      "durationSeconds": 49
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133060,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:11Z",
+      "durationSeconds": 9
+    },
+    {
+      "name": "SQLx Offline",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133073,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:06:42Z",
+      "durationSeconds": 100
+    },
+    {
+      "name": "Web E2E",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133095,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:20:10Z",
+      "durationSeconds": 908
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133118,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:05:32Z",
+      "durationSeconds": 30
+    },
+    {
+      "name": "Clippy",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133136,
+      "startedAt": "2026-10-11T10:05:03Z",
+      "completedAt": "2026-10-11T10:06:54Z",
+      "durationSeconds": 111
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "status": "completed",
+      "conclusion": "success",
+      "jobId": 114444133143,
+      "startedAt": "2026-10-11T10:05:02Z",
+      "completedAt": "2026-10-11T10:09:29Z",
+      "durationSeconds": 267
+    },
+    {
+      "name": "MSRV (1.94)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "jobId": 114444133635,
+      "startedAt": "2026-10-11T10:04:55Z",
+      "completedAt": "2026-10-11T10:04:54Z",
+      "durationSeconds": null
+    },
+    {
+      "name": "Build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "jobId": 114444133822,
+      "startedAt": "2026-10-11T10:04:55Z",
+      "completedAt": "2026-10-11T10:04:54Z",
+      "durationSeconds": null
+    },
+    {
+      "name": "Install Smoke Test",
+      "status": "completed",
+      "conclusion": "skipped",
+      "jobId": 114444134012,
+      "startedAt": "2026-10-11T10:04:55Z",
+      "completedAt": "2026-10-11T10:04:54Z",
+      "durationSeconds": null
+    },
+    {
+      "name": "Docs Build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "jobId": 114444134051,
+      "startedAt": "2026-10-11T10:04:55Z",
+      "completedAt": "2026-10-11T10:04:55Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Coverage",
+      "status": "completed",
+      "conclusion": "skipped",
+      "jobId": 114444134152,
+      "startedAt": "2026-10-11T10:04:55Z",
+      "completedAt": "2026-10-11T10:04:54Z",
+      "durationSeconds": null
+    }
+  ],
+  "workspaceTests": [
+    {
+      "job": "Test (fast / no semantic)",
+      "jobId": 114444133143,
+      "run": 3983,
+      "passed": 3983,
+      "skipped": 9,
+      "failed": 0,
+      "testDurationSeconds": 91.390,
+      "jobDurationSeconds": 267
+    },
+    {
+      "job": "Test (semantic-local)",
+      "jobId": 114444133015,
+      "run": 4029,
+      "passed": 4029,
+      "skipped": 10,
+      "failed": 0,
+      "testDurationSeconds": 128.269,
+      "jobDurationSeconds": 303
+    }
+  ],
+  "webUnitTests": {
+    "jobId": 114444133050,
+    "filesPassed": 157,
+    "testsPassed": 885,
+    "testsFailed": 0,
+    "jobDurationSeconds": 49,
+    "testCommandDurationSeconds": 31
+  },
+  "e2e": {
+    "jobId": 114444133095,
+    "conclusion": "success",
+    "jobStartedAt": "2026-10-11T10:05:02Z",
+    "jobCompletedAt": "2026-10-11T10:20:10Z",
+    "jobDurationSeconds": 908,
+    "e2eStartedAt": "2026-10-11T10:07:44Z",
+    "e2eCompletedAt": "2026-10-11T10:19:48Z",
+    "e2eDurationSeconds": 724,
+    "passed": 381,
+    "failed": 0,
+    "flaky": 0,
+    "reportedDuration": "12.1m",
+    "speedGate": {
+      "startedAt": "2026-10-11T10:19:48Z",
+      "completedAt": "2026-10-11T10:20:07Z",
+      "stepDurationSeconds": 19,
+      "passed": 4,
+      "failed": 0,
+      "testDuration": "18.5s",
+      "p95Milliseconds": {
+        "desk": {
+          "j": 32.6,
+          "k": 32.3,
+          "s": 32.4,
+          "e": 32.1
+        },
+        "inbox": {
+          "j": 32.5,
+          "k": 32.7,
+          "s": 32.4,
+          "e": 32.3
+        },
+        "inboxOpen": {
+          "enter": 29.7
+        }
+      }
+    },
+    "diagnostics": "No E2E retry/failure diagnostic found in the captured log."
+  },
+  "openApi": {
+    "runId": 38130635939,
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Spec validates as OpenAPI 3.1",
+        "jobId": 114444094297,
+        "conclusion": "success",
+        "durationSeconds": 139,
+        "schemathesisPassed": 232,
+        "schemathesisFailed": 0
+      },
+      {
+        "name": "Bridge integration tests",
+        "jobId": 114444094443,
+        "conclusion": "success",
+        "durationSeconds": 80,
+        "integrationTestsPassed": 6,
+        "failed": 0
+      }
+    ],
+    "artifactId": 11698919242,
+    "artifactBytes": 101022
+  },
+  "baselineComparison": {
+    "previousRun": 38128915333,
+    "previousHead": "010ae9518c5ee9bf96c194628483e10a0f0ac4ce",
+    "previousConclusion": "success",
+    "previousFullWorkflowWallSeconds": 885,
+    "previousE2eJobSeconds": 863,
+    "previousE2eSuiteSeconds": 709,
+    "previousE2eSuiteReportedDuration": "11.8m",
+    "previousE2ePassed": 380,
+    "previousFlaky": 1,
+    "previousFlakyTest": "a saved width is there on the first frame, with no shift as the page loads",
+    "previousObservedAssertion": "Expected pane width 453; received 452.",
+    "previousSpeedSuiteSeconds": 17.9,
+    "currentFullWorkflowWallSeconds": 946,
+    "currentE2eJobSeconds": 908,
+    "currentE2eSuiteSeconds": 724,
+    "currentE2eSuiteReportedDuration": "12.1m",
+    "currentE2ePassed": 381,
+    "currentFlaky": 0,
+    "currentSpeedSuiteSeconds": 18.5,
+    "deltaSeconds": {
+      "workflowWall": 61,
+      "e2eJob": 45,
+      "e2eSuite": 15,
+      "speedSuite": 0.6
+    }
+  },
+  "note": "GitHub Actions evidence only; no local execution. Raw logs are stored under ignored target/portability-ci/3d338beb."
+}

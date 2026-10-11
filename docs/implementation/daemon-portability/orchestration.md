@@ -1,10 +1,10 @@
 # Each portability stage ships a usable workflow
 
-Status: S01 is done in [v0.6.62](https://github.com/planetaryescape/mxr/releases/tag/v0.6.62), and S08b is done in [v0.6.63](https://github.com/planetaryescape/mxr/releases/tag/v0.6.63). Both passed published-artifact checks and isolated installer/Homebrew journeys. S02 draft recovery remains in correction in [PR335](https://github.com/planetaryescape/mxr/pull/335). S08a supervised shutdown has passed source review and CI in [PR336](https://github.com/planetaryescape/mxr/pull/336); local build and stop/restart validation remain blocked by the paused shared queue. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
+Status: S01 is released in [v0.6.62](https://github.com/planetaryescape/mxr/releases/tag/v0.6.62), S08b in [v0.6.63](https://github.com/planetaryescape/mxr/releases/tag/v0.6.63), and S08a in [v0.6.64](https://github.com/planetaryescape/mxr/releases/tag/v0.6.64). S02 is integrated in [PR341](https://github.com/planetaryescape/mxr/pull/341) at `a631583c8fd8438abc6892fdf10fb49dc09e3748`, with its exact candidate CI and review complete. [Release PR344](https://github.com/planetaryescape/mxr/pull/344) merged as `7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54`, setting the manifest to 0.6.65. Its release artifacts and S02 installed journeys remain pending. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
 
 The outcome is safer existing clients across disconnects, restarts and different daemon hosts, leaving a future native SwiftUI client and personal VPS deployment possible with one active daemon owner. The iOS app, Hostinger provisioning and public HTTP exposure remain outside this readiness run.
 
-The initial fetched base was `origin/main` at `80606f4833b651bf9b07975ddd49083d7cb2568a`, also the source of [v0.6.61](https://github.com/planetaryescape/mxr/releases/tag/v0.6.61). Its [release workflow](https://github.com/planetaryescape/mxr/actions/runs/37952667487) completed successfully. Current released main is `2c55a735e2b013910cb7222211fa8d6156d6204c` (v0.6.63). Preserve the dirty primary checkout; implementation uses isolated worktrees.
+The initial fetched base was `origin/main` at `80606f4833b651bf9b07975ddd49083d7cb2568a`, also the source of [v0.6.61](https://github.com/planetaryescape/mxr/releases/tag/v0.6.61). Its [release workflow](https://github.com/planetaryescape/mxr/actions/runs/37952667487) completed successfully. At this handover, main is `7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54`; the latest released source remains `6ed0554c24df5bfbb99aaaebec5fdfab38254f50` (v0.6.64). Preserve the dirty primary checkout; implementation uses isolated worktrees.
 
 ## Ship workflows instead of blueprint components
 
@@ -59,6 +59,10 @@ Verify the installed release binary through the stage's consuming CLI/UI journey
 Worker round budget: 45 minutes. Build/snapshot: 3 minutes. Checkpoint: 5 minutes. Independent review: 20 minutes. Release gate: 30 minutes after measured release workflows took 29m06s (v0.6.62) and 20m47s (v0.6.63). An overrun triggers timing/concurrency/tool-call inspection and a fix or measured explanation. It does not waive a correctness gate. Scoped local tests use agent-work with at most four workers; CI owns whole-workspace checks.
 
 Each stage's durable build-log entry records outcome, run commands, exact source/review/release provenance, acceptance results, decisions, failures, next action and blocker. Record wall time, agent time lower bound, waiting, user attention and review rounds from transcript timestamps. Keep evidence under the project's working folder. Stage closure says what the user could do before, what they can now do, and the next capability.
+
+## Current handover
+
+Release run 38132041238 is building v0.6.65. After it completes, verify archive checksums and matching installer/Homebrew binaries, then run S02's isolated CLI draft journey through both install paths and its embedded-browser journey once against the verified identical bytes. Record the release source SHA/tree and results in the [S02 build log](../../build-log/daemon-portability/s02-draft-recovery.md). Start S03 only after both journeys pass. The S02 acceptance and release proof remain pending until then.
 
 ## Unresolved choices affect later stages
 

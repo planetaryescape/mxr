@@ -1,0 +1,16 @@
+{
+  "source": {
+    "commit": "6c9a22e8f1eab335e7912f346188f1251efe2e49",
+    "tree": "2146fa1edf700945375d2efa2c9aafa424e748da",
+    "capturedAt": "2026-10-11T10:34:51.684523+01:00"
+  },
+  "scope": "Local candidate validation before the final five-file correction. Not release or installed-binary evidence.",
+  "localGates": {
+    "rustAndClippy": "Passed: 125 web unit tests, six web integration tests, 95 daemon tests, six CLI integration tests, the override-token regression and MCP provider-confirm regression. Scoped Clippy passed with warnings denied.",
+    "frontend": "883 tests, typecheck, lint, motion checks and production build passed on checksum-verified Node 24.21.0.",
+    "durationSeconds": 784
+  },
+  "cliJourney": "Passed durable save/restart/read, accepted revision 2, stale revision rejection with scratch text retained, malformed-edit preservation and deletion preview.",
+  "browserJourney": "Passed two-editor conflict, private recovery and attachment retention through Close/reopen, explicit Retry, recovery-only Discard, actual IPC outage and reconnect Retry. No send, schedule or provider-save routes ran; fake provider spool remained empty.",
+  "profile": "Isolated synthetic account and fake profile; no personal mailbox accessed."
+}

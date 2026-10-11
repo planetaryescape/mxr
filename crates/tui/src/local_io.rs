@@ -167,6 +167,7 @@ pub(crate) fn submit_pending_work(
     if app.pending_local_state_save {
         app.pending_local_state_save = false;
         let state = local_state::TuiLocalState {
+            last_send_identity: app.compose.last_send_identity.clone(),
             recent_action_labels: app.command_palette.palette.recent_labels_snapshot(),
         };
         let _ = submit_task(local_io, async move {

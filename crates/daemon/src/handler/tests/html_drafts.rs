@@ -180,6 +180,7 @@ async fn send_draft_refuses_dangerous_html_before_it_reaches_a_provider() {
             &request(
                 1,
                 Request::SendDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
                     draft,
                     override_safety_token: None,
                 },
@@ -216,6 +217,7 @@ async fn send_stored_draft_revalidates_a_row_written_before_the_gate_existed() {
             &request(
                 1,
                 Request::SendStoredDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id.clone(),
                     override_safety_token: None,
                 },
@@ -257,6 +259,7 @@ async fn a_cid_that_could_forge_a_header_is_refused_on_a_markdown_draft_too() {
             &request(
                 1,
                 Request::SendDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
                     draft,
                     override_safety_token: None,
                 },
@@ -539,6 +542,7 @@ async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
             &request(
                 1,
                 Request::SendStoredDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id,
                     override_safety_token: None,
                 },
@@ -587,6 +591,7 @@ async fn sending_an_html_draft_with_a_blank_text_alternative_still_scans_the_doc
             &request(
                 1,
                 Request::SendStoredDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id,
                     override_safety_token: None,
                 },

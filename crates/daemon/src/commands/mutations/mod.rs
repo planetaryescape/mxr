@@ -7,7 +7,7 @@ pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{
     cancel_scheduled_send, check_send, compose, compose_check, drafts, drafts_discard, drafts_edit,
     drafts_push, drafts_recover, drafts_resume, drafts_scheduled, forward, reply, reply_all,
-    schedule_send, send_draft, ComposeOptions, ForwardCommand, ReplyCommand,
+    schedule_send, send_draft, send_outcome, ComposeOptions, ForwardCommand, ReplyCommand,
 };
 
 /// CLI surface for `mxr undo <mutation_id>`.

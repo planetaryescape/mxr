@@ -24,6 +24,7 @@ pub mod local_state;
 mod runner;
 mod runtime;
 mod search_ipc;
+mod send_recovery;
 pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;

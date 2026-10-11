@@ -1868,34 +1868,6 @@ fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()
 }
 
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
-    // Crash-safe drafts: any draft in `'sending'` whose most-recent
-    // activity is older than 1 hour is presumed orphaned (daemon died
-    // mid-send). Reset back to `'draft'` so the user can retry. The
-    // 1-hour cutoff is generous — a real send rarely takes >30s, but a
-    // brief OAuth refresh or large attachment could.
-    let orphan_cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
-    if let Ok(orphans) = state
-        .store
-        .list_orphaned_sending_drafts(orphan_cutoff)
-        .await
-    {
-        for draft_id in &orphans {
-            let _draft_guard = state.acquire_draft_operation(draft_id).await;
-            if let Err(e) = state.store.reset_orphaned_draft(draft_id).await {
-                tracing::warn!(
-                    draft_id = %draft_id,
-                    "startup: failed to reset orphaned sending draft: {e}"
-                );
-            }
-        }
-        if !orphans.is_empty() {
-            tracing::info!(
-                recovered = orphans.len(),
-                "startup: reset orphaned 'sending' drafts back to 'draft' for retry"
-            );
-        }
-    }
-
     // Decisions whose cited mail was deleted before decision evidence was
     // tracked are invisible to every later delete; clear them once.
     match state.store.prune_decisions_without_evidence().await {
@@ -3036,6 +3008,7 @@ mod tests {
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
                                 draft_revision_supported: true,
+                                send_outcome_supported: true,
                                 uptime_secs: 1,
                                 accounts: vec!["personal".to_string()],
                                 total_messages: 1,

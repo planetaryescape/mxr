@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { useComposeUi } from "@/features/compose/composeUiStore";
+import { fetchSendOutcome } from "./sendOutcomes";
 import { DraftsRoute } from "./DraftsRoute";
 
 const api = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => api);
+vi.mock("./sendOutcomes", () => ({ fetchSendOutcome: vi.fn(), readSendReferences: () => [] }));
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }));
@@ -46,6 +48,7 @@ function renderWithClient(node: ReactNode) {
 
 describe("DraftsRoute", () => {
   beforeEach(() => {
+    vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockReset();
     api.deleteDraft.mockResolvedValue({ ok: true });
     api.fetchDrafts.mockReset();
@@ -184,32 +187,17 @@ describe("DraftsRoute", () => {
       expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
     });
 
-    test("can be reset back to an editable draft", async () => {
+    test("uncertain sends only expose an outcome query", async () => {
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
-
-      expect(await screen.findByText("Needs attention")).toBeVisible();
-      expect(screen.getByText(/Lee · stuck since/)).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Reset Contract signed" }));
-
-      await waitFor(() => expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7"));
+      expect(await screen.findByText("Send outcomes")).toBeVisible();
+      expect(screen.getByText("Acceptance is uncertain. Do not resend.")).toBeVisible();
+      await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledWith("account-1", "draft:draft-7"));
+      expect(screen.queryByRole("button", { name: /Reset|Send now/ })).not.toBeInTheDocument();
+      expect(api.resetOrphanedDraft).not.toHaveBeenCalled();
       expect(api.sendStoredDraft).not.toHaveBeenCalled();
-    });
-
-    test("send asks first, then resets and sends", async () => {
-      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
-      renderWithClient(<DraftsRoute />);
-
-      fireEvent.click(await screen.findByRole("button", { name: "Send Contract signed" }));
-      expect(await screen.findByText(/may already have been delivered/)).toBeVisible();
-      expect(api.sendStoredDraft).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByRole("button", { name: "Send now" }));
-      await waitFor(() => expect(api.sendStoredDraft).toHaveBeenCalledWith("draft-7"));
-      expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7");
-      expect(api.resetOrphanedDraft.mock.invocationCallOrder[0]).toBeLessThan(
-        api.sendStoredDraft.mock.invocationCallOrder[0] ?? 0,
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Check outcome" }));
+      await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledTimes(2));
     });
   });
 });

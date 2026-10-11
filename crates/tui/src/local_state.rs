@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TuiLocalState {
+    #[serde(default)]
+    pub last_send_identity: Option<(mxr_core::AccountId, mxr_core::SendIdentity)>,
     // TUI-owned view state belongs here, not in daemon IPC. Teaching
     // state (which hints are dismissed) lives in the daemon instead, so
     // every client shares it.
@@ -62,6 +64,13 @@ mod tests {
         let path = dir.join("tui-state.json");
 
         let state = TuiLocalState {
+            last_send_identity: Some((
+                mxr_core::AccountId::new(),
+                mxr_core::SendIdentity {
+                    operation_id: "reviewed-send".into(),
+                    expected_revision: 3,
+                },
+            )),
             recent_action_labels: vec![
                 "Archive".to_string(),
                 "Reply All".to_string(),
@@ -73,6 +82,7 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read saved state");
         let loaded: TuiLocalState = serde_json::from_str(&raw).expect("parse state");
 
+        assert_eq!(loaded.last_send_identity, state.last_send_identity);
         assert_eq!(
             loaded.recent_action_labels,
             vec![

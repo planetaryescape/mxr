@@ -923,10 +923,24 @@ impl MailSendProvider for GmailProvider {
         draft: &Draft,
         from: &Address,
         rfc2822_message_id: &str,
-    ) -> mxr_core::provider::Result<SendReceipt> {
+    ) -> std::result::Result<SendReceipt, MxrError> {
+        self.send_classified(draft, from, rfc2822_message_id)
+            .await
+            .map_err(|failure| match failure {
+                mxr_core::SendFailure::NotAccepted(error)
+                | mxr_core::SendFailure::Unknown(error) => error,
+            })
+    }
+
+    async fn send_classified(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> std::result::Result<SendReceipt, mxr_core::SendFailure> {
         let rfc2822 = send::build_rfc2822_async_with_id(draft, from, rfc2822_message_id)
             .await
-            .map_err(|e| MxrError::Provider(e.to_string()))?;
+            .map_err(|e| mxr_core::SendFailure::NotAccepted(MxrError::Provider(e.to_string())))?;
         let encoded = send::encode_for_gmail(&rfc2822);
         let thread_id = self.reply_thread_id(draft).await;
 
@@ -934,7 +948,7 @@ impl MailSendProvider for GmailProvider {
             .client
             .send_message(&encoded, thread_id.as_deref())
             .await
-            .map_err(MxrError::from)?;
+            .map_err(|e| mxr_core::SendFailure::Unknown(MxrError::from(e)))?;
 
         let message_id = result["id"].as_str().map(std::string::ToString::to_string);
 

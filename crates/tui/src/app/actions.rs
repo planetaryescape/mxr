@@ -206,6 +206,7 @@ impl App {
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch
             | Action::OpenRulesScreen
+            | Action::CheckLastSendOutcome
             | Action::OpenDiagnosticsScreen
             | Action::OpenAccountsScreen
             | Action::OpenTab1

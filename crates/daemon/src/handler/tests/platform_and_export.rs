@@ -416,6 +416,7 @@ async fn dispatch_save_and_send_stored_draft() {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
             draft_id: draft.id.clone(),
             override_safety_token: None,
         }),
@@ -476,6 +477,7 @@ async fn dispatch_send_stored_draft_replay_returns_original_receipt_without_rese
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
             draft_id: draft.id.clone(),
             override_safety_token: None,
         }),
@@ -547,6 +549,7 @@ async fn dispatch_send_draft_replay_returns_original_receipt_without_resending()
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft: draft.clone(),
             override_safety_token: None,
         }),
@@ -698,6 +701,7 @@ async fn override_token_unblocks_send_exactly_once() {
             id: 3,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
                 draft_id: draft.id.clone(),
                 override_safety_token: None,
             }),
@@ -725,6 +729,7 @@ async fn override_token_unblocks_send_exactly_once() {
             id: 4,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
                 draft_id: draft.id.clone(),
                 override_safety_token: Some(token.clone()),
             }),
@@ -813,6 +818,7 @@ async fn override_token_unblocks_send_exactly_once() {
             id: 7,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft2.id, 1)),
                 draft_id: draft2.id.clone(),
                 override_safety_token: Some(token2.clone()),
             }),
@@ -849,6 +855,7 @@ async fn override_token_unblocks_send_exactly_once() {
             id: 9,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft3.id, 1)),
                 draft_id: draft3.id.clone(),
                 override_safety_token: Some(token2),
             }),
@@ -932,6 +939,7 @@ async fn blocked_send_error_carries_usable_override_token() {
             id: 2,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
                 draft_id: draft.id.clone(),
                 override_safety_token: None,
             }),
@@ -962,6 +970,7 @@ async fn blocked_send_error_carries_usable_override_token() {
             id: 3,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
+                send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
                 draft_id: draft.id.clone(),
                 override_safety_token: Some(token),
             }),
@@ -981,16 +990,9 @@ async fn blocked_send_error_carries_usable_override_token() {
     assert_eq!(fake.sent_drafts().len(), 1);
 }
 
-/// The live send pipeline must touch `last_heartbeat_at` once it has
-/// CAS'd a draft into `Sending`. Otherwise, a long-running send (large
-/// attachment, slow OAuth refresh) could be misidentified as orphaned
-/// by the 1h startup recovery cutoff. We verify this by exercising the
-/// failure path: with no send provider configured, `send_stored_draft`
-/// CAS's into `Sending`, touches the heartbeat, then reverts to
-/// `Draft` when provider lookup fails — leaving a fresh heartbeat we
-/// can read back.
+/// Definite local provider resolution failure must precede a submission claim.
 #[tokio::test]
-async fn send_stored_draft_touches_heartbeat_after_cas() {
+async fn send_stored_draft_without_provider_does_not_claim_submission() {
     let account_id = mxr_core::AccountId::new();
     let account = crate::test_fixtures::test_account_with_id(account_id.clone());
     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
@@ -1031,11 +1033,11 @@ async fn send_stored_draft_touches_heartbeat_after_cas() {
         "fresh draft must have NULL last_heartbeat_at"
     );
 
-    let before = chrono::Utc::now();
     let send_msg = IpcMessage {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
             draft_id: draft.id.clone(),
             override_safety_token: None,
         }),
@@ -1050,23 +1052,20 @@ async fn send_stored_draft_touches_heartbeat_after_cas() {
         send_resp.payload
     );
 
-    // Post-condition: heartbeat was set during the CAS-to-Sending phase
-    // and survives the revert-to-Draft on provider-lookup failure.
-    let heartbeat = state
+    assert_eq!(
+        state.store.get_draft_heartbeat(&draft.id).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        state.store.get_draft_status(&draft.id).await.unwrap(),
+        Some(mxr_core::DraftStatus::Draft)
+    );
+    assert!(state
         .store
-        .get_draft_heartbeat(&draft.id)
+        .get_draft_send_outcome(&draft.id)
         .await
         .unwrap()
-        .expect("send_stored_draft must touch the heartbeat after CAS");
-    let after = chrono::Utc::now();
-    assert!(
-        heartbeat >= before - chrono::Duration::seconds(1),
-        "heartbeat {heartbeat} must not predate test start {before}"
-    );
-    assert!(
-        heartbeat <= after + chrono::Duration::seconds(1),
-        "heartbeat {heartbeat} must not postdate test end {after}"
-    );
+        .is_none());
 }
 
 #[tokio::test]
@@ -1106,6 +1105,7 @@ async fn send_stored_draft_blocks_empty_recipient_before_sending_state() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
             draft_id: draft.id.clone(),
             override_safety_token: None,
         }),
@@ -1168,6 +1168,7 @@ async fn send_draft_blocks_invalid_recipient_before_provider_send() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -1253,6 +1254,7 @@ async fn send_stored_reply_all_blocks_missing_original_recipient_before_sending_
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&draft.id, 1)),
             draft_id: draft.id.clone(),
             override_safety_token: None,
         }),
@@ -1332,6 +1334,7 @@ async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),

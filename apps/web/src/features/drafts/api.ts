@@ -49,15 +49,16 @@ export async function fetchOrphanedDrafts(): Promise<OrphanedDraft[]> {
   return response.drafts ?? [];
 }
 
-/** Move an orphan back to an editable draft. Idempotent on the daemon. */
+/** Legacy endpoint: uncertain submissions remain blocked. */
 export function resetOrphanedDraft(draftId: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`, {
     method: "POST",
   });
 }
 
-export function sendStoredDraft(draftId: string): Promise<unknown> {
-  return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored`, {
+export function sendStoredDraft(draftId: string, expectedRevision: number, operationId: string): Promise<unknown> {
+  const query = new URLSearchParams({ expected_revision: String(expectedRevision), operation_id: operationId });
+  return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored?${query}`, {
     method: "POST",
   });
 }
@@ -72,7 +73,7 @@ export interface ScheduledSend {
   cc: { name: string | null; email: string }[];
   bcc: { name: string | null; email: string }[];
   last_attempt_at: string | null;
-  last_attempt_outcome: "sent" | "blocked" | "failed" | "interrupted" | null;
+  last_attempt_outcome: "sent" | "blocked" | "failed" | "interrupted" | "uncertain" | null;
 }
 
 export async function fetchScheduledSends(account: string | null): Promise<ScheduledSend[]> {

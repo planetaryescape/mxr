@@ -222,6 +222,7 @@ mod tests {
     #[test]
     fn request_chime_fires_for_successful_send_and_archive() {
         let send_request = Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_revision(&DraftId::new(), 1)),
             draft_id: DraftId::new(),
             override_safety_token: None,
         };

@@ -1490,8 +1490,22 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Inspect a send operation after disconnect, including after draft cleanup.
+    SendOutcome {
+        operation_id: String,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Send a draft by ID
     Send {
+        /// Revision returned by the reviewed preview. Required for sending now.
+        #[arg(long)]
+        expected_revision: Option<i64>,
+        /// Stable identity retained before submission; defaults to draft ID/revision.
+        #[arg(long)]
+        operation_id: Option<String>,
         /// Draft ID to send
         draft_id: String,
         #[arg(long)]

@@ -93,6 +93,20 @@ impl App {
                 self.screen = Screen::Rules;
                 self.rules.page.refresh_pending = true;
             }
+            Action::CheckLastSendOutcome => {
+                if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
+                    self.queue_mutation(
+                        mxr_protocol::Request::GetSendOutcome {
+                            account_id,
+                            operation_id: identity.operation_id,
+                        },
+                        super::MutationEffect::StatusOnly(String::new()),
+                        "Checking send outcome...".into(),
+                    );
+                } else {
+                    self.push_toast(Toast::info("No send identity retained in this session"));
+                }
+            }
             Action::OpenDiagnosticsScreen => {
                 self.close_transient_modals();
                 self.maybe_preserve_new_account_form_draft();

@@ -74,7 +74,15 @@ fn drafts_scheduled_lists_a_scheduled_draft_until_it_is_unsent() {
         "an unscheduled draft is not a scheduled send"
     );
 
-    env.run(&["send", &draft_id, "--at", "in 2h"]).success();
+    env.run(&[
+        "send",
+        &draft_id,
+        "--expected-revision",
+        "1",
+        "--at",
+        "in 2h",
+    ])
+    .success();
 
     let scheduled = env.json(&["drafts", "--format", "json", "scheduled"]);
     let rows = scheduled.as_array().expect("array");

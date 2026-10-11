@@ -647,7 +647,11 @@ impl App {
                             let draft = draft_from_pending(&pending, draft_id.clone(), now);
                             self.queue_platform_request_after(
                                 vec![Request::SaveDraft { draft }],
-                                Request::ScheduleSend { draft_id, send_at },
+                                Request::ScheduleSend {
+                                    draft_id,
+                                    send_at,
+                                    expected_revision: Some(1),
+                                },
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
                             );

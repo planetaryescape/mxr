@@ -1818,6 +1818,7 @@ mod tests {
     fn degraded_status() -> ResponseData {
         ResponseData::Status {
             draft_revision_supported: true,
+            send_outcome_supported: true,
             uptime_secs: 1,
             accounts: Vec::new(),
             total_messages: 0,

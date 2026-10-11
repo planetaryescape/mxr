@@ -124,6 +124,7 @@ pub struct DeferredCompose {
 
 #[derive(Default)]
 pub struct ComposeState {
+    pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,

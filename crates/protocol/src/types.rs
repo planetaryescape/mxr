@@ -1099,6 +1099,8 @@ pub enum Request {
     /// loop scans due rows on a 60-second cadence and runs them through
     /// the same `send_stored_draft` pipeline that interactive sends use.
     ScheduleSend {
+        #[serde(default)]
+        expected_revision: Option<i64>,
         draft_id: DraftId,
         send_at: chrono::DateTime<chrono::Utc>,
     },
@@ -1337,14 +1339,22 @@ pub enum Request {
         message_id: MessageId,
     },
     SendDraft {
+        #[serde(default)]
+        send_identity: Option<mxr_core::SendIdentity>,
         draft: Draft,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_safety_token: Option<String>,
+    },
+    GetSendOutcome {
+        account_id: AccountId,
+        operation_id: String,
     },
     SaveDraft {
         draft: Draft,
     },
     SendStoredDraft {
+        #[serde(default)]
+        send_identity: Option<mxr_core::SendIdentity>,
         draft_id: DraftId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_safety_token: Option<String>,
@@ -2449,6 +2459,7 @@ impl Request {
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
+            | Self::GetSendOutcome { .. }
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
@@ -3286,6 +3297,8 @@ pub enum ResponseData {
     Status {
         #[serde(default)]
         draft_revision_supported: bool,
+        #[serde(default)]
+        send_outcome_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
@@ -3329,6 +3342,9 @@ pub enum ResponseData {
         rfc2822_message_id: String,
     },
     /// Returned by `Request::ExtractDraftCommitments`.
+    SendOutcome {
+        outcome: Option<mxr_core::DraftSendOutcome>,
+    },
     DraftCommitments {
         candidates: Vec<DraftCommitmentCandidateData>,
     },
@@ -3818,6 +3834,7 @@ impl ResponseData {
             | Self::Jobs { .. }
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
+            | Self::SendOutcome { .. }
             | Self::SendReceipt { .. }
             | Self::ResolvedSendFrom { .. }
             | Self::DraftSafetyReportResponse { .. }

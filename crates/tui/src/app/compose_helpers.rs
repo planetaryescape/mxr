@@ -63,8 +63,11 @@ impl App {
                 });
         let now = chrono::Utc::now();
         let draft = mxr_core::Draft {
-            revision: None,
-            id: mxr_core::id::DraftId::new(),
+            revision: Some(1),
+            id: mxr_core::id::DraftId::from_provider_id(
+                "compose-file",
+                &pending.draft_path.to_string_lossy(),
+            ),
             account_id: pending.account_id.clone(),
             // `fm.from` was validated when the PendingSend was built; a parse
             // error is unreachable here, so fall back to "no override".
@@ -89,8 +92,35 @@ impl App {
             created_at: now,
             updated_at: now,
         };
+        let default_identity = mxr_core::SendIdentity::for_draft(&draft);
+        let identity = self
+            .compose
+            .last_send_identity
+            .as_ref()
+            .filter(|(account, identity)| {
+                account == &draft.account_id
+                    && identity.operation_id.starts_with(&format!("{}:", draft.id))
+                    && identity.expected_revision == 1
+            })
+            .map(|(_, identity)| identity.clone())
+            .unwrap_or(default_identity);
+        self.compose.last_send_identity = Some((draft.account_id.clone(), identity.clone()));
+        #[cfg(not(test))]
+        {
+            let local_state = crate::local_state::TuiLocalState {
+                last_send_identity: self.compose.last_send_identity.clone(),
+                recent_action_labels: self.command_palette.palette.recent_labels_snapshot(),
+            };
+            if let Err(error) = crate::local_state::save(&local_state) {
+                self.push_toast(Toast::error(format!(
+                    "Cannot retain send identity: {error}"
+                )));
+                return;
+            }
+        }
         self.queue_mutation(
             Request::SendDraft {
+                send_identity: Some(identity),
                 draft,
                 override_safety_token,
             },
@@ -102,6 +132,5 @@ impl App {
             },
             "Sending...".into(),
         );
-        self.schedule_draft_cleanup(pending.draft_path);
     }
 }

@@ -2357,7 +2357,9 @@ pub(super) async fn reset_orphaned_draft(
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
-    state.store.reset_orphaned_draft(draft_id).await?;
+    if state.store.get_draft_status(draft_id).await? == Some(DraftStatus::Sending) {
+        return Err("Send outcome uncertain; orphan reset cannot prove non-acceptance and cannot enable a resend".into());
+    }
     Ok(ResponseData::Ack)
 }
 
@@ -3255,28 +3257,152 @@ pub(crate) async fn resolve_send_from(
     Ok(ResponseData::ResolvedSendFrom { from: address })
 }
 
+fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
+    use sha2::{Digest, Sha256};
+    let mut command = materialize_text_alternative(draft).into_owned();
+    // Storage timestamps and revision metadata are not mail content.
+    command.created_at = chrono::DateTime::UNIX_EPOCH;
+    command.updated_at = chrono::DateTime::UNIX_EPOCH;
+    command.revision = None;
+    let bytes = serde_json::to_vec(&command).map_err(|e| e.to_string())?;
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn outcome_response(outcome: mxr_core::DraftSendOutcome) -> HandlerResult {
+    match outcome.state {
+        mxr_core::SendOutcomeState::Unknown => Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}", outcome.identity.operation_id, outcome.account_id).into()),
+        mxr_core::SendOutcomeState::NotAccepted => Err(format!("Provider did not accept this operation; review before starting a new send operation: {}", outcome.identity.operation_id).into()),
+        mxr_core::SendOutcomeState::Accepted => {
+            if let (Some(local_message_id), Some(rfc2822_message_id)) = (outcome.local_message_id.clone(), outcome.rfc2822_message_id.clone()) {
+                Ok(ResponseData::SendReceipt { local_message_id, provider_message_id: outcome.provider_message_id, rfc2822_message_id })
+            } else { Ok(ResponseData::SendOutcome { outcome: Some(outcome) }) }
+        }
+    }
+}
+
+pub(super) async fn get_send_outcome(
+    state: &AppState,
+    account_id: &mxr_core::AccountId,
+    operation_id: &str,
+) -> HandlerResult {
+    let outcome = if let Some(raw) = operation_id.strip_prefix("draft:") {
+        let draft_id: mxr_core::DraftId = raw
+            .parse()
+            .map_err(|e| format!("Invalid draft identity: {e}"))?;
+        match state.store.get_draft_send_outcome(&draft_id).await? {
+            Some(outcome) => Some(outcome),
+            None => match state.store.get_draft(&draft_id).await? {
+                Some(draft)
+                    if state.store.get_draft_status(&draft_id).await?
+                        == Some(DraftStatus::Sending) =>
+                {
+                    Some(mxr_core::DraftSendOutcome {
+                        identity: mxr_core::SendIdentity::for_draft(&draft),
+                        draft_id,
+                        account_id: draft.account_id,
+                        state: mxr_core::SendOutcomeState::Unknown,
+                        local_message_id: None,
+                        provider_message_id: None,
+                        rfc2822_message_id: None,
+                    })
+                }
+                _ => None,
+            },
+        }
+    } else {
+        state
+            .store
+            .get_send_outcome(operation_id)
+            .await?
+            .map(|(outcome, _)| outcome)
+    };
+    if outcome
+        .as_ref()
+        .is_some_and(|o| &o.account_id != account_id)
+    {
+        return Err("Send outcome not found for this account".into());
+    }
+    Ok(ResponseData::SendOutcome { outcome })
+}
+
 pub(super) async fn send_draft(
     state: &AppState,
     draft: &Draft,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
+    let identity = mxr_core::SendIdentity::for_draft(draft);
+    send_draft_reviewed(state, draft, Some(&identity), override_safety_token).await
+}
+
+pub(super) async fn send_draft_reviewed(
+    state: &AppState,
+    draft: &Draft,
+    identity: Option<&mxr_core::SendIdentity>,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    let identity = identity.ok_or("Reviewed send identity is required; upgrade the client")?;
+    if identity.expected_revision != draft.revision.unwrap_or(0) {
+        return Err("Reviewed draft revision does not match send identity".into());
+    }
     let _draft_guard = state.acquire_draft_operation(&draft.id).await;
-    if let Some(receipt) = state.store.get_sent_draft_receipt(&draft.id).await? {
-        return Ok(sent_draft_receipt_response(receipt));
-    }
-
     validate_draft_content(draft)?;
-    let draft = &*materialize_text_alternative(draft);
-
+    let hash = send_command_hash(draft)?;
+    if let Some((outcome, prior_hash)) =
+        state.store.get_send_outcome(&identity.operation_id).await?
     {
-        if state.store.get_draft_status(&draft.id).await?.is_none() {
-            state.store.insert_draft_if_absent(draft).await?;
-        } else {
-            checked_draft(state, &draft.id, draft.revision).await?;
+        if outcome.identity != *identity
+            || outcome.draft_id != draft.id
+            || outcome.account_id != draft.account_id
+            || prior_hash != hash
+        {
+            return Err("Send identity conflicts with its reviewed command".into());
         }
+        return outcome_response(outcome);
     }
-
-    send_stored_draft_locked(state, &draft.id, override_safety_token).await
+    if state
+        .store
+        .get_sent_draft_receipt(&draft.id)
+        .await?
+        .is_some()
+    {
+        return Err(format!(
+            "Legacy send already completed; inspect operation legacy:{}",
+            draft.id
+        )
+        .into());
+    }
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        checked_draft(state, &draft.id, draft.revision).await?;
+        if send_command_hash(&stored)? != hash {
+            return Err(
+                "Submitted content differs from the reviewed saved draft; save and review first"
+                    .into(),
+            );
+        }
+    } else {
+        if state
+            .store
+            .get_draft_send_outcome(&draft.id)
+            .await?
+            .is_some_and(|outcome| outcome.state != mxr_core::SendOutcomeState::NotAccepted)
+        {
+            return Err(
+                "A prior send already exists for this draft; inspect its outcome before continuing"
+                    .into(),
+            );
+        }
+        if identity.expected_revision > 1 {
+            return Err("Reviewed draft no longer exists".into());
+        }
+        state
+            .store
+            .insert_draft_if_absent(&materialize_text_alternative(draft))
+            .await?;
+    }
+    send_stored_draft_locked(state, &draft.id, identity, override_safety_token).await
 }
 
 /// Everything `send_stored_draft` checks before it reaches the provider:
@@ -3297,7 +3423,14 @@ pub(super) async fn schedule_send(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
     send_at: chrono::DateTime<chrono::Utc>,
+    expected_revision: Option<i64>,
 ) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
+    let revision = expected_revision.ok_or("Scheduling requires the reviewed draft revision")?;
+    checked_draft(state, draft_id, Some(revision)).await?;
+    if state.store.get_draft_status(draft_id).await? != Some(DraftStatus::Draft) {
+        return Err("Draft cannot be scheduled while a send is uncertain or completed".into());
+    }
     state.store.schedule_send(draft_id, send_at).await?;
     Ok(ResponseData::Ack)
 }
@@ -3334,30 +3467,88 @@ pub(super) async fn list_scheduled_sends(
     Ok(ResponseData::ScheduledSends { sends })
 }
 
+#[cfg(test)]
 pub(crate) async fn send_stored_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
-    send_stored_draft_locked(state, draft_id, override_safety_token).await
+    let draft = state
+        .store
+        .get_draft(draft_id)
+        .await?
+        .ok_or("Draft not found")?;
+    let identity = mxr_core::SendIdentity::for_draft(&draft);
+    send_stored_draft_locked(state, draft_id, &identity, override_safety_token).await
+}
+
+pub(crate) async fn send_stored_draft_reviewed(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    identity: Option<&mxr_core::SendIdentity>,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    let identity = identity.ok_or("Reviewed send identity is required; upgrade the client")?;
+    if identity.expected_revision <= 0 {
+        return Err("A saved draft's reviewed revision is required".into());
+    }
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
+    send_stored_draft_locked(state, draft_id, identity, override_safety_token).await
 }
 
 async fn send_stored_draft_locked(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
+    identity: &mxr_core::SendIdentity,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
-    if let Some(receipt) = state.store.get_sent_draft_receipt(draft_id).await? {
-        return Ok(sent_draft_receipt_response(receipt));
+    if identity.operation_id.is_empty()
+        || identity.operation_id.len() > 200
+        || identity.operation_id.starts_with("draft:")
+        || identity.operation_id.starts_with("legacy:")
+        || !identity
+            .operation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b":/._-".contains(&byte))
+        || identity.expected_revision < 0
+    {
+        return Err("Invalid reviewed send identity".into());
     }
-
+    if let Some((outcome, _)) = state.store.get_send_outcome(&identity.operation_id).await? {
+        if outcome.identity != *identity || &outcome.draft_id != draft_id {
+            return Err("Send identity conflicts with its reviewed command".into());
+        }
+        return outcome_response(outcome);
+    }
+    if state
+        .store
+        .get_sent_draft_receipt(draft_id)
+        .await?
+        .is_some()
+    {
+        return Err(format!(
+            "Draft already sent; inspect operation legacy:{draft_id} or the original send identity"
+        )
+        .into());
+    }
     let mut draft = state
         .store
         .get_draft(draft_id)
         .await?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
 
+    let stored_revision = draft.revision.ok_or("Saved draft has no revision")?;
+    if identity.expected_revision != stored_revision && identity.expected_revision != 0 {
+        return Err(
+            "Reviewed draft revision is stale; review the current draft before sending".into(),
+        );
+    }
+    let command_hash = send_command_hash(&draft)?;
+    // Resolve all definite local failures before claiming submission.
+    let sender = state
+        .send_provider_for_account(&draft.account_id)
+        .map_err(HandlerError::Message)?;
     // Re-validated at the send choke point, not just on the way in: a row
     // could have been written by an older binary, or edited by a path that
     // predates the gate. Nothing reaches a provider unvalidated.
@@ -3389,51 +3580,6 @@ async fn send_stored_draft_locked(
         draft.inline_calendar_reply = Some(rebuilt);
     }
 
-    // Compare-and-set: only the unique `Draft` -> `Sending` transition is
-    // allowed to invoke the provider. A draft already in `Sending` (likely a
-    // crashed prior attempt) or `Sent` (already delivered) refuses.
-    let advanced = state
-        .store
-        .cas_draft_status(draft_id, DraftStatus::Draft, DraftStatus::Sending)
-        .await?;
-    if !advanced {
-        let current = state
-            .store
-            .get_draft_status(draft_id)
-            .await?
-            .unwrap_or(DraftStatus::Draft);
-        return Err(match current {
-            DraftStatus::Sent => {
-                crate::handler::HandlerError::Message("draft already sent".to_string())
-            }
-            DraftStatus::Sending => crate::handler::HandlerError::Message(
-                "draft is already being sent (resolve via `mxr drafts resolve`)".to_string(),
-            ),
-            DraftStatus::Draft => {
-                crate::handler::HandlerError::Message("draft state mismatch; retry".to_string())
-            }
-        });
-    }
-
-    // Mark the draft as actively in-flight so the 1h startup-recovery cutoff
-    // doesn't re-claim a long but legitimate send. Failures here are
-    // non-fatal — orphan recovery falls back to `status_updated_at`.
-    let _ = state
-        .store
-        .touch_draft_heartbeat(draft_id, chrono::Utc::now())
-        .await;
-
-    let sender = match state.send_provider_for_account(&draft.account_id) {
-        Ok(s) => s,
-        Err(e) => {
-            // Revert; the daemon never invoked the provider.
-            let _ = state
-                .store
-                .update_draft_status(draft_id, DraftStatus::Draft)
-                .await;
-            return Err(crate::handler::HandlerError::Message(e));
-        }
-    };
     let rfc2822_message_id = match state.store.get_draft_message_id_header(draft_id).await? {
         Some(existing) => existing,
         None => {
@@ -3443,46 +3589,66 @@ async fn send_stored_draft_locked(
                 .set_draft_message_id_header(draft_id, &generated)
                 .await
             {
-                let _ = state
-                    .store
-                    .update_draft_status(draft_id, DraftStatus::Draft)
-                    .await;
                 return Err(crate::handler::HandlerError::Message(e.to_string()));
             }
             generated
         }
     };
 
-    let receipt = match sender.send(&draft, &from, &rfc2822_message_id).await {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = state
-                .store
-                .update_draft_status(draft_id, DraftStatus::Draft)
-                .await;
-            return Err(crate::handler::HandlerError::Message(e.to_string()));
+    let advanced = state
+        .store
+        .claim_draft_send(
+            identity,
+            draft_id,
+            &draft.account_id,
+            stored_revision,
+            &command_hash,
+        )
+        .await?;
+    if !advanced {
+        return Err("Draft send is blocked or the reviewed revision changed; inspect its send outcome before retrying".into());
+    }
+    let receipt = match sender
+        .send_classified(&draft, &from, &rfc2822_message_id)
+        .await
+    {
+        Ok(receipt) => receipt,
+        Err(mxr_core::SendFailure::NotAccepted(error)) => {
+            state.store.reject_draft_send(identity).await?;
+            return Err(format!(
+                "Provider did not accept send operation {}: {error}",
+                identity.operation_id
+            )
+            .into());
+        }
+        Err(mxr_core::SendFailure::Unknown(error)) => {
+            tracing::warn!(operation_id = %identity.operation_id, "provider acceptance is uncertain: {error}");
+            return Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}. Provider error: {error}", identity.operation_id, draft.account_id).into());
         }
     };
+    state.store.accept_draft_send(identity, &receipt).await.map_err(|error| format!("Send outcome uncertain: accepted by provider but receipt persistence failed; query operation {}: {error}", identity.operation_id))?;
     clear_reply_later_for_reply_parent(state, &draft).await;
-
     let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
         Ok(id) => id,
-        Err(e) => {
-            // Local ingest failed. Send already happened on the wire; we move
-            // the draft to `Sent` (idempotent, prevents resend) but bubble the
-            // error so the user can re-sync.
-            let _ = state
+        Err(error) => {
+            tracing::warn!(%error, "accepted send could not be ingested locally");
+            let (outcome, _) = state
                 .store
-                .update_draft_status(draft_id, DraftStatus::Sent)
-                .await;
-            return Err(format!("send succeeded but local ingest failed: {e}").into());
+                .get_send_outcome(&identity.operation_id)
+                .await?
+                .ok_or("Accepted outcome missing")?;
+            return Ok(ResponseData::SendOutcome {
+                outcome: Some(outcome),
+            });
         }
     };
-
-    let _ = state
+    if let Err(error) = state
         .store
-        .update_draft_status(draft_id, DraftStatus::Sent)
-        .await;
+        .link_send_local_message(identity, &local_message_id)
+        .await
+    {
+        tracing::warn!(%error, "accepted send local message link failed");
+    }
     if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
         if let Err(error) = state
             .store
@@ -3512,7 +3678,7 @@ async fn send_stored_draft_locked(
             receipt.sent_at,
         )
         .await
-        .map_err(|e| format!("send succeeded but receipt persistence failed: {e}"))?;
+        .unwrap_or_else(|error| tracing::warn!(%error, "legacy send receipt persistence failed; durable outcome retained"));
     log_non_fatal(
         "send: failed to delete draft after a successful send (it may linger in the drafts list)",
         state.store.delete_draft(draft_id).await,
@@ -3522,14 +3688,6 @@ async fn send_stored_draft_locked(
         provider_message_id: receipt.provider_message_id,
         rfc2822_message_id: receipt.rfc2822_message_id,
     })
-}
-
-fn sent_draft_receipt_response(receipt: mxr_store::SentDraftReceipt) -> ResponseData {
-    ResponseData::SendReceipt {
-        local_message_id: receipt.local_message_id,
-        provider_message_id: receipt.provider_message_id,
-        rfc2822_message_id: receipt.rfc2822_message_id,
-    }
 }
 
 async fn clear_reply_later_for_reply_parent(state: &AppState, draft: &Draft) {

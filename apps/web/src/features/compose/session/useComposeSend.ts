@@ -1,3 +1,4 @@
+import { prepareReviewedSend, retainSendReference } from "@/features/drafts/sendOutcomes";
 /*
  * Send pipeline for a compose session: validate → save → safety check →
  * (confirm dialog when the report has issues) → deferred dispatch with an
@@ -118,12 +119,14 @@ export function useComposeSend({
       accountId,
       overrideToken,
       expectedRevision,
+      operationId,
     }: {
       draftPath: string;
       accountId: string;
       overrideToken?: string;
       expectedRevision?: number | null;
-    }) => sendComposeSession(draftPath, accountId, overrideToken, expectedRevision),
+      operationId: string;
+    }) => sendComposeSession(draftPath, accountId, overrideToken, expectedRevision, operationId),
   });
   const scheduleSession = useMutation({
     mutationFn: async (at: Date) => {
@@ -398,6 +401,12 @@ export function useComposeSend({
     const accountId = current.accountId;
     const draftPath = current.draftPath;
     const expectedRevision = current.revision;
+    if (!current.draftId || expectedRevision == null) {
+      releaseSendLock();
+      toast.error("Save and review the draft before sending");
+      return;
+    }
+    const sendReference = { operationId: `${current.draftId}:${expectedRevision}`, accountId, draftId: current.draftId };
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
     const archiveSourceId =
       archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
@@ -438,9 +447,19 @@ export function useComposeSend({
         await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
       }
     };
-    const fire = () => {
+    const fire = async () => {
+      let reviewedReference;
+      try {
+        reviewedReference = await prepareReviewedSend(sendReference);
+        retainSendReference(reviewedReference);
+      } catch (error) {
+        setPendingSends((count) => Math.max(0, count - 1));
+        releaseSendLock();
+        toast.error("Cannot retain send identity", { description: errorMessage(error) });
+        return;
+      }
       sendSession
-        .mutateAsync({ draftPath, accountId, overrideToken, expectedRevision })
+        .mutateAsync({ draftPath, accountId, overrideToken, expectedRevision, operationId: reviewedReference.operationId })
         .then(
           (response) =>
             afterSend(response).catch((error: unknown) =>
@@ -450,7 +469,7 @@ export function useComposeSend({
             ),
           (err: Error) => {
             emitSendEvent({ kind: "failed", ...sendEvent });
-            toast.error("Send failed", { description: err.message });
+            toast.error("Send outcome needs checking", { description: `${err.message} Operation ${sendReference.operationId}; check Send outcomes in Drafts before trying again.` });
           },
         )
         .finally(() => {

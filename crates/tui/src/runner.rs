@@ -302,6 +302,7 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    app.compose.last_send_identity = local_state.last_send_identity.clone();
     app.command_palette
         .palette
         .restore_recents_from_labels(&local_state.recent_action_labels);
@@ -2368,15 +2369,19 @@ pub async fn run() -> anyhow::Result<()> {
                 attempts,
                 run_after: _,
             } = queued_mutation;
-            let retry =
-                (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES).then(|| app::QueuedMutation {
-                    id: mutation_id,
-                    request: req.clone(),
-                    effect: effect.clone(),
-                    best_effort,
-                    attempts,
-                    run_after: None,
-                });
+            let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES
+                && !matches!(
+                    req,
+                    Request::SendDraft { .. } | Request::SendStoredDraft { .. }
+                ))
+            .then(|| app::QueuedMutation {
+                id: mutation_id,
+                request: req.clone(),
+                effect: effect.clone(),
+                best_effort,
+                attempts,
+                run_after: None,
+            });
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
@@ -2389,7 +2394,41 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::UndoMutation { mutation_id } => Some(mutation_id.clone()),
                     _ => None,
                 };
-                let resp = ipc_call(&bg, req).await;
+                let resp = async {
+                    let mut req = req;
+                    if let Request::SendDraft {
+                        draft,
+                        send_identity: Some(identity),
+                        ..
+                    } = &mut req
+                    {
+                        let reviewed = crate::send_recovery::reviewed_send_identity(
+                            &bg,
+                            &draft.account_id,
+                            &draft.id,
+                            identity,
+                        )
+                        .await?;
+                        if reviewed != *identity {
+                            *identity = reviewed;
+                            #[cfg(not(test))]
+                            {
+                                let mut local = crate::local_state::load();
+                                local.last_send_identity =
+                                    Some((draft.account_id.clone(), identity.clone()));
+                                crate::local_state::save(&local).map_err(|error| {
+                                    MxrError::Ipc(format!("Cannot retain retry identity: {error}"))
+                                })?;
+                            }
+                            let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
+                                draft.account_id.clone(),
+                                identity.clone(),
+                            ));
+                        }
+                    }
+                    ipc_call(&bg, req).await
+                }
+                .await;
                 let outcome = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Ack | ResponseData::Draft { .. },
@@ -2409,6 +2448,32 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         effect
                     }),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::SendOutcome {
+                                outcome: Some(outcome),
+                            },
+                    }) if outcome.state == mxr_core::SendOutcomeState::Accepted
+                        && matches!(effect, app::MutationEffect::SentSuccess { .. }) =>
+                    {
+                        Ok(effect)
+                    }
+                    Ok(Response::Ok {
+                        data: ResponseData::SendOutcome { outcome },
+                    }) => Ok(app::MutationEffect::StatusOnly(match outcome {
+                        Some(outcome) => format!(
+                            "Send {}: {}",
+                            outcome.identity.operation_id,
+                            match outcome.state {
+                                mxr_core::SendOutcomeState::Accepted => "provider accepted",
+                                mxr_core::SendOutcomeState::Unknown =>
+                                    "acceptance uncertain; do not resend",
+                                mxr_core::SendOutcomeState::NotAccepted =>
+                                    "not accepted; review before a new attempt",
+                            }
+                        ),
+                        None => "No send outcome recorded".into(),
+                    })),
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => {
@@ -2891,6 +2956,9 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.search.page.ui_status = app::SearchUiStatus::Error;
                             }
                             app.status_message = Some(format!("Search count failed: {error}"));
+                        }
+                        AsyncResult::SendIdentityRetained(account, identity) => {
+                            app.compose.last_send_identity = Some((account, identity));
                         }
                         AsyncResult::Rules(Ok(rules)) => {
                             app.replace_rule_list(rules);

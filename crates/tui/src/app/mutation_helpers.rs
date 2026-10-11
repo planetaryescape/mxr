@@ -361,6 +361,9 @@ impl App {
                 }
                 self.pending_promise_check = sent_message_id.clone();
                 self.advance_focus_run_after_send(draft_path.as_deref());
+                if let Some(path) = draft_path {
+                    self.schedule_draft_cleanup(path);
+                }
                 if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
                     self.queue_mutation(
                         Request::SetAutoReminder {

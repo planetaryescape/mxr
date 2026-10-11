@@ -91,6 +91,7 @@ Commands:
   reply-all           Reply to all recipients
   forward             Forward a message
   drafts              Manage drafts: list (default), show scheduled sends, recover orphaned in-flight sends, resume one for retry, edit, delete, or sync drafts with a provider
+  send-outcome        Inspect a send operation after disconnect, including after draft cleanup
   send                Send a draft by ID
   unsend              Cancel a previously-scheduled send. The draft itself is preserved
   archive             Archive a message (remove from inbox)

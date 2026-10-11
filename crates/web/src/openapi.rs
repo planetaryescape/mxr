@@ -77,7 +77,7 @@ use utoipa::{
         analytics_refresh_contacts, analytics_rebuild,
         mail_message_body, mail_message_html_images, mail_message_inline_image, mail_message_raw_headers,
         mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
-        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored,
+        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored, mail_send_outcome,
         mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
@@ -1380,6 +1380,7 @@ endpoint!(get mail_drafts_orphaned_list "/api/v1/mail/drafts/orphaned", "List or
 #[allow(dead_code)]
 fn mail_drafts_save_local() {}
 endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-orphan", "Reset orphaned sending draft");
+endpoint!(get mail_send_outcome "/api/v1/mail/send-outcomes/{operation_id}", "Inspect durable send evidence without resending");
 endpoint!(post mail_drafts_send_stored "/api/v1/mail/drafts/{draft_id}/send-stored", "Send stored draft by id");
 #[utoipa::path(delete, path = "/api/v1/mail/drafts/{draft_id}/stored", params(("draft_id" = String, Path), ("expected_revision" = i64, Query, description = "Revision from the deletion preview")), responses((status = 200, description = "Draft deleted", body = ResponseData), (status = 409, description = "Stale revision", body = DraftConflictResponse), (status = 422, description = "Legacy daemon", body = DraftConflictResponse)))]
 #[allow(dead_code)]

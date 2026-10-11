@@ -20,6 +20,7 @@ pub enum Action {
     OpenSearchScreen,
     OpenRulesScreen,
     OpenDiagnosticsScreen,
+    CheckLastSendOutcome,
     OpenAccountsScreen,
     OpenAnalyticsScreen,
     OpenAnalyticsView(crate::app::AnalyticsView),

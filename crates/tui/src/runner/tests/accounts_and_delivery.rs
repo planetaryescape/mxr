@@ -550,6 +550,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
         Request::ScheduleSend {
             draft_id: scheduled_id,
             send_at,
+            ..
         } => {
             assert_eq!(scheduled_id, &draft_id);
             assert!(*send_at > chrono::Utc::now());

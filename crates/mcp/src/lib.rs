@@ -1661,6 +1661,7 @@ mod tests {
                 Request::GetStatus => ResponseData::Status {
                     draft_revision_supported: false,
                     send_outcome_supported: true,
+                    archive_recovery_supported: false,
                     uptime_secs: 1,
                     accounts: Vec::new(),
                     total_messages: 0,

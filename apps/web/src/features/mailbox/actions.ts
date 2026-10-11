@@ -8,6 +8,7 @@ import { RefreshCw, Route as RouteIcon, Sparkles, UserSearch } from "lucide-reac
 import { toast } from "sonner";
 
 import { apiFetch, BridgeRequestError } from "@/api/client";
+import type { components } from "@/api/generated";
 import type { Action } from "@/lib/actions/types";
 import { fetchBridgeHealth } from "@/lib/bridgeHealth";
 import {
@@ -75,11 +76,12 @@ function protocolMismatchDescription(): string {
   return `This version of mxr needs updating before it can sync all accounts. Update mxr: ${buildProtocolUpdateSteps().join(" · ")}`;
 }
 
-function syncResults(value: unknown): Array<{
-  account_name: string;
-  result: "started" | "joined" | "failed";
-  error?: string;
-}> {
+type SyncAccountResultView = Pick<
+  components["schemas"]["SyncAccountResult"],
+  "account_name" | "result"
+> & { error?: string };
+
+function syncResults(value: unknown): SyncAccountResultView[] {
   if (!isRecord(value) || !Array.isArray(value.results)) {
     throw new Error("The daemon returned an invalid sync result");
   }
@@ -94,11 +96,7 @@ function syncResults(value: unknown): Array<{
     ) {
       throw new Error("The daemon returned an invalid account sync result");
     }
-    const result: {
-      account_name: string;
-      result: "started" | "joined" | "failed";
-      error?: string;
-    } = {
+    const result: SyncAccountResultView = {
       account_name: item.account_name,
       result: item.result,
     };

@@ -7,6 +7,7 @@ import {
   EXPECTED_IPC_PROTOCOL_VERSION,
   evaluateProtocolCompatibility,
 } from "./protocolCompatibility";
+import { evaluateProtocolCompatibility as evaluateProtocolCompatibilityV4 } from "./__fixtures__/protocolCompatibility-v4";
 
 describe("protocol compatibility", () => {
   test("accepts the expected bridge protocol", () => {
@@ -24,12 +25,10 @@ describe("protocol compatibility", () => {
     });
   });
 
-  test("requires exact compatibility in both client and daemon upgrades", () => {
-    // Old web clients expect 4 and reject the new daemon's 5 health response;
-    // current clients likewise reject an old daemon's 4 response above.
-    expect(evaluateProtocolCompatibility({ protocol_version: 4 })).toMatchObject({
-      actualProtocol: 4,
-      requiredProtocol: 5,
+  test("an old web client rejects the new daemon through the health gate", () => {
+    expect(evaluateProtocolCompatibilityV4({ protocol_version: 5 })).toMatchObject({
+      actualProtocol: 5,
+      requiredProtocol: 4,
     });
     expect(evaluateProtocolCompatibility({})).toMatchObject({ actualProtocol: null });
   });

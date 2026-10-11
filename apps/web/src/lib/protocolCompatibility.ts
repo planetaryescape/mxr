@@ -25,7 +25,7 @@ export function evaluateProtocolCompatibility(
 
   return {
     kind: "mismatch",
-    actualProtocol: typeof health.protocol_version === "number" ? health.protocol_version : null,
+    actualProtocol: health.protocol_version ?? null,
     requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
     updateSteps: buildProtocolUpdateSteps(),
     detail: "mxr Web needs a compatible bridge before it can safely use daemon APIs.",

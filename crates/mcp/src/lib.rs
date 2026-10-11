@@ -252,11 +252,13 @@ pub struct RuleKeyParams {
 pub struct CategoryNameParams {
     pub category_id: String,
     pub name: String,
+    pub dry_run: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CategoryCreateParams {
     pub name: String,
+    pub dry_run: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -317,22 +319,38 @@ impl MxrMcpServer {
         self.daemon_json(request).await
     }
 
-    #[tool(description = "Create a profile-wide personal category.")]
+    #[tool(description = "Create a profile-wide personal category; set dry_run to preview normalized name validity and uniqueness without writing.")]
     async fn mxr_category_create(
         &self,
         Parameters(p): Parameters<CategoryCreateParams>,
     ) -> Result<McpJson<Value>, ErrorData> {
+        if p.dry_run.unwrap_or(false) {
+            return self
+                .daemon_json(Request::PreviewCategoryName {
+                    category_id: None,
+                    name: p.name,
+                })
+                .await;
+        }
         self.ensure_category_name_available(None, &p.name).await?;
         self.daemon_json(Request::CreateCategory { name: p.name })
             .await
     }
 
-    #[tool(description = "Rename a personal category while preserving its stable ID.")]
+    #[tool(description = "Rename a personal category while preserving its stable ID; set dry_run to preview normalized name validity and uniqueness without writing.")]
     async fn mxr_category_rename(
         &self,
         Parameters(p): Parameters<CategoryNameParams>,
     ) -> Result<McpJson<Value>, ErrorData> {
         let category_id = parse_id::<CategoryId>(&p.category_id)?;
+        if p.dry_run.unwrap_or(false) {
+            return self
+                .daemon_json(Request::PreviewCategoryName {
+                    category_id: Some(category_id),
+                    name: p.name,
+                })
+                .await;
+        }
         self.ensure_category_name_available(Some(category_id.clone()), &p.name)
             .await?;
         self.daemon_json(Request::RenameCategory {

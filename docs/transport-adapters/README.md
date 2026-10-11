@@ -23,7 +23,7 @@ Dependency chain: 1 → 2 → 3 → 4 → 5 → 6. Phases 1 and 2 could technica
 
 ## Ground rules (apply to every phase)
 
-- The wire protocol (`IpcMessage`, `Request`, `ResponseData`, `DaemonEvent`, `IpcCodec` framing, `IPC_PROTOCOL_VERSION`) does not change, with one narrow exception gated to phase 5 (an `Authenticate` request for token-bearing transports, additive only).
+- The wire protocol is shared across transports. Phase 5 added `Authenticate`; personal categories later added request/response variants and bumped `IPC_PROTOCOL_VERSION` from 4 to 5 because older peers reject unknown enum variants. The HTTP bridge requires an exact protocol match, so update bridge and daemon together.
 - TUI and CLI keep speaking the same daemon requests; no client-only capabilities (repo invariant).
 - Crate boundaries stay real Cargo dependencies; update `docs/blueprint/crate-boundary-audit.md` whenever a phase adds a crate or edge.
 - Every phase ends green: `scripts/cargo-test -p <touched crates> --tests`, then the full suite once per PR, then live verification through the CLI against a running daemon where behavior could differ.

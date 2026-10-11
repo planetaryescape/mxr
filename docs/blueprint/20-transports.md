@@ -26,7 +26,7 @@ HTTP bridge (mxr-web): REST + WS + SPA gateway — consumes a Connector; NOT a S
 
 Three principles, each with a decision-log entry:
 
-- **Frozen protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `4` (`crates/protocol/src/lib.rs:35`) and does not move per transport. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
+- **Shared protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `5` (`crates/protocol/src/lib.rs:35`); personal-category variants moved it from 4 because older peers reject unknown enum variants. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
 - **Byte-stream-level abstraction.** An adapter produces a connected `AsyncRead + AsyncWrite` stream plus peer/auth evidence — nothing more. Not a typed-RPC `Transport` (tarpc), which would exclude curl/jq/scripts/non-Rust agents against mxr's CLI-first JSON shape (D055).
 - **HTTP is a gateway.** `mxr-web` translates REST/WS into the same `Request` enum and *uses* a client transport; it is not a `ServerTransport`. Discovery measured it: ~100 lines transport plumbing, ~5,500 lines presentation (D052).
 

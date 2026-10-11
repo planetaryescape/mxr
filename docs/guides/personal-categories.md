@@ -43,3 +43,7 @@ category require unrestricted account access. Scoped agent profiles may read
 and assign categories visible in a named account, but cannot make global
 catalog changes. Categories are manual in this release; rules do not create or
 remove memberships.
+
+The bridge and daemon must use the same IPC protocol version. Category IPC
+variants raise that version from 4 to 5, so a new bridge refuses an old daemon
+and an old bridge refuses the new daemon through the existing health check.

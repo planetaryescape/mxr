@@ -192,6 +192,49 @@ pub enum LabelsAction {
 }
 
 #[derive(Subcommand)]
+pub enum CategoriesAction {
+    Create {
+        name: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    Rename {
+        category_id: String,
+        new_name: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    Show {
+        category_id: String,
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+    },
+    /// Preview selected message assignments, or apply them with a preview token.
+    Assign {
+        #[arg(long, value_delimiter = ',')]
+        message_ids: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        add: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        remove: Vec<String>,
+        #[arg(long)]
+        preview_token: Option<String>,
+    },
+    /// Preview deletion, or confirm the exact preview with its token.
+    Delete {
+        #[arg(required_unless_present = "preview_token")]
+        category_id: Option<String>,
+        #[arg(long)]
+        preview_token: Option<String>,
+    },
+    Undo {
+        mutation_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum RulesAction {
     /// Preview a saved rule or an unsaved JSON form; returns the token Apply requires.
     TreatmentPreview {

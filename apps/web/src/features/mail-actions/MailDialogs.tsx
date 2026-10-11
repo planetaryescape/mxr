@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { MoveToModeDialog } from "@/features/arrivals/MoveToModeDialog";
 import {
   ExportDialog,
@@ -14,6 +15,7 @@ import {
 } from "@/features/todo/TodoDialogs";
 
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
+import { CategoriesDialog } from "./dialogs/CategoriesDialog";
 import { LabelsDialog } from "./dialogs/LabelsDialog";
 import { LinksDialog } from "./dialogs/LinksDialog";
 import { MoveDialog } from "./dialogs/MoveDialog";
@@ -25,6 +27,8 @@ import { describeTarget } from "./mailVerbs";
 
 /** Mounted once in the shell; renders whichever mail dialog is open. */
 export function MailDialogs() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const navigate = useNavigate();
   const dialog = useMailDialogs((s) => s.dialog);
   const close = useMailDialogs((s) => s.close);
   if (!dialog) return null;
@@ -50,6 +54,20 @@ export function MailDialogs() {
       );
     case "labels":
       return <LabelsDialog target={dialog.target} onClose={close} />;
+    case "categories":
+      return (
+        <CategoriesDialog
+          target={dialog.target}
+          onClose={close}
+          onDeleted={(categoryId) => {
+            const path = `/m/category/${encodeURIComponent(categoryId)}`;
+            if (pathname === path || pathname.startsWith(`${path}/`)) {
+              close();
+              void navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" }, replace: true });
+            }
+          }}
+        />
+      );
     case "move":
       return (
         <MoveDialog

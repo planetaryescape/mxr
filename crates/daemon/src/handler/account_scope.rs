@@ -8,8 +8,8 @@
 
 use super::{reading, records, request_kind, todos};
 use crate::state::AppState;
-use mxr_config::AgentProfileConfig;
-use mxr_core::id::{AccountId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
+use mxr_config::{AgentProfileConfig, MxrConfig};
+use mxr_core::id::{AccountId, CategoryId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
 use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
@@ -49,6 +49,7 @@ enum ScopeTarget<'a> {
     /// label ignores the account, so a foreign label would list another
     /// account's mail.
     LabelIn(&'a LabelId, &'a AccountId),
+    CategoryIn(&'a CategoryId, &'a AccountId),
     Message(&'a MessageId),
     Thread(&'a ThreadId),
     Draft(&'a DraftId),
@@ -68,6 +69,8 @@ enum ScopeTarget<'a> {
     /// A move or Not-sure correction, by its row id.
     MoveCorrection(i64),
     Undo(&'a str),
+    CategoryPreview(&'a str),
+    CategoryUndo(&'a str),
     Job(&'a str),
     Archive(&'a mxr_protocol::ArchiveIdentityData),
 }
@@ -129,6 +132,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::ListInvites { account_id, .. }
         | Request::BackfillCalendarInvites { account_id }
         | Request::ListLabels { account_id }
+        | Request::ListCategories { account_id }
         | Request::CreateLabel { account_id, .. }
         | Request::DeleteLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }
@@ -323,6 +327,29 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
                 })
                 .collect(),
         ),
+        Request::ListCategoryMessages { category_id, account_id, .. } => match account_id {
+            Some(account_id) => Targets(vec![T::Account(account_id), T::CategoryIn(category_id, account_id)]),
+            None => AllAccounts,
+        },
+        Request::GetCategoryMemberships { account_id, message_ids, category_ids } => {
+            let mut targets: Vec<_> = message_ids.iter().map(T::Message).collect();
+            if let Some(account_id) = account_id {
+                targets.push(T::Account(account_id));
+                targets.extend(category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+            }
+            Targets(targets)
+        }
+        Request::PreviewCategoryMembership { account_id, message_ids, add_category_ids, remove_category_ids } => {
+            let mut targets: Vec<_> = message_ids.iter().map(T::Message).collect();
+            if let Some(account_id) = account_id {
+                targets.push(T::Account(account_id));
+                targets.extend(add_category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+                targets.extend(remove_category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+            }
+            Targets(targets)
+        }
+        Request::ApplyCategoryMembership { preview_token } => Targets(vec![T::CategoryPreview(preview_token)]),
+        Request::UndoCategoryMembership { mutation_id } => Targets(vec![T::CategoryUndo(mutation_id)]),
         Request::GetModeMembership {
             message_id,
             thread_id,
@@ -417,6 +444,11 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // ----- Every account, or daemon-wide data that mixes them -----
         Request::ListAccounts
         | Request::ListAccountsConfig
+        | Request::CreateCategory { .. }
+        | Request::PreviewCategoryName { .. }
+        | Request::RenameCategory { .. }
+        | Request::PreviewDeleteCategory { .. }
+        | Request::DeleteCategory { .. }
         | Request::ListRules
         | Request::UpsertRule { .. }
         | Request::UpsertRuleForm { .. }
@@ -526,6 +558,7 @@ impl ResolvedAccounts {
 async fn resolve_targets(
     state: &Arc<AppState>,
     targets: &[ScopeTarget<'_>],
+    allow_global_categories: bool,
 ) -> Result<ResolvedAccounts, String> {
     let mut resolved = ResolvedAccounts::default();
     let mut thread_ids = Vec::new();
@@ -565,6 +598,21 @@ async fn resolve_targets(
                     .map_err(|e| e.to_string())?;
                 if !labels.iter().any(|label| &label.id == *label_id) {
                     return Err(format!("Label {label_id} is not in account {account_id}"));
+                }
+            }
+            T::CategoryIn(category_id, account_id) => {
+                let visible = if allow_global_categories {
+                    state.store.personal_category_exists(category_id).await?
+                } else {
+                    state
+                        .store
+                        .category_exists_in_account(category_id, account_id)
+                        .await?
+                };
+                if !visible {
+                    return Err(format!(
+                        "Category {category_id} is not visible in account {account_id}"
+                    ));
                 }
             }
             T::Message(message_id) => resolved.push(message_account(state, message_id).await?),
@@ -660,6 +708,33 @@ async fn resolve_targets(
                     serde_json::from_str(&json).map_err(|e| e.to_string())?;
                 for item in operation.items {
                     resolved.push(item.account_id);
+                }
+            }
+            T::CategoryPreview(token) => {
+                let (accounts, category_ids) =
+                    state.category_previews.membership_scope_for_token(token)?;
+                for account_id in &accounts {
+                    for category_id in &category_ids {
+                        let visible = if allow_global_categories {
+                            state.store.personal_category_exists(category_id).await?
+                        } else {
+                            state
+                                .store
+                                .category_exists_in_account(category_id, account_id)
+                                .await?
+                        };
+                        if !visible {
+                            return Err(format!(
+                                "Category {category_id} is no longer visible in account {account_id}"
+                            ));
+                        }
+                    }
+                    resolved.push(account_id.clone());
+                }
+            }
+            T::CategoryUndo(mutation_id) => {
+                for account_id in state.store.category_undo_accounts(mutation_id).await? {
+                    resolved.push(account_id);
                 }
             }
             T::Job(job_id) => {
@@ -798,6 +873,62 @@ pub(super) async fn enforce_account_allowlist(
     profile: &AgentProfileConfig,
     req: &Request,
 ) -> Result<(), String> {
+    let full_category_access =
+        if is_global_category_catalog_request(req) || request_references_category(req) {
+            profile_covers_all_accounts(state, profile).await?
+        } else {
+            false
+        };
+    if is_global_category_catalog_request(req) {
+        return if full_category_access {
+            Ok(())
+        } else {
+            Err(format!(
+                "Request `{}` rejected by {profile_name} profile account allowlist; category catalog access requires every stored and configured account",
+                request_kind(req)
+            ))
+        };
+    }
+
+    if !full_category_access
+        && matches!(
+            req,
+            Request::GetCategoryMemberships {
+                account_id: None,
+                ..
+            } | Request::PreviewCategoryMembership {
+                account_id: None,
+                ..
+            }
+        )
+    {
+        return Err(format!(
+            "Request `{}` rejected by {profile_name} profile account allowlist; category membership requests must name an account",
+            request_kind(req)
+        ));
+    }
+    if full_category_access {
+        let category_ids: Vec<&CategoryId> = match req {
+            Request::GetCategoryMemberships {
+                account_id: None,
+                category_ids,
+                ..
+            } => category_ids.iter().collect(),
+            Request::PreviewCategoryMembership {
+                account_id: None,
+                add_category_ids,
+                remove_category_ids,
+                ..
+            } => add_category_ids.iter().chain(remove_category_ids).collect(),
+            _ => Vec::new(),
+        };
+        for category_id in category_ids {
+            if !state.store.personal_category_exists(category_id).await? {
+                return Err(format!("Category {category_id} not found"));
+            }
+        }
+    }
+
     let targets = match request_scope(req) {
         Unscoped => return Ok(()),
         AllAllowedSyncAccounts => return Ok(()),
@@ -809,7 +940,7 @@ pub(super) async fn enforce_account_allowlist(
         }
         Targets(targets) => targets,
     };
-    let resolved = resolve_targets(state, &targets).await?;
+    let resolved = resolve_targets(state, &targets, full_category_access).await?;
     let denied = || {
         format!(
             "Request `{}` rejected by {profile_name} profile account allowlist",
@@ -864,6 +995,63 @@ async fn account_id_allowed(
     Ok(false)
 }
 
+fn request_references_category(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::ListCategoryMessages { .. }
+            | Request::GetCategoryMemberships { .. }
+            | Request::PreviewCategoryMembership { .. }
+            | Request::ApplyCategoryMembership { .. }
+    )
+}
+
+fn is_global_category_catalog_request(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::ListCategories { account_id: None }
+            | Request::ListCategoryMessages {
+                account_id: None,
+                ..
+            }
+            | Request::CreateCategory { .. }
+            | Request::PreviewCategoryName { .. }
+            | Request::RenameCategory { .. }
+            | Request::PreviewDeleteCategory { .. }
+            | Request::DeleteCategory { .. }
+    )
+}
+
+async fn profile_covers_all_accounts(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+) -> Result<bool, String> {
+    let config: MxrConfig = state.config_snapshot();
+    let stored_accounts = state
+        .store
+        .list_all_accounts()
+        .await
+        .map_err(|error| error.to_string())?;
+    if stored_accounts.is_empty() && config.accounts.is_empty() {
+        return Ok(false);
+    }
+
+    for account in &stored_accounts {
+        if !account_id_allowed(state, profile, &account.id).await? {
+            return Ok(false);
+        }
+    }
+
+    for (key, configured) in &config.accounts {
+        if !account_token_allowed(profile, key)
+            && !account_token_allowed(profile, &configured.email)
+        {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 /// The enabled accounts a scoped profile may see.
 pub(super) async fn allowed_accounts(
     state: &AppState,
@@ -914,6 +1102,12 @@ pub(super) async fn scope_response(
     data: ResponseData,
 ) -> Result<ResponseData, String> {
     match data {
+        ResponseData::Categories { mut categories } => {
+            if !profile_covers_all_accounts(state, profile).await? {
+                categories.retain(|category| category.total_count > 0);
+            }
+            Ok(ResponseData::Categories { categories })
+        }
         ResponseData::Status {
             draft_revision_supported,
             send_outcome_supported,

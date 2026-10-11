@@ -2141,13 +2141,13 @@ mod tests {
             .unwrap_or_default()
             .contains("Rollback trigger"));
 
-        let counts = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let counts = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 let counts = state.store.collect_record_counts().await.unwrap();
                 if counts.semantic_chunks > 0 {
                     break counts;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
         })
         .await

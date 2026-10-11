@@ -42,7 +42,7 @@ export function operationAfterReview(defaultOperation: string, prior: SendOutcom
   return `${defaultOperation}:retry:${crypto.randomUUID()}`;
 }
 export async function prepareReviewedSend(reference: SendReference): Promise<SendReference> {
-  const previous = readSendReferences().reverse().find((r) => r.draftId === reference.draftId && r.accountId === reference.accountId);
+  const previous = readSendReferences().toReversed().find((r) => r.draftId === reference.draftId && r.accountId === reference.accountId);
   if (!previous) return reference;
   const { outcome } = await fetchSendOutcome(previous.accountId, previous.operationId);
   return { ...reference, operationId: operationAfterReview(reference.operationId, outcome) };

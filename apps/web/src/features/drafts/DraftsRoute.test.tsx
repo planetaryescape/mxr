@@ -20,7 +20,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => api);
-vi.mock("./sendOutcomes", () => ({ fetchSendOutcome: vi.fn(), readSendReferences: () => [] }));
+vi.mock("./sendOutcomes", () => ({ fetchSendOutcome: vi.fn<typeof fetchSendOutcome>(), readSendReferences: () => [] }));
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }));

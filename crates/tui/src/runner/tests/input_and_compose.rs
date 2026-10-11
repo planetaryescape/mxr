@@ -2494,6 +2494,16 @@ fn in_flight_schedule_keeps_file_owned_after_dispatch_drains_and_allows_another_
     );
     app.compose.pending_compose = None;
     app.finish_compose_schedule(*dispatch.compose.unwrap(), false);
+    assert!(!app.compose_file_owned(&file));
+    assert_eq!(
+        app.compose
+            .pending_send_confirm
+            .as_ref()
+            .unwrap()
+            .draft_path,
+        file
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
     assert!(
         matches!(app.compose.pending_compose, Some(ComposeAction::EditDraft { path, .. }) if path == file)

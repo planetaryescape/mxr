@@ -11,6 +11,7 @@
 mod manifest;
 mod mxr;
 mod records;
+mod send;
 #[cfg(all(test, unix))]
 mod stub;
 mod template;
@@ -286,6 +287,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
             Ok(draft) => {
                 manifest.upsert(RecordEntry {
                     record_hash: hash,
+                    review: None,
                     to: record.to.clone(),
                     draft_id: Some(draft.draft_id),
                     status: RecordStatus::Drafted,
@@ -296,6 +298,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
             Err(error) => {
                 manifest.upsert(RecordEntry {
                     record_hash: hash,
+                    review: None,
                     to: record.to.clone(),
                     draft_id: None,
                     // A fixed reason: mxr's own words stay out of a file that
@@ -344,29 +347,24 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
 fn run_send(args: SendArgs) -> anyhow::Result<()> {
     let mut manifest = Manifest::load(&args.state_dir, &args.campaign_id)?;
 
-    let targets: Vec<(String, String, String)> = if args.retry_failed {
-        manifest
-            .failed()
-            .into_iter()
-            .filter_map(|entry| {
-                entry
-                    .draft_id
-                    .as_ref()
-                    .map(|id| (entry.record_hash.clone(), id.clone(), entry.to.clone()))
-            })
-            .collect()
-    } else {
-        manifest
-            .pending_send()
-            .into_iter()
-            .filter_map(|entry| {
-                entry
-                    .draft_id
-                    .as_ref()
-                    .map(|id| (entry.record_hash.clone(), id.clone(), entry.to.clone()))
-            })
-            .collect()
-    };
+    let targets: Vec<(String, String, String)> = manifest
+        .pending_send()
+        .into_iter()
+        .filter(|_| !args.retry_failed)
+        .chain(manifest.failed().into_iter().filter(|_| args.retry_failed))
+        .chain(manifest.records.iter().filter(|entry| {
+            matches!(
+                entry.status,
+                RecordStatus::Uncertain | RecordStatus::ScheduleUncertain
+            )
+        }))
+        .filter_map(|entry| {
+            entry
+                .draft_id
+                .as_ref()
+                .map(|id| (entry.record_hash.clone(), id.clone(), entry.to.clone()))
+        })
+        .collect();
 
     if targets.is_empty() {
         println!(
@@ -442,45 +440,12 @@ fn run_send(args: SendArgs) -> anyhow::Result<()> {
     let mut failed = 0usize;
 
     for (hash, draft_id, _) in targets {
-        let Some(entry) = manifest.entry(&hash).cloned() else {
-            continue;
-        };
-
-        match client.send_draft(&draft_id, resolved_at.as_deref()) {
-            Ok(()) => {
-                manifest.upsert(RecordEntry {
-                    status: if resolved_at.is_some() {
-                        RecordStatus::Scheduled
-                    } else {
-                        RecordStatus::Sent
-                    },
-                    error: None,
-                    ..entry
-                });
-                completed += 1;
-            }
-            Err(error) => {
-                manifest.upsert(RecordEntry {
-                    status: RecordStatus::Failed,
-                    error: Some(if resolved_at.is_some() {
-                        FailureReason::Schedule
-                    } else {
-                        FailureReason::Send
-                    }),
-                    ..entry
-                });
-                failed += 1;
-                let action = if resolved_at.is_some() {
-                    "schedule"
-                } else {
-                    "send"
-                };
-                eprintln!("{action} failed for draft {draft_id}: {error}");
-            }
+        match send::dispatch_record(&client, &mut manifest, &args.state_dir, &hash, resolved_at.as_deref(), args.retry_failed)? {
+            RecordStatus::Sent | RecordStatus::Scheduled => completed += 1,
+            RecordStatus::Failed => failed += 1,
+            RecordStatus::Uncertain | RecordStatus::ScheduleUncertain => eprintln!("Outcome needs checking for draft {draft_id}; use mxr send-outcome 'draft:{draft_id}' --account {}. Do not resend or reschedule.",manifest.account),
+            RecordStatus::Drafted => {}
         }
-
-        // Persisted per message: a crash mid-run must not dispatch anyone twice.
-        manifest.save(&args.state_dir)?;
     }
 
     let completed_label = if resolved_at.is_some() {
@@ -521,12 +486,19 @@ fn run_status(args: StatusArgs) -> anyhow::Result<()> {
     println!("  scheduled: {}", manifest.count(RecordStatus::Scheduled));
     println!("  sent:     {}", manifest.count(RecordStatus::Sent));
     println!("  failed:   {}", manifest.count(RecordStatus::Failed));
+    println!("  uncertain: {}", manifest.count(RecordStatus::Uncertain));
+    println!(
+        "  schedule uncertain: {}",
+        manifest.count(RecordStatus::ScheduleUncertain)
+    );
     for entry in &manifest.records {
         let status = match entry.status {
             RecordStatus::Drafted => "drafted",
             RecordStatus::Scheduled => "scheduled",
             RecordStatus::Sent => "sent",
             RecordStatus::Failed => "failed",
+            RecordStatus::Uncertain => "uncertain",
+            RecordStatus::ScheduleUncertain => "schedule uncertain",
         };
         println!(
             "  {status:<8} {} {} {}",
@@ -699,6 +671,7 @@ mod tests {
         let mut existing = Manifest::new("c1".into(), "notto@example.com".into());
         existing.upsert(RecordEntry {
             record_hash: "h1".into(),
+            review: None,
             to: "a@example.com".into(),
             draft_id: Some("d1".into()),
             status: RecordStatus::Drafted,

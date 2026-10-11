@@ -776,6 +776,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Reopen last send draft".into(),
+            shortcut: String::new(),
+            action: Action::ReopenLastSendDraft,
+            category: "Compose".into(),
+        },
+        PaletteCommand {
+            label: "Check last send outcome".into(),
+            shortcut: String::new(),
+            action: Action::CheckLastSendOutcome,
+            category: "Compose".into(),
+        },
+        PaletteCommand {
             label: "Open Diagnostics Page".into(),
             shortcut: String::new(),
             action: Action::OpenDiagnosticsScreen,

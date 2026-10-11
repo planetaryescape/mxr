@@ -179,12 +179,19 @@ pub(crate) fn submit_pending_work(
     }
 
     for path in app.take_pending_draft_cleanup() {
-        let _ = submit_task(local_io, async move {
+        let owned = path.clone();
+        if submit_task(local_io, async move {
             let result = mxr_compose::delete_draft_file_async(&path)
                 .await
                 .map_err(|error| error.to_string());
             AsyncResult::DraftCleanup { path, result }
-        });
+        })
+        .is_err()
+        {
+            app.compose.active_draft_cleanup.remove(&owned);
+            app.status_message =
+                Some("Draft cleanup could not be queued; compose file retained".into());
+        }
     }
 }
 
@@ -219,15 +226,14 @@ pub(crate) fn handle_result(app: &mut App, result: AsyncResult) -> Option<AsyncR
             app.status_message = Some(format!("Local state save failed: {error}"));
             None
         }
-        AsyncResult::DraftCleanup { result: Ok(()), .. } => None,
-        AsyncResult::DraftCleanup {
-            path,
-            result: Err(error),
-        } => {
-            app.status_message = Some(format!(
-                "Draft cleanup failed for {}: {error}",
-                path.display()
-            ));
+        AsyncResult::DraftCleanup { path, result } => {
+            app.compose.active_draft_cleanup.remove(&path);
+            if let Err(error) = result {
+                app.status_message = Some(format!(
+                    "Draft cleanup failed for {}: {error}",
+                    path.display()
+                ));
+            }
             None
         }
         AsyncResult::BugReportSaved(Ok(path)) => {

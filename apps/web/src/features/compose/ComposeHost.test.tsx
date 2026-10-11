@@ -38,8 +38,7 @@ const api = vi.hoisted(() => ({
       send_at: string;
     }>
   >(),
-  sendComposeSession:
-    vi.fn<(draftPath: string, accountId: string, token?: string) => Promise<unknown>>(),
+  sendComposeSession: vi.fn<typeof import("./api").sendComposeSession>(),
   startComposeSession:
     vi.fn<(kind: string, messageId?: string) => Promise<ComposeSessionResponse>>(),
   suggestComposeCollaborators:
@@ -122,6 +121,8 @@ function session(overrides: Partial<ComposeSessionResponse["session"]> = {}) {
   return {
     session: {
       draftPath: "/tmp/mxr-compose.md",
+      draftId: "draft-1",
+      revision: 1,
       rawContent: "",
       frontmatter: {
         to: "alice@example.com",
@@ -221,6 +222,9 @@ describe("ComposeHost send safety", () => {
     });
 
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+    expect(api.sendComposeSession).toHaveBeenCalledWith(
+      "/tmp/mxr-compose.md", "account-1", undefined, 1, "draft-1:1",
+    );
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Message sent"));
     expect(toasts.error).not.toHaveBeenCalled();
     expect(api.checkComposeSafety).toHaveBeenCalledTimes(1);
@@ -847,6 +851,7 @@ describe("ComposeHost after a delayed send", () => {
       key: "Backspace",
       metaKey: true,
     });
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
 
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Discard failed", {

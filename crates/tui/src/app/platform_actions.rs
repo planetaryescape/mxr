@@ -197,6 +197,7 @@ impl App {
         self.modals
             .pending_platform_dispatch
             .push(PendingPlatformDispatch {
+                compose: None,
                 prelude: Vec::new(),
                 request,
                 title,
@@ -219,6 +220,7 @@ impl App {
         self.modals
             .pending_platform_dispatch
             .push(PendingPlatformDispatch {
+                compose: None,
                 prelude,
                 request,
                 title,

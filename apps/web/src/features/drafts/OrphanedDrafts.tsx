@@ -1,158 +1,55 @@
-/*
- * "Needs attention": drafts the daemon started sending but never confirmed
- * (status `sending` with a stale heartbeat). Each can be reset back to an
- * editable draft, or sent again. The daemon refuses to send a draft still
- * marked `sending`, so Send resets first, and it always confirms: the first
- * attempt may have reached the recipient.
- */
-
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, RotateCcw, Send } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatRelativeAge } from "@/lib/utils";
-import {
-  fetchOrphanedDrafts,
-  resetOrphanedDraft,
-  sendStoredDraft,
-  type OrphanedDraft,
-} from "./api";
+import { fetchOrphanedDrafts } from "./api";
+import { fetchSendOutcome, readSendReferences, type SendReference } from "./sendOutcomes";
 
 export const orphanedDraftsQueryKey = ["drafts", "orphaned"] as const;
 
-export function OrphanedDrafts() {
-  const queryClient = useQueryClient();
-  const orphans = useQuery({ queryKey: orphanedDraftsQueryKey, queryFn: fetchOrphanedDrafts });
-  const [confirming, setConfirming] = useState<OrphanedDraft | null>(null);
-
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["drafts"] });
-  const reset = useMutation({
-    mutationFn: (draft: OrphanedDraft) => resetOrphanedDraft(draft.id),
-    onSuccess: () => {
-      toast.success("Draft reset", { description: "It is back in your drafts to edit or send." });
-      void refresh();
-    },
-    onError: (error) => toast.error("Reset failed", { description: error.message }),
+function OutcomeRow({ reference }: { reference: SendReference }) {
+  const outcome = useQuery({
+    queryKey: ["send-outcome", reference.accountId, reference.operationId],
+    queryFn: () => fetchSendOutcome(reference.accountId, reference.operationId),
   });
-  const send = useMutation({
-    mutationFn: async (draft: OrphanedDraft) => {
-      await resetOrphanedDraft(draft.id);
-      await sendStoredDraft(draft.id);
-    },
-    onSuccess: () => {
-      toast.success("Message sent");
-      void refresh();
-    },
-    // A refused send (safety block, provider error) leaves the draft reset,
-    // so it now shows in the list below for editing.
-    onError: (error) => {
-      toast.error("Send failed", { description: error.message });
-      void refresh();
-    },
-  });
-
-  const rows = orphans.data ?? [];
-  if (rows.length === 0) return null;
-  const pending = reset.isPending || send.isPending;
-
-  return (
-    <section aria-labelledby="orphaned-drafts-heading" className="mb-8">
-      <div className="mb-2 flex items-center gap-2 border-b border-border pb-1.5">
-        <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" />
-        <h2
-          id="orphaned-drafts-heading"
-          className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning"
-        >
-          Needs attention
-        </h2>
-        <span className="text-[12.5px] text-muted-foreground">
-          mxr started sending these but never confirmed delivery.
-        </span>
+  const state = outcome.data?.outcome?.state;
+  const description = outcome.isPending
+    ? "Checking send outcome…"
+    : outcome.isError
+      ? "Could not check the send outcome. Check again before deciding whether to send."
+      : state === "accepted"
+        ? "Provider accepted this send."
+        : state === "not_accepted"
+          ? "Provider did not accept this send. Review the draft before a new attempt."
+          : state === "unknown"
+            ? "Acceptance is uncertain. Do not resend."
+            : "No submission was claimed for this operation. Review the saved draft before sending.";
+  return <li className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5">
+    <div className="min-w-0 flex-1">
+      <div className="truncate text-[13px] font-medium">Send {reference.draftId}</div>
+      <div className="text-2xs text-muted-foreground">
+        {description}
       </div>
-      <ul>
-        {rows.map((draft) => {
-          const subject = draft.subject.trim() || "(no subject)";
-          return (
-            <li
-              key={draft.id}
-              className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium">{subject}</div>
-                <div className="mt-0.5 truncate text-2xs text-muted-foreground">
-                  {formatRecipients(draft)} · stuck since{" "}
-                  {formatRelativeAge(new Date(draft.updated_at))} ago
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pending}
-                aria-label={`Reset ${subject}`}
-                onClick={() => reset.mutate(draft)}
-              >
-                <RotateCcw className="size-3.5" />
-                Reset
-              </Button>
-              <Button
-                size="sm"
-                disabled={pending}
-                aria-label={`Send ${subject}`}
-                onClick={() => setConfirming(draft)}
-              >
-                <Send className="size-3.5" />
-                Send
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
-
-      <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send this draft again?</AlertDialogTitle>
-            <AlertDialogDescription>
-              To {confirming ? formatRecipients(confirming) : ""}. The first attempt may already
-              have been delivered, so check Sent before sending again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel variant="outline">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={send.isPending}
-              onClick={() => {
-                if (confirming) send.mutate(confirming);
-                setConfirming(null);
-              }}
-            >
-              {send.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Send className="size-3" />
-              )}
-              Send now
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </section>
-  );
+      <div className="truncate font-mono text-2xs">{outcome.data?.outcome?.identity.operation_id ?? reference.operationId}</div>
+      {outcome.error && <div role="alert">{outcome.error.message}</div>}
+    </div>
+    <Button variant="outline" size="sm" disabled={outcome.isFetching} onClick={() => void outcome.refetch()}>Check outcome</Button>
+  </li>;
 }
 
-function formatRecipients(draft: OrphanedDraft): string {
-  if (draft.to.length === 0) return "no recipients";
-  return draft.to.map((address) => address.name || address.email).join(", ");
+export function OrphanedDrafts() {
+  const orphans = useQuery({ queryKey: orphanedDraftsQueryKey, queryFn: fetchOrphanedDrafts });
+  const references = readSendReferences();
+  for (const draft of orphans.data ?? []) {
+    if (!references.some((reference) => reference.draftId === draft.id)) {
+      references.push({ accountId: draft.account_id, draftId: draft.id, operationId: `draft:${draft.id}` });
+    }
+  }
+  if (references.length === 0) return null;
+  return <section aria-labelledby="orphaned-drafts-heading" className="mb-8">
+    <div className="mb-2 flex items-center gap-2 border-b border-border pb-1.5">
+      <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" />
+      <h2 id="orphaned-drafts-heading" className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning">Send outcomes</h2>
+    </div>
+    <ul>{references.map((reference) => <OutcomeRow key={reference.operationId} reference={reference} />)}</ul>
+  </section>;
 }

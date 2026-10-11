@@ -996,8 +996,26 @@ impl MxrMcpServer {
             ));
         }
         self.daemon_json(Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity {
+                operation_id: input.operation_id,
+                expected_revision: input.expected_revision,
+            }),
             draft_id: parse_id(&input.draft_id)?,
             override_safety_token: input.override_safety_token,
+        })
+        .await
+    }
+    #[tool(
+        name = "mxr_send_outcome",
+        description = "Inspect a durable send operation after disconnect; never sends mail."
+    )]
+    pub async fn send_outcome(
+        &self,
+        Parameters(input): Parameters<SendOutcomeInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetSendOutcome {
+            account_id: parse_id(&input.account_id)?,
+            operation_id: input.operation_id,
         })
         .await
     }
@@ -1444,7 +1462,15 @@ pub struct MutateInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SendOutcomeInput {
+    pub account_id: String,
+    pub operation_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SendDraftInput {
+    pub operation_id: String,
+    pub expected_revision: i64,
     pub draft_id: String,
     pub confirm: Option<bool>,
     pub override_safety_token: Option<String>,
@@ -1710,6 +1736,8 @@ mod tests {
         let server = MxrMcpServer::new(FakeRequester::default());
         let result = server
             .send_draft(Parameters(SendDraftInput {
+                operation_id: "test-send".into(),
+                expected_revision: 1,
                 draft_id: DraftId::new().as_str(),
                 confirm: None,
                 override_safety_token: None,

@@ -223,6 +223,7 @@ impl SaveAttachmentModalState {
 
 #[derive(Debug, Clone)]
 pub struct PendingPlatformDispatch {
+    pub compose: Option<Box<super::compose::PendingSend>>,
     pub prelude: Vec<Request>,
     pub request: Request,
     pub title: String,

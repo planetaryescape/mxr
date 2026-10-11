@@ -183,6 +183,8 @@ pub(super) struct ComposeSessionUpdateRequest {
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionSendRequest {
     #[serde(default)]
+    pub(super) operation_id: Option<String>,
+    #[serde(default)]
     pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
     pub(super) account_id: String,

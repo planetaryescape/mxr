@@ -385,3 +385,67 @@ async fn draft_revisions_edit_holds_lock_while_waiting_for_provider_and_send_use
         "send this accepted edit"
     );
 }
+
+#[tokio::test]
+async fn legacy_sent_without_receipt_is_owned_unknown_and_cannot_resend() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let stored = saved(
+        call(
+            &state,
+            Request::SaveDraft {
+                draft: draft(&state),
+            },
+        )
+        .await,
+    );
+    state
+        .store
+        .update_draft_status(&stored.id, mxr_core::DraftStatus::Sent)
+        .await
+        .unwrap();
+    let alias = format!("draft:{}", stored.id);
+    let result = call(
+        &state,
+        Request::GetSendOutcome {
+            account_id: stored.account_id.clone(),
+            operation_id: alias.clone(),
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Response::Ok {
+            data: ResponseData::SendOutcome {
+                outcome: Some(mxr_core::DraftSendOutcome {
+                    state: mxr_core::SendOutcomeState::Unknown,
+                    ..
+                })
+            }
+        }
+    ));
+    assert!(matches!(
+        call(
+            &state,
+            Request::GetSendOutcome {
+                account_id: mxr_core::AccountId::new(),
+                operation_id: alias
+            }
+        )
+        .await,
+        Response::Error { .. }
+    ));
+    assert!(matches!(
+        call(
+            &state,
+            Request::SendDraft {
+                draft: stored.clone(),
+                send_identity: Some(mxr_core::SendIdentity::for_draft(&stored)),
+                override_safety_token: None
+            }
+        )
+        .await,
+        Response::Error { .. }
+    ));
+    assert!(fake.sent_drafts().is_empty());
+}

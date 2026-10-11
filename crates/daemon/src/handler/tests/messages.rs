@@ -1031,10 +1031,20 @@ async fn a_send_the_provider_took_but_we_lost_is_never_sent_again() {
         }
         Err(e) => Err(e),
     };
+    let error = retry.unwrap_err();
     assert!(
-        retry.unwrap_err().contains("may already have gone"),
-        "says why"
+        error.contains("needs an outcome check"),
+        "says why: {error}"
     );
+    assert!(
+        error.contains("won't be sent again"),
+        "blocks retry: {error}"
+    );
+    assert!(
+        error.contains("mxr send-outcome 'draft:"),
+        "gives recovery: {error}"
+    );
+    assert!(error.contains("--account "), "scopes recovery: {error}");
     assert_eq!(fx.fake.sent_drafts().len(), 1, "never a duplicate");
 }
 

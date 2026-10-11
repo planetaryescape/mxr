@@ -32,7 +32,7 @@ pub use types::*;
 /// Wire revision of the IPC protocol. Bumped only for breaking changes to
 /// the message shapes; additive fields stay decodable across versions via
 /// serde defaults.
-pub const IPC_PROTOCOL_VERSION: u32 = 4;
+pub const IPC_PROTOCOL_VERSION: u32 = 5;
 
 #[cfg(test)]
 mod tests {
@@ -717,6 +717,7 @@ mod tests {
             ),
             (
                 Request::SendDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_draft(&sample_draft())),
                     draft: sample_draft(),
                     override_safety_token: None,
                 },
@@ -730,6 +731,7 @@ mod tests {
             ),
             (
                 Request::SendStoredDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_revision(&DraftId::new(), 1)),
                     draft_id: DraftId::new(),
                     override_safety_token: None,
                 },
@@ -880,6 +882,7 @@ mod tests {
             (
                 ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 0,
                     accounts: Vec::new(),
                     total_messages: 0,

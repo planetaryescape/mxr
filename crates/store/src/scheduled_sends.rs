@@ -52,14 +52,20 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         let id = draft_id.as_str();
         let send_at_ts = send_at.timestamp();
-        sqlx::query!(
-            r#"UPDATE drafts SET send_at = ? WHERE id = ?"#,
-            send_at_ts,
-            id,
-        )
-        .execute(self.writer())
-        .await?;
+        sqlx::query("UPDATE drafts SET send_at = ?, scheduled_send_revision = revision WHERE id = ? AND status = 'draft'")
+        .bind(send_at_ts).bind(id).execute(self.writer()).await?;
         Ok(())
+    }
+
+    pub async fn get_scheduled_send_identity(
+        &self,
+        draft_id: &DraftId,
+    ) -> Result<Option<mxr_core::SendIdentity>, sqlx::Error> {
+        let row: Option<(i64, i64)> = sqlx::query_as("SELECT scheduled_send_revision, send_at FROM drafts WHERE id = ? AND scheduled_send_revision IS NOT NULL AND send_at IS NOT NULL").bind(draft_id.as_str()).fetch_optional(self.reader()).await?;
+        Ok(row.map(|(revision, send_at)| mxr_core::SendIdentity {
+            operation_id: format!("scheduled:{draft_id}:{revision}:{send_at}"),
+            expected_revision: revision,
+        }))
     }
 
     /// Clear the schedule on a draft, leaving the draft itself intact.

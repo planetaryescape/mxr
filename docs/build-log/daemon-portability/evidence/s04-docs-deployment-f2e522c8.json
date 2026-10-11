@@ -1,0 +1,31 @@
+{
+  "observed_at": "2026-10-11T21:18:11.185159+00:00",
+  "stage": "S04",
+  "status": "done",
+  "version": "0.6.77",
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "docs_source": "f2e522c882599127d6fae9fbe5a0855f542472b4",
+  "docs_tree": "e90b326f3dc6d9c8e042ccff2bed8f45496cf3cb",
+  "deployment_id": "dpl_F3tmtzKwWRqkhrFF3KNhYYy7Be5h",
+  "deployment_status": "READY",
+  "target": "production",
+  "alias": "mxr.sh",
+  "project_id": "prj_4an3ekaHr8EiNpCEIbJ4J6Mc3mPl",
+  "previous_deployment_id": "dpl_DVXfrEVXMcQnohLRrMmJvZ5cb766",
+  "browser_checks": {
+    "recipes": "Actual rendered recovered Archive instructions match mergedsource",
+    "cli_reference": "Actual rendered archive-operation command with submit and supported formats/examples",
+    "errors": [],
+    "console": [],
+    "closed": true
+  },
+  "client_acceptance_packet": "docs/build-log/daemon-portability/evidence/s04-installed-v0.6.77/README.md",
+  "review": "independent review waived by BK until Anthropic available; root review and exact-tree merge passed",
+  "limits": [
+    "Live Gmail smoke skipped missingcredentials",
+    "Installed UI checks onmacOS; Linuxarchiveschecksumverified",
+    "Dia open returned macOS -1712; actual agent-browser production journeys passed"
+  ],
+  "rollback": "Forward-fix docs via main; previous production deployment recorded, no immutable artifact retagging.",
+  "owned_docs_preview_stopped": true
+}

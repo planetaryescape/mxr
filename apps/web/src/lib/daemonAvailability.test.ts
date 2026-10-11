@@ -1,4 +1,4 @@
-import { onlineManager, QueryClient } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { apiFetch, DaemonUnavailableError } from "@/api/client";
@@ -116,12 +116,10 @@ describe("daemon availability", () => {
   test("coming back refetches what is shown, except open drafts, and reconnects events", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["mailbox", "inbox"], { rows: [] });
-    queryClient
-      .getQueryCache()
-      .build(queryClient, {
-        queryKey: ["compose-session", "reply:1"],
-        meta: { keepThroughGaps: true },
-      });
+    queryClient.getQueryCache().build(queryClient, {
+      queryKey: ["compose-session", "reply:1"],
+      meta: { keepThroughGaps: true },
+    });
     queryClient.setQueryData(["compose-session", "reply:1"], { body: "typed" });
     stop = startDaemonAvailability(queryClient);
     daemonUp = false;
@@ -150,6 +148,79 @@ describe("daemon availability", () => {
     socket.listener?.({ state: "connected" });
     await settle();
     expect(isDaemonDown()).toBe(false);
+  });
+
+  test("an event-only gap refreshes at socket recovery and preserves open compose text", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const mailboxQuery = vi.fn<() => Promise<{ rows: string[] }>>(async () => ({
+      rows: ["current"],
+    }));
+    const mailboxObserver = new QueryObserver(queryClient, {
+      queryKey: ["mailbox", "inbox"],
+      queryFn: mailboxQuery,
+    });
+    const unsubscribeMailbox = mailboxObserver.subscribe(() => undefined);
+    await mailboxObserver.refetch();
+    queryClient.getQueryCache().build(queryClient, {
+      queryKey: ["compose-session", "reply:1"],
+      meta: { keepThroughGaps: true },
+    });
+    queryClient.setQueryData(["compose-session", "reply:1"], { body: "typed" });
+    stop = startDaemonAvailability(queryClient);
+
+    socket.listener?.({ state: "connected" });
+    socket.listener?.({ state: "connected" });
+    await settle();
+    expect(mailboxQuery).toHaveBeenCalledTimes(1);
+
+    socket.listener?.({ state: "reconnecting" });
+    await settle();
+    expect(queryClient.getQueryState(["mailbox", "inbox"])?.isInvalidated).toBe(false);
+
+    socket.listener?.({ state: "connecting" });
+    socket.listener?.({ state: "reconnecting" });
+    socket.listener?.({ state: "connected" });
+    await settle();
+
+    expect(mailboxQuery).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(["mailbox", "inbox"])).toEqual({ rows: ["current"] });
+    expect(queryClient.getQueryState(["compose-session", "reply:1"])?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryData(["compose-session", "reply:1"])).toEqual({ body: "typed" });
+    expect(isDaemonDown()).toBe(false);
+
+    socket.listener?.({ state: "reconnecting" });
+    socket.listener?.({ state: "connected" });
+    await settle();
+    expect(mailboxQuery).toHaveBeenCalledTimes(3);
+    unsubscribeMailbox();
+  });
+
+  test("an outage recovery does not close the event gap before the socket returns", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const mailboxQuery = vi.fn<() => Promise<{ rows: string[] }>>(async () => ({ rows: [] }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["mailbox", "inbox"],
+      queryFn: mailboxQuery,
+    });
+    const unsubscribeMailbox = observer.subscribe(() => undefined);
+    await observer.refetch();
+    stop = startDaemonAvailability(queryClient);
+
+    daemonUp = false;
+    socket.listener?.({ state: "reconnecting" });
+    await settle();
+    expect(isDaemonDown()).toBe(true);
+
+    daemonUp = true;
+    await apiFetch("/api/v1/mail/desk");
+    await settle();
+    expect(isDaemonDown()).toBe(false);
+    expect(mailboxQuery).toHaveBeenCalledTimes(1);
+
+    socket.listener?.({ state: "connected" });
+    await settle();
+    expect(mailboxQuery).toHaveBeenCalledTimes(2);
+    unsubscribeMailbox();
   });
 
   test("a change is refused, and said so, only while the daemon is down", async () => {

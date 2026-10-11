@@ -119,12 +119,22 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     else if (!isDaemonDown()) void probeDaemon();
   });
 
-  // While down the probe timer sets the pace; a socket that opens is only
-  // a hint to check now.
+  // A restored socket closes an event gap even when HTTP stayed healthy.
+  // While down, the probe timer still controls reachability checks.
   let lastSocketState = daemonEvents.getStatus().state;
+  let eventGapOpen = false;
   const offSocket = daemonEvents.onStatus(({ state }) => {
     const dropped = lastSocketState === "connected" && state !== "connected";
+    const recovered = eventGapOpen && state === "connected";
     lastSocketState = state;
+    if (dropped) eventGapOpen = true;
+    if (recovered) {
+      eventGapOpen = false;
+      // HTTP can stay healthy while events are missed. Keep the interval open
+      // until the socket is usable so this refresh includes changes made while
+      // HTTP was already back.
+      void refetchAfterGap(queryClient);
+    }
     if (isDaemonDown() ? state === "connected" : dropped) void probeDaemon();
   });
 

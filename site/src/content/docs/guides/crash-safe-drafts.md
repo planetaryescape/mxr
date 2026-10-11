@@ -32,11 +32,16 @@ The outcome query distinguishes three results:
 - **Unknown** means acceptance may have happened. Do not resend, schedule, or
   try to clear it with `mxr drafts resume`; query the retained operation again
   or verify with the provider.
+- **No outcome** means the daemon has no claim for that identity. If you retained
+  the reviewed revision and operation ID, you may repeat that same submission
+  with the same identity. Do not invent a new operation ID to retry an
+  uncertain result.
 
 An accepted or unknown operation remains tied to its original draft and
 account, including after draft cleanup and daemon restart. Reusing the same
-operation ID with `mxr send-outcome` retrieves its result; a different ID does not make
-an uncertain send safe to repeat.
+operation ID with `mxr send-outcome` retrieves its result. Reusing a reviewed
+identity when no outcome exists preserves the same operation; a different ID
+does not make an uncertain send safe to repeat.
 
 ## Find an interrupted send
 
@@ -49,9 +54,19 @@ mxr drafts recover
 mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
 ```
 
+For a legacy receipt with no retained operation ID, query the account-scoped
+draft alias instead:
+
+```bash
+mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json
+```
+
 Do not infer non-acceptance from an old `sending` status, a missing local Sent
 message, or a restarted daemon. Only a durable `NotAccepted` result allows a
-new, reviewed operation.
+new, reviewed operation. When no outcome claim exists, replay only the exact
+retained revision and operation ID. If an upgrade exposes a migration problem,
+use a forward fix; older daemons cannot safely interpret the persisted outcome
+records.
 
 In the TUI, close the send error to return to the same compose review. After
 restarting the TUI, use `Ctrl-p` and **Reopen last send draft** to open the
@@ -71,9 +86,10 @@ mxr send DRAFT_ID --at "tomorrow 9am" \
 ```
 
 The scheduler assigns a separate operation identity and records its attempt
-before sending. Query the latest attempt with
+before sending. Query the scheduled draft by its account-scoped alias:
 `mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
-The ordinary send preview's ID does not identify a scheduled attempt.
-An uncertain attempt must be resolved by its retained send outcome; it is not safe to schedule the draft
-again under a new identity. The [automated follow-ups guide](/guides/automated-followups/)
+The ordinary send preview's ID does not identify a scheduled attempt, and the
+global last-send query may still refer to another draft. An uncertain attempt
+must be resolved by its retained send outcome; do not schedule it again under a
+new identity. The [automated follow-ups guide](/guides/automated-followups/)
 shows the scheduling flow.

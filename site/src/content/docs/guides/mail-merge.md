@@ -216,10 +216,12 @@ mxr-mailmerge send <campaign-id> --yes
 ```
 
 `unknown` or an outcome-query failure remains visible as uncertain; the
-companion does not automatically retry it. Re-running the campaign send queries
-the draft-scoped outcome first and does not dispatch while it remains
-uncertain. A confirmed `not_accepted` result is a failed record. Retry only
-after review with the explicit command:
+companion does not automatically retry it. Re-running checks the draft-scoped
+outcome and retained operation. If an operation is still `unknown`, it does not
+submit another send. If no outcome claim exists, the companion may replay the
+same reviewed identity; it does not create a new one. A confirmed
+`not_accepted` result is a failed record. Retry only after review with the
+explicit command:
 
 ```bash
 mxr-mailmerge send <campaign-id> --retry-failed --yes
@@ -245,9 +247,20 @@ attempt is confirmed `not_accepted` and an operator explicitly retries; an
 initial schedule does not require a previous rejection. The status command
 keeps a lost schedule acknowledgement separate from a confirmed schedule.
 Existing manifests without the newer optional review fields remain readable,
-but they cannot recreate a historical operation ID that was never checkpointed.
-If such a legacy record has no retained daemon outcome, the companion cannot
-establish whether an earlier attempt was accepted; reconcile it before retrying.
+but they cannot recreate a historical operation ID or scheduled delivery time
+that was never checkpointed. Reconcile any earlier attempt before retrying. If
+no reviewed schedule was saved, a retry needs an explicit `--at` value; without
+it the command requests an immediate send:
+
+```bash
+mxr-mailmerge send <campaign-id> --retry-failed --at "$SCHEDULE_AT" --yes
+```
+
+For a retained scheduled attempt, query its draft alias and do not retry when
+the result is missing or uncertain. Reconciliation should happen before
+refining or copying an uncertain draft: refinement creates a separate draft,
+and a later send of that copy is a separate submission. The global last-send
+query can still refer to a different draft, so use the scheduled draft alias.
 The manifest checkpoint reduces duplicate effects when its identity is retained.
 
 ## What it does not do

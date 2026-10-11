@@ -79,6 +79,49 @@ send path (`crates/daemon/src/handler/mutations.rs`,
 `crates/daemon/src/handler/mailbox.rs`). They need separate review before any
 broader send-outcome coverage claim.
 
+## S03 closeout findings remain bounded follow-ups
+
+These findings were verified against merged source `d6ba93ba7082a644e027b331e67da44d8e6dd4e8` (tree `c66ddc36`). They do not weaken the rule that an uncertain operation is never retried with a new identity.
+
+- TUI refinement saves a separate random-ID draft before refining and does not
+  query the original send outcome. It makes no provider call; the copy requires
+  a separate deliberate selection and send. Reconcile the uncertain original
+  before refining or copying it (`crates/tui/src/app/platform_actions.rs`).
+- Scheduling draft B does not promote B's alias over a retained different
+  draft A. An account-scoped `draft:B` query still resolves B; the global
+  last-send query may continue to point at A
+  (`crates/tui/src/app/compose_helpers.rs`,
+  `crates/tui/src/send_recovery_state.rs`).
+- The handwritten bridge reference omitted the schedule revision, stored-send
+  revision and operation ID, and outcome route. Update the reference only; the
+  generated OpenAPI schedule-body coverage remains a separate gap
+  (`site/src/content/docs/reference/bridge.md`,
+  `crates/web/src/routes_v6.rs`, `crates/web/src/openapi.rs`).
+- A legacy or preview-failed campaign record with no saved review has no saved
+  delivery time. An explicit retry without `--at` requests an immediate send;
+  retained scheduled reviews keep their delivery mode and do not fall back to
+  immediate delivery (`crates/mailmerge/src/send.rs`).
+- A missing scheduled outcome remains `schedule_uncertain`; it is not evidence
+  of rejection. Some pre-dispatch refusals can therefore need operator
+  reconciliation, and the pending-schedule list may not retain the failed row.
+  Improve diagnostics without suggesting a blind retry
+  (`crates/mailmerge/src/send.rs`, `crates/daemon/src/loops.rs`).
+- Escape dismisses the error and then invokes the restored modal's labelled
+  discard action. This is an explicit existing discard gesture, not background
+  deletion of an edited, owned file (`crates/tui/src/app/input.rs`,
+  `crates/tui/src/ui/send_confirm_modal.rs`).
+
+The same review left these bounded diagnostics for later work: the reset-orphan
+protocol comment inaccurately suggests a reset; a legacy-receipt hint can cite
+a nonexistent operation instead of the draft alias; schedule errors are prose
+rather than format-aware output; companion dry-run counts uncertain targets as
+would-send and subprocess errors are intentionally closed; some wire schema
+fields are optional even though handlers require reviewed values; and the
+client capability error mentions revisions but not outcome support. Persisted
+send outcomes also make older daemon binaries unsafe rollback targets, so
+recovery guidance must direct operators to a forward fix rather than database
+rollback. None of these points changes the reviewed send safety behavior.
+
 ## Several recovery diagnostics remain incomplete
 
 These source-checked observations are nonblocking follow-ups from review of

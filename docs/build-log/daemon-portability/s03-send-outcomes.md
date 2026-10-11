@@ -150,6 +150,46 @@ and `141688284db63920577b28948512afca45249ca70b5794e4b0576c2bda9f5e43`
 (`mxr-mailmerge`). Root owns the final focused gates, whole-candidate review,
 release and installed verification.
 
+## The reviewed candidate passed CI and merged
+
+Candidate `04a72f7bef8dcbebb3aa4838b15c855247566348` (tree
+`c66ddc36ebbf5d7276bf7b0674ac07c0a8bb97cf`) merged as
+`d6ba93ba7082a644e027b331e67da44d8e6dd4e8` with the identical tree. CI run
+[38146965743](https://github.com/planetaryescape/mxr/actions/runs/38146965743)
+passed in 924 seconds. It reported 4,025 fast tests passed with 9 skipped,
+4,071 semantic tests passed with 10 skipped, 897 web tests across 158 files,
+and workspace Clippy in 91 seconds. The browser job reported 380 passing tests;
+the unchanged people-pane assertion observed 452 pixels against 453 and passed
+on retry. Four speed checks passed in 23.8 seconds.
+
+The fresh whole-candidate Opus 5.5/max review returned GREEN after root triage
+in 29m51.603s, 9m51.603s beyond its 20-minute budget. Root accepted six
+bounded findings for documentation or later diagnostic follow-up; none blocked
+the merged candidate. The source-correction window from the consumer finding
+at 13:59:11 UTC to root acceptance at 14:25:27 UTC was 26m16s wall, including
+implementation, checks, packaging and review. These elapsed intervals overlap;
+worker time and BK attention were not measured.
+
+The final local companion consumer used immutable candidate
+`2b9e731409e207a226823c0c2450bbfeb55dfaaa` (tree
+`869d34b9b59cee4a01d565a291810bcc4ec9948d`). It completed in 11.480572s with
+four provider acceptances and seven durable pre-effect witnesses. The binary
+SHA-256 values were `911af44b54dfd5271ff594ebe41a788df6648c5ea4f0c60d169e605fa89c41ce`
+for `mxr` and
+`32fbb611269f87cab18b1ba15e67bcca3d449864ebb07f756415c7245ab3cce3` for
+`mxr-mailmerge`. Root verified the evidence digest and all 53 worker-packet
+hashes. This synthetic consumer check is not installed-release acceptance.
+
+The final local TUI replay on the same candidate refused reopening the compose
+file while send owned it, kept one editor open, and removed the file once after
+an Accepted result. SQLite retained Accepted, and the owned ports were closed.
+The earlier candidate's second-editor/FileNotFoundError observation is
+superseded; the final replay did not establish edited-text loss.
+
+The merge and source gates do not establish release or installed acceptance.
+Published artifacts, installer checks and the installed CLI/TUI journey remain
+pending.
+
 ## Inline review keeps this send-specific
 
 The simplification pass preserves the existing send choke point and provider

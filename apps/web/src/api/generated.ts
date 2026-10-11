@@ -4613,8 +4613,8 @@ export interface components {
             paragraphs: number;
             source?: null | components["schemas"]["MessageTextSourceData"];
             /**
-             * @description What this message says that the thread didn't already: quotes and
-             *     signature removed, the same text in every client.
+             * @description The new text in every client: signatures and trailing history removed,
+             *     with inline questions or forwarded context retained beside answers.
              */
             text: string;
             trimmed: components["schemas"]["TrimmedData"];

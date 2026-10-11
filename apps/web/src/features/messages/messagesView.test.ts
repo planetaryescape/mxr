@@ -175,9 +175,10 @@ describe("length decides the shape", () => {
 
   test("a provider preview is shown whole rather than offered as complete-message expansion", () => {
     const text = "Preview introduction.\n\nSecond preview paragraph.\n\nFinal preview detail.";
-    expect(
-      letterLead(message(text, { paragraphs: 3, source: "provider_snippet" })),
-    ).toEqual({ lead: text, hidden: 0 });
+    expect(letterLead(message(text, { paragraphs: 3, source: "provider_snippet" }))).toEqual({
+      lead: text,
+      hidden: 0,
+    });
   });
 
   test("a compact note shows whole", () => {

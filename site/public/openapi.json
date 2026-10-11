@@ -7698,7 +7698,7 @@
           },
           "text": {
             "type": "string",
-            "description": "What this message says that the thread didn't already: quotes and\nsignature removed, the same text in every client."
+            "description": "The new text in every client: signatures and trailing history removed,\nwith inline questions or forwarded context retained beside answers."
           },
           "trimmed": {
             "$ref": "#/components/schemas/TrimmedData"

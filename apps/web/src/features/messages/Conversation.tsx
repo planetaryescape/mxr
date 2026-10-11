@@ -130,7 +130,7 @@ function MessageItem({
         <p data-testid="provider-preview" className="mt-1 text-[12px] text-muted-foreground">
           {message.text.trim()
             ? "Provider preview only; the full message is unavailable."
-            : "No provider preview is available; the full message is unavailable."} {" "}
+            : "No provider preview is available; the full message is unavailable."}{" "}
           <button
             type="button"
             onClick={onToggleAsSent}

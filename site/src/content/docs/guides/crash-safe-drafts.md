@@ -23,7 +23,7 @@ The send command prints the operation ID and its outcome-query command to
 stderr before submission. Keep that ID if the connection fails. JSON and JSONL
 output remain on stdout.
 
-The outcome query distinguishes three results:
+The outcome query reports whether acceptance is known:
 
 - **Accepted** means the provider accepted the message. Do not send it again,
   even if local Sent indexing has not finished.

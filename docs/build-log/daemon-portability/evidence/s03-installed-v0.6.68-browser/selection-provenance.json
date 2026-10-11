@@ -1,0 +1,51 @@
+{
+  "copied_source_files": [
+    "manifest.json",
+    "count-evidence.json",
+    "observed-network-metadata.json",
+    "storage-key-before-restart.json",
+    "storage-key-during-uncertain.json",
+    "storage-key-after-restart.json",
+    "06-restarted-drafts.png"
+  ],
+  "excluded_source_files": [
+    "01-drafts.png",
+    "02-draft-a-review.png",
+    "03-provider-paused.png",
+    "04-unknown-first-attempt.png",
+    "05-drafts-unknown.png",
+    "acceptance-summary.json",
+    "runtime-observations.json"
+  ],
+  "exclusion_reason": "The five other screenshots were not needed. No raw browser storage beyond the scoped synthetic key, request bodies, headers, HAR, or runtime profile was copied.",
+  "repository_files_sha256": {
+    "06-restarted-drafts.png": "1e1a960e249c6148dc46ce134309390f1017a33e966dc685c5ad37af5a299441",
+    "README.md": "f1e831e3b95f5ffbd965b70e3142a0710e4d110794165a4f4a142b3959195456",
+    "browser-witness-summary.json": "496110d08d1418a0c673486ff2d43c62b2a4af6b65c67956a68be60498d458a2",
+    "count-evidence.json": "3c06e232923d25e1fb56b39564ea36b927043c62898776a77dda8092099e0cbe",
+    "manifest.json": "4acd322ec2128027552424fc3d6a8b16d910f9c7685cfdb01527ca3eddf78b04",
+    "observed-network-metadata.json": "fdd16bcdff953f40317de8e4161fd3e01b86f06f27443aa13b469e382ff9ad70",
+    "storage-key-after-restart.json": "98f788466dca47047bef6538250447a5d34696ddce58a927f0beac037533feed",
+    "storage-key-before-restart.json": "005e8cd44616a7caca914bf8affdab70e793456f6ffd23cd1d0abfba64336085",
+    "storage-key-during-uncertain.json": "24372ff3269c0f36f6c7409f29f9fd1f46eb8c7e54468cb8491f657e3a4f07c7"
+  },
+  "source_files_sha256": {
+    "01-drafts.png": "12e70ecd8b161cb7ff887ff193e53fe5f7695c7804e7977257812dd662e52874",
+    "02-draft-a-review.png": "e20cee595ac78f367cc1b7af2eb9da116ca8b676de1b94b564b60bd193efbe8b",
+    "03-provider-paused.png": "2148cbc9df08948168f42fb3f7b8bb3d4538838cf0d0855cb539f33c5999245c",
+    "04-unknown-first-attempt.png": "d85d06ac6054f971fad3021c9e1d8f9435dd024dd896373951ff2b4fb2c7e3ff",
+    "05-drafts-unknown.png": "5b51b79aaf1d1b45456912ed5f260038174cd102c169f573fa317bbf7e7af41b",
+    "06-restarted-drafts.png": "1e1a960e249c6148dc46ce134309390f1017a33e966dc685c5ad37af5a299441",
+    "acceptance-summary.json": "c681c1fec6faa5ecf6ace4cbb7b5fd6778a3fd56c58c699696ceafe32090ca2f",
+    "count-evidence.json": "3c06e232923d25e1fb56b39564ea36b927043c62898776a77dda8092099e0cbe",
+    "manifest.json": "4acd322ec2128027552424fc3d6a8b16d910f9c7685cfdb01527ca3eddf78b04",
+    "observed-network-metadata.json": "fdd16bcdff953f40317de8e4161fd3e01b86f06f27443aa13b469e382ff9ad70",
+    "runtime-observations.json": "6eaeeb8c3b915991fd35c688e707df7e644541287047574206821c544ab3dffa",
+    "storage-key-after-restart.json": "98f788466dca47047bef6538250447a5d34696ddce58a927f0beac037533feed",
+    "storage-key-before-restart.json": "005e8cd44616a7caca914bf8affdab70e793456f6ffd23cd1d0abfba64336085",
+    "storage-key-during-uncertain.json": "24372ff3269c0f36f6c7409f29f9fd1f46eb8c7e54468cb8491f657e3a4f07c7"
+  },
+  "source_manifest_sha256": "4acd322ec2128027552424fc3d6a8b16d910f9c7685cfdb01527ca3eddf78b04",
+  "source_packet": "stage-01/target/portability-s03-artifacts/browser-published-v0.6.68",
+  "source_sha256sums_sha256": "ae8b0a0b070914c069e0ab3527ab88e384f44586667bfcd9ee1e1d08bef42b8d"
+}

@@ -59,10 +59,10 @@ import { Route as TodoThreadIdRouteImport } from './routes/todo.$threadId'
 import { Route as UpdatesThreadIdRouteImport } from './routes/updates.$threadId'
 import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threadId'
 import { Route as MCategoryCategoryIdRouteImport } from './routes/m.category.$categoryId'
-import { Route as MCategoryCategoryIdThreadIdRouteImport } from './routes/m.category.$categoryId.$threadId'
 import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
 import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
 import { Route as ReadingItemItemKeyRouteImport } from './routes/reading.item.$itemKey'
+import { Route as MCategoryCategoryIdThreadIdRouteImport } from './routes/m.category.$categoryId.$threadId'
 import { Route as MLabelNameThreadIdRouteImport } from './routes/m.label.$name.$threadId'
 import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
 
@@ -316,11 +316,6 @@ const MCategoryCategoryIdRoute = MCategoryCategoryIdRouteImport.update({
   path: '/m/category/$categoryId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MCategoryCategoryIdThreadIdRoute = MCategoryCategoryIdThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => MCategoryCategoryIdRoute,
-} as any)
 const MLabelNameRoute = MLabelNameRouteImport.update({
   id: '/m/label/$name',
   path: '/m/label/$name',
@@ -336,6 +331,12 @@ const ReadingItemItemKeyRoute = ReadingItemItemKeyRouteImport.update({
   path: '/item/$itemKey',
   getParentRoute: () => ReadingRoute,
 } as any)
+const MCategoryCategoryIdThreadIdRoute =
+  MCategoryCategoryIdThreadIdRouteImport.update({
+    id: '/$threadId',
+    path: '/$threadId',
+    getParentRoute: () => MCategoryCategoryIdRoute,
+  } as any)
 const MLabelNameThreadIdRoute = MLabelNameThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
@@ -398,10 +399,10 @@ export interface FileRoutesByFullPath {
   '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
-  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
   '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
+  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -456,10 +457,10 @@ export interface FileRoutesByTo {
   '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
-  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
   '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
+  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -515,10 +516,10 @@ export interface FileRoutesById {
   '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
-  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
   '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
+  '/m/category/$categoryId/$threadId': typeof MCategoryCategoryIdThreadIdRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -575,10 +576,10 @@ export interface FileRouteTypes {
     | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
-    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
     | '/reading/item/$itemKey'
+    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   fileRoutesByTo: FileRoutesByTo
@@ -633,10 +634,10 @@ export interface FileRouteTypes {
     | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
-    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
     | '/reading/item/$itemKey'
+    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   id:
@@ -691,10 +692,10 @@ export interface FileRouteTypes {
     | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
-    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
     | '/reading/item/$itemKey'
+    | '/m/category/$categoryId/$threadId'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   fileRoutesById: FileRoutesById
@@ -732,9 +733,9 @@ export interface RootRouteChildren {
   ComposeDraftIdRoute: typeof ComposeDraftIdRoute
   ComposeNewRoute: typeof ComposeNewRoute
   MMailboxRoute: typeof MMailboxRouteWithChildren
-  MCategoryCategoryIdRoute: typeof MCategoryCategoryIdRouteWithChildren
   SenderAddressRoute: typeof SenderAddressRoute
   SettingsSectionRoute: typeof SettingsSectionRoute
+  MCategoryCategoryIdRoute: typeof MCategoryCategoryIdRouteWithChildren
   MLabelNameRoute: typeof MLabelNameRouteWithChildren
   MSavedSlugRoute: typeof MSavedSlugRouteWithChildren
 }
@@ -1091,13 +1092,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MCategoryCategoryIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/m/category/$categoryId/$threadId': {
-      id: '/m/category/$categoryId/$threadId'
-      path: '/$threadId'
-      fullPath: '/m/category/$categoryId/$threadId'
-      preLoaderRoute: typeof MCategoryCategoryIdThreadIdRouteImport
-      parentRoute: typeof MCategoryCategoryIdRoute
-    }
     '/m/label/$name': {
       id: '/m/label/$name'
       path: '/m/label/$name'
@@ -1118,6 +1112,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/reading/item/$itemKey'
       preLoaderRoute: typeof ReadingItemItemKeyRouteImport
       parentRoute: typeof ReadingRoute
+    }
+    '/m/category/$categoryId/$threadId': {
+      id: '/m/category/$categoryId/$threadId'
+      path: '/$threadId'
+      fullPath: '/m/category/$categoryId/$threadId'
+      preLoaderRoute: typeof MCategoryCategoryIdThreadIdRouteImport
+      parentRoute: typeof MCategoryCategoryIdRoute
     }
     '/m/label/$name/$threadId': {
       id: '/m/label/$name/$threadId'
@@ -1313,9 +1314,8 @@ const MCategoryCategoryIdRouteChildren: MCategoryCategoryIdRouteChildren = {
   MCategoryCategoryIdThreadIdRoute: MCategoryCategoryIdThreadIdRoute,
 }
 
-const MCategoryCategoryIdRouteWithChildren = MCategoryCategoryIdRoute._addFileChildren(
-  MCategoryCategoryIdRouteChildren,
-)
+const MCategoryCategoryIdRouteWithChildren =
+  MCategoryCategoryIdRoute._addFileChildren(MCategoryCategoryIdRouteChildren)
 
 interface MLabelNameRouteChildren {
   MLabelNameThreadIdRoute: typeof MLabelNameThreadIdRoute
@@ -1374,9 +1374,9 @@ const rootRouteChildren: RootRouteChildren = {
   ComposeDraftIdRoute: ComposeDraftIdRoute,
   ComposeNewRoute: ComposeNewRoute,
   MMailboxRoute: MMailboxRouteWithChildren,
-  MCategoryCategoryIdRoute: MCategoryCategoryIdRouteWithChildren,
   SenderAddressRoute: SenderAddressRoute,
   SettingsSectionRoute: SettingsSectionRoute,
+  MCategoryCategoryIdRoute: MCategoryCategoryIdRouteWithChildren,
   MLabelNameRoute: MLabelNameRouteWithChildren,
   MSavedSlugRoute: MSavedSlugRouteWithChildren,
 }

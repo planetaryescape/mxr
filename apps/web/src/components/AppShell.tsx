@@ -96,9 +96,15 @@ export function AppShell() {
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   const routeTitle = routeTitleForPath(path);
+  const [routeAnnouncement, setRouteAnnouncement] = useState({ path: "", title: "" });
   useEffect(() => {
     document.title = `${routeTitle} · mxr`;
   }, [routeTitle]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRouteAnnouncement({ path, title: routeTitle }), 50);
+    return () => window.clearTimeout(timer);
+  }, [path, routeTitle]);
+  const announcedRouteTitle = routeAnnouncement.path === path ? routeAnnouncement.title : "";
   useNewMessageNotifier();
   usePreloadPalettes();
   const accounts = useQuery({
@@ -160,108 +166,107 @@ export function AppShell() {
   // above this return; the help dialog still opens on `?`.
   // Keep this frame until onboarding navigates away: saving the first account
   // refetches the list before step 4 has finished.
-  if (noAccounts || (keepOnboardingFrame && path === "/onboarding")) {
-    return (
-      <div className="flex h-dvh min-h-0 flex-col bg-background">
-        <div key={path} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {routeTitle}
-        </div>
-        <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
-          <span className="font-mono text-sm font-semibold">mxr</span>
-        </header>
-        <main id="main" className="flex min-h-0 flex-1 flex-col">
-          <ErrorBoundary resetKey={path}>
-            <Outlet />
-          </ErrorBoundary>
-        </main>
-        <Suspense fallback={null}>
-          {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
-        </Suspense>
-      </div>
-    );
-  }
+  const onboardingOnlyShell = noAccounts || (keepOnboardingFrame && path === "/onboarding");
 
   return (
     <>
-      <div key={path} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {routeTitle}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcedRouteTitle}
       </div>
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"
-      >
-        Skip to content
-      </a>
-      <ResizablePanelGroup
-        className="app-frame"
-        // Inline: the group's own inline height (100%) beats a class.
-        style={{ height: "100dvh" }}
-        data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-        elementRef={sidebar.frameRef}
-        {...sidebar.groupProps}
-      >
-        <ResizablePanel
-          id={SIDEBAR_ID}
-          data-shell-pane="sidebar"
-          collapsible
-          collapsedSize={SIDEBAR_SIZE.collapsedSize}
-          minSize={SIDEBAR_SIZE.minSize}
-          defaultSize={sidebar.defaultSize}
-          maxSize={SIDEBAR_SIZE.maxSize}
-          groupResizeBehavior="preserve-pixel-size"
-          panelRef={sidebar.panelRef}
-          onResize={sidebar.onResize}
-          className="flex min-h-0 flex-col"
-        >
-          <aside className="app-shell-sidebar" aria-label="Mailboxes">
-            <Sidebar collapsed={collapsed} />
-          </aside>
-        </ResizablePanel>
-        {narrow ? null : (
-          <ResizableHandle
-            aria-label="Resize sidebar"
-            className="bg-sidebar-border"
-            {...sidebar.handleProps}
-          />
-        )}
-        <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
-          <div
-            className="app-shell"
-            data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-            data-rightrail-open={rightRail ? "true" : "false"}
+      {onboardingOnlyShell ? (
+        <div className="flex h-dvh min-h-0 flex-col bg-background">
+          <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
+            <span className="font-mono text-sm font-semibold">mxr</span>
+          </header>
+          <main id="main" className="flex min-h-0 flex-1 flex-col">
+            <ErrorBoundary resetKey={path}>
+              <Outlet />
+            </ErrorBoundary>
+          </main>
+          <Suspense fallback={null}>
+            {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+          </Suspense>
+        </div>
+      ) : (
+        <>
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"
           >
-            <header className="app-shell-topbar">
-              <Topbar />
-            </header>
-            <main id="main" className="app-shell-main">
-              <OfflineBanner />
-              <ErrorBoundary resetKey={path}>
-                <Outlet />
-              </ErrorBoundary>
-            </main>
-            {rightRail ? (
-              <aside className="app-shell-rightrail" aria-label="Context">
-                <Suspense fallback={null}>
-                  <RightRail />
-                </Suspense>
+            Skip to content
+          </a>
+          <ResizablePanelGroup
+            className="app-frame"
+            // Inline: the group's own inline height (100%) beats a class.
+            style={{ height: "100dvh" }}
+            data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+            elementRef={sidebar.frameRef}
+            {...sidebar.groupProps}
+          >
+            <ResizablePanel
+              id={SIDEBAR_ID}
+              data-shell-pane="sidebar"
+              collapsible
+              collapsedSize={SIDEBAR_SIZE.collapsedSize}
+              minSize={SIDEBAR_SIZE.minSize}
+              defaultSize={sidebar.defaultSize}
+              maxSize={SIDEBAR_SIZE.maxSize}
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={sidebar.panelRef}
+              onResize={sidebar.onResize}
+              className="flex min-h-0 flex-col"
+            >
+              <aside className="app-shell-sidebar" aria-label="Mailboxes">
+                <Sidebar collapsed={collapsed} />
               </aside>
-            ) : null}
-            <footer className="app-shell-statusbar">
-              <StatusBar />
-            </footer>
-            <MobileTabs />
-            <Suspense fallback={null}>
-              {mountPalette ? <CommandPaletteMount /> : null}
-              {mountLauncher ? <ComposeLauncher /> : null}
-              {mountCompose ? <ComposeHost /> : null}
-              {mountSearch ? <SearchPalette /> : null}
-              {mountDialogs ? <MailDialogs /> : null}
-              {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
-              {mountPromises ? <PromiseTray /> : null}
-            </Suspense>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+            </ResizablePanel>
+            {narrow ? null : (
+              <ResizableHandle
+                aria-label="Resize sidebar"
+                className="bg-sidebar-border"
+                {...sidebar.handleProps}
+              />
+            )}
+            <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
+              <div
+                className="app-shell"
+                data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+                data-rightrail-open={rightRail ? "true" : "false"}
+              >
+                <header className="app-shell-topbar">
+                  <Topbar />
+                </header>
+                <main id="main" className="app-shell-main">
+                  <OfflineBanner />
+                  <ErrorBoundary resetKey={path}>
+                    <Outlet />
+                  </ErrorBoundary>
+                </main>
+                {rightRail ? (
+                  <aside className="app-shell-rightrail" aria-label="Context">
+                    <Suspense fallback={null}>
+                      <RightRail />
+                    </Suspense>
+                  </aside>
+                ) : null}
+                <footer className="app-shell-statusbar">
+                  <StatusBar />
+                </footer>
+                <MobileTabs />
+                <Suspense fallback={null}>
+                  {mountPalette ? <CommandPaletteMount /> : null}
+                  {mountLauncher ? <ComposeLauncher /> : null}
+                  {mountCompose ? <ComposeHost /> : null}
+                  {mountSearch ? <SearchPalette /> : null}
+                  {mountDialogs ? <MailDialogs /> : null}
+                  {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+                  {mountPromises ? <PromiseTray /> : null}
+                </Suspense>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </>
+      )}
     </>
   );
 }

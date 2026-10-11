@@ -19,7 +19,7 @@ function headings(): string[] {
   return screen
     .getAllByRole("heading", { level: 2 })
     .map((heading) => heading.textContent ?? "")
-    .filter((text) => text !== "Keyboard");
+    .filter((text) => text !== "Help and keyboard shortcuts");
 }
 
 function filter(value: string) {
@@ -38,7 +38,7 @@ describe("HelpDialog", () => {
   test("lists the current view's keys first, then mail actions and global keys", () => {
     render(<HelpDialog open onOpenChange={() => undefined} />);
 
-    expect(screen.getByRole("dialog", { name: "Keyboard" })).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "Help and keyboard shortcuts" })).toBeVisible();
     expect(headings().slice(0, 5)).toEqual([
       "Mail list (this view)",
       "Mail actions",

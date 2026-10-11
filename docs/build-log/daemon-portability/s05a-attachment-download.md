@@ -1,4 +1,4 @@
-# S05a: download and open attachment bytes on the client
+# Attachments transfer to the consuming client
 
 The transfer contract adds path-free metadata and bounded chunks to IPC. Metadata carries message and attachment IDs, filename, MIME type, exact byte length, SHA-256 and the maximum raw chunk size. Chunk responses echo message ID, attachment ID and offset and carry standard base64; requests above 256 KiB, zero-length chunks, offset overflow and ranges past EOF fail. The status capability defaults false so an older daemon returns a clear unsupported error before a client starts the transfer.
 
@@ -40,4 +40,16 @@ npm run gen:types
 
 `agent-work run -- scripts/pre-pr-rust-gate --base HEAD` passed (task 5815): Rust formatting, scoped Clippy across the affected crates with all targets/features and `-D warnings`, architecture-boundary check, and cargo-deny. Cargo-deny reported existing unmatched skip roots, duplicate lock entries, and yanked locked crates; advisories, bans, licenses, and sources passed. The gate leaves workspace CI checks to CI. For web lint or formatting, pass `--threads=4` to oxlint/oxfmt in this workstation environment.
 
-The canonical cross-boundary proof remains root-owned: a client under filesystem denial must transfer a deterministic attachment larger than one chunk through the selected daemon, verify exact bytes and hash, and leave the client with no usable partial destination on injected failure. Product release and installed-client acceptance are separate gates after this code checkpoint.
+## Consuming clients passed the candidate journey
+
+Root acceptance used source `b55994bdc352cd95db893ceda95e77a065cc20ee`, built with the embedded web UI. The binary SHA-256 was `6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9`.
+
+- CLI transferred 1,188,000 deterministic bytes through `cmd://` while macOS denied reads of the daemon data directory. The SHA-256 matched, a repeated download preserved the destination, and the client created no fallback database or socket.
+- MCP assembled the same bytes from 19 chunks. Missing mutation permission, invalid ranges and a wrong account assertion were rejected.
+- The real TUI saved the same bytes under filesystem denial. The first Enter preserved an existing file; the second confirmed replacement. Open copied a separate synthetic text attachment to the client cache and the OS opener returned success. External editor contents were not inspected.
+- The real browser downloaded a 1,280,116-byte synthetic HTML attachment using metadata and five chunks. Its hash matched while the bridge process could not read the daemon cache file. Open downloaded active HTML content without opening another tab. Browser errors and console logs were empty. Raster-image Open was not exercised.
+- A new client against the published v0.6.77 daemon rejected the unsupported capability without a host-path fallback.
+
+All fixtures used synthetic mail. Their owned daemons, bridge processes and browser session were stopped; fixture tokens were removed. The initial CLI fixture failed because `sync --account` resolves against the client configuration. Omitting the selector on the isolated single-account fixture corrected setup. An initial TUI fixture exited during the attempt; the repeated journey used a detached, explicitly tracked fixture daemon. These initial attempts did not establish a transfer result.
+
+The candidate was then rebased onto release metadata at `f56ac1527787ca312bda7b52935947ee94495251`. Product sources are identical; TOML comparison verifies only workspace package versions changed from 0.6.78 to 0.6.79, with the dependency graph unchanged. CI and published-release acceptance remain required before this stage is complete.

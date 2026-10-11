@@ -1,0 +1,16 @@
+{
+  "observed_at": "2026-10-11T22:48:22.002Z",
+  "alias": "mxr.sh",
+  "project_id": "prj_4an3ekaHr8EiNpCEIbJ4J6Mc3mPl",
+  "deployment_id": "dpl_5kNhBxku3nLr1tB92dvmSCt2sAXg",
+  "source": "b45ebd578aad2bc8f31957d892789174d63a60b5",
+  "state": "READY",
+  "url": "https://mxr.sh/guides/web-app/",
+  "browser_session": "mxr-s06a-docs-production",
+  "browser_match": "If live updates disconnect",
+  "browser_errors": [],
+  "browser_console": [],
+  "browser_closed": true,
+  "previous_deployment": "dpl_GNtpjNhZZqmF4xmksW6kzWGXk41A",
+  "recovery": "Forward documentation correction through a reviewed PR; no release tags are moved."
+}

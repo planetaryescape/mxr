@@ -93,8 +93,8 @@ These findings were verified against merged source `d6ba93ba7082a644e027b331e67d
   (`crates/tui/src/app/compose_helpers.rs`,
   `crates/tui/src/send_recovery_state.rs`).
 - The handwritten bridge reference omitted the schedule revision, stored-send
-  revision and operation ID, and outcome route. Update the reference only; the
-  generated OpenAPI schedule-body coverage remains a separate gap
+  revision and operation ID, and outcome route. This closeout corrects the
+  reference; generated OpenAPI schedule-body coverage remains a separate gap
   (`site/src/content/docs/reference/bridge.md`,
   `crates/web/src/routes_v6.rs`, `crates/web/src/openapi.rs`).
 - A legacy or preview-failed campaign record with no saved review has no saved

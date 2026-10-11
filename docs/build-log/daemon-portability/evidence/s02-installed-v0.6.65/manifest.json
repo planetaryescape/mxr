@@ -159,12 +159,6 @@
       "source_sha256": "0e8ba69d46d81b502bb436bbc965fae24516ce43f7a9540dd8c6f14a283c100b"
     },
     {
-      "name": "daemon.log",
-      "bytes": 8870,
-      "sha256": "a6cf3268adc8876fa2855b4d677c7241c45ee2f9886af320af2ba9754718201d",
-      "source_sha256": "a6cf3268adc8876fa2855b4d677c7241c45ee2f9886af320af2ba9754718201d"
-    },
-    {
       "name": "discard-verification.json",
       "bytes": 3626,
       "sha256": "33605f2534a91b5cefc9969870cdcee50f9e44ce9abe5b3515181a9f7448daf8",
@@ -262,8 +256,8 @@
     },
     {
       "name": "selection-provenance.json",
-      "bytes": 3095,
-      "sha256": "d84d3fd03f8285c1f293ea15fdd134decb3c6eef30233fbc115dd9446fd82faf"
+      "bytes": 3383,
+      "sha256": "25c86aa8b6552de59910db0353188934d01eca89b0272829c66b994203f1b1e7"
     },
     {
       "name": "socket-actions.jsonl",

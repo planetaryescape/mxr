@@ -47,6 +47,11 @@
       "name": "reconnect-warning-retained.png",
       "source_sha256": "1db5e816383e63ae811742b07d2195284023afaa3e32a5c4f78038deca0cf23f",
       "reason": "IPC 503 preservation is captured in browser-updates.json and ipc503-preserved.png."
+    },
+    {
+      "name": "daemon.log",
+      "source_sha256": "a6cf3268adc8876fa2855b4d677c7241c45ee2f9886af320af2ba9754718201d",
+      "reason": "Ignored daemon log is not present in a clean checkout; acceptance is supported by the curated request receipts and daemon status records."
     }
   ],
   "root_verification": {

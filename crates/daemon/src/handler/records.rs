@@ -112,24 +112,43 @@ pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, H
     }
     let cfg = pass_config(now);
     let mut in_progress = false;
-    for account in scoped_accounts(state, None).await? {
+    let accounts = scoped_accounts(state, None).await?;
+    for account in &accounts {
         let progress = pass::run_first_run(
             &state.store,
             &cfg,
-            &account,
+            account,
             FIRST_RUN_PAGE_SIZE,
             FIRST_RUN_PAGES_PER_TICK,
         )
         .await
         .map_err(|error| HandlerError::Message(error.to_string()))?;
         in_progress |= !progress.complete;
-        let delivered = pass::file_delivered(&state.store, &cfg, &account)
+        let delivered = pass::file_delivered(&state.store, &cfg, account)
             .await
             .map_err(|error| HandlerError::Message(error.to_string()))?;
         if delivered > 0 {
-            pass::regroup(&state.store, &account, now)
+            pass::regroup(&state.store, account, now)
                 .await
                 .map_err(|error| HandlerError::Message(error.to_string()))?;
+        }
+    }
+    let todo = state.config_snapshot().todo;
+    if todo.enabled {
+        let candidates = mxr_records::renewal_tasks::plan(
+            &state.store,
+            &accounts,
+            now,
+            &cfg.tz,
+            state.snooze_time_prefs().morning_hour,
+        )
+        .await
+        .map_err(|error| HandlerError::Message(error.to_string()))?;
+        let changed = mxr_records::renewal_tasks::apply(&state.store, candidates)
+            .await
+            .map_err(|error| HandlerError::Message(error.to_string()))?;
+        if changed > 0 {
+            tracing::info!(changed, "annual renewal review tasks filed");
         }
     }
     prefetch_pdfs(state).await;

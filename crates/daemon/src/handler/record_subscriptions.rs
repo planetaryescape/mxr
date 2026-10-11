@@ -1,7 +1,7 @@
 //! Archive's subscriptions: IPC and the signals on Now and Archive. A
 //! price change, a missed charge and a yearly renewal within its lead
-//! time are all suggestions on the same surface; none of them ever files
-//! a to-do on its own.
+//! time are suggestions on the same surface. The records tick also files
+//! approaching annual renewals as review tasks when To do is enabled.
 //!
 //! Detection lives in `mxr_records::subscriptions` and runs over the
 //! records on every call, so nothing here stores state: correcting a

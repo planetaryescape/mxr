@@ -63,6 +63,7 @@ mod people;
 mod places;
 mod pool;
 mod reading;
+mod record_renewal_cycles;
 mod record_subscriptions;
 mod records;
 mod relationship_watchlist;

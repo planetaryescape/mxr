@@ -1,7 +1,6 @@
 //! Subscriptions over the daemon: detection from filed receipts, field
 //! provenance, totals per currency, the signals on Now and Archive, a
-//! cancellation email, and an approaching yearly renewal (a suggestion
-//! only; nothing files a to-do from it).
+//! cancellation email, and an approaching yearly renewal review task.
 
 use super::desk::{request, Fixture};
 use super::records::put;
@@ -243,7 +242,7 @@ async fn a_cancellation_email_from_the_same_sender_ends_it() {
 }
 
 #[tokio::test]
-async fn a_yearly_charge_due_soon_is_a_renewal_signal_not_a_to_do() {
+async fn a_yearly_charge_due_soon_creates_one_review_task_on_tick() {
     let fx = Fixture::new().await;
     // Last charged 357 days ago: the next is due in about a week, inside
     // the renewal signal's 14-day lead time.
@@ -267,14 +266,113 @@ async fn a_yearly_charge_due_soon_is_a_renewal_signal_not_a_to_do() {
         data.signals[0].label
     );
 
-    // A suggestion only: nothing is ever filed as a to-do from it.
+    crate::handler::records::tick(&fx.state, Utc::now())
+        .await
+        .unwrap();
+    crate::handler::records::tick(&fx.state, Utc::now())
+        .await
+        .unwrap();
     let todos = fx
         .state
         .store
         .list_todos_in_state(None, TodoState::Open, 50)
         .await
         .expect("todos");
-    assert!(todos.is_empty(), "{todos:#?}");
+    assert_eq!(todos.len(), 1, "{todos:#?}");
+    assert_eq!(todos[0].title, "Review Admiral renewal");
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: todos[0].id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("expected todo")
+    };
+    assert!(todo.when_label.starts_with("estimated renewal "));
+    assert_eq!(
+        todo.amount.as_ref().map(|amount| amount.display.as_str()),
+        Some("Estimated £412.00")
+    );
+    assert!(todos[0]
+        .due_words
+        .as_ref()
+        .unwrap()
+        .starts_with("Estimated renewal"));
+    let set = |action, dry_run| Request::SetTodoState {
+        todo_ids: vec![todos[0].id.clone()],
+        action,
+        dry_run,
+    };
+    request(&fx, set(mxr_protocol::TodoStateActionData::Dismiss, true)).await;
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todos[0].id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        TodoState::Open
+    );
+    request(&fx, set(mxr_protocol::TodoStateActionData::Dismiss, false)).await;
+    crate::handler::records::tick(&fx.state, Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todos[0].id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        TodoState::Dismissed
+    );
+    request(&fx, set(mxr_protocol::TodoStateActionData::Undo, false)).await;
+    request(&fx, set(mxr_protocol::TodoStateActionData::Done, false)).await;
+    crate::handler::records::tick(&fx.state, Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todos[0].id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        TodoState::Done
+    );
+}
+
+#[tokio::test]
+async fn disabled_todo_does_not_create_renewal_reviews() {
+    let fx = Fixture::new().await;
+    let ids = receipts(
+        &fx,
+        ("Admiral", "noreply@admiral.com"),
+        "Your Admiral receipt",
+        "£412.00",
+        &[722, 357],
+    )
+    .await;
+    scan(&fx, &ids).await;
+    let mut config = fx.state.config_snapshot();
+    config.todo.enabled = false;
+    fx.state.set_config_for_test(config).await;
+    crate::handler::records::tick(&fx.state, Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .count_todos_in_state(None, TodoState::Open)
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 #[tokio::test]

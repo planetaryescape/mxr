@@ -56,6 +56,13 @@ IMAP sync credential with disk-secret/keychain remediation without returning
 the configured credential reference. SMTP send failures are not aggregated by
 doctor and remain an existing limitation.
 
+The smoke injects the credential-resolution error through the fake provider's
+spool after the model checks. It verifies the observed sync-error doctor path
+and shell-safe remediation without opening an IMAP connection; disk-only
+credential resolution is covered by separate unit tests. Search JSON omits
+thread IDs, so the fixture resolves drain targets with `mxr thread --search
+QUERY --first --format ids` and keeps search message IDs for restart comparison.
+
 The fixture proves supervised restart and search over persisted fake mail. It
 does not promise recovery of pending analytics work; the existing
 process-local-queue limitation remains. No service is installed and no real
@@ -65,12 +72,19 @@ mail, keychain, personal daemon, or VPS is used.
 
 Passed on macOS: `mxr-llm --lib` (36 tests), `mxr-client --lib` (24 tests),
 `mxr-protocol --lib` (63 tests), `mxr-web --lib openapi_spec_snapshot` (1 test),
-the full `mxr --lib` suite (1,284 passed, 6 ignored), the focused DraftAssist
+the full `mxr --lib` suite (1,285 passed, 6 ignored), the focused DraftAssist
 route-health test (1 test), and CLI help snapshots (1 test). `cargo fmt --all
 -- --check`, `git diff --check`, and Python syntax validation passed. The
-isolated runtime smoke remains pending a build from the committed checkpoint;
-Linux acceptance is established only by the Ubuntu CI run, not this macOS
-worktree.
+focused quoted-remediation and merged OpenAPI snapshot checks pass on the
+integrated candidate. Scoped Clippy, architecture-boundary, and cargo-deny
+checks passed for the integrated candidate. The first queued boundary attempt
+selected a Python interpreter without `tomllib`; the retry used Python 3.14.8.
+Cargo deny reported existing duplicate/yanked dependency warnings but exited
+successfully. The earlier
+Linux smoke stopped when the fixture expected `thread_id` in search JSON; the
+fixture now uses the thread-ID CLI surface. Isolated runtime acceptance is
+pending a build from the corrected committed checkpoint. A macOS run is setup
+validation only; Linux acceptance is established only by Ubuntu CI.
 
 ## Effort and follow-up
 

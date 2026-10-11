@@ -101,6 +101,8 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
     config = root / "config"
     config.mkdir()
     data = root / "data"
+    fake_spool = root / "fake-spool"
+    fake_spool.mkdir()
     socket = root / "mxr.sock"
     instance = f"s08c-{os.getpid()}"
     model_server = ThreadingHTTPServer(("127.0.0.1", 0), ModelHandler)
@@ -136,6 +138,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         "MXR_INSTANCE": instance,
         "MXR_CONFIG_DIR": str(config),
         "MXR_DATA_DIR": str(data),
+        "MXR_FAKE_SPOOL_DIR": str(fake_spool),
         "MXR_SOCKET_PATH": str(socket),
         "MXR_DAEMON_AUTOSTART": "off",
         "MXR_KEYCHAIN": "off",
@@ -215,16 +218,15 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         search = search if isinstance(search, list) else search["results"]
         assert search, "fake sync did not persist searchable mail"
         before_ids = [row["message_id"] for row in search]
-        first_thread = search[0]["thread_id"]
-        second_search = json.loads(
-            cli("search", "invoice", "--format", "json", "--limit", "50").stdout
+        first_thread = cli(
+            "thread", "--search", "deployment", "--first", "--format", "ids"
+        ).stdout.strip().splitlines()[0]
+        second_thread = cli(
+            "thread", "--search", "invoice", "--first", "--format", "ids"
+        ).stdout.strip().splitlines()[0]
+        assert first_thread and second_thread and first_thread != second_thread, (
+            "fake sync did not provide distinct deployment and invoice threads"
         )
-        second_search = second_search if isinstance(second_search, list) else second_search["results"]
-        second_thread = next(
-            (row["thread_id"] for row in second_search if row["thread_id"] != first_thread),
-            None,
-        )
-        assert second_thread is not None, "fake sync did not provide a second thread for the drain check"
         assert_status_does_not_probe()
 
         with model.lock:
@@ -242,8 +244,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         assert recovered_status["health_class"] == "healthy", recovered_status
         after_observation_count = request_count()
 
-        # Keep the fake-only daemon healthy while checking optional model behavior.
-        # Add the missing-credential account only after that acceptance path passes.
+        # Check opt-out while the supervised owner is down before restarting it.
         stop()
         absent = cli("status", "--format", "json", check=False)
         assert absent.returncode != 0, absent.stdout
@@ -251,41 +252,48 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         assert not socket.exists(), "client created a replacement while supervised daemon was down"
         assert not (data / "daemon.pid").exists(), "client left a replacement daemon pid file"
 
-        with (config / "config.toml").open("a", encoding="utf-8") as config_file:
-            config_file.write(
-                '\n[accounts.missing]\nname = "Missing Credential"\n'
-                'email = "missing@example.com"\n\n'
-                '[accounts.missing.sync]\ntype = "imap"\nhost = "imap.invalid"\nport = 993\n'
-                'username = "missing@example.com"\npassword_ref = "fixture-missing-secret"\n'
-                'auth_required = true\nuse_tls = true\n'
-            )
+        # The spool injects the credential-resolution error at the fake sync
+        # provider boundary. Disk-only credential resolution has separate unit
+        # coverage; this fixture deliberately makes no IMAP network connection.
+        (fake_spool / "fail").write_text(
+            "no credential found on disk for mxr/private-account "
+            "(keychain disabled via MXR_KEYCHAIN=off)\n",
+            encoding="utf-8",
+        )
         start()
         drain_pid = daemon.pid
 
-        failed_sync = cli(
-            "sync", "--account", "missing", "--wait", "--wait-timeout-secs", "30", check=False
+        cli(
+            "sync", "--all", "--wait", "--wait-timeout-secs", "30", check=False
         )
-        assert failed_sync.returncode != 0, "sync unexpectedly succeeded without credentials"
-        doctor = json.loads(cli("doctor", "--format", "json").stdout)
-        findings = doctor.get("findings", [])
-        missing = next(
-            (
-                finding
-                for finding in findings
-                if finding.get("message") == "Missing mail credential for Missing Credential"
-            ),
-            None,
-        )
+        deadline = time.monotonic() + 10
+        doctor = None
+        missing = None
+        while time.monotonic() < deadline:
+            doctor = json.loads(cli("doctor", "--format", "json").stdout)
+            missing = next(
+                (
+                    finding
+                    for finding in doctor.get("findings", [])
+                    if finding.get("message") == "Missing mail credential for Fake Account"
+                ),
+                None,
+            )
+            if missing is not None:
+                break
+            time.sleep(0.1)
         assert missing is not None, doctor
         assert any("secrets.toml" in step for step in missing.get("remediation", [])), missing
         sync_command = next(
             step for step in missing["remediation"] if step.startswith("mxr sync --account ")
         )
         assert shlex.split(sync_command) == [
-            "mxr", "sync", "--account", "Missing Credential",
+            "mxr", "sync", "--account", "Fake Account",
             "--wait", "--wait-timeout-secs", "120",
         ], missing
-        assert "fixture-missing-secret" not in json.dumps(missing), missing
+        assert "mxr/private-account" not in json.dumps(missing), missing
+        (fake_spool / "fail").unlink()
+        cli("sync", "--all", "--wait", "--wait-timeout-secs", "30")
 
         # Hold a second feature request open so the daemon is certainly draining.
         with model.lock:

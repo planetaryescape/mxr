@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.80](https://github.com/planetaryescape/mxr/compare/v0.6.79...v0.6.80) (2026-10-11)
+
+
+### Features
+
+* transfer attachments to consuming clients ([#395](https://github.com/planetaryescape/mxr/issues/395)) ([4705e75](https://github.com/planetaryescape/mxr/commit/4705e7584ca267e18ff3447a16fe3b1046c17ce7))
+
+
+### Documentation
+
+* record released browser event recovery ([#396](https://github.com/planetaryescape/mxr/issues/396)) ([b45ebd5](https://github.com/planetaryescape/mxr/commit/b45ebd578aad2bc8f31957d892789174d63a60b5))
+
 ## [0.6.79](https://github.com/planetaryescape/mxr/compare/v0.6.78...v0.6.79) (2026-10-11)
 
 

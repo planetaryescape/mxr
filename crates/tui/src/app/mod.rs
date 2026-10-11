@@ -33,6 +33,7 @@ mod mutation_helpers;
 pub mod mutation_snapshot;
 mod now_actions;
 mod pending_optimistic;
+mod personal_category_actions;
 mod place_actions;
 mod platform_actions;
 mod promises;
@@ -240,6 +241,8 @@ pub enum UndoAction {
     /// A move of an email or a sender (`MoveMessage`): put back exactly
     /// as it was (`UndoMove`).
     Move(i64),
+    /// A local category membership change; the daemon checks pair revisions.
+    CategoryMembership(String),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to
@@ -338,6 +341,9 @@ pub struct App {
     /// Set by the input handler when the user presses "retry now" while the
     /// connection-error modal is open. The IPC worker drains and clears it.
     pub pending_connection_retry: bool,
+    /// Category IPC calls carry the dialog generation so late replies from a
+    /// closed picker cannot replace the current account/category view.
+    pub pending_category_requests: Vec<(u64, Request)>,
     /// Set when the snippets browser modal opens; the runtime drains
     /// this flag and dispatches a `Request::ListSnippets`.
     pub pending_snippets_refresh: bool,
@@ -516,6 +522,7 @@ impl App {
             pending_optimistic: PendingOptimisticState::default(),
             connection_state: ConnectionState::Connecting,
             pending_connection_retry: false,
+            pending_category_requests: Vec::new(),
             pending_snippets_refresh: false,
             pending_reply_queue_refresh: false,
             pending_drafts_refresh: false,
@@ -769,6 +776,7 @@ impl App {
     /// visible even when no pane-local loading indicator is active.
     pub fn has_in_flight_work(&self) -> bool {
         self.pending_mutation_count > 0
+            || !self.pending_category_requests.is_empty()
             || self.modals.drafts.operation_in_flight
             || self.pending_draft_operation.is_some()
             || self.search_is_pending()

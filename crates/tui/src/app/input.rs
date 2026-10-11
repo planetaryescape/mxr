@@ -367,6 +367,11 @@ impl App {
             };
         }
 
+        if self.modals.personal_categories.visible {
+            self.handle_personal_category_key(key);
+            return None;
+        }
+
         if self.modals.snippets.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSnippetsModal),

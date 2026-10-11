@@ -1401,6 +1401,29 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        let category_requests = std::mem::take(&mut app.pending_category_requests);
+        for (generation, request) in category_requests {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let report_if_stale = matches!(&request, Request::UndoCategoryMembership { .. });
+                let view_category_id = match &request {
+                    Request::ListCategoryMessages { category_id, .. } => Some(category_id.clone()),
+                    _ => None,
+                };
+                let result = match ipc_call(&bg, request).await {
+                    Ok(Response::Ok { data }) => Ok(Box::new(data)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(error) => Err(error),
+                };
+                AsyncResult::PersonalCategory {
+                    generation,
+                    report_if_stale,
+                    view_category_id,
+                    result,
+                }
+            });
+        }
+
         // Drain queued semantic-runtime requests (Enable / Disable / Reindex
         // / InstallProfile). Each is a one-shot; result routes through the
         // shared error reporter so failures aren't swallowed.
@@ -2897,6 +2920,19 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Rules(Err(e)) => {
                             app.rules.page.status = Some(format!("Rules error: {e}"));
+                        }
+                        AsyncResult::PersonalCategory {
+                            generation,
+                            report_if_stale,
+                            view_category_id,
+                            result,
+                        } => {
+                            app.handle_personal_category_result(
+                                generation,
+                                report_if_stale,
+                                view_category_id,
+                                result,
+                            );
                         }
                         AsyncResult::SnippetsList(Ok(snippets)) => {
                             let count = snippets.len();

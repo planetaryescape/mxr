@@ -458,6 +458,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Compose".into(),
         },
         PaletteCommand {
+            label: "Categories".into(),
+            shortcut: String::new(),
+            action: Action::OpenPersonalCategories,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Assign Category".into(),
+            shortcut: String::new(),
+            action: Action::AssignPersonalCategory,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
             label: "Now".into(),
             shortcut: "gh".into(),
             action: Action::OpenNow,

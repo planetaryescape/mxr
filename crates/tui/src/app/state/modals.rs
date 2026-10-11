@@ -1,5 +1,6 @@
 use super::super::MutationEffect;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
+use crate::ui::personal_category_picker::PersonalCategoryPicker;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::{Draft, Envelope};
 use mxr_protocol::{
@@ -89,6 +90,7 @@ pub struct ModalsState {
     /// the other contexts without leaving the modal.
     pub help_context_filter: Option<crate::action::UiContext>,
     pub label_picker: LabelPicker,
+    pub personal_categories: PersonalCategoryPicker,
     pub snooze_panel: SnoozePanelState,
     pub reply_later_prompt: Option<ReplyLaterPromptState>,
     pub snooze_config: mxr_config::SnoozeConfig,

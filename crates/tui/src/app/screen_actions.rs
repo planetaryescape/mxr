@@ -14,6 +14,7 @@ impl App {
         self.modals.help_scroll_offset = 0;
         self.modals.help_context_filter = None;
         self.modals.label_picker.close();
+        self.modals.personal_categories.close();
         self.modals.snooze_panel.visible = false;
         self.modals.snooze_panel.custom_input = None;
         self.modals.snooze_panel.custom_error = None;

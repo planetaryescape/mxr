@@ -1,0 +1,136 @@
+{
+  "version": "mxr 0.6.65",
+  "release_source": "7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54",
+  "release_tree": "d8b8463eebbd1eaa4e5f47ed75d69b30cbadc531",
+  "binary_sha256": "86096ad9c869173c3fa6d69fcf0cac1547c94dc36ecd90e1f2ede2a1dea03e26",
+  "embedded_spa_verified": true,
+  "core_requests": 304,
+  "bridge_refinement_requests": 18,
+  "update_statuses": [
+    200,
+    409,
+    200,
+    200,
+    409,
+    200,
+    503,
+    503,
+    200
+  ],
+  "conflict_expected_revision": 1,
+  "conflict_current_revision": 2,
+  "recovery_original_revision": 1,
+  "idle_reconnect_seconds": 7,
+  "canonical_before_retry": [
+    {
+      "revision": 1,
+      "id": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "from": {
+        "name": null,
+        "email": "synthetic@example.com"
+      },
+      "reply_headers": null,
+      "intent": "new",
+      "to": [
+        {
+          "name": null,
+          "email": "alice@example.com"
+        }
+      ],
+      "cc": [],
+      "bcc": [],
+      "subject": "Installed S02 reconnect",
+      "body_markdown": "Before daemon outage",
+      "attachments": [],
+      "created_at": "2026-10-11T10:55:08Z",
+      "updated_at": "2026-10-11T10:55:08Z"
+    },
+    {
+      "revision": 2,
+      "id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "from": {
+        "name": null,
+        "email": "synthetic@example.com"
+      },
+      "reply_headers": null,
+      "intent": "new",
+      "to": [
+        {
+          "name": null,
+          "email": "alice@example.com"
+        }
+      ],
+      "cc": [],
+      "bcc": [],
+      "subject": "Installed S02 two editors",
+      "body_markdown": "Canonical winner from editor B",
+      "attachments": [],
+      "created_at": "2026-10-11T10:52:08Z",
+      "updated_at": "2026-10-11T10:52:51Z"
+    }
+  ],
+  "canonical_after_retry": [
+    {
+      "revision": 2,
+      "id": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "from": {
+        "name": null,
+        "email": "synthetic@example.com"
+      },
+      "reply_headers": null,
+      "intent": "new",
+      "to": [
+        {
+          "name": null,
+          "email": "alice@example.com"
+        }
+      ],
+      "cc": [],
+      "bcc": [],
+      "subject": "Installed S02 reconnect",
+      "body_markdown": "Latest edits retained through real IPC outage",
+      "attachments": [],
+      "created_at": "2026-10-11T10:55:08Z",
+      "updated_at": "2026-10-11T10:55:53Z"
+    },
+    {
+      "revision": 2,
+      "id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "from": {
+        "name": null,
+        "email": "synthetic@example.com"
+      },
+      "reply_headers": null,
+      "intent": "new",
+      "to": [
+        {
+          "name": null,
+          "email": "alice@example.com"
+        }
+      ],
+      "cc": [],
+      "bcc": [],
+      "subject": "Installed S02 two editors",
+      "body_markdown": "Canonical winner from editor B",
+      "attachments": [],
+      "created_at": "2026-10-11T10:52:08Z",
+      "updated_at": "2026-10-11T10:52:51Z"
+    }
+  ],
+  "offline_entry_identical": true,
+  "bridge_stop_entry_identical": true,
+  "actual_failed_refresh_observed": false,
+  "availability_guard_handled_both_reachability_failures": true,
+  "typed_loader_catch_coverage": "5 activeDrafts unit tests passed in s02-triage-3d338beb; branch not forced in browser",
+  "unwanted_effect_route_count": 0,
+  "fake_spool_files": 0,
+  "fake_spool_limit": "Fixture corroboration only; no provider-effect claim inferred from empty spool",
+  "candidate_head": "3d338bebfa9e6b714b6f9503ed5546c037d5eef1",
+  "candidate_clean": true,
+  "helper_sha256": "222a2ae1945280e3a7ab50a1493c9af0eb04a8277bf33d54daaba07f6609f1f9",
+  "elapsed_seconds_to_cleanup": 382.910601
+}

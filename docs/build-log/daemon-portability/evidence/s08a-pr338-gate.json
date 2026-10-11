@@ -1,0 +1,227 @@
+{
+  "pr": "https://github.com/planetaryescape/mxr/pull/338",
+  "base": "8434fb9ccf8ee0bd833205ff78a7538d56c0f873",
+  "head": "e2b670979a9076dbcd6a971a52da38227492c515",
+  "tree": "c2c78899eb47d9d98f38dce1a0561a3b6cdf95ef",
+  "files": [
+    "crates/daemon/src/server.rs",
+    "crates/daemon/src/state.rs",
+    "crates/daemon/tests/daemon_lifecycle.rs",
+    "docs/blueprint/01-architecture.md",
+    "docs/blueprint/23-daemon-portability.md",
+    "docs/build-log/daemon-portability/s08a_smoke.py",
+    "docs/build-log/daemon-portability/s08a_smoke_test.py"
+  ],
+  "checks": [
+    {
+      "name": "Vercel Agent Review",
+      "result": "NEUTRAL",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://vercel.com/github"
+    },
+    {
+      "name": "cubic \u00b7 AI code reviewer",
+      "result": "NEUTRAL",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://www.cubic.dev/pr/planetaryescape/mxr/pull/338"
+    },
+    {
+      "name": "CodeRabbit",
+      "result": "SUCCESS",
+      "status": "SUCCESS",
+      "workflow": null,
+      "url": ""
+    },
+    {
+      "name": "Vercel",
+      "result": "SUCCESS",
+      "status": "SUCCESS",
+      "workflow": null,
+      "url": "https://vercel.com/planetaryescape/mxr-mail/BW6Zm5mvtTBsodyyMHq6btFRdZTu"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "",
+      "url": "https://vercel.com/github"
+    },
+    {
+      "name": "approve-and-enable",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "Dependabot Auto-Merge",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095311004/job/114339898953"
+    },
+    {
+      "name": "Detect Changes",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339876519"
+    },
+    {
+      "name": "Secret Scan",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339876271"
+    },
+    {
+      "name": "Release Gate Scripts",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339876412"
+    },
+    {
+      "name": "cargo deny",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919572"
+    },
+    {
+      "name": "Check",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919584"
+    },
+    {
+      "name": "Architecture Boundaries",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919595"
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919578"
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919610"
+    },
+    {
+      "name": "Format",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919570"
+    },
+    {
+      "name": "Clippy",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919666"
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919612"
+    },
+    {
+      "name": "Test (semantic-local)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919653"
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919603"
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919649"
+    },
+    {
+      "name": "Web Unit Tests",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920224"
+    },
+    {
+      "name": "Web E2E",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920481"
+    },
+    {
+      "name": "Coverage",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920635"
+    },
+    {
+      "name": "SQLx Offline",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919685"
+    },
+    {
+      "name": "Docs Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920370"
+    },
+    {
+      "name": "Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920405"
+    },
+    {
+      "name": "Rustdoc",
+      "result": "SUCCESS",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339919656"
+    },
+    {
+      "name": "MSRV (1.94)",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920870"
+    },
+    {
+      "name": "Install Smoke Test",
+      "result": "SKIPPED",
+      "status": "COMPLETED",
+      "workflow": "CI",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846/job/114339920311"
+    }
+  ],
+  "authoritative_patch_matches": true,
+  "merge_tree_matches": true,
+  "unready": [],
+  "superseded_checks": [],
+  "merged_commit": "01b5ab5285473fc5af854c68fcd8e214cd056931",
+  "current_main": "01b5ab5285473fc5af854c68fcd8e214cd056931",
+  "integrated_tree_matches": true
+}

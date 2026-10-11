@@ -1,0 +1,59 @@
+{
+  "discarded_private_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-8d89-70a3-9f86-8d7970fc4b6e.md",
+  "surviving_private_copies": [
+    {
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md",
+      "attachments": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677/01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close"
+    },
+    {
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md",
+      "attachments": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close"
+    },
+    {
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-9499-7f43-b5af-b75d59ddaff9.md",
+      "attachments": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-9499-7f43-b5af-b75d59ddaff9/01a12a98-9499-7f43-b5af-b76357253eba-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close"
+    },
+    {
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33.md",
+      "attachments": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33/01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close"
+    }
+  ],
+  "canonical": [
+    {
+      "revision": 2,
+      "id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "from": {
+        "name": null,
+        "email": "synthetic@example.com"
+      },
+      "reply_headers": null,
+      "intent": "new",
+      "to": [
+        {
+          "name": null,
+          "email": "alice@example.com"
+        }
+      ],
+      "cc": [],
+      "bcc": [],
+      "subject": "Installed S02 two editors",
+      "body_markdown": "Canonical winner from editor B",
+      "attachments": [],
+      "created_at": "2026-10-11T10:52:08Z",
+      "updated_at": "2026-10-11T10:52:51Z"
+    }
+  ]
+}

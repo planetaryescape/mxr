@@ -1,0 +1,16 @@
+{
+  "created_at": "2026-10-11T11:51:59.812156+01:00",
+  "installed_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65/bin/mxr",
+  "fixture_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/mxr",
+  "sha256": "86096ad9c869173c3fa6d69fcf0cac1547c94dc36ecd90e1f2ede2a1dea03e26",
+  "expected_version": "0.6.65",
+  "release_source": "7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54",
+  "release_tree": "d8b8463eebbd1eaa4e5f47ed75d69b30cbadc531",
+  "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.65",
+  "socket": "/var/folders/3p/n76j7jp14ljcvr1bhf7qmlh00000gn/T/mxr-s02-installed-pn3x1d1_/mxr.sock",
+  "instance": "s02-installed-53272d263211",
+  "port": 18391,
+  "url": "http://127.0.0.1:18391",
+  "serving_mode": "released binary embedded SPA",
+  "actual_version_output": "mxr 0.6.65"
+}

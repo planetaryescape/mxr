@@ -1,0 +1,2900 @@
+[
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:35.008088064Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.5840000000961592
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.368207104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/compose._draftId-O83sgP2I.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5100000013643875
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.36829312Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeRoute-nLF27iUr.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5380000014451798
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.369522176Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/health",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.30900000042957254
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.384676096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/recursive-latin-mono-normal-a6FpAesW.woff2",
+    "status": 200,
+    "mime_type": "font/woff2",
+    "elapsed_ms": 0.5559999977468979
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.39778304Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9589999971352517
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.398082048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.9109999994190874
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.398291968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.188999999606283
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.398454016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 12.353999999757622
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.398593792Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6930000021273736
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.399046912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.7539999985701871
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.400016896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.73900000144518
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.400418048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/llm/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.38800000001024454
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.400557056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/notifications/chimes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.4130000007681083
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40340096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeHost-u-wSNqhR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9550000046393834
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403451904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/alert-dialog-19aQmjiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.37900000127847305
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40348416Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/badge-6jwMWTcC.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.41700000035390256
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403506944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ToneControls-DGjxHgpp.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9259999991971999
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403532032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/contextFormat-CLWc01XO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5189999967108014
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403557888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/label-D8QMLrOb.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5040000033045653
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40357888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/select-CA0U64Es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4140000003487803
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.4036032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/input-DaxedVy3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.36000000161700885
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403623936Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/toggle-group-Bosd93SR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.2710000020363368
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403641856Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/NaturalTimeInput-D1ZWsfeX.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7709999989394565
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40366208Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/textarea-Bc0Xu2sP.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4550000000910368
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40368512Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-B67QeUlI.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.28999999873689375
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403712Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/checkbox-B3r7hLjq.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3360000026274938
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403736064Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/dialog-DZLI_YBw.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.2570000026274938
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40375296Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/focusPane-CViISwv_.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.302999998989515
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40377216Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/command-CbiARLXm.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.36299999882793055
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40379008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MessageBody-BcIMGc1F.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.521999998606043
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.403808Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/requestCoordinator-CUS5Ufo9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.46700000009615905
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408275968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/m._mailbox-yxwMe-PO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.46500000076810827
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408317184Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailView-D-tLgCs1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4430000021273736
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408340992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ListWithReader-CkjPjt8u.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.8790000006475021
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408361984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/listPane-DJuKnfw2.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4179999998384155
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408390144Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailVerbs-BjMjGkVk.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.1500000003846362
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408421888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useInviteResponse-CJpHm1Dh.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7520000021273736
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408448Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/moves-hg0WtiJx.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6989999973070807
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408473088Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailUndo-DxkE8Eg9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3719999965389725
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40849408Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/deskDone-yQGJ6bKV.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4980000006873161
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408524032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailMutations-C1ROoPK6.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7149999959028792
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408541952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/target-3VUea9-0.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.34900000102072953
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408560896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-CIPn0RDM.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.280999999752501
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408577792Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/avatarTone-Dyy1xYgn.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.46300000059627927
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408595968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/When-BcA5nPj-.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.28700000161188655
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408612864Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/arrivalLine-DouZFXIG.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3630000039059669
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408630016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/RowSwipe-B7hK7tTQ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.778000000152504
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408649984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailViewParts-D-gC9rje.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6039999984034803
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408667136Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useAdvanceOnRemoval-MlyiA8es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.44799999738275076
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408685824Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useDelayedPending-CkKhyC33.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4220000037290156
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.40870912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/readerNav-DAC8qGes.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.38499999831244347
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408727808Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ModeFrame-COM_vYcY.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.22900000296602957
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.408747008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useSplitPane-CKLvucPi.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.2970000006821938
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.409089024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/pwa-192.png",
+    "status": 200,
+    "mime_type": "image/png",
+    "elapsed_ms": 0.4339999994395767
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.42287104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 9.192000001024223
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.449153792Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8409999978982379
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.45098496Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8570000023799949
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.456316928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CommandPalette-Cgxo3InD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4549999968826305
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.456388864Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/SearchPalette-Dy86zJm3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6809999999653082
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.456418048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-BH6PfF8t.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.26299999975762334
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.602700032Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/gists",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.7560000020465814
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.707104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8540000025518238
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.707611136Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/restore",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.765000001278473
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.712673024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CodeMirrorComposeEditor-zogugTYD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9969999971864745
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.712723968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-core-CsEXyiaJ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.965000000416534
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.712750848Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-state-BfOHWgG1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2070000035532285
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.71277696Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-view-Cpy-g8u5.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.4339999965606256
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.712807936Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-vim-BY1bsCiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.8369999976865947
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:43.72207104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6620000036482233
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:44.723702016Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.67699999538227
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:51.731930112Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 9.663000000778354
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:59.194128896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/notifications/chimes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6879999989997596
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:52:59.908135936Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/attachment",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9090000007732306
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:02.915062016Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 409,
+    "mime_type": "application/json",
+    "elapsed_ms": 10.49700000154134
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:03.931397888Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.7349999975597021
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:18.533732864Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.644000000859145
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.081388032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/compose/01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "status": 200,
+    "mime_type": "text/html",
+    "elapsed_ms": 0.6409999991715886
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.083931904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/index-VsQLp1nh.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.382999998446787
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.084003072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-react-C-f1Ei3k.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.112999999668915
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.08402304Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-tanstack-7LqS0JFu.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.451999996985076
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.084079872Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-icons-BWGvNkBw.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.3920000000819563
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.084110848Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-radix-B2T4lAEk.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.885000002705492
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.084135168Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/index-DSXQaG2T.css",
+    "status": 200,
+    "mime_type": "text/css",
+    "elapsed_ms": 0.7370000024260953
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.089135872Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/manifest.webmanifest",
+    "status": 200,
+    "mime_type": "application/manifest+json",
+    "elapsed_ms": 0.3560000002628658
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.093799168Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/workbox-window.prod.es5-BBnX5xw4.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7140000007282943
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.095243008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/compose._draftId-O83sgP2I.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4099999984893948
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.095282944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeRoute-nLF27iUr.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.32299999899463727
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.095758848Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/health",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.18700000169780107
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.103825152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/recursive-latin-mono-normal-a6FpAesW.woff2",
+    "status": 200,
+    "mime_type": "font/woff2",
+    "elapsed_ms": 1.4900000004859175
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.105172992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6159999996717088
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10539008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.933000000768108
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.105588992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 5.011000000116648
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10574592Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 15.96900000229408
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.105885952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9830000017285347
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.106137088Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9450000012079254
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.106561024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.987000002971152
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10676992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/llm/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.696000000096159
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.106897152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/notifications/chimes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.3710000014451798
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108783104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeHost-u-wSNqhR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9100000020170118
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10882816Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/alert-dialog-19aQmjiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3180000007681083
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108851968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/badge-6jwMWTcC.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5650000004346949
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108876032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ToneControls-DGjxHgpp.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.4779999982174485
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10890112Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/contextFormat-CLWc01XO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.8819999990805518
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108926976Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/label-D8QMLrOb.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.0590000016323755
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108950016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/select-CA0U64Es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.665999997387873
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.108984832Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/input-DaxedVy3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6699999989946372
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109010944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/toggle-group-Bosd93SR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.34900000102072953
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10904192Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/NaturalTimeInput-D1ZWsfeX.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.800999999217689
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109068032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/textarea-Bc0Xu2sP.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3630000006821938
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109101056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-B67QeUlI.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3969999989946373
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10912896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/checkbox-B3r7hLjq.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7239999999294522
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109154816Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/dialog-DZLI_YBw.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5770000004295726
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109185024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/focusPane-CViISwv_.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.47699999966658657
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109213184Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/command-CbiARLXm.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3950000020363368
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.10924288Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MessageBody-BcIMGc1F.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6829999983636662
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.109273856Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/requestCoordinator-CUS5Ufo9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.2480000033956021
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111623168Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/m._mailbox-yxwMe-PO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.3510000004346948
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111661056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailView-D-tLgCs1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.41600000161188655
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111691008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ListWithReader-CkjPjt8u.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9349999987124465
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111721984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/listPane-DJuKnfw2.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.900000002460787
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111748096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailVerbs-BjMjGkVk.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.3540000018349383
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111782912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useInviteResponse-CJpHm1Dh.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6880000017888378
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111809024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/moves-hg0WtiJx.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2679999980251306
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111836928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailUndo-DxkE8Eg9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.47100000178371554
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.11185792Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/deskDone-yQGJ6bKV.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6840000026326161
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111883008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailMutations-C1ROoPK6.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6460000011373777
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111915008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/target-3VUea9-0.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4179999967056792
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111949824Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-CIPn0RDM.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2940000005308538
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.111979008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/avatarTone-Dyy1xYgn.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9319999993280508
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.11200512Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/When-BcA5nPj-.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6629999994293321
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.112032768Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/arrivalLine-DouZFXIG.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2129999997678678
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.11206016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/RowSwipe-B7hK7tTQ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.0279999992626254
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.112083968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailViewParts-D-gC9rje.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.4830000004295725
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.11210496Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useAdvanceOnRemoval-MlyiA8es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.6409999985855537
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.112137984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useDelayedPending-CkKhyC33.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.5629999967261683
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.112163072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/readerNav-DAC8qGes.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.2740000023145694
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.112185856Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ModeFrame-COM_vYcY.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.2629999974032398
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.11220992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useSplitPane-CKLvucPi.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.3250000008693896
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.127510016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 10.021000001754146
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.129862912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/pwa-192.png",
+    "status": 200,
+    "mime_type": "image/png",
+    "elapsed_ms": 1.041000002441462
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.152368128Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9780000001012813
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.154590976Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.7289999997576233
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.182144Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CommandPalette-Cgxo3InD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.5960000001820736
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.182256896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/SearchPalette-Dy86zJm3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9020000008090865
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.182294016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-BH6PfF8t.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.43500000110664405
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.306651136Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/gists",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.595000000096159
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.410303232Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6999999984034803
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.410612224Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/refresh",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.6469999995857942
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.414509056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CodeMirrorComposeEditor-zogugTYD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.95899999904586
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.414566144Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-core-CsEXyiaJ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.8489999990521464
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.414597888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-state-BfOHWgG1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.033999998550862
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.414628096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-view-Cpy-g8u5.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.5110000003601889
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.414660864Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-vim-BY1bsCiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9810000004051254
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:19.421068032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6460000000102446
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:20.422530048Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.799999997575069
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:25.001515008Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.7069999989997595
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:25.015736064Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 409,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.3520000027185306
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:38.683512832Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/restore",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.598000000267988
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:39.704371968Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.1550000009450594
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:53.732353024Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/refresh",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.9069999979841523
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:54.61414784Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.6660000011976808
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:54.895165952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:55.961464832Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:53:58.075345152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:02.126524928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.46351104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.1650000005206094
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.46573312Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8959999993382953
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.46581504Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.890000002460787
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.465890816Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 6.3440000020721925
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.465956096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 12.399999997049337
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.466017024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6099999988228083
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.466064896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.6090000027185305
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.466115072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.816999998231651
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.4661952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 12.005999999050982
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.466424832Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.4050000019555444
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.483283968Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9130000001820736
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.774754048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/drafts-BV8FxdWu.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.1270000045790802
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.782691072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/scheduled-sends",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.1619999987522607
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.782898944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts/orphaned",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8489999976558611
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:05.783062016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.0019999983175658
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:16.515280896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:17.548499968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:19.581114112Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:23.821788928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.462214912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.2550000032288953
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464109056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.1290000006014016
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464205056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.132000000091037
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.46427904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 5.097999997489154
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464337152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 9.613000003481517
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.46438784Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.7810000006821938
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.46444288Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.3040000026326162
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464495872Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.9790000001769514
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464557824Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.735000000096159
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464609024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/scheduled-sends",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.7630000013592655
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.464656128Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts/orphaned",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.159000000854023
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.744420096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6780000007732305
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.744642048Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/refresh",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.6610000006014016
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:28.752911104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6960000030570663
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:54:29.753289984Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.574999998338055
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:02.442578944Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/discard",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 5.0660000001012815
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.806515968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/compose/01a12a9a-28eb-78e1-919a-f7553ba1b707",
+    "status": 200,
+    "mime_type": "text/html",
+    "elapsed_ms": 0.6879999996768311
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.809171968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/index-VsQLp1nh.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.3840000000586734
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.809236992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-react-C-f1Ei3k.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.280000001806533
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.80926208Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-tanstack-7LqS0JFu.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.7140000006589107
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.809281024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-icons-BWGvNkBw.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.529999999289401
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.809299968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-radix-B2T4lAEk.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.9400000010281802
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.80932096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/index-DSXQaG2T.css",
+    "status": 200,
+    "mime_type": "text/css",
+    "elapsed_ms": 1.172999998490559
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.813574912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/manifest.webmanifest",
+    "status": 200,
+    "mime_type": "application/manifest+json",
+    "elapsed_ms": 0.5999999992472586
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.820683008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/workbox-window.prod.es5-BBnX5xw4.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.7609999959080014
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.821981952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/compose._draftId-O83sgP2I.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.39199999603373
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.822021888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeRoute-nLF27iUr.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.36099999805982225
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.822534912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/health",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.28199999882280824
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.831651072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/recursive-latin-mono-normal-a6FpAesW.woff2",
+    "status": 200,
+    "mime_type": "font/woff2",
+    "elapsed_ms": 2.7570000005217734
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83312Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.7780000033956022
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.833341952Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.485999997221167
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.833504Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 6.56199999760068
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.833640192Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 16.994000001788837
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83377792Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.38499999823165126
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.834063104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.867999997731531
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.834518784Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.949000000778353
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.834744064Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/llm/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.5270000021273735
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.834849024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/notifications/chimes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.3249999971301295
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83712Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ComposeHost-u-wSNqhR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.0929999985611065
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837168896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/alert-dialog-19aQmjiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.38300000347639435
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837195008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/badge-6jwMWTcC.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.1170000036533456
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837229056Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ToneControls-DGjxHgpp.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.8960000000614672
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83725312Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/contextFormat-CLWc01XO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.6160000019657892
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837275904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/label-D8QMLrOb.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.5660000011168886
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837296128Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/select-CA0U64Es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.5530000006924383
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837328896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/input-DaxedVy3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.2259999984086027
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83735296Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/toggle-group-Bosd93SR.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.5800000012887176
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837376Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/NaturalTimeInput-D1ZWsfeX.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.358999999540858
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837395968Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/textarea-Bc0Xu2sP.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.4989999994242098
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837417984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-B67QeUlI.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9249999989997596
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837441024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/checkbox-B3r7hLjq.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.459999998989515
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837460992Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/dialog-DZLI_YBw.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.30899999746866524
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.83748096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/focusPane-CViISwv_.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.36699999950500206
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837507072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/command-CbiARLXm.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4310000003487803
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837531136Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MessageBody-BcIMGc1F.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.1260000025427435
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.837553152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/requestCoordinator-CUS5Ufo9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.26799999840348027
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840380928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/m._mailbox-yxwMe-PO.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2609999981559814
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.84043008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailView-D-tLgCs1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.994000002976274
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840455936Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ListWithReader-CkjPjt8u.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.029000002319692
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840482048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/listPane-DJuKnfw2.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.9059999998435377
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840503808Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailVerbs-BjMjGkVk.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.4150000015322584
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840539904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useInviteResponse-CJpHm1Dh.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.140999996069586
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840560896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/moves-hg0WtiJx.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.417000001582317
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840581888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailUndo-DxkE8Eg9.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.132000000551343
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840604928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/deskDone-yQGJ6bKV.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.651999997559702
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840626944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/mailMutations-C1ROoPK6.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 5.787000002409099
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840649984Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/target-3VUea9-0.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.5000000003539027
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840672Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-CIPn0RDM.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.4179999995101245
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840694016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/avatarTone-Dyy1xYgn.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.455000001960667
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840715776Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/When-BcA5nPj-.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.677000000687316
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840739072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/arrivalLine-DouZFXIG.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 3.6659999975545796
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840761856Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/RowSwipe-B7hK7tTQ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 4.955999998335261
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840781824Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/MailViewParts-D-gC9rje.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.446999998398358
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840802048Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useAdvanceOnRemoval-MlyiA8es.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2729999988228082
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840822016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useDelayedPending-CkKhyC33.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.2570000014759133
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840844032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/readerNav-DAC8qGes.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6669999983226881
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.840867072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/ModeFrame-COM_vYcY.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.4150000022235325
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.84088704Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/useSplitPane-CKLvucPi.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.2409999979187267
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.844455936Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/pwa-192.png",
+    "status": 200,
+    "mime_type": "image/png",
+    "elapsed_ms": 4.916000002855668
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.860636928Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 7.763000002249144
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.889398016Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9840000006065237
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.89129984Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6089999999243301
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.905064192Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CommandPalette-Cgxo3InD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.4829999997576233
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.90513792Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/SearchPalette-Dy86zJm3.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.6540000011425
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:08.905179904Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/api-BH6PfF8t.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.25100000119255855
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.044333824Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/gists",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6339999988279306
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.140312832Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8009999982367735
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.14052096Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/restore",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.8249999992472585
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.145615104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/CodeMirrorComposeEditor-zogugTYD.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.9509999998691492
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.145670912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-core-CsEXyiaJ.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 2.1120000013615936
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.14570496Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-state-BfOHWgG1.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.1020000024363399
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.14573696Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-view-Cpy-g8u5.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 1.5590000001934823
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.145776128Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/assets/vendor-codemirror-vim-BY1bsCiE.js",
+    "status": 200,
+    "mime_type": "text/javascript",
+    "elapsed_ms": 0.8930000013194512
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:09.151122176Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.5849999973019585
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:10.152060928Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.9139999961401335
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:10.15542784Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.130999999788357
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:11.305849088Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.084000001809327
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:13.548737024Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.4790000004346948
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:18.139492096Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.3379999972467775
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:26.0147072Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.7380000022132882
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:26.030260992Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.434000002551824
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:26.30881408Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.4830000014503021
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:27.03410304Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8120000006924384
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:33.847290112Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 503,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6919999989189674
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.443217152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.190000000439817
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445270016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9310000011976808
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445387008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 4.810999999247259
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445480192Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 7.148000000798842
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445554944Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 15.775999998570187
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.4456128Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.6150000015310944
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445675008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.0300000005206094
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445744896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 5.625999998064945
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.445827072Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.8529999993331729
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.44592896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 14.740999999126652
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.446001152Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.190000001617009
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.448428032Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.3380000004346948
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:43.45387904Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9590000022132881
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:53.084624896Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/update",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.598999998661224
+  },
+  {
+    "capture": "browser-journey.har",
+    "at": "2026-10-11T10:55:54.096971008Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/collaborators",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.2920000001820735
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:26.22667008Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:27.240908032Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:29.58621184Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:34.06500608Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 0,
+    "mime_type": "application/octet-stream",
+    "elapsed_ms": 0.0
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.2877568Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.396000002223533
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.291256832Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.4949999998742713
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.29136896Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/client/shell",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 6.912999998656102
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.291506176Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/desk?lane_limit=100",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 7.802000000970671
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.29162496Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/rail",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 15.510000000950182
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.291727104Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/reply-later",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.9439999994190875
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.291830016Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/admin/status",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 1.5909999982316512
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.291960832Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/freshness",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 5.6310000000102445
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.292069888Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.3630000031378584
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.292166912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/scheduled-sends",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.672000000687316
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:42.292280064Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/drafts/orphaned",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 3.335000002036337
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:54.572256Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/mail/snippets",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.988000001960667
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:54.572489984Z",
+    "method": "POST",
+    "url": "http://127.0.0.1:18391/api/v1/mail/compose/session/refresh",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 2.036000001025852
+  },
+  {
+    "capture": "bridge-reachability.har",
+    "at": "2026-10-11T10:57:54.580038912Z",
+    "method": "GET",
+    "url": "http://127.0.0.1:18391/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200,
+    "mime_type": "application/json",
+    "elapsed_ms": 0.728999996796716
+  }
+]

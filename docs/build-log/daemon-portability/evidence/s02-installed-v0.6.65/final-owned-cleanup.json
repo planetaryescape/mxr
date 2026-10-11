@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-11T10:58:22.722757+00:00",
+  "owned_browser_pids": [
+    72189,
+    72197,
+    72301,
+    72302,
+    72303,
+    72306,
+    72309,
+    72323,
+    72325,
+    72333,
+    74130
+  ],
+  "remaining_browser_pids": [],
+  "port18391_listening": false,
+  "fake_spool_files": 0,
+  "first_daemon_pid": 71526,
+  "restarted_daemon_pid": 79945
+}

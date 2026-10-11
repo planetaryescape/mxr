@@ -1,0 +1,21 @@
+{
+  "session": "ses_ed844520dffemGWRv9ISaCWRlO",
+  "messages": 42,
+  "models": [
+    "anthropic/claude-opus-5-5"
+  ],
+  "variants": [
+    "max"
+  ],
+  "agents": [
+    "verifier"
+  ],
+  "tools": {
+    "read": 39,
+    "grep": 27,
+    "glob": 3
+  },
+  "head": "539de6dfc774d4878a1614d1f39e469cb90ebf9a",
+  "tree": "734366fec18ef7f5f30db3f33c843dbe4f5087ce",
+  "base": "2c55a735e2b013910cb7222211fa8d6156d6204c"
+}

@@ -1,0 +1,11 @@
+{
+  "url": "http://127.0.0.1:18391",
+  "html_sha256": "0357003c0cb0902e7c795aad43524b2067873e65fcaae088ca2c0720f84377d1",
+  "module_assets": [
+    {
+      "path": "/assets/index-VsQLp1nh.js",
+      "bytes": 267538,
+      "sha256": "bd4709eb505f6964e6496b4899047a237ce043762cb5dff76ae769c04d322aa4"
+    }
+  ]
+}

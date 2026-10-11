@@ -1,0 +1,142 @@
+{
+  "recordedAt": "2026-10-11T09:59:30.726546+00:00",
+  "release": {
+    "tag": "v0.6.64",
+    "sourceCommit": "6ed0554c24df5bfbb99aaaebec5fdfab38254f50",
+    "manifestVersion": "0.6.64",
+    "publishedAt": "2026-10-11T09:55:03Z",
+    "url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.64",
+    "workflow": {
+      "runId": 38128790755,
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38128790755",
+      "status": "success",
+      "startedAt": "2026-10-11T09:33:25Z",
+      "completedAt": "2026-10-11T09:57:45Z",
+      "elapsedSeconds": 1460,
+      "jobs": [
+        {
+          "name": "Release CLI Smoke",
+          "status": "success",
+          "startedAt": "2026-10-11T09:33:48Z",
+          "completedAt": "2026-10-11T09:41:32Z"
+        },
+        {
+          "name": "Build x86_64-unknown-linux-gnu",
+          "status": "success",
+          "startedAt": "2026-10-11T09:33:44Z",
+          "completedAt": "2026-10-11T09:50:44Z",
+          "elapsedSeconds": 1020
+        },
+        {
+          "name": "Build aarch64-apple-darwin",
+          "status": "success",
+          "startedAt": "2026-10-11T09:33:47Z",
+          "completedAt": "2026-10-11T09:54:35Z",
+          "elapsedSeconds": 1248
+        },
+        {
+          "name": "GitHub Release",
+          "status": "success",
+          "startedAt": "2026-10-11T09:54:42Z",
+          "completedAt": "2026-10-11T09:55:06Z"
+        },
+        {
+          "name": "Homebrew Formula",
+          "status": "success",
+          "startedAt": "2026-10-11T09:55:17Z",
+          "completedAt": "2026-10-11T09:57:44Z"
+        }
+      ]
+    },
+    "archives": [
+      {
+        "name": "mxr-v0.6.64-linux-x86_64.tar.gz",
+        "sizeBytes": 63662581,
+        "sha256": "0e4e5e2440566e2ae92314bfec462f62fee4ac9f34b3b4d84bb0d15a71b068d7",
+        "publishedChecksum": "0e4e5e2440566e2ae92314bfec462f62fee4ac9f34b3b4d84bb0d15a71b068d7",
+        "checksumVerified": true,
+        "checksumFile": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.64/archives/mxr-v0.6.64-linux-x86_64.tar.gz.sha256"
+      },
+      {
+        "name": "mxr-v0.6.64-macos-aarch64.tar.gz",
+        "sizeBytes": 58760997,
+        "sha256": "0fad1d677235602933ac6729d6eda692ff521a4582c44f5121eb1c92053237ab",
+        "publishedChecksum": "0fad1d677235602933ac6729d6eda692ff521a4582c44f5121eb1c92053237ab",
+        "checksumVerified": true,
+        "checksumFile": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.64/archives/mxr-v0.6.64-macos-aarch64.tar.gz.sha256"
+      }
+    ]
+  },
+  "installer": {
+    "source": "refs/tags/v0.6.64:install.sh",
+    "sourceSha256": "4efa5718f3b43cb1e16479304295484751434b8ca92cfef9db79706b7eeeafb4",
+    "v0.6.63InstallScriptSha256": "4efa5718f3b43cb1e16479304295484751434b8ca92cfef9db79706b7eeeafb4",
+    "unchangedSinceV0.6.63": true,
+    "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.64/install.sh",
+    "versionArgument": "v0.6.64",
+    "elapsedSeconds": 1.47,
+    "exitCode": 0,
+    "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08a-install-sh-v0.6.64.log",
+    "binary": {
+      "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.64/bin/mxr",
+      "sha256": "289234a8eadf2dd78637b055b423debede8ba699acc7b8c0eb68ee149e9d4dd1",
+      "bytes": 179361328
+    },
+    "version": "mxr 0.6.64",
+    "smoke": {
+      "script": "docs/build-log/daemon-portability/s08a_smoke.py",
+      "scriptSha256": "7ff5a52ee38d6e88b34179b623f6563a0c5693fbe064d7d50e3cea6275ddd737",
+      "matchesReleaseTag": true,
+      "elapsedSeconds": 5.639,
+      "exitCode": 0,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08a-installer-smoke-v0.6.64.log",
+      "result": "PASS; SIGTERM bounded relationship cancellation only; idle SIGINT clean; 4 fake message IDs retained."
+    }
+  },
+  "homebrew": {
+    "command": "brew update && brew upgrade mxr",
+    "result": "success",
+    "elapsedSeconds": 8.32,
+    "version": "mxr 0.6.64",
+    "commandPath": "/opt/homebrew/bin/mxr",
+    "resolvedPath": "/opt/homebrew/Cellar/mxr/0.6.64/bin/mxr",
+    "uniqueResolvedPathExecutables": [
+      "/opt/homebrew/Cellar/mxr/0.6.64/bin/mxr"
+    ],
+    "binary": {
+      "path": "/opt/homebrew/bin/mxr",
+      "sha256": "289234a8eadf2dd78637b055b423debede8ba699acc7b8c0eb68ee149e9d4dd1",
+      "bytes": 179361328
+    },
+    "matchesInstallerBinary": true,
+    "brewFormula": {
+      "version": "0.6.64",
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.64/mxr-v0.6.64-macos-aarch64.tar.gz",
+      "sha256": "0fad1d677235602933ac6729d6eda692ff521a4582c44f5121eb1c92053237ab",
+      "matchesPublishedArchive": true
+    },
+    "upgradeSmoke": {
+      "script": "docs/build-log/daemon-portability/s08a_smoke.py",
+      "elapsedSeconds": 5.584,
+      "exitCode": 0,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08a-homebrew-smoke-v0.6.64.log",
+      "result": "PASS; SIGTERM bounded relationship cancellation only; idle SIGINT clean; 4 fake message IDs retained."
+    }
+  },
+  "retainedV0.6.63Baseline": {
+    "evidence": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08b-installed-v0.6.63.json",
+    "homebrewEvidence": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08b-homebrew-v0.6.63.json",
+    "macosArchive": {
+      "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.63/archives/mxr-v0.6.63-macos-aarch64.tar.gz",
+      "sha256": "f7ca00a3d4ec8dbb78eca77f536fc6ff241c9992ad29f022081822c37dc2dfaa",
+      "bytes": 58724988
+    },
+    "installedBinary": {
+      "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.63/bin/mxr",
+      "sha256": "a62348b2549ee064b99d8b5ba7570425c4a1a344fb26e1a99ea074298d4b0e2d",
+      "bytes": 179169024
+    },
+    "installedVersion": "mxr 0.6.63"
+  },
+  "scope": "Published archive checksums, installer and Homebrew installs were verified. Both S08a smoke legs used isolated fake profiles; no personal daemon or real mail was accessed."
+}

@@ -1,0 +1,72 @@
+{
+  "accounts": [
+    "Synthetic S02 installed"
+  ],
+  "config_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/config/config.toml",
+  "daemon_build_id": "0.6.65:/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/mxr:180602224:1791715886",
+  "daemon_pid": 79945,
+  "daemon_version": "0.6.65",
+  "data_dir": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/data",
+  "degraded": false,
+  "feature_health": {
+    "commitments": {
+      "reason": "LLM disabled; stored commitments remain readable",
+      "status": "degraded"
+    },
+    "draft_assist": {
+      "status": "disabled"
+    },
+    "humanizer": {
+      "reason": "LLM disabled; detection works but auto-fix is unavailable",
+      "status": "degraded"
+    },
+    "relationship_profile": {
+      "reason": "LLM disabled; stylometry remains available but summaries are skipped",
+      "status": "degraded"
+    },
+    "search": {
+      "status": "healthy"
+    },
+    "semantic": {
+      "status": "disabled"
+    },
+    "summarize": {
+      "status": "disabled"
+    },
+    "voice_match": {
+      "status": "healthy"
+    }
+  },
+  "health_class": "healthy",
+  "protocol_version": 4,
+  "repair_required": false,
+  "restart_required": false,
+  "runtime_instance": "s02-installed-53272d263211",
+  "semantic_runtime": {
+    "in_flight": 0,
+    "last_embedding_prep_ms": null,
+    "last_extract_ms": null,
+    "last_ingest_ms": null,
+    "last_queue_wait_ms": null,
+    "queue_depth": 0
+  },
+  "socket_path": "/var/folders/3p/n76j7jp14ljcvr1bhf7qmlh00000gn/T/mxr-s02-installed-pn3x1d1_/mxr.sock",
+  "sync_statuses": [
+    {
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "account_name": "Synthetic S02 installed",
+      "backoff_until": null,
+      "consecutive_failures": 0,
+      "current_cursor_summary": "synced",
+      "failure_class": null,
+      "healthy": true,
+      "last_attempt_at": "2026-10-11T10:57:37+00:00",
+      "last_error": null,
+      "last_success_at": "2026-10-11T10:57:37+00:00",
+      "last_synced_count": 0,
+      "sync_in_progress": false
+    }
+  ],
+  "total_messages": 55,
+  "uptime_secs": 0
+}

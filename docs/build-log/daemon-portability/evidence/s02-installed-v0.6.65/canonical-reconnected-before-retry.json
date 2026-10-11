@@ -1,0 +1,50 @@
+[
+  {
+    "revision": 1,
+    "id": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+    "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+    "from": {
+      "name": null,
+      "email": "synthetic@example.com"
+    },
+    "reply_headers": null,
+    "intent": "new",
+    "to": [
+      {
+        "name": null,
+        "email": "alice@example.com"
+      }
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "Installed S02 reconnect",
+    "body_markdown": "Before daemon outage",
+    "attachments": [],
+    "created_at": "2026-10-11T10:55:08Z",
+    "updated_at": "2026-10-11T10:55:08Z"
+  },
+  {
+    "revision": 2,
+    "id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+    "from": {
+      "name": null,
+      "email": "synthetic@example.com"
+    },
+    "reply_headers": null,
+    "intent": "new",
+    "to": [
+      {
+        "name": null,
+        "email": "alice@example.com"
+      }
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "Installed S02 two editors",
+    "body_markdown": "Canonical winner from editor B",
+    "attachments": [],
+    "created_at": "2026-10-11T10:52:08Z",
+    "updated_at": "2026-10-11T10:52:51Z"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "reviewedHead": "010ae9518c5ee9bf96c194628483e10a0f0ac4ce",
+  "head": "3d338bebfa9e6b714b6f9503ed5546c037d5eef1",
+  "tree": "3a903ddea1843b4c380cd81adf344882e7d39c42",
+  "base": "6ed0554c24df5bfbb99aaaebec5fdfab38254f50",
+  "changedFiles": [
+    "apps/web/src/features/compose/session/activeDrafts.test.ts",
+    "apps/web/src/features/compose/session/activeDrafts.ts",
+    "crates/daemon/src/commands/mutations/compose.rs",
+    "crates/web/src/lib.rs",
+    "crates/web/src/tests.rs"
+  ],
+  "changeSummary": {
+    "insertions": 87,
+    "deletions": 32
+  },
+  "reviewException": "Narrow post-triage fixes reused the sender renderer, wording path, typed transport-error guard and focused regressions. No new protocol, provider ordering or retry ownership design was introduced.",
+  "sourceDiffSha256": "89fc7583019e31f01edef23db477b4c30d48f523e6fa6ebfefa5473814f6baa1",
+  "reproduce": "git diff 010ae9518c5ee9bf96c194628483e10a0f0ac4ce 3d338bebfa9e6b714b6f9503ed5546c037d5eef1 -- apps/web/src/features/compose/session/activeDrafts.test.ts apps/web/src/features/compose/session/activeDrafts.ts crates/daemon/src/commands/mutations/compose.rs crates/web/src/lib.rs crates/web/src/tests.rs"
+}

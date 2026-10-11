@@ -2039,6 +2039,11 @@ pub async fn process_due_scheduled_sends(
         .map_err(|e| e.to_string())?;
     let count = due.len() as u32;
     for draft_id in due {
+        let identity = state
+            .store
+            .get_scheduled_send_identity(&draft_id)
+            .await
+            .map_err(|error| error.to_string())?;
         // Clear `send_at` and record a durable attempt marker in one
         // transaction, BEFORE sending — so a retry from a crashed prior
         // attempt can't re-fire indefinitely (at-most-once), and a crash
@@ -2055,13 +2060,25 @@ pub async fn process_due_scheduled_sends(
             );
             continue;
         }
-        let outcome = match crate::handler::send_stored_draft(state, &draft_id, None).await {
+        let outcome = match crate::handler::send_stored_draft_reviewed(
+            state,
+            &draft_id,
+            identity.as_ref(),
+            None,
+        )
+        .await
+        {
             Ok(_) => {
                 tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
                 "sent"
             }
             Err(e) => {
-                if e.to_string().contains("draft safety blocked send") {
+                if e.to_string().contains("Send outcome uncertain")
+                    || state.store.get_draft_status(&draft_id).await.ok().flatten()
+                        == Some(mxr_core::DraftStatus::Sending)
+                {
+                    "uncertain"
+                } else if e.to_string().contains("draft safety blocked send") {
                     // Keep the draft; the schedule is already cleared by
                     // clear_send_at_and_record_attempt above. The error
                     // already carries a freshly-minted single-use override

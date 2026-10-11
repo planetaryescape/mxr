@@ -6,6 +6,7 @@ use mxr_protocol::{CalendarInviteActionData, ReplyContext};
 use std::collections::HashMap;
 
 /// Draft waiting for user confirmation after editor closes.
+#[derive(Debug, Clone)]
 pub struct PendingSend {
     pub account_id: AccountId,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
@@ -43,6 +44,10 @@ pub struct PendingSend {
 }
 
 impl PendingSend {
+    pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
+    }
+
     /// True iff the latest safety check verdict is Blocked. Drives
     /// the `[s] send` gate and the visibility of the `[Ctrl-O]
     /// override` affordance in the modal.
@@ -124,7 +129,13 @@ pub struct DeferredCompose {
 
 #[derive(Default)]
 pub struct ComposeState {
+    pub failed_send: Option<PendingSend>,
+    pub pending_schedule_files: std::collections::HashSet<std::path::PathBuf>,
+    pub last_send_query: Option<String>,
+    pub pending_send_mutations: HashMap<crate::app::MutationId, (PendingSend, bool)>,
+    pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
+    pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_send_at_input: Option<String>,

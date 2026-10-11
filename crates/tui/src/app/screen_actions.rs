@@ -93,6 +93,72 @@ impl App {
                 self.screen = Screen::Rules;
                 self.rules.page.refresh_pending = true;
             }
+            Action::ReopenLastSendDraft => {
+                if self.compose.pending_send_confirm.is_some()
+                    || self.compose.pending_compose.is_some()
+                {
+                    self.push_toast(Toast::info(
+                        "Close the current compose review before reopening a retained draft",
+                    ));
+                    return;
+                }
+                if self
+                    .compose
+                    .failed_send
+                    .as_ref()
+                    .is_some_and(|pending| !self.compose_file_owned(&pending.draft_path))
+                {
+                    if let Some(pending) = self.compose.failed_send.take() {
+                        self.compose.pending_compose = Some(super::ComposeAction::EditDraft {
+                            path: pending.draft_path,
+                            account_id: pending.account_id,
+                        });
+                        return;
+                    }
+                }
+                let mut owned: Vec<_> = self
+                    .compose
+                    .pending_send_mutations
+                    .values()
+                    .map(|(pending, _)| pending.draft_path.clone())
+                    .collect();
+                owned.extend(self.compose.pending_schedule_files.iter().cloned());
+                owned.extend(self.compose.pending_draft_cleanup.iter().cloned());
+                owned.extend(self.compose.active_draft_cleanup.iter().cloned());
+                match crate::send_recovery_state::last_compose_excluding(&owned) {
+                    Ok(Some((_, path))) if self.compose_file_owned(&path) => {
+                        self.push_toast(Toast::info("This compose file is still submitting; wait for its outcome before reopening"));
+                    }
+                    Ok(Some((account_id, path))) if path.is_file() => {
+                        self.compose.pending_compose =
+                            Some(super::ComposeAction::EditDraft { path, account_id });
+                    }
+                    Ok(_) => self.push_toast(Toast::info(if owned.is_empty() { "No retained compose file; check the send outcome" } else { "Retained compose is still submitting; wait for its outcome before reopening" })),
+                    Err(error) => {
+                        self.push_toast(Toast::error(format!(
+                            "Cannot read send recovery: {error}"
+                        )));
+                    }
+                }
+            }
+            Action::CheckLastSendOutcome => {
+                if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
+                    self.queue_platform_request(
+                        mxr_protocol::Request::GetSendOutcome {
+                            account_id,
+                            operation_id: self
+                                .compose
+                                .last_send_query
+                                .clone()
+                                .unwrap_or(identity.operation_id),
+                        },
+                        "Send outcome",
+                        "Checking send outcome...",
+                    );
+                } else {
+                    self.push_toast(Toast::info("No send identity retained in this session"));
+                }
+            }
             Action::OpenDiagnosticsScreen => {
                 self.close_transient_modals();
                 self.maybe_preserve_new_account_form_draft();

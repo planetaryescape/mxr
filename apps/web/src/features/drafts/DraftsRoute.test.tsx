@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { useComposeUi } from "@/features/compose/composeUiStore";
+import { fetchSendOutcome } from "./sendOutcomes";
 import { DraftsRoute } from "./DraftsRoute";
 
 const api = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => api);
+vi.mock("./sendOutcomes", () => ({ fetchSendOutcome: vi.fn<typeof fetchSendOutcome>(), readSendReferences: () => [] }));
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }));
@@ -46,7 +48,10 @@ function renderWithClient(node: ReactNode) {
 
 describe("DraftsRoute", () => {
   beforeEach(() => {
+    vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockReset();
+    vi.mocked(fetchSendOutcome).mockReset();
+    vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockResolvedValue({ ok: true });
     api.fetchDrafts.mockReset();
     api.fetchOrphanedDrafts.mockReset();
@@ -184,32 +189,43 @@ describe("DraftsRoute", () => {
       expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
     });
 
-    test("can be reset back to an editable draft", async () => {
+    test("no claim is distinct from uncertain acceptance", async () => {
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
-
-      expect(await screen.findByText("Needs attention")).toBeVisible();
-      expect(screen.getByText(/Lee · stuck since/)).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Reset Contract signed" }));
-
-      await waitFor(() => expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7"));
-      expect(api.sendStoredDraft).not.toHaveBeenCalled();
+      expect(await screen.findByText("No submission was claimed for this operation. Review the saved draft before sending.")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
     });
 
-    test("send asks first, then resets and sends", async () => {
+    test("a pending lookup makes no acceptance claim", async () => {
+      vi.mocked(fetchSendOutcome).mockReturnValue(new Promise(() => {}));
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("Checking send outcome…")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Check outcome" })).toBeDisabled();
+    });
 
-      fireEvent.click(await screen.findByRole("button", { name: "Send Contract signed" }));
-      expect(await screen.findByText(/may already have been delivered/)).toBeVisible();
+    test("a failed lookup offers checking without a retry", async () => {
+      vi.mocked(fetchSendOutcome).mockRejectedValue(new Error("Connection lost"));
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("Could not check the send outcome. Check again before deciding whether to send.")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Retry|Send now/ })).not.toBeInTheDocument();
+    });
+
+    test("uncertain sends only expose an outcome query", async () => {
+      vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: { identity: { operation_id: "draft:draft-7", expected_revision: 1 }, state: "unknown", local_message_id: null } });
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("Send outcomes")).toBeVisible();
+      expect(await screen.findByText("Acceptance is uncertain. Do not resend.")).toBeVisible();
+      await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledWith("account-1", "draft:draft-7"));
+      expect(screen.queryByRole("button", { name: /Reset|Send now/ })).not.toBeInTheDocument();
+      expect(api.resetOrphanedDraft).not.toHaveBeenCalled();
       expect(api.sendStoredDraft).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByRole("button", { name: "Send now" }));
-      await waitFor(() => expect(api.sendStoredDraft).toHaveBeenCalledWith("draft-7"));
-      expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7");
-      expect(api.resetOrphanedDraft.mock.invocationCallOrder[0]).toBeLessThan(
-        api.sendStoredDraft.mock.invocationCallOrder[0] ?? 0,
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Check outcome" }));
+      await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledTimes(2));
     });
   });
 });

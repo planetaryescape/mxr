@@ -5488,15 +5488,18 @@ mod sync_all_protocol_tests {
     use super::require_sync_all_protocol;
 
     #[test]
-    fn global_sync_requires_protocol_six() {
-        for version in [4, 5] {
+    fn global_sync_requires_current_protocol() {
+        for version in [4, 5, 6] {
             let error =
                 require_sync_all_protocol(version).expect_err("an older daemon cannot sync all");
-            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error.to_string().contains(&format!(
+                "requires daemon IPC protocol {}",
+                mxr_protocol::IPC_PROTOCOL_VERSION
+            )));
             assert!(error
                 .to_string()
                 .contains(&format!("running daemon uses {version}")));
         }
-        assert!(require_sync_all_protocol(6).is_ok());
+        assert!(require_sync_all_protocol(mxr_protocol::IPC_PROTOCOL_VERSION).is_ok());
     }
 }

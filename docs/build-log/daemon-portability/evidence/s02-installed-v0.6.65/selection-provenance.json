@@ -1,0 +1,58 @@
+{
+  "source_manifest_sha256": "2b244f91545e7f6c4d21091ab48f95c9eaf4390d8456082d7bb0e5f852d2957e",
+  "source_packet_captured_at": "2026-10-11T11:00:25.137835+00:00",
+  "source_packet_files": 53,
+  "excluded_source_files": [
+    {
+      "name": "files-before-discard.json",
+      "source_sha256": "d8752ca54ba58a98a8e93810070a2df884cbe42207b146e85f5b187e2c185478",
+      "reason": "Chrome profile inventory with unrelated account, cache and cookie database metadata; discard acceptance is recorded by discard-verification.json and root verification."
+    },
+    {
+      "name": "browser-owned-pids.json",
+      "source_sha256": "cb032c852715c2c5a22795c188a1e5ccd342f0f78e66e3d03dc1af159ac67399",
+      "reason": "Contains full browser command lines and temporary profile paths; final-owned-cleanup.json records the needed cleanup result."
+    },
+    {
+      "name": "bridge-restored-recovery.png",
+      "source_sha256": "dda097017e3e39d9aab805a089ea508b12f0b189c5454668224c1fc1005de17f",
+      "reason": "Not among the four selected acceptance screenshots."
+    },
+    {
+      "name": "bridge-unreachable-reopen.png",
+      "source_sha256": "b3268f1154caa0915a8747ddee520bb55ad1bfce724c59ccb6e87e17f2d494e7",
+      "reason": "Not among the four selected acceptance screenshots."
+    },
+    {
+      "name": "canonical-winner.png",
+      "source_sha256": "b403f8ebc3042fb520dcb8e37d68dfc8527fe727aa5f90059b8a5ed714c04a1a",
+      "reason": "Canonical result is captured in canonical-after-discard.json; not among selected screenshots."
+    },
+    {
+      "name": "loser-reopen-retry-conflict.png",
+      "source_sha256": "0e8eb172eebc0d2ff62f9502458de2bc54f2c9a32f187bee9ab6c0db4bcdc1e9",
+      "reason": "Retry conflict is captured in browser-updates.json; not among selected screenshots."
+    },
+    {
+      "name": "offline-reconnect-recovery.png",
+      "source_sha256": "8d0993a5642c0efdecf3fec148a7fc85582e5a9d78b083f3d3c0cdaa41b1e0d0",
+      "reason": "Offline preservation is summarized in journey-summary.json; not among selected screenshots."
+    },
+    {
+      "name": "offline-reopen-failure.png",
+      "source_sha256": "61743b705105468c41ada45a509ce32667b1e650194a5be7cfa2857d974be485",
+      "reason": "Offline guard outcome is summarized in journey-summary.json; not among selected screenshots."
+    },
+    {
+      "name": "reconnect-warning-retained.png",
+      "source_sha256": "1db5e816383e63ae811742b07d2195284023afaa3e32a5c4f78038deca0cf23f",
+      "reason": "IPC 503 preservation is captured in browser-updates.json and ipc503-preserved.png."
+    }
+  ],
+  "root_verification": {
+    "discarded_private_path_absent": true,
+    "surviving_recovery_file_count": 4,
+    "surviving_attachment_bytes": "Root verified that all referenced attachments exactly equal the synthetic payload: S02 installed attachment bytes followed by a newline and Independent recovery payload followed by a newline."
+  },
+  "scope_note": "The offline and owned-bridge journeys were handled by the availability guard before the browser loader catch; typed unit regressions cover that catch separately."
+}

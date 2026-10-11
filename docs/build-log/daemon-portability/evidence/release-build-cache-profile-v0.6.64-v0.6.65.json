@@ -1,0 +1,119 @@
+{
+  "scope": "Read-only profiling of tagged macOS release builds",
+  "runs": [
+    {
+      "version": "0.6.64",
+      "runId": 38128790755,
+      "runRef": "refs/tags/v0.6.64",
+      "head": "6ed0554c24df5bfbb99aaaebec5fdfab38254f50",
+      "tree": "e982b08fea2d11293332a4c46279812e4633a262",
+      "conclusion": "success",
+      "macJobId": 114438659593,
+      "macJobSeconds": 1248,
+      "nativeStep": {
+        "startedAt": "2026-10-11T09:34:23Z",
+        "completedAt": "2026-10-11T09:53:40Z",
+        "stepSeconds": 1157,
+        "cargoReportedReleaseSeconds": 1156,
+        "profile": "release/optimized"
+      },
+      "webSpaStepSeconds": 18,
+      "rust": "1.99.0 (b940084d7 2026-09-28)",
+      "rustCache": {
+        "restoreKey": "v0-rust-aarch64-apple-darwin-build-binaries-Darwin-arm64-15cca7bb",
+        "fullKey": "v0-rust-aarch64-apple-darwin-build-binaries-Darwin-arm64-15cca7bb-4611772a",
+        "restoreResult": "No cache found",
+        "targetArchiveBytesUploaded": 842662443
+      },
+      "sccache": {
+        "hits": 0,
+        "misses": 1257,
+        "rustMisses": 770,
+        "cCppMisses": 360,
+        "assemblerMisses": 127,
+        "readErrors": 0,
+        "writeErrors": 683,
+        "writes": 574,
+        "writeErrorCause": "Not stated in job log"
+      },
+      "log": {
+        "path": "target/release-profile/0.6.64/macos-build-job114438659593.log",
+        "sha256": "78c6eb20bbb9ec3f0e82944bbd435297a362c57dfdc1650c863caed4758e85d6"
+      }
+    },
+    {
+      "version": "0.6.65",
+      "runId": 38132041238,
+      "runRef": "refs/tags/v0.6.65",
+      "head": "7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54",
+      "tree": "d8b8463eebbd1eaa4e5f47ed75d69b30cbadc531",
+      "conclusion": "success",
+      "macJobId": 114448241772,
+      "macJobSeconds": 1286,
+      "nativeStep": {
+        "startedAt": "2026-10-11T10:29:09Z",
+        "completedAt": "2026-10-11T10:48:31Z",
+        "stepSeconds": 1162,
+        "cargoReportedReleaseSeconds": 1159,
+        "profile": "release/optimized"
+      },
+      "webSpaStepSeconds": 18,
+      "rust": "1.99.0 (b940084d7 2026-09-28)",
+      "rustCache": {
+        "restoreKey": "v0-rust-aarch64-apple-darwin-build-binaries-Darwin-arm64-15cca7bb",
+        "fullKey": "v0-rust-aarch64-apple-darwin-build-binaries-Darwin-arm64-15cca7bb-4ce76184",
+        "restoreResult": "No cache found",
+        "targetArchiveBytesUploaded": 842672334
+      },
+      "sccache": {
+        "hits": 3,
+        "hitTypes": {"cCpp": 3},
+        "misses": 1254,
+        "rustMisses": 770,
+        "cCppMisses": 357,
+        "assemblerMisses": 127,
+        "readErrors": 0,
+        "writeErrors": 620,
+        "writes": 634,
+        "writeErrorCause": "Not stated in job log"
+      },
+      "log": {
+        "path": "target/release-profile/0.6.65/macos-build-job114448241772.log",
+        "sha256": "3b6c54b3c46944de68c10621f41e99e942adda32a09271d5872237a40855f43a"
+      }
+    }
+  ],
+  "source": {
+    "workflow": {
+      "path": ".github/workflows/release.yml",
+      "blob": "8c5a8f248ee4e80bd75bc8843e2bd1cf05429e68",
+      "lines": {
+        "globalSccache": "16-19",
+        "releaseFeatures": "47-52",
+        "cacheActions": "117-120",
+        "nativeBuild": "158-160"
+      }
+    },
+    "cargoConfig": {
+      "path": ".cargo/config.toml",
+      "blob": "b60435881ceaca6ee6206841b6be90a4324b4fd7",
+      "lines": {"workers": "1-2"},
+      "jobs": 4
+    },
+    "nativeBuildCommand": "cargo build --release --locked --target aarch64-apple-darwin -p mxr -p mxr-mailmerge --features semantic-local,web-ui",
+    "workflowSourceIdenticalAtBothTags": true
+  },
+  "comparison": {
+    "macJobSecondsDelta": 38,
+    "cargoReportedBuildSecondsDelta": 3,
+    "restoreResult": "Both tagged jobs reported No cache found; v0.6.64 uploaded a target archive but v0.6.65 did not restore it.",
+    "cacheScope": "GitHub documents that tag runs cannot restore caches created for other tag names; see https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache.",
+    "cacheWriteErrors": "Both runs recorded hundreds of sccache write errors, but neither log reports their cause.",
+    "perCrateTimings": "Not present in workflow output."
+  },
+  "assessment": {
+    "measuredCause": "Both optimized builds performed essentially cold compilation: no rust-cache restore and 0 Rust sccache hits in either run. v0.6.65 had only 3 C/C++ hits. The native cargo build step accounted for 19m17s-19m22s.",
+    "narrowFollowUp": "Make a compatible Rust target cache available from a shared/default-branch scope, then verify a tag run restores it and reports Rust sccache hits. Alternatively assess whether tag-only target caching is worth its repeated archive save.",
+    "expectedSaving": "Unmeasured: neither run had a restored target cache, so these runs do not establish compile-time savings. Cache action post-processing took 38s in v0.6.64 and 53s in v0.6.65; skipping target snapshots may reduce that tail, but the exact reduction is unmeasured."
+  }
+}

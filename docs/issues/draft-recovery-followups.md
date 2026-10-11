@@ -1,4 +1,4 @@
-# Recovery keeps text but still has three awkward paths
+# Draft recovery still has three verified limits
 
 Verified against integrated S02 `a631583c8fd8438abc6892fdf10fb49dc09e3748`, tree `3a903ddea1843b4c380cd81adf344882e7d39c42`, after the final five-file correction. These remaining behaviors do not replace the [release acceptance](../build-log/daemon-portability/s02-draft-recovery.md).
 

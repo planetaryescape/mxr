@@ -1,0 +1,22 @@
+[
+  {
+    "id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "revision": 2,
+    "status": "draft",
+    "send_at": null,
+    "provider_draft_id": null,
+    "provider_draft_revision": null,
+    "subject": "Installed S02 two editors",
+    "body_markdown": "Canonical winner from editor B"
+  },
+  {
+    "id": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+    "revision": 2,
+    "status": "draft",
+    "send_at": null,
+    "provider_draft_id": null,
+    "provider_draft_revision": null,
+    "subject": "Installed S02 reconnect",
+    "body_markdown": "Latest edits retained through real IPC outage"
+  }
+]

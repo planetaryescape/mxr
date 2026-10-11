@@ -1,0 +1,315 @@
+[
+  {
+    "at": "2026-10-11T10:52:51.731930112Z",
+    "status": 200,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-f33c-7d82-b5f1-c3704f987fde.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [],
+      "body": "Canonical winner from editor B",
+      "expected_revision": 1
+    },
+    "response": {
+      "session": {
+        "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "bodyMarkdown": "Canonical winner from editor B",
+        "draftId": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+        "draftPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-f33c-7d82-b5f1-c3704f987fde.md",
+        "frontmatter": {
+          "attach": [],
+          "bcc": "",
+          "cc": "",
+          "from": "synthetic@example.com",
+          "subject": "Installed S02 two editors",
+          "to": "alice@example.com"
+        },
+        "issues": [],
+        "previewHtml": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"></head>\n<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 600px;\">\n<p>Canonical winner from editor B</p>\n\n</body>\n</html>",
+        "rawContent": "---\nto: alice@example.com\ncc: ''\nbcc: ''\nsubject: Installed S02 two editors\nfrom: synthetic@example.com\nattach: []\n---\n\nCanonical winner from editor B",
+        "revision": 2
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:53:02.915062016Z",
+    "status": 409,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-cd3c-7f82-9f7f-caea77af16de.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-draft-01a12a97-cd3c-7f82-9f7f-caea77af16de/01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Original reviewed text",
+      "expected_revision": 1
+    },
+    "response": {
+      "code": "draft_revision_conflict",
+      "details": {
+        "current_revision": 2,
+        "expected_revision": 1
+      },
+      "error": "Draft changed in another editor; preserve your unsent text. Your unsent edits remain at /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md",
+      "recovery_session": {
+        "attachment_paths": [
+          "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677/01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+        ],
+        "draft_id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+        "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md",
+        "revision": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:53:18.533732864Z",
+    "status": 200,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677/01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close",
+      "expected_revision": 1
+    },
+    "response": {
+      "session": {
+        "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "bodyMarkdown": "Latest loser text typed immediately before Close",
+        "draftId": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+        "draftPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md",
+        "frontmatter": {
+          "attach": [
+            "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677/01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+          ],
+          "bcc": "",
+          "cc": "",
+          "from": "synthetic@example.com",
+          "subject": "Installed S02 two editors",
+          "to": "alice@example.com"
+        },
+        "issues": [],
+        "previewHtml": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"></head>\n<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 600px;\">\n<p>Latest loser text typed immediately before Close</p>\n\n</body>\n</html>",
+        "rawContent": "---\nto: alice@example.com\ncc: ''\nbcc: ''\nsubject: Installed S02 two editors\nfrom: synthetic@example.com\nattach:\n- /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677/01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt\n---\n\nLatest loser text typed immediately before Close",
+        "recoverySourcePath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-cd3c-7f82-9f7f-caea77af16de.md",
+        "revision": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:53:25.001515008Z",
+    "status": 200,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close",
+      "expected_revision": 1
+    },
+    "response": {
+      "session": {
+        "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "bodyMarkdown": "Latest loser text typed immediately before Close",
+        "draftId": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+        "draftPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md",
+        "frontmatter": {
+          "attach": [
+            "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+          ],
+          "bcc": "",
+          "cc": "",
+          "from": "synthetic@example.com",
+          "subject": "Installed S02 two editors",
+          "to": "alice@example.com"
+        },
+        "issues": [],
+        "previewHtml": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"></head>\n<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 600px;\">\n<p>Latest loser text typed immediately before Close</p>\n\n</body>\n</html>",
+        "rawContent": "---\nto: alice@example.com\ncc: ''\nbcc: ''\nsubject: Installed S02 two editors\nfrom: synthetic@example.com\nattach:\n- /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt\n---\n\nLatest loser text typed immediately before Close",
+        "recoverySourcePath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-cd3c-7f82-9f7f-caea77af16de.md",
+        "revision": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:53:25.015736064Z",
+    "status": 409,
+    "request": {
+      "retry_recovery": true,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close",
+      "expected_revision": 1
+    },
+    "response": {
+      "code": "draft_revision_conflict",
+      "details": {
+        "current_revision": 2,
+        "expected_revision": 1
+      },
+      "error": "Draft changed in another editor; preserve your unsent text"
+    }
+  },
+  {
+    "at": "2026-10-11T10:53:54.61414784Z",
+    "status": 200,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 two editors",
+      "from": "synthetic@example.com",
+      "attach": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33/01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+      ],
+      "body": "Latest loser text typed immediately before Close",
+      "expected_revision": 1
+    },
+    "response": {
+      "session": {
+        "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "bodyMarkdown": "Latest loser text typed immediately before Close",
+        "draftId": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+        "draftPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33.md",
+        "frontmatter": {
+          "attach": [
+            "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33/01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+          ],
+          "bcc": "",
+          "cc": "",
+          "from": "synthetic@example.com",
+          "subject": "Installed S02 two editors",
+          "to": "alice@example.com"
+        },
+        "issues": [],
+        "previewHtml": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"></head>\n<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 600px;\">\n<p>Latest loser text typed immediately before Close</p>\n\n</body>\n</html>",
+        "rawContent": "---\nto: alice@example.com\ncc: ''\nbcc: ''\nsubject: Installed S02 two editors\nfrom: synthetic@example.com\nattach:\n- /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33/01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt\n---\n\nLatest loser text typed immediately before Close",
+        "recoverySourcePath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a97-cd3c-7f82-9f7f-caea77af16de.md",
+        "revision": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:55:26.0147072Z",
+    "status": 503,
+    "request": {
+      "retry_recovery": false,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-draft-01a12a9a-2b55-7491-9112-e544cba20a02.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 reconnect",
+      "from": "synthetic@example.com",
+      "attach": [],
+      "body": "Latest edits retained through real IPC outage",
+      "expected_revision": 1
+    },
+    "response": {
+      "code": "connect",
+      "details": null,
+      "error": "failed to connect to mxr daemon at No such file or directory (os error 2). Your unsent edits remain at /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-6d3f-7d03-885a-72e59a8391d1.md",
+      "recovery_session": {
+        "attachment_paths": [],
+        "draft_id": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+        "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-6d3f-7d03-885a-72e59a8391d1.md",
+        "revision": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-11T10:55:26.030260992Z",
+    "status": 503,
+    "request": {
+      "retry_recovery": true,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-6d3f-7d03-885a-72e59a8391d1.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 reconnect",
+      "from": "synthetic@example.com",
+      "attach": [],
+      "body": "Latest edits retained through real IPC outage",
+      "expected_revision": 1
+    },
+    "response": {
+      "code": "connect",
+      "details": null,
+      "error": "failed to connect to mxr daemon at No such file or directory (os error 2)"
+    }
+  },
+  {
+    "at": "2026-10-11T10:55:53.084624896Z",
+    "status": 200,
+    "request": {
+      "retry_recovery": true,
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-6d3f-7d03-885a-72e59a8391d1.md",
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "to": "alice@example.com",
+      "cc": "",
+      "bcc": "",
+      "subject": "Installed S02 reconnect",
+      "from": "synthetic@example.com",
+      "attach": [],
+      "body": "Latest edits retained through real IPC outage",
+      "expected_revision": 1
+    },
+    "response": {
+      "session": {
+        "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "bodyMarkdown": "Latest edits retained through real IPC outage",
+        "draftId": "01a12a9a-28eb-78e1-919a-f7553ba1b707",
+        "draftPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-d6fe-7d11-8eb7-6602b3945a8d.md",
+        "frontmatter": {
+          "attach": [],
+          "bcc": "",
+          "cc": "",
+          "from": "synthetic@example.com",
+          "subject": "Installed S02 reconnect",
+          "to": "alice@example.com"
+        },
+        "issues": [],
+        "preservedRecoveryPath": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a9a-6d3f-7d03-885a-72e59a8391d1.md",
+        "previewHtml": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"></head>\n<body style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-width: 600px;\">\n<p>Latest edits retained through real IPC outage</p>\n\n</body>\n</html>",
+        "rawContent": "---\nto: alice@example.com\ncc: ''\nbcc: ''\nsubject: Installed S02 reconnect\nfrom: synthetic@example.com\nattach: []\n---\n\nLatest edits retained through real IPC outage",
+        "revision": 2
+      }
+    }
+  }
+]

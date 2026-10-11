@@ -1,0 +1,18 @@
+[
+  {
+    "name": "browser-journey.har",
+    "ignored_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/evidence/browser-journey.har",
+    "bytes": 6163840,
+    "sha256": "7f199078f50c347edbdd50b9370ab4bdd5a8bec4de648a8edc161b76eca293ac",
+    "requests": 304,
+    "privacy": "Raw isolated fixture HAR is ignored; do not publish auth/cookies without redaction"
+  },
+  {
+    "name": "bridge-reachability.har",
+    "ignored_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/evidence/bridge-reachability.har",
+    "bytes": 68313,
+    "sha256": "7bd576b17e1479ae8be9a730be65c726aaa24c3ef6e8abda7584de3dc2b6e631",
+    "requests": 18,
+    "privacy": "Raw isolated fixture HAR is ignored; do not publish auth/cookies without redaction"
+  }
+]

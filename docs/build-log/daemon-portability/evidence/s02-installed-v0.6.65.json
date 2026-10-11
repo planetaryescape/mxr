@@ -1,0 +1,206 @@
+{
+  "verified_at_utc": "2026-10-11T10:53:14Z",
+  "release": {
+    "tag": "v0.6.65",
+    "source_commit": "7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54",
+    "source_tree": "d8b8463eebbd1eaa4e5f47ed75d69b30cbadc531",
+    "manifest_version": "0.6.65",
+    "published_at_utc": "2026-10-11T10:50:16Z",
+    "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.65",
+    "workflow": {
+      "run_id": 38132041238,
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38132041238",
+      "head_sha": "7cfb0c38cf10b975eb76232a3e53ad6eb3fc2f54",
+      "started_at_utc": "2026-10-11T10:27:59Z",
+      "completed_at_utc": "2026-10-11T10:52:19Z",
+      "conclusion": "success",
+      "duration_seconds": 1460,
+      "jobs": [
+        {
+          "name": "Plan Release",
+          "started_at_utc": "2026-10-11T10:28:06Z",
+          "completed_at_utc": "2026-10-11T10:28:13Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build x86_64-unknown-linux-gnu",
+          "started_at_utc": "2026-10-11T10:28:16Z",
+          "completed_at_utc": "2026-10-11T10:39:58Z",
+          "conclusion": "success",
+          "duration_seconds": 702,
+          "embedded_spa_release_binary_check": {
+            "result": "passed",
+            "started_at_utc": "2026-10-11T10:39:32Z",
+            "completed_at_utc": "2026-10-11T10:39:35Z"
+          }
+        },
+        {
+          "name": "Build aarch64-apple-darwin",
+          "started_at_utc": "2026-10-11T10:28:24Z",
+          "completed_at_utc": "2026-10-11T10:49:50Z",
+          "conclusion": "success",
+          "duration_seconds": 1286,
+          "native_build_started_at_utc": "2026-10-11T10:29:09Z",
+          "native_build_completed_at_utc": "2026-10-11T10:48:31Z",
+          "native_build_duration_seconds": 1162,
+          "signing": "skipped by workflow condition",
+          "notarization": "skipped by workflow condition",
+          "embedded_spa_release_binary_check": {
+            "result": "skipped",
+            "reason": "workflow condition restricts this step to x86_64-unknown-linux-gnu; exact source .github/workflows/release.yml lines 164-165"
+          }
+        },
+        {
+          "name": "Release CLI Smoke",
+          "started_at_utc": "2026-10-11T10:28:20Z",
+          "completed_at_utc": "2026-10-11T10:36:23Z",
+          "conclusion": "success",
+          "duration_seconds": 483,
+          "steps": {
+            "release_blocking_cli_tests": {
+              "started_at_utc": "2026-10-11T10:28:38Z",
+              "completed_at_utc": "2026-10-11T10:33:35Z",
+              "conclusion": "success",
+              "duration_seconds": 297
+            },
+            "deterministic_provider_smoke": {
+              "started_at_utc": "2026-10-11T10:33:35Z",
+              "completed_at_utc": "2026-10-11T10:35:12Z",
+              "conclusion": "success",
+              "duration_seconds": 97
+            },
+            "v1_launch_proof_fake_provider_daemon_cli_mcp": {
+              "started_at_utc": "2026-10-11T10:35:12Z",
+              "completed_at_utc": "2026-10-11T10:36:16Z",
+              "conclusion": "success",
+              "duration_seconds": 64
+            },
+            "live_gmail_release_smoke": {
+              "step_conclusion": "success",
+              "observed_branch": "skipped because MXR_GMAIL_TEST credentials were missing",
+              "runner_warning_observed": true,
+              "live_test_invoked": false,
+              "test_result_lines": 0
+            }
+          }
+        },
+        {
+          "name": "GitHub Release",
+          "started_at_utc": "2026-10-11T10:49:57Z",
+          "completed_at_utc": "2026-10-11T10:50:19Z",
+          "conclusion": "success",
+          "duration_seconds": 22
+        },
+        {
+          "name": "Homebrew Formula",
+          "started_at_utc": "2026-10-11T10:50:26Z",
+          "completed_at_utc": "2026-10-11T10:52:18Z",
+          "conclusion": "success",
+          "duration_seconds": 112
+        }
+      ]
+    },
+    "scripts": {
+      "install.sh": {
+        "sha256": "4efa5718f3b43cb1e16479304295484751434b8ca92cfef9db79706b7eeeafb4"
+      },
+      "scripts/smoke-draft-revisions": {
+        "sha256": "fd39653f4048d59f801fbe24611aa14b3078f65084492b2290c73e49eed08e32"
+      },
+      "docs/build-log/daemon-portability/s08a_smoke.py": {
+        "sha256": "7ff5a52ee38d6e88b34179b623f6563a0c5693fbe064d7d50e3cea6275ddd737"
+      }
+    },
+    "archives": [
+      {
+        "name": "mxr-v0.6.65-linux-x86_64.tar.gz",
+        "size_bytes": 64188447,
+        "sha256": "82284692ec14fd4d94a80571726a6690474b7376c665f9c9364a2160517d3442",
+        "sidecar_verified": true,
+        "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65/archives/mxr-v0.6.65-linux-x86_64.tar.gz"
+      },
+      {
+        "name": "mxr-v0.6.65-macos-aarch64.tar.gz",
+        "size_bytes": 59260635,
+        "sha256": "b8da3fd948e9b373d7c5e77685f6d0989e073fe573c09516ae53d77ceaf7adcc",
+        "sidecar_verified": true,
+        "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65/archives/mxr-v0.6.65-macos-aarch64.tar.gz"
+      }
+    ]
+  },
+  "installers": {
+    "script_install": {
+      "path": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65/bin/mxr",
+      "version_output": "mxr 0.6.65",
+      "sha256": "86096ad9c869173c3fa6d69fcf0cac1547c94dc36ecd90e1f2ede2a1dea03e26",
+      "install_dir": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65/bin",
+      "archive_checksum_verified": true
+    },
+    "homebrew": {
+      "command_path": "/opt/homebrew/bin/mxr",
+      "resolved_path": "/opt/homebrew/Cellar/mxr/0.6.65/bin/mxr",
+      "unique_path_count": 1,
+      "version_output": "mxr 0.6.65",
+      "sha256": "86096ad9c869173c3fa6d69fcf0cac1547c94dc36ecd90e1f2ede2a1dea03e26",
+      "formula": "planetaryescape/mxr/mxr",
+      "formula_version": "0.6.65",
+      "formula_archive_sha256": "b8da3fd948e9b373d7c5e77685f6d0989e073fe573c09516ae53d77ceaf7adcc",
+      "update_upgrade": "brew update && brew upgrade mxr completed successfully; only mxr was requested for upgrade"
+    }
+  },
+  "smokes": {
+    "installer_draft_revisions": {
+      "result": "passed",
+      "duration_seconds": 2.159,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s02-v0.6.65-installer-draft-smoke.log",
+      "checks": [
+        "saved/restarted/read revision 1",
+        "revision conflict rejected stale editor while preserving unsent text",
+        "malformed editor text preserved",
+        "delete dry-run preview left draft unchanged"
+      ]
+    },
+    "installer_s08a_shutdown": {
+      "result": "passed",
+      "duration_seconds": 5.705,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08a-v0.6.65-installer-smoke.log",
+      "checks": [
+        "bounded SIGTERM active cancellation allowed only relationship service timeout and relationship_worker runtime task timeout",
+        "idle SIGINT restart smoke passed",
+        "four fake message IDs retained"
+      ]
+    },
+    "homebrew_draft_revisions": {
+      "result": "passed",
+      "duration_seconds": 2.002,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s02-v0.6.65-homebrew-draft-smoke.log",
+      "checks": [
+        "saved/restarted/read revision 1",
+        "revision conflict rejected stale editor while preserving unsent text",
+        "malformed editor text preserved",
+        "delete dry-run preview left draft unchanged"
+      ]
+    },
+    "homebrew_s08a_shutdown": {
+      "result": "passed",
+      "duration_seconds": 5.557,
+      "log": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/docs/build-log/daemon-portability/evidence/s08a-v0.6.65-homebrew-smoke.log",
+      "checks": [
+        "bounded SIGTERM active cancellation allowed only relationship service timeout and relationship_worker runtime task timeout",
+        "idle SIGINT restart smoke passed",
+        "four fake message IDs retained"
+      ]
+    }
+  },
+  "retained_baselines": {
+    "v0.6.63": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.63",
+    "v0.6.64": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.64"
+  },
+  "browser_acceptance": "pending root-owned embedded-SPA journey on published installer; release workflow embedded-SPA check passed on Linux and is conditionally skipped on macOS",
+  "verification_scope": {
+    "manual_mail_interaction": "none; all local journeys used the scripts own isolated synthetic fake-mail profiles",
+    "ci_live_gmail_step": "bounded run-log inspection confirmed the no-credentials skip branch; no credential values read or printed",
+    "research_release_asset_directory": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.65",
+    "release_run_final_status_observed_at_utc": "2026-10-11T10:52:19Z"
+  }
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "at": "2026-10-11T10:53:19.410612224Z",
+    "status": 200,
+    "request": {
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-3e47-7701-b11f-14eae9ddb677.md"
+    },
+    "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md",
+    "draft_id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "revision": 1,
+    "body": "Latest loser text typed immediately before Close",
+    "attachments": [
+      "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe/01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+    ]
+  },
+  {
+    "at": "2026-10-11T10:53:53.732353024Z",
+    "status": 200,
+    "request": {
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a98-7eb3-7050-a514-36801f766dbe.md"
+    },
+    "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33.md",
+    "draft_id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "revision": 1,
+    "body": "Latest loser text typed immediately before Close",
+    "attachments": [
+      "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33/01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+    ]
+  },
+  {
+    "at": "2026-10-11T10:54:28.744642048Z",
+    "status": 200,
+    "request": {
+      "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-04c5-7993-8459-0c562d45ec33.md"
+    },
+    "draft_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-501/mxr-compose-recovery-01a12a99-8d89-70a3-9f86-8d7970fc4b6e.md",
+    "draft_id": "01a12a97-6841-7712-ae0b-5cf8548a582d",
+    "revision": 1,
+    "body": "Latest loser text typed immediately before Close",
+    "attachments": [
+      "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/.s02-web-dependencies/runtime/installed-ztgm2tqx/tmp/mxr-compose-attachments/mxr-compose-recovery-01a12a99-8d89-70a3-9f86-8d7970fc4b6e/01a12a99-8d89-70a3-9f86-8d83317647b6-01a12a99-04c5-7993-8459-0c6516ac0824-01a12a98-7eb3-7050-a514-3695efe9aecc-01a12a98-3e47-7701-b11f-14f7ef253d85-01a12a98-3284-7f03-b741-6c9c680a3db7-owned-report.txt"
+    ]
+  }
+]

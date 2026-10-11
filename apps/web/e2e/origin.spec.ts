@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { acceptArchiveReview } from "./helpers/archive";
 import { expectCursorOn, mailRows, openList, reader, renderedRowIds } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
@@ -55,7 +56,9 @@ test("archive-and-advance from search, then Esc lands on the next result", async
   await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
   const opened = page.url();
 
+  const consent = acceptArchiveReview(page);
   await page.keyboard.press("]");
+  await consent;
   await expect(page).not.toHaveURL(opened);
   await expect(page).toHaveURL(/\/search\/[^/?]+\?q=canary/);
   await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible();

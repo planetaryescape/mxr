@@ -1,0 +1,20 @@
+{
+  "key": "mxr-reviewed-sends",
+  "value": [
+    {
+      "operationId": "01a12bb2-6cf7-7e22-9f59-68bb5a0b686e:1",
+      "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "draftId": "01a12bb2-6cf7-7e22-9f59-68bb5a0b686e"
+    },
+    {
+      "operationId": "01a12bb2-6d05-7642-9dc3-5fe701e513fe:1",
+      "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "draftId": "01a12bb2-6d05-7642-9dc3-5fe701e513fe"
+    },
+    {
+      "operationId": "01a12bb2-6d05-7642-9dc3-5fe701e513fe:1:retry:5dd6d4a7-dcac-4cf9-980a-a603b913bf8c",
+      "accountId": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "draftId": "01a12bb2-6d05-7642-9dc3-5fe701e513fe"
+    }
+  ]
+}

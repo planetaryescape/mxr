@@ -130,12 +130,13 @@ The TUI will not reopen a compose file while send, provider save, scheduling or
 asynchronous cleanup owns it. Other retained files remain available. A late
 identity update for file A preserves file B's newer recovery selection.
 
-The reusable synthetic consumer check uses both built binaries:
+With v0.6.68 or later installed on `PATH`, run the reusable synthetic consumer
+check with both installed binaries:
 
 ```sh
 python3 scripts/verify-mailmerge-outcomes.py \
-  --mxr target/debug/mxr \
-  --mailmerge target/debug/mxr-mailmerge \
+  --mxr "$(command -v mxr)" \
+  --mailmerge "$(command -v mxr-mailmerge)" \
   --runtime /tmp/mxr-mailmerge-outcomes \
   --evidence /tmp/mxr-mailmerge-outcomes/evidence.json
 ```
@@ -149,6 +150,97 @@ CI or release acceptance. Its recorded binary SHA-256 values are
 and `141688284db63920577b28948512afca45249ca70b5794e4b0576c2bda9f5e43`
 (`mxr-mailmerge`). Root owns the final focused gates, whole-candidate review,
 release and installed verification.
+
+## The reviewed candidate passed CI and merged
+
+Candidate `04a72f7bef8dcbebb3aa4838b15c855247566348` (tree
+`c66ddc36ebbf5d7276bf7b0674ac07c0a8bb97cf`) merged as
+`d6ba93ba7082a644e027b331e67da44d8e6dd4e8` with the identical tree. CI run
+[38146965743](https://github.com/planetaryescape/mxr/actions/runs/38146965743)
+passed in 924 seconds. It reported 4,025 fast tests passed with 9 skipped,
+4,071 semantic tests passed with 10 skipped, 897 web tests across 158 files,
+and workspace Clippy in 91 seconds. The browser job reported 380 passing tests;
+the unchanged people-pane assertion observed 452 pixels against 453 and passed
+on retry. Four speed checks passed in 23.8 seconds.
+
+The fresh whole-candidate Opus 5.5/max review returned GREEN after root triage
+in 29m51.603s, 9m51.603s beyond its 20-minute budget. Root accepted six
+bounded findings for documentation or later diagnostic follow-up; none blocked
+the merged candidate. The source-correction window from the consumer finding
+at 13:59:11 UTC to root acceptance at 14:25:27 UTC was 26m16s wall, including
+implementation, checks, packaging and review. These elapsed intervals overlap;
+worker time and BK attention were not measured.
+
+The final local companion consumer used immutable candidate
+`2b9e731409e207a226823c0c2450bbfeb55dfaaa` (tree
+`869d34b9b59cee4a01d565a291810bcc4ec9948d`). It completed in 11.480572s with
+four provider acceptances and seven durable pre-effect witnesses. The binary
+SHA-256 values were `911af44b54dfd5271ff594ebe41a788df6648c5ea4f0c60d169e605fa89c41ce`
+for `mxr` and
+`32fbb611269f87cab18b1ba15e67bcca3d449864ebb07f756415c7245ab3cce3` for
+`mxr-mailmerge`. Root verified the evidence digest and all 53 worker-packet
+hashes. This synthetic consumer check is not installed-release acceptance.
+
+The final local TUI replay on the same candidate refused reopening the compose
+file while send owned it, kept one editor open, and removed the file once after
+an Accepted result. SQLite retained Accepted, and the owned ports were closed.
+The earlier candidate's second-editor/FileNotFoundError observation is
+superseded; the final replay did not establish edited-text loss.
+
+The merged source was released and checked through installed CLI, companion,
+TUI and browser journeys as recorded below.
+
+## The first release attempt failed at a workflow path
+
+Release source `0d00cb2d644b0b914c45ac9508b12fe4daa0b706` for v0.6.67 was not
+published. [Run 38149908274, Release CLI Smoke job
+114501057493](https://github.com/planetaryescape/mxr/actions/runs/38149908274/job/114501057493)
+compiled with `.cargo/config.toml`'s `target-cli` directory, then called
+`verify-mailmerge-outcomes.py` with `target/debug/mxr`; the script failed with
+`FileNotFoundError` at line 30. The earlier v1 launch proof and provider smoke
+passed; the companion proof did not run. This was a workflow path error, not a
+send-recovery failure. The v0.6.67
+tag remains failed and unpublished; it was not retagged.
+
+Workflow fix [PR357](https://github.com/planetaryescape/mxr/pull/357) merged as
+`86c95992`. Release metadata [PR358](https://github.com/planetaryescape/mxr/pull/358)
+set v0.6.68 at source `621e9e49739eeb80abbccea0916578420941c3fc` (tree
+`6d391d9d90db51339d9a8d100e50915732a895eb`). [Release run
+38151840433](https://github.com/planetaryescape/mxr/actions/runs/38151840433)
+completed successfully from 15:34:28 to 15:58:17 UTC and published v0.6.68 at
+15:56:03 UTC. The release took 23m49s; native builds took 18m55s on macOS and
+14m28s on Linux. The archive checksums and installer/Homebrew binary hashes
+match. Installed CLI and companion checks passed with 50 CLI calls, eight fake
+provider acceptances, and four companion acceptances in 9.366s. The [curated
+release and installed evidence](evidence/s03-v0.6.68-release-installed.json)
+records the source, asset hashes, installed binary hashes and check summary.
+No real mail was sent.
+
+The installed TUI acceptance passed using the same v0.6.68 binary hash. Four
+journeys covered provider save and stale-revision preservation, explicit retry
+after rejection, same-file ownership during a send, and retained-Unknown
+recovery after restart. The run took 385.907 seconds; owned ports 18414 and
+18415 were closed afterward. The [curated TUI packet](evidence/s03-installed-v0.6.68-tui/README.md)
+keeps selected database fields, visible message excerpts and source
+hashes. SQLite showed the canonical provider-draft link, but provider memory
+was not inspected.
+
+The installed browser journey also passed on the same v0.6.68 binary. The fake-
+only run took 8m39s. After reload and an explicit query, the injected A outcome
+remained Unknown and another send was refused. B's definite rejection retained
+its draft; an explicit retry used a distinct operation and was accepted. Root's
+read-only SQLite query confirmed Unknown, NotAccepted and Accepted identities;
+the final spool contained two fake acceptance records, and the scoped storage
+key and outcomes survived browser and daemon restart. The [curated browser
+packet](evidence/s03-installed-v0.6.68-browser/README.md) contains the corrected
+observer summary and selected restarted-Drafts screenshot. Its three distinct
+send observer entries were 502, 502 and 200 for A, B's rejection and B's retry.
+These are deduplicated observer event indexes, not server request IDs. The
+storage key was captured after a fake acceptance record existed and before the
+timeout response; it does not prove retention before provider effect. The
+intermediate spool counts were observed during the run but were not saved
+individually. Browser errors output was empty; three UDS warnings remain
+unclassified. No real mail or credentials were used.
 
 ## Inline review keeps this send-specific
 

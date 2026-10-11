@@ -51,7 +51,10 @@ describe("syncNow", () => {
 
     await syncNow();
 
-    expect(client.apiFetch).toHaveBeenCalledWith("/api/v1/mail/sync/all", { method: "POST", body: {} });
+    expect(client.apiFetch).toHaveBeenCalledWith("/api/v1/mail/sync/all", {
+      method: "POST",
+      body: {},
+    });
     expect(toast.success).not.toHaveBeenCalled();
   });
 

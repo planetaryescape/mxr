@@ -11,6 +11,7 @@ export type Theme = "midnight" | "light" | "eclipse" | "paper" | "system";
 export type Density = "compact" | "regular" | "comfortable";
 /** "system" follows the OS reduced-motion preference. */
 export type MotionPref = "system" | "reduced" | "full";
+export type ContrastPref = "system" | "standard" | "increased";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "auto" | "dark" | "original";
 export type ExplicitEmailHtmlTheme = Exclude<EmailHtmlTheme, "auto">;
@@ -30,6 +31,7 @@ export interface UiPrefsState {
   theme: Theme;
   density: Density;
   motion: MotionPref;
+  contrast: ContrastPref;
   sidebarCollapsed: boolean;
   composeEditor: ComposeEditor;
   emailHtmlTheme: EmailHtmlTheme;
@@ -61,6 +63,7 @@ export interface UiPrefsState {
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
   setMotion: (motion: MotionPref) => void;
+  setContrast: (contrast: ContrastPref) => void;
   setSidebarCollapsed: (b: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
@@ -81,6 +84,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       theme: "system",
       density: "regular",
       motion: "system",
+      contrast: "system",
       sidebarCollapsed: false,
       // Locked product decision (docs/web-app.md): CodeMirror + vim is the
       // default. Only the default changes; a persisted choice is kept as is.
@@ -130,6 +134,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
       setMotion: (motion) => set({ motion }),
+      setContrast: (contrast) => set({ contrast }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
@@ -171,7 +176,7 @@ export const useUiPrefs = create<UiPrefsState>()(
     {
       name: "mxr.uiPrefs",
       storage: createJSONStorage(() => uiPrefsStorage()),
-      version: 5,
+      version: 6,
       merge: (persisted, current) => mergeUiPrefs(persisted, current),
       // persist merges what migrate returns over the defaults, so a partial
       // state is what it expects at runtime; its type says the whole store.
@@ -185,7 +190,8 @@ export const useUiPrefs = create<UiPrefsState>()(
  * already had saved prefs, so the sidebar opens on places for everyone.
  * v4: Now replaced the desk as the front page, so a saved "desk" home is
  * Now. v5 adds sender-specific HTML canvas preferences; previous explicit
- * Dark and Original choices stay as they were.
+ * Dark and Original choices stay as they were. v6 adds system/default/increased
+ * contrast, defaulting existing users to system.
  */
 export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
   let state: Partial<UiPrefsState> =
@@ -195,6 +201,7 @@ export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiP
     state = { ...state, collapsedSections: [...new Set([...folded, "more", "labels"])] };
   }
   if (version < 4 && state.home !== "inbox") state = { ...state, home: "now" };
+  if (version < 6) state = { ...state, contrast: "system" };
   let migrated = state;
   if ("emailHtmlTheme" in migrated && !isEmailHtmlTheme(migrated.emailHtmlTheme)) {
     migrated = { ...migrated };
@@ -244,11 +251,16 @@ function mergeUiPrefs(persisted: unknown, current: UiPrefsState): UiPrefsState {
   return {
     ...current,
     ...state,
+    contrast: isContrastPref(state.contrast) ? state.contrast : current.contrast,
     emailHtmlTheme: isEmailHtmlTheme(state.emailHtmlTheme)
       ? state.emailHtmlTheme
       : current.emailHtmlTheme,
     emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(state.emailHtmlSenderOverrides),
   };
+}
+
+function isContrastPref(value: unknown): value is ContrastPref {
+  return value === "system" || value === "standard" || value === "increased";
 }
 
 function isEmailHtmlTheme(value: unknown): value is EmailHtmlTheme {
@@ -303,6 +315,31 @@ export function watchSystemTheme(): () => void {
   const onChange = () => {
     const { theme } = useUiPrefs.getState();
     if (theme === "system") applyThemeAttribute(theme);
+  };
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+const MORE_CONTRAST_QUERY = "(prefers-contrast: more)";
+
+export function resolveContrast(contrast: ContrastPref): "standard" | "increased" {
+  if (contrast !== "system") return contrast;
+  if (typeof window === "undefined" || !window.matchMedia) return "standard";
+  return window.matchMedia(MORE_CONTRAST_QUERY).matches ? "increased" : "standard";
+}
+
+export function applyContrastAttribute(contrast: ContrastPref): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-contrast", resolveContrast(contrast));
+}
+
+/** Re-resolve system contrast when the OS preference changes. */
+export function watchSystemContrast(): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia(MORE_CONTRAST_QUERY);
+  const onChange = () => {
+    const { contrast } = useUiPrefs.getState();
+    if (contrast === "system") applyContrastAttribute(contrast);
   };
   media.addEventListener("change", onChange);
   return () => media.removeEventListener("change", onChange);

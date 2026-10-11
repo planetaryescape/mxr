@@ -6,7 +6,9 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ComposeSettingsSection } from "./ComposeSettingsSection";
+import { AppearanceSection } from "./AppearanceSection";
 import { LlmSettingsSection } from "./LlmSettingsSection";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
@@ -39,6 +41,19 @@ function renderWithQueryClient(children: ReactNode) {
   });
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 }
+
+describe("AppearanceSection", () => {
+  test("offers system, default, and increased contrast choices", () => {
+    renderWithQueryClient(<AppearanceSection />);
+    const contrast = screen.getByRole("combobox", { name: "Contrast" });
+    expect(contrast).toHaveTextContent("Match the system");
+    fireEvent.click(contrast);
+    expect(screen.getByRole("option", { name: "Default" })).toBeVisible();
+    fireEvent.click(screen.getByRole("option", { name: "Increased" }));
+    expect(useUiPrefs.getState().contrast).toBe("increased");
+    useUiPrefs.getState().setContrast("system");
+  });
+});
 
 describe("LlmSettingsSection", () => {
   beforeEach(() => {

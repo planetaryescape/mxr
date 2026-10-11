@@ -114,6 +114,7 @@
   --color-faint: var(--faint);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-input-border: var(--input-border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-primary: var(--primary);
@@ -186,6 +187,7 @@
 
   --border: #2b3742;
   --border-strong: #424f5c;
+  --input-border: #687887;
   --input: #1c2632;
   --ring: #54ddff;
 
@@ -258,6 +260,7 @@
 
   --border: #d7e5ed;
   --border-strong: #b9cedc;
+  --input-border: #718a9a;
   --input: #e5f0f6;
   --ring: #006f93;
 
@@ -331,6 +334,7 @@
 
   --border: oklch(26% 0.014 290);
   --border-strong: oklch(36% 0.016 290);
+  --input-border: oklch(50% 0.016 290);
   --input: oklch(20% 0.013 290);
   --ring: oklch(80% 0.13 330);
 
@@ -400,10 +404,11 @@
 
   --border: hsl(36 20% 85%);
   --border-strong: hsl(30 15% 74%);
+  --input-border: hsl(30 15% 50%);
   --input: hsl(36 22% 92%);
   --ring: hsl(14 75% 42%);
 
-  --primary: hsl(14 75% 42%);
+  --primary: hsl(14 75% 38%);
   --primary-foreground: hsl(36 30% 98%);
   --primary-muted: hsl(14 60% 91%);
   --secondary: hsl(36 22% 91%);
@@ -431,7 +436,7 @@
 
   --sidebar: hsl(36 24% 93%);
   --sidebar-foreground: hsl(30 14% 28%);
-  --sidebar-primary: hsl(14 75% 42%);
+  --sidebar-primary: hsl(14 75% 38%);
   --sidebar-primary-foreground: hsl(36 30% 98%);
   --sidebar-accent: hsl(36 22% 89%);
   --sidebar-accent-foreground: hsl(30 18% 14%);
@@ -444,6 +449,51 @@
   --chart-4: hsl(36 80% 40%);
   --chart-5: hsl(270 45% 48%);
   --chart-6: hsl(180 45% 32%);
+}
+
+/* The explicit preference and system `prefers-contrast: more` share this
+ * resolved state. These changes strengthen text and control boundaries while
+ * keeping each theme's established surfaces and accent family. */
+[data-contrast="increased"][data-theme="midnight"] {
+  --muted-foreground: #c4ced8;
+  --subtle-foreground: #b2bfcc;
+  --border: #52616f;
+  --border-strong: #728190;
+  --input-border: #728190;
+  --input: #202d39;
+  --ring: #8ae9ff;
+}
+
+[data-contrast="increased"][data-theme="light"] {
+  --muted-foreground: #344f66;
+  --subtle-foreground: #344f66;
+  --border: #91a9b9;
+  --border-strong: #738c9d;
+  --input-border: #627f91;
+  --input: #e5f0f6;
+  --ring: #005875;
+}
+
+[data-contrast="increased"][data-theme="eclipse"] {
+  --muted-foreground: oklch(80% 0.01 290);
+  --subtle-foreground: oklch(75% 0.012 290);
+  --border: oklch(43% 0.016 290);
+  --border-strong: oklch(54% 0.018 290);
+  --input-border: oklch(54% 0.018 290);
+  --input: oklch(22% 0.013 290);
+  --ring: oklch(86% 0.13 330);
+}
+
+[data-contrast="increased"][data-theme="paper"] {
+  --muted-foreground: hsl(30 14% 25%);
+  --subtle-foreground: hsl(30 14% 25%);
+  --border: hsl(30 15% 64%);
+  --border-strong: hsl(30 18% 52%);
+  --input-border: hsl(30 18% 45%);
+  --input: hsl(36 24% 93%);
+  --ring: hsl(14 80% 32%);
+  --primary: hsl(14 78% 34%);
+  --sidebar-primary: hsl(14 78% 34%);
 }
 
 /*

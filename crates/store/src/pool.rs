@@ -1095,6 +1095,11 @@ const MIGRATIONS: &[Migration] = &[
         MigrationStep::Sql("UPDATE drafts SET scheduled_send_revision = revision WHERE send_at IS NOT NULL AND scheduled_send_revision IS NULL"),
     ]) },
     Migration { version: 75, name: "archive_workspace", kind: MigrationKind::Sql(include_str!("../migrations/075_archive_workspace.sql")) },
+    Migration {
+        version: 76,
+        name: "record_renewal_cycles",
+        kind: MigrationKind::Sql(include_str!("../migrations/076_record_renewal_cycles.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1364,6 +1369,148 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count.0 as usize, super::MIGRATIONS.len());
+    }
+
+    #[tokio::test]
+    async fn renewal_migration_upgrades_version_75_without_losing_user_state() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-75.db");
+
+        {
+            let store = Store::new(&db_path).await.unwrap();
+            sqlx::query("DROP TABLE record_renewal_cycles")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_migrations WHERE version = 76")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            sqlx::query(
+                "INSERT INTO archive_workspace (singleton, workspace_id, recovery_generation)
+                 VALUES (1, 'existing-workspace', 'generation-before-renewals')",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+            sqlx::query(
+                "INSERT INTO accounts (id, name, email, created_at, updated_at)
+                 VALUES ('version-75-account', 'Personal', 'me@example.com', 1, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO draft_send_outcomes
+                 (operation_id, draft_id, account_id, reviewed_revision, command_hash,
+                  state, provider_message_id, updated_at)
+                 VALUES
+                 ('accepted-op', 'sent-draft', 'version-75-account', 3, 'accepted-hash',
+                  'accepted', 'provider-message-9', 42),
+                 ('unknown-op', 'sending-draft', 'version-75-account', 4, 'unknown-hash',
+                  'unknown', NULL, 43)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO todos
+                 (id, account_id, kind, verb, title, origin, reason, rules_version,
+                  dedup_key, created_at, updated_at, scheduled_for, user_edited)
+                 VALUES ('manual-renewal', 'version-75-account', 'renewal', 'renew',
+                         'Call about renewal', 'manual', 'Created by the user', 1,
+                         'manual-renewal-key', 10, 11, 1800000000, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+            let latest_version: (i64,) =
+                sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+                    .fetch_one(store.writer())
+                    .await
+                    .unwrap();
+            assert_eq!(latest_version.0, 75);
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let applied: (String,) =
+            sqlx::query_as("SELECT name FROM schema_migrations WHERE version = 76")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(applied.0, "record_renewal_cycles");
+        assert!(test_table_exists(store.writer(), "record_renewal_cycles").await);
+        assert!(test_table_exists(store.writer(), "archive_workspace").await);
+        sqlx::query(
+            "INSERT INTO record_renewal_cycles (account_id, record_id, dedup_key)
+             VALUES ('version-75-account', 'record-1', 'record-renewal|record-1')",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        let outcomes: Vec<(String, String, Option<String>)> = sqlx::query_as(
+            "SELECT operation_id, state, provider_message_id FROM draft_send_outcomes
+             ORDER BY operation_id",
+        )
+        .fetch_all(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            outcomes,
+            vec![
+                (
+                    "accepted-op".into(),
+                    "accepted".into(),
+                    Some("provider-message-9".into()),
+                ),
+                ("unknown-op".into(), "unknown".into(), None),
+            ]
+        );
+
+        let manual_todo: (String, String, String, i64, i64) = sqlx::query_as(
+            "SELECT title, origin, reason, scheduled_for, user_edited
+             FROM todos WHERE id = 'manual-renewal'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            manual_todo,
+            (
+                "Call about renewal".into(),
+                "manual".into(),
+                "Created by the user".into(),
+                1_800_000_000,
+                1,
+            )
+        );
+
+        drop(store);
+        let reopened = Store::new(&db_path).await.unwrap();
+        let archived_workspace: (String, String) = sqlx::query_as(
+            "SELECT workspace_id, recovery_generation FROM archive_workspace WHERE singleton = 1",
+        )
+        .fetch_one(reopened.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            archived_workspace,
+            (
+                "existing-workspace".into(),
+                "generation-before-renewals".into(),
+            )
+        );
+        let cycle_key: (String,) = sqlx::query_as(
+            "SELECT dedup_key FROM record_renewal_cycles
+             WHERE account_id = 'version-75-account' AND record_id = 'record-1'",
+        )
+        .fetch_one(reopened.writer())
+        .await
+        .unwrap();
+        assert_eq!(cycle_key.0, "record-renewal|record-1");
     }
 
     #[tokio::test]

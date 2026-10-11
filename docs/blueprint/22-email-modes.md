@@ -1897,7 +1897,11 @@ to BM25.
   - A price change on the newest charge, a missed charge, and a yearly
     subscription two weeks from renewing appear in Archive's Coming up
     strip and on Now. All three are suggestions worked out from the charge
-    dates alone; none of them files a to-do on its own.
+    dates alone. With To do enabled, an approaching annual renewal also
+    creates a review task, with its estimated date and amount unchecked.
+    Cycle identity persists across duplicate receipts and older backfill;
+    edits and user decisions survive replay. Inferred cancellation or
+    timing never closes the review, and completing it files no contract.
 
 ### Phase 7: Fast-tier classification for what rules can't tell, measured
 

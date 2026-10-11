@@ -29,6 +29,7 @@ fn html_draft(
     text: Option<&str>,
 ) -> mxr_core::types::Draft {
     mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,

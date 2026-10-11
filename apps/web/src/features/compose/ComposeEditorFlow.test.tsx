@@ -105,6 +105,7 @@ const composeSession: ComposeSessionResponse = {
     rawContent: "",
     frontmatter: { to: "", cc: "", bcc: "", subject: "", from: "me@example.com", attach: [] },
     bodyMarkdown: "",
+    previewHtml: "",
     issues: [],
     accountId: "account-1",
     kind: "new",
@@ -214,6 +215,8 @@ describe("Compose saving to a stored draft", () => {
   const savedDraftSession: ComposeSessionResponse = {
     session: {
       ...composeSession.session,
+      draftId: "draft-42",
+      revision: 1,
       frontmatter: {
         ...composeSession.session.frontmatter,
         to: "alice@example.com",
@@ -267,6 +270,7 @@ describe("Compose saving to a stored draft", () => {
         "/tmp/mxr-compose.md",
         "account-1",
         "draft-42",
+        1,
       ),
     );
   });
@@ -281,6 +285,7 @@ describe("Compose saving to a stored draft", () => {
       expect(api.saveComposeSession).toHaveBeenCalledWith(
         "/tmp/mxr-compose.md",
         "account-1",
+        undefined,
         undefined,
       ),
     );

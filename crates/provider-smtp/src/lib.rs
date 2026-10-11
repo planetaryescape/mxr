@@ -268,6 +268,7 @@ mod tests {
 
     fn test_draft() -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
             from: None,

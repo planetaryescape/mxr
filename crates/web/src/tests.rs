@@ -23,9 +23,12 @@ mod arrival_routes;
 mod compose_and_scheduling;
 mod place_routes;
 mod record_routes;
+mod recovery_attachments;
+mod recovery_retry;
 mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
+mod unsaved_recovery;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 
@@ -58,6 +61,10 @@ where
     F: Fn(Request) -> Option<Response> + Send + Sync + 'static,
 {
     let responder = std::sync::Arc::new(responder);
+    let fixture_drafts = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::<
+        DraftId,
+        Draft,
+    >::new()));
     let listener = UnixListener::bind(socket_path).unwrap();
     tokio::spawn(async move {
         loop {
@@ -65,6 +72,7 @@ where
                 break;
             };
             let responder = responder.clone();
+            let fixture_drafts = fixture_drafts.clone();
             let event = event.clone();
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
@@ -83,9 +91,67 @@ where
                         break;
                     };
                     if let IpcPayload::Request(request) = message.payload {
-                        let Some(response) = responder(request) else {
-                            continue;
+                        let mutation_draft = match &request {
+                            Request::SaveDraft { draft }
+                            | Request::SaveDraftToServer { draft }
+                            | Request::UpdateDraft { draft } => Some(draft.clone()),
+                            _ => None,
                         };
+                        let update = matches!(request, Request::UpdateDraft { .. });
+                        let status = matches!(request, Request::GetStatus);
+                        let fallback_request = request.clone();
+                        let Some(mut response) = responder(request).or_else(|| {
+                            if status { return Some(Response::Ok { data: sample_status() }); }
+                            let mut drafts = fixture_drafts.lock().unwrap();
+                            match fallback_request {
+                                Request::SaveDraft { mut draft } => { draft.revision = Some(1); Some(Response::Ok { data: ResponseData::Draft { draft } }) }
+                                Request::GetDraft { draft_id } => Some(match drafts.get(&draft_id) { Some(draft) => Response::Ok { data: ResponseData::Draft { draft: draft.clone() } }, None => Response::error_kinded(format!("Draft not found: {draft_id}"), mxr_protocol::IpcErrorKind::NotFound) }),
+                                Request::UpdateDraft { mut draft } => {
+                                    let current = drafts.get(&draft.id).and_then(|draft| draft.revision);
+                                    if draft.revision.is_none() || draft.revision != current { Some(Response::Error { message: "Draft revision conflict".into(), code: "draft_revision_conflict".into(), kind: mxr_protocol::IpcErrorKind::InvalidRequest, retryable: false, details: Some(json!({"current_revision": current, "expected_revision": draft.revision})) }) }
+                                    else { draft.revision = current.map(|revision| revision + 1); Some(Response::Ok { data: ResponseData::Draft { draft } }) }
+                                }
+                                Request::DeleteDraft { draft_id, expected_revision } => {
+                                    if drafts.get(&draft_id).and_then(|draft| draft.revision) == expected_revision && expected_revision.is_some() { drafts.remove(&draft_id); Some(Response::Ok { data: ResponseData::Ack }) } else { Some(Response::error("Draft revision conflict")) }
+                                }
+                                _ => None,
+                            }
+                        }) else { continue; };
+                        if matches!(
+                            response,
+                            Response::Ok {
+                                data: ResponseData::Ack
+                            }
+                        ) {
+                            if let Some(mut draft) = mutation_draft {
+                                draft.revision = Some(if update {
+                                    draft.revision.unwrap_or(0) + 1
+                                } else {
+                                    draft.revision.unwrap_or(1)
+                                });
+                                response = Response::Ok {
+                                    data: ResponseData::Draft { draft },
+                                };
+                            }
+                        }
+                        match &response {
+                            Response::Ok {
+                                data: ResponseData::Draft { draft },
+                            } => {
+                                fixture_drafts
+                                    .lock()
+                                    .unwrap()
+                                    .insert(draft.id.clone(), draft.clone());
+                            }
+                            Response::Ok {
+                                data: ResponseData::Drafts { drafts },
+                            } => {
+                                fixture_drafts.lock().unwrap().extend(
+                                    drafts.iter().map(|draft| (draft.id.clone(), draft.clone())),
+                                );
+                            }
+                            _ => {}
+                        }
                         let response = IpcMessage {
                             id: message.id,
                             source: ::mxr_protocol::ClientKind::default(),
@@ -120,6 +186,7 @@ async fn status_endpoint_proxies_ipc_status() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 17,
@@ -433,6 +500,7 @@ async fn auth_accepts_authorization_bearer_header() {
         |_| {
             Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -831,6 +899,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 99,
                     accounts: vec!["work".into()],
                     total_messages: 7,
@@ -1238,6 +1307,7 @@ async fn mailbox_endpoint_lists_envelopes() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1334,6 +1404,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1454,6 +1525,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1948,6 +2020,7 @@ fn date_labels_show_time_today_and_date_time_for_older_mail() {
 fn draft_summary_includes_updated_time_labels() {
     let updated_at = Utc::now() - chrono::Duration::hours(2);
     let draft = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: AccountId::new(),
         from: None,
@@ -2448,6 +2521,7 @@ async fn compose_session_update_refresh_and_discard_round_trip_draft() {
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
             "draft_path": draft_path,
+            "expected_revision": refreshed["session"]["revision"],
         }))
         .send()
         .await
@@ -2600,6 +2674,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .await
         .unwrap();
     assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+    let updated: serde_json::Value = update_response.json().await.unwrap();
 
     let send_response = client
         .post(format!("http://{addr}/compose/session/send"))
@@ -2607,6 +2682,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": updated["session"]["revision"],
         }))
         .send()
         .await
@@ -2691,6 +2767,7 @@ async fn compose_session_send_propagates_daemon_error() {
         .await
         .unwrap();
     assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+    let updated: serde_json::Value = update_response.json().await.unwrap();
 
     let send_response = client
         .post(format!("http://{addr}/compose/session/send"))
@@ -2698,6 +2775,7 @@ async fn compose_session_send_propagates_daemon_error() {
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": updated["session"]["revision"],
         }))
         .send()
         .await
@@ -3187,9 +3265,14 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     let path_str = draft_path.to_str().unwrap().to_string();
 
     // No sidecar → a plain draft with no iTIP payload.
-    let plain = compose_draft_from_file(&path_str, &account_id.to_string(), None)
-        .await
-        .unwrap();
+    let plain = compose_draft_from_file(
+        &path_str,
+        &account_id.to_string(),
+        None,
+        ComposeDraftValidation::Incomplete,
+    )
+    .await
+    .unwrap();
     assert!(plain.inline_calendar_reply.is_none());
 
     // With a sidecar → the built draft carries the REPLY payload so the
@@ -3203,9 +3286,14 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     write_invite_reply_sidecar(&draft_path, &reply)
         .await
         .unwrap();
-    let with_invite = compose_draft_from_file(&path_str, &account_id.to_string(), None)
-        .await
-        .unwrap();
+    let with_invite = compose_draft_from_file(
+        &path_str,
+        &account_id.to_string(),
+        None,
+        ComposeDraftValidation::Incomplete,
+    )
+    .await
+    .unwrap();
     let got = with_invite
         .inline_calendar_reply
         .expect("draft must carry the inline calendar reply");
@@ -3249,6 +3337,7 @@ const HTML_DRAFT_BODY: &str = concat!(
 fn html_body_draft(draft_id: &DraftId, account_id: &AccountId) -> Draft {
     let now = Utc::now();
     Draft {
+        revision: Some(1),
         id: draft_id.clone(),
         account_id: account_id.clone(),
         from: None,
@@ -3377,6 +3466,7 @@ fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
     // composer is to open it and take the 409.
     let updated_at = chrono::Utc::now();
     let base = Draft {
+        revision: Some(1),
         id: DraftId::new(),
         account_id: AccountId::new(),
         from: None,
@@ -3565,16 +3655,21 @@ impl FakeDraftStore {
     /// The daemon's fallback for an account with no server-side drafts:
     /// `SaveDraftToServer` -> `save_draft` -> `insert_draft`, a plain INSERT
     /// that stores the payload's `created_at` verbatim.
-    fn insert(&self, draft: Draft) {
+    fn insert(&self, mut draft: Draft) {
+        draft.revision = Some(1);
         self.0.lock().unwrap().push(draft);
     }
 
     /// `Store::update_draft` + the daemon's not-found reporting.
-    fn update(&self, draft: Draft) -> Result<(), String> {
+    fn update(&self, mut draft: Draft) -> Result<(), String> {
         let mut drafts = self.0.lock().unwrap();
         let Some(stored) = drafts.iter_mut().find(|stored| stored.id == draft.id) else {
             return Err(format!("Draft not found: {}", draft.id));
         };
+        if draft.revision != stored.revision || draft.revision.is_none() {
+            return Err("Draft revision conflict".into());
+        }
+        draft.revision = Some(stored.revision.unwrap() + 1);
         let created_at = stored.created_at;
         *stored = Draft {
             created_at,
@@ -3596,9 +3691,37 @@ fn draft_store_responder(
             Request::ListAccounts => ResponseData::Accounts {
                 accounts: vec![account.clone()],
             },
-            Request::SaveDraftToServer { draft } => {
-                store.insert(draft);
-                ResponseData::Ack
+            Request::GetDraft { draft_id } => {
+                match store
+                    .snapshot()
+                    .into_iter()
+                    .find(|draft| draft.id == draft_id)
+                {
+                    Some(draft) => ResponseData::Draft { draft },
+                    None => {
+                        return Some(Response::error_kinded(
+                            format!("Draft not found: {draft_id}"),
+                            mxr_protocol::IpcErrorKind::NotFound,
+                        ))
+                    }
+                }
+            }
+            Request::SaveDraft { draft } | Request::SaveDraftToServer { draft } => {
+                if let Some(stored) = store
+                    .snapshot()
+                    .into_iter()
+                    .find(|stored| stored.id == draft.id)
+                {
+                    ResponseData::Draft { draft: stored }
+                } else {
+                    store.insert(draft.clone());
+                    ResponseData::Draft {
+                        draft: Draft {
+                            revision: Some(1),
+                            ..draft
+                        },
+                    }
+                }
             }
             Request::UpdateDraft { draft } => match store.update(draft) {
                 Ok(()) => ResponseData::Ack,
@@ -3626,6 +3749,7 @@ fn markdown_draft(
     created_at: chrono::DateTime<Utc>,
 ) -> Draft {
     Draft {
+        revision: Some(1),
         id: draft_id.clone(),
         account_id: account_id.clone(),
         from: None,
@@ -3662,13 +3786,18 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     // Distinctly older than "now" so a create (which stores the payload's
     // timestamp) cannot be mistaken for an in-place update.
     let created_at = Utc::now() - chrono::Duration::days(3);
-    let store = FakeDraftStore::with(vec![markdown_draft(
+    let mut draft = markdown_draft(
         &draft_id,
         &account_id,
         "Quarterly plan",
         "First pass.",
         created_at,
-    )]);
+    );
+    draft.from = Some(Address {
+        name: Some("Support".into()),
+        email: "support@example.com".into(),
+    });
+    let store = FakeDraftStore::with(vec![draft]);
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         draft_store_responder(store.clone(), sample_account(&account_id)),
@@ -3685,6 +3814,19 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     let client = reqwest::Client::new();
 
     let draft_path = restore_session_path(&client, addr, &draft_id).await;
+    let reopened = load_compose_session(Path::new(&draft_path)).await.unwrap();
+    assert_eq!(
+        reopened["frontmatter"]["from"],
+        json!("Support <support@example.com>")
+    );
+    let raw_content = tokio::fs::read_to_string(&draft_path).await.unwrap();
+    let (frontmatter, _) = mxr_compose::frontmatter::parse_compose_file(&raw_content).unwrap();
+    let sender = mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
+        .unwrap()
+        .unwrap();
+    assert_eq!(sender.name.as_deref(), Some("Support"));
+    assert_eq!(sender.email, "support@example.com");
+
     edit_session(
         &client,
         addr,
@@ -3698,6 +3840,7 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
         .post(format!("http://{addr}/compose/session/save"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
+            "expected_revision": read_draft_session_metadata(Path::new(&draft_path)).await.unwrap().and_then(|draft| draft.revision),
             "draft_path": draft_path,
             "account_id": account_id.to_string(),
             "draft_id": draft_id.to_string(),
@@ -3760,6 +3903,13 @@ async fn saving_a_restored_draft_to_server_updates_local_then_pushes_provider() 
         &socket_path,
         move |request| {
             let data = match request {
+                Request::GetDraft { draft_id } => ResponseData::Draft {
+                    draft: responder_store
+                        .snapshot()
+                        .into_iter()
+                        .find(|draft| draft.id == draft_id)
+                        .unwrap(),
+                },
                 Request::ListDrafts => ResponseData::Drafts {
                     drafts: responder_store.snapshot(),
                 },
@@ -3812,6 +3962,7 @@ async fn saving_a_restored_draft_to_server_updates_local_then_pushes_provider() 
         .post(format!("http://{addr}/compose/session/save"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
+            "expected_revision": read_draft_session_metadata(Path::new(&draft_path)).await.unwrap().and_then(|draft| draft.revision),
             "draft_path": draft_path,
             "account_id": account_id.to_string(),
             "draft_id": draft_id.to_string(),
@@ -3877,6 +4028,7 @@ async fn a_compose_session_that_was_not_restored_still_creates_a_stored_draft() 
         .post(format!("http://{addr}/compose/session/save"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
+            "expected_revision": read_draft_session_metadata(Path::new(&draft_path)).await.unwrap().and_then(|draft| draft.revision),
             "draft_path": draft_path,
             "account_id": account_id.to_string(),
         }))
@@ -3946,6 +4098,7 @@ async fn saving_a_restored_draft_that_no_longer_exists_reports_it_instead_of_rec
         .post(format!("http://{addr}/compose/session/save"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
+            "expected_revision": read_draft_session_metadata(Path::new(&draft_path)).await.unwrap().and_then(|draft| draft.revision),
             "draft_path": draft_path,
             "account_id": account_id.to_string(),
             "draft_id": draft_id.to_string(),
@@ -4003,6 +4156,7 @@ async fn edit_session(
         .post(format!("http://{addr}/compose/session/update"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
+            "expected_revision": read_draft_session_metadata(Path::new(draft_path)).await.unwrap().and_then(|draft| draft.revision),
             "draft_path": draft_path,
             "to": "alice@example.com",
             "cc": "",
@@ -4169,6 +4323,7 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
 
 fn sample_status() -> ResponseData {
     ResponseData::Status {
+        draft_revision_supported: true,
         uptime_secs: 1,
         accounts: vec!["personal".into()],
         total_messages: 10,
@@ -5566,4 +5721,156 @@ fn openapi_spec_builds_from_a_worker_sized_stack() {
         .join()
         .expect("building the spec must not overflow a 2 MiB stack");
     assert!(spec.components.is_some());
+}
+
+#[tokio::test]
+async fn draft_revision_conflict_is_409_and_preserves_browser_scratch_text() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account_id,
+        "Concurrent draft",
+        "original",
+        Utc::now(),
+    )]);
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        draft_store_responder(store.clone(), sample_account(&account_id)),
+        None,
+    )
+    .await;
+    let address = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let first = restore_session_path(&client, address, &id).await;
+    let second = restore_session_path(&client, address, &id).await;
+    edit_session(
+        &client,
+        address,
+        &first,
+        "Concurrent draft",
+        "accepted browser text",
+    )
+    .await;
+    let response = client.post(format!("http://{address}/api/v1/mail/compose/session/update")).bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": second, "expected_revision": 1, "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Concurrent draft", "from": "me@example.com", "body": "stale browser text"})).send().await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let error: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(error["code"], "draft_revision_conflict");
+    assert_eq!(error["details"]["current_revision"], 2);
+    assert_eq!(
+        store.snapshot()[0].content.analysis_text(),
+        "accepted browser text"
+    );
+    let recovered = error["recovery_session"]["draft_path"].as_str().unwrap();
+    assert_ne!(recovered, second);
+    assert!(read_compose_file(Path::new(recovered))
+        .await
+        .unwrap()
+        .contains("stale browser text"));
+    assert_eq!(error["recovery_session"]["revision"], 1);
+    assert!(error.get("accepted_draft").is_none());
+    remove_compose_file(Path::new(recovered)).await.unwrap();
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&second))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(1)
+    );
+    remove_compose_file(Path::new(&first)).await.unwrap();
+    remove_compose_file(Path::new(&second)).await.unwrap();
+}
+
+#[test]
+fn draft_revision_routes_describe_requests_successes_and_conflicts() {
+    let spec = serde_json::to_value(crate::openapi::cached_spec()).unwrap();
+    for route in [
+        "/api/v1/mail/compose/session/update",
+        "/api/v1/mail/compose/session/save",
+        "/api/v1/mail/drafts/save-local",
+    ] {
+        assert!(
+            spec["paths"][route]["post"]["requestBody"].is_object(),
+            "{route}"
+        );
+        assert!(
+            spec["paths"][route]["post"]["responses"]["200"]["content"].is_object(),
+            "{route}"
+        );
+        assert!(
+            spec["paths"][route]["post"]["responses"]["409"]["content"].is_object(),
+            "{route}"
+        );
+    }
+    assert!(
+        spec["components"]["schemas"]["ComposeSessionUpdateRequest"]["properties"]
+            ["expected_revision"]
+            .is_object()
+    );
+    assert!(spec["components"]["schemas"]["Draft"]["allOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| part["properties"]["revision"].is_object()));
+}
+
+#[tokio::test]
+async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identity() {
+    let first = AccountId::new();
+    let second = AccountId::new();
+    let original = markdown_draft(
+        &DraftId::new(),
+        &first,
+        "account choice",
+        "body",
+        Utc::now(),
+    );
+    let (path, _) = mxr_compose::create_draft_file_async(
+        ComposeKind::New {
+            to: "alice@example.com".into(),
+            subject: original.subject.clone(),
+        },
+        "alice@example.com",
+    )
+    .await
+    .unwrap();
+    let mut unsaved = original.clone();
+    unsaved.revision = None;
+    write_draft_session_metadata(&path, &unsaved).await.unwrap();
+    let chosen = compose_draft_from_file(
+        &path.display().to_string(),
+        &second.to_string(),
+        Some(original.id.clone()),
+        ComposeDraftValidation::Incomplete,
+    )
+    .await
+    .unwrap();
+    assert_eq!(chosen.id, original.id);
+    assert_eq!(chosen.account_id, second);
+    let saved = Draft {
+        revision: Some(1),
+        ..chosen
+    };
+    write_draft_session_metadata(&path, &saved).await.unwrap();
+    assert!(matches!(
+        compose_draft_from_file(
+            &path.display().to_string(),
+            &first.to_string(),
+            Some(original.id),
+            ComposeDraftValidation::Incomplete
+        )
+        .await,
+        Err(BridgeError::BadRequest(_))
+    ));
+    remove_compose_file(&path).await.unwrap();
 }

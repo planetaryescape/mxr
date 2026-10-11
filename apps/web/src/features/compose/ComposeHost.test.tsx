@@ -5,11 +5,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { BridgeRequestError } from "@/api/client";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useConnectionStore } from "@/state/connectionStore";
 import { useUndo } from "@/state/undoStore";
 import type { ComposeSessionResponse, DraftSafetyReport } from "./api";
 import { ComposeHost } from "./ComposeHost";
-import { inviteReplyIntent, useComposeUi } from "./composeUiStore";
+import { draftIntent, inviteReplyIntent, useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -74,7 +76,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("@/api/client", () => ({ apiFetch: rawApi.fetch }));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  apiFetch: rawApi.fetch,
+}));
 vi.mock("@/features/accounts/api", () => ({
   fetchAccountAddresses: () => Promise.resolve({ addresses: [] }),
 }));
@@ -131,6 +136,7 @@ function session(overrides: Partial<ComposeSessionResponse["session"]> = {}) {
       accountId: "account-1",
       kind: "new",
       ...overrides,
+      previewHtml: overrides.previewHtml ?? "",
     },
   } satisfies ComposeSessionResponse;
 }
@@ -179,6 +185,7 @@ afterEach(async () => {
   // into the next test's mock history.
   cleanup();
   act(() => useComposeUi.setState({ intent: null, surface: "overlay" }));
+  act(() => useConnectionStore.getState().setState({ daemonDown: false }));
   useUndo.setState({ pendingSendCancel: null });
   vi.useRealTimers();
   await act(async () => {
@@ -302,6 +309,102 @@ describe("ComposeHost never loses typing on the way out", () => {
     );
     expect(screen.getByLabelText("Subject")).toHaveValue("Keep me");
   });
+
+  for (const stored of [false, true]) {
+    test(`confirmed recovery closes and explicitly opens the canonical draft with rejected text retained (${stored ? "stored" : "new"})`, async () => {
+      const id = "recovery-close";
+      const canonical = session({
+        draftId: id,
+        revision: 2,
+        frontmatter: { ...session().session.frontmatter, subject: "Winner" },
+      });
+      const original = session({ draftId: id, revision: 1 });
+      let preserved = session({
+        draftId: id,
+        revision: 1,
+        draftPath: "/tmp/host-recovery",
+        recoverySourcePath: "/tmp/mxr-compose.md",
+      });
+      api.startComposeSession.mockResolvedValue(original);
+      if (stored)
+        api.restoreComposeSession.mockResolvedValueOnce(original).mockResolvedValue(canonical);
+      else api.restoreComposeSession.mockResolvedValue(canonical);
+      api.updateComposeSession.mockImplementation(async (input) => {
+        // SAFETY: only useComposeAutosave supplies this mock, using its typed update input.
+        const request = input as {
+          draftPath: string;
+          frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+          body: string;
+        };
+        preserved = session({
+          ...preserved.session,
+          frontmatter: request.frontmatter,
+          bodyMarkdown: request.body,
+        });
+        if (!request.draftPath.startsWith("/tmp/host-recovery"))
+          throw new BridgeRequestError(
+            409,
+            "Winner changed; your text was preserved",
+            "draft_revision_conflict",
+            {
+              details: { current_revision: 2 },
+              recovery_session: { draft_path: "/tmp/host-recovery", draft_id: id, revision: 1 },
+            },
+          );
+        return session({ ...preserved.session, draftPath: request.draftPath });
+      });
+      let copies = 0;
+      api.refreshComposeSession.mockImplementation(async (path) =>
+        path.startsWith("/tmp/host-recovery")
+          ? session({ ...preserved.session, draftPath: `/tmp/host-recovery-copy-${++copies}` })
+          : canonical,
+      );
+      renderHost();
+      const open = () =>
+        stored
+          ? act(() => useComposeUi.getState().openCompose(draftIntent(id), "overlay"))
+          : openNewMessage();
+      open();
+      const subject = await screen.findByLabelText("Subject");
+      fireEvent.change(subject, { target: { value: "Latest rejected text" } });
+      fireEvent.click(screen.getByRole("button", { name: /close composer/i }));
+      await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+      expect(api.updateComposeSession).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      open();
+      expect(await screen.findByLabelText("Subject")).toHaveValue("Latest rejected text");
+      fireEvent.keyDown(screen.getByLabelText("Subject"), {
+        key: "r",
+        metaKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() => expect(screen.getByLabelText("Subject")).toHaveValue("Winner"));
+      expect(preserved.session.frontmatter.subject).toBe("Latest rejected text");
+      expect(window.localStorage.getItem("mxr.compose.activeDrafts")).toContain(
+        '"preservedRecoveryPath":"/tmp/host-recovery-copy-1"',
+      );
+      expect(api.discardComposeSession).not.toHaveBeenCalled();
+      // Re-enter the preserved text through its explicit action, then discard locally.
+      const actions = screen.getByRole("button", { name: "More compose actions" });
+      fireEvent.keyDown(actions, { key: "Enter" });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Open preserved edits" }));
+      await waitFor(() =>
+        expect(screen.getByLabelText("Subject")).toHaveValue("Latest rejected text"),
+      );
+      fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+        key: "Backspace",
+        metaKey: true,
+      });
+      expect(await screen.findByText(/only your local recovery file/)).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+      await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+      expect(api.discardComposeSession).toHaveBeenCalledWith("/tmp/host-recovery-copy-2", 1);
+      expect(api.sendComposeSession).not.toHaveBeenCalled();
+      expect(api.saveComposeSession).not.toHaveBeenCalled();
+    });
+  }
 
   test("switching to another reply target saves the draft being left", async () => {
     renderHost();
@@ -739,8 +842,11 @@ describe("ComposeHost after a delayed send", () => {
     renderHost();
     openNewMessage();
 
-    const subject = await screen.findByLabelText("Subject");
-    fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
 
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
@@ -748,5 +854,201 @@ describe("ComposeHost after a delayed send", () => {
       }),
     );
     expect(screen.getByLabelText("Subject")).toBeInTheDocument();
+  });
+});
+
+describe("saved draft discard preview", () => {
+  test("a clean restored draft waits for confirmation, and Cancel keeps it", async () => {
+    api.restoreComposeSession.mockResolvedValue(
+      session({ draftId: "confirmed-draft", revision: 1 }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("confirmed-draft"), "overlay"));
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    expect(await screen.findByText(/saved draft and any linked provider copy/)).toBeVisible();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Subject")).toBeVisible();
+  });
+  test("an autosaved clean draft still requires destructive confirmation", async () => {
+    api.startComposeSession.mockResolvedValue(
+      session({ draftId: "autosaved-draft", revision: null }),
+    );
+    api.updateComposeSession.mockResolvedValue(
+      session({
+        draftId: "autosaved-draft",
+        revision: 1,
+        frontmatter: { ...session().session.frontmatter, subject: "Autosaved" },
+      }),
+    );
+    renderHost();
+    openNewMessage();
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Autosaved" } });
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Draft saved locally"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    expect(await screen.findByText(/saved draft and any linked provider copy/)).toBeVisible();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
+  });
+  for (const conflict of [false, true]) {
+    test(`visible Retry submits preserved edits after reconnect (conflict: ${conflict})`, async () => {
+      const id = "visible-recovery";
+      const recovery = "/tmp/visible-recovery";
+      api.restoreComposeSession.mockResolvedValue(
+        session({
+          draftId: id,
+          revision: 1,
+          draftPath: recovery,
+          recoverySourcePath: "/tmp/visible-shared",
+        }),
+      );
+      api.updateComposeSession.mockImplementation(async (input) => {
+        // This mock receives the typed compose update payload through the host.
+        const request = input as Parameters<typeof import("./api").updateComposeSession>[0];
+        if (request.retryRecovery && conflict)
+          throw new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+            current_revision: 2,
+          });
+        return session({
+          draftId: id,
+          revision: request.retryRecovery ? 2 : 1,
+          draftPath: request.retryRecovery ? "/tmp/visible-accepted" : recovery,
+          recoverySourcePath: request.retryRecovery ? undefined : "/tmp/visible-shared",
+          frontmatter: request.frontmatter,
+          bodyMarkdown: request.body,
+        });
+      });
+      renderHost();
+      act(() => useComposeUi.getState().openCompose(draftIntent(id), "overlay"));
+      const subject = await screen.findByLabelText("Subject");
+      fireEvent.click(screen.getByRole("button", { name: "Send⌘↵" }));
+      await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(toasts.error).toHaveBeenCalledWith("Draft preserved locally", {
+          description: "Use Retry or Open saved draft before sending.",
+        }),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent("preserved locally");
+      expect(screen.queryByText("Saved just now")).not.toBeInTheDocument();
+      act(() => useConnectionStore.getState().setState({ daemonDown: true }));
+      fireEvent.change(subject, { target: { value: "Latest recovery subject" } });
+      expect(screen.getByRole("alert")).toHaveTextContent("preserved locally");
+      act(() => useConnectionStore.getState().setState({ daemonDown: false }));
+      expect(screen.getByRole("alert")).toHaveTextContent("preserved locally");
+      expect(screen.queryByText("Saved just now")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+      await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(3));
+      expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
+        retryRecovery: true,
+        draftPath: recovery,
+        expectedRevision: 1,
+        frontmatter: { subject: "Latest recovery subject" },
+      });
+      const expectedToast = conflict ? [] : [["Draft saved locally"]];
+      await waitFor(() => expect(toasts.success.mock.calls).toEqual(expectedToast));
+      expect(screen.getByLabelText("Subject")).toHaveValue("Latest recovery subject");
+      expect(api.sendComposeSession).not.toHaveBeenCalled();
+      expect(api.scheduleComposeSession).not.toHaveBeenCalled();
+      const expectedFailure = conflict
+        ? [["Save failed", { description: "Draft revision conflict" }]]
+        : [];
+      await waitFor(() =>
+        expect(toasts.error.mock.calls.filter(([title]) => title === "Save failed")).toEqual(
+          expectedFailure,
+        ),
+      );
+      await waitFor(() => expect(Boolean(screen.queryByText("Saved just now"))).toBe(!conflict));
+      expect(Boolean(screen.queryByRole("button", { name: /^Retry$/ }))).toBe(conflict);
+    });
+  }
+  test("keyboard Save never reports canonical success for a conflicted preserved recovery", async () => {
+    const id = "keyboard-recovery";
+    api.restoreComposeSession.mockResolvedValue(session({ draftId: id, revision: 1 }));
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        recovery_session: {
+          draft_path: "/tmp/keyboard-recovery",
+          draft_id: id,
+          revision: 1,
+          attachment_paths: [],
+        },
+      }),
+    );
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        current_revision: 2,
+      }),
+    );
+    api.updateComposeSession.mockRejectedValueOnce(
+      new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {
+        current_revision: 2,
+      }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent(id), "overlay"));
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Latest preserved subject" } });
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Save failed", {
+        description: "Draft revision conflict",
+      }),
+    );
+    expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
+    expect(subject).toHaveValue("Latest preserved subject");
+    fireEvent.keyDown(subject, { key: "s", metaKey: true });
+    await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(3));
+    expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
+      draftPath: "/tmp/keyboard-recovery",
+      retryRecovery: true,
+      expectedRevision: 1,
+      frontmatter: { subject: "Latest preserved subject" },
+    });
+    expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
+    expect(subject).toHaveValue("Latest preserved subject");
+  });
+  test("stale confirmed deletion reports the conflict and keeps the composer", async () => {
+    api.restoreComposeSession.mockResolvedValue(session({ draftId: "stale-delete", revision: 1 }));
+    api.discardComposeSession.mockRejectedValue(new Error("Draft revision conflict"));
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("stale-delete"), "overlay"));
+    await screen.findByLabelText("Subject");
+    fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+      key: "Backspace",
+      metaKey: true,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
+        description: "Draft revision conflict",
+      }),
+    );
+    expect(api.discardComposeSession).toHaveBeenCalledWith("/tmp/mxr-compose.md", 1);
+    expect(screen.getByLabelText("Subject")).toBeVisible();
+  });
+  test("editor deletion chords never ask to delete a saved draft", async () => {
+    api.restoreComposeSession.mockResolvedValue(
+      session({ draftId: "editing-delete", revision: 1 }),
+    );
+    renderHost();
+    act(() => useComposeUi.getState().openCompose(draftIntent("editing-delete"), "overlay"));
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message body" }), {
+      key: "Backspace",
+      ctrlKey: true,
+    });
+    expect(screen.queryByText("Discard draft?")).not.toBeInTheDocument();
+    expect(api.discardComposeSession).not.toHaveBeenCalled();
   });
 });

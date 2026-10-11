@@ -655,6 +655,7 @@ fn classify_request_keeps_send_and_destructive_gates() {
     // Draft delete (including a linked provider draft) is draft-only, not read
     // and not send.
     let del = Request::DeleteDraft {
+        expected_revision: Some(1),
         draft_id: mxr_core::DraftId::new(),
     };
     assert!(request_is_draft_only(&del));
@@ -699,6 +700,7 @@ mod body_and_invites;
 mod deferral;
 mod desk;
 mod desk_done;
+mod draft_revisions;
 mod freshness;
 mod html_drafts;
 mod messages;

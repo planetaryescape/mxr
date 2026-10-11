@@ -4,6 +4,12 @@
 //! declared here so Swagger UI, the docs site, and generated clients see actual
 //! endpoints instead of a schema-only OpenAPI document.
 
+use crate::request_types::{
+    ComposeSessionPathRequest, ComposeSessionResponse, ComposeSessionRestoreRequest,
+    ComposeSessionScheduleRequest, ComposeSessionSendRequest, ComposeSessionStartRequest,
+    ComposeSessionUpdateRequest, DiscardedComposeResponse, DraftConflictResponse,
+    SavedDraftResponse, ScheduledComposeResponse,
+};
 use mxr_protocol::{DaemonEvent, MutationCommand, Request, Response, ResponseData};
 use utoipa::{
     openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
@@ -98,6 +104,8 @@ use utoipa::{
         mail_move_undo, mail_corrections
     ),
     components(schemas(
+        crate::request_types::AcceptedComposeDraft,
+        crate::request_types::RecoveredComposeSession,
         Request,
         Response,
         ResponseData,
@@ -1254,14 +1262,19 @@ fn mail_messages_pin() {}
 #[allow(dead_code)]
 fn mail_sender_kind() {}
 
-endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
-endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");
+#[utoipa::path(post, path = "/api/v1/mail/compose/session", request_body = ComposeSessionStartRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn compose_session_start() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/refresh", request_body = ComposeSessionPathRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn compose_session_refresh() {}
 #[utoipa::path(
     post,
     path = "/api/v1/mail/compose/session/restore",
     summary = "Restore compose session",
+    request_body = ComposeSessionRestoreRequest,
     responses(
-        (status = 200, description = "OK"),
+        (status = 200, description = "OK", body = ComposeSessionResponse),
         (status = 401, description = "Missing or invalid bridge token"),
         (
             status = 409,
@@ -1274,14 +1287,26 @@ endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "
 )]
 #[allow(dead_code)]
 fn compose_session_restore() {}
-endpoint!(post compose_session_update "/api/v1/mail/compose/session/update", "Update compose session");
-endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send compose session");
-endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/update", request_body = ComposeSessionUpdateRequest, responses((status = 200, description = "Saved draft session", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_update() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/send", summary = "Send compose session", request_body = ComposeSessionSendRequest, responses((status = 400, description = "Local recovery requires explicit canonical reopen", body = DraftConflictResponse), (status = 200, description = "Sent compose session"), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_send() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/safety-check", summary = "Run the pre-send safety report for a compose session", request_body = ComposeSessionSendRequest, responses((status = 400, description = "Local recovery requires explicit canonical reopen", body = DraftConflictResponse), (status = 200, description = "Compose safety report"), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_safety_check() {}
 endpoint!(post compose_session_collaborators "/api/v1/mail/compose/session/collaborators", "Suggest maybe-include recipients for a compose session");
-endpoint!(post compose_session_save "/api/v1/mail/compose/session/save", "Save compose session");
-endpoint!(post compose_session_schedule "/api/v1/mail/compose/session/schedule", "Store a compose session as a local draft and schedule it");
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/save", request_body = ComposeSessionSendRequest, responses((status = 400, description = "Local recovery requires explicit canonical reopen", body = DraftConflictResponse), (status = 200, description = "Saved draft session", body = SavedDraftResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_save() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/schedule", request_body = ComposeSessionScheduleRequest, responses((status = 400, description = "Local recovery requires explicit canonical reopen", body = DraftConflictResponse), (status = 200, description = "Saved draft session", body = ScheduledComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn compose_session_schedule() {}
 endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");
-endpoint!(post compose_session_discard "/api/v1/mail/compose/session/discard", "Discard compose session");
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/discard", request_body = ComposeSessionPathRequest, responses((status = 200, description = "Compose session result", body = DiscardedComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn compose_session_discard() {}
 
 endpoint!(get rules_list "/api/v1/platform/rules", "List rules");
 endpoint!(get rule_detail "/api/v1/platform/rules/detail", "Rule detail");
@@ -1351,10 +1376,14 @@ endpoint!(get mail_message_raw_headers "/api/v1/mail/messages/{message_id}/heade
 endpoint!(post mail_message_set_flags "/api/v1/mail/messages/{message_id}/flags", "Set message flags bitmask");
 endpoint!(post mail_export_search "/api/v1/mail/export-search", "Export all threads matching a search");
 endpoint!(get mail_drafts_orphaned_list "/api/v1/mail/drafts/orphaned", "List orphaned mid-send drafts");
-endpoint!(post mail_drafts_save_local "/api/v1/mail/drafts/save-local", "Persist draft locally (SaveDraft)");
+#[utoipa::path(post, path = "/api/v1/mail/drafts/save-local", request_body = mxr_core::Draft, responses((status = 200, description = "Canonical saved draft", body = ResponseData), (status = 409, description = "Stale revision", body = DraftConflictResponse), (status = 422, description = "Invalid draft or legacy daemon", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn mail_drafts_save_local() {}
 endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-orphan", "Reset orphaned sending draft");
 endpoint!(post mail_drafts_send_stored "/api/v1/mail/drafts/{draft_id}/send-stored", "Send stored draft by id");
-endpoint!(delete mail_drafts_delete_stored "/api/v1/mail/drafts/{draft_id}/stored", "Delete stored draft");
+#[utoipa::path(delete, path = "/api/v1/mail/drafts/{draft_id}/stored", params(("draft_id" = String, Path), ("expected_revision" = i64, Query, description = "Revision from the deletion preview")), responses((status = 200, description = "Draft deleted", body = ResponseData), (status = 409, description = "Stale revision", body = DraftConflictResponse), (status = 422, description = "Legacy daemon", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn mail_drafts_delete_stored() {}
 endpoint!(get mail_signatures_list "/api/v1/mail/signatures", "List signatures");
 endpoint!(post mail_signatures_upsert "/api/v1/mail/signatures", "Create or update signature");
 endpoint!(get mail_signature_defaults_list "/api/v1/mail/signature-defaults", "List signature defaults");

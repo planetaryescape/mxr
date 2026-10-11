@@ -2,7 +2,7 @@
 //
 // Generate TypeScript types from the bridge OpenAPI 3.1 spec.
 //
-// Spec source: `cargo run --example dump_openapi_spec -p mxr-web`.
+// Spec source: the mxr-web dump_openapi_spec example, built through the queue.
 // Output is committed so the SPA build does not need a Rust toolchain.
 //
 // Run after touching crates/protocol or crates/web routes:
@@ -17,16 +17,32 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../..");
 const target = resolve(here, "..", "src/api/generated.ts");
 
-console.info("[gen:types] dumping OpenAPI spec via cargo example…");
-const dump = spawnSync(
+console.info("[gen:types] building OpenAPI spec exporter…");
+const build = spawnSync(
   "cargo",
-  ["run", "--quiet", "--example", "dump_openapi_spec", "-p", "mxr-web"],
+  [
+    "build",
+    "--quiet",
+    "--example",
+    "dump_openapi_spec",
+    "-p",
+    "mxr-web",
+    "--target-dir",
+    "target-cli",
+  ],
   { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
 );
-if (dump.status !== 0) {
-  console.error("[gen:types] cargo run failed");
-  process.exit(dump.status ?? 1);
+if (build.status !== 0) {
+  console.error("[gen:types] cargo build failed");
+  process.exit(build.status ?? 1);
 }
+
+const dump = spawnSync(resolve(repoRoot, "target-cli/debug/examples/dump_openapi_spec"), [], {
+  cwd: repoRoot,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "inherit"],
+});
+if (dump.status !== 0) process.exit(dump.status ?? 1);
 
 mkdirSync(dirname(target), { recursive: true });
 

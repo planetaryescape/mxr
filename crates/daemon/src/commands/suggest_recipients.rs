@@ -64,6 +64,7 @@ async fn build_draft(
     };
     let now = chrono::Utc::now();
     Ok(mxr_core::Draft {
+        revision: None,
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,

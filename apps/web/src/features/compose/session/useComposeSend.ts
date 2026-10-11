@@ -15,6 +15,7 @@ import { archiveMessages } from "@/features/mailbox/api";
 import { detectComposePromises } from "@/features/promises/api";
 import { offerPromises } from "@/features/promises/promiseOffers";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import {
@@ -28,8 +29,10 @@ import {
   type DraftSafetyReport,
 } from "../api";
 import { showSendCountdown } from "../SendCountdown";
+import { acceptedDraftRevision } from "./acceptedDraftRevision";
 import { forgetActiveDraft } from "./activeDrafts";
 import {
+  composeQueueKey,
   draftFingerprint,
   errorMessage,
   localComposeIssues,
@@ -55,6 +58,7 @@ interface ComposeSendInput {
   navigate: ReturnType<typeof useNavigate>;
   queryClient: QueryClient;
   draftRef: MutableRefObject<ComposeDraftState | null>;
+  setDraft: Dispatch<SetStateAction<ComposeDraftState | null>>;
   saveCurrentDraft: () => Promise<ComposeSession | undefined>;
   isCurrentDraftSaved: (current: ComposeDraftState) => boolean;
   markSessionFinished: () => void;
@@ -73,6 +77,7 @@ export function useComposeSend({
   navigate,
   queryClient,
   draftRef,
+  setDraft,
   saveCurrentDraft,
   isCurrentDraftSaved,
   markSessionFinished,
@@ -112,25 +117,60 @@ export function useComposeSend({
       draftPath,
       accountId,
       overrideToken,
+      expectedRevision,
     }: {
       draftPath: string;
       accountId: string;
       overrideToken?: string;
-    }) => sendComposeSession(draftPath, accountId, overrideToken),
+      expectedRevision?: number | null;
+    }) => sendComposeSession(draftPath, accountId, overrideToken, expectedRevision),
   });
   const scheduleSession = useMutation({
     mutationFn: async (at: Date) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
-      // Editing a stored draft reschedules it in place; a new compose
-      // session lets the bridge mint the stored draft's id.
-      const response = await scheduleComposeSession({
-        draftPath: current.draftPath,
-        accountId: current.accountId,
-        draftId: intent.draftId,
-        sendAt: at,
-      });
-      return response.draft_id;
+      let scheduledId: string | undefined;
+      await requestCoordinator.queueComposeLatest(
+        composeQueueKey(current.draftPath, current.recoverySourcePath),
+        async () => {
+          const active = draftRef.current;
+          const revision =
+            active?.draftPath === current.draftPath && active.draftId === current.draftId
+              ? active.revision
+              : current.revision;
+          try {
+            const response = await scheduleComposeSession({
+              draftPath: current.draftPath,
+              accountId: current.accountId,
+              draftId: current.draftId,
+              expectedRevision: revision,
+              sendAt: at,
+            });
+            scheduledId = response.draft_id;
+          } catch (error) {
+            const accepted = acceptedDraftRevision(error);
+            const latest = draftRef.current;
+            if (
+              accepted &&
+              accepted.draft_id === current.draftId &&
+              latest?.draftPath === current.draftPath &&
+              latest.draftId === current.draftId
+            ) {
+              draftRef.current = { ...latest, revision: accepted.revision };
+              setDraft((value) =>
+                value?.draftPath === current.draftPath && value.draftId === current.draftId
+                  ? { ...value, revision: accepted.revision }
+                  : value,
+              );
+            }
+            throw error;
+          }
+        },
+      );
+      // A later autosave can make the coordinator's UI result stale even
+      // though the scheduling request succeeded.
+      if (!scheduledId) throw new Error("Scheduling returned no draft identity");
+      return scheduledId;
     },
   });
 
@@ -192,16 +232,25 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current || !isCurrentDraftSaved(current)) {
       releaseSendLock();
-      toast.error("Draft changed while saving", {
-        description: "Retry send after the latest save.",
-      });
+      toast.error(
+        current?.recoverySourcePath ? "Draft preserved locally" : "Draft changed while saving",
+        {
+          description: current?.recoverySourcePath
+            ? "Use Retry or Open saved draft before sending."
+            : "Retry send after the latest save.",
+        },
+      );
       return;
     }
     setCheckingSafety(true);
     setSafetyCheckError(null);
     checkedFingerprintRef.current = draftFingerprint(current);
     try {
-      const { report } = await checkComposeSafety(current.draftPath, current.accountId);
+      const { report } = await checkComposeSafety(
+        current.draftPath,
+        current.accountId,
+        current.revision,
+      );
       if (report.allowed && report.issues.length === 0) {
         setSafetyReport(null);
         dispatchSend();
@@ -252,9 +301,14 @@ export function useComposeSend({
     });
     const current = draftRef.current;
     if (!current || !isCurrentDraftSaved(current)) {
-      toast.error("Draft changed while saving", {
-        description: "Retry scheduling after the latest save.",
-      });
+      toast.error(
+        current?.recoverySourcePath ? "Draft preserved locally" : "Draft changed while saving",
+        {
+          description: current?.recoverySourcePath
+            ? "Use Retry or Open saved draft before scheduling."
+            : "Retry scheduling after the latest save.",
+        },
+      );
       return;
     }
     let scheduledDraftId: string;
@@ -343,6 +397,7 @@ export function useComposeSend({
     }
     const accountId = current.accountId;
     const draftPath = current.draftPath;
+    const expectedRevision = current.revision;
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
     const archiveSourceId =
       archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
@@ -385,7 +440,7 @@ export function useComposeSend({
     };
     const fire = () => {
       sendSession
-        .mutateAsync({ draftPath, accountId, overrideToken })
+        .mutateAsync({ draftPath, accountId, overrideToken, expectedRevision })
         .then(
           (response) =>
             afterSend(response).catch((error: unknown) =>

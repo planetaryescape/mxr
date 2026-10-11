@@ -18,8 +18,9 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | S04 | Retry a previewed mailbox action safely | Lose a batch-action response; retrieve per-item results with the same operation ID and reject changed payload reuse | S03 deployed | P02 + P04 |
 | S05a | Download exact attachment bytes and open them on the consuming client | Through the daemon, CLI JSON/JSONL, TUI, web and MCP, download known bytes without daemon paths; verify a CLI `cmd://` transfer larger than one chunk under filesystem denial, TUI client-owned file/open, browser download, bounded MCP content, partial/mismatch/wrong-message failures and old local clients | S04 published-client acceptance | P03 + P04 |
 | S05b | Upload immutable attachment bytes into a saved draft and send those same bytes | Upload bounded bytes, attach a finalized resource to a saved draft, restart, preview and send; witness outbound bytes, verify ownership, reject incomplete/changed/oversize resources and preserve legacy drafts | S05a deployed | P03 + P04 |
-| S06 | Recover mailbox state after an event gap without losing edits | Drop only WebSocket traffic, mutate through CLI, reconnect and refresh; switch workspace/recovery generation without replaying pending commands | Relevant S02-S05 contracts deployed | P05 + P04 |
-| S07 | Use the same selected daemon from CLI, TUI and MCP | Read, reply through a local editor, attach, preview and mutate over the selected connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
+| S06a | Refresh mailbox state after an event-only gap without losing draft text | Keep HTTP healthy, drop WebSocket traffic, change synthetic mail through CLI, reconnect and observe fresh mailbox state with preserved compose text and no replayed mutation | S02/S04 deployed; independent of S05 resources | P05 |
+| S06b | Switch workspace or recovery generation without replaying pending work | Change the selected workspace with an open draft and pending operation; preserve private text and prevent submission to the new owner | S05b and S06a deployed | P05 + P04 |
+| S07 | Use the same selected daemon from CLI, TUI and MCP | Read, reply through a local editor, attach, preview and mutate over the selected connector; prove compatible/incompatible versions | S03-S06b deployed | P06b + P04 |
 | S08a | Stop and restart the daemon under supervision | Send SIGTERM and SIGINT to an isolated daemon; observe orderly teardown, restart and query acknowledged state | Independent; interrupted-action recovery belongs to S08c after S03/S04 | P07a |
 | S08b | Retain a complete disk token cache if replacement is interrupted | Inject interruption before/after atomic replacement with synthetic tokens; reload the complete old or new cache | Independent | P07b |
 | S08c | Run unattended with useful dependency diagnostics | Start isolated Linux service without GUI secrets access, interrupt/restart and remove optional model service; inspect mail readiness | S08a/S08b and S03/S04 deployed | P07c |
@@ -37,7 +38,10 @@ sockets, so their connector selection remains S07
 (`crates/tui/src/account_workflow.rs#L10-L17`,
 `crates/mcp/src/lib.rs#L1160-L1166`). The web bridge may stay beside the daemon
 (`crates/daemon/src/bridge.rs#L1-L6`); off-machine HTTP remains R01. S05
-implementation starts after S04 documentation publication.
+implementation starts after S04 documentation publication. S06a can build beside
+S05a: it changes the existing event-gap refresh path and depends on deployed
+compose preservation, not attachment resources. Root serializes their integration
+and releases. Workspace/generation transition safety remains S06b after S05b.
 
 ## S01 preserves the local contract while fixing target ownership
 
@@ -96,7 +100,11 @@ published [v0.6.77](https://github.com/planetaryescape/mxr/releases/tag/v0.6.77)
 at 20:55:52 UTC. The mxr binary extracted from the macOS archive matches the installer and
 Homebrew binaries. Published-client acceptance passed 17 CLI/IPC/HTTP scenarios, 3 MCP
 scenarios, and installed TUI and browser recovery journeys on the same binary.
-S04 published-client acceptance is complete. The [acceptance packet](../../build-log/daemon-portability/evidence/s04-installed-v0.6.77/README.md)
+S04 is done. Documentation PR387 merged at
+`f2e522c882599127d6fae9fbe5a0855f542472b4`; the production mxr.sh deployment
+uses that source. The rendered recovery recipe and generated command reference
+passed browser checks with no JavaScript errors. The [documentation deployment record](../../build-log/daemon-portability/evidence/s04-docs-deployment-f2e522c8.json)
+binds that observation to the deployed revision. The [acceptance packet](../../build-log/daemon-portability/evidence/s04-installed-v0.6.77/README.md)
 records the results, timing and limits; the [build log](../../build-log/daemon-portability/s04-archive-recovery.md)
 records implementation and check provenance. Live Gmail was skipped because
 test credentials were unavailable; installed UI journeys ran on macOS, while

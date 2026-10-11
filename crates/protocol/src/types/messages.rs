@@ -355,8 +355,8 @@ pub struct ConversationMessageData {
     pub from: Address,
     pub from_me: bool,
     pub date: chrono::DateTime<chrono::Utc>,
-    /// What this message says that the thread didn't already: quotes and
-    /// signature removed, the same text in every client.
+    /// The new text in every client: signatures and trailing history removed,
+    /// with inline questions or forwarded context retained beside answers.
     pub text: String,
     /// Preserved question, quote or forwarded source context is part of this
     /// message; clients must keep the whole text visible when excerpting.

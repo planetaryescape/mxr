@@ -316,12 +316,16 @@ fn a_provider_preview_is_labeled_as_incomplete_in_the_person_page() {
         .expect("conversation is seeded")
         .messages[1];
     message.source = Some(mxr_protocol::MessageTextSourceData::ProviderSnippet);
-    message.text = "Preview text".into();
+    message.text =
+        "Preview introduction.\n\nSecond preview paragraph.\n\nFinal preview detail.".into();
+    message.paragraphs = 3;
     let rendered = render_at(&state, 120, 0);
     assert!(rendered.contains("provider preview only"), "{rendered}");
     assert!(rendered.contains("full message unavailable"), "{rendered}");
     assert!(rendered.contains("o to check"), "{rendered}");
     assert!(rendered.contains("original)"), "{rendered}");
+    assert!(rendered.contains("Second preview paragraph"), "{rendered}");
+    assert!(rendered.contains("Final preview detail"), "{rendered}");
 }
 
 #[test]

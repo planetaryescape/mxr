@@ -189,12 +189,58 @@ fn an_inline_html_citation_stays_beside_its_answer() {
 }
 
 #[test]
+fn a_gmail_inline_answer_keeps_its_attribution_through_plain_text_cleanup() {
+    let html = "<html><body><div class='gmail_quote'><div class='gmail_attr'>On Tue, Alice wrote:</div><div>Can you make Thursday?</div></div><p>Yes, the morning.</p></body></html>";
+    let out = new_text(None, Some(html), &[]);
+    for context in ["Alice wrote", "Can you make Thursday?", "Yes, the morning."] {
+        assert!(
+            out.text.contains(context),
+            "missing {context}: {}",
+            out.text
+        );
+    }
+    assert!(out.has_preserved_context);
+    assert!(!out.only_quoted);
+}
+
+#[test]
 fn a_forward_intro_stays_attributed_with_the_forwarded_content() {
     let text = "This is relevant to the lease.\n\n---------- Forwarded message ---------\nFrom: Bank\nDate: Mon\nSubject: Statement\nTo: Alex\n\nYour statement is ready.";
     let out = new_text(Some(text), None, &[]);
     assert!(out.text.starts_with("This is relevant to the lease."));
     assert!(out.text.contains("From: Bank"));
     assert!(out.text.contains("Your statement is ready."));
+    assert!(out.has_preserved_context);
+}
+
+#[test]
+fn forwarded_content_is_not_removed_when_it_matches_an_earlier_message() {
+    let prior = "Your annual account statement is now ready for review.\nPlease inspect all charges and contact us before Friday.";
+    let text = format!("Please review this.\n\n---------- Forwarded message ---------\nFrom: Bank\nDate: Monday\nSubject: Statement\nTo: Alex\n\n{prior}");
+    let out = new_text(Some(&text), None, &[earlier(prior)]);
+    for context in [
+        "Date: Monday",
+        "Subject: Statement",
+        "Your annual account statement",
+        "before Friday",
+    ] {
+        assert!(
+            out.text.contains(context),
+            "missing {context}: {}",
+            out.text
+        );
+    }
+    assert!(out.has_preserved_context);
+    assert!(!out.trimmed.quote);
+}
+
+#[test]
+fn a_plain_inline_quote_keeps_its_named_attribution() {
+    let text = "On Tue, Alice wrote:\n> Can you make Thursday?\nYes, the morning.";
+    let out = new_text(Some(text), None, &[]);
+    assert!(out.text.contains("Alice wrote"), "{}", out.text);
+    assert!(out.text.contains("Can you make Thursday?"), "{}", out.text);
+    assert!(out.text.contains("Yes, the morning."), "{}", out.text);
     assert!(out.has_preserved_context);
 }
 

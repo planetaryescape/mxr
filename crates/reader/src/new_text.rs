@@ -120,11 +120,12 @@ pub fn new_text(
     let html_part = html_body
         .or_else(|| text.filter(|t| html::looks_like_html_document(t)))
         .map(split_html_quote);
-    let mut has_preserved_context = html_part
+    let html_preserved_context = html_part
         .as_ref()
         .is_some_and(|parts| parts.has_preserved_quote);
+    let mut has_preserved_context = html_preserved_context;
     let raw = match &html_part {
-        Some(parts) if parts.has_quote || parts.has_signature => {
+        Some(parts) if parts.has_quote || parts.has_signature || parts.has_preserved_quote => {
             trimmed.quote |= parts.has_quote;
             trimmed.signature |= parts.has_signature;
             html::to_plain_text(&parts.main, &config)
@@ -133,13 +134,13 @@ pub fn new_text(
     };
 
     let has_forwarded_context = raw.lines().any(|line| FORWARDED_HEADER.is_match(line));
-    let (body, quoted, inline_context) = strip_marked_quotes(&raw);
+    let (body, quoted, inline_context) = strip_marked_quotes(&raw, html_preserved_context);
     has_preserved_context |= inline_context || has_forwarded_context;
     trimmed.quote |= quoted;
     // Marked inline questions are part of the reply's meaning. The marked
     // pass already folds a trailing quote; matching the remaining mixed
     // block against prior messages could otherwise cut the answers too.
-    let (body, matched) = if raw.lines().any(|line| QUOTE_PREFIX.is_match(line)) {
+    let (body, matched) = if has_preserved_context {
         (body, false)
     } else {
         strip_thread_quote(&body, earlier)
@@ -201,12 +202,15 @@ pub fn new_text(
 /// with an authored answer below them stay beside that answer. Forward
 /// headers are retained because the forwarded content is what the message
 /// says.
-fn strip_marked_quotes(text: &str) -> (String, bool, bool) {
+fn strip_marked_quotes(text: &str, preserve_html_attribution: bool) -> (String, bool, bool) {
     let lines: Vec<&str> = text.lines().collect();
     let cut = lines
         .iter()
         .enumerate()
-        .find(|(index, line)| is_strong_header(&lines, *index, line))
+        .find(|(index, line)| {
+            is_strong_header(&lines, *index, line)
+                && !(preserve_html_attribution && ON_WROTE.is_match(line))
+        })
         .map_or(lines.len(), |(index, _)| index);
     let last_authored = lines[..cut]
         .iter()
@@ -220,7 +224,9 @@ fn strip_marked_quotes(text: &str) -> (String, bool, bool) {
     let mut kept = Vec::with_capacity(cut);
     for (index, line) in lines[..cut].iter().enumerate() {
         let inline_quote = inline_answer && last_authored.is_some_and(|last| index < last);
-        if QUOTE_PREFIX.is_match(line) && !inline_quote || ON_WROTE.is_match(line) {
+        if (QUOTE_PREFIX.is_match(line) && !inline_quote)
+            || (ON_WROTE.is_match(line) && !inline_answer && !preserve_html_attribution)
+        {
             removed = true;
         } else {
             // Preserve the original `>` markers so readers can distinguish

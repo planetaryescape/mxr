@@ -172,4 +172,16 @@ describe("sanitizeHtml", () => {
     expect(prepared.html).not.toMatch(/color:\s*rgb\(34,\s*34,\s*34\)/i);
     expect(prepared.html).toContain("Hi Alex, Thursday works.");
   });
+
+  it("leaves a sender-authored white-on-gray pair untouched on Auto's paper canvas", () => {
+    const prepared = prepareEmailHtml(`<div style="color:#fff;background:#777">Badge</div>`, {
+      allowRemoteImages: false,
+      preference: "auto",
+      darkScheme: true,
+    });
+
+    expect(prepared.canvas).toBe("paper");
+    expect(prepared.html).toMatch(/color:\s*#fff/i);
+    expect(prepared.html).toMatch(/background:\s*#777/i);
+  });
 });

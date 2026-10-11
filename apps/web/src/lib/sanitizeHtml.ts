@@ -274,6 +274,7 @@ function styleForCanvas(html: string, canvas: EmailHtmlCanvas): string {
   if (canvas === "original") return html;
   const document = new DOMParser().parseFromString(html, "text/html");
   for (const element of document.body.querySelectorAll<HTMLElement>("[style], [bgcolor]")) {
+    let warmedBackground = false;
     if (canvas === "dark") {
       element.removeAttribute("bgcolor");
       element.style.removeProperty("color");
@@ -285,25 +286,28 @@ function styleForCanvas(html: string, canvas: EmailHtmlCanvas): string {
     if (element.hasAttribute("bgcolor")) {
       const background = element.getAttribute("bgcolor") ?? "";
       if (isLightNeutralBackground(background)) {
-        if (canvas === "paper") element.setAttribute("bgcolor", "#f1eee9");
-        else element.removeAttribute("bgcolor");
+        if (canvas === "paper") {
+          element.setAttribute("bgcolor", "#f1eee9");
+          warmedBackground = true;
+        } else element.removeAttribute("bgcolor");
       }
     }
     const style = element.style;
     if (style.backgroundColor && isLightNeutralBackground(style.backgroundColor)) {
-      if (canvas === "paper") style.backgroundColor = "#f1eee9";
-      else style.removeProperty("background-color");
+      if (canvas === "paper") {
+        style.backgroundColor = "#f1eee9";
+        warmedBackground = true;
+      } else style.removeProperty("background-color");
     }
-    if (
-      style.background &&
-      style.backgroundColor &&
-      isLightNeutralBackground(style.backgroundColor)
-    ) {
-      if (canvas === "paper") style.background = "#f1eee9";
-      else style.removeProperty("background");
+    if (style.background && isLightNeutralBackground(style.backgroundColor || "")) {
+      if (canvas === "paper") {
+        style.background = "#f1eee9";
+        warmedBackground = true;
+      } else style.removeProperty("background");
     }
-    if (canvas === "paper" && style.color && style.backgroundColor) {
-      const readableColor = readableNeutralForeground(style.color, style.backgroundColor);
+    const appliedBackground = style.backgroundColor || element.getAttribute("bgcolor");
+    if (canvas === "paper" && warmedBackground && style.color && appliedBackground) {
+      const readableColor = readableNeutralForeground(style.color, appliedBackground);
       if (readableColor) style.color = readableColor;
     }
   }

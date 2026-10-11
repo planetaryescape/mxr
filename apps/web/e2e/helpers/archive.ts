@@ -18,7 +18,7 @@ export function acceptArchiveReview(
       const message = dialog.message();
       try {
         expect(dialog.type()).toBe("confirm");
-        expect(message).toMatch(/^Archive \d+ reviewed messages?\n/);
+        expect(message).toMatch(/^Archive \d+ reviewed messages\?\n/);
       } catch (error) {
         void dialog.dismiss().finally(() => reject(error));
         return;

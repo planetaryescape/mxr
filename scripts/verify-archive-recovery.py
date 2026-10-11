@@ -213,6 +213,18 @@ def assert_count(operation, accepted, dispatched=None):
         assert len(witnesses(operation, 'dispatched')) == dispatched
 
 
+def assert_history(operation):
+    entries = json.loads(cli('history', '--category', 'mutation', '--limit', '200',
+                             '--format', 'json').stdout)
+    for item in operation['items']:
+        matching = [entry for entry in entries if entry.get('message_id') == item['message_id']]
+        assert len(matching) == int(item['state'] == 'completed'), (item, matching)
+        if matching:
+            subject = sql('SELECT subject FROM messages WHERE id = ?', (item['message_id'],))[0][0]
+            assert matching[0]['summary'] == f'Archived "{subject}"', matching
+            assert matching[0]['account_id'] == item['account_id'], matching
+
+
 def mark(name, **evidence):
     cases.append({'name': name, 'passed': True, **evidence})
 
@@ -236,11 +248,31 @@ try:
     assert_count(untouched, 0, 0)
     mark('json_list_and_explicit_submission_id')
 
+    retained_path = r / 'client-data/archive-operations' / (op['identity']['operation_id'] + '.json')
+    retained_bytes = retained_path.read_bytes()
+    mismatched = copy.deepcopy(op)
+    mismatched['identity']['workspace']['recovery_generation'] = str(uuid.uuid4())
+    try:
+        retained_path.write_text(json.dumps(mismatched))
+        refused_list = cli('archive-operation', '--format', 'json', check=False)
+        assert refused_list.returncode != 0
+        mixed = json.loads(refused_list.stdout)
+        assert isinstance(mixed, list) and len(mixed) == 2, mixed
+        by_id = {entry['identity']['operation_id']: entry for entry in mixed}
+        assert by_id[op['identity']['operation_id']]['state'] == 'response_unavailable'
+        assert by_id[untouched['identity']['operation_id']]['accepted'] is False
+        assert_count(op, 0, 0)
+        assert_count(untouched, 0, 0)
+    finally:
+        retained_path.write_bytes(retained_bytes)
+    mark('json_list_continues_after_refused_receipt_without_dispatch')
+
     # The consumer retained the identity before writing this request. It reads no ACK.
     ipc(submission(op), drop=True)
     result = settled(op)
     assert all(x['state'] == 'completed' for x in result['items']), result
     assert_count(op, 2, 2)
+    assert_history(result)
     table = cli('archive-operation', op['identity']['operation_id'], '--format', 'table')
     assert f"Undo with: mxr undo {op['mutation_id']}" in table.stdout
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
@@ -269,6 +301,8 @@ try:
     settled(op)
     assert_count(op, 2, 2)
     assert_count(untouched, 0, 0)
+    assert_history(recovered)
+    mark('completed_archive_history_once_after_concurrent_replay_and_restart')
     mark('lost_ack_concurrent_repeat_changed_payload_restart', operation=op['identity'], accepted=2)
 
     mismatch = submission(op)
@@ -289,6 +323,7 @@ try:
     outcome = settled(partial)
     assert sorted(x['state'] for x in outcome['items']) == ['completed', 'not_executed'], outcome
     assert_count(partial, 1, 2)
+    assert_history(outcome)
     (r / 'spool/mutation-reject').unlink()
     data(ipc(submission(partial)))
     settled(partial)
@@ -304,6 +339,7 @@ try:
     data(ipc(submission(uncertain)))
     settled(uncertain)
     assert_count(uncertain, 1, 1)
+    assert_history(outcome)
     mark('provider_acceptance_response_loss_stays_unknown', operation=uncertain['identity'])
 
     crashed = preview(ids[6:8])
@@ -329,6 +365,7 @@ try:
     outcome = settled(crashed)
     assert [x['state'] for x in outcome['items']] == ['unknown', 'completed'], outcome
     assert_count(crashed, 2, 2)
+    assert_history(outcome)
     mark('crash_query_is_read_only_and_same_id_resumes_only_pending', operation=crashed['identity'])
 
     stale = preview(ids[8:9])
@@ -337,6 +374,7 @@ try:
     outcome = settled(stale)
     assert outcome['items'][0]['state'] == 'not_executed', outcome
     assert_count(stale, 0, 0)
+    assert_history(outcome)
     mark('stale_provider_binding_refused_before_dispatch')
 
     failed_acceptance = preview(ids[9:10])
@@ -361,6 +399,7 @@ try:
     data(ipc(submission(failed_receipt)))
     settled(failed_receipt)
     assert_count(failed_receipt, 1, 1)
+    assert_history(outcome)
     mark('failed_receipt_after_acceptance_never_repeats_effect')
 
     failed_local = preview(ids[12:13])
@@ -375,6 +414,7 @@ try:
     data(ipc(submission(failed_local)))
     settled(failed_local)
     assert_count(failed_local, 1, 1)
+    assert_history(outcome)
     mark('provider_success_survives_failed_local_reconciliation_without_repeat')
 
     # This is a client-only filesystem fault. The daemon still has its separate data directory.
@@ -406,6 +446,7 @@ try:
         assert repeat.returncode != 0
         assert json.loads(repeat.stdout)['identity'] == rejected_operation['identity']
         assert_count(rejected_operation, 0, 1)
+        assert_history(rejected_operation)
     finally:
         (r / 'spool/mutation-reject').unlink()
     mark('synchronous_known_rejection_fails_with_retained_json_receipt')
@@ -418,6 +459,7 @@ try:
         assert unknown_operation['items'][0]['state'] == 'unknown'
         assert query(unknown_operation)['identity'] == unknown_operation['identity']
         assert_count(unknown_operation, 1, 1)
+        assert_history(unknown_operation)
     finally:
         (r / 'spool/mutation-uncertain').unlink()
     mark('synchronous_unknown_fails_but_read_only_query_succeeds')

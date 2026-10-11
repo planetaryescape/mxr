@@ -143,10 +143,12 @@ test("a provider rejection in a multi-message Archive keeps Undo for the complet
   const rejectedFileName = deliver({
     from: "archive-reject@example.test",
     subject: rejectedName,
+    body: "This rejected Archive fixture has readable text for the reader.",
   });
   const completedFileName = deliver({
     from: "archive-complete@example.test",
     subject: completedName,
+    body: "This completed Archive fixture has readable text for the reader.",
   });
   const rejectedProviderId = `spool-${rejectedFileName}`;
   const completedProviderId = `spool-${completedFileName}`;

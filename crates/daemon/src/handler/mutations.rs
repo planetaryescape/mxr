@@ -2198,7 +2198,10 @@ pub(crate) async fn drain_search_reindex_pending(state: &AppState) {
     }
 }
 
-fn mutation_log_entry(cmd: &MutationCommand, envelope: &Envelope) -> (String, Option<String>) {
+pub(super) fn mutation_log_entry(
+    cmd: &MutationCommand,
+    envelope: &Envelope,
+) -> (String, Option<String>) {
     match cmd {
         MutationCommand::Archive { .. } => (
             format!("Archived {}", quoted_subject(&envelope.subject)),

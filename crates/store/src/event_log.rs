@@ -38,19 +38,18 @@ pub struct EventLogFilter<'a> {
     pub search: Option<&'a str>,
 }
 
-impl super::Store {
-    pub async fn insert_event_refs(
-        &self,
-        level: &str,
-        category: &str,
-        summary: &str,
-        refs: EventLogRefs<'_>,
-        details: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        let now = chrono::Utc::now().timestamp();
-        let aid = refs.account_id.map(mxr_core::AccountId::as_str);
-        sqlx::query(
-            "INSERT INTO event_log (
+pub(crate) async fn insert_event_refs_on(
+    connection: &mut sqlx::SqliteConnection,
+    level: &str,
+    category: &str,
+    summary: &str,
+    refs: EventLogRefs<'_>,
+    details: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    let now = chrono::Utc::now().timestamp();
+    let aid = refs.account_id.map(mxr_core::AccountId::as_str);
+    sqlx::query(
+        "INSERT INTO event_log (
                 timestamp,
                 level,
                 category,
@@ -60,18 +59,31 @@ impl super::Store {
                 summary,
                 details
              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(now)
-        .bind(level)
-        .bind(category)
-        .bind(aid)
-        .bind(refs.message_id)
-        .bind(refs.rule_id)
-        .bind(summary)
-        .bind(details)
-        .execute(self.writer())
-        .await?;
-        Ok(())
+    )
+    .bind(now)
+    .bind(level)
+    .bind(category)
+    .bind(aid)
+    .bind(refs.message_id)
+    .bind(refs.rule_id)
+    .bind(summary)
+    .bind(details)
+    .execute(connection)
+    .await?;
+    Ok(())
+}
+
+impl super::Store {
+    pub async fn insert_event_refs(
+        &self,
+        level: &str,
+        category: &str,
+        summary: &str,
+        refs: EventLogRefs<'_>,
+        details: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        let mut connection = self.writer().acquire().await?;
+        insert_event_refs_on(&mut connection, level, category, summary, refs, details).await
     }
 
     pub async fn insert_event(

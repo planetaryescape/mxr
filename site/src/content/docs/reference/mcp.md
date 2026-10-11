@@ -66,6 +66,9 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_records_ask`
 - `mxr_records_subscriptions`
 - `mxr_records_export_preview`
+- `mxr_todo_list`: tasks in one state, defaulting to open, with an optional account scope
+- `mxr_todo_get`: one task with its source mail and field provenance
+- `mxr_todo_set_state`: `done`, `dismiss` or `undo` for task IDs; previews unless `confirm=true`
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
 - `mxr_draft_assist`

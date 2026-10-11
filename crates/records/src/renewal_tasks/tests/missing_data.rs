@@ -9,7 +9,7 @@ async fn missing_amount_currency_and_insufficient_history_are_honest() {
             fx.mail(
                 ("Acme", "billing@acme.example"),
                 "Your Acme Premium receipt",
-                "Thanks for your payment",
+                &format!("Thanks for your payment.\nReceipt number: P-{year}"),
                 None,
                 at(year, 10, 20),
             )

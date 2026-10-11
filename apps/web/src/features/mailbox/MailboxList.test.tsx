@@ -35,10 +35,14 @@ vi.mock("./BulkActionBar", () => ({ BulkActionBar: () => null }));
 
 const api = vi.hoisted(() => ({
   archiveMessages: vi.fn<(ids: string[]) => Promise<MutationResponse>>(),
+  archiveMessagesRecoverably: vi.fn<(ids: string[]) => Promise<MutationResponse>>(),
 }));
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
   archiveMessages: api.archiveMessages,
+}));
+vi.mock("@/features/mail-actions/archiveRecovery", () => ({
+  archiveMessagesRecoverably: api.archiveMessagesRecoverably,
 }));
 
 function row(n: number, overrides: Partial<MessageRowView> = {}): MessageRowView {
@@ -122,6 +126,7 @@ function selectedIds(): string[] {
 }
 
 beforeEach(() => {
+  api.archiveMessagesRecoverably.mockReset();
   onOpenRow = vi.fn<MailboxListProps["onOpenRow"]>();
   onCloseThread = vi.fn<() => void>();
   useMailboxPane.setState({
@@ -258,21 +263,30 @@ describe("MailboxList keyboard", () => {
     expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
-  test("e archives the focused row; the cursor stays at the same position", async () => {
+  test("e starts reviewed Archive for the focused row and keeps the cursor at the same position", async () => {
     let finish!: (value: MutationResponse) => void;
-    api.archiveMessages.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    renderList();
+    api.archiveMessagesRecoverably.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const { rerenderList } = renderList();
 
     type({ key: "j" }, { key: "e" });
 
-    await vi.waitFor(() => expect(api.archiveMessages).toHaveBeenCalledWith(["msg-2"]));
-    expect(screen.queryByRole("option", { name: /Subject 2/ })).not.toBeInTheDocument();
-    expect(cursor()).toBe("mail-row-thread-thread-3");
+    await vi.waitFor(() => expect(api.archiveMessagesRecoverably).toHaveBeenCalledWith(["msg-2"]));
+    expect(api.archiveMessages).not.toHaveBeenCalled();
+    // Archive enters the reviewed recovery path and stays visible until the
+    // confirmed server result is reflected in the mailbox query.
+    expect(screen.getByRole("option", { name: /Subject 2/ })).toBeInTheDocument();
+    expect(cursor()).toBe("mail-row-thread-thread-2");
 
     await act(async () => {
       finish({ ok: true, result: { requested: 1, succeeded: 1, skipped: 0, failed: 0 } });
       await Promise.resolve();
     });
+
+    rerenderList({
+      groups: [{ id: "today", label: "Today", rows: rows.filter((item) => item.id !== "msg-2") }],
+    });
+    expect(screen.queryByRole("option", { name: /Subject 2/ })).not.toBeInTheDocument();
+    expect(cursor()).toBe("mail-row-thread-thread-3");
   });
 
   test("the cursor follows the same row when rows are added above it", () => {

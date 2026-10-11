@@ -1,0 +1,28 @@
+{
+  "observed_at": "2026-10-11T21:03:33.321440+00:00",
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "tree": "48e865128b372f567ec220a682782b5dadeafdea",
+  "version": "0.6.77",
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "files": {
+    "tui-visible-frames.txt": "sha256:579eb3d390fff928139eb7d5fc41790a289ef04f837ba1512d19ccf0f33d5188",
+    "release-workflow.json": "sha256:d7625febd962efc4cc8f6a924d2dfe28ece34952c72b9bb5464552eca9b234f4",
+    "browser-recovery-after-reload.png": "sha256:5adc3d7c74db9ce3e26314f90c93513e7933674c9e0490a4f7701532a610ad94",
+    "browser-after-reload.png": "sha256:7ceb23861c757de159dc250b21d264cc4b9eed591933cf2c5fc13aa44ccc7015",
+    "browser-after-reload.json": "sha256:6a10612ad4e8eb1d15f686337e9f7cbcd46138edaec9b9bbd6d06ae22c66a1f6",
+    "cli.json": "sha256:2111a36cf6e2c6c2d5be35441d301fa27b5acaa110f52ee17f7c00714aa09e2a",
+    "cleanup.json": "sha256:04391e4aef828c3351ea0b4a20367ad44f4e5460b607e65beca1355320426c92",
+    "browser-start.json": "sha256:6438644bf5af4991227505b391beb49f8c86e71dcfe392f54dc8b933105e8cc3",
+    "release.json": "sha256:b79771dcb5f37882e65d9a805d805fa60f11e23d39ef4b0eec578141f2c0fae3",
+    "browser-recovery-after-reload.json": "sha256:18502640382805cc2595e613a3a1e56d319fa74a9ad6577a85f42f5000306156",
+    "tui.json": "sha256:cec3dff6ee4da120ccb4313882892bfdbdef62215565572574853477ff2b426d",
+    "browser-after-undo.json": "sha256:1e295ae59de04a22ea0b914b2c984051231b979a072a3bf0634ceb65a9e239ea",
+    "browser.json": "sha256:a793de7019db10451f7ca1c322e49d83b790d7b5e9f4a4d3df2089e36c1eda95",
+    "homebrew.json": "sha256:dcd55706cc71c5a55160e9132325538d388243da0ad783dbad3160659088b42d",
+    "mcp.json": "sha256:1cdb3b0ee870e2b401014fe1e8be0b7c9c963d220b79e8f1bbe11e832fa2be6b"
+  },
+  "limits": [
+    "No live Gmail check: release workflow reported missing test credentials and skipped it.",
+    "Published Linux artifact was checksum-verified; local UI journeys ran on macOS."
+  ]
+}

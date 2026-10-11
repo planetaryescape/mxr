@@ -81,24 +81,29 @@ existing local activity recorder, with the original client source and
 submissions and queries do not record another activity. The recorder remains
 best effort and respects `MXR_ACTIVITY=off`.
 
-## The checks use synthetic provider acceptance witnesses
+## v0.6.77 is published and installed journeys passed
 
-The pending-release candidate is `80457e31199d31f73c9dc891fbb17b343efc27b3`,
-tree `a754ecb025c4c39d86522979d0552ff314755c8f`, based on
-`ab2103ad8144e1f8d2b99f5717666fa2edbd5b6d`. It is not merged or released.
+Release `v0.6.77` came from `14de28f1187d150e05a9f96f6eec12db60c7c9ab`,
+tree `48e865128b372f567ec220a682782b5dadeafdea`. Release workflow
+[38172695106](https://github.com/planetaryescape/mxr/actions/runs/38172695106)
+completed successfully. The GitHub Release job published the assets at
+2026-10-11 20:55:52 UTC; the workflow finished at 20:58:23 UTC. The mxr binary extracted from the macOS
+archive matches the installer and Homebrew binaries at
+`sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a`.
 
-The immutable runtime binary was built from `f718eecd4300e7a120324e39be2d2ba46cdf371a`,
-tree `97770f3e4bd734cadd927daa22cae9e6384dbd95`, and has SHA-256
-`sha256:cf19aa7afd396425a2242e1768240b9a41a3cc9e999ac185e301ecd689f7b418`. It passed
-17 CLI/IPC/HTTP scenarios and 3 actual MCP scenarios with synthetic provider
-acceptance witnesses. Both harnesses reported their owned processes stopped; root separately
-verified their ports were closed. Candidate 804 differs from that runtime source only in the
-final E2E fixture and upstream 0.6.76 version metadata; production logic is
-unchanged. This is runtime evidence for that production logic, not a binary
-build of candidate 804. The process-crash checks do not establish recovery after
-an operating-system crash or power loss. The final repository evidence packet will be added after published-artifact
-acceptance. The [earlier candidate packet](evidence/s04-f3986183-integrated-acceptance.md)
-is historical evidence, not verification of candidate 804.
+The [installed acceptance packet](evidence/s04-installed-v0.6.77/README.md)
+records 17 CLI/IPC/HTTP scenarios and 3 actual MCP scenarios against that
+binary, plus installed TUI and browser journeys. The TUI previewed, submitted,
+closed and reopened the app, then queried the same operation identity with
+one provider dispatch and acceptance. The browser confirmed Archive, used Undo,
+queried the receipt and reloaded to the same identity with one provider effect.
+Both flows used synthetic mail. No effect occurred before browser consent.
+
+The release workflow skipped its live Gmail smoke because test credentials
+were unavailable. Linux artifacts were checksum-verified; installed UI journeys
+ran on macOS. Process-crash checks do not establish recovery after an operating
+system crash or power loss. The [earlier f398 packet](evidence/s04-f3986183-integrated-acceptance.md)
+is historical and does not verify v0.6.77.
 
 The fake spool opt-in uses `mutation-reject`, `mutation-uncertain`, and
 `mutation-pause-after-accept`. Empty controls apply to all messages; otherwise
@@ -120,9 +125,7 @@ result, panic cleanup, and the SQLite power-loss durability boundary.
 
 The corrected and original Reading E2E journeys passed (jobs 5706 and 5709),
 along with typecheck (5698), implementation lint (5716) and formatting (5718).
-Hook tests force both completion orders. Required CI is running; the final
-candidate's independent whole-diff review was waived by BK until Anthropic is
-available again. API-reference regeneration and the docs build passed. Merge,
-release-please, published-artifact checks and installed-client acceptance remain
-open. No S04 release result
-is established.
+Hook tests force both completion orders. API-reference regeneration and the
+docs build passed. BK waived independent reviews until Anthropic is available
+again. Release, CLI, MCP, TUI and browser evidence is in the installed
+acceptance packet.

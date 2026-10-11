@@ -16,9 +16,10 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | S02 | Save and resume a draft without silent concurrent overwrites | Save, restart, reopen, then edit from two clients; preserve the stale editor's text while rejecting its stale revision | Existing compose contract; independent of S01 | P01 + P04 |
 | S03 | Recover the outcome of sending a reviewed draft | Drop a send response; recover its stored receipt. Inject ambiguous provider acceptance; preserve uncertainty without automatic resend | S02 deployed | P01/P02 + P04 |
 | S04 | Retry a previewed mailbox action safely | Lose a batch-action response; retrieve per-item results with the same operation ID and reject changed payload reuse | S03 deployed | P02 + P04 |
-| S05 | Attach and download without shared host paths | From disjoint filesystems, upload, save, restart, preview/send, and download identical bytes on the client | S02/S03 deployed | P03 + P04 |
+| S05a | Download exact attachment bytes and open them on the consuming client | Through the daemon, CLI JSON/JSONL, TUI, web and MCP, download known bytes without daemon paths; verify a CLI `cmd://` transfer larger than one chunk under filesystem denial, TUI client-owned file/open, browser download, bounded MCP content, partial/mismatch/wrong-message failures and old local clients | S04 published-client acceptance | P03 + P04 |
+| S05b | Upload immutable attachment bytes into a saved draft and send those same bytes | Upload bounded bytes, attach a finalized resource to a saved draft, restart, preview and send; witness outbound bytes, verify ownership, reject incomplete/changed/oversize resources and preserve legacy drafts | S05a deployed | P03 + P04 |
 | S06 | Recover mailbox state after an event gap without losing edits | Drop only WebSocket traffic, mutate through CLI, reconnect and refresh; switch workspace/recovery generation without replaying pending commands | Relevant S02-S05 contracts deployed | P05 + P04 |
-| S07 | Use the same selected daemon from CLI and TUI | Read, reply through a local editor, attach, preview and mutate over the existing remote connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
+| S07 | Use the same selected daemon from CLI, TUI and MCP | Read, reply through a local editor, attach, preview and mutate over the selected connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
 | S08a | Stop and restart the daemon under supervision | Send SIGTERM and SIGINT to an isolated daemon; observe orderly teardown, restart and query acknowledged state | Independent; interrupted-action recovery belongs to S08c after S03/S04 | P07a |
 | S08b | Retain a complete disk token cache if replacement is interrupted | Inject interruption before/after atomic replacement with synthetic tokens; reload the complete old or new cache | Independent | P07b |
 | S08c | Run unattended with useful dependency diagnostics | Start isolated Linux service without GUI secrets access, interrupt/restart and remove optional model service; inspect mail readiness | S08a/S08b and S03/S04 deployed | P07c |
@@ -27,6 +28,16 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 Independent S08a/S08b releases may land before S02. S08a reuses existing teardown; it does not claim recovery of ambiguous sends before S03/S04. Build S08a/S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
 
 R01 is conditional on selecting a remote HTTP consumer and network policy. It must precede that consumer's first off-machine HTTP release. This readiness run does not silently turn a loopback bridge into a public service.
+
+Both S05 releases expose their daemon operations through CLI JSON/JSONL, TUI,
+web and MCP. At source `14de28f1187d150e05a9f96f6eec12db60c7c9ab`, the CLI
+already resolves `tcp://` and `cmd://` targets
+(`crates/daemon/src/server.rs#L585-L624`). TUI and MCP still require Unix
+sockets, so their connector selection remains S07
+(`crates/tui/src/account_workflow.rs#L10-L17`,
+`crates/mcp/src/lib.rs#L1160-L1166`). The web bridge may stay beside the daemon
+(`crates/daemon/src/bridge.rs#L1-L6`); off-machine HTTP remains R01. S05
+implementation starts after S04 documentation publication.
 
 ## S01 preserves the local contract while fixing target ownership
 
@@ -73,7 +84,26 @@ S03 merged as `d6ba93ba7082a644e027b331e67da44d8e6dd4e8`; CI run 38146965743 and
 
 The [S03 release and CLI evidence](../../build-log/daemon-portability/evidence/s03-v0.6.68-release-installed.json), [TUI packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/README.md) and [browser packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/README.md) record the verified results and limits. S03 is done.
 
-S04's pending-release candidate is `80457e31199d31f73c9dc891fbb17b343efc27b3` (tree `a754ecb025c4c39d86522979d0552ff314755c8f`), based on `ab2103ad8144e1f8d2b99f5717666fa2edbd5b6d`. Required CI is running. The final independent review attempt stopped before reading the candidate because the review API returned an insufficient-credit error; BK explicitly waived independent reviews until Anthropic is available again. The [S04 build log](../../build-log/daemon-portability/s04-archive-recovery.md) records the evidence limits: 17 CLI/IPC/HTTP and 3 MCP scenarios passed on immutable binary f718, whose production logic matches 804; this is not a build of the exact final candidate. Corrected and original Reading Archive journeys passed, and hook tests cover both completion orders. S04 is not merged or released. The regenerated API reference and docs build passed. Merge, release-please, published-artifact verification and installed-client TUI/browser acceptance remain before stage closure.
+S04 merged in [PR384](https://github.com/planetaryescape/mxr/pull/384) at
+`0153a25a967710c9ea6e86349f7d97d42dc8088e` (tree
+`a754ecb025c4c39d86522979d0552ff314755c8f`) after CI
+[38171005526](https://github.com/planetaryescape/mxr/actions/runs/38171005526)
+passed. Release PR385 merged at `14de28f1187d150e05a9f96f6eec12db60c7c9ab`
+after CI [38172214337](https://github.com/planetaryescape/mxr/actions/runs/38172214337)
+passed. Tag workflow
+[38172695106](https://github.com/planetaryescape/mxr/actions/runs/38172695106)
+published [v0.6.77](https://github.com/planetaryescape/mxr/releases/tag/v0.6.77)
+at 20:55:52 UTC. The mxr binary extracted from the macOS archive matches the installer and
+Homebrew binaries. Published-client acceptance passed 17 CLI/IPC/HTTP scenarios, 3 MCP
+scenarios, and installed TUI and browser recovery journeys on the same binary.
+S04 published-client acceptance is complete. The [acceptance packet](../../build-log/daemon-portability/evidence/s04-installed-v0.6.77/README.md)
+records the results, timing and limits; the [build log](../../build-log/daemon-portability/s04-archive-recovery.md)
+records implementation and check provenance. Live Gmail was skipped because
+test credentials were unavailable; installed UI journeys ran on macOS, while
+Linux artifacts were checksum-verified. BK waived independent reviews for the
+remaining readiness sequence until Anthropic is available again; other gates
+remain in force. S05 is split into download/open (S05a) and immutable upload
+bound to a saved draft (S05b).
 
 ## Unresolved choices affect later stages
 

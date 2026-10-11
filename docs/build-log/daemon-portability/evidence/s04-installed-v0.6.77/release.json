@@ -1,0 +1,51 @@
+{
+  "observed_at": "2026-10-11T20:58:46.940190+00:00",
+  "tag": "v0.6.77",
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "tree": "48e865128b372f567ec220a682782b5dadeafdea",
+  "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38172695106",
+  "release": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.77",
+  "downloads": [
+    {
+      "name": "mxr-v0.6.77-macos-aarch64.tar.gz",
+      "bytes": 60224851,
+      "sha256": "sha256:bac806c0f2173ed676998c11b1a8174a2440d607eca226c2d4a58eaae155d539",
+      "asset_id": 631784277,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.77/mxr-v0.6.77-macos-aarch64.tar.gz"
+    },
+    {
+      "name": "mxr-v0.6.77-macos-aarch64.tar.gz.sha256",
+      "bytes": 99,
+      "sha256": "sha256:6b3d9eafd09b8dcf525977123e89d0170c44c7a2f1596f433f6bc7822d8b4ab7",
+      "asset_id": 631784288,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.77/mxr-v0.6.77-macos-aarch64.tar.gz.sha256"
+    },
+    {
+      "name": "mxr-v0.6.77-linux-x86_64.tar.gz",
+      "bytes": 65227324,
+      "sha256": "sha256:23236447663c05406dae79c97a355d8e15fcc170c0d71849f017c2c4b92fca05",
+      "asset_id": 631784285,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.77/mxr-v0.6.77-linux-x86_64.tar.gz"
+    },
+    {
+      "name": "mxr-v0.6.77-linux-x86_64.tar.gz.sha256",
+      "bytes": 98,
+      "sha256": "sha256:59efee45f82c6351bf068c6975d4ba55a8dc77ecbdd377fba8a3b0e5f0c41760",
+      "asset_id": 631784287,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.77/mxr-v0.6.77-linux-x86_64.tar.gz.sha256"
+    }
+  ],
+  "binaries": {
+    "mxr": {
+      "sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+      "version": "mxr 0.6.77",
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-release/installer-bin/mxr"
+    },
+    "mxr-mailmerge": {
+      "sha256": "sha256:655c5f5d8d8d2c0dea3798d02707749a6176bf5cbfb1f90ae558263e6f9704d3",
+      "version": "mxr-mailmerge 0.6.77",
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-release/installer-bin/mxr-mailmerge"
+    }
+  },
+  "chime_player_sha256": "sha256:8d577aea94cea0a75d5e6b7b0ce3d6c4d2d8931b2721dcc3ac2af409b72ebb65"
+}

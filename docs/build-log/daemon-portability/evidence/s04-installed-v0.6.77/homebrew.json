@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-10-11T20:57:16.171080+00:00",
+  "version": "mxr 0.6.77",
+  "path": "/opt/homebrew/bin/mxr",
+  "resolved": "/opt/homebrew/Cellar/mxr/0.6.77/bin/mxr",
+  "path_entries": [
+    "/opt/homebrew/bin/mxr",
+    "/opt/homebrew/bin/mxr"
+  ],
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "personal_daemon_restarted": false,
+  "matches_published_archive_and_installer": true
+}

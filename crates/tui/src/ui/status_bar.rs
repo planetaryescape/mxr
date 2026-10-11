@@ -105,6 +105,23 @@ pub fn draw(
                     .fg(theme.warning)
                     .add_modifier(Modifier::BOLD),
             );
+
+            if Line::from(status.clone()).width() + spinner_width > available_width {
+                let total = state
+                    .total_count
+                    .map_or_else(|| "?".to_string(), |count| count.to_string());
+                status[0] = Span::raw(format!(
+                    "={} {}/{}= ",
+                    state.mailbox_name, state.unread_count, total
+                ));
+                status[2] = Span::raw(String::new());
+            }
+
+            if Line::from(status.clone()).width() + spinner_width > available_width {
+                // A long account label still gets the available cells before
+                // routine mailbox counts do.
+                status[0] = Span::raw(String::new());
+            }
         }
     }
 
@@ -266,21 +283,31 @@ mod tests {
     #[test]
     fn a_narrow_warning_keeps_the_account_and_retry_time_visible() {
         let mut warning = state(0, 0);
-        warning.busy = false;
+        warning.mailbox_name = "ALL MAIL".into();
+        warning.total_count = Some(166);
+        warning.unread_count = 77;
+        warning.starred_count = 7;
+        warning.body_status = Some("Latest mail 42m ago".into());
         warning.sync_status =
             Some("Latest mail 25m ago · Can't reach alex@demo.mxr.local, retrying 14:27".into());
         warning.compact_sync_status = Some("alex@demo.mxr.local: retrying 14:27".into());
+        warning.feature_health_status = Some("3 feature warnings".into());
         warning.sync_warning = true;
         let theme = crate::theme::Theme::default();
-        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(80, 1)).unwrap();
+        let spinner = ThrobberState::default();
+        // 74 cells is the warning area left by the demo chip in an 80-column
+        // terminal; the warning must survive the counts and freshness tails.
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(74, 1)).unwrap();
         terminal
-            .draw(|frame| draw(frame, frame.area(), &warning, None, &theme))
+            .draw(|frame| draw(frame, frame.area(), &warning, Some(&spinner), &theme))
             .unwrap();
         let line = text(terminal.backend().buffer());
         assert!(
             line.contains("! alex@demo.mxr.local: retrying 14:27"),
             "{line}"
         );
+        assert!(line.contains("=ALL MAIL 77/166="), "{line}");
         assert!(!line.contains("Latest mail"), "{line}");
+        assert!(!line.contains("feature warnings"), "{line}");
     }
 }

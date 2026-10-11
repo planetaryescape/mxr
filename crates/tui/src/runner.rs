@@ -1405,7 +1405,11 @@ pub async fn run() -> anyhow::Result<()> {
         for (generation, request) in category_requests {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let report_if_stale = matches!(&request, Request::UndoCategoryMembership { .. });
+                let report_if_stale = matches!(
+                    &request,
+                    Request::UndoCategoryMembership { .. }
+                        | Request::ApplyCategoryMembership { .. }
+                );
                 let view_category_id = match &request {
                     Request::ListCategoryMessages { category_id, .. } => Some(category_id.clone()),
                     _ => None,

@@ -34,9 +34,8 @@ impl App {
         if !state.visible || state.generation != generation {
             if report_if_stale {
                 match result {
-                    Ok(data) => {
-                        if let ResponseData::CategoryMembershipUndone { restored, skipped } = *data
-                        {
+                    Ok(data) => match *data {
+                        ResponseData::CategoryMembershipUndone { restored, skipped } => {
                             self.status_message = Some(if skipped == 0 {
                                 format!("Restored {restored} category assignment(s)")
                             } else {
@@ -45,9 +44,30 @@ impl App {
                                 )
                             });
                         }
-                    }
+                        ResponseData::CategoryMembershipApplied {
+                            mutation_id,
+                            added,
+                            removed,
+                        } if added + removed > 0 => {
+                            let count = added + removed;
+                            self.pending_undo = Some(PendingUndo {
+                                action: UndoAction::CategoryMembership(mutation_id),
+                                verb_past: "Updated category assignments".into(),
+                                count,
+                                applied_at: std::time::Instant::now(),
+                            });
+                            self.status_message = Some(format!(
+                                "Added {added}, removed {removed} category assignment(s) · u to undo"
+                            ));
+                        }
+                        ResponseData::CategoryMembershipApplied { .. } => {
+                            self.status_message =
+                                Some("Category assignments were unchanged".into());
+                        }
+                        _ => {}
+                    },
                     Err(error) => {
-                        self.status_message = Some(format!("Category undo failed: {error}"));
+                        self.status_message = Some(format!("Category operation failed: {error}"));
                     }
                 }
             }
@@ -92,6 +112,7 @@ impl App {
                         }
                     } else if state.name_action.is_some() {
                         state.name_action = None;
+                        state.name_preview_pending = false;
                         state.input.clear();
                         self.pending_category_requests
                             .push((generation, Request::ListCategories { account_id: None }));
@@ -105,8 +126,8 @@ impl App {
                     normalized_name,
                     available,
                 } => {
-                    state.name_preview_pending = false;
                     if !available {
+                        state.name_preview_pending = false;
                         state.error = Some(format!("‘{normalized_name}’ is already in use"));
                         return;
                     }
@@ -154,15 +175,19 @@ impl App {
                     let count = added + removed;
                     state.membership_preview = None;
                     state.staged.clear();
-                    self.pending_undo = Some(PendingUndo {
-                        action: UndoAction::CategoryMembership(mutation_id),
-                        verb_past: "Updated category assignments".into(),
-                        count,
-                        applied_at: std::time::Instant::now(),
-                    });
-                    self.status_message = Some(format!(
-                        "Added {added}, removed {removed} category assignment(s) · u to undo"
-                    ));
+                    if count > 0 {
+                        self.pending_undo = Some(PendingUndo {
+                            action: UndoAction::CategoryMembership(mutation_id),
+                            verb_past: "Updated category assignments".into(),
+                            count,
+                            applied_at: std::time::Instant::now(),
+                        });
+                        self.status_message = Some(format!(
+                            "Added {added}, removed {removed} category assignment(s) · u to undo"
+                        ));
+                    } else {
+                        self.status_message = Some("Category assignments were unchanged".into());
+                    }
                     let categories = state
                         .categories
                         .iter()
@@ -251,9 +276,14 @@ impl App {
         }
         let generation = state.generation;
         if state.name_action.is_some() {
+            if state.name_preview_pending && key.code != KeyCode::Esc {
+                return true;
+            }
             match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) => {
+                    state.generation = state.generation.wrapping_add(1);
                     state.name_action = None;
+                    state.name_preview_pending = false;
                     state.input.clear();
                     state.error = None;
                 }
@@ -267,8 +297,10 @@ impl App {
                         };
                         state.name_preview_pending = true;
                         state.error = None;
+                        state.generation = state.generation.wrapping_add(1);
+                        let name_generation = state.generation;
                         self.pending_category_requests.push((
-                            generation,
+                            name_generation,
                             Request::PreviewCategoryName {
                                 category_id,
                                 name: state.input.clone(),
@@ -299,7 +331,7 @@ impl App {
                                 preview_token: preview.preview_token,
                             },
                         ));
-                        state.loading = true;
+                        state.close();
                     }
                 }
                 _ => {}
@@ -323,6 +355,27 @@ impl App {
                 _ => {}
             }
             return true;
+        }
+        if state.filtering {
+            match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
+                    state.filtering = false;
+                    state.input.clear();
+                    state.selected = 0;
+                    return true;
+                }
+                (KeyCode::Backspace, _) => {
+                    state.input.pop();
+                    state.selected = 0;
+                    return true;
+                }
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) if !c.is_control() => {
+                    state.input.push(c);
+                    state.selected = 0;
+                    return true;
+                }
+                _ => {}
+            }
         }
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) if state.filtering => {
@@ -453,7 +506,11 @@ impl App {
                     if *assigned && !original {
                         add.push(category_id.clone());
                     }
-                    if !*assigned && original {
+                    let originally_assigned = state
+                        .memberships
+                        .get(category_id)
+                        .is_some_and(|membership| membership.assigned_messages > 0);
+                    if !*assigned && originally_assigned {
                         remove.push(category_id.clone());
                     }
                 }
@@ -601,13 +658,14 @@ mod tests {
             })),
         );
         assert!(app.handle_personal_category_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+        assert!(!app.modals.personal_categories.visible);
         assert!(matches!(
             app.pending_category_requests.pop().map(|(_, request)| request),
             Some(Request::ApplyCategoryMembership { preview_token }) if preview_token == "preview"
         ));
         app.handle_personal_category_result(
             generation,
-            false,
+            true,
             None,
             Ok(Box::new(ResponseData::CategoryMembershipApplied {
                 mutation_id: "membership-mutation".into(),
@@ -618,6 +676,21 @@ mod tests {
         assert!(matches!(
             app.pending_undo.as_ref().map(|undo| &undo.action),
             Some(UndoAction::CategoryMembership(id)) if id == "membership-mutation"
+        ));
+        let previous_undo = app.pending_undo.clone();
+        app.handle_personal_category_result(
+            generation,
+            true,
+            None,
+            Ok(Box::new(ResponseData::CategoryMembershipApplied {
+                mutation_id: "empty-mutation".into(),
+                added: 0,
+                removed: 0,
+            })),
+        );
+        assert!(matches!(
+            (app.pending_undo.as_ref(), previous_undo.as_ref()),
+            (Some(current), Some(previous)) if current.action == previous.action
         ));
     }
 
@@ -674,5 +747,107 @@ mod tests {
         assert!(app.modals.personal_categories.view_loading);
         assert!(app.modals.personal_categories.view_messages.is_empty());
         assert_eq!(app.modals.personal_categories.viewing, Some(current));
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        assert!(app.handle_personal_category_key(KeyEvent::new(code, KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn filter_text_takes_precedence_over_catalog_and_assignment_shortcuts() {
+        let mut app = App::new();
+        app.apply(Action::OpenPersonalCategories);
+        app.modals
+            .personal_categories
+            .set_categories(vec![category(mxr_core::CategoryId::new(), "Travel")]);
+        press(&mut app, KeyCode::Char('/'));
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(app.modals.personal_categories.input, "r");
+        assert!(app.modals.personal_categories.name_action.is_none());
+
+        app.modals.personal_categories.close();
+        app.modals
+            .personal_categories
+            .open(CategorySurface::Assign, vec![MessageId::new()]);
+        app.modals
+            .personal_categories
+            .set_categories(vec![category(mxr_core::CategoryId::new(), "Travel")]);
+        press(&mut app, KeyCode::Char('/'));
+        for letter in "Travel".chars() {
+            press(&mut app, KeyCode::Char(letter));
+        }
+        assert_eq!(app.modals.personal_categories.input, "Travel");
+        assert_eq!(
+            app.modals.personal_categories.surface,
+            Some(CategorySurface::Assign)
+        );
+    }
+
+    #[test]
+    fn removing_a_staged_partial_membership_previews_its_removal() {
+        let mut app = App::new();
+        app.modals
+            .personal_categories
+            .open(CategorySurface::Assign, vec![MessageId::new()]);
+        let category_id = mxr_core::CategoryId::new();
+        let picker = &mut app.modals.personal_categories;
+        picker.set_categories(vec![category(category_id.clone(), "Travel")]);
+        picker.memberships.insert(
+            category_id.clone(),
+            mxr_core::types::CategoryMembershipState {
+                category_id: category_id.clone(),
+                selected_messages: 2,
+                assigned_messages: 1,
+            },
+        );
+        picker.staged.insert(category_id.clone(), false);
+        press(&mut app, KeyCode::Enter);
+        let Request::PreviewCategoryMembership {
+            add_category_ids,
+            remove_category_ids,
+            ..
+        } = app.pending_category_requests.pop().unwrap().1
+        else {
+            panic!("expected membership preview");
+        };
+        assert!(add_category_ids.is_empty());
+        assert_eq!(remove_category_ids, vec![category_id]);
+    }
+
+    #[test]
+    fn late_name_preview_cannot_apply_to_a_new_name_action() {
+        let mut app = App::new();
+        app.apply(Action::OpenPersonalCategories);
+        app.pending_category_requests.clear();
+        press(&mut app, KeyCode::Char('n'));
+        for letter in "Alpha".chars() {
+            press(&mut app, KeyCode::Char(letter));
+        }
+        press(&mut app, KeyCode::Enter);
+        let (old_generation, old_request) = app.pending_category_requests.pop().unwrap();
+        assert!(matches!(old_request, Request::PreviewCategoryName { .. }));
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.modals.personal_categories.input, "Alpha");
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('n'));
+        for letter in "Beta".chars() {
+            press(&mut app, KeyCode::Char(letter));
+        }
+
+        app.handle_personal_category_result(
+            old_generation,
+            false,
+            None,
+            Ok(Box::new(ResponseData::CategoryNamePreview {
+                normalized_name: "Alpha".into(),
+                available: true,
+            })),
+        );
+        assert_eq!(app.modals.personal_categories.input, "Beta");
+        assert!(matches!(
+            app.modals.personal_categories.name_action,
+            Some(CategoryNameAction::Create)
+        ));
+        assert!(app.pending_category_requests.is_empty());
     }
 }

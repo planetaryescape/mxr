@@ -28,6 +28,7 @@ pub struct PersonalCategoryPicker {
     pub filtering: bool,
     pub categories: Vec<PersonalCategory>,
     pub selected: usize,
+    pub list_state: ListState,
     pub message_ids: Vec<MessageId>,
     pub memberships: HashMap<CategoryId, CategoryMembershipState>,
     pub staged: HashMap<CategoryId, bool>,
@@ -72,6 +73,7 @@ impl PersonalCategoryPicker {
         self.selected = self
             .selected
             .min(self.visible_indices().len().saturating_sub(1));
+        self.list_state.select(Some(self.selected));
     }
 
     pub fn set_memberships(&mut self, memberships: Vec<CategoryMembershipState>) {
@@ -213,7 +215,7 @@ pub fn draw(
             .as_ref()
             .and_then(|id| picker.categories.iter().find(|category| &category.id == id))
             .map_or("Category", |category| category.name.as_str());
-        let mut lines = vec![Line::from(Span::styled(
+        let header = Line::from(Span::styled(
             format!(
                 "{name} · {} of {} message(s){}",
                 picker.view_messages.len(),
@@ -225,18 +227,37 @@ pub fn draw(
                 }
             ),
             Style::default().fg(theme.text_primary).bold(),
-        ))];
-        lines.extend(
-            picker
-                .view_messages
-                .iter()
-                .take(inner.height.saturating_sub(1) as usize)
-                .map(|mail| Line::from(format!("{}  {}", mail.from.email, mail.subject))),
-        );
+        ));
         if picker.view_messages.is_empty() {
-            lines.push(Line::from("No messages in this category"));
+            frame.render_widget(
+                Paragraph::new(vec![header, Line::from("No messages in this category")])
+                    .wrap(Wrap { trim: true }),
+                inner,
+            );
+            return;
         }
-        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), inner);
+        let header_area = Rect::new(inner.x, inner.y, inner.width, 1);
+        frame.render_widget(Paragraph::new(header), header_area);
+        let list_area = Rect::new(
+            inner.x,
+            inner.y.saturating_add(1),
+            inner.width,
+            inner.height.saturating_sub(1),
+        );
+        let items = picker
+            .view_messages
+            .iter()
+            .map(|mail| ListItem::new(format!("{}  {}", mail.from.email, mail.subject)))
+            .collect::<Vec<_>>();
+        let mut list_state = picker.list_state.clone();
+        list_state.select(Some(picker.selected));
+        frame.render_stateful_widget(
+            List::new(items)
+                .highlight_style(theme.highlight_style())
+                .highlight_symbol("> "),
+            list_area,
+            &mut list_state,
+        );
         return;
     }
 
@@ -278,19 +299,19 @@ pub fn draw(
     let items = picker
         .visible_indices()
         .iter()
-        .enumerate()
-        .take(list_area.height as usize)
-        .map(|(row, index)| {
+        .map(|index| {
             let category = &picker.categories[*index];
             let state = picker.memberships.get(&category.id);
             let full = state.is_some_and(|state| {
                 state.selected_messages > 0 && state.assigned_messages == state.selected_messages
             });
-            let assigned = picker.staged.get(&category.id).copied().unwrap_or(full);
+            let staged = picker.staged.get(&category.id).copied();
+            let assigned = staged.unwrap_or(full);
             let marker = if picker.surface == Some(CategorySurface::Assign) {
-                if assigned {
+                if staged == Some(true) || (staged.is_none() && assigned) {
                     "[x]"
-                } else if state.is_some_and(|state| state.assigned_messages > 0) {
+                } else if staged.is_none() && state.is_some_and(|state| state.assigned_messages > 0)
+                {
                     "[-]"
                 } else {
                     "[ ]"
@@ -308,12 +329,7 @@ pub fn draw(
                 category.name,
                 (list_area.width as usize).saturating_sub(10)
             );
-            let style = if row == picker.selected {
-                theme.highlight_style()
-            } else {
-                Style::default()
-            };
-            ListItem::new(line).style(style)
+            ListItem::new(line)
         })
         .collect::<Vec<_>>();
     if items.is_empty() {
@@ -324,13 +340,39 @@ pub fn draw(
         };
         frame.render_widget(Paragraph::new(message), list_area);
     } else {
-        frame.render_widget(List::new(items), list_area);
+        let mut list_state = picker.list_state.clone();
+        list_state.select(Some(picker.selected));
+        frame.render_stateful_widget(
+            List::new(items)
+                .highlight_style(theme.highlight_style())
+                .highlight_symbol("> "),
+            list_area,
+            &mut list_state,
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn render(picker: &PersonalCategoryPicker) -> String {
+        let theme = crate::theme::Theme::default();
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24))
+            .expect("test terminal");
+        terminal
+            .draw(|frame| draw(frame, frame.area(), picker, &theme))
+            .expect("render categories");
+        let buffer = terminal.backend().buffer();
+        (0..24)
+            .map(|row| {
+                (0..80)
+                    .map(|column| buffer[(column, row)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn assignment_picker_is_readable_at_eighty_columns() {
@@ -343,22 +385,81 @@ mod tests {
             total_count: 0,
         }]);
         picker.loading = false;
-        let theme = crate::theme::Theme::default();
-        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24))
-            .expect("test terminal");
-        terminal
-            .draw(|frame| draw(frame, frame.area(), &picker, &theme))
-            .expect("render categories");
-        let buffer = terminal.backend().buffer();
-        let rendered = (0..24)
-            .map(|row| {
-                (0..80)
-                    .map(|column| buffer[(column, row)].symbol())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let rendered = render(&picker);
         assert!(rendered.contains("Travel"), "{rendered}");
         assert!(rendered.contains("Assign Category"), "{rendered}");
+    }
+
+    #[test]
+    fn catalog_selection_scrolls_past_the_first_viewport() {
+        let mut picker = PersonalCategoryPicker::default();
+        picker.open(CategorySurface::Catalog, Vec::new());
+        picker.set_categories(
+            (0..43)
+                .map(|index| PersonalCategory {
+                    id: CategoryId::new(),
+                    name: format!("Category {index:02}"),
+                    unread_count: 0,
+                    total_count: 0,
+                })
+                .collect(),
+        );
+        picker.selected = 35;
+        let rendered = render(&picker);
+        assert!(rendered.contains("Category 35"), "{rendered}");
+        assert!(!rendered.contains("Category 00"), "{rendered}");
+    }
+
+    #[test]
+    fn category_messages_scroll_and_highlight_the_selected_row() {
+        let mut picker = PersonalCategoryPicker::default();
+        let category_id = CategoryId::new();
+        picker.open(CategorySurface::View, Vec::new());
+        picker.surface = Some(CategorySurface::View);
+        picker.categories = vec![PersonalCategory {
+            id: category_id.clone(),
+            name: "Travel".into(),
+            unread_count: 0,
+            total_count: 40,
+        }];
+        picker.viewing = Some(category_id);
+        picker.view_messages = (0..40)
+            .map(|index| {
+                crate::test_fixtures::TestEnvelopeBuilder::new()
+                    .subject(format!("Subject {index:02}"))
+                    .build()
+            })
+            .collect();
+        picker.view_total = 40;
+        picker.selected = 28;
+        let rendered = render(&picker);
+        assert!(rendered.contains("Subject 28"), "{rendered}");
+        assert!(!rendered.contains("Subject 00"), "{rendered}");
+        assert!(rendered.contains("> "), "{rendered}");
+    }
+
+    #[test]
+    fn staged_removal_renders_unchecked_even_for_partial_membership() {
+        let mut picker = PersonalCategoryPicker::default();
+        let category_id = CategoryId::new();
+        picker.open(CategorySurface::Assign, vec![MessageId::new()]);
+        picker.set_categories(vec![PersonalCategory {
+            id: category_id.clone(),
+            name: "Travel".into(),
+            unread_count: 0,
+            total_count: 0,
+        }]);
+        picker.memberships.insert(
+            category_id.clone(),
+            CategoryMembershipState {
+                category_id: category_id.clone(),
+                selected_messages: 2,
+                assigned_messages: 1,
+            },
+        );
+        picker.staged.insert(category_id, false);
+        let rendered = render(&picker);
+        assert!(rendered.contains("[ ] Travel"), "{rendered}");
+        assert!(!rendered.contains("[-] Travel"), "{rendered}");
     }
 }

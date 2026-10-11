@@ -11,5 +11,5 @@ Arguments:
 
 Options:
       --submit
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+      --format <FORMAT>  Output format: table, json, jsonl, ids
   -h, --help             Print help

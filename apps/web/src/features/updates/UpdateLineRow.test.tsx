@@ -144,6 +144,33 @@ describe("UpdateLineRow", () => {
     expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel on its way");
   });
 
+  test("details render repeated item records without duplicate React keys", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { row } = renderLine(
+        lineFixture({
+          source_name: "Bookshop",
+          fact: "Parcel on its way",
+          tracker: {
+            kind: "parcel",
+            state: "in_transit",
+            state_label: "on its way",
+            outcome: "progress",
+            items: [
+              { name: "Blue notebook", quantity: 1 },
+              { name: "Blue notebook", quantity: 1 },
+            ],
+          },
+        }),
+      );
+      fireEvent.click(within(row).getByText("Details"));
+      expect(within(row).getAllByRole("listitem")).toHaveLength(2);
+      expect(consoleError.mock.calls.flat().join(" ")).not.toContain("same key");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   test("same-merchant parcels remain distinguishable by their full references", () => {
     const first = lineFixture({
       id: "parcel-1",

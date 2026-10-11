@@ -212,8 +212,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
                 <div className="mt-1 w-full space-y-1 break-words pl-1">
                   {parcelItems.length > 0 ? (
                     <ul aria-label="Available parcel items" className="list-inside list-disc">
-                      {parcelItems.map((item) => (
-                        <li key={`${item.name}:${item.quantity ?? ""}`}>
+                      {parcelItems.map((item, itemIndex) => (
+                        // DTOs allow duplicate records and provide no stable item ID; this disclosure list is static.
+                        // oxlint-disable-next-line react/no-array-index-key
+                        <li key={`${itemIndex}:${item.name}:${item.quantity ?? ""}`}>
                           {item.name}{item.quantity !== undefined ? ` · quantity ${item.quantity}` : ""}
                         </li>
                       ))}

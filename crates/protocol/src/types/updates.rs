@@ -418,7 +418,7 @@ mod tests {
             "detail": "Expected by Thu 8 Oct",
             "delivery_id": "d1"
         }))
-        .unwrap();
+        .expect("old UpdateTrackerData payload should deserialize");
         assert!(old.items.is_empty());
         assert_eq!(old.detail.as_deref(), Some("Expected by Thu 8 Oct"));
 
@@ -438,7 +438,7 @@ mod tests {
             tracking_number: Some("TRACK-123".into()),
             order_number: Some("ORDER-9".into()),
         })
-        .unwrap();
+        .expect("UpdateTrackerData should serialize");
         assert_eq!(json["tracking_number"], "TRACK-123");
         assert_eq!(json["order_number"], "ORDER-9");
         assert_eq!(json["items"][0]["name"], "Book");

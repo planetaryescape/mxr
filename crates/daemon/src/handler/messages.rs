@@ -924,6 +924,8 @@ async fn conversation(
                     .unwrap_or_default(),
                 ask_quote,
                 text: body,
+                source: text.map(|t| t.source),
+                has_preserved_context: text.is_some_and(|t| t.has_preserved_context),
             }
         })
         .collect();

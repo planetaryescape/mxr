@@ -984,7 +984,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_person",
-        description = "One person's page from Messages: how the user knows them, every topic with them, and the selected topic as a conversation where each message is its new text (what it adds to the thread), with a trimmed flag when quotes or a signature were removed. person: a row id from mxr_messages (person:<email>, group:<thread>) or an address. Use mxr_read_message with include_body=true for a message as sent. Read-only."
+        description = "One person's page from Messages: how the user knows them, every topic with them, and the selected topic as a conversation where each message is its new text (what it adds to the thread), with trim flags for signatures and repeated trailing history. Inline questions and forwarded context can remain beside answers. person: a row id from mxr_messages (person:<email>, group:<thread>) or an address. Use mxr_read_message with include_body=true for a message as sent. Read-only."
     )]
     pub async fn person(
         &self,

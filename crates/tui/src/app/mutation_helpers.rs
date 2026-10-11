@@ -641,7 +641,11 @@ impl App {
     pub fn finish_pending_mutation(&mut self) {
         self.pending_mutation_count = self.pending_mutation_count.saturating_sub(1);
         if self.pending_mutation_count == 0 {
-            self.pending_mutation_status = None;
+            if let Some(progress) = self.pending_mutation_status.take() {
+                if self.status_message.as_deref() == Some(progress.as_str()) {
+                    self.status_message = None;
+                }
+            }
             self.mutation_batch_total = 0;
         }
     }

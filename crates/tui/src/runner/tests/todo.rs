@@ -81,6 +81,21 @@ fn e_ticks_off_at_once_and_u_puts_it_back() {
         "Send the form",
         "the row folds away and the next takes the cursor"
     );
+    assert_eq!(app.status_message.as_deref(), Some("Ticking off..."));
+    app.finish_pending_mutation();
+    app.apply_mutation_completion(MutationEffect::Todo("Ticked off 1 to-do".into()), true);
+    assert_eq!(app.pending_mutation_count, 0);
+    assert_eq!(app.status_message, None);
+    assert_eq!(
+        app.mailbox.todo_page.runway_rows()[0].title,
+        "Send the form"
+    );
+    assert!(app
+        .toasts
+        .visible(std::time::Instant::now())
+        .iter()
+        .any(|toast| toast.text == "Ticked off 1 to-do"));
+
     // The daemon's answer offers undo; `u` sends it.
     app.set_pending_undo(crate::app::PendingUndo {
         action: crate::app::UndoAction::Todos(vec!["todo_1".into()]),
@@ -97,6 +112,49 @@ fn e_ticks_off_at_once_and_u_puts_it_back() {
             ..
         }]
     ));
+}
+
+#[test]
+fn mutation_completion_clears_only_its_final_progress_status() {
+    let mut app = todo_app(true);
+    app.pending_mutation_count = 2;
+    app.pending_mutation_status = Some("Ticking off...".into());
+    app.status_message = Some("Ticking off...".into());
+
+    app.finish_pending_mutation();
+    assert_eq!(app.pending_mutation_count, 1);
+    assert_eq!(
+        app.pending_mutation_status.as_deref(),
+        Some("Ticking off...")
+    );
+    assert_eq!(app.status_message.as_deref(), Some("Ticking off..."));
+
+    app.status_message = Some("Search results updated".into());
+    app.finish_pending_mutation();
+    assert_eq!(app.pending_mutation_count, 0);
+    assert_eq!(app.pending_mutation_status, None);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Search results updated")
+    );
+}
+
+#[test]
+fn mutation_failure_replaces_retired_progress_with_the_error() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char('e'));
+    let queued = app.pending_mutation_queue[0].clone();
+
+    app.finish_pending_mutation();
+    app.handle_mutation_failure_result(
+        queued.id,
+        queued.best_effort,
+        &mxr_core::MxrError::Ipc("daemon rejected the to-do update".into()),
+    );
+
+    let error = app.modals.error.as_ref().unwrap();
+    assert!(error.detail.contains("daemon rejected the to-do update"));
+    assert_ne!(app.status_message.as_deref(), Some("Ticking off..."));
 }
 
 #[test]

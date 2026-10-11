@@ -435,6 +435,18 @@ fn render_person(page: &PersonPageData, format: OutputFormat) -> anyhow::Result<
             for line in message.text.lines() {
                 let _ = writeln!(out, "{indent}  {}", terminal_text(line));
             }
+            if message.source == Some(mxr_protocol::MessageTextSourceData::ProviderSnippet) {
+                let detail = if message.text.trim().is_empty() {
+                    "No provider preview is available; the full message is unavailable"
+                } else {
+                    "Provider preview only; the full message is unavailable"
+                };
+                let _ = writeln!(
+                    out,
+                    "{indent}  ({detail}; try `mxr cat {}`)",
+                    message.message_id
+                );
+            }
             for attachment in &message.attachments {
                 let _ = writeln!(
                     out,

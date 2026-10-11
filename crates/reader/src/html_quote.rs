@@ -55,6 +55,8 @@ pub struct HtmlParts {
     pub main: String,
     pub has_quote: bool,
     pub has_signature: bool,
+    /// A marked quote was kept because authored text follows it.
+    pub has_preserved_quote: bool,
 }
 
 /// Remove the marked quote and signature from `html`. A body that is
@@ -64,6 +66,7 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
         main: html.to_string(),
         has_quote: false,
         has_signature: false,
+        has_preserved_quote: false,
     };
     // Cheap check first: most mail carries none of the markers.
     let lower = html.to_ascii_lowercase();
@@ -91,6 +94,7 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
     let mut doc = Html::parse_document(html);
     let mut has_signature = false;
     let mut has_quote = false;
+    let mut has_preserved_quote = false;
     let mut doomed = Vec::new();
 
     for selector in SIGNATURES.iter() {
@@ -105,6 +109,13 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
     }
     for selector in QUOTES.iter() {
         for element in doc.select(selector) {
+            if has_text_after(element) || contains_forwarded_headers(element) {
+                // A reply after the citation may answer it inline. Keep the
+                // marked block so HTML-to-text conversion preserves its
+                // position beside the answer.
+                has_preserved_quote = true;
+                continue;
+            }
             has_quote = true;
             doomed.push(element.id());
         }
@@ -120,6 +131,7 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
         // A bare forward: the quote is the message.
         return HtmlParts {
             has_signature,
+            has_preserved_quote,
             ..unchanged()
         };
     }
@@ -127,7 +139,15 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
         main: doc.root_element().html(),
         has_quote,
         has_signature,
+        has_preserved_quote,
     }
+}
+
+fn contains_forwarded_headers(element: ElementRef<'_>) -> bool {
+    let text = element.text().collect::<String>().to_ascii_lowercase();
+    text.contains("forwarded message")
+        && text.contains("from:")
+        && (text.contains("date:") || text.contains("subject:"))
 }
 
 fn first_in_document_order<'a>(doc: &'a Html, selectors: &[Selector]) -> Option<ElementRef<'a>> {
@@ -142,6 +162,59 @@ fn first_in_document_order<'a>(doc: &'a Html, selectors: &[Selector]) -> Option<
                 .iter()
                 .position(|id| *id == element.id())
                 .unwrap_or(usize::MAX)
+        })
+}
+
+fn has_text_after(element: ElementRef<'_>) -> bool {
+    let mut current = Some(*element);
+    while let Some(here) = current {
+        let is_body = here
+            .value()
+            .as_element()
+            .is_some_and(|element| element.name() == "body");
+        if is_body {
+            break;
+        }
+        let mut sibling = here.next_sibling();
+        while let Some(next) = sibling {
+            if has_authored_text(next) {
+                return true;
+            }
+            sibling = next.next_sibling();
+        }
+        current = here.parent();
+    }
+    false
+}
+
+fn has_authored_text(node: ego_tree::NodeRef<'_, scraper::node::Node>) -> bool {
+    node.descendants()
+        .filter_map(|descendant| descendant.value().as_text().map(|text| (descendant, text)))
+        .any(|(descendant, text)| {
+            if text.trim().is_empty() {
+                return false;
+            }
+            !descendant
+                .ancestors()
+                .filter_map(ElementRef::wrap)
+                .any(|ancestor| {
+                    let element = ancestor.value();
+                    let class = element.attr("class").unwrap_or("");
+                    let id = element.attr("id").unwrap_or("");
+                    (element.name() == "blockquote" && element.attr("type") == Some("cite"))
+                        || [
+                            "gmail_quote",
+                            "yahoo_quoted",
+                            "moz-cite-prefix",
+                            "gmail_signature",
+                            "moz-signature",
+                        ]
+                        .iter()
+                        .any(|marker| class.split_whitespace().any(|class| class == *marker))
+                        || ["Signature", "divRplyFwdMsg", "appendonsend"]
+                            .iter()
+                            .any(|marker| id.eq_ignore_ascii_case(marker))
+                })
         })
 }
 
@@ -184,13 +257,13 @@ mod tests {
     }
 
     #[test]
-    fn apple_cite_blockquote_is_removed_and_inline_reply_kept() {
+    fn apple_cite_blockquote_stays_when_authored_text_follows() {
         let html = r#"<html><body><div>Yes, send it.</div><blockquote type="cite"><div>Shall I send the deck?</div></blockquote><div>One more thing: copy Ruth.</div></body></html>"#;
         let parts = split_html_quote(html);
-        assert!(parts.has_quote);
+        assert!(!parts.has_quote);
         assert!(parts.main.contains("Yes, send it."));
         assert!(parts.main.contains("copy Ruth"));
-        assert!(!parts.main.contains("Shall I send"));
+        assert!(parts.main.contains("Shall I send"));
     }
 
     #[test]

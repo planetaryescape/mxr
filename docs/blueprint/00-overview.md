@@ -48,7 +48,7 @@ mxr sits in the gap: a modern terminal email client with the keyboard UX of a we
 | Saved searches as core primitive | No | No | No | Yes |
 | Command palette (Ctrl-P) | No | No | No | Yes |
 | $EDITOR compose with YAML frontmatter | Partial | Partial | Yes | Yes |
-| Reader mode (signature/quote stripping) | No | No | No | Yes |
+| Reader mode (signature and trailing-history cleanup) | No | No | No | Yes |
 | One-key unsubscribe (RFC 2369) | No | No | No | Yes |
 | Local snooze with inbox-zero workflow | No | No | No | Yes |
 | Deterministic rules engine | procmail | No | No | Yes |

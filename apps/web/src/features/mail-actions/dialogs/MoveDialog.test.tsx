@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { MessageRowView, MutationResponse } from "@/features/mailbox/types";
 
@@ -34,6 +34,11 @@ const mutations = vi.hoisted(() => ({
     vi.fn<(action: string, ids: string[], options?: unknown) => Promise<unknown>>(),
 }));
 vi.mock("../mailMutations", () => mutations);
+
+const realSetTimeout = globalThis.setTimeout;
+
+// Drain Radix's focus-scope unmount timer before Vitest tears down jsdom globals.
+afterAll(() => new Promise<void>((resolve) => realSetTimeout(resolve, 0)));
 
 function row(id: string): MessageRowView {
   return {

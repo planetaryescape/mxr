@@ -292,6 +292,25 @@ async fn slice6_routes_dispatch_correct_request_variants() {
                     },
                 },
             }),
+            Request::SyncNow {
+                account_id: None,
+                background: true,
+            } => Some(Response::Ok {
+                data: ResponseData::Ack,
+            }),
+            Request::SyncAll => Some(Response::Ok {
+                data: ResponseData::SyncBatch {
+                    results: vec![mxr_protocol::SyncAccountResult {
+                        account_id: AccountId::new(),
+                        account_name: "Work".into(),
+                        result: mxr_protocol::SyncAccountResultKind::Started,
+                        error: None,
+                    }],
+                },
+            }),
+            Request::PreviewSyncAll => Some(Response::Ok {
+                data: ResponseData::SyncPlan { targets: vec![] },
+            }),
             _ => None,
         },
         None,
@@ -318,6 +337,40 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["pong"], true);
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        json["ok"], true,
+        "legacy route still acknowledges default sync"
+    );
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync/all"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["results"][0]["account_name"], "Work");
+    assert_eq!(json["results"][0]["result"], "started");
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync/preview"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["targets"], serde_json::json!([]));
 
     // ResponseData uses #[serde(tag = "kind")] (internally tagged), so
     // the JSON shape is {"kind": "Variant", ...fields}.
@@ -5880,4 +5933,142 @@ async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identit
         Err(BridgeError::BadRequest(_))
     ));
     remove_compose_file(&path).await.unwrap();
+}
+
+#[tokio::test]
+async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
+    for protocol_version in [4, 5] {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
+        let recorded_requests = requests.clone();
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| {
+                recorded_requests.lock().unwrap().push(request.clone());
+                let data = match request {
+                    Request::GetStatus => status_for_protocol(protocol_version),
+                    Request::SyncAll => ResponseData::SyncBatch {
+                        results: Vec::new(),
+                    },
+                    Request::PreviewSyncAll => ResponseData::SyncPlan {
+                        targets: Vec::new(),
+                    },
+                    _ => return None,
+                };
+                Some(Response::Ok { data })
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+
+        for path in ["/api/v1/mail/sync/all", "/api/v1/mail/sync/preview"] {
+            let response = client
+                .post(format!("http://{addr}{path}"))
+                .bearer_auth(TEST_AUTH_TOKEN)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::UPGRADE_REQUIRED);
+            let body: serde_json::Value = response.json().await.unwrap();
+            assert_eq!(body["code"], "protocol_mismatch");
+            assert_eq!(body["details"]["required_protocol"], 6);
+            assert_eq!(body["details"]["actual_protocol"], protocol_version);
+            assert!(body["error"]
+                .as_str()
+                .unwrap()
+                .contains("Update or restart mxr"));
+        }
+
+        let unauthorized = client
+            .post(format!("http://{addr}/api/v1/mail/sync/all"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 2, "unauthorized calls must not probe IPC");
+        assert!(requests
+            .iter()
+            .all(|request| matches!(request, Request::GetStatus)));
+    }
+}
+
+#[tokio::test]
+async fn global_sync_endpoints_dispatch_after_protocol_six_check() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
+    let recorded_requests = requests.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            recorded_requests.lock().unwrap().push(request.clone());
+            let data = match request {
+                Request::GetStatus => status_for_protocol(6),
+                Request::SyncAll => ResponseData::SyncBatch {
+                    results: Vec::new(),
+                },
+                Request::PreviewSyncAll => ResponseData::SyncPlan {
+                    targets: Vec::new(),
+                },
+                _ => return None,
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    for path in ["/api/v1/mail/sync/all", "/api/v1/mail/sync/preview"] {
+        let response = client
+            .post(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+
+    let requests = requests.lock().unwrap();
+    assert!(matches!(
+        requests.as_slice(),
+        [
+            Request::GetStatus,
+            Request::SyncAll,
+            Request::GetStatus,
+            Request::PreviewSyncAll
+        ]
+    ));
+}
+
+fn status_for_protocol(protocol_version: u32) -> ResponseData {
+    let mut status = sample_status();
+    if let ResponseData::Status {
+        protocol_version: status_version,
+        ..
+    } = &mut status
+    {
+        *status_version = protocol_version;
+    }
+    status
 }

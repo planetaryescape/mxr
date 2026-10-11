@@ -7,26 +7,106 @@
 import { RefreshCw, Route as RouteIcon, Sparkles, UserSearch } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch, BridgeRequestError } from "@/api/client";
+import type { components } from "@/api/generated";
 import type { Action } from "@/lib/actions/types";
-import { useConnectionStore } from "@/state/connectionStore";
+import { fetchBridgeHealth } from "@/lib/bridgeHealth";
+import {
+  buildProtocolUpdateSteps,
+  evaluateProtocolCompatibility,
+} from "@/lib/protocolCompatibility";
 import { useModals } from "@/state/modalStore";
 
 export async function syncNow(): Promise<void> {
-  if (useConnectionStore.getState().syncProgress) {
-    toast.info("A sync is already running");
+  try {
+    const health = await fetchBridgeHealth();
+    const mismatch = evaluateProtocolCompatibility(health);
+    if (mismatch) {
+      toast.error("Update mxr to sync all accounts", {
+        description: protocolMismatchDescription(),
+      });
+      return;
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    toast.error("Couldn't verify mxr compatibility", {
+      description: `mxr couldn't be reached, so sync wasn't started. (${reason})`,
+    });
     return;
   }
+
   try {
-    await apiFetch<unknown>("/api/v1/mail/sync", { method: "POST", body: {} });
-    toast.success("Sync started", { description: "Progress shows in the status bar" });
+    const response = await apiFetch<unknown>("/api/v1/mail/sync/all", { method: "POST", body: {} });
+    const results = syncResults(response);
+    if (results.length === 0) {
+      toast.info("No enabled sync-capable accounts");
+      return;
+    }
+    const failures = results.filter((result) => result.result === "failed");
+    if (failures.length > 0) {
+      toast.error("Some accounts couldn't sync", {
+        description: failures
+          .map((failure) => `${failure.account_name}: ${failure.error ?? "Sync couldn't start"}`)
+          .join("; "),
+      });
+    }
   } catch (error) {
-    // Nothing is running: let the next "Sync now" through.
-    useConnectionStore.getState().setState({ syncProgress: undefined });
+    if (error instanceof BridgeRequestError && (error.status === 404 || error.status === 405)) {
+      toast.error("Update mxr to sync all accounts", {
+        description: `This daemon doesn't support global Sync now yet. Update mxr: ${buildProtocolUpdateSteps().join(" · ")}`,
+      });
+      return;
+    }
+    if (
+      error instanceof BridgeRequestError &&
+      (error.status === 426 || error.code === "protocol_mismatch")
+    ) {
+      toast.error("Update mxr to sync all accounts", {
+        description: protocolMismatchDescription(),
+      });
+      return;
+    }
     toast.error("Sync failed to start", {
       description: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function protocolMismatchDescription(): string {
+  return `This version of mxr needs updating before it can sync all accounts. Update mxr: ${buildProtocolUpdateSteps().join(" · ")}`;
+}
+
+type SyncAccountResultView = Pick<
+  components["schemas"]["SyncAccountResult"],
+  "account_name" | "result"
+> & { error?: string };
+
+function syncResults(value: unknown): SyncAccountResultView[] {
+  if (!isRecord(value) || !Array.isArray(value.results)) {
+    throw new Error("The daemon returned an invalid sync result");
+  }
+  return value.results.map((item) => {
+    if (!isRecord(item)) {
+      throw new Error("The daemon returned an invalid account sync result");
+    }
+    if (
+      typeof item.account_name !== "string" ||
+      (item.result !== "started" && item.result !== "joined" && item.result !== "failed") ||
+      (item.error !== undefined && item.error !== null && typeof item.error !== "string")
+    ) {
+      throw new Error("The daemon returned an invalid account sync result");
+    }
+    const result: SyncAccountResultView = {
+      account_name: item.account_name,
+      result: item.result,
+    };
+    if (typeof item.error === "string") result.error = item.error;
+    return result;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export const mailboxActions: Action[] = [

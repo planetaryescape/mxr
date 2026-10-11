@@ -412,6 +412,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
         | Request::SyncNow { .. }
+        | Request::SyncAll
         | Request::AuthorizeAccountConfig { .. }
         | Request::StartAuthSession { .. }
         | Request::CompleteAuthSession { .. }
@@ -1027,6 +1028,26 @@ async fn dispatch(
             account_id,
             background,
         } => runtime::sync_now(state, account_id.as_ref(), *background).await,
+        Request::PreviewSyncAll => {
+            let allowed = match scoped_profile {
+                Some(profile) => match account_scope::allowed_accounts(state, profile).await {
+                    Ok(accounts) => Some(accounts),
+                    Err(error) => return Response::error(error),
+                },
+                None => None,
+            };
+            diagnostics_impl::preview_sync_all(state, allowed.as_deref()).await
+        }
+        Request::SyncAll => {
+            let allowed = match scoped_profile {
+                Some(profile) => match account_scope::allowed_accounts(state, profile).await {
+                    Ok(accounts) => Some(accounts),
+                    Err(error) => return Response::error(error),
+                },
+                None => None,
+            };
+            diagnostics_impl::sync_all(state, allowed.as_deref()).await
+        }
         Request::ExportThread { thread_id, format } => {
             runtime::export_thread(state, thread_id, format).await
         }
@@ -2024,6 +2045,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListRuleHistory { .. }
         | Request::Search { .. }
         | Request::GetSyncStatus { .. }
+        | Request::PreviewSyncAll
         | Request::Count { .. }
         | Request::SearchAggregation { .. }
         | Request::GetHeaders { .. }
@@ -2196,6 +2218,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::UpsertRuleForm { .. }
         | Request::DeleteRule { .. }
         | Request::SyncNow { .. }
+        | Request::SyncAll
         | Request::SetFlags { .. }
         | Request::RefreshContacts
         | Request::RebuildAnalytics
@@ -2355,6 +2378,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListRuleHistory { .. } => "list_rule_history",
         Request::Search { .. } => "search",
         Request::SyncNow { .. } => "sync_now",
+        Request::PreviewSyncAll => "preview_sync_all",
+        Request::SyncAll => "sync_all",
         Request::GetSyncStatus { .. } => "get_sync_status",
         Request::SetFlags { .. } => "set_flags",
         Request::Count { .. } => "count",

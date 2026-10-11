@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { bridge, openApp } from "./helpers/state";
+import { archiveViaBridge } from "./helpers/archive";
 import { deliver } from "./helpers/spool";
 import type { RuleForm, TreatmentPreview } from "../src/features/rules/api";
 
@@ -76,6 +77,6 @@ test("sorting draft preview, apply and a preserved personal correction share dae
     if (correctionId) await bridge(page, `/api/v1/mail/moves/${correctionId}/undo`, {});
     if (ruleId) await bridge(page, "/api/v1/platform/rules/delete", { rule: ruleId });
     // Historical sorting remains by design; archive only this test's mail.
-    await bridge(page, "/api/v1/mail/mutations/archive", { message_ids: [message] });
+    await archiveViaBridge(page, [message]);
   }
 });

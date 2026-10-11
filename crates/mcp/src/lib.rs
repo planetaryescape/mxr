@@ -208,6 +208,93 @@ pub struct RuleKeyParams {
 #[tool_router(router = tool_router)]
 impl MxrMcpServer {
     #[tool(
+        description = "Preview and retain exactly an Archive message selection. Does not dispatch mail. Returns a durable operation identity and per-message review. Only preview mail the user asked to archive."
+    )]
+    async fn mxr_archive_preview(
+        &self,
+        Parameters(p): Parameters<ArchivePreviewParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let journal =
+            mxr_client::ArchiveJournal::new(&mxr_config::data_dir()).map_err(mcp_error)?;
+        let response = self
+            .requester
+            .request(Request::GetArchiveWorkspace)
+            .await
+            .map_err(mcp_error)?;
+        let Response::Ok {
+            data: ResponseData::ArchiveWorkspace { workspace },
+        } = response
+        else {
+            return response_to_json(response).map(McpJson);
+        };
+        let identity = journal.identity(workspace).map_err(mcp_error)?;
+        let message_ids = p
+            .message_ids
+            .iter()
+            .map(|id| MessageId::from_str(id))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(mcp_error)?;
+        let response = self
+            .requester
+            .request(Request::PreviewArchive {
+                identity,
+                mutation: MutationCommand::Archive { message_ids },
+            })
+            .await
+            .map_err(mcp_error)?;
+        if let Response::Ok {
+            data: ResponseData::ArchiveOperation { operation },
+        } = &response
+        {
+            journal.retain(operation).map_err(mcp_error)?;
+        }
+        response_to_json(response).map(McpJson)
+    }
+    #[tool(
+        description = "Submit the retained reviewed Archive operation by operation_id, only after user confirmation. Retries use this same identity. Unknown effects are never repeated."
+    )]
+    async fn mxr_archive_submit(
+        &self,
+        Parameters(p): Parameters<ArchiveSubmitParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        if !p.confirm {
+            return Err(mcp_error(
+                "User confirmation is required; preview the operation first",
+            ));
+        }
+        let journal =
+            mxr_client::ArchiveJournal::new(&mxr_config::data_dir()).map_err(mcp_error)?;
+        let operation = journal.load(&p.operation_id).map_err(mcp_error)?;
+        journal.retain(&operation).map_err(mcp_error)?;
+        self.daemon_json(Request::SubmitArchive {
+            identity: operation.identity,
+            review_id: operation.review_id,
+            mutation: MutationCommand::Archive {
+                message_ids: operation
+                    .items
+                    .into_iter()
+                    .map(|item| item.message_id)
+                    .collect(),
+            },
+        })
+        .await
+    }
+    #[tool(
+        description = "Query a retained Archive operation by operation_id. Read-only: reports completed, unexecuted and unknown messages without dispatching or resuming effects."
+    )]
+    async fn mxr_archive_outcome(
+        &self,
+        Parameters(p): Parameters<ArchiveOutcomeParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let operation = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())
+            .and_then(|journal| journal.load(&p.operation_id))
+            .map_err(mcp_error)?;
+        self.daemon_json(Request::GetArchiveOperation {
+            identity: operation.identity,
+        })
+        .await
+    }
+    #[tool(
         description = "Read the complete editable rule form including account scope and all actions. Use before editing a sorting rule to preserve unrelated actions."
     )]
     async fn mxr_rule_form(
@@ -1547,6 +1634,24 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn archive_submission_requires_explicit_confirmation_before_any_ipc() {
+        let server = MxrMcpServer::new(FakeRequester::default());
+        let result = server
+            .mxr_archive_submit(Parameters(ArchiveSubmitParams {
+                operation_id: "not-an-identity".into(),
+                confirm: false,
+            }))
+            .await;
+        assert!(result.is_err());
+        assert!(server
+            .requester
+            .requests
+            .lock()
+            .expect("requests lock")
+            .is_empty());
+    }
+
     fn draft_fixture() -> Draft {
         serde_json::from_value(json!({
             "id": DraftId::new(),
@@ -1587,6 +1692,9 @@ mod tests {
         assert!(names.contains(&"mxr_thread_gists"));
         assert!(names.contains(&"mxr_list_place"));
         assert!(names.contains(&"mxr_sweep_preview"));
+        assert!(names.contains(&"mxr_archive_preview"));
+        assert!(names.contains(&"mxr_archive_submit"));
+        assert!(names.contains(&"mxr_archive_outcome"));
         assert!(names.contains(&"mxr_records"));
         assert!(names.contains(&"mxr_records_ask"));
         assert!(names.contains(&"mxr_records_subscriptions"));
@@ -1982,4 +2090,18 @@ mod tests {
             serde_json::to_value(ResponseData::Pong).expect("pong JSON")
         );
     }
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ArchivePreviewParams {
+    message_ids: Vec<String>,
+}
+#[derive(Deserialize, JsonSchema)]
+struct ArchiveOutcomeParams {
+    operation_id: String,
+}
+#[derive(Deserialize, JsonSchema)]
+struct ArchiveSubmitParams {
+    operation_id: String,
+    confirm: bool,
 }

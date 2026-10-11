@@ -227,7 +227,7 @@ try:
         f"http://127.0.0.1:{a.port}/api/v1/mail/send-outcomes/{identity['operation_id']}?account_id={account}",
         headers={"Authorization": "Bearer synthetic-s03-token"},
     )
-    http = json.load(urlopen(request))
+    http = json.load(urlopen(request, timeout=30))
     assert http["outcome"]["state"] == "accepted"
     uncertain_id, account2, uncertain_identity = draft(
         "Accepted but response uncertain"
@@ -305,7 +305,7 @@ try:
         method="POST",
         headers={"Authorization": "Bearer synthetic-s03-token"},
     )
-    json.load(urlopen(request))
+    json.load(urlopen(request, timeout=30))
     retry_outcome = outcome(retry_account, retry_operation)
     assert retry_outcome["state"] == "accepted" and count() == 4
     reminder_id, reminder_account, reminder_identity = draft("Machine reminder output")

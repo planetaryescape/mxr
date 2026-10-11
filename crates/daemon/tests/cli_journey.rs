@@ -14,7 +14,7 @@ use mxr_test_support::daemon::{
     unique_instance_name as ts_unique_instance_name, write_fake_account_config, DaemonGuard,
 };
 use serde_json::Value;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -450,10 +450,39 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         .iter()
         .filter(|item| item["subject"].as_str() == Some(unique_subject.as_str()))
         .collect();
+    // Keep receipt and local-ingestion evidence when a successful send is absent
+    // from search; acceptance alone can precede failed local reconciliation.
+    let daemon_log_tail = || -> String {
+        let path = data_dir.join("logs/mxr.log");
+        let Ok(mut file) = std::fs::File::open(&path) else {
+            return format!("daemon log unavailable at {}", path.display());
+        };
+        let length = file.metadata().map_or(0, |metadata| metadata.len());
+        let mut bytes = Vec::new();
+        if file
+            .seek(SeekFrom::Start(length.saturating_sub(16_384)))
+            .is_err()
+            || file.take(16_384).read_to_end(&mut bytes).is_err()
+        {
+            return "daemon log tail could not be read".into();
+        }
+        String::from_utf8_lossy(&bytes)
+            .lines()
+            .rev()
+            .take(40)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     assert_eq!(
         matching.len(),
         1,
-        "exactly one match for unique subject {unique_subject:?}; got results={results:#}"
+        "exactly one match for unique subject {unique_subject:?}; got results={results:#}\nsend stdout={}\nsend stderr={}\nrecent synthetic daemon log:\n{}",
+        send_out.stdout,
+        send_out.stderr,
+        daemon_log_tail(),
     );
 
     // The same envelope must surface under `is:sent`. Catches a regression
@@ -1445,7 +1474,7 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
 /// Backgrounded mutation jobs (`--async`) must survive a daemon restart.
 /// Before job history was persisted, `mxr jobs` read an in-memory Vec, so
 /// a restart erased every record a batch ever ran. This drives the full
-/// CLI journey — sync, start an async archive job, then bounce the daemon
+/// CLI journey — sync, start an async star job, then bounce the daemon
 /// — and asserts the job is still listed afterward.
 #[test]
 fn cli_journey_async_job_history_survives_daemon_restart() {
@@ -1496,12 +1525,12 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
     .expect("at least one fixture matches `deployment`")
     .to_string();
 
-    // Start a backgrounded archive job.
+    // Star keeps using the generic job history; Archive has its own retained operation.
     run_status_only(
         &instance,
         &data_dir,
         &config_dir,
-        &["archive", &message_id, "--async", "--yes"],
+        &["star", &message_id, "--async", "--yes"],
     );
 
     // Poll until the job row appears, then capture its id.
@@ -1530,7 +1559,7 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    let job_id = job_id.expect("async archive must record a job before restart");
+    let job_id = job_id.expect("async star must record a job before restart");
 
     // Bounce the daemon.
     std::process::Command::new("kill")

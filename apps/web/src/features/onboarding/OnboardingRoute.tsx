@@ -127,8 +127,12 @@ export function OnboardingRoute() {
             size="sm"
             className="mt-2"
             onClick={() => {
-              navigator.clipboard
-                ?.writeText("mxr demo")
+              if (!navigator.clipboard) {
+                toast.error("Copy is unavailable in this browser");
+                return;
+              }
+              void navigator.clipboard
+                .writeText("mxr demo")
                 .then(() => toast.success("Command copied"))
                 .catch(() => toast.error("Could not copy the command"));
             }}
@@ -380,7 +384,7 @@ export function OnboardingRoute() {
       ) : null}
       {step === 4 ? (
         <FirstSync
-          onOpenInbox={() => navigate({ to: "/now" })}
+          onOpenNow={() => navigate({ to: "/now" })}
           onManage={() => navigate({ to: "/accounts" })}
           sync={sync}
         />
@@ -429,11 +433,11 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
  */
 function FirstSync({
   sync,
-  onOpenInbox,
+  onOpenNow,
   onManage,
 }: {
   sync: { current: number; total: number } | undefined;
-  onOpenInbox: () => void;
+  onOpenNow: () => void;
   onManage: () => void;
 }) {
   const [started, setStarted] = useState(false);
@@ -446,7 +450,7 @@ function FirstSync({
   return (
     <section>
       <p className="text-[13px] text-muted-foreground">
-        The daemon keeps syncing if you leave this page.
+        mxr keeps syncing after you leave this page.
       </p>
       <div className="mt-5 border-y border-border py-5" role="status">
         <div className="text-[15px] font-semibold">
@@ -471,8 +475,8 @@ function FirstSync({
         </div>
       </div>
       <div className="mt-4 flex gap-2">
-        <Button size="sm" onClick={onOpenInbox}>
-          Open inbox
+        <Button size="sm" onClick={onOpenNow}>
+          Open Now
         </Button>
         <Button variant="ghost" size="sm" onClick={onManage}>
           Manage accounts

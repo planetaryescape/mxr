@@ -72,8 +72,12 @@ export function OfflineBanner() {
           type="button"
           className="ml-2 underline underline-offset-2"
           onClick={() => {
-            navigator.clipboard
-              ?.writeText("mxr restart")
+            if (!navigator.clipboard) {
+              toast.error("Copy is unavailable in this browser");
+              return;
+            }
+            void navigator.clipboard
+              .writeText("mxr restart")
               .then(() => toast.success("Restart command copied"))
               .catch(() => toast.error("Could not copy the command"));
           }}

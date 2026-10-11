@@ -163,7 +163,7 @@ export function AppShell() {
   if (noAccounts || (keepOnboardingFrame && path === "/onboarding")) {
     return (
       <div className="flex h-dvh min-h-0 flex-col bg-background">
-        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        <div key={path} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {routeTitle}
         </div>
         <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
@@ -183,7 +183,7 @@ export function AppShell() {
 
   return (
     <>
-      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <div key={path} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {routeTitle}
       </div>
       <a

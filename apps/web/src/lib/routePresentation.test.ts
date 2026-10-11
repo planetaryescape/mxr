@@ -12,4 +12,9 @@ describe("routeTitleForPath", () => {
     expect(routeTitleForPath("/settings/about")).toBe("About");
     expect(routeTitleForPath("/settings/unknown")).toBe("Settings");
   });
+
+  it("never treats inherited object keys as route titles", () => {
+    expect(routeTitleForPath("/constructor")).toBe("mxr");
+    expect(routeTitleForPath("/settings/toString")).toBe("Settings");
+  });
 });

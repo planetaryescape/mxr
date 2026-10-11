@@ -25,7 +25,8 @@ export function TokenSection() {
         </summary>
         <p className="mt-2 max-w-prose">
           Local launches use a same-machine handshake. The token is held in localStorage and in the
-          daemon's active profile config directory (mode 0600).
+          active profile's <code>bridge-token</code> file. The daemon stores that file with mode
+          0600.
         </p>
       </details>
       <div className="space-y-4">

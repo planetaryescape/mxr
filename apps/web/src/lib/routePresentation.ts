@@ -1,6 +1,7 @@
 const ROUTE_TITLES: Record<string, string> = {
   accounts: "Accounts",
   analytics: "Analytics",
+  arrivals: "Arrivals",
   archive: "Archive",
   "paper-trail": "Paper trail",
   deliveries: "Deliveries",
@@ -8,6 +9,7 @@ const ROUTE_TITLES: Record<string, string> = {
   focus: "Focus",
   compose: "Compose",
   diagnostics: "Diagnostics",
+  dev: "Development tools",
   drafts: "Drafts",
   find: "Find",
   invites: "Calendar invites",
@@ -19,6 +21,7 @@ const ROUTE_TITLES: Record<string, string> = {
   reading: "Reading",
   rules: "Rules",
   reply: "Reply",
+  "reply-queue": "Reply queue",
   screener: "Screener",
   search: "Search",
   settings: "Settings",
@@ -50,6 +53,12 @@ const SETTINGS_TITLES: Record<string, string> = {
 export function routeTitleForPath(pathname: string): string {
   const [section, subsection] = pathname.split("/").filter(Boolean);
   if (!section) return "Now";
-  if (section === "settings") return SETTINGS_TITLES[subsection ?? ""] ?? "Settings";
-  return ROUTE_TITLES[section] ?? "mxr";
+  if (section === "settings") {
+    const title = SETTINGS_TITLES[subsection ?? ""];
+    return Object.hasOwn(SETTINGS_TITLES, subsection ?? "") && typeof title === "string"
+      ? title
+      : "Settings";
+  }
+  const title = ROUTE_TITLES[section];
+  return Object.hasOwn(ROUTE_TITLES, section) && typeof title === "string" ? title : "mxr";
 }

@@ -320,7 +320,8 @@ fn a_provider_preview_is_labeled_as_incomplete_in_the_person_page() {
     let rendered = render_at(&state, 120, 0);
     assert!(rendered.contains("provider preview only"), "{rendered}");
     assert!(rendered.contains("full message unavailable"), "{rendered}");
-    assert!(rendered.contains("o to check original"), "{rendered}");
+    assert!(rendered.contains("o to check"), "{rendered}");
+    assert!(rendered.contains("original)"), "{rendered}");
 }
 
 #[test]

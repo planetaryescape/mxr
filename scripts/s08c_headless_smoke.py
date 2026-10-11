@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -118,11 +119,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         '[deliveries]\nenabled = false\n\n'
         '[accounts.fake]\nname = "Fake Account"\nemail = "fake@example.com"\n\n'
         '[accounts.fake.sync]\ntype = "fake"\n\n'
-        '[accounts.fake.send]\ntype = "fake"\n'
-        '[accounts.missing]\nname = "Missing Credential"\nemail = "missing@example.com"\n\n'
-        '[accounts.missing.sync]\ntype = "imap"\nhost = "imap.invalid"\nport = 993\n'
-        'username = "missing@example.com"\npassword_ref = "fixture-missing-secret"\n'
-        'auth_required = true\nuse_tls = true\n',
+        '[accounts.fake.send]\ntype = "fake"\n',
         encoding="utf-8",
     )
     env = {
@@ -213,7 +210,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         initial_status = assert_status_does_not_probe()
         assert initial_status["feature_health"]["summarize"]["status"] == "healthy"
 
-        cli("sync", "--wait", "--wait-timeout-secs", "30")
+        cli("sync", "--account", "fake", "--wait", "--wait-timeout-secs", "30")
         search = json.loads(cli("search", "deployment", "--format", "json", "--limit", "50").stdout)
         search = search if isinstance(search, list) else search["results"]
         assert search, "fake sync did not persist searchable mail"
@@ -245,6 +242,26 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         assert recovered_status["health_class"] == "healthy", recovered_status
         after_observation_count = request_count()
 
+        # Keep the fake-only daemon healthy while checking optional model behavior.
+        # Add the missing-credential account only after that acceptance path passes.
+        stop()
+        absent = cli("status", "--format", "json", check=False)
+        assert absent.returncode != 0, absent.stdout
+        assert "service manager" in absent.stderr.lower(), absent.stderr
+        assert not socket.exists(), "client created a replacement while supervised daemon was down"
+        assert not (data / "daemon.pid").exists(), "client left a replacement daemon pid file"
+
+        with (config / "config.toml").open("a", encoding="utf-8") as config_file:
+            config_file.write(
+                '\n[accounts.missing]\nname = "Missing Credential"\n'
+                'email = "missing@example.com"\n\n'
+                '[accounts.missing.sync]\ntype = "imap"\nhost = "imap.invalid"\nport = 993\n'
+                'username = "missing@example.com"\npassword_ref = "fixture-missing-secret"\n'
+                'auth_required = true\nuse_tls = true\n'
+            )
+        start()
+        drain_pid = daemon.pid
+
         failed_sync = cli(
             "sync", "--account", "missing", "--wait", "--wait-timeout-secs", "30", check=False
         )
@@ -252,11 +269,22 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         doctor = json.loads(cli("doctor", "--format", "json").stdout)
         findings = doctor.get("findings", [])
         missing = next(
-            (finding for finding in findings if finding.get("message") == "Missing mail credential for missing"),
+            (
+                finding
+                for finding in findings
+                if finding.get("message") == "Missing mail credential for Missing Credential"
+            ),
             None,
         )
         assert missing is not None, doctor
         assert any("secrets.toml" in step for step in missing.get("remediation", [])), missing
+        sync_command = next(
+            step for step in missing["remediation"] if step.startswith("mxr sync --account ")
+        )
+        assert shlex.split(sync_command) == [
+            "mxr", "sync", "--account", "Missing Credential",
+            "--wait", "--wait-timeout-secs", "120",
+        ], missing
         assert "fixture-missing-secret" not in json.dumps(missing), missing
 
         # Hold a second feature request open so the daemon is certainly draining.
@@ -282,7 +310,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
             time.sleep(0.1)
         assert unavailable is not None, "draining daemon did not report supervised unavailability"
         assert socket.exists(), "daemon removed its socket before the held request drained"
-        assert (data / "daemon.pid").read_text().strip() == str(first_pid)
+        assert (data / "daemon.pid").read_text().strip() == str(drain_pid)
         assert request_count() == after_observation_count + 1
         model.release_block.set()
         output, error = draining_summary.communicate(timeout=20)
@@ -298,7 +326,7 @@ with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:
         assert not (data / "daemon.pid").exists(), "client left a replacement daemon pid file"
 
         start()
-        assert daemon.pid != first_pid
+        assert daemon.pid != drain_pid
         after = json.loads(cli("search", "deployment", "--format", "json", "--limit", "50").stdout)
         after = after if isinstance(after, list) else after["results"]
         assert [row["message_id"] for row in after] == before_ids

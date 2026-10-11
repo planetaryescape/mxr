@@ -529,7 +529,10 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
             message: format!("Missing mail credential for {account}"),
             remediation: vec![
                 "Add the account password to the resolved config directory's secrets.toml (mode 0600), or enable the OS keychain; headless disk-only setups can set MXR_KEYCHAIN=off".into(),
-                format!("mxr sync --account {account} --wait --wait-timeout-secs 120"),
+                format!(
+                    "mxr sync --account {} --wait --wait-timeout-secs 120",
+                    shell_words::quote(account)
+                ),
             ],
         };
     }
@@ -890,6 +893,29 @@ mod tests {
             .iter()
             .any(|step| step.contains("MXR_KEYCHAIN=off")));
         assert!(!finding.message.contains("mxr/private-account"));
+    }
+
+    #[test]
+    fn classify_sync_error_quotes_spaced_account_in_retry_command() {
+        let finding = classify_sync_error("Missing Credential", "no credential found on disk");
+        let command = finding
+            .remediation
+            .iter()
+            .find(|step| step.starts_with("mxr sync --account "))
+            .expect("missing-credential remediation should include a sync command");
+
+        assert_eq!(
+            shell_words::split(command).expect("remediation should be valid shell syntax"),
+            [
+                "mxr",
+                "sync",
+                "--account",
+                "Missing Credential",
+                "--wait",
+                "--wait-timeout-secs",
+                "120"
+            ]
+        );
     }
 
     #[test]

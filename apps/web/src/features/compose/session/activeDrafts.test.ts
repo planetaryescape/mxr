@@ -82,8 +82,9 @@ describe("resuming a compose session", () => {
       await expect(loadInitialComposeSession(intent)).rejects.toBe(outage);
       expect(loader).toHaveBeenCalledTimes(1);
       expect(api.startComposeSession).not.toHaveBeenCalled();
-      if (destination === "recovery") expect(api.restoreComposeSession).not.toHaveBeenCalled();
-      else expect(api.refreshComposeSession).not.toHaveBeenCalled();
+      const unusedLoader =
+        destination === "recovery" ? api.restoreComposeSession : api.refreshComposeSession;
+      expect(unusedLoader).not.toHaveBeenCalled();
       expect(window.localStorage.getItem("mxr.compose.activeDrafts")).toBe(remembered);
 
       const loaded = await loadInitialComposeSession(intent);

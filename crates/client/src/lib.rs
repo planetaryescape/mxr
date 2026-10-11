@@ -278,19 +278,32 @@ impl IpcConnection {
             let status = self
                 .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
                 .await?;
-            if !matches!(
-                status,
+            match status {
+                error @ Response::Error { .. } => return Ok(error),
                 Response::Ok {
-                    data: ResponseData::Status {
-                        archive_recovery_supported: true,
-                        ..
-                    }
+                    data:
+                        ResponseData::Status {
+                            archive_recovery_supported: true,
+                            ..
+                        },
+                } => {}
+                Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            archive_recovery_supported: false,
+                            ..
+                        },
+                } => {
+                    return Ok(Response::error_kinded(
+                        "Daemon does not support recoverable Archive; upgrade before submitting",
+                        IpcErrorKind::Unsupported,
+                    ));
                 }
-            ) {
-                return Ok(Response::error_kinded(
-                    "Daemon does not support recoverable Archive; upgrade before submitting",
-                    IpcErrorKind::Unsupported,
-                ));
+                _ => {
+                    return Err(ClientError::Io(std::io::Error::other(
+                        "Unexpected GetStatus response while checking Archive support",
+                    )));
+                }
             }
         }
         if matches!(
@@ -417,6 +430,21 @@ impl IpcConnection {
         F: FnMut(DaemonEvent),
     {
         into_data(self.request_response(request, on_event, None).await?)
+    }
+
+    pub(crate) async fn request_with_events_default_timeout<F>(
+        &mut self,
+        request: Request,
+        on_event: F,
+    ) -> Result<ResponseData, ClientError>
+    where
+        F: FnMut(DaemonEvent),
+    {
+        let request_timeout = self.default_timeout;
+        into_data(
+            self.request_response(request, on_event, request_timeout)
+                .await?,
+        )
     }
 
     /// Fire-and-forget: send `request` without awaiting a response.
@@ -742,6 +770,58 @@ mod tests {
                 assert_eq!(code, "provider");
             }
             other => panic!("expected verbatim Error response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_capability_check_preserves_get_status_daemon_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let expected = Response::Error {
+            message: "status lookup failed".into(),
+            kind: IpcErrorKind::Provider,
+            code: "status_unavailable".into(),
+            retryable: true,
+            details: Some(serde_json::json!({"request":"GetStatus"})),
+        };
+        let server_response = expected.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+            matches!(message.payload, IpcPayload::Request(Request::GetStatus))
+                .then(|| server_response.clone())
+        })
+        .await;
+
+        let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
+            .await
+            .unwrap();
+        let response = connection
+            .request_response(Request::GetArchiveWorkspace, |_| {}, None)
+            .await
+            .unwrap();
+        match (response, expected) {
+            (
+                Response::Error {
+                    message: actual_message,
+                    kind: actual_kind,
+                    code: actual_code,
+                    retryable: actual_retryable,
+                    details: actual_details,
+                },
+                Response::Error {
+                    message: expected_message,
+                    kind: expected_kind,
+                    code: expected_code,
+                    retryable: expected_retryable,
+                    details: expected_details,
+                },
+            ) => {
+                assert_eq!(actual_message, expected_message);
+                assert_eq!(actual_kind, expected_kind);
+                assert_eq!(actual_code, expected_code);
+                assert_eq!(actual_retryable, expected_retryable);
+                assert_eq!(actual_details, expected_details);
+            }
+            other => panic!("GetStatus error was changed: {other:?}"),
         }
     }
 

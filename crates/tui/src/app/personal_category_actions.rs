@@ -364,6 +364,10 @@ impl App {
                     state.selected = 0;
                     return true;
                 }
+                (KeyCode::Enter, _) => {
+                    state.filtering = false;
+                    return true;
+                }
                 (KeyCode::Backspace, _) => {
                     state.input.pop();
                     state.selected = 0;
@@ -561,7 +565,7 @@ impl App {
                 state.toggle_selected()
             }
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) if !c.is_control() => {
-                if state.surface == Some(CategorySurface::Assign) || state.filtering {
+                if state.filtering {
                     state.input.push(c);
                     state.selected = 0;
                 }
@@ -781,6 +785,44 @@ mod tests {
             app.modals.personal_categories.surface,
             Some(CategorySurface::Assign)
         );
+    }
+
+    #[test]
+    fn assignment_filter_enter_finishes_search_before_staging_and_preview() {
+        let mut app = App::new();
+        let category_id = mxr_core::CategoryId::new();
+        app.modals
+            .personal_categories
+            .open(CategorySurface::Assign, vec![MessageId::new()]);
+        app.pending_category_requests.clear();
+        app.modals
+            .personal_categories
+            .set_categories(vec![category(category_id.clone(), "Travel")]);
+        press(&mut app, KeyCode::Char('/'));
+        for letter in "Travel".chars() {
+            press(&mut app, KeyCode::Char(letter));
+        }
+        press(&mut app, KeyCode::Enter);
+        assert!(!app.modals.personal_categories.filtering);
+        assert_eq!(
+            app.modals
+                .personal_categories
+                .selected_category()
+                .unwrap()
+                .name,
+            "Travel"
+        );
+        press(&mut app, KeyCode::Char(' '));
+        assert_eq!(
+            app.modals.personal_categories.staged.get(&category_id),
+            Some(&true)
+        );
+        press(&mut app, KeyCode::Enter);
+        assert!(matches!(
+            app.pending_category_requests.pop().map(|(_, request)| request),
+            Some(Request::PreviewCategoryMembership { add_category_ids, .. })
+                if add_category_ids == vec![category_id]
+        ));
     }
 
     #[test]

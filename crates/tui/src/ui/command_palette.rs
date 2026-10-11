@@ -461,7 +461,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             label: "Categories".into(),
             shortcut: String::new(),
             action: Action::OpenPersonalCategories,
-            category: "Mail".into(),
+            category: "Navigation".into(),
         },
         PaletteCommand {
             label: "Assign Category".into(),

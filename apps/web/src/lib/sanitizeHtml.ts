@@ -79,7 +79,7 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
   const beforeSanitizeAttributes = (node: Element) => {
     // Legacy color attributes are deliberately not added to the allowlist;
     // observe their presence only to choose a sender-preserving canvas.
-    designed ||= typeof node.hasAttribute === "function" && node.hasAttribute("bgcolor");
+    designed ||= node instanceof window.Element && node.hasAttribute("bgcolor");
   };
   const hook = (node: Element) => {
     if (node.tagName === "A") {

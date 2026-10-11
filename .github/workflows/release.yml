@@ -84,6 +84,9 @@ jobs:
           cargo build -p mxr -p mxr-mailmerge
           bash scripts/v1_launch_proof.sh
           python3 scripts/verify-mailmerge-outcomes.py --mxr target/debug/mxr --mailmerge target/debug/mxr-mailmerge --runtime "$RUNNER_TEMP/mxr-mailmerge-proof" --evidence "$RUNNER_TEMP/mxr-mailmerge-proof.json"
+      - name: Verify recoverable Archive outcomes
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: python3 scripts/verify-archive-recovery.py --binary target/debug/mxr --runtime "$RUNNER_TEMP/mxr-archive-proof" --evidence "$RUNNER_TEMP/mxr-archive-proof.json" --source "$GITHUB_SHA"
       - name: Record live provider credential evidence
         if: needs.plan.outputs.cli_changed == 'true'
         run: bash scripts/live_provider_smoke_evidence.sh

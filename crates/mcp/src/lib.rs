@@ -2256,7 +2256,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_tool_explains_older_daemons_without_sending_new_request() {
-        for version in [4, 5] {
+        for version in [4, 5, 6] {
             let requester = Arc::new(VersionedSyncRequester {
                 version,
                 requests: Mutex::new(Vec::new()),
@@ -2272,7 +2272,9 @@ mod tests {
                 continue;
             };
 
-            assert!(error.message.contains("requires daemon IPC protocol 6"));
+            assert!(error.message.contains(&format!(
+                "requires daemon IPC protocol {IPC_PROTOCOL_VERSION}"
+            )));
             assert!(error
                 .message
                 .contains(&format!("running daemon uses {version}")));

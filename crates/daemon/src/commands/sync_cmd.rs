@@ -722,16 +722,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn global_sync_requires_protocol_six() {
-        for version in [4, 5] {
+    fn global_sync_requires_current_protocol() {
+        for version in [4, 5, 6] {
             let error =
                 ensure_sync_all_protocol(version).expect_err("an older protocol cannot sync all");
-            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error.to_string().contains(&format!(
+                "requires daemon IPC protocol {IPC_PROTOCOL_VERSION}"
+            )));
             assert!(error
                 .to_string()
                 .contains(&format!("running daemon uses {version}")));
         }
-        assert!(ensure_sync_all_protocol(6).is_ok());
+        assert!(ensure_sync_all_protocol(IPC_PROTOCOL_VERSION).is_ok());
     }
 
     fn sample_config() -> MxrConfig {

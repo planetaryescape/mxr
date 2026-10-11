@@ -572,13 +572,13 @@ per-correspondent sorting improved triage in the field (Fisher et al.).
 
 **Extracted** (messages.md §5): the person, merged across addresses; a
 closeness band from `contacts`; whose turn (`owed_replies.rs`); their pace
-from `reply_pairs` ("usually 47m"; Tyler and Tang, ECSCW 2003); what they
-said with quotes and signatures removed; the ask quoted verbatim; due
-words; attachments; incoming Gmail reactions as a mark on the message.
-Quote stripping moves into `crates/reader` with thread-aware matching
-against earlier messages, because a `>` prefix finds under 10% of reply
-lines in business mail (Lampert, Dale and Paris, EMNLP 2009) and the HTML
-quote markers live only in the web today (`htmlQuote.ts`).
+from `reply_pairs` ("usually 47m"; Tyler and Tang, ECSCW 2003); new message
+text with signatures and repeated trailing history removed; inline
+questions and forwarded context retained beside answers; the ask quoted
+verbatim; due words; attachments; incoming Gmail reactions as a mark on
+the message. `crates/reader` returns the same cleaned text and trim flags
+to each client. A provider snippet is marked incomplete so clients do not
+present it as the full message.
 
 ```text
 +-----------+------------------------------+----------------------------------------------+
@@ -885,9 +885,10 @@ same text in two messages embeds twice, and the only filter is
 `allowed_source_kinds`.
 
 Each mode should index what it shows. Content units are pulled out once
-per message: new text (quotes and signatures removed by the thread-aware
-matcher), article or link sections, extracted record fields, attachment
-text, and the gist when one exists. A per-mode recipe then picks units,
+per message: new text (signatures and repeated trailing history removed;
+inline questions and forwarded context retained beside answers), article
+or link sections, extracted record fields, attachment text, and the gist
+when one exists. A per-mode recipe then picks units,
 windowing and a context prefix. A chunk is tagged with every mode it
 serves (many-to-many), and embeddings are keyed by a hash of the chunk
 text, so identical text embeds once even when the email is in several

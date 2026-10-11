@@ -386,7 +386,11 @@ fn message_lines(
     };
     // A closed letter shows its first paragraph, and the ask when it is
     // further down, so the eye lands on what they asked.
-    let shown: Vec<&str> = if compact || expanded {
+    let shown: Vec<&str> = if compact
+        || expanded
+        || message.has_preserved_context
+        || message.source == Some(mxr_protocol::MessageTextSourceData::ProviderSnippet)
+    {
         paragraphs.clone()
     } else {
         paragraphs
@@ -427,6 +431,13 @@ fn message_lines(
         }
     }
     let mut notes: Vec<String> = Vec::new();
+    if message.source == Some(mxr_protocol::MessageTextSourceData::ProviderSnippet) {
+        notes.push(if message.text.trim().is_empty() {
+            "no provider preview; full message unavailable (o to check original)".to_string()
+        } else {
+            "provider preview only; full message unavailable (o to check original)".to_string()
+        });
+    }
     let more = paragraphs.len().saturating_sub(shown.len());
     if more > 0 {
         let noun = if more == 1 { "paragraph" } else { "paragraphs" };

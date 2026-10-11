@@ -8,7 +8,7 @@ use super::HandlerError;
 use crate::state::AppState;
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{AttachmentDisposition, AttachmentMeta};
-use mxr_protocol::TrimmedData;
+use mxr_protocol::{MessageTextSourceData, TrimmedData};
 use mxr_reader::{new_text, plain_text, EarlierMessage};
 use mxr_store::DeskMessage;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +27,8 @@ pub(super) struct TextRequest<'a> {
 
 pub(super) struct MessageText {
     pub text: String,
+    pub source: MessageTextSourceData,
+    pub has_preserved_context: bool,
     pub trimmed: TrimmedData,
     pub only_quoted: bool,
     pub attachments: Vec<AttachmentMeta>,
@@ -109,6 +111,8 @@ pub(super) async fn new_texts(
             message.id.clone(),
             MessageText {
                 text: result.text,
+                source: MessageTextSourceData::StoredBody,
+                has_preserved_context: result.has_preserved_context,
                 trimmed: TrimmedData {
                     quote: result.trimmed.quote,
                     signature: result.trimmed.signature,
@@ -132,6 +136,8 @@ async fn snippet_text(state: &AppState, id: &MessageId) -> Result<MessageText, H
         .unwrap_or_default();
     Ok(MessageText {
         text: snippet,
+        source: MessageTextSourceData::ProviderSnippet,
+        has_preserved_context: false,
         trimmed: TrimmedData::default(),
         only_quoted: false,
         attachments: Vec::new(),

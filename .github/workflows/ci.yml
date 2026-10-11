@@ -386,6 +386,35 @@ jobs:
           --summary-only
           --fail-under-lines 90
           --fail-under-regions 75
+        env:
+          MXR_COVERAGE_TRACE_FILE: ${{ runner.temp }}/mxr-coverage-child-trace.log
+      - name: Inspect raw coverage profiles after failure
+        if: failure()
+        run: |
+          echo "llvm-profdata version:"
+          rustc_host=$(rustc -vV | sed -n 's/^host: //p')
+          llvm_profdata="$(rustc --print sysroot)/lib/rustlib/$rustc_host/bin/llvm-profdata"
+          "$llvm_profdata" --version || true
+          echo "profile list:"
+          cat target-cli/llvm-cov-target/mxr-profraw-list || true
+          for profile in target-cli/llvm-cov-target/*.profraw; do
+            [ -f "$profile" ] || continue
+            bytes=$(wc -c < "$profile" || true)
+            header=$(od -An -tx1 -N16 "$profile" | tr -d ' \n' || true)
+            echo "profile=$profile bytes=$bytes header=$header"
+          done
+      - name: Upload raw coverage diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-raw-profiles
+          path: |
+            target-cli/llvm-cov-target/*.profraw
+            target-cli/llvm-cov-target/mxr-profraw-list
+            target-cli/llvm-cov-target/mxr.profdata
+            ${{ runner.temp }}/mxr-coverage-child-trace.log
+          if-no-files-found: warn
+          retention-days: 3
 
   sqlx:
     name: SQLx Offline

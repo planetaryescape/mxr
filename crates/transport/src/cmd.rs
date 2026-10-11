@@ -32,6 +32,20 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use crate::error::{Result, TransportError};
 use crate::{BoxedIo, Connector};
 
+fn trace_coverage_event(event: &str) {
+    let Some(path) = std::env::var_os("MXR_COVERAGE_TRACE_FILE") else {
+        return;
+    };
+    if let Ok(mut trace) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        use std::io::Write as _;
+        let _ = writeln!(trace, "{event}");
+    }
+}
+
 /// A connector that dials the daemon by spawning a command and wrapping its
 /// stdio as the byte stream.
 #[derive(Debug, Clone)]
@@ -82,6 +96,13 @@ impl Connector for CmdConnector {
                 source,
             })?;
 
+        if let Some(child_pid) = child.id() {
+            trace_coverage_event(&format!(
+                "cmd-child parent_pid={} child_pid={child_pid}",
+                std::process::id()
+            ));
+        }
+
         // Take the piped handles out of the child; the `Child` stays owned by
         // the stream purely to keep the process alive (and reap it on drop).
         let stdout = child.stdout.take().ok_or_else(|| TransportError::Connect {
@@ -112,6 +133,17 @@ impl Connector for CmdConnector {
 struct CmdStream {
     io: Join<ChildStdout, ChildStdin>,
     _child: Child,
+}
+
+impl Drop for CmdStream {
+    fn drop(&mut self) {
+        if let Some(child_pid) = self._child.id() {
+            trace_coverage_event(&format!(
+                "cmd-stream-drop parent_pid={} child_pid={child_pid}",
+                std::process::id()
+            ));
+        }
+    }
 }
 
 impl AsyncRead for CmdStream {

@@ -31362,11 +31362,24 @@
               "string",
               "null"
             ],
-            "description": "\"Arriving by Thu 8 Oct · DHL · 3 emails\"."
+            "description": "\"Expected by Thu 8 Oct · DHL · 3 emails\"."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryItemData"
+            },
+            "description": "Available item records are useful identifiers, but may not be the\ncomplete contents of a parcel."
           },
           "kind": {
             "type": "string",
             "description": "`parcel`, `build` or `incident`."
+          },
+          "order_number": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "outcome": {
             "type": "string",
@@ -31394,6 +31407,12 @@
               "type": "string"
             },
             "description": "A parcel's steps, \"ordered\" to \"delivered\", and where it is."
+          },
+          "tracking_number": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

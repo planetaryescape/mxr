@@ -24,26 +24,44 @@ pub struct UpdatesView<'a> {
     pub active_pane: &'a ActivePane,
 }
 
-/// A parcel's place on its track: "[##  ]".
-fn track(step: Option<u32>, steps: usize) -> String {
-    let filled = step.map_or(0, |step| step as usize + 1).min(steps);
-    format!("[{}{}]", "#".repeat(filled), " ".repeat(steps - filled))
-}
-
-/// What follows the fact: the delta, a tracker's state, when, and "in To
-/// do". Code wrote every part of it.
+/// What follows the fact: a delta, estimate, identity, time and "in To do".
+/// Code wrote every part of it.
 fn suffix(line: &UpdateLineData) -> String {
     let mut parts = Vec::new();
     if let Some(delta) = &line.delta {
         parts.push(one_line(&delta.text));
     }
     if let Some(tracker) = &line.tracker {
-        // The fact already names a parcel's state; the bar shows where it is.
-        if tracker.kind == "parcel" && tracker.step.is_some() {
-            parts.push(track(tracker.step, tracker.steps.len().max(1)));
-        }
         if let Some(detail) = &tracker.detail {
             parts.push(one_line(detail));
+        }
+        if tracker.kind == "parcel" {
+            let items: Vec<_> = tracker
+                .items
+                .iter()
+                .filter(|item| !item.name.trim().is_empty())
+                .collect();
+            if let Some(item) = items.first() {
+                let extra = items.len().saturating_sub(1);
+                let mut identity = item.name.clone();
+                if extra > 0 {
+                    identity.push_str(&format!(" +{extra} more"));
+                }
+                parts.push(one_line(&identity));
+            }
+            if let Some(reference) = tracker
+                .tracking_number
+                .as_deref()
+                .filter(|reference| !reference.trim().is_empty())
+                .or_else(|| {
+                    tracker
+                        .order_number
+                        .as_deref()
+                        .filter(|reference| !reference.trim().is_empty())
+                })
+            {
+                parts.push(format!("Reference {}", one_line(reference)));
+            }
         }
     }
     if let Some(time) = &line.time_label {
@@ -548,8 +566,14 @@ pub(crate) mod tests {
                 .map(|s| (*s).to_string())
                 .collect(),
             step: Some(2),
-            detail: Some("Arriving by Thu 8 Oct \u{b7} DHL".into()),
+            detail: Some("Expected by Thu 8 Oct \u{b7} DHL".into()),
             delivery_id: Some("d1".into()),
+            items: vec![mxr_protocol::DeliveryItemData {
+                name: "Notebook".into(),
+                quantity: Some(1),
+            }],
+            tracking_number: Some("TRACK-123".into()),
+            order_number: None,
         });
         let mut strava = line(
             UpdateSectionData::Changed,

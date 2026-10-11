@@ -682,8 +682,11 @@ From the 2,000-message demo; lines are trimmed here. Every line also carries `id
 `latest_at`, `why`, `setting`, `todo_title` and `provenance` (where each
 field came from: `rule`, `code` or `default`), and, where they apply,
 `link` (`url`, `domain`), `tracker` (`kind` of `parcel`, `build` or
-`incident`, with `state`, `outcome` and, for a parcel, `steps` and `step`)
-and `suggestion`. With `--expired`, `expired` lists updates past their
+`incident`, with `state` and `outcome`). Parcel trackers retain `steps` and
+`step` for existing clients and may also include `items` (available item
+records with `name` and optional `quantity`), `tracking_number`, and
+`order_number`. These identity fields are optional and absent from older
+responses. `suggestion` is also optional. With `--expired`, `expired` lists updates past their
 window. `--format jsonl` prints one line per source line with `section` set
 to `needs_a_look`, `changed`, `routine`, `since` or `expired`. `--format ids`
 prints thread ids.

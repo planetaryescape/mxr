@@ -12,47 +12,25 @@ import {
   canTune,
   openableLink,
   trackerStatus,
-  trackStep,
   type SuggestedSetting,
 } from "./digestView";
 import { useUpdatesHidden, useUpdatesPins } from "./updatesVerbs";
-
-/** A parcel's steps as dots on a line, the current one filled. */
-function Track({ line }: { line: UpdateLine }) {
-  const { steps, step } = trackStep(line);
-  if (steps.length === 0) return null;
-  return (
-    <ol
-      aria-label={`Parcel: ${line.tracker?.state_label ?? ""}`}
-      data-testid="parcel-track"
-      className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground"
-    >
-      {steps.map((label, at) => {
-        const reached = step !== null && at <= step;
-        const current = step === at;
-        return (
-          <li key={label} className="inline-flex items-center gap-1">
-            <span
-              aria-hidden
-              className={cn(
-                "inline-block size-1.5 rounded-full",
-                reached ? "bg-primary" : "border border-border-strong",
-              )}
-            />
-            <span className={cn(current && "font-medium text-foreground")}>{label}</span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
 
 function Mark({ line }: { line: UpdateLine }) {
   if (line.section === "needs_a_look") {
     return <AlertCircle aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warning" />;
   }
   if (line.section === "changed") {
-    return <Diamond aria-hidden className="mt-0.5 size-3 shrink-0 text-primary" />;
+    const delivered = line.tracker?.kind === "parcel" && line.tracker.state === "delivered";
+    return (
+      <Diamond
+        aria-hidden
+        className={cn(
+          "mt-0.5 size-3 shrink-0",
+          delivered ? "text-muted-foreground/50" : "text-primary",
+        )}
+      />
+    );
   }
   return <span aria-hidden className="w-3.5 shrink-0" />;
 }
@@ -96,6 +74,18 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const link = openableLink(line);
   const detail = line.tracker?.detail;
   const status = trackerStatus(line);
+  const parcel = line.tracker?.kind === "parcel";
+  const parcelItems = (line.tracker?.items ?? []).filter((item) => item.name.trim());
+  const firstItem = parcelItems[0];
+  const extraItems = Math.max(0, parcelItems.length - 1);
+  const trackingNumber = line.tracker?.tracking_number?.trim() || undefined;
+  const orderNumber = line.tracker?.order_number?.trim() || undefined;
+  const reference = trackingNumber ?? orderNumber;
+  const detailContext = reference
+    ? ` with reference ${reference}`
+    : firstItem
+      ? ` for item ${firstItem.name}`
+      : "";
   return (
     <li
       data-index={index}
@@ -105,6 +95,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       data-source={line.source_key}
       data-focused={focused ? "true" : undefined}
       onMouseEnter={() => onSelect(line)}
+      onFocusCapture={() => onSelect(line)}
       onAnimationEnd={leaving ? () => hide([line.id]) : undefined}
       className={cn(
         "relative mx-2 rounded-md px-3 py-2",
@@ -126,7 +117,15 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               {line.source_name}
             </span>
             <span className="min-w-0 break-words text-foreground/90">
-              <span data-testid="update-fact">{line.fact}</span>
+              <span
+                data-testid="update-fact"
+                className={cn(
+                  parcel && line.tracker?.state === "delivered" && "text-muted-foreground",
+                  parcel && line.tracker?.state !== "delivered" && "font-medium",
+                )}
+              >
+                {line.fact}
+              </span>
               {line.delta ? (
                 <span
                   data-testid="update-delta"
@@ -148,7 +147,22 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               </span>
             ) : null}
           </p>
-          {line.tracker?.kind === "parcel" ? <Track line={line} /> : null}
+          {parcel && (firstItem || reference) ? (
+            <p data-testid="parcel-identity" className="mt-0.5 break-words text-[12px] text-fg-2">
+              {firstItem ? (
+                <span>
+                  {firstItem.name}
+                  {extraItems > 0 ? ` +${extraItems} more` : null}
+                </span>
+              ) : null}
+              {reference ? (
+                <span>
+                  {firstItem ? " · " : null}
+                  {trackingNumber ? "Tracking " : "Order "}{reference}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
           {detail || status ? (
             <p className="mt-0.5 text-[12px] text-fg-2">
               {status}
@@ -156,9 +170,11 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               {detail}
             </p>
           ) : null}
-          <p data-testid="update-why" className="mt-0.5 text-[12px] text-fg-2">
-            {line.why}
-          </p>
+          {!parcel ? (
+            <p data-testid="update-why" className="mt-0.5 text-[12px] text-fg-2">
+              {line.why}
+            </p>
+          ) : null}
           {line.todo_suggestion ? (
             <p
               data-testid="update-todo-suggestion"
@@ -184,7 +200,33 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               </Button>
             </p>
           ) : null}
-          <p className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {parcel ? (
+              <details className="text-[12px] text-fg-2 open:basis-full">
+                <summary
+                  aria-label={`Details for ${line.source_name} parcel${detailContext}`}
+                  className="w-fit cursor-pointer rounded-sm underline decoration-border-strong underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Details
+                </summary>
+                <div className="mt-1 w-full space-y-1 break-words pl-1">
+                  {parcelItems.length > 0 ? (
+                    <ul aria-label="Available parcel items" className="list-inside list-disc">
+                      {parcelItems.map((item, itemIndex) => (
+                        // DTOs allow duplicate records and provide no stable item ID; this disclosure list is static.
+                        // oxlint-disable-next-line react/no-array-index-key
+                        <li key={`${itemIndex}:${item.name}:${item.quantity ?? ""}`}>
+                          {item.name}{item.quantity !== undefined ? ` · quantity ${item.quantity}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {trackingNumber ? <p>Tracking reference: {trackingNumber}</p> : null}
+                  {orderNumber ? <p>Order reference: {orderNumber}</p> : null}
+                  <p data-testid="update-why">{line.why}</p>
+                </div>
+              </details>
+            ) : null}
             {line.in_todo ? (
               <span
                 data-testid="update-in-todo"
@@ -231,10 +273,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             ) : null}
             {line.latest_thread_id ? (
               <Button size="sm" variant="ghost" onClick={() => onOpenEmail(line)}>
-                Email
+                {parcel ? "From email" : "Email"}
               </Button>
             ) : null}
-          </p>
+          </div>
           {hint}
         </div>
       </div>

@@ -10,7 +10,7 @@
 use mxr_core::id::*;
 use serde::{Deserialize, Serialize};
 
-use super::ModeDoneOutcomeData;
+use super::{DeliveryItemData, ModeDoneOutcomeData};
 
 /// The words Updates teaches itself with (D118, the #284 copy).
 pub mod updates_copy {
@@ -151,11 +151,19 @@ pub struct UpdateTrackerData {
     pub steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step: Option<u32>,
-    /// "Arriving by Thu 8 Oct · DHL · 3 emails".
+    /// "Expected by Thu 8 Oct · DHL · 3 emails".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery_id: Option<String>,
+    /// Available item records are useful identifiers, but may not be the
+    /// complete contents of a parcel.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<DeliveryItemData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_number: Option<String>,
 }
 
 /// The one place a line opens with `L`. Never a pay link.
@@ -396,5 +404,44 @@ mod tests {
             Some(UpdateSourceSettingData::Muted)
         );
         assert_eq!(UpdateSourceSettingData::parse("loud"), None);
+    }
+
+    #[test]
+    fn tracker_identity_is_optional_and_keeps_existing_fields() {
+        let old: UpdateTrackerData = serde_json::from_value(serde_json::json!({
+            "kind": "parcel",
+            "state": "in_transit",
+            "state_label": "on its way",
+            "outcome": "progress",
+            "steps": [],
+            "step": null,
+            "detail": "Expected by Thu 8 Oct",
+            "delivery_id": "d1"
+        }))
+        .expect("old UpdateTrackerData payload should deserialize");
+        assert!(old.items.is_empty());
+        assert_eq!(old.detail.as_deref(), Some("Expected by Thu 8 Oct"));
+
+        let json = serde_json::to_value(UpdateTrackerData {
+            kind: old.kind,
+            state: old.state,
+            state_label: old.state_label,
+            outcome: old.outcome,
+            steps: old.steps,
+            step: old.step,
+            detail: old.detail,
+            delivery_id: old.delivery_id,
+            items: vec![DeliveryItemData {
+                name: "Book".into(),
+                quantity: Some(2),
+            }],
+            tracking_number: Some("TRACK-123".into()),
+            order_number: Some("ORDER-9".into()),
+        })
+        .expect("UpdateTrackerData should serialize");
+        assert_eq!(json["tracking_number"], "TRACK-123");
+        assert_eq!(json["order_number"], "ORDER-9");
+        assert_eq!(json["items"][0]["name"], "Book");
+        assert_eq!(json["detail"], "Expected by Thu 8 Oct");
     }
 }

@@ -7,6 +7,9 @@ pub async fn archive_operation(
     submit: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    if matches!(resolve_format(format.clone()), OutputFormat::Csv) {
+        anyhow::bail!("Archive receipts support table, json, jsonl and ids; select a supported format before submission");
+    }
     if submit && operation_id.is_none() {
         anyhow::bail!("Archive submission requires one explicit retained operation ID");
     }
@@ -45,6 +48,9 @@ pub async fn archive_operation(
                     outcomes.push(operation);
                 } else {
                     print_operation(&operation, format.clone())?;
+                    if submit {
+                        require_confirmed_completion(&operation)?;
+                    }
                 }
             }
             Err(error) => {
@@ -120,4 +126,31 @@ pub(super) fn print_recovery_error(
         );
     }
     Ok(())
+}
+
+pub(super) fn require_confirmed_completion(operation: &ArchiveOperationData) -> anyhow::Result<()> {
+    if !has_confirmed_completion(operation.items.iter().map(|item| item.state)) {
+        anyhow::bail!("Archive has no confirmed completion; recover the same identity with mxr archive-operation {}", operation.identity.operation_id);
+    }
+    Ok(())
+}
+fn has_confirmed_completion(
+    states: impl Iterator<Item = mxr_protocol::ArchiveItemStateData>,
+) -> bool {
+    states
+        .into_iter()
+        .any(|state| state == mxr_protocol::ArchiveItemStateData::Completed)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_protocol::ArchiveItemStateData::{Completed, NotExecuted, Unknown};
+    #[test]
+    fn archive_synchronous_exit_requires_at_least_one_confirmed_completion() {
+        assert!(!has_confirmed_completion(
+            [NotExecuted, NotExecuted].into_iter()
+        ));
+        assert!(!has_confirmed_completion([Unknown, Unknown].into_iter()));
+        assert!(has_confirmed_completion([Completed, Unknown].into_iter()));
+    }
 }

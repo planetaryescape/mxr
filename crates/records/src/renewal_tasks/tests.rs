@@ -88,7 +88,7 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
         .expect("fixture");
     fx.store
         .set_todos_state(
-            &[original_id.clone()],
+            std::slice::from_ref(&original_id),
             &[TodoState::Open],
             TodoState::Dismissed,
             now,
@@ -124,7 +124,7 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
     );
     fx.store
         .set_todos_state(
-            &[original_id.clone()],
+            std::slice::from_ref(&original_id),
             &[TodoState::Dismissed],
             TodoState::Open,
             now,
@@ -134,7 +134,7 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
     fx.apply(now).await;
     fx.store
         .set_todos_state(
-            &[original_id.clone()],
+            std::slice::from_ref(&original_id),
             &[TodoState::Open],
             TodoState::Done,
             now,
@@ -178,9 +178,15 @@ async fn lead_window_uses_local_calendar_days_and_excludes_past_and_monthly() {
         .single()
         .expect("fixture");
     let zone = chrono_tz::Europe::London;
-    let local = plan(&fx.store, &[fx.account.clone()], boundary, &zone, 9)
-        .await
-        .expect("fixture");
+    let local = plan(
+        &fx.store,
+        std::slice::from_ref(&fx.account),
+        boundary,
+        &zone,
+        9,
+    )
+    .await
+    .expect("fixture");
     assert_eq!(local.len(), 1);
     assert_eq!(
         local[0]
@@ -378,7 +384,7 @@ async fn price_title_and_estimated_date_corrections_keep_the_cycle() {
     ] {
         fx.store
             .edit_archive_records(
-                &[latest.id.clone()],
+                std::slice::from_ref(&latest.id),
                 &mxr_store::RecordFieldEdit::Set {
                     field: field.into(),
                     value_text: text,

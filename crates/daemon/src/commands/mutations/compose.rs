@@ -862,8 +862,10 @@ pub async fn drafts_recover(
                     println!("  {} — {}", d.id, d.subject);
                 }
                 println!();
-                println!("Resume any with: mxr drafts resume <draft-id>");
-                println!("Delete any with: mxr drafts delete <draft-id>");
+                println!("Check whether it was sent before resuming: mxr drafts resume <draft-id>");
+                println!(
+                    "After resolving it, preview deletion: mxr drafts delete <draft-id> --dry-run"
+                );
             }
         }
     }

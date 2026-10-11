@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { DaemonUnavailableError } from "@/api/client";
+import { draftFromSession } from "./composeDraft";
+
 import type { ComposeSessionResponse } from "../api";
 
 const api = vi.hoisted(() => ({
@@ -38,6 +41,61 @@ afterEach(() => {
 });
 
 describe("resuming a compose session", () => {
+  test.each(["recovery", "canonical"] as const)(
+    "a %s outage retains the remembered recovery until reconnect",
+    async (destination) => {
+      const intent = {
+        key: `compose:draft:outage-${destination}`,
+        title: "Existing",
+        kind: "new" as const,
+        draftId: "existing",
+      };
+      const response: ComposeSessionResponse = {
+        session: {
+          draftId: "existing",
+          draftPath: destination === "recovery" ? "/tmp/private-recovery" : "/tmp/canonical",
+          recoverySourcePath: destination === "recovery" ? "/tmp/original" : undefined,
+          revision: 3,
+          accountId: "acct-1",
+          bodyMarkdown: "Latest preserved text",
+          rawContent: "",
+          previewHtml: "",
+          issues: [],
+          frontmatter: {
+            from: "me@example.com",
+            to: "recipient@example.com",
+            subject: "Preserved",
+            attach: ["/tmp/private-recovery.attachments/report.txt"],
+          },
+        },
+      };
+      rememberActiveDraft(intent.key, {
+        ...draftFromSession(response.session),
+        preservedRecoveryPath: "/tmp/earlier-recovery",
+      });
+      const remembered = window.localStorage.getItem("mxr.compose.activeDrafts");
+      const outage = new DaemonUnavailableError({ cause: new Error("connection lost") });
+      const loader =
+        destination === "recovery" ? api.refreshComposeSession : api.restoreComposeSession;
+      loader.mockRejectedValueOnce(outage).mockResolvedValueOnce(response);
+
+      await expect(loadInitialComposeSession(intent)).rejects.toBe(outage);
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(api.startComposeSession).not.toHaveBeenCalled();
+      if (destination === "recovery") expect(api.restoreComposeSession).not.toHaveBeenCalled();
+      else expect(api.refreshComposeSession).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem("mxr.compose.activeDrafts")).toBe(remembered);
+
+      const loaded = await loadInitialComposeSession(intent);
+      expect(loader).toHaveBeenLastCalledWith(
+        destination === "recovery" ? "/tmp/private-recovery" : "existing",
+      );
+      expect(loaded.session).toEqual(response.session);
+      expect(loaded.preservedRecoveryPath).toBe("/tmp/earlier-recovery");
+      expect(window.localStorage.getItem("mxr.compose.activeDrafts")).toBe(remembered);
+    },
+  );
+
   test("a missing stored-draft recovery file falls back to the same canonical draft", async () => {
     const intent = {
       key: "compose:draft:existing",

@@ -2983,33 +2983,7 @@ async fn restore_saved_draft_session(
     .await
     .map_err(|error| BridgeError::Ipc(error.to_string()))?;
 
-    let frontmatter = ComposeFrontmatter {
-        to: format_addresses(&draft.to),
-        cc: format_addresses(&draft.cc),
-        bcc: format_addresses(&draft.bcc),
-        subject: draft.subject.clone(),
-        from: account.email.clone(),
-        in_reply_to: draft
-            .reply_headers
-            .as_ref()
-            .map(|headers| headers.in_reply_to.clone()),
-        references: draft
-            .reply_headers
-            .as_ref()
-            .map(|headers| headers.references.clone())
-            .unwrap_or_default(),
-        thread_id: draft
-            .reply_headers
-            .as_ref()
-            .and_then(|headers| headers.thread_id.clone()),
-        intent: draft.intent,
-        attach: draft
-            .attachments
-            .iter()
-            .map(|attachment| attachment.display().to_string())
-            .collect(),
-        signature: None,
-    };
+    let frontmatter = mxr_compose::draft_codec::frontmatter_from_draft(&draft, &account.email);
     let rendered = render_compose_file(&frontmatter, &body, None)
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     write_compose_file(&draft_path, rendered).await?;

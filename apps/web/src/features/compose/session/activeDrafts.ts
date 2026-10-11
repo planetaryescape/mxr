@@ -10,6 +10,7 @@ import {
   startComposeSession,
   type ComposeSessionResponse,
 } from "../api";
+import { DaemonUnavailableError } from "@/api/client";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 
 import { composeQueueKey, type ComposeDraftState, type ComposeIntent } from "./composeDraft";
@@ -53,7 +54,8 @@ export async function loadInitialComposeSession(
           accountId: refreshed.session.accountId ?? settled.accountId,
         },
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof DaemonUnavailableError) throw error;
       forgetActiveDraft(intent.key);
     }
   }

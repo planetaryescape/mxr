@@ -3786,13 +3786,18 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     // Distinctly older than "now" so a create (which stores the payload's
     // timestamp) cannot be mistaken for an in-place update.
     let created_at = Utc::now() - chrono::Duration::days(3);
-    let store = FakeDraftStore::with(vec![markdown_draft(
+    let mut draft = markdown_draft(
         &draft_id,
         &account_id,
         "Quarterly plan",
         "First pass.",
         created_at,
-    )]);
+    );
+    draft.from = Some(Address {
+        name: Some("Support".into()),
+        email: "support@example.com".into(),
+    });
+    let store = FakeDraftStore::with(vec![draft]);
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         draft_store_responder(store.clone(), sample_account(&account_id)),
@@ -3809,6 +3814,19 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     let client = reqwest::Client::new();
 
     let draft_path = restore_session_path(&client, addr, &draft_id).await;
+    let reopened = load_compose_session(Path::new(&draft_path)).await.unwrap();
+    assert_eq!(
+        reopened["frontmatter"]["from"],
+        json!("Support <support@example.com>")
+    );
+    let raw_content = tokio::fs::read_to_string(&draft_path).await.unwrap();
+    let (frontmatter, _) = mxr_compose::frontmatter::parse_compose_file(&raw_content).unwrap();
+    let sender = mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
+        .unwrap()
+        .unwrap();
+    assert_eq!(sender.name.as_deref(), Some("Support"));
+    assert_eq!(sender.email, "support@example.com");
+
     edit_session(
         &client,
         addr,

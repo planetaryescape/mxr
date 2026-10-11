@@ -14,4 +14,11 @@ reported 380 passed and the same one-pixel mismatch at the unchanged assertion.
 The run record gives a 14m06s Web E2E job and 14m45s total CI elapsed time.
 Neither log establishes the cause.
 
+The later S03 candidate `7e21504eb4a663543be751efb2ba26c8ba179de4` repeated
+the mismatch at the same assertion in [CI run 38143112143, Web E2E job
+114480882722](https://github.com/planetaryescape/mxr/actions/runs/38143112143/job/114480882722).
+The job reported 380 passed and one flaky test that passed on retry; four
+speed checks also passed in 18 seconds. The cause remains unknown. This is
+historical evidence for candidate 7e, not a verdict on later code.
+
 Reproduce the specific test and capture the persisted width, viewport and frame measurements before choosing a fix. Keep the assertion that reload does not visibly shift the pane; do not replace it with an arbitrary larger tolerance. This is outside S02 draft revision behavior and does not block S02 release acceptance.

@@ -78,3 +78,50 @@ Mail-based unsubscribe and calendar RSVP call providers outside the saved-draft
 send path (`crates/daemon/src/handler/mutations.rs`,
 `crates/daemon/src/handler/mailbox.rs`). They need separate review before any
 broader send-outcome coverage claim.
+
+## Candidate 7e21504e follow-ups
+
+These source-checked observations are nonblocking follow-ups from review of
+`7e21504eb4a663543be751efb2ba26c8ba179de4`. Preserve the rule that an
+`unknown` send must be queried and never resent automatically.
+
+- Editing a scheduled draft increments its revision while leaving `send_at`
+  set. When the scheduled attempt runs, it uses the reviewed revision, clears
+  `send_at` before sending, and records a stale-revision failure; the pending
+  list filters out drafts without `send_at`. The edit therefore prevents that
+  scheduled version from sending, but the pending view no longer shows it.
+  Improve the user-visible attempt history or warning while keeping the stale
+  send refused (`crates/store/src/draft.rs::update_draft`,
+  `crates/daemon/src/loops.rs::process_due_scheduled_sends`,
+  `crates/store/src/scheduled_sends.rs`).
+- Error responses infer retryability from message text. An uncertain-send
+  message includes the provider error, so text such as “connection” or
+  “timeout” can set `retryable: true`; the daemon still blocks another send for
+  the retained uncertain operation. Present uncertainty clearly and do not
+  make the retryable bit permission to resend (`crates/protocol/src/types.rs::Response::error`,
+  `crates/protocol/src/types.rs::error_looks_retryable`,
+  `crates/daemon/src/handler/mutations.rs::send_stored_draft_locked`).
+- A basic `--dry-run` preview prints a saved draft without running the safety
+  checks. A draft with no recipients can therefore preview successfully, then
+  be refused by the send safety check. Show the no-recipient blocker during
+  preview (`crates/daemon/src/commands/mutations/compose.rs::send_draft`,
+  `crates/daemon/src/handler/mutations.rs::check_draft_safety`).
+- The startup event for an interrupted scheduled send prints a literal
+  `<account-id>` in its outcome-query command. Include the actual account or a
+  usable account-selection instruction (`crates/daemon/src/server.rs`,
+  scheduled-send recovery event).
+- `tui-send-recovery.json` keeps an operation entry per draft and a list of
+  compose paths; the write path has no pruning policy. A draft deleted outside
+  the recovery flow also cannot be reconstructed from a retained revision
+  above 1, though its compose text remains available. Define safe cleanup and
+  reconciliation behavior without dropping that text
+  (`crates/tui/src/send_recovery_state.rs`,
+  `crates/daemon/src/handler/mutations.rs::send_draft_reviewed`).
+- SMTP and Outlook discover missing attachment files in their provider send
+  adapters, after the daemon has claimed the send, and classify those local
+  failures as `NotAccepted`. If storing that rejection fails, the outcome stays
+  `unknown`; accepted-provider receipt persistence failure also remains
+  `unknown`. Keep both cases queryable and distinguish them from provider
+  acceptance evidence (`crates/provider-smtp/src/lib.rs`,
+  `crates/provider-outlook/src/smtp.rs`,
+  `crates/daemon/src/handler/mutations.rs::send_stored_draft_locked`).

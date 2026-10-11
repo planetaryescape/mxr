@@ -8,6 +8,18 @@ async fn transition(
     next: ItemState,
     reason: Option<String>,
 ) -> Result<bool, HandlerError> {
+    transition_with_history(state, identity, id, expected, next, reason, None).await
+}
+
+async fn transition_with_history(
+    state: &AppState,
+    identity: &ArchiveIdentityData,
+    id: &mxr_core::MessageId,
+    expected: ItemState,
+    next: ItemState,
+    reason: Option<String>,
+    completed_envelope: Option<&Envelope>,
+) -> Result<bool, HandlerError> {
     loop {
         let (json, mut operation) = load(state, identity).await?;
         let Some(item) = operation
@@ -22,15 +34,37 @@ async fn transition(
         }
         item.state = next;
         item.reason.clone_from(&reason);
-        if state
-            .store
-            .compare_exchange_archive_job(
-                &job_key(identity),
-                &json,
-                &serde_json::to_string(&operation)?,
-            )
-            .await?
-        {
+        let next_json = serde_json::to_string(&operation)?;
+        let won = if let Some(envelope) = completed_envelope {
+            let (summary, details) = super::super::mutations::mutation_log_entry(
+                &MutationCommand::Archive {
+                    message_ids: vec![id.clone()],
+                },
+                envelope,
+            );
+            let message_id = envelope.id.as_str();
+            state
+                .store
+                .compare_exchange_archive_job_with_event(
+                    &job_key(identity),
+                    &json,
+                    &next_json,
+                    &summary,
+                    mxr_store::EventLogRefs {
+                        account_id: Some(&envelope.account_id),
+                        message_id: Some(&message_id),
+                        rule_id: None,
+                    },
+                    details.as_deref(),
+                )
+                .await?
+        } else {
+            state
+                .store
+                .compare_exchange_archive_job(&job_key(identity), &json, &next_json)
+                .await?
+        };
+        if won {
             return Ok(true);
         }
     }
@@ -75,11 +109,12 @@ async fn dispatch_intent(
     }
 }
 
-pub(super) async fn run(
+pub(in crate::handler) async fn run(
     state: &AppState,
     identity: &ArchiveIdentityData,
-) -> Result<(), HandlerError> {
+) -> Result<u32, HandlerError> {
     let (_, operation) = load(state, identity).await?;
+    let mut completed = 0;
     for item in operation.items {
         if item.state != ItemState::Pending {
             continue;
@@ -109,21 +144,22 @@ pub(super) async fn run(
             .await?;
             continue;
         };
+        let Some(current) = current else {
+            continue;
+        };
         if !item.was_inbox {
-            transition(
+            transition_with_history(
                 state,
                 identity,
                 &item.message_id,
                 ItemState::Pending,
                 ItemState::Completed,
                 Some("Already outside Inbox at review; no provider effect needed".into()),
+                Some(&current),
             )
             .await?;
             continue;
         }
-        let Some(current) = current else {
-            continue;
-        };
         if !dispatch_intent(state, identity, &item, &current).await? {
             continue;
         }
@@ -159,15 +195,19 @@ pub(super) async fn run(
                 .await
                 {
                     Ok(()) => {
-                        transition(
+                        if transition_with_history(
                             state,
                             identity,
                             &item.message_id,
                             ItemState::ProviderSucceeded,
                             ItemState::Completed,
                             None,
+                            Some(&current),
                         )
-                        .await?;
+                        .await?
+                        {
+                            completed += 1;
+                        }
                         if let Err(error) = crate::handler::mutations::reindex_messages_in_search(
                             state,
                             std::slice::from_ref(&item.message_id),
@@ -241,5 +281,5 @@ pub(super) async fn run(
             tracing::warn!(%error, "Archive provider outcomes retained but undo unavailable");
         }
     }
-    Ok(())
+    Ok(completed)
 }

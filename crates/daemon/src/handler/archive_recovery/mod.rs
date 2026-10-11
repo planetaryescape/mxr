@@ -9,6 +9,8 @@ use mxr_protocol::{
 use std::sync::Arc;
 
 mod runner;
+#[cfg(test)]
+pub(super) use runner::run as run_for_test;
 
 const KIND: &str = "recoverable_archive";
 
@@ -229,8 +231,11 @@ pub(super) async fn preview(
 
 pub(super) async fn get(state: &AppState, identity: &ArchiveIdentityData) -> HandlerResult {
     validate_identity(state, identity).await?;
+    // The runner persists outcomes before removing its claim. Sample the claim
+    // first so a stopped runner cannot be paired with an older Pending receipt.
+    let running = state.archive_runners.lock().contains(&job_key(identity));
     let (_, mut operation) = load(state, identity).await?;
-    operation.running = state.archive_runners.lock().contains(&job_key(identity));
+    operation.running = running;
     operation.undo_available = state
         .store
         .read_undo_entry(&operation.mutation_id)
@@ -305,8 +310,13 @@ pub(super) async fn submit(
     operation.running = true;
     let identity = identity.clone();
     tokio::spawn(async move {
-        if let Err(error) = runner::run(&state, &identity).await {
-            tracing::warn!(operation_id = %identity.operation_id, %error, "Archive receipt processing stopped; query retained state before retry");
+        match runner::run(&state, &identity).await {
+            Ok(completed) => {
+                crate::chimes::play_for_archive_completion(&state, source, completed);
+            }
+            Err(error) => {
+                tracing::warn!(operation_id = %identity.operation_id, %error, "Archive receipt processing stopped; query retained state before retry")
+            }
         }
         state.archive_runners.lock().remove(&job_key(&identity));
     });

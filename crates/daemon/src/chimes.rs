@@ -104,6 +104,22 @@ pub(crate) fn plays_request_chimes(source: ClientKind) -> bool {
     source != ClientKind::Web
 }
 
+pub(crate) fn play_for_archive_completion(
+    state: &AppState,
+    source: ClientKind,
+    completed: u32,
+) -> Option<ChimePlayback> {
+    let event = event_for_archive_completion(source, completed)?;
+    Some(play_configured(
+        &state.config_snapshot().notifications.chimes,
+        event,
+    ))
+}
+
+fn event_for_archive_completion(source: ClientKind, completed: u32) -> Option<ChimeEvent> {
+    (plays_request_chimes(source) && completed > 0).then_some(ChimeEvent::Archived)
+}
+
 pub(crate) fn play_configured(config: &ChimeConfig, event: ChimeEvent) -> ChimePlayback {
     let playback = playback_decision(config, event);
     if playback.played {
@@ -292,6 +308,18 @@ mod tests {
         assert!(!plays_request_chimes(ClientKind::Web));
         assert!(plays_request_chimes(ClientKind::Tui));
         assert!(plays_request_chimes(ClientKind::Cli));
+    }
+
+    #[test]
+    fn recoverable_archive_chimes_only_for_new_completed_provider_effects() {
+        for source in [ClientKind::Cli, ClientKind::Tui] {
+            assert_eq!(
+                event_for_archive_completion(source, 2),
+                Some(ChimeEvent::Archived)
+            );
+            assert_eq!(event_for_archive_completion(source, 0), None);
+        }
+        assert_eq!(event_for_archive_completion(ClientKind::Web, 2), None);
     }
 
     #[test]

@@ -19,7 +19,8 @@ pub struct Candidate {
 }
 
 /// The same selection feeds previews, tests and automatic filing. No task
-/// is proposed without source mail, or outside the next fourteen local days.
+/// is proposed without source mail. New reviews start within fourteen local
+/// days; an existing review can take a corrected estimate outside that window.
 pub async fn plan<Tz: TimeZone>(
     store: &Store,
     accounts: &[AccountId],

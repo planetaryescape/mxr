@@ -280,6 +280,17 @@ async fn a_yearly_charge_due_soon_creates_one_review_task_on_tick() {
         .expect("todos");
     assert_eq!(todos.len(), 1, "{todos:#?}");
     assert_eq!(todos[0].title, "Review Admiral renewal");
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: todos[0].id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("expected todo")
+    };
+    assert!(todo.when_label.starts_with("estimated renewal "));
     assert!(todos[0]
         .due_words
         .as_ref()

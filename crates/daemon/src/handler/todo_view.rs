@@ -137,6 +137,9 @@ fn next_line(kind: TodoKind, record: &TodoRecord) -> Option<String> {
     if record.state != TodoState::Open {
         return None;
     }
+    if record.dedup_key.starts_with("record-renewal|") {
+        return Some("Review the plan, price and renewal date with the provider.".into());
+    }
     match kind {
         TodoKind::Bill | TodoKind::PaymentFailed => {
             Some("When the receipt arrives, the row says it looks done.".to_string())
@@ -163,6 +166,11 @@ where
 {
     if let Some(done) = record.done_at.filter(|_| record.state == TodoState::Done) {
         return format!("done {}", day_label(done, tz));
+    }
+    if record.dedup_key.starts_with("record-renewal|") {
+        if let Some(due) = record.due_at {
+            return format!("estimated renewal {}", day_label(due, tz));
+        }
     }
     let due = record.due_at;
     let act_by = record.act_by_at;

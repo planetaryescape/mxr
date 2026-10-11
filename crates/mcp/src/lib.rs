@@ -18,6 +18,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::Path, str::FromStr, sync::Arc};
 
+mod todo;
+use todo::{TodoGetInput, TodoListInput, TodoStateInput};
+
 #[async_trait]
 pub trait DaemonRequester: Send + Sync + std::fmt::Debug + 'static {
     async fn request(&self, request: Request) -> anyhow::Result<Response>;
@@ -442,6 +445,52 @@ impl MxrMcpServer {
     ) -> Result<McpJson<Value>, ErrorData> {
         self.daemon_json(Request::ListRecordSubscriptions {
             account_id: parse_optional_id(input.account_id)?,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_list",
+        description = "List email tasks with their estimated or checked dates, amounts, source mail and provenance. state defaults to open; also supports done, dismissed and expired. Read-only."
+    )]
+    pub async fn todo_list(
+        &self,
+        Parameters(input): Parameters<TodoListInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListTodos {
+            account_id: parse_optional_id(input.account_id)?,
+            state: input.state.unwrap_or_default().into(),
+            limit: input.limit.unwrap_or(100),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_get",
+        description = "Read one email task, including why it appeared, field provenance and source message. Read-only."
+    )]
+    pub async fn todo_get(
+        &self,
+        Parameters(input): Parameters<TodoGetInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetTodo {
+            todo_id: input.todo_id,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_set_state",
+        description = "Complete, dismiss or undo email tasks through the daemon. Without confirm=true returns the matching preview and changes nothing. Only change tasks the user asked you to change."
+    )]
+    pub async fn todo_set_state(
+        &self,
+        Parameters(input): Parameters<TodoStateInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::SetTodoState {
+            todo_ids: input.todo_ids,
+            action: input.action.into(),
+            dry_run: !input.confirm.unwrap_or(false),
         })
         .await
     }

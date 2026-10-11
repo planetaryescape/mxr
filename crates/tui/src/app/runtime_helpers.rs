@@ -129,25 +129,42 @@ impl App {
     }
 
     pub fn next_background_timeout(&self, fallback: Duration) -> Duration {
+        self.next_background_timeout_at(fallback, Instant::now())
+    }
+
+    fn next_background_timeout_at(&self, fallback: Duration, now: Instant) -> Duration {
         let mut timeout = fallback;
         if let Some(pending) = self.mailbox.pending_preview_read.as_ref() {
-            timeout = timeout.min(
-                pending
-                    .due_at
-                    .checked_duration_since(Instant::now())
-                    .unwrap_or(Duration::ZERO),
-            );
+            timeout = timeout.min(pending.due_at.saturating_duration_since(now));
         }
         if let Some(pending) = self.search.pending_debounce.as_ref() {
-            timeout = timeout.min(
-                pending
-                    .due_at
-                    .checked_duration_since(Instant::now())
-                    .unwrap_or(Duration::ZERO),
-            );
+            timeout = timeout.min(pending.due_at.saturating_duration_since(now));
         }
         if self.search_is_pending() {
             timeout = timeout.min(SEARCH_SPINNER_TICK);
+        }
+
+        if let Some(expires_in) = self.toasts.next_expiry(now) {
+            timeout = timeout.min(expires_in);
+        }
+        for toast in self.toasts.visible(now) {
+            if toast.action_hint.is_some() {
+                timeout = timeout.min(next_countdown_tick(toast.created_at, now));
+            }
+        }
+        if let Some(undo) = &self.pending_undo {
+            let expires_at = undo.applied_at + super::UNDO_HINT_TTL;
+            timeout = timeout.min(expires_at.saturating_duration_since(now));
+            if undo.applied_at <= now {
+                timeout = timeout.min(next_countdown_tick(undo.applied_at, now));
+            }
+        }
+        if let Some(prompt) = self.promise_prompts.front() {
+            let expires_at = prompt.shown_at + super::promises::PROMISE_PROMPT_TTL;
+            timeout = timeout.min(expires_at.saturating_duration_since(now));
+            if prompt.shown_at <= now {
+                timeout = timeout.min(next_countdown_tick(prompt.shown_at, now));
+            }
         }
         timeout
     }
@@ -160,5 +177,111 @@ impl App {
 
     pub fn set_terminal_image_support(&mut self, support: TerminalImageSupport) {
         self.html_image_support = Some(support);
+    }
+}
+
+fn next_countdown_tick(started_at: Instant, now: Instant) -> Duration {
+    let elapsed = now.saturating_duration_since(started_at);
+    Duration::from_secs(1).saturating_sub(Duration::from_nanos(u64::from(elapsed.subsec_nanos())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{Toast, ToastSeverity};
+
+    #[test]
+    fn background_timeout_wakes_for_toast_expiry_then_stops_scheduling_it() {
+        let mut app = App::new();
+        let started_at = Instant::now();
+        app.toasts.push(Toast {
+            text: "Completed".into(),
+            severity: ToastSeverity::Success,
+            created_at: started_at,
+            ttl: Duration::from_secs(5),
+            action_hint: None,
+        });
+
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), started_at),
+            Duration::from_secs(5)
+        );
+        let expiry = started_at + Duration::from_secs(5);
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), expiry),
+            Duration::ZERO
+        );
+        app.toasts.sweep_expired(expiry);
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), expiry),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn background_timeout_refreshes_undo_countdown_and_clears_expired_undo() {
+        let mut app = App::new();
+        let started_at = Instant::now();
+        app.pending_undo = Some(crate::app::PendingUndo {
+            action: crate::app::UndoAction::Mutations(Vec::new()),
+            verb_past: "Archived".into(),
+            count: 1,
+            applied_at: started_at,
+        });
+
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), started_at),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            app.next_background_timeout_at(
+                Duration::from_secs(60),
+                started_at + Duration::from_millis(1_400)
+            ),
+            Duration::from_millis(600)
+        );
+        let expiry = started_at + super::UNDO_HINT_TTL;
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), expiry),
+            Duration::ZERO
+        );
+        app.tick_pending_undo(expiry);
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), expiry),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn existing_background_deadlines_still_win() {
+        let mut app = App::new();
+        let now = Instant::now();
+        app.toasts.push(Toast {
+            text: "Completed".into(),
+            severity: ToastSeverity::Success,
+            created_at: now,
+            ttl: Duration::from_secs(5),
+            action_hint: None,
+        });
+        app.mailbox.pending_preview_read = Some(crate::app::PendingPreviewRead {
+            message_id: mxr_core::MessageId::new(),
+            due_at: now + Duration::from_millis(100),
+        });
+        app.search.pending_debounce = Some(crate::app::state::PendingSearchDebounce {
+            query: "test".into(),
+            mode: mxr_core::SearchMode::Lexical,
+            session_id: 1,
+            due_at: now + Duration::from_millis(250),
+        });
+
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), now),
+            Duration::from_millis(100)
+        );
+        app.mailbox.pending_preview_read = None;
+        assert_eq!(
+            app.next_background_timeout_at(Duration::from_secs(60), now),
+            Duration::from_millis(250)
+        );
     }
 }

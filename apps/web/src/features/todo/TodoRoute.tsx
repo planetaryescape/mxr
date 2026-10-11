@@ -471,7 +471,7 @@ function KeyLine({ guide }: { guide: ModeGuide }) {
     (key) => key.key !== "t" && key.key !== "?" && key.key !== "u",
   );
   return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
+    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex lg:hidden">
       {keys.map((key) => (
         <span key={key.key} className="inline-flex items-center gap-1">
           <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}

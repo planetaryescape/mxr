@@ -67,7 +67,11 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   let restarted = false;
   try {
     await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
-    await expect(daemonBanner(page)).toContainText("You can keep reading what's loaded");
+    await expect(daemonBanner(page)).toContainText(
+      "Mail already loaded on this page may still be available",
+    );
+    await expect(daemonBanner(page)).toContainText("mxr restart");
+    await expect(daemonBanner(page).getByRole("button", { name: "Copy command" })).toBeVisible();
 
     // The inbox stays on screen and the cursor still moves.
     await expect(rowById(page, first!)).toBeVisible();

@@ -25,7 +25,7 @@ async fn missing_amount_currency_and_insufficient_history_are_honest() {
         &ids[..1],
     )
     .await
-    .unwrap();
+    .expect("fixture");
     assert!(fx.plan(at(2026, 10, 11)).await.is_empty());
     pass::scan_messages(
         &fx.store,
@@ -36,7 +36,7 @@ async fn missing_amount_currency_and_insufficient_history_are_honest() {
         &ids[1..],
     )
     .await
-    .unwrap();
+    .expect("fixture");
     let candidates = fx.plan(at(2026, 10, 11)).await;
     assert_eq!(candidates.len(), 1);
     assert!(candidates[0].task.amount_minor.is_none());
@@ -86,7 +86,7 @@ async fn records_without_source_mail_do_not_create_orphan_tasks() {
                 now: at(2026, 10, 11),
             })
             .await
-            .unwrap();
+            .expect("fixture");
     }
     let detected = subscriptions::load(
         &fx.store,
@@ -95,7 +95,7 @@ async fn records_without_source_mail_do_not_create_orphan_tasks() {
         &Utc,
     )
     .await
-    .unwrap();
+    .expect("fixture");
     assert_eq!(detected.detection.subscriptions.len(), 1);
     assert!(fx.plan(at(2026, 10, 11)).await.is_empty());
 }

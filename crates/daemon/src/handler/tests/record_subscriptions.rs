@@ -291,6 +291,10 @@ async fn a_yearly_charge_due_soon_creates_one_review_task_on_tick() {
         panic!("expected todo")
     };
     assert!(todo.when_label.starts_with("estimated renewal "));
+    assert_eq!(
+        todo.amount.as_ref().map(|amount| amount.display.as_str()),
+        Some("Estimated £412.00")
+    );
     assert!(todos[0]
         .due_words
         .as_ref()

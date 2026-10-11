@@ -77,7 +77,13 @@ where
             .map(|(minor, currency)| TodoAmountData {
                 minor,
                 currency: currency.clone(),
-                display: format_amount(minor, currency),
+                display: if record.dedup_key.starts_with("record-renewal|")
+                    && fields.get("amount").is_some_and(|field| !field.checked)
+                {
+                    format!("Estimated {}", format_amount(minor, currency))
+                } else {
+                    format_amount(minor, currency)
+                },
             }),
         due_at: record.due_at,
         due_words: record.due_words.clone(),
@@ -167,7 +173,11 @@ where
     if let Some(done) = record.done_at.filter(|_| record.state == TodoState::Done) {
         return format!("done {}", day_label(done, tz));
     }
-    if record.dedup_key.starts_with("record-renewal|") {
+    if record.dedup_key.starts_with("record-renewal|")
+        && FieldSources::from_json(&record.field_sources)
+            .get("due_at")
+            .is_some_and(|field| !field.checked)
+    {
         if let Some(due) = record.due_at {
             return format!("estimated renewal {}", day_label(due, tz));
         }

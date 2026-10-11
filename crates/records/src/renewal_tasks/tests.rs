@@ -25,32 +25,32 @@ async fn review_is_inspectable_unchecked_and_preview_does_not_write() {
     assert_eq!(task.amount_minor, Some(12000));
     assert_eq!(task.currency.as_deref(), Some("GBP"));
     assert_eq!(
-        task.due_at.unwrap().date_naive(),
+        task.due_at.expect("fixture").date_naive(),
         at(2026, 10, 20).date_naive()
     );
     assert!(task
         .due_words
         .as_ref()
-        .unwrap()
+        .expect("fixture")
         .starts_with("Estimated renewal"));
     assert!(task.source_message_id.is_some());
     let fields = FieldSources::from_json(&task.field_sources);
-    assert!(!fields.get("due_at").unwrap().checked);
-    assert!(!fields.get("amount").unwrap().checked);
+    assert!(!fields.get("due_at").expect("fixture").checked);
+    assert!(!fields.get("amount").expect("fixture").checked);
     assert!(task.relevant_until.is_none());
     assert_eq!(
         fx.store
             .count_todos_in_state(None, TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         0
     );
-    apply(&fx.store, candidates).await.unwrap();
+    apply(&fx.store, candidates).await.expect("fixture");
     let task = fx
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap()
+        .expect("fixture")
         .remove(0);
     assert_eq!(
         pass::file_from_todo(
@@ -62,7 +62,7 @@ async fn review_is_inspectable_unchecked_and_preview_does_not_write() {
             &task
         )
         .await
-        .unwrap(),
+        .expect("fixture"),
         None
     );
 }
@@ -77,12 +77,15 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap()
+        .expect("fixture")
         .remove(0);
     let original_id = task.id.clone();
     task.title = "Compare alternatives first".into();
     task.due_at = Some(at(2026, 10, 15));
-    fx.store.update_todo_by_user(&task, now).await.unwrap();
+    fx.store
+        .update_todo_by_user(&task, now)
+        .await
+        .expect("fixture");
     fx.store
         .set_todos_state(
             &[original_id.clone()],
@@ -91,12 +94,17 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
             now,
         )
         .await
-        .unwrap();
+        .expect("fixture");
     fx.receipt("Premium", at(2023, 10, 20), false).await;
     fx.receipt("Premium", at(2025, 10, 21), true).await;
     fx.apply(now).await;
     fx.apply(now).await;
-    let saved = fx.store.get_todo(&original_id).await.unwrap().unwrap();
+    let saved = fx
+        .store
+        .get_todo(&original_id)
+        .await
+        .expect("fixture")
+        .expect("fixture");
     assert_eq!(saved.title, task.title);
     assert_eq!(saved.due_at, task.due_at);
     assert_eq!(saved.state, TodoState::Dismissed);
@@ -104,14 +112,14 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
         fx.store
             .count_todos_in_state(None, TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         0
     );
     assert_eq!(
         fx.store
             .count_todos_in_state(None, TodoState::Dismissed)
             .await
-            .unwrap(),
+            .expect("fixture"),
         1
     );
     fx.store
@@ -122,7 +130,7 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
             now,
         )
         .await
-        .unwrap();
+        .expect("fixture");
     fx.apply(now).await;
     fx.store
         .set_todos_state(
@@ -132,14 +140,14 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
             now,
         )
         .await
-        .unwrap();
+        .expect("fixture");
     fx.apply(now).await;
     assert_eq!(
         fx.store
             .get_todo(&original_id)
             .await
-            .unwrap()
-            .unwrap()
+            .expect("fixture")
+            .expect("fixture")
             .state,
         TodoState::Done
     );
@@ -149,7 +157,7 @@ async fn backfill_duplicates_and_replay_keep_user_edits_and_decisions() {
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_eq!(open.len(), 1);
     assert_ne!(open[0].id, original_id);
 }
@@ -168,17 +176,17 @@ async fn lead_window_uses_local_calendar_days_and_excludes_past_and_monthly() {
     let boundary = Utc
         .with_ymd_and_hms(2026, 10, 5, 23, 30, 0)
         .single()
-        .unwrap();
+        .expect("fixture");
     let zone = chrono_tz::Europe::London;
     let local = plan(&fx.store, &[fx.account.clone()], boundary, &zone, 9)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_eq!(local.len(), 1);
     assert_eq!(
         local[0]
             .task
             .due_at
-            .unwrap()
+            .expect("fixture")
             .with_timezone(&zone)
             .date_naive(),
         at(2026, 10, 20).date_naive()
@@ -195,7 +203,7 @@ async fn same_merchant_plans_and_accounts_do_not_coalesce() {
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_eq!(rows.len(), 2);
     assert_ne!(rows[0].dedup_key, rows[1].dedup_key);
     let other = Account {
@@ -206,7 +214,7 @@ async fn same_merchant_plans_and_accounts_do_not_coalesce() {
         send_backend: None,
         enabled: true,
     };
-    fx.store.insert_account(&other).await.unwrap();
+    fx.store.insert_account(&other).await.expect("fixture");
     let old_account = fx.account.clone();
     fx.account = other.id;
     fx.annual("Premium").await;
@@ -215,14 +223,14 @@ async fn same_merchant_plans_and_accounts_do_not_coalesce() {
         fx.store
             .count_todos_in_state(None, TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         3
     );
     assert_eq!(
         fx.store
             .count_todos_in_state(Some(&old_account), TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         2
     );
 }
@@ -246,7 +254,7 @@ async fn cancellation_prevents_new_tasks_without_closing_existing_reviews() {
         fx.store
             .count_todos_in_state(None, TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         1
     );
 }
@@ -260,13 +268,13 @@ async fn parallel_and_stale_duplicate_candidates_create_one_task() {
     fx.receipt("Premium", at(2025, 10, 21), true).await;
     let after = fx.plan(now).await;
     let (a, b) = tokio::join!(apply(&fx.store, before), apply(&fx.store, after));
-    a.unwrap();
-    b.unwrap();
+    a.expect("fixture");
+    b.expect("fixture");
     assert_eq!(
         fx.store
             .count_todos_in_state(None, TodoState::Open)
             .await
-            .unwrap(),
+            .expect("fixture"),
         1
     );
 }
@@ -279,18 +287,18 @@ async fn aliases_are_resumable_and_conflicts_fail_without_storage_order_choice()
         .store
         .record_renewal_cycle_key(&fx.account, &a, true)
         .await
-        .unwrap();
+        .expect("fixture");
     let replay = fx
         .store
         .record_renewal_cycle_key(&fx.account, &["a".into(), "z".into()], true)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_eq!(replay, key);
     let other = fx
         .store
         .record_renewal_cycle_key(&fx.account, &["b".into()], true)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_ne!(other, key);
     assert!(fx
         .store
@@ -314,20 +322,20 @@ async fn reserved_alias_without_task_is_recovered_by_replay() {
         .store
         .record_renewal_cycle_key(&fx.account, &candidate.record_ids, true)
         .await
-        .unwrap();
+        .expect("fixture");
     assert!(fx
         .store
         .get_todo_by_dedup(&fx.account, &key)
         .await
-        .unwrap()
+        .expect("fixture")
         .is_none());
     fx.apply(at(2026, 10, 11)).await;
     assert_eq!(
         fx.store
             .get_todo_by_dedup(&fx.account, &key)
             .await
-            .unwrap()
-            .unwrap()
+            .expect("fixture")
+            .expect("fixture")
             .state,
         TodoState::Open
     );
@@ -343,13 +351,13 @@ async fn price_title_and_estimated_date_corrections_keep_the_cycle() {
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap()
+        .expect("fixture")
         .remove(0);
     let records = fx
         .store
         .list_archive_records(&RecordQuery::default())
         .await
-        .unwrap();
+        .expect("fixture");
     let ids: Vec<String> = records.iter().map(|r| r.id.clone()).collect();
     let edit = mxr_store::RecordFieldEdit::Set {
         field: "title".into(),
@@ -359,8 +367,11 @@ async fn price_title_and_estimated_date_corrections_keep_the_cycle() {
     fx.store
         .edit_archive_records(&ids, &edit, now, None, true)
         .await
-        .unwrap();
-    let latest = records.iter().max_by_key(|r| r.ledger_date()).unwrap();
+        .expect("fixture");
+    let latest = records
+        .iter()
+        .max_by_key(|r| r.ledger_date())
+        .expect("fixture");
     for (field, text, value) in [
         ("amount", Some("GBP".into()), Some(15000)),
         ("issued_at", None, Some(at(2025, 10, 22).timestamp())),
@@ -378,26 +389,26 @@ async fn price_title_and_estimated_date_corrections_keep_the_cycle() {
                 true,
             )
             .await
-            .unwrap();
+            .expect("fixture");
     }
     fx.apply(now).await;
     let after = fx
         .store
         .list_todos_in_state(None, TodoState::Open, 10)
         .await
-        .unwrap();
+        .expect("fixture");
     assert_eq!(after.len(), 1);
     assert_eq!(after[0].id, before.id);
     assert_eq!(after[0].title, "Review Acme Plus renewal");
     assert_eq!(after[0].amount_minor, Some(15000));
     assert_eq!(
-        after[0].due_at.unwrap().date_naive(),
+        after[0].due_at.expect("fixture").date_naive(),
         at(2026, 10, 22).date_naive()
     );
     assert!(
         !FieldSources::from_json(&after[0].field_sources)
             .get("amount")
-            .unwrap()
+            .expect("fixture")
             .checked
     );
 }

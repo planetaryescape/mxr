@@ -315,7 +315,7 @@ pub(super) async fn submit(
                 crate::chimes::play_for_archive_completion(&state, source, completed);
             }
             Err(error) => {
-                tracing::warn!(operation_id = %identity.operation_id, %error, "Archive receipt processing stopped; query retained state before retry")
+                tracing::warn!(operation_id = %identity.operation_id, %error, "Archive receipt processing stopped; query retained state before retry");
             }
         }
         state.archive_runners.lock().remove(&job_key(&identity));

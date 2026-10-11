@@ -305,6 +305,7 @@ pub struct App {
     /// You asked for a sync and it has not finished: its failure is worth a
     /// status line, where a background retry's is not.
     pub user_sync_pending: bool,
+    pub user_sync_acknowledgements_pending: usize,
     /// Accounts returned as Started or Joined by the user's SyncAll request.
     pub user_sync_targets: HashSet<mxr_core::AccountId>,
     /// Events can race the SyncAll acknowledgement. Defer them until the
@@ -502,6 +503,7 @@ impl App {
             last_sync_status: None,
             freshness: None,
             user_sync_pending: false,
+            user_sync_acknowledgements_pending: 0,
             user_sync_targets: HashSet::new(),
             user_sync_events_before_ack: Vec::new(),
             visible_height: 20,

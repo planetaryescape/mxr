@@ -998,6 +998,23 @@ mod tests {
     }
 
     #[test]
+    fn legacy_sync_failures_reports_a_new_account_error() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", Some("connection refused"))];
+        assert_eq!(
+            sync_failures_since(&before, &after),
+            vec!["sync failed for personal: connection refused".to_string()]
+        );
+    }
+
+    #[test]
+    fn legacy_sync_failures_ignores_an_error_that_predates_the_request() {
+        let before = vec![status("personal", "t0", Some("stale auth failure"))];
+        let after = vec![status("personal", "t0", Some("stale auth failure"))];
+        assert!(sync_failures_since(&before, &after).is_empty());
+    }
+
+    #[test]
     fn wait_does_not_treat_a_missing_selected_account_as_quiescent() {
         let selected = AccountId::from_provider_id("fake", "selected");
         let target_ids = std::collections::HashSet::from([selected]);

@@ -23,7 +23,8 @@ use crate::compose_flow::{
 use crate::daemon_events::{
     apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_context_loaded,
     apply_thread_gist_loaded, apply_thread_summary_loaded, format_mutation_failure,
-    handle_daemon_event, handle_sync_batch, mutation_verb_past, restore_mail_list_selection,
+    handle_daemon_event, handle_sync_batch, handle_sync_request_failed, mutation_verb_past,
+    restore_mail_list_selection,
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
@@ -2380,6 +2381,8 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
+                let is_sync_all_request = matches!(&req, Request::SyncAll);
+                let mut sync_batch_received = false;
                 let verb = mutation_verb_past(&req);
                 let move_not_sure = matches!(
                     &req,
@@ -2432,6 +2435,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::SyncBatch { results },
                     }) => {
+                        sync_batch_received = true;
                         let _ = result_tx_inner.send(AsyncResult::SyncBatch(results.clone()));
                         if results.is_empty() {
                             Ok(app::MutationEffect::StatusOnly(
@@ -2710,6 +2714,9 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to mutation".into())),
                 };
+                if is_sync_all_request && !sync_batch_received {
+                    let _ = result_tx_inner.send(AsyncResult::SyncRequestFailed);
+                }
                 AsyncResult::MutationResult {
                     id: mutation_id,
                     best_effort,
@@ -3973,6 +3980,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::SyncBatch(results) => {
                             handle_sync_batch(&mut app, results);
+                        }
+                        AsyncResult::SyncRequestFailed => {
+                            handle_sync_request_failed(&mut app);
                         }
                         AsyncResult::SavedSearchMutation(Ok(())) => {
                             // Trigger a follow-up list refresh on the next

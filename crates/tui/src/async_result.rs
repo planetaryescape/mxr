@@ -247,6 +247,7 @@ pub(crate) enum AsyncResult {
     LocalStateSaved(Result<(), String>),
     DaemonEvent(DaemonEvent),
     SyncBatch(Vec<mxr_protocol::SyncAccountResult>),
+    SyncRequestFailed,
     /// Emitted by the IPC worker when the daemon connection state changes.
     /// Replaces the old "silent return on initial connect failure" behavior.
     ConnectionState(app::ConnectionState),

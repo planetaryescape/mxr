@@ -44,23 +44,19 @@ pub(super) fn format_mutation_failure(result: &mxr_protocol::MutationResultData)
 }
 
 pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
-    if app.user_sync_pending && app.user_sync_targets.is_empty() {
-        if matches!(
-            &event,
-            DaemonEvent::SyncCompleted { .. } | DaemonEvent::SyncError { .. }
-        ) {
-            app.user_sync_events_before_ack.push(event);
-            return;
-        }
+    if app.user_sync_pending
+        && app.user_sync_acknowledgements_pending > 0
+        && is_sync_outcome(&event)
+    {
+        app.user_sync_events_before_ack.push(event.clone());
+    } else {
+        apply_user_sync_outcome(app, &event);
     }
     match event {
         DaemonEvent::SyncCompleted {
-            account_id,
+            account_id: _,
             messages_synced,
         } => {
-            if app.user_sync_targets.remove(&account_id) && app.user_sync_targets.is_empty() {
-                app.user_sync_pending = false;
-            }
             app.mailbox.pending_labels_refresh = true;
             app.mailbox.pending_all_envelopes_refresh = true;
             app.mailbox.pending_subscriptions_refresh = true;
@@ -99,20 +95,11 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
             app.restore_sidebar_selection(selected_sidebar);
         }
-        DaemonEvent::SyncError { account_id, error } => {
+        DaemonEvent::SyncError { .. } => {
             // A background retry never takes the keyboard: the status line's
             // sync health (from the freshness refresh below) says which
             // account is failing and when it tries again. A sync you asked
             // for gets one line naming the account.
-            if app.user_sync_targets.remove(&account_id) {
-                app.status_message = Some(format!(
-                    "Sync failed for {}: {error}",
-                    app.account_display_name(&account_id)
-                ));
-                if app.user_sync_targets.is_empty() {
-                    app.user_sync_pending = false;
-                }
-            }
             app.diagnostics.pending_status_refresh = true;
         }
         DaemonEvent::ReminderTriggered { sent_message_id } => {
@@ -234,18 +221,79 @@ pub(super) fn handle_sync_batch(app: &mut App, results: Vec<mxr_protocol::SyncAc
     if !app.user_sync_pending {
         return;
     }
-    app.user_sync_targets = results
-        .iter()
-        .filter(|result| result.result != mxr_protocol::SyncAccountResultKind::Failed)
-        .map(|result| result.account_id.clone())
-        .collect();
-    if app.user_sync_targets.is_empty() {
-        app.user_sync_pending = false;
-        app.user_sync_events_before_ack.clear();
+    app.user_sync_acknowledgements_pending =
+        app.user_sync_acknowledgements_pending.saturating_sub(1);
+    app.user_sync_targets.extend(
+        results
+            .iter()
+            .filter(|result| result.result != mxr_protocol::SyncAccountResultKind::Failed)
+            .map(|result| result.account_id.clone()),
+    );
+    flush_user_sync_events(app);
+    settle_user_sync_pending(app);
+}
+
+pub(super) fn handle_sync_request_failed(app: &mut App) {
+    if !app.user_sync_pending {
         return;
     }
+    app.user_sync_acknowledgements_pending =
+        app.user_sync_acknowledgements_pending.saturating_sub(1);
+    flush_user_sync_events(app);
+    settle_user_sync_pending(app);
+}
+
+fn flush_user_sync_events(app: &mut App) {
+    let mut unmatched = Vec::new();
     for event in std::mem::take(&mut app.user_sync_events_before_ack) {
-        handle_daemon_event(app, event);
+        if sync_event_account_id(&event)
+            .is_some_and(|account_id| app.user_sync_targets.contains(account_id))
+        {
+            apply_user_sync_outcome(app, &event);
+        } else if app.user_sync_acknowledgements_pending > 0 {
+            unmatched.push(event);
+        }
+    }
+    app.user_sync_events_before_ack = unmatched;
+}
+
+fn is_sync_outcome(event: &DaemonEvent) -> bool {
+    matches!(
+        event,
+        DaemonEvent::SyncCompleted { .. } | DaemonEvent::SyncError { .. }
+    )
+}
+
+fn sync_event_account_id(event: &DaemonEvent) -> Option<&mxr_core::AccountId> {
+    match event {
+        DaemonEvent::SyncCompleted { account_id, .. }
+        | DaemonEvent::SyncError { account_id, .. } => Some(account_id),
+        _ => None,
+    }
+}
+
+fn apply_user_sync_outcome(app: &mut App, event: &DaemonEvent) {
+    match event {
+        DaemonEvent::SyncCompleted { account_id, .. } => {
+            app.user_sync_targets.remove(account_id);
+        }
+        DaemonEvent::SyncError { account_id, error } => {
+            if app.user_sync_targets.remove(account_id) {
+                app.status_message = Some(format!(
+                    "Sync failed for {}: {error}",
+                    app.account_display_name(account_id)
+                ));
+            }
+        }
+        _ => {}
+    }
+    settle_user_sync_pending(app);
+}
+
+fn settle_user_sync_pending(app: &mut App) {
+    if app.user_sync_acknowledgements_pending == 0 && app.user_sync_targets.is_empty() {
+        app.user_sync_pending = false;
+        app.user_sync_events_before_ack.clear();
     }
 }
 
@@ -545,6 +593,7 @@ mod tests {
         let second = mxr_core::AccountId::new();
         let mut app = app_with_account(&second);
         app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
         handle_sync_batch(
             &mut app,
             vec![sync_result(&first, "First"), sync_result(&second, "Work")],
@@ -577,6 +626,7 @@ mod tests {
         let account_id = mxr_core::AccountId::new();
         let mut app = app_with_account(&account_id);
         app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
         handle_daemon_event(
             &mut app,
             DaemonEvent::SyncCompleted {
@@ -589,6 +639,40 @@ mod tests {
         handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
         assert!(!app.user_sync_pending);
         assert!(app.user_sync_events_before_ack.is_empty());
+    }
+
+    #[test]
+    fn a_rejected_global_sync_clears_pending_tracking_but_later_events_refresh() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_request_failed(&mut app);
+        assert!(!app.user_sync_pending);
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id,
+                messages_synced: 0,
+            },
+        );
+        assert!(app.diagnostics.pending_status_refresh);
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.user_sync_events_before_ack.is_empty());
+    }
+
+    #[test]
+    fn overlapping_global_sync_acknowledgements_merge_targets() {
+        let first = mxr_core::AccountId::new();
+        let second = mxr_core::AccountId::new();
+        let mut app = app_with_account(&first);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 2;
+        handle_sync_batch(&mut app, vec![sync_result(&first, "First")]);
+        handle_sync_batch(&mut app, vec![sync_result(&second, "Second")]);
+        assert_eq!(app.user_sync_targets.len(), 2);
+        assert!(app.user_sync_pending);
+        assert_eq!(app.user_sync_acknowledgements_pending, 0);
     }
 
     fn sync_result(

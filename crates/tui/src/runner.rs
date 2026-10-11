@@ -2476,7 +2476,8 @@ pub async fn run() -> anyhow::Result<()> {
                         message_id: pending.message_id,
                         attachment_id: pending.attachment_id,
                         destination,
-                        replace_existing: true,
+                        replace_existing: pending.operation == AttachmentOperation::Open
+                            || pending.replace_existing,
                     },
                 )
                 .await;

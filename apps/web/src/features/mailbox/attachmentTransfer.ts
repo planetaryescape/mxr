@@ -166,8 +166,8 @@ export async function openAttachment(
     const { metadata, bytes } = await fetchAttachmentBytes(input, dependencies);
     const mimeType = (metadata.mime_type.split(";", 1)[0] ?? "").trim().toLowerCase();
     const blob = new Blob([bytes], { type: mimeType });
-    if (!popup || !INLINE_ATTACHMENT_MIME_TYPES.has(mimeType)) {
-      if (popup) popup.close();
+    if (!popup || popup.closed || !INLINE_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+      if (popup && !popup.closed) popup.close();
       saveBlob(blob, metadata.filename);
       return { filename: metadata.filename, opened: false };
     }

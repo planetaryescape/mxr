@@ -195,6 +195,8 @@ fn safe_download_name(raw: &str, attachment_id: &mxr_core::AttachmentId) -> Stri
 
 #[derive(serde::Serialize)]
 struct AttachmentTransferResult {
+    #[serde(skip_serializing)]
+    index: usize,
     message_id: String,
     attachment_id: String,
     filename: String,
@@ -209,8 +211,8 @@ fn print_transfer_results(
 ) -> anyhow::Result<()> {
     match resolve_format(format) {
         OutputFormat::Table => {
-            for (index, item) in results.iter().enumerate() {
-                println!("#{} {} -> {}", index + 1, item.filename, item.path);
+            for item in results {
+                println!("{}", format_transfer_table_line(item));
             }
         }
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(results)?),
@@ -246,6 +248,10 @@ fn print_transfer_results(
     Ok(())
 }
 
+fn format_transfer_table_line(item: &AttachmentTransferResult) -> String {
+    format!("#{} {} -> {}", item.index, item.filename, item.path)
+}
+
 pub async fn attachments_download(
     message_id: String,
     account: Option<String>,
@@ -269,12 +275,13 @@ pub async fn attachments_download(
     let target_dir = dir.unwrap_or(std::env::current_dir()?);
     std::fs::create_dir_all(&target_dir)?;
     let mut results = Vec::new();
-    for (_display_index, attachment) in selected {
+    for (display_index, attachment) in selected {
         let target = target_dir.join(safe_download_name(&attachment.filename, &attachment.id));
         let downloaded = client
             .transfer_attachment_to(&id, &attachment.id, &target, false)
             .await?;
         results.push(AttachmentTransferResult {
+            index: display_index,
             message_id: id.as_str(),
             attachment_id: attachment.id.as_str(),
             filename: downloaded.filename,
@@ -311,6 +318,7 @@ pub async fn attachments_open(
     open::that(&downloaded.path)?;
     print_transfer_results(
         &[AttachmentTransferResult {
+            index,
             message_id: id.as_str(),
             attachment_id: attachment.id.as_str(),
             filename: downloaded.filename,
@@ -324,7 +332,7 @@ pub async fn attachments_open(
 
 #[cfg(test)]
 mod tests {
-    use super::safe_download_name;
+    use super::{format_transfer_table_line, safe_download_name, AttachmentTransferResult};
     use mxr_core::AttachmentId;
     use std::path::Path;
 
@@ -355,5 +363,23 @@ mod tests {
         assert_eq!(safe_download_name("report.pdf", &id), "report.pdf");
         let target = target_dir.join(safe_download_name("report.pdf", &id));
         assert_eq!(target.parent(), Some(target_dir));
+    }
+
+    #[test]
+    fn transfer_table_keeps_the_selected_attachment_index() {
+        let row = AttachmentTransferResult {
+            index: 3,
+            message_id: "message".into(),
+            attachment_id: "attachment".into(),
+            filename: "invoice.pdf".into(),
+            path: "/tmp/invoice.pdf".into(),
+            length_bytes: 1,
+            sha256: "0".repeat(64),
+        };
+
+        assert_eq!(
+            format_transfer_table_line(&row),
+            "#3 invoice.pdf -> /tmp/invoice.pdf"
+        );
     }
 }

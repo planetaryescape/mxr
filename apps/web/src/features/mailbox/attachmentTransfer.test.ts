@@ -44,11 +44,12 @@ function transferResponses(mimeType = metadata.mime_type, sha256 = digest) {
 interface TestPopup {
   opener: Window | null;
   closed: boolean;
-  close: () => void;
-  location: Pick<Location, "replace">;
+  close: { (): void; mockReset: () => void };
+  location: { replace: { (url: string): void; mockReset: () => void } };
 }
 
 let popupOpener: Window | null = window;
+let popupClosed = false;
 const popup = {
   get opener() {
     return popupOpener;
@@ -56,7 +57,12 @@ const popup = {
   set opener(value: Window | null) {
     popupOpener = value;
   },
-  closed: false,
+  get closed() {
+    return popupClosed;
+  },
+  set closed(value: boolean) {
+    popupClosed = value;
+  },
   close: vi.fn<() => void>(),
   location: { replace: vi.fn<(url: string) => void>() },
 } satisfies TestPopup;
@@ -143,6 +149,27 @@ describe("attachment transfer in the browser", () => {
       opened: false,
     });
 
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+  });
+
+  test("falls back to download when the user closes the popup during transfer", async () => {
+    fetchMetadata.mockResolvedValueOnce(metadata);
+    fetchChunk.mockImplementationOnce(async () => {
+      popup.closed = true;
+      return {
+        message_id: input.messageId,
+        attachment_id: input.attachmentId,
+        offset: 0,
+        data_base64: "YWJj",
+      };
+    });
+
+    await expect(openAttachment(input, dependencies)).resolves.toEqual({
+      filename: "note.txt",
+      opened: false,
+    });
+
+    expect(popup.location.replace).not.toHaveBeenCalled();
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
   });
 });

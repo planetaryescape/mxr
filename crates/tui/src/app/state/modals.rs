@@ -174,7 +174,7 @@ pub struct ModalsState {
     pub expert: ExpertModalState,
     /// Path-input modal shown when the user presses `d` in the
     /// attachment list. Lets them choose where to save instead of
-    /// the daemon silently dropping the file in its internal cache.
+    /// silently saving the file to the client's internal cache.
     pub save_attachment: SaveAttachmentModalState,
 }
 

@@ -101,6 +101,9 @@ the message ID, attachment ID and offset. Assemble the chunks and verify the
 reported length and SHA-256 before saving or opening the untrusted bytes. Both
 tools accept an optional `account_id` assertion; the daemon checks account
 scope on each request.
+Because attachment fetching can contact the provider, both tools require
+`safety_policy = "full"` and `allow_destructive = true` in the MCP profile.
+Keep `allowed_accounts` scoped; `allow_send` can remain false.
 `mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
 promises) and, with `include_gist = true`, the model's gist and verified ask.
 It has no refresh option, so a cached gist is reused.

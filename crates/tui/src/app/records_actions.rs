@@ -343,6 +343,7 @@ impl App {
                     filename: pdf.filename.clone(),
                     operation: AttachmentOperation::Open,
                     destination: None,
+                    replace_existing: false,
                 });
                 self.status_message = Some(format!(
                     "Opening {}...",

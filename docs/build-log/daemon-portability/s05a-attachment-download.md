@@ -4,9 +4,13 @@ The transfer contract adds path-free metadata and bounded chunks to IPC. Metadat
 
 The shared Rust client verifies IDs, chunk shape, decoded lengths, total length and SHA-256. It writes a private temporary file beside the final path, then exposes the verified file atomically. CLI downloads use no-clobber behavior; TUI replacement follows the existing save-dialog confirmation. Open operations download to the client cache and invoke the client-side opener. The bridge has new authenticated typed metadata/chunk routes; the existing path-returning open/download routes remain for deployed local clients. MCP exposes metadata and bounded 64 KiB chunk tools with an optional account assertion.
 
-The browser assembles and verifies the complete byte array before creating a Blob. Open uses a synchronously opened, detached tab only for `text/plain` and PNG/JPEG/GIF/WebP; unsupported types and popup-blocked opens download instead. HTML, SVG and PDF never enter the inline-open path. This keeps file bytes on the browser client and avoids a second binary streaming route.
+The browser assembles and verifies the complete byte array before creating a Blob. Open uses a synchronously opened, detached tab only for `text/plain` and PNG/JPEG/GIF/WebP; unsupported types, popup-blocked opens, and tabs closed during transfer download instead. HTML, SVG and PDF never enter the inline-open path. This keeps file bytes on the browser client and avoids a second binary streaming route.
 
 The daemon still fetches each attachment as a complete provider `Vec<u8>`. The browser also holds the complete transfer in memory before creating its Blob. There is no total attachment-size cap in this slice. These are existing provider and browser memory limits, not guarantees of streaming end-to-end.
+
+## Review corrections
+
+The TUI save modal carries replacement authority only after the user confirms an already-existing destination. An unconfirmed save uses atomic no-clobber publication, so a file created while bytes are arriving is preserved. Open may replace its client-local cache copy. The CLI table output keeps the selected attachment's actual one-based index; JSON/JSONL remain unchanged. MCP attachment fetching is network-bound and classified as a mutation, so its profile needs `safety_policy = "full"` and `allow_destructive = true`; `allowed_accounts` remains enforced and `allow_send` can stay false.
 
 ## Cache persistence
 
@@ -22,7 +26,9 @@ Starting base was `f2e522c882599127d6fae9fbe5a0855f542472b4`. Focused results on
 - `scripts/cargo-test -p mxr-web --lib attachment_transfer_routes_return_path_free_typed_responses`: 1 passed.
 - `scripts/cargo-test -p mxr --lib attachment_materialization_serializes_same_attachment_and_prunes_idle_keys`: 1 passed.
 - `scripts/cargo-test -p mxr --lib dispatch_download_attachment_persists_local_path`: 1 passed; concurrent provider calls were gated and counted, and both responses shared the persisted cache path.
-- In `apps/web`, `npm run gen:types`, `npm run typecheck`, and `npx vitest run src/features/mailbox/attachmentTransfer.test.ts` passed; 5 browser transfer tests passed.
+- In `apps/web`, `npm run gen:types`, `npm run typecheck`, and `npx vitest run src/features/mailbox/attachmentTransfer.test.ts` passed; the suite now has 6 browser transfer tests, including a popup closed during transfer. Targeted `oxlint` and `oxfmt --check` passed with four threads.
+- Follow-up review regressions passed: `scripts/cargo-test -p mxr-tui --lib save_modal_carries_only_explicit_overwrite_confirmation` (task 5821), `scripts/cargo-test -p mxr-client --lib no_clobber_preserves_a_destination_created_during_transfer` (task 5822), and `scripts/cargo-test -p mxr --lib transfer_table_keeps_the_selected_attachment_index` (task 5823).
+- The site guide edit passed `site/npm run validate` (225 OpenAPI paths) and `site/npm test` (3 passed).
 - Targeted `oxlint` and `oxfmt --check` passed with four threads. `anti-slop-check` found no issues in the transfer implementation or its tests; it reports four standard generated `headers: { [name: string]: unknown }` entries for the new OpenAPI operations.
 
 Regenerate browser types from the bridge source with:

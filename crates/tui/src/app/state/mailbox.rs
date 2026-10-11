@@ -555,8 +555,10 @@ pub struct PendingAttachmentAction {
     pub operation: AttachmentOperation,
     /// User-chosen save destination for `Download` operations. Set by
     /// the save-attachment modal; `None` falls back to the TUI's
-    /// local attachment cache (used by `Open`).
+    /// client-local attachment cache (used by `Open`).
     pub destination: Option<std::path::PathBuf>,
+    /// True only when the save modal confirmed replacing an existing file.
+    pub replace_existing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

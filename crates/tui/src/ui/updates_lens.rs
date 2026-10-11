@@ -70,6 +70,9 @@ fn suffix(line: &UpdateLineData) -> String {
     if let Some(in_todo) = &line.in_todo {
         parts.push(format!("({})", one_line(in_todo)));
     }
+    if line.latest_message_pinned {
+        parts.push("latest email pinned".into());
+    }
     parts.join(" \u{b7} ")
 }
 
@@ -501,6 +504,7 @@ pub(crate) mod tests {
             message_ids: vec![MessageId::new()],
             thread_ids: vec![ThreadId::new()],
             latest_message_id: Some(MessageId::new()),
+            latest_message_pinned: false,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),

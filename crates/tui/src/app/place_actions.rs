@@ -246,24 +246,28 @@ impl App {
             self.push_toast(Toast::success("Nothing to sweep: pinned mail stays"));
             return;
         }
-        confirm.shown = self
-            .mailbox
-            .place_page
-            .rows()
-            .filter(|(bundle, message)| {
-                !message.pinned
-                    && confirm
-                        .target
-                        .account_id
-                        .as_ref()
-                        .is_none_or(|a| a == &bundle.account_id)
-                    && confirm
-                        .target
-                        .sender_email
-                        .as_ref()
-                        .is_none_or(|s| s == &bundle.sender_email)
-            })
-            .count() as u32;
+        if confirm.from_updates {
+            confirm.shown = 0;
+        } else {
+            confirm.shown = self
+                .mailbox
+                .place_page
+                .rows()
+                .filter(|(bundle, message)| {
+                    !message.pinned
+                        && confirm
+                            .target
+                            .account_id
+                            .as_ref()
+                            .is_none_or(|a| a == &bundle.account_id)
+                        && confirm
+                            .target
+                            .sender_email
+                            .as_ref()
+                            .is_none_or(|s| s == &bundle.sender_email)
+                })
+                .count() as u32;
+        }
         confirm.sweep_focused = confirm.target.sender_email.is_some();
         self.mailbox.sweep_confirm = Some(confirm);
     }
@@ -337,6 +341,7 @@ impl App {
             });
         }
         self.refresh_places();
+        self.mailbox.updates_page.pending_refresh = true;
         self.mailbox.pending_subscriptions_refresh = true;
     }
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.72](https://github.com/planetaryescape/mxr/compare/v0.6.71...v0.6.72) (2026-10-11)
+
+
+### Features
+
+* persist Updates pins and add terminal pin and sweep actions ([#354](https://github.com/planetaryescape/mxr/issues/354)) ([9881acc](https://github.com/planetaryescape/mxr/commit/9881acca60ec7a26072338435212da4b907d4c55))
+
+
+### Documentation
+
+* explain reader appearance choices ([#371](https://github.com/planetaryescape/mxr/issues/371)) ([caae87c](https://github.com/planetaryescape/mxr/commit/caae87ca1aa254cafa235351cd963ecab2a81c1a))
+
 ## [0.6.71](https://github.com/planetaryescape/mxr/compare/v0.6.70...v0.6.71) (2026-10-11)
 
 

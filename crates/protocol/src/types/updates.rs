@@ -220,6 +220,10 @@ pub struct UpdateLineData {
     /// The newest message, for `o`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_message_id: Option<MessageId>,
+    /// Whether the exact latest email is pinned in the local store. Older
+    /// digest payloads omit this and are deliberately treated as unpinned.
+    #[serde(default)]
+    pub latest_message_pinned: bool,
     /// The message `fact` and `todo_title` came from, for `t`. In Changed
     /// it can be older than the newest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -443,5 +447,33 @@ mod tests {
         assert_eq!(json["order_number"], "ORDER-9");
         assert_eq!(json["items"][0]["name"], "Book");
         assert_eq!(json["detail"], "Expected by Thu 8 Oct");
+    }
+
+    #[test]
+    fn an_old_update_line_payload_defaults_its_latest_email_to_unpinned() {
+        let old_payload = serde_json::json!({
+            "id": "strava|weekly-distance",
+            "section": "changed",
+            "account_id": mxr_core::AccountId::new(),
+            "source_key": "strava",
+            "source_name": "Strava",
+            "fact": "21.3 km over 3 runs",
+            "fact_source": "subject",
+            "signal": "changed",
+            "count": 1,
+            "latest_at": "2026-10-07T07:00:00Z",
+            "todo_title": "Check Strava",
+            "why": "Here because: automated sender.",
+            "setting": "every_digest"
+        });
+        let line: UpdateLineData =
+            serde_json::from_value(old_payload).expect("pre-pin digest payloads remain readable");
+        assert!(!line.latest_message_pinned);
+        assert_eq!(
+            serde_json::to_value(line).expect("update line serializes to JSON")
+                ["latest_message_pinned"],
+            false,
+            "new payloads state the value explicitly"
+        );
     }
 }

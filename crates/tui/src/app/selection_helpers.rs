@@ -102,6 +102,7 @@ impl App {
                 MutationEffect::RemoveFromList(message_id)
                 | MutationEffect::UpdateFlags { message_id, .. }
                 | MutationEffect::ReplyLater { message_id, .. } => vec![message_id.clone()],
+                MutationEffect::UpdatesPin { message_id, .. } => vec![message_id.clone()],
                 MutationEffect::RemoveFromListMany(message_ids) => message_ids.clone(),
                 MutationEffect::UpdateFlagsMany { updates } => updates
                     .iter()
@@ -109,6 +110,7 @@ impl App {
                     .collect(),
                 MutationEffect::ModifyLabels { message_ids, .. } => message_ids.clone(),
                 MutationEffect::RefreshList
+                | MutationEffect::RefreshUpdates(_)
                 | MutationEffect::StatusOnly(_)
                 | MutationEffect::RefreshPlaces(_)
                 | MutationEffect::SenderMoved(_)

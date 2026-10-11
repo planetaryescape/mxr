@@ -11440,6 +11440,11 @@ export interface components {
             /** Format: date-time */
             latest_at: string;
             latest_message_id?: null | components["schemas"]["MessageId"];
+            /**
+             * @description Whether the exact latest email is pinned in the local store. Older
+             *     digest payloads omit this and are deliberately treated as unpinned.
+             */
+            latest_message_pinned?: boolean;
             latest_thread_id?: null | components["schemas"]["ThreadId"];
             link?: null | components["schemas"]["UpdateLinkData"];
             message_ids?: components["schemas"]["MessageId"][];

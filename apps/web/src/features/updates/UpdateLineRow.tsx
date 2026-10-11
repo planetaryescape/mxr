@@ -14,7 +14,7 @@ import {
   trackerStatus,
   type SuggestedSetting,
 } from "./digestView";
-import { useUpdatesHidden, useUpdatesPins } from "./updatesVerbs";
+import { useUpdatesHidden } from "./updatesVerbs";
 
 function Mark({ line }: { line: UpdateLine }) {
   if (line.section === "needs_a_look") {
@@ -70,7 +70,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
   const hide = useUpdatesHidden((s) => s.hide);
-  const pinned = useUpdatesPins((s) => s.pinned.has(line.id));
+  const pinned = line.latest_message_pinned ?? false;
   const link = openableLink(line);
   const detail = line.tracker?.detail;
   const status = trackerStatus(line);
@@ -171,9 +171,12 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             </p>
           ) : null}
           {!parcel ? (
-            <p data-testid="update-why" className="mt-0.5 text-[12px] text-fg-2">
-              {line.why}
-            </p>
+            <details className="mt-0.5 text-[12px] text-fg-2">
+              <summary className="w-fit cursor-pointer rounded-sm underline decoration-border-strong underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Why this update?
+              </summary>
+              <p data-testid="update-why" className="mt-1 break-words pl-1">{line.why}</p>
+            </details>
           ) : null}
           {line.todo_suggestion ? (
             <p
@@ -234,7 +237,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               >
                 {line.in_todo}
               </span>
-            ) : line.latest_message_id ? (
+            ) : line.latest_message_id && !line.todo_suggestion ? (
               <Button size="sm" variant="outline" onClick={() => onNeedsMe(line)}>
                 This needs me
               </Button>

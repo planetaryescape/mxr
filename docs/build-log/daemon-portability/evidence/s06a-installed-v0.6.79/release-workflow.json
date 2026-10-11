@@ -1,0 +1,853 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-10-11T22:12:43Z",
+  "headBranch": "v0.6.79",
+  "headSha": "f56ac1527787ca312bda7b52935947ee94495251",
+  "jobs": [
+    {
+      "completedAt": "2026-10-11T22:12:57Z",
+      "conclusion": "success",
+      "databaseId": 114588873093,
+      "name": "Plan Release",
+      "startedAt": "2026-10-11T22:12:50Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:12:51Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:12:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:51Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-11T22:12:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 3,
+          "startedAt": "2026-10-11T22:12:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Verify release tag matches Cargo version",
+          "number": 4,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Find previous tag",
+          "number": 5,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Detect changed artifact families",
+          "number": 6,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Build release matrix",
+          "number": 7,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 13,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:12:54Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-11T22:12:54Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114588873093"
+    },
+    {
+      "completedAt": "2026-10-11T22:21:41Z",
+      "conclusion": "success",
+      "databaseId": 114588919886,
+      "name": "Release CLI Smoke",
+      "startedAt": "2026-10-11T22:13:04Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:13:08Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:13:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:08Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-11T22:13:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:09Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 3,
+          "startedAt": "2026-10-11T22:13:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:16Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-11T22:13:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:17Z",
+          "conclusion": "success",
+          "name": "Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 5,
+          "startedAt": "2026-10-11T22:13:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:17Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 6,
+          "startedAt": "2026-10-11T22:13:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:18Z",
+          "conclusion": "success",
+          "name": "Run taiki-e/install-action@nextest",
+          "number": 7,
+          "startedAt": "2026-10-11T22:13:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:22Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 8,
+          "startedAt": "2026-10-11T22:13:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:18:34Z",
+          "conclusion": "success",
+          "name": "Run release-blocking CLI tests",
+          "number": 9,
+          "startedAt": "2026-10-11T22:13:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:20:11Z",
+          "conclusion": "success",
+          "name": "Run deterministic provider smoke suite",
+          "number": 10,
+          "startedAt": "2026-10-11T22:18:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:22Z",
+          "conclusion": "success",
+          "name": "Run v1 launch proof (fake provider, daemon, CLI, MCP)",
+          "number": 11,
+          "startedAt": "2026-10-11T22:20:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:30Z",
+          "conclusion": "success",
+          "name": "Verify recoverable Archive outcomes",
+          "number": 12,
+          "startedAt": "2026-10-11T22:21:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:31Z",
+          "conclusion": "success",
+          "name": "Record live provider credential evidence",
+          "number": 13,
+          "startedAt": "2026-10-11T22:21:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:31Z",
+          "conclusion": "success",
+          "name": "Run live Gmail release smoke",
+          "number": 14,
+          "startedAt": "2026-10-11T22:21:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:31Z",
+          "conclusion": "skipped",
+          "name": "Skip CLI smoke",
+          "number": 15,
+          "startedAt": "2026-10-11T22:21:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:38Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 27,
+          "startedAt": "2026-10-11T22:21:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:38Z",
+          "conclusion": "success",
+          "name": "Post Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 28,
+          "startedAt": "2026-10-11T22:21:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:38Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 29,
+          "startedAt": "2026-10-11T22:21:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:38Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 30,
+          "startedAt": "2026-10-11T22:21:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:21:38Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 31,
+          "startedAt": "2026-10-11T22:21:38Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114588919886"
+    },
+    {
+      "completedAt": "2026-10-11T22:26:04Z",
+      "conclusion": "success",
+      "databaseId": 114588919928,
+      "name": "Build x86_64-unknown-linux-gnu",
+      "startedAt": "2026-10-11T22:13:00Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:13:03Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:13:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:05Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-11T22:13:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:06Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 3,
+          "startedAt": "2026-10-11T22:13:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:07Z",
+          "conclusion": "success",
+          "name": "Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 4,
+          "startedAt": "2026-10-11T22:13:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:07Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-11T22:13:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:08Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 6,
+          "startedAt": "2026-10-11T22:13:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:17Z",
+          "conclusion": "success",
+          "name": "Install system dependencies (Linux)",
+          "number": 7,
+          "startedAt": "2026-10-11T22:13:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:17Z",
+          "conclusion": "skipped",
+          "name": "Install cross",
+          "number": 8,
+          "startedAt": "2026-10-11T22:13:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:17Z",
+          "conclusion": "success",
+          "name": "Gate bundled Gmail OAuth credentials",
+          "number": 9,
+          "startedAt": "2026-10-11T22:13:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:33Z",
+          "conclusion": "success",
+          "name": "Build web SPA",
+          "number": 10,
+          "startedAt": "2026-10-11T22:13:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:33Z",
+          "conclusion": "skipped",
+          "name": "Build (cross)",
+          "number": 11,
+          "startedAt": "2026-10-11T22:13:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:36Z",
+          "conclusion": "success",
+          "name": "Build (native)",
+          "number": 12,
+          "startedAt": "2026-10-11T22:13:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:39Z",
+          "conclusion": "success",
+          "name": "SPA embedded in release binary",
+          "number": 13,
+          "startedAt": "2026-10-11T22:25:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:39Z",
+          "conclusion": "skipped",
+          "name": "Import Apple Developer ID certificate",
+          "number": 14,
+          "startedAt": "2026-10-11T22:25:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:39Z",
+          "conclusion": "skipped",
+          "name": "Sign CLI binaries (macOS)",
+          "number": 15,
+          "startedAt": "2026-10-11T22:25:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:46Z",
+          "conclusion": "success",
+          "name": "Package CLI archive",
+          "number": 16,
+          "startedAt": "2026-10-11T22:25:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:46Z",
+          "conclusion": "skipped",
+          "name": "Notarize macOS binary",
+          "number": 17,
+          "startedAt": "2026-10-11T22:25:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:46Z",
+          "conclusion": "success",
+          "name": "Generate CLI SHA256 checksum",
+          "number": 18,
+          "startedAt": "2026-10-11T22:25:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:49Z",
+          "conclusion": "success",
+          "name": "Run actions/upload-artifact@v7",
+          "number": 19,
+          "startedAt": "2026-10-11T22:25:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:25:51Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 35,
+          "startedAt": "2026-10-11T22:25:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:26:02Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 36,
+          "startedAt": "2026-10-11T22:25:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:26:02Z",
+          "conclusion": "success",
+          "name": "Post Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 37,
+          "startedAt": "2026-10-11T22:26:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:26:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 38,
+          "startedAt": "2026-10-11T22:26:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:26:03Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 39,
+          "startedAt": "2026-10-11T22:26:03Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114588919928"
+    },
+    {
+      "completedAt": "2026-10-11T22:34:58Z",
+      "conclusion": "success",
+      "databaseId": 114588920050,
+      "name": "Build aarch64-apple-darwin",
+      "startedAt": "2026-10-11T22:13:07Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:13:10Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:13:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-11T22:13:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:24Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 3,
+          "startedAt": "2026-10-11T22:13:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:25Z",
+          "conclusion": "success",
+          "name": "Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 4,
+          "startedAt": "2026-10-11T22:13:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:26Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-11T22:13:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:27Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 6,
+          "startedAt": "2026-10-11T22:13:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:27Z",
+          "conclusion": "skipped",
+          "name": "Install system dependencies (Linux)",
+          "number": 7,
+          "startedAt": "2026-10-11T22:13:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:27Z",
+          "conclusion": "skipped",
+          "name": "Install cross",
+          "number": 8,
+          "startedAt": "2026-10-11T22:13:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:27Z",
+          "conclusion": "success",
+          "name": "Gate bundled Gmail OAuth credentials",
+          "number": 9,
+          "startedAt": "2026-10-11T22:13:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:51Z",
+          "conclusion": "success",
+          "name": "Build web SPA",
+          "number": 10,
+          "startedAt": "2026-10-11T22:13:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:13:51Z",
+          "conclusion": "skipped",
+          "name": "Build (cross)",
+          "number": 11,
+          "startedAt": "2026-10-11T22:13:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:48Z",
+          "conclusion": "success",
+          "name": "Build (native)",
+          "number": 12,
+          "startedAt": "2026-10-11T22:13:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:48Z",
+          "conclusion": "skipped",
+          "name": "SPA embedded in release binary",
+          "number": 13,
+          "startedAt": "2026-10-11T22:33:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:48Z",
+          "conclusion": "success",
+          "name": "Import Apple Developer ID certificate",
+          "number": 14,
+          "startedAt": "2026-10-11T22:33:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:48Z",
+          "conclusion": "skipped",
+          "name": "Sign CLI binaries (macOS)",
+          "number": 15,
+          "startedAt": "2026-10-11T22:33:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:56Z",
+          "conclusion": "success",
+          "name": "Package CLI archive",
+          "number": 16,
+          "startedAt": "2026-10-11T22:33:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:56Z",
+          "conclusion": "skipped",
+          "name": "Notarize macOS binary",
+          "number": 17,
+          "startedAt": "2026-10-11T22:33:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:33:57Z",
+          "conclusion": "success",
+          "name": "Generate CLI SHA256 checksum",
+          "number": 18,
+          "startedAt": "2026-10-11T22:33:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:02Z",
+          "conclusion": "success",
+          "name": "Run actions/upload-artifact@v7",
+          "number": 19,
+          "startedAt": "2026-10-11T22:33:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:07Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 35,
+          "startedAt": "2026-10-11T22:34:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:53Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 36,
+          "startedAt": "2026-10-11T22:34:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:53Z",
+          "conclusion": "success",
+          "name": "Post Run mozilla-actions/sccache-action@v0.0.11",
+          "number": 37,
+          "startedAt": "2026-10-11T22:34:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:54Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 38,
+          "startedAt": "2026-10-11T22:34:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:34:55Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 39,
+          "startedAt": "2026-10-11T22:34:54Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114588920050"
+    },
+    {
+      "completedAt": "2026-10-11T22:35:23Z",
+      "conclusion": "success",
+      "databaseId": 114593324236,
+      "name": "GitHub Release",
+      "startedAt": "2026-10-11T22:35:00Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:35:02Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:35:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:02Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-11T22:35:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:06Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 3,
+          "startedAt": "2026-10-11T22:35:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:07Z",
+          "conclusion": "success",
+          "name": "Run taiki-e/install-action@v2",
+          "number": 4,
+          "startedAt": "2026-10-11T22:35:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:07Z",
+          "conclusion": "success",
+          "name": "Generate changelog",
+          "number": 5,
+          "startedAt": "2026-10-11T22:35:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:11Z",
+          "conclusion": "success",
+          "name": "Run actions/download-artifact@v8",
+          "number": 6,
+          "startedAt": "2026-10-11T22:35:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:11Z",
+          "conclusion": "success",
+          "name": "Verify release artifact checksums",
+          "number": 7,
+          "startedAt": "2026-10-11T22:35:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:21Z",
+          "conclusion": "success",
+          "name": "Upload assets, then publish the release",
+          "number": 8,
+          "startedAt": "2026-10-11T22:35:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 15,
+          "startedAt": "2026-10-11T22:35:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:21Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 16,
+          "startedAt": "2026-10-11T22:35:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:21Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-11T22:35:21Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114593324236"
+    },
+    {
+      "completedAt": "2026-10-11T22:37:34Z",
+      "conclusion": "success",
+      "databaseId": 114593406130,
+      "name": "Homebrew Formula",
+      "startedAt": "2026-10-11T22:35:31Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-11T22:35:33Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-11T22:35:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:38Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-11T22:35:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:40Z",
+          "conclusion": "success",
+          "name": "Run actions/download-artifact@v8",
+          "number": 3,
+          "startedAt": "2026-10-11T22:35:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:40Z",
+          "conclusion": "success",
+          "name": "Render formula",
+          "number": 4,
+          "startedAt": "2026-10-11T22:35:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:35:43Z",
+          "conclusion": "success",
+          "name": "Update tap formula",
+          "number": 5,
+          "startedAt": "2026-10-11T22:35:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:37:29Z",
+          "conclusion": "success",
+          "name": "Verify Homebrew install",
+          "number": 6,
+          "startedAt": "2026-10-11T22:35:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:37:30Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 12,
+          "startedAt": "2026-10-11T22:37:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-11T22:37:32Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-11T22:37:30Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055/job/114593406130"
+    }
+  ],
+  "status": "completed",
+  "updatedAt": "2026-10-11T22:37:34Z",
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38179507055"
+}

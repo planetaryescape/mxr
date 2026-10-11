@@ -366,6 +366,10 @@ The app checks again while disconnected. When mxr is reachable, the banner
 clears, lists refresh and live updates reconnect without a page reload. For
 request errors, expand **Technical details** to see the underlying error.
 
+If live updates disconnect while other requests still work, the app refreshes
+loaded mail when the event connection returns. Your open draft keeps its text;
+you do not need to reload the page.
+
 ## Command palette
 
 `⌘K` (`Ctrl+K` off macOS, or `:`) runs any action by name. With a

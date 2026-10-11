@@ -1,0 +1,315 @@
+{
+  "success": true,
+  "data": {
+    "lifecycle": {
+      "effectiveLaunch": {
+        "browserLaunched": true,
+        "engine": "chrome",
+        "launchHash": 12798390076057945372
+      },
+      "launched": false,
+      "relaunchedBrowser": false,
+      "restartedBackground": false,
+      "restoreStatus": "not_configured",
+      "reused": true,
+      "saveStatus": "not_attempted"
+    },
+    "origin": "http://127.0.0.1:18459/m/inbox",
+    "refs": {
+      "e1": {
+        "name": "",
+        "role": "generic"
+      },
+      "e10": {
+        "name": "Theme",
+        "role": "button"
+      },
+      "e11": {
+        "name": "Collapse sidebar",
+        "role": "button"
+      },
+      "e12": {
+        "name": "Breadcrumb",
+        "role": "navigation"
+      },
+      "e13": {
+        "name": "Search mail",
+        "role": "button"
+      },
+      "e14": {
+        "name": "Compose new email",
+        "role": "button"
+      },
+      "e15": {
+        "name": "",
+        "role": "generic"
+      },
+      "e16": {
+        "name": "Sync now",
+        "role": "button"
+      },
+      "e17": {
+        "name": "Latest mail just now",
+        "role": "button"
+      },
+      "e18": {
+        "name": "? all keys",
+        "role": "button"
+      },
+      "e19": {
+        "name": "Inline",
+        "role": "button"
+      },
+      "e2": {
+        "name": "Skip to content",
+        "role": "link"
+      },
+      "e20": {
+        "name": "Popout",
+        "role": "button"
+      },
+      "e21": {
+        "name": "Fullscreen (\u21e7\u2318F)",
+        "role": "button"
+      },
+      "e22": {
+        "name": "Close composer (saves draft)",
+        "role": "button"
+      },
+      "e23": {
+        "name": "Cc",
+        "role": "button"
+      },
+      "e24": {
+        "name": "Bcc",
+        "role": "button"
+      },
+      "e25": {
+        "name": "Subject",
+        "role": "textbox"
+      },
+      "e26": {
+        "name": "Draft for me Knows how you write to this person. Describe it and edit freely.",
+        "role": "button"
+      },
+      "e27": {
+        "name": "Attach files",
+        "role": "button"
+      },
+      "e28": {
+        "name": "Close toast",
+        "role": "button"
+      },
+      "e29": {
+        "name": "Account: Synthetic S06 event recovery. Switch account",
+        "role": "button"
+      },
+      "e3": {
+        "name": "Notifications alt+T",
+        "role": "region"
+      },
+      "e30": {
+        "name": "Now 14",
+        "role": "link"
+      },
+      "e31": {
+        "name": "Messages 14",
+        "role": "link"
+      },
+      "e32": {
+        "name": "To do",
+        "role": "link"
+      },
+      "e33": {
+        "name": "Updates",
+        "role": "link"
+      },
+      "e34": {
+        "name": "Reading",
+        "role": "link"
+      },
+      "e35": {
+        "name": "Archive",
+        "role": "link"
+      },
+      "e36": {
+        "name": "Inbox",
+        "role": "link"
+      },
+      "e37": {
+        "name": "MORE",
+        "role": "button"
+      },
+      "e38": {
+        "name": "LABELS",
+        "role": "button"
+      },
+      "e39": {
+        "name": "TOOLS",
+        "role": "button"
+      },
+      "e4": {
+        "name": "Resize sidebar",
+        "role": "separator"
+      },
+      "e40": {
+        "name": "More compose actions",
+        "role": "button"
+      },
+      "e41": {
+        "name": "To",
+        "role": "combobox"
+      },
+      "e42": {
+        "name": "Send \u2318\u21b5",
+        "role": "button"
+      },
+      "e43": {
+        "name": "More send options",
+        "role": "button"
+      },
+      "e44": {
+        "name": "Send later",
+        "role": "button"
+      },
+      "e45": {
+        "name": "Attach",
+        "role": "button"
+      },
+      "e46": {
+        "name": "Editor mode",
+        "role": "group"
+      },
+      "e47": {
+        "name": "Inbox",
+        "role": "region"
+      },
+      "e48": {
+        "name": "Rich text",
+        "role": "radio"
+      },
+      "e49": {
+        "name": "Markdown",
+        "role": "radio"
+      },
+      "e5": {
+        "name": "",
+        "role": "listitem"
+      },
+      "e50": {
+        "name": "Retry",
+        "role": "button"
+      },
+      "e51": {
+        "name": "Inbox",
+        "role": "heading"
+      },
+      "e52": {
+        "name": "Show single messages",
+        "role": "button"
+      },
+      "e53": {
+        "name": "Inbox",
+        "role": "listbox"
+      },
+      "e54": {
+        "name": "Message body",
+        "role": "textbox"
+      },
+      "e55": {
+        "name": "Quinn Dev, Weekly sync agenda, Just now",
+        "role": "option"
+      },
+      "e56": {
+        "name": "Unread., CI Bot, Re: CI pipeline failures, 3 messages in conversation, 19:38",
+        "role": "option"
+      },
+      "e57": {
+        "name": "Unread., Hacker News, HN Weekly Digest, 11:38",
+        "role": "option"
+      },
+      "e58": {
+        "name": "Unread., Starred., Mia, Nate, Oscar, Re: PR review: fix auth middleware, 5 messages in conversation, 3:38",
+        "role": "option"
+      },
+      "e59": {
+        "name": "Hank, Iris, Jack, Re: Team standup notes, 3 messages in conversation, 1:38",
+        "role": "option"
+      },
+      "e6": {
+        "name": "Places",
+        "role": "navigation"
+      },
+      "e60": {
+        "name": "Unread., This Week in Rust, This Week in Rust #580, Yesterday",
+        "role": "option"
+      },
+      "e61": {
+        "name": "Unread., Rosa PM, Database migration plan, Yesterday",
+        "role": "option"
+      },
+      "e62": {
+        "name": "Unread., Starred., Alice, Bob, Carol, Re: Deployment plan for v2.3, 4 messages in conversation, Yesterday",
+        "role": "option"
+      },
+      "e63": {
+        "name": "Unread., Sam Ops, Code review guidelines, Fri",
+        "role": "option"
+      },
+      "e64": {
+        "name": "Unread., Frank, Grace, Re: Invoice #2847, 2 messages in conversation, Has attachments, Fri",
+        "role": "option"
+      },
+      "e65": {
+        "name": "Unread., The Changelog, Changelog newsletter #523, Thu",
+        "role": "option"
+      },
+      "e66": {
+        "name": "Tina Lead, Team offsite planning, Thu",
+        "role": "option"
+      },
+      "e67": {
+        "name": "Unread., Kim, Liam, Re: Summer trip planning, 2 messages in conversation, Thu",
+        "role": "option"
+      },
+      "e68": {
+        "name": "Unread., Uma Designer, New hire onboarding, Wed",
+        "role": "option"
+      },
+      "e69": {
+        "name": "Diana, Eve, Re: Q1 Report review, 3 messages in conversation, Has attachments, Wed",
+        "role": "option"
+      },
+      "e7": {
+        "name": "More",
+        "role": "navigation"
+      },
+      "e70": {
+        "name": "Unread., Vic Security, Security audit results, Tue",
+        "role": "option"
+      },
+      "e71": {
+        "name": "Unread., RustConf, Pat, Re: RustConf 2026 invite, 2 messages in conversation, Has attachments, Mon",
+        "role": "option"
+      },
+      "e72": {
+        "name": "Wendy Data, API design discussion, Mon",
+        "role": "option"
+      },
+      "e73": {
+        "name": "Starred., Quinn Dev, Performance benchmarks, 4 Oct",
+        "role": "option"
+      },
+      "e8": {
+        "name": "Labels",
+        "role": "navigation"
+      },
+      "e9": {
+        "name": "Tools",
+        "role": "navigation"
+      }
+    },
+    "snapshot": "- generic \"MailSkip to contentSRSynthetic S06 event recoverysynthetic@example.comNowg h14Messagesg m14To dog xU\" [ref=e1] clickable [onclick]\n  - link \"Skip to content\" [ref=e2]\n  - button \"Account: Synthetic S06 event recovery. Switch account\" [expanded=false, ref=e29]\n  - navigation \"Places\" [ref=e6]\n    - link \"Now 14\" [ref=e30]\n    - link \"Messages 14\" [ref=e31]\n    - link \"To do\" [ref=e32]\n    - link \"Updates\" [ref=e33]\n    - link \"Reading\" [ref=e34]\n    - link \"Archive\" [ref=e35]\n    - link \"Inbox\" [ref=e36]\n  - navigation \"More\" [ref=e7]\n    - button \"MORE\" [expanded=false, ref=e37]\n  - navigation \"Labels\" [ref=e8]\n    - button \"LABELS\" [expanded=false, ref=e38]\n  - navigation \"Tools\" [ref=e9]\n    - button \"TOOLS\" [expanded=false, ref=e39]\n  - button \"Theme\" [expanded=false, ref=e10]\n  - button \"Collapse sidebar\" [ref=e11]\n  - separator \"Resize sidebar\" [ref=e4] focusable [tabindex]: 19.375\n  - navigation \"Breadcrumb\" [ref=e12]\n  - button \"Search mail\" [ref=e13]\n  - button \"Compose new email\" [ref=e14]\n  - region \"Inbox\" [ref=e47]\n    - heading \"Inbox\" [level=1, ref=e51]\n    - button \"Show single messages\" [ref=e52]\n    - listbox \"Inbox\" [ref=e53]\n      - option \"Quinn Dev, Weekly sync agenda, Just now\" [ref=e55]\n      - option \"Unread., CI Bot, Re: CI pipeline failures, 3 messages in conversation, 19:38\" [ref=e56]\n      - option \"Unread., Hacker News, HN Weekly Digest, 11:38\" [ref=e57]\n      - option \"Unread., Starred., Mia, Nate, Oscar, Re: PR review: fix auth middleware, 5 messages in conversation, 3:38\" [ref=e58]\n      - option \"Hank, Iris, Jack, Re: Team standup notes, 3 messages in conversation, 1:38\" [ref=e59]\n      - option \"Unread., This Week in Rust, This Week in Rust #580, Yesterday\" [ref=e60]\n      - option \"Unread., Rosa PM, Database migration plan, Yesterday\" [ref=e61]\n      - option \"Unread., Starred., Alice, Bob, Carol, Re: Deployment plan for v2.3, 4 messages in conversation, Yesterday\" [ref=e62]\n      - option \"Unread., Sam Ops, Code review guidelines, Fri\" [ref=e63]\n      - option \"Unread., Frank, Grace, Re: Invoice #2847, 2 messages in conversation, Has attachments, Fri\" [ref=e64]\n      - option \"Unread., The Changelog, Changelog newsletter #523, Thu\" [ref=e65]\n      - option \"Tina Lead, Team offsite planning, Thu\" [ref=e66]\n      - option \"Unread., Kim, Liam, Re: Summer trip planning, 2 messages in conversation, Thu\" [ref=e67]\n      - option \"Unread., Uma Designer, New hire onboarding, Wed\" [ref=e68]\n      - option \"Diana, Eve, Re: Q1 Report review, 3 messages in conversation, Has attachments, Wed\" [ref=e69]\n      - option \"Unread., Vic Security, Security audit results, Tue\" [ref=e70]\n      - option \"Unread., RustConf, Pat, Re: RustConf 2026 invite, 2 messages in conversation, Has attachments, Mon\" [ref=e71]\n      - option \"Wendy Data, API design discussion, Mon\" [ref=e72]\n      - option \"Starred., Quinn Dev, Performance benchmarks, 4 Oct\" [ref=e73]\n  - generic \"connected\" [ref=e15] clickable [onclick]\n  - button \"Sync now\" [ref=e16]\n  - button \"Latest mail just now\" [expanded=false, ref=e17]\n  - button \"? all keys\" [ref=e18]\n  - button \"Inline\" [ref=e19]\n  - button \"Popout\" [ref=e20]\n  - button \"Fullscreen (\u21e7\u2318F)\" [ref=e21]\n  - button \"Close composer (saves draft)\" [ref=e22]\n  - button \"More compose actions\" [expanded=false, ref=e40]\n  - combobox \"To\" [expanded=false, ref=e41]\n  - button \"Cc\" [ref=e23]\n  - button \"Bcc\" [ref=e24]\n  - textbox \"Subject\" [ref=e25]\n  - button \"Draft for me Knows how you write to this person. Describe it and edit freely.\" [expanded=false, ref=e26]\n  - textbox \"Message body\" [ref=e54]: S06a unsaved local text survives an event-only reconnect.\n  - button \"Send \u2318\u21b5\" [ref=e42]\n  - button \"More send options\" [expanded=false, ref=e43]\n  - button \"Send later\" [ref=e44]\n  - button \"Attach\" [ref=e45]\n  - group \"Editor mode\" [ref=e46] focusable [tabindex]\n    - radio \"Rich text\" [checked=false, ref=e48]\n    - radio \"Markdown\" [checked=true, ref=e49]\n  - button \"Retry\" [ref=e50]\n  - button \"Attach files\" [ref=e27]: No file chosen\n  - region \"Notifications alt+T\" [ref=e3]\n    - listitem \"Autosave failedSynthetic acceptance fault: compose write unavailable\" [level=1, ref=e5] focusable [tabindex]\n      - button \"Close toast\" [ref=e28]"
+  },
+  "error": null
+}

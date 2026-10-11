@@ -1,0 +1,10 @@
+{
+  "daemon_pid": {
+    "pid": 91996,
+    "stopped": true
+  },
+  "proxy_pid": {
+    "pid": 92014,
+    "stopped": true
+  }
+}

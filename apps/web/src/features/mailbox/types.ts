@@ -241,5 +241,6 @@ export interface MutationResult {
 
 export interface MutationResponse {
   ok: boolean;
+  error?: string;
   result?: MutationResult;
 }

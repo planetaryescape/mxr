@@ -2051,7 +2051,7 @@ const PENDING_REINDEX_BATCH: u32 = 500;
 /// Messages marked by an earlier failed read are retried here too. A message
 /// whose read fails is left out of the commit, marked for the next reindex,
 /// and reported in the error; the rest are still committed.
-async fn reindex_messages_in_search(
+pub(super) async fn reindex_messages_in_search(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
 ) -> Result<(), String> {

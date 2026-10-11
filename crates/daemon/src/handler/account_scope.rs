@@ -66,6 +66,7 @@ enum ScopeTarget<'a> {
     MoveCorrection(i64),
     Undo(&'a str),
     Job(&'a str),
+    Archive(&'a mxr_protocol::ArchiveIdentityData),
 }
 
 use RequestScope::{AllAccounts, Targets, Unscoped};
@@ -269,7 +270,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListBodies { message_ids }
         | Request::PinMessages { message_ids, .. }
         | Request::GetArrivalModes { message_ids } => messages(message_ids),
-        Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
+        Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } | Request::PreviewArchive { mutation, .. } | Request::SubmitArchive { mutation, .. } => {
             messages(mutation_messages(mutation))
         }
         // With no account these read only the caller's accounts: dispatch
@@ -394,6 +395,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetDecision { id } => Targets(vec![T::Decision(id)]),
         Request::UndoMove { correction_id } => Targets(vec![T::MoveCorrection(*correction_id)]),
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
+        Request::GetArchiveWorkspace => Unscoped,
+        Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 
         Request::RuleTreatment {form,..} => {
@@ -635,6 +638,23 @@ async fn resolve_targets(
             }
             T::Undo(mutation_id) => {
                 resolve_undo(state, mutation_id, &mut resolved, &mut todo_ids).await?;
+            }
+            T::Archive(identity) => {
+                let key = format!(
+                    "recoverable_archive:{}:{}",
+                    identity.caller_id, identity.operation_id
+                );
+                let json = state
+                    .store
+                    .get_mutation_job(&key)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| "Archive operation not found".to_string())?;
+                let operation: mxr_protocol::ArchiveOperationData =
+                    serde_json::from_str(&json).map_err(|e| e.to_string())?;
+                for item in operation.items {
+                    resolved.push(item.account_id);
+                }
             }
             T::Job(job_id) => {
                 for account_id in job_accounts(state, job_id).await? {
@@ -890,6 +910,7 @@ pub(super) async fn scope_response(
         ResponseData::Status {
             draft_revision_supported,
             send_outcome_supported,
+            archive_recovery_supported,
             uptime_secs,
             accounts: _,
             total_messages,
@@ -925,6 +946,7 @@ pub(super) async fn scope_response(
             Ok(ResponseData::Status {
                 draft_revision_supported,
                 send_outcome_supported,
+                archive_recovery_supported,
                 uptime_secs,
                 accounts: allowed
                     .iter()

@@ -43,11 +43,71 @@ impl super::Store {
         Ok(())
     }
 
+    /// Initialize the database identity once, including under concurrent first use.
+    pub async fn archive_workspace(&self) -> Result<(String, String), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO archive_workspace VALUES (1, ?, ?) ON CONFLICT(singleton) DO NOTHING",
+        )
+        .bind(uuid::Uuid::now_v7().to_string())
+        .bind(uuid::Uuid::now_v7().to_string())
+        .execute(self.writer())
+        .await?;
+        let row = sqlx::query(
+            "SELECT workspace_id, recovery_generation FROM archive_workspace WHERE singleton = 1",
+        )
+        .fetch_one(self.reader())
+        .await?;
+        Ok((row.get(0), row.get(1)))
+    }
+
+    pub async fn read_archive_workspace(&self) -> Result<Option<(String, String)>, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT workspace_id, recovery_generation FROM archive_workspace WHERE singleton = 1",
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.map(|row| (row.get(0), row.get(1))))
+    }
+
+    /// A restored database must rotate its generation before accepting recovered work.
+    pub async fn rotate_archive_generation(&self) -> Result<(), sqlx::Error> {
+        self.archive_workspace().await?;
+        sqlx::query("UPDATE archive_workspace SET recovery_generation = ? WHERE singleton = 1")
+            .bind(uuid::Uuid::now_v7().to_string())
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    /// Insert an immutable review only if this caller's operation ID is unused.
+    pub async fn insert_archive_job(
+        &self,
+        job_id: &str,
+        started_at: i64,
+        data_json: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO mutation_jobs (job_id, kind, status, started_at, data_json) VALUES (?, 'recoverable_archive', 'reviewed', ?, ?) ON CONFLICT(job_id) DO NOTHING")
+            .bind(job_id).bind(started_at).bind(data_json).execute(self.writer()).await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// The expected JSON is the durable claim: competing submissions cannot overwrite it.
+    pub async fn compare_exchange_archive_job(
+        &self,
+        job_id: &str,
+        expected: &str,
+        next: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE mutation_jobs SET data_json = ?, status = 'recoverable' WHERE job_id = ? AND kind = 'recoverable_archive' AND data_json = ?")
+            .bind(next).bind(job_id).bind(expected).execute(self.writer()).await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Return the `data_json` of the most recent jobs, newest first,
     /// capped at `limit`.
     pub async fn list_mutation_jobs(&self, limit: i64) -> Result<Vec<String>, sqlx::Error> {
         let rows = sqlx::query(
-            r#"SELECT data_json FROM mutation_jobs
+            r#"SELECT data_json FROM mutation_jobs WHERE kind != 'recoverable_archive'
                ORDER BY started_at DESC, job_id DESC
                LIMIT ?1"#,
         )
@@ -71,7 +131,7 @@ impl super::Store {
     pub async fn prune_mutation_jobs(&self, keep: i64) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"DELETE FROM mutation_jobs
-               WHERE job_id NOT IN (
+               WHERE kind != 'recoverable_archive' AND status NOT IN ('queued', 'running') AND job_id NOT IN (
                    SELECT job_id FROM mutation_jobs
                    ORDER BY started_at DESC, job_id DESC
                    LIMIT ?1
@@ -97,7 +157,7 @@ mod tests {
                 .upsert_mutation_job(
                     &format!("job-{i}"),
                     "archive",
-                    "queued",
+                    "completed",
                     i64::from(i),
                     None,
                     &format!(r#"{{"job_id":"job-{i}"}}"#),
@@ -136,5 +196,62 @@ mod tests {
         assert!(kept[1].contains("job-3"));
 
         assert!(store.get_mutation_job("missing").await.unwrap().is_none());
+    }
+    #[tokio::test]
+    async fn archive_workspace_and_protected_receipts_survive_restart_and_pruning() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.db");
+        let store = Store::new(&path).await.unwrap();
+        let identity = store.archive_workspace().await.unwrap();
+        let (first, concurrent) = tokio::join!(
+            store.insert_archive_job("archive-1", 0, "review"),
+            store.insert_archive_job("archive-1", 0, "different")
+        );
+        assert_ne!(first.unwrap(), concurrent.unwrap());
+        let retained = store.get_mutation_job("archive-1").await.unwrap().unwrap();
+        assert!(!store
+            .compare_exchange_archive_job("archive-1", "not-current", "bad")
+            .await
+            .unwrap());
+        assert!(store
+            .compare_exchange_archive_job("archive-1", &retained, "accepted")
+            .await
+            .unwrap());
+        store
+            .upsert_mutation_job("active-job", "archive", "running", 0, None, "active")
+            .await
+            .unwrap();
+        store.prune_mutation_jobs(0).await.unwrap();
+        assert_eq!(
+            store
+                .get_mutation_job("archive-1")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("accepted")
+        );
+        assert_eq!(
+            store
+                .get_mutation_job("active-job")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("active")
+        );
+        drop(store);
+        let reopened = Store::new(&path).await.unwrap();
+        assert_eq!(reopened.archive_workspace().await.unwrap(), identity);
+        assert_eq!(
+            reopened
+                .get_mutation_job("archive-1")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("accepted")
+        );
+        reopened.rotate_archive_generation().await.unwrap();
+        let restored = reopened.archive_workspace().await.unwrap();
+        assert_eq!(restored.0, identity.0);
+        assert_ne!(restored.1, identity.1);
     }
 }

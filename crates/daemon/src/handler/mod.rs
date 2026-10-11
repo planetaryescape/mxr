@@ -1062,7 +1062,7 @@ async fn dispatch(
             identity,
             review_id,
             mutation,
-        } => archive_recovery::submit(state.clone(), identity, review_id, mutation)
+        } => archive_recovery::submit(state.clone(), source, identity, review_id, mutation)
             .await
             .map_err(|error| archive_recovery::with_identity_error(identity, error)),
         Request::GetArchiveOperation { identity } => archive_recovery::get(state, identity)

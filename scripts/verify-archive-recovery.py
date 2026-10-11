@@ -241,6 +241,8 @@ try:
     result = settled(op)
     assert all(x['state'] == 'completed' for x in result['items']), result
     assert_count(op, 2, 2)
+    table = cli('archive-operation', op['identity']['operation_id'], '--format', 'table')
+    assert f"Undo with: mxr undo {op['mutation_id']}" in table.stdout
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda _: ipc(submission(op)), range(8)))
     for response in results:

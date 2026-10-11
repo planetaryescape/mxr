@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.58"
+    "version": "0.6.66"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -484,6 +484,411 @@
         }
       }
     },
+    "/api/v1/mail/categories": {
+      "get": {
+        "tags": [],
+        "summary": "List personal categories",
+        "operationId": "categories_list",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Filter membership counts to this account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal categories and account-scoped counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Create a personal category",
+        "operationId": "categories_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated personal category catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid or duplicate category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/assignment/apply": {
+      "post": {
+        "tags": [],
+        "summary": "Apply previewed category assignments",
+        "operationId": "categories_assignment_apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryTokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Applied assignment counts and Undo mutation id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipAppliedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid, stale, or expired preview token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/assignment/preview": {
+      "post": {
+        "tags": [],
+        "summary": "Preview category assignments for selected messages",
+        "operationId": "categories_assignment_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMembershipBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stale-safe assignment preview and confirmation token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account, message, or category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected this account-scoped selection or category"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/delete": {
+      "post": {
+        "tags": [],
+        "summary": "Preview category deletion or apply its stale-safe preview",
+        "operationId": "categories_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteCategoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deletion preview, or deleted category id and name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Category was not found"
+          },
+          "422": {
+            "description": "The daemon rejected a stale, missing, or expired preview token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/memberships": {
+      "post": {
+        "tags": [],
+        "summary": "Read category assignments for selected messages",
+        "operationId": "categories_memberships",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMembershipStateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Membership counts for each selected category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipStatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account, message, or category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected this account-scoped lookup"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/messages": {
+      "get": {
+        "tags": [],
+        "summary": "List messages in a personal category",
+        "operationId": "categories_messages",
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "query",
+            "description": "Stable category id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Restrict messages to this account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of category messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMessagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Category was not found"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/name/preview": {
+      "post": {
+        "tags": [],
+        "summary": "Validate a personal category name without changing the catalog",
+        "operationId": "categories_name_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNamePreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Normalized name and whether it is available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/rename": {
+      "post": {
+        "tags": [],
+        "summary": "Rename a personal category while preserving its id and memberships",
+        "operationId": "categories_rename",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameCategoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated personal category catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid or duplicate category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/undo": {
+      "post": {
+        "tags": [],
+        "summary": "Undo a category assignment mutation",
+        "operationId": "categories_undo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUndoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restored and skipped membership counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipUndoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Mutation was not found"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid, stale, or expired mutation id"
+          }
+        }
+      }
+    },
     "/api/v1/mail/commitments": {
       "get": {
         "tags": [],
@@ -547,14 +952,47 @@
     "/api/v1/mail/compose/session": {
       "post": {
         "tags": [],
-        "summary": "Start compose session",
         "operationId": "compose_session_start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -592,14 +1030,47 @@
     "/api/v1/mail/compose/session/discard": {
       "post": {
         "tags": [],
-        "summary": "Discard compose session",
         "operationId": "compose_session_discard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardedComposeResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -639,14 +1110,47 @@
     "/api/v1/mail/compose/session/refresh": {
       "post": {
         "tags": [],
-        "summary": "Refresh compose session",
         "operationId": "compose_session_refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -656,9 +1160,26 @@
         "tags": [],
         "summary": "Restore compose session",
         "operationId": "compose_session_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -674,12 +1195,42 @@
         "tags": [],
         "summary": "Run the pre-send safety report for a compose session",
         "operationId": "compose_session_safety_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose safety report"
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -687,14 +1238,100 @@
     "/api/v1/mail/compose/session/save": {
       "post": {
         "tags": [],
-        "summary": "Save compose session",
         "operationId": "compose_session_save",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -702,14 +1339,100 @@
     "/api/v1/mail/compose/session/schedule": {
       "post": {
         "tags": [],
-        "summary": "Store a compose session as a local draft and schedule it",
         "operationId": "compose_session_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledComposeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -719,12 +1442,42 @@
         "tags": [],
         "summary": "Send compose session",
         "operationId": "compose_session_send",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Sent compose session"
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -732,14 +1485,90 @@
     "/api/v1/mail/compose/session/update": {
       "post": {
         "tags": [],
-        "summary": "Update compose session",
         "operationId": "compose_session_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1026,14 +1855,47 @@
     "/api/v1/mail/drafts/save-local": {
       "post": {
         "tags": [],
-        "summary": "Persist draft locally (SaveDraft)",
         "operationId": "mail_drafts_save_local",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Canonical saved draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or legacy daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1071,14 +1933,57 @@
     "/api/v1/mail/drafts/{draft_id}/stored": {
       "delete": {
         "tags": [],
-        "summary": "Delete stored draft",
         "operationId": "mail_drafts_delete_stored",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "Revision from the deletion preview",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Draft deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Legacy daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4827,6 +5732,21 @@
         }
       }
     },
+    "/api/v1/platform/rules/treatment": {
+      "post": {
+        "tags": [],
+        "summary": "Preview or apply account-scoped sorting",
+        "operationId": "rule_treatment",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/rules/upsert": {
       "post": {
         "tags": [],
@@ -5085,6 +6005,22 @@
   },
   "components": {
     "schemas": {
+      "AcceptedComposeDraft": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "AccountAddress": {
         "type": "object",
         "description": "One owned email address per account. Direction inference compares\n`messages.from_email` against this set to decide inbound vs outbound.",
@@ -7205,6 +8141,334 @@
           }
         }
       },
+      "CategoriesResponse": {
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalCategory"
+            }
+          }
+        }
+      },
+      "CategoryDeletePreview": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name",
+          "affected_messages",
+          "preview_token"
+        ],
+        "properties": {
+          "affected_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "preview_token": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryDeleteResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CategoryDeletePreview"
+          },
+          {
+            "$ref": "#/components/schemas/CategoryDeletedResponse"
+          }
+        ]
+      },
+      "CategoryDeletedResponse": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "CategoryMembershipAppliedResponse": {
+        "type": "object",
+        "required": [
+          "mutation_id",
+          "added",
+          "removed"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mutation_id": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipBody": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "add_category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove_category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CategoryMembershipPreview": {
+        "type": "object",
+        "required": [
+          "category_ids",
+          "message_count",
+          "added",
+          "removed",
+          "preview_token"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryId"
+            }
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "preview_token": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipState": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "selected_messages",
+          "assigned_messages"
+        ],
+        "properties": {
+          "assigned_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "selected_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipStateBody": {
+        "type": "object",
+        "required": [
+          "message_ids",
+          "category_ids"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CategoryMembershipStatesResponse": {
+        "type": "object",
+        "required": [
+          "states"
+        ],
+        "properties": {
+          "states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryMembershipState"
+            }
+          }
+        }
+      },
+      "CategoryMembershipUndoneResponse": {
+        "type": "object",
+        "required": [
+          "restored",
+          "skipped"
+        ],
+        "properties": {
+          "restored": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMessagesResponse": {
+        "type": "object",
+        "required": [
+          "envelopes",
+          "total",
+          "has_more"
+        ],
+        "properties": {
+          "envelopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Envelope"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryNameBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryNamePreviewBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryNamePreviewResponse": {
+        "type": "object",
+        "required": [
+          "normalized_name",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "normalized_name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryTokenBody": {
+        "type": "object",
+        "required": [
+          "preview_token"
+        ],
+        "properties": {
+          "preview_token": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryUndoBody": {
+        "type": "object",
+        "required": [
+          "mutation_id"
+        ],
+        "properties": {
+          "mutation_id": {
+            "type": "string"
+          }
+        }
+      },
       "CitationRef": {
         "type": "object",
         "properties": {
@@ -7376,6 +8640,380 @@
           "resolved",
           "expired"
         ]
+      },
+      "ComposeFrontmatter": {
+        "type": "object",
+        "description": "YAML frontmatter for compose files.",
+        "required": [
+          "to",
+          "subject",
+          "from"
+        ],
+        "properties": {
+          "attach": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bcc": {
+            "type": "string"
+          },
+          "cc": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "in-reply-to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "intent": {
+            "$ref": "#/components/schemas/DraftIntent"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread-id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread."
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeIssueView": {
+        "type": "object",
+        "required": [
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeSessionData": {
+        "type": "object",
+        "required": [
+          "draftPath",
+          "rawContent",
+          "frontmatter",
+          "bodyMarkdown",
+          "previewHtml",
+          "issues"
+        ],
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bodyMarkdown": {
+            "type": "string"
+          },
+          "cursorLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "draftId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "draftPath": {
+            "type": "string"
+          },
+          "editorCommand": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frontmatter": {
+            "$ref": "#/components/schemas/ComposeFrontmatter"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComposeIssueView"
+            }
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preservedRecoveryPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previewHtml": {
+            "type": "string"
+          },
+          "rawContent": {
+            "type": "string"
+          },
+          "recoverySourcePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Private recovery destination; automatic saves preserve it without canonical effects."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ComposeSessionKindRequest": {
+        "type": "string",
+        "enum": [
+          "new",
+          "reply",
+          "reply_all",
+          "forward",
+          "invite_reply"
+        ]
+      },
+      "ComposeSessionPathRequest": {
+        "type": "object",
+        "required": [
+          "draft_path"
+        ],
+        "properties": {
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ComposeSessionResponse": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/ComposeSessionData"
+          }
+        }
+      },
+      "ComposeSessionRestoreRequest": {
+        "type": "object",
+        "required": [
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeSessionScheduleRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id",
+          "send_at"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stored draft this session was restored from, if any. With it the\nschedule updates that draft in place; without it a new local draft is\nstored."
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ComposeSessionSendRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stored draft this session was restored from, when it was one — the\nsame id the client passed to `ComposeSessionRestoreRequest`. Acted on by\nthe save handler only: with it, saving updates that local draft in\nplace before any requested provider link/sync."
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "override_safety_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Token from a prior safety-check report authorizing a send despite\nblockers. Forwarded to `SendDraft`; ignored by save/check handlers."
+          },
+          "save_to_server": {
+            "type": "boolean",
+            "description": "Explicit provider-link request. Linked drafts already synchronize when\nupdated; this flag links a local-only draft to the provider."
+          }
+        }
+      },
+      "ComposeSessionStartRequest": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when `kind == InviteReply`. One of `accept`, `tentative`,\n`decline`. Ignored for other kinds."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ComposeSessionKindRequest"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ComposeSessionUpdateRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "from"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attach": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bcc": {
+            "type": "string"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cc": {
+            "type": "string"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "from": {
+            "type": "string"
+          },
+          "retry_recovery": {
+            "type": "boolean",
+            "description": "Explicit canonical persistence retry using a private recovery's observed revision."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
       },
       "ComposerData": {
         "type": "object",
@@ -8327,6 +9965,23 @@
           }
         }
       },
+      "DeleteCategoryBody": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "DeliveryData": {
         "type": "object",
         "description": "A tracked delivery for the Deliveries surface (CLI/web/TUI).",
@@ -8935,6 +10590,17 @@
           }
         }
       },
+      "DiscardedComposeResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "DoctorDataStats": {
         "type": "object",
         "required": [
@@ -9412,6 +11078,14 @@
                   }
                 ]
               },
+              "revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Durable local content revision; absent only for unsaved or legacy drafts."
+              },
               "subject": {
                 "type": "string"
               },
@@ -9473,6 +11147,70 @@
           },
           "who_owes": {
             "type": "string"
+          }
+        }
+      },
+      "DraftConflictDetails": {
+        "type": "object",
+        "properties": {
+          "current_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DraftConflictResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "accepted_draft": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AcceptedComposeDraft"
+              }
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftConflictDetails"
+              }
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "recovery_session": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveredComposeSession"
+              }
+            ]
           }
         }
       },
@@ -10765,7 +12503,8 @@
           "person",
           "copied",
           "written_to",
-          "moved"
+          "moved",
+          "custom_rule"
         ]
       },
       "Label": {
@@ -13280,6 +15019,34 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "PersonalCategory": {
+        "type": "object",
+        "description": "A profile-local category used to group messages without changing provider state.",
+        "required": [
+          "id",
+          "name",
+          "unread_count",
+          "total_count"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -16288,6 +18055,36 @@
           }
         }
       },
+      "RecoveredComposeSession": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "draft_id",
+          "attachment_paths"
+        ],
+        "properties": {
+          "attachment_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Confirmed recovery paths in submitted attachment order."
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -16385,6 +18182,21 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RenameCategoryBody": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -17008,6 +18820,293 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCategories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "limit",
+              "offset",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCategoryMessages"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "category_ids",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetCategoryMemberships"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CreateCategory"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CategoryId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewCategoryName"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "new_name",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RenameCategory"
+                ]
+              },
+              "new_name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "add_category_ids",
+              "remove_category_ids",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "add_category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewCategoryMembership"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              },
+              "remove_category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview_token",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ApplyCategoryMembership"
+                ]
+              },
+              "preview_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewDeleteCategory"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview_token",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeleteCategory"
+                ]
+              },
+              "preview_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoCategoryMembership"
+                ]
+              },
+              "mutation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -17253,6 +19352,31 @@
           },
           {
             "type": "object",
+            "description": "Preview or apply only the sorting action of a draft rule.",
+            "required": [
+              "form",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RuleTreatment"
+                ]
+              },
+              "form": {
+                "$ref": "#/components/schemas/RuleFormData"
+              },
+              "preview_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "cmd"
             ],
@@ -17328,6 +19452,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "action": {
                 "type": "string"
               },
@@ -20706,6 +22840,13 @@
               },
               "draft_id": {
                 "$ref": "#/components/schemas/DraftId"
+              },
+              "expected_revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
               }
             }
           },
@@ -23588,6 +25729,215 @@
           {
             "type": "object",
             "required": [
+              "categories",
+              "kind"
+            ],
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PersonalCategory"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Categories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "normalized_name",
+              "available",
+              "kind"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryNamePreview"
+                ]
+              },
+              "normalized_name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "envelopes",
+              "total",
+              "has_more",
+              "kind"
+            ],
+            "properties": {
+              "envelopes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMessages"
+                ]
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "states",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipStates"
+                ]
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryMembershipState"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipPreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/CategoryMembershipPreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutation_id",
+              "added",
+              "removed",
+              "kind"
+            ],
+            "properties": {
+              "added": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipApplied"
+                ]
+              },
+              "mutation_id": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryDeletePreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/CategoryDeletePreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryDeleted"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "restored",
+              "skipped",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipUndone"
+                ]
+              },
+              "restored": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "skipped": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "results",
               "kind"
             ],
@@ -24611,6 +26961,24 @@
           {
             "type": "object",
             "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RuleTreatmentResult"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/RuleTreatmentPreviewData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "rules",
               "kind"
             ],
@@ -25296,6 +27664,9 @@
               "degraded": {
                 "type": "boolean",
                 "description": "The DB-backed part of this snapshot (`accounts`, `total_messages`,\n`sync_statuses`) timed out and carries no reading: those three\nfields are empty/zero because the daemon could not answer in time,\nnot because the store is empty or idle. Poll again rather than\nconcluding anything from them. The DB-free fields (versions,\n`daemon_pid`, `feature_health`) are always a real reading."
+              },
+              "draft_revision_supported": {
+                "type": "boolean"
               },
               "feature_health": {
                 "oneOf": [
@@ -27399,6 +29770,16 @@
           "enabled"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId"
+              }
+            ]
+          },
           "action": {
             "type": "string"
           },
@@ -27420,6 +29801,114 @@
           "priority": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "RuleTreatmentMatchData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "from",
+          "subject",
+          "before",
+          "after",
+          "reason",
+          "blocked"
+        ],
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "treatment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuleTreatmentPreviewData": {
+        "type": "object",
+        "required": [
+          "applied",
+          "result"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RuleTreatmentSelectionData"
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuleTreatmentSelectionData": {
+        "type": "object",
+        "required": [
+          "matches",
+          "complete",
+          "scan_limit",
+          "unavailable",
+          "notice"
+        ],
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleTreatmentMatchData"
+            }
+          },
+          "notice": {
+            "type": "string"
+          },
+          "scan_limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unavailable": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -27456,6 +29945,28 @@
           },
           "updated_at": {
             "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SavedDraftResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -27515,6 +30026,33 @@
       "SavedSearchId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ScheduledComposeResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "draft_id",
+          "send_at",
+          "cleanup_warnings"
+        ],
+        "properties": {
+          "cleanup_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       },
       "ScheduledSendData": {
         "type": "object",

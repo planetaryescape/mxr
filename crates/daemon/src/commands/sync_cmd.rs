@@ -404,10 +404,10 @@ async fn run_all(
             for result in &results {
                 match result.result {
                     mxr_protocol::SyncAccountResultKind::Started => {
-                        println!("{}: sync started", result.account_name)
+                        println!("{}: sync started", result.account_name);
                     }
                     mxr_protocol::SyncAccountResultKind::Joined => {
-                        println!("{}: joined the running sync", result.account_name)
+                        println!("{}: joined the running sync", result.account_name);
                     }
                     mxr_protocol::SyncAccountResultKind::Failed => println!(
                         "{}: sync failed to start: {}",

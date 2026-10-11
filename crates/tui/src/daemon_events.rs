@@ -277,13 +277,13 @@ fn apply_user_sync_outcome(app: &mut App, event: &DaemonEvent) {
         DaemonEvent::SyncCompleted { account_id, .. } => {
             app.user_sync_targets.remove(account_id);
         }
-        DaemonEvent::SyncError { account_id, error } => {
-            if app.user_sync_targets.remove(account_id) {
-                app.status_message = Some(format!(
-                    "Sync failed for {}: {error}",
-                    app.account_display_name(account_id)
-                ));
-            }
+        DaemonEvent::SyncError { account_id, error }
+            if app.user_sync_targets.remove(account_id) =>
+        {
+            app.status_message = Some(format!(
+                "Sync failed for {}: {error}",
+                app.account_display_name(account_id)
+            ));
         }
         _ => {}
     }

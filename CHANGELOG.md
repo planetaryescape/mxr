@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.64](https://github.com/planetaryescape/mxr/compare/v0.6.63...v0.6.64) (2026-10-11)
+
+
+### Bug Fixes
+
+* stop the daemon cleanly under process supervision ([#338](https://github.com/planetaryescape/mxr/issues/338)) ([01b5ab5](https://github.com/planetaryescape/mxr/commit/01b5ab5285473fc5af854c68fcd8e214cd056931))
+
+
+### Documentation
+
+* record portability releases and follow-up audits ([#337](https://github.com/planetaryescape/mxr/issues/337)) ([8434fb9](https://github.com/planetaryescape/mxr/commit/8434fb9ccf8ee0bd833205ff78a7538d56c0f873))
+
 ## [0.6.63](https://github.com/planetaryescape/mxr/compare/v0.6.62...v0.6.63) (2026-10-10)
 
 

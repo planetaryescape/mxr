@@ -46,7 +46,7 @@ describe("ConversationView", () => {
   });
 
   test("a provider preview is labeled incomplete and offers original recovery", () => {
-    const onToggleAsSent = vi.fn();
+    const onToggleAsSent = vi.fn<() => void>();
     const preview: Conversation = {
       ...conversation,
       messages: [

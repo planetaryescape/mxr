@@ -908,7 +908,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send stored draft by id */
         post: operations["mail_drafts_send_stored"];
         delete?: never;
         options?: never;
@@ -2187,6 +2186,22 @@ export interface paths {
         };
         /** Group a mail search result set */
         get: operations["mail_search_groups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/send-outcomes/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["mail_send_outcome"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4469,6 +4484,7 @@ export interface components {
             draft_path: string;
             /** Format: int64 */
             expected_revision?: number | null;
+            operation_id?: string | null;
             /**
              * @description Token from a prior safety-check report authorizing a send despite
              *     blockers. Forwarded to `SendDraft`; ignored by save/check handlers.
@@ -5372,6 +5388,16 @@ export interface components {
         DraftSafetySeverity: "info" | "warning" | "blocker";
         /** @enum {string} */
         DraftSafetyVerdict: "safe" | "warn" | "blocked";
+        /** @description Durable evidence independent of a live draft or a local Sent message. */
+        DraftSendOutcome: {
+            account_id: components["schemas"]["AccountId"];
+            draft_id: components["schemas"]["DraftId"];
+            identity: components["schemas"]["SendIdentity"];
+            local_message_id?: null | components["schemas"]["MessageId"];
+            provider_message_id?: string | null;
+            rfc2822_message_id?: string | null;
+            state: components["schemas"]["SendOutcomeState"];
+        };
         /** @description One message a draft was written from, in the user's own mailbox. */
         DraftSourceData: {
             /** Format: date-time */
@@ -8248,6 +8274,8 @@ export interface components {
             /** @enum {string} */
             cmd: "ScheduleSend";
             draft_id: components["schemas"]["DraftId"];
+            /** Format: int64 */
+            expected_revision?: number | null;
             /** Format: date-time */
             send_at: string;
         } | {
@@ -8466,6 +8494,12 @@ export interface components {
             cmd: "SendDraft";
             draft: components["schemas"]["Draft"];
             override_safety_token?: string | null;
+            send_identity?: null | components["schemas"]["SendIdentity"];
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetSendOutcome";
+            operation_id: string;
         } | {
             /** @enum {string} */
             cmd: "SaveDraft";
@@ -8475,6 +8509,7 @@ export interface components {
             cmd: "SendStoredDraft";
             draft_id: components["schemas"]["DraftId"];
             override_safety_token?: string | null;
+            send_identity?: null | components["schemas"]["SendIdentity"];
         } | {
             /** @enum {string} */
             cmd: "CheckDraftSafety";
@@ -9614,6 +9649,7 @@ export interface components {
             protocol_version?: number;
             repair_required?: boolean;
             semantic_runtime?: null | components["schemas"]["SemanticRuntimeMetrics"];
+            send_outcome_supported?: boolean;
             sync_statuses?: components["schemas"]["AccountSyncStatus"][];
             /** Format: int32 */
             total_messages: number;
@@ -9634,6 +9670,10 @@ export interface components {
             local_message_id: components["schemas"]["MessageId"];
             provider_message_id?: string | null;
             rfc2822_message_id: string;
+        } | {
+            /** @enum {string} */
+            kind: "SendOutcome";
+            outcome?: null | components["schemas"]["DraftSendOutcome"];
         } | {
             candidates: components["schemas"]["DraftCommitmentCandidateData"][];
             /** @enum {string} */
@@ -10331,6 +10371,14 @@ export interface components {
             profiles: components["schemas"]["SemanticProfileRecord"][];
             runtime?: components["schemas"]["SemanticRuntimeMetrics"];
         };
+        /** @description Identity retained by a client before submitting a reviewed send. */
+        SendIdentity: {
+            /** Format: int64 */
+            expected_revision: number;
+            operation_id: string;
+        };
+        /** @enum {string} */
+        SendOutcomeState: "unknown" | "accepted" | "not_accepted";
         /** @enum {string} */
         SendTimeConfidenceData: "low" | "medium" | "high";
         SendTimeRecommendationData: {
@@ -13578,21 +13626,30 @@ export interface operations {
     };
     mail_drafts_send_stored: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Retained reviewed send operation */
+                operation_id: string;
+                /** @description Reviewed draft revision */
+                expected_revision: number;
+            };
             header?: never;
-            path?: never;
+            path: {
+                draft_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Send receipt or outcome */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -15982,6 +16039,38 @@ export interface operations {
                 content?: never;
             };
             /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_send_outcome: {
+        parameters: {
+            query: {
+                /** @description Owning account ID */
+                account_id: string;
+            };
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable send outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;

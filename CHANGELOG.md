@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.67](https://github.com/planetaryescape/mxr/compare/v0.6.66...v0.6.67) (2026-10-11)
+
+
+### Bug Fixes
+
+* retain reviewed send outcomes across disconnects ([#347](https://github.com/planetaryescape/mxr/issues/347)) ([d6ba93b](https://github.com/planetaryescape/mxr/commit/d6ba93ba7082a644e027b331e67da44d8e6dd4e8))
+
+
+### Documentation
+
+* record installed daemon portability acceptance ([#346](https://github.com/planetaryescape/mxr/issues/346)) ([f1e19fb](https://github.com/planetaryescape/mxr/commit/f1e19fba2055fa96bbaf73ce35a6bd8354cd4870))
+
 ## [0.6.66](https://github.com/planetaryescape/mxr/compare/v0.6.65...v0.6.66) (2026-10-11)
 
 

@@ -66,6 +66,7 @@ impl Stub {
 
     pub fn with(version_ok: bool, compose: Reply, send: Reply) -> Self {
         let dir = tempfile::tempdir().expect("stub temp dir");
+        std::fs::create_dir_all(dir.path().join("outcomes")).expect("outcome dir");
         std::fs::create_dir_all(dir.path().join("bodies")).expect("stub bodies dir");
         std::fs::create_dir_all(dir.path().join("workdirs")).expect("stub workdirs dir");
 
@@ -96,7 +97,25 @@ case "$1" in
 {compose}
     ;;
   send)
+    for arg in "$@"; do
+      if [ "$arg" = "--dry-run" ]; then
+        printf '{{"draft":{{"id":"%s","account_id":"notto","revision":1}},"send_identity":{{"operation_id":"%s:1","expected_revision":1}}}}\n' "$2" "$2"; exit 0
+      fi
+    done
+    for arg in "$@"; do
+      if [ "$arg" = "--at" ]; then
 {send}
+      fi
+    done
+    printf '%s' '{outcome_state}' > '{state}'/"$2"
+{send}
+    ;;
+  send-outcome)
+    id="${{2#draft:}}"; id="${{id%%:*}}"
+    if [ -f '{state}'/"$id" ]; then
+      printf '{{"state":"%s"}}\n' "$(cat '{state}'/"$id")"
+    else printf 'null\n'; fi
+    exit 0
     ;;
   send-time)
     printf '%s\n' '{{"proposed_at":"2026-08-05T08:00:00Z"}}'; exit 0
@@ -116,6 +135,12 @@ exit 1
             },
             compose = reply_script(&compose, true),
             send = reply_script(&send, false),
+            outcome_state = if matches!(send, Reply::Fail(_)) {
+                "not_accepted"
+            } else {
+                "accepted"
+            },
+            state = dir.path().join("outcomes").display(),
         );
 
         let binary = dir.path().join("mxr-stub");
@@ -152,7 +177,10 @@ exit 1
     pub fn calls_to(&self, subcommand: &str) -> Vec<Vec<String>> {
         self.calls()
             .into_iter()
-            .filter(|argv| argv.first().is_some_and(|first| first == subcommand))
+            .filter(|argv| {
+                argv.first().is_some_and(|first| first == subcommand)
+                    && !(subcommand == "send" && argv.iter().any(|arg| arg == "--dry-run"))
+            })
             .collect()
     }
 

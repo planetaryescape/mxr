@@ -224,7 +224,7 @@ All compose commands open `$EDITOR` (markdown + YAML frontmatter) unless `--body
 
 **Save-vs-send — read before scripting compose/reply/reply-all/forward.** Each command's action is:
 
-- `--draft` → **saves a draft, never sends.** Prints `Draft saved: <id>` + `Send with: mxr send <id>`. Use this to create a draft of any kind (new, reply, reply-all, forward). Threading is preserved.
+- `--draft` → **saves a draft, never sends.** Prints the saved draft identity. Review it with `mxr send <id> --dry-run` before sending. Use this to create a draft of any kind (new, reply, reply-all, forward). Threading is preserved.
 - `--yes` → **sends now.** (Confusingly, `--yes` reads as "skip confirmation" but it is the send switch.)
 - neither → interactive: opens `$EDITOR`, then saves a draft.
 - `--dry-run` → preview only; reports the action (`save draft` / `send`) it would take.
@@ -275,8 +275,8 @@ Same flags as `reply` (including `--draft`).
 mxr drafts                # list (default)
 mxr drafts list
 mxr drafts scheduled      # Pending scheduled sends, soonest first (--format json before the subcommand)
-mxr drafts recover        # Show orphaned 'sending' drafts (auto-reset after 1h)
-mxr drafts resume <id>    # Force-reset orphaned draft to 'draft'
+mxr drafts recover        # List Sending drafts whose outcome needs checking
+mxr drafts resume <id>    # Cannot clear an unknown send outcome; query it first
 mxr drafts edit <id>      # Edit a markdown draft in $EDITOR
 mxr drafts delete <id> --dry-run
 mxr drafts delete <id>    # Permanently delete (`discard` is an alias)
@@ -293,10 +293,40 @@ local draft is unchanged. CLI, TUI, web, and MCP share this lifecycle.
 
 ### `mxr send <DRAFT_ID> [OPTIONS]`
 ```
+--expected-revision <N>  Required from the reviewed preview
+--operation-id <ID>      Retain before submitting; defaults to draft ID/revision
+--account <ACCOUNT>
 --at <TIME>               Schedule (same forms as snooze --until)
 --dry-run                 Show what would be sent
+--override-safety <TOKEN> Use the single-use token from --check
 --format <FORMAT>
 ```
+
+Preview a saved draft and retain its revision and operation ID before sending
+or scheduling it:
+
+```bash
+mxr send DRAFT_ID --dry-run --format json
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW
+mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
+```
+
+`--at` requires `--expected-revision` from the preview. The scheduler assigns a
+separate operation identity. Query its latest outcome with
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`; the
+ordinary send preview's operation ID does not identify a scheduled attempt.
+`unknown` means do not resend; only explicit `not_accepted` evidence allows a
+newly reviewed operation.
+
+### `mxr send-outcome <OPERATION_ID> --account <ACCOUNT_ID>`
+Inspect a retained send after a disconnect, including after draft cleanup.
+Results distinguish `accepted`, `not_accepted`, and `unknown`; a missing result
+means no submission was claimed. Keep the operation ID printed before a send.
+
+One-shot `compose`, `reply`, `reply-all`, and `forward` commands with `--yes`
+print their operation ID and query command to stderr before submission. If the
+response is lost, query that ID; rerunning the command creates a new draft.
 
 ### `mxr unsend <DRAFT_ID>`
 Cancel a scheduled send. Draft itself is preserved. `mxr drafts scheduled`

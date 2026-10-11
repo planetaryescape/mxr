@@ -581,6 +581,26 @@ impl MailSendProvider for FakeProvider {
         true
     }
 
+    async fn send_classified(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> std::result::Result<SendReceipt, mxr_core::SendFailure> {
+        if self
+            .spool
+            .as_ref()
+            .is_some_and(spool::Spool::send_not_accepted)
+        {
+            return Err(mxr_core::SendFailure::NotAccepted(MxrError::Provider(
+                "fake rejection before submission".into(),
+            )));
+        }
+        self.send(draft, from, rfc2822_message_id)
+            .await
+            .map_err(mxr_core::SendFailure::Unknown)
+    }
+
     async fn send(
         &self,
         draft: &Draft,
@@ -592,7 +612,18 @@ impl MailSendProvider for FakeProvider {
             .lock()
             .expect("fake provider sent_from mutex should not be poisoned")
             .push(from.clone());
-        if self.sends_fail_after_accepting.load(Ordering::SeqCst) {
+        if let Some(spool) = &self.spool {
+            spool.record_acceptance(rfc2822_message_id)?;
+            while spool.pause_after_acceptance() {
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        }
+        if self.sends_fail_after_accepting.load(Ordering::SeqCst)
+            || self
+                .spool
+                .as_ref()
+                .is_some_and(spool::Spool::send_uncertain)
+        {
             return Err(MxrError::Provider(
                 "timed out waiting for the provider (fake)".to_string(),
             ));

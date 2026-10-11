@@ -128,6 +128,8 @@ export async function fetchContactsAutocomplete(
 }
 
 export interface ComposeSendResponse {
+  operation_id?: string;
+  state?: "accepted";
   ok: boolean;
   draft_id?: string;
   /** Local id of the message just sent (the daemon's send receipt). Needed
@@ -140,10 +142,12 @@ export function sendComposeSession(
   accountId: string,
   overrideSafetyToken?: string,
   expectedRevision?: number | null,
+  operationId?: string,
 ): Promise<ComposeSendResponse> {
   return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
+      operation_id: operationId,
       draft_path: draftPath,
       account_id: accountId,
       expected_revision: expectedRevision,

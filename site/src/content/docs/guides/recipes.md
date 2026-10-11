@@ -59,15 +59,16 @@ mxr search 'is:unread from:dana@acme.com' --format jsonl \
 
 What you get: an interactive list keyed by sender + subject; pressing Enter prints the chosen message body (rendered with reader mode) to your terminal. Use `--view raw` for the unrendered body, `--view html` to dump the original HTML.
 
-### Pick a draft to resume
+### Find a send whose outcome needs checking
 
 ```bash
-mxr drafts --format jsonl recover \
-  | jq -r '"\(.draft_id // .id)\t\(.subject // "(no subject)")"' \
-  | fzf --delimiter='\t' --with-nth=2 \
-  | cut -f1 \
-  | xargs mxr drafts resume
+mxr drafts recover
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
 ```
+
+Use the operation ID printed before the original send. A recovered draft is
+not evidence that the operation was not accepted; do not resume or resend
+while its outcome is unknown.
 
 ### Browse senders by volume
 
@@ -209,14 +210,22 @@ hook before push.
 
 ### Send only if safety is clean, otherwise mint and pause
 
+Preview the saved draft and retain its revision and operation ID before using
+the safety report below:
+
 ```bash
+mxr send "$DRAFT_ID" --dry-run --format json
+printf 'Revision and operation ID from that preview: '
+read -r REVIEWED_REVISION OPERATION_ID
 report=$(mxr send "$DRAFT_ID" --check --format json)
 verdict=$(echo "$report" | jq -r '.verdict')
 case "$verdict" in
-  safe|warn) mxr send "$DRAFT_ID" ;;
+  safe|warn) mxr send "$DRAFT_ID" \
+      --expected-revision "$REVIEWED_REVISION" \
+      --operation-id "$OPERATION_ID" ;;
   blocked)
     token=$(echo "$report" | jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
-    echo "BLOCKED. To override: mxr send $DRAFT_ID --override-safety $token"
+    echo "BLOCKED. After review, use the retained revision and operation ID: mxr send $DRAFT_ID --expected-revision $REVIEWED_REVISION --operation-id $OPERATION_ID --override-safety $token"
     exit 2
     ;;
 esac
@@ -516,12 +525,13 @@ mxr send-time alice@example.com --at "$PROPOSED_AT" --format json \
            end'
 ```
 
-What you get: a one-liner with the best window if mxr has enough data, or an honest "no recommendation" line when sample count is low. Pair with `mxr send DRAFT_ID --at "$WHEN"` to actually schedule.
+What you get: a one-liner with the best window if mxr has enough data, or an honest "no recommendation" line when sample count is low. Preview the draft with `mxr send DRAFT_ID --dry-run --format json`, then pair its reviewed revision with `mxr send DRAFT_ID --at "$WHEN" --expected-revision REVISION_FROM_PREVIEW` to schedule.
 
 ```text
 Tell an agent
-"Before scheduling DRAFT_ID with `mxr send DRAFT_ID --at <when>`, run
-`mxr send-time <to_address> --at <when> --format json`. If the proposed
+"Before scheduling DRAFT_ID, preview it with `mxr send DRAFT_ID --dry-run
+--format json` and retain its revision. Then run `mxr send-time <to_address>
+--at <when> --format json`. If the proposed
 slot is at least 2x slower than the best window AND confidence is medium
 or high, propose the better slot. Don't auto-reschedule."
 ```

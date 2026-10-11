@@ -76,11 +76,31 @@ impl MailSendProvider for OutlookSmtpSendProvider {
         draft: &Draft,
         from: &Address,
         rfc2822_message_id: &str,
-    ) -> Result<SendReceipt, MxrError> {
-        let attachments = load_attachment_paths_sync(&draft.attachments)
-            .map_err(|e| MxrError::Provider(format!("failed to load attachments: {e}")))?;
-        let inline_assets = load_inline_assets_sync(&draft.inline_assets)
-            .map_err(|e| MxrError::Provider(format!("Failed to load inline assets: {e}")))?;
+    ) -> std::result::Result<SendReceipt, MxrError> {
+        self.send_classified(draft, from, rfc2822_message_id)
+            .await
+            .map_err(|failure| match failure {
+                mxr_core::SendFailure::NotAccepted(error)
+                | mxr_core::SendFailure::Unknown(error) => error,
+            })
+    }
+
+    async fn send_classified(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, mxr_core::SendFailure> {
+        let attachments = load_attachment_paths_sync(&draft.attachments).map_err(|e| {
+            mxr_core::SendFailure::NotAccepted(MxrError::Provider(format!(
+                "failed to load attachments: {e}"
+            )))
+        })?;
+        let inline_assets = load_inline_assets_sync(&draft.inline_assets).map_err(|e| {
+            mxr_core::SendFailure::NotAccepted(MxrError::Provider(format!(
+                "Failed to load inline assets: {e}"
+            )))
+        })?;
         let _message = build_message_with_id_and_parts(
             draft,
             from,
@@ -89,15 +109,21 @@ impl MailSendProvider for OutlookSmtpSendProvider {
             &inline_assets,
             rfc2822_message_id,
         )
-        .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
+        .map_err(|e| {
+            mxr_core::SendFailure::NotAccepted(MxrError::Provider(format!(
+                "failed to build message: {e}"
+            )))
+        })?;
 
         #[cfg(not(test))]
         {
-            let transport = self.build_transport().await.map_err(MxrError::Provider)?;
-            transport
-                .send(_message)
+            let transport = self
+                .build_transport()
                 .await
-                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+                .map_err(|e| mxr_core::SendFailure::NotAccepted(MxrError::Provider(e)))?;
+            transport.send(_message).await.map_err(|e| {
+                mxr_core::SendFailure::Unknown(MxrError::Provider(format!("SMTP send failed: {e}")))
+            })?;
         }
 
         Ok(SendReceipt {

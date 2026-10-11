@@ -1750,6 +1750,7 @@ async fn dispatch_send_draft() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -1796,6 +1797,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft: draft.clone(),
             override_safety_token: None,
         }),
@@ -2042,6 +2044,7 @@ async fn mcp_profile_send_gate_blocks_provider_send() {
         id: 1,
         source: ::mxr_protocol::ClientKind::Mcp,
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -2095,6 +2098,7 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -2522,6 +2526,7 @@ async fn send_uses_registered_alias_from_override() {
     let resp = handle_request(
         &state,
         &from_request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -2561,6 +2566,7 @@ async fn send_from_none_uses_account_primary() {
     let resp = handle_request(
         &state,
         &from_request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),
@@ -2588,6 +2594,7 @@ async fn send_rejects_unowned_from_override() {
     let resp = handle_request(
         &state,
         &from_request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),

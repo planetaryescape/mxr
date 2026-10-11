@@ -11,8 +11,9 @@ Email follow-up is a memory tax. mxr's automated follow-ups remove it:
   given time, mxr surfaces it back to you.
 - Schedule a draft for a future send time: write now, deliver later.
 
-Both run as 60-second daemon background loops. They survive daemon
-restarts, idempotently.
+Both run as 60-second daemon background loops. Reminder schedules resume after
+restarts; send attempts retain their outcome so an interrupted delivery is not
+silently retried.
 
 ## Auto-reminders
 
@@ -35,6 +36,10 @@ In the TUI compose confirmation, press `n`, enter the same relative
 time string, and press `Enter` to send and set the reminder in one
 flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
 cancel a pending reminder.
+
+The one-shot `reply --yes` prints its send operation ID and recovery query to
+stderr before submission. If the response is lost, query that operation
+instead of rerunning the reply command; a rerun creates another draft.
 
 A reply from a person cancels the reminder: any message from someone else
 stored in the conversation after yours, or one whose In-Reply-To names your
@@ -62,23 +67,31 @@ provider exactly as it would have if you'd sent it manually then.
 
 ```bash
 # Compose a draft (any usual flow), then schedule it:
-mxr send DRAFT_ID --at "in 1h"
-mxr send DRAFT_ID --at "tomorrow 9am"
-mxr send DRAFT_ID --at "monday 17:00"
+mxr send DRAFT_ID --dry-run --format json
+mxr send DRAFT_ID --at "tomorrow 9am" \
+  --expected-revision REVISION_FROM_PREVIEW
 
 # Cancel a scheduled send:
 mxr unsend DRAFT_ID
 ```
 
-The draft itself is preserved on cancel; you can edit and reschedule.
+The scheduler assigns a separate operation identity. If delivery is interrupted,
+query the latest attempt with
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
+The ordinary send preview's operation ID does not identify a scheduled attempt.
+If you cancel before
+the scheduled attempt starts, the draft stays available to edit and review
+again. After an attempt has started, query its outcome before scheduling again.
 
-### Idempotency under daemon restart
+### Recovery after a scheduled attempt
 
 The flusher clears the `send_at` flag on a draft *before* invoking the
-send. If the daemon crashes mid-send, the draft's status state machine
-takes over: a draft in `'sending'` whose heartbeat is older than 1
-hour is considered orphaned and reset to `'draft'` on the next
-daemon startup, ready for the user to retry.
+send, and sends only the revision reviewed when you scheduled it. A later
+edit does not silently replace that message. If an attempt's result is
+uncertain, query its outcome using the draft alias above
+and do not schedule another send unless the outcome is explicitly
+`not_accepted`. The scheduler does not make an uncertain send safe by retrying
+it after restart.
 
 ## Time syntax
 

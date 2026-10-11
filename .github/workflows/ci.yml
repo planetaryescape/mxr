@@ -247,7 +247,7 @@ jobs:
       - name: Verify supervised Linux ownership and optional model diagnostics
         run: |
           cargo build -p mxr
-          python3 scripts/s08c_headless_smoke.py target/debug/mxr
+          python3 scripts/s08c_headless_smoke.py target-cli/debug/mxr
 
   test-semantic:
     name: Test (semantic-local)

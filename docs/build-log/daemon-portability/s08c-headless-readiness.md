@@ -13,7 +13,7 @@ The focused Linux acceptance is:
 
 ```sh
 cargo build -p mxr
-python3 scripts/s08c_headless_smoke.py target/debug/mxr
+python3 scripts/s08c_headless_smoke.py target-cli/debug/mxr
 ```
 
 It uses temporary config/data/socket paths, fake mail, a loopback controlled
@@ -74,6 +74,6 @@ worktree.
 
 ## Effort and follow-up
 
-Implementation began around 2026-10-11 23:35 UTC; exact completion and waiting
-times will be recorded at the source-ready checkpoint. No follow-up ticket is
+The worker was assigned on 2026-10-11 at 22:27 UTC. Source was checkpointed
+at 23:08 UTC; runtime validation and release remain pending. No follow-up ticket is
 currently required; Linux CI remains the runtime acceptance evidence.

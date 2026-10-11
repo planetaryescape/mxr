@@ -86,7 +86,7 @@ def find_summary_observation(snapshot, status):
     )
 
 
-binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "target/debug/mxr").resolve())
+binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "target-cli/debug/mxr").resolve())
 daemon_logs = []
 
 with tempfile.TemporaryDirectory(prefix="mxr-s08c-") as temporary:

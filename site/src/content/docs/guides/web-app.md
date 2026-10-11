@@ -282,6 +282,14 @@ The view switch, and a key for each view, choose between the formatted
 HTML, a cleaned reading view, and plain text; as in the TUI, pressing the
 HTML or reader key again goes back to plain text.
 
+In the formatted view, **Appearance** lets you choose **Auto for this message**,
+**Original for this message**, or **Dark for this message**. Auto follows the
+app’s current light or dark scheme: in light scheme it shows the original,
+while in dark scheme it uses a warm paper canvas for designed mail and a dark
+canvas for simple mail. The app’s **System** theme follows your OS appearance.
+To keep an Original or Dark choice for a sender, use **Always show Original**
+or **Always use Dark**; **Reset sender preference** removes that saved choice.
+
 Tracking pixels are always removed, and remote images stay blocked until you
 choose **Show images** (or press its key), or choose **Always for** a sender, so a
 sender cannot tell when you read their mail. A quiet line under the message

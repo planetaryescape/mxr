@@ -58,7 +58,9 @@ export function StatusBar() {
         </button>
       )}
       {reindex ? (
-        <span>semantic {Math.round((reindex.current / Math.max(1, reindex.total)) * 100)}%</span>
+        <span>
+          Search index {Math.round((reindex.current / Math.max(1, reindex.total)) * 100)}%
+        </span>
       ) : null}
       <span aria-hidden className="text-faint">
         │

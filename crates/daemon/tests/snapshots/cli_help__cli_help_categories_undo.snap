@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr categories undo <MUTATION_ID>
+
+Arguments:
+  <MUTATION_ID>
+
+Options:
+  -h, --help  Print help

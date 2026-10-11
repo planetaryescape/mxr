@@ -29,6 +29,7 @@ mod arrivals;
 mod auto_reminders;
 mod body;
 mod calendar;
+mod categories;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -105,6 +106,7 @@ pub use arrival_ledger::{
 pub use arrivals::Arrival;
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;
+pub use categories::{CategoryMembershipChange, CategoryMembershipVersion};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};

@@ -15,6 +15,7 @@ import type { MailAction } from "./pendingMailOps";
 
 /** Verbs that aren't a `MailAction` (they have their own request). */
 export type OtherVerb =
+  | "categories"
   | "reply-later"
   | "reply-later-at"
   | "send"
@@ -208,6 +209,15 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
+  },
+  categories: {
+    actions: ["mail.label"],
+    alsoFrom: "the categories dialog",
+    optimistic: "Assignments change after the preview is applied.",
+    pastTense: "Updated categories on",
+    tone: "info",
+    sound: null,
+    undo: "reverse-request",
   },
   labels: {
     actions: ["mail.label"],

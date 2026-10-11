@@ -135,6 +135,21 @@ fn mail_router() -> Router<AppState> {
         .route("/labels/create", post(create_label))
         .route("/labels/rename", post(rename_label))
         .route("/labels/delete", post(delete_label))
+        .route("/categories", get(list_categories).post(create_category))
+        .route("/categories/name/preview", post(preview_category_name))
+        .route("/categories/messages", get(list_category_messages))
+        .route("/categories/memberships", post(get_category_memberships))
+        .route("/categories/rename", post(rename_category))
+        .route(
+            "/categories/assignment/preview",
+            post(preview_category_membership),
+        )
+        .route(
+            "/categories/assignment/apply",
+            post(apply_category_membership),
+        )
+        .route("/categories/delete", post(delete_category))
+        .route("/categories/undo", post(undo_category_membership))
         .route("/compose/session", post(start_compose_session))
         .route("/compose/session/refresh", post(refresh_compose_session))
         .route("/compose/session/restore", post(restore_compose_session))

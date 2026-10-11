@@ -633,9 +633,51 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
     let moving = mxr_store::Delivery {
         id: DeliveryId::new(),
         dedup_key: "moving-parcel".into(),
+        items: vec![
+            mxr_store::DeliveryItem {
+                name: "Notebook".into(),
+                quantity: Some(2),
+            },
+            mxr_store::DeliveryItem {
+                name: "Pen set".into(),
+                quantity: None,
+            },
+        ],
+        tracking_number: Some("TRACK-123".into()),
+        order_number: Some("ORDER-4".into()),
         last_event_at: now - Duration::hours(1),
         eta_until: Some(now + Duration::days(1)),
         ..quiet.clone()
+    };
+    let pickup = mxr_store::Delivery {
+        id: DeliveryId::new(),
+        dedup_key: "pickup-parcel".into(),
+        status: "available_for_pickup".into(),
+        tracking_number: Some("PICKUP-42".into()),
+        last_event_at: now - Duration::hours(2),
+        ..moving.clone()
+    };
+    let failed = mxr_store::Delivery {
+        id: DeliveryId::new(),
+        dedup_key: "failed-parcel".into(),
+        status: "attempt_fail".into(),
+        last_event_at: now - Duration::hours(3),
+        ..moving.clone()
+    };
+    let from_only = mxr_store::Delivery {
+        id: DeliveryId::new(),
+        dedup_key: "from-only-parcel".into(),
+        eta_from: Some(now + Duration::days(2)),
+        eta_until: None,
+        last_event_at: now - Duration::minutes(30),
+        ..moving.clone()
+    };
+    let carrier_only = mxr_store::Delivery {
+        id: DeliveryId::new(),
+        dedup_key: "carrier-only-parcel".into(),
+        merchant: None,
+        carrier: Some("DHL".into()),
+        ..moving.clone()
     };
     // Its ETA passed ten days ago, but it moved yesterday: not quiet.
     let late = mxr_store::Delivery {
@@ -648,6 +690,10 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
     fx.state.store.insert_delivery(&quiet).await.unwrap();
     fx.state.store.insert_delivery(&moving).await.unwrap();
     fx.state.store.insert_delivery(&late).await.unwrap();
+    fx.state.store.insert_delivery(&pickup).await.unwrap();
+    fx.state.store.insert_delivery(&failed).await.unwrap();
+    fx.state.store.insert_delivery(&from_only).await.unwrap();
+    fx.state.store.insert_delivery(&carrier_only).await.unwrap();
     let active = request(
         &fx,
         Request::ListDeliveries {
@@ -661,7 +707,14 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
     };
     let mut active: Vec<_> = deliveries.iter().map(|d| d.id.clone()).collect();
     active.sort_by_key(ToString::to_string);
-    let mut expected = vec![moving.id.clone(), late.id.clone()];
+    let mut expected = vec![
+        moving.id.clone(),
+        late.id.clone(),
+        pickup.id.clone(),
+        failed.id.clone(),
+        from_only.id.clone(),
+        carrier_only.id.clone(),
+    ];
     expected.sort_by_key(ToString::to_string);
     assert_eq!(active, expected);
 
@@ -670,7 +723,7 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
         .into_iter()
         .filter(|line| line.tracker.as_ref().is_some_and(|t| t.kind == "parcel"))
         .collect();
-    assert_eq!(parcels.len(), 2, "the quiet parcel went quiet long ago");
+    assert_eq!(parcels.len(), 6, "the quiet parcel went quiet long ago");
     let tracker = parcels
         .iter()
         .find(|line| line.id.ends_with(&moving.id.to_string()))
@@ -678,6 +731,54 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
         .unwrap();
     assert_eq!(tracker.steps.len(), 4);
     assert_eq!(tracker.step, Some(1));
+    assert!(tracker
+        .detail
+        .as_deref()
+        .unwrap()
+        .starts_with("Expected by "));
+    assert_eq!(tracker.items[0].name, "Notebook");
+    assert_eq!(tracker.items[0].quantity, Some(2));
+    assert_eq!(tracker.tracking_number.as_deref(), Some("TRACK-123"));
+    assert_eq!(tracker.order_number.as_deref(), Some("ORDER-4"));
+    let from_only = parcels
+        .iter()
+        .find(|line| line.id.ends_with(&from_only.id.to_string()))
+        .and_then(|line| line.tracker.as_ref())
+        .unwrap();
+    assert!(from_only
+        .detail
+        .as_deref()
+        .unwrap()
+        .starts_with("Expected from "));
+    let carrier_only = parcels
+        .iter()
+        .find(|line| line.id.ends_with(&carrier_only.id.to_string()))
+        .unwrap();
+    assert_eq!(carrier_only.source_name, "DHL");
+    assert!(carrier_only
+        .tracker
+        .as_ref()
+        .unwrap()
+        .detail
+        .as_deref()
+        .unwrap()
+        .starts_with("Expected by "));
+    let pickup = parcels
+        .iter()
+        .find(|line| line.id.ends_with(&pickup.id.to_string()))
+        .and_then(|line| line.tracker.as_ref())
+        .unwrap();
+    assert_eq!(pickup.state_label, "ready to collect");
+    assert_eq!(pickup.step, None, "pickup must not appear as shipped");
+    let failed = parcels
+        .iter()
+        .find(|line| line.id.ends_with(&failed.id.to_string()))
+        .unwrap();
+    assert_eq!(failed.section, UpdateSectionData::NeedsALook);
+    assert_eq!(
+        failed.tracker.as_ref().unwrap().state_label,
+        "delivery attempt failed"
+    );
 }
 
 #[tokio::test]

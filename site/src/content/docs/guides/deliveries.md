@@ -66,13 +66,16 @@ digest after it happens, then lets it go.
 
 ## Parcels are trackers in Updates
 
-[Updates](/guides/updates/) shows each parcel as a tracker with its steps
-(ordered, shipped, out for delivery, delivered) and the arrival date. A
-parcel that moved since the last digest is under Changed; one that didn't
-is routine. A delivered parcel shows for a day, then leaves on its own. A
-delivery problem, a failed attempt or a return goes under Needs a look for
-a week and becomes a to-do as soon as it syncs ("Check delivery from
-Bookshop").
+[Updates](/guides/updates/) shows each parcel's current status, any available
+item name and tracking or order reference, and its estimate. An earliest-only
+estimate is labelled "Expected from"; a latest-arrival estimate is labelled
+"Expected by". In the web app, Details reveals all available item records,
+references and the reason for the update; From email opens its source message.
+Pickup and delivery problems are named in the status. A parcel that moved
+since the last digest is under Changed; one that didn't is routine. A
+delivered parcel shows for a day, then leaves on its own. A delivery problem,
+a failed attempt or a return goes under Needs a look for a week and becomes a
+to-do as soon as it syncs ("Check delivery from Bookshop").
 
 ## Backfill existing mail
 

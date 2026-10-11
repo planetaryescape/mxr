@@ -226,6 +226,37 @@ fn line_text(line: &UpdateLineData) -> String {
     if let Some(tracker) = line.tracker.as_ref().and_then(|t| t.detail.as_ref()) {
         let _ = write!(text, " · {}", terminal_text(tracker));
     }
+    if let Some(tracker) = line
+        .tracker
+        .as_ref()
+        .filter(|tracker| tracker.kind == "parcel")
+    {
+        let items: Vec<_> = tracker
+            .items
+            .iter()
+            .filter(|item| !item.name.trim().is_empty())
+            .collect();
+        if let Some(item) = items.first() {
+            let extra = items.len().saturating_sub(1);
+            let _ = write!(text, " · {}", terminal_text(&item.name));
+            if extra > 0 {
+                let _ = write!(text, " +{extra} more");
+            }
+        }
+        if let Some(reference) = tracker
+            .tracking_number
+            .as_deref()
+            .filter(|reference| !reference.trim().is_empty())
+            .or_else(|| {
+                tracker
+                    .order_number
+                    .as_deref()
+                    .filter(|reference| !reference.trim().is_empty())
+            })
+        {
+            let _ = write!(text, " · Reference {}", terminal_text(reference));
+        }
+    }
     if let Some(time) = &line.time_label {
         let _ = write!(text, "  {time}");
     }

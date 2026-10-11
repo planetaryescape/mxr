@@ -12,7 +12,7 @@ expression: rendered
 "│      Suggested to-do: failed payment from Stripe (stripe.com) (rule). t adds it.                                     │"
 "│                                                                                                                      │"
 "│ ── Changed ───────────────────────────────────────────────────────────────────────────────────────────────────────── │"
-"│  ◆ Bookshop            Parcel out for delivery · [### ] · Arriving by Thu 8 Oct · DHL                                │"
+"│  ◆ Bookshop            Parcel out for delivery · Expected by Thu 8 Oct · DHL · Notebook · Reference TRACK-123        │"
 "│  ◆ Strava              Your week in running: 21.3 km over 3 runs · up 12% on last week                               │"
 "│                                                                                                                      │"
 "│ ── Routine ───────────────────────────────────────────────────────────────────────────────────────────────────────── │"

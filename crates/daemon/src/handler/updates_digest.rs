@@ -438,6 +438,9 @@ where
                 _ => plural(members.len(), "email", "emails"),
             }),
             delivery_id: None,
+            items: Vec::new(),
+            tracking_number: None,
+            order_number: None,
         }
     });
     let account = &message.account_id;
@@ -718,7 +721,7 @@ const PARCEL_STEPS: [&str; 4] = ["ordered", "shipped", "out for delivery", "deli
 fn parcel_step(status: DeliveryStatus) -> Option<u32> {
     Some(match status {
         DeliveryStatus::Ordered | DeliveryStatus::InfoReceived => 0,
-        DeliveryStatus::InTransit | DeliveryStatus::AvailableForPickup => 1,
+        DeliveryStatus::InTransit => 1,
         DeliveryStatus::OutForDelivery => 2,
         DeliveryStatus::Delivered => 3,
         _ => return None,
@@ -782,26 +785,34 @@ where
     };
     let name = parcel_name(delivery);
     let mut detail = Vec::new();
-    match (outcome, delivery.eta_until.or(delivery.eta_from)) {
-        ("quiet", _) => detail.push(format!(
-            "No news since {}",
-            delivery.last_event_at.with_timezone(tz).format("%a %-d %b")
-        )),
-        ("progress", Some(eta)) => detail.push(format!(
-            "Arriving by {}",
-            eta.with_timezone(tz).format("%a %-d %b")
-        )),
+    match outcome {
+        "quiet" => detail.push("No recent update recorded in mxr".to_string()),
+        "progress" => {
+            if let Some(eta) = delivery.eta_until {
+                detail.push(format!(
+                    "Expected by {}",
+                    eta.with_timezone(tz).format("%a %-d %b")
+                ));
+            } else if let Some(eta) = delivery.eta_from {
+                detail.push(format!(
+                    "Expected from {}",
+                    eta.with_timezone(tz).format("%a %-d %b")
+                ));
+            }
+        }
         _ => {}
     }
     if let Some(carrier) = delivery
         .carrier
         .as_ref()
-        // "amazon" under "Amazon.com" says nothing new.
+        // A carrier-only source already names the carrier; likewise when a
+        // merchant starts with its carrier ("Amazon.com" / "amazon").
         .filter(|c| {
-            delivery
-                .merchant
-                .as_ref()
-                .is_none_or(|merchant| !merchant.to_lowercase().starts_with(&c.to_lowercase()))
+            !name.trim().eq_ignore_ascii_case(c.trim())
+                && delivery
+                    .merchant
+                    .as_ref()
+                    .is_none_or(|merchant| !merchant.to_lowercase().starts_with(&c.to_lowercase()))
         })
     {
         detail.push(carrier.clone());
@@ -852,6 +863,16 @@ where
             step: parcel_step(status),
             detail: (!detail.is_empty()).then(|| detail.join(" · ")),
             delivery_id: Some(delivery.id.to_string()),
+            items: delivery
+                .items
+                .iter()
+                .map(|item| mxr_protocol::DeliveryItemData {
+                    name: item.name.clone(),
+                    quantity: item.quantity,
+                })
+                .collect(),
+            tracking_number: delivery.tracking_number.clone(),
+            order_number: delivery.order_number.clone(),
         }),
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,

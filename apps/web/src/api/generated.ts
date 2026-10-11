@@ -11325,10 +11325,16 @@ export interface components {
         /** @description A thing with a state: a parcel, a build or an incident. */
         UpdateTrackerData: {
             delivery_id?: string | null;
-            /** @description "Arriving by Thu 8 Oct · DHL · 3 emails". */
+            /** @description "Expected by Thu 8 Oct · DHL · 3 emails". */
             detail?: string | null;
+            /**
+             * @description Available item records are useful identifiers, but may not be the
+             *     complete contents of a parcel.
+             */
+            items?: components["schemas"]["DeliveryItemData"][];
             /** @description `parcel`, `build` or `incident`. */
             kind: string;
+            order_number?: string | null;
             /**
              * @description `good` (ended well), `bad` (ended badly), `progress`, or `quiet`
              *     (a parcel with no news for too long).
@@ -11342,6 +11348,7 @@ export interface components {
             step?: number | null;
             /** @description A parcel's steps, "ordered" to "delivered", and where it is. */
             steps?: string[];
+            tracking_number?: string | null;
         };
         /** @description The cut a digest shows. */
         UpdatesCutData: {

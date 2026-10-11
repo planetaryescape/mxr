@@ -121,7 +121,8 @@ result, panic cleanup, and the SQLite power-loss durability boundary.
 The corrected and original Reading E2E journeys passed (jobs 5706 and 5709),
 along with typecheck (5698), implementation lint (5716) and formatting (5718).
 Hook tests force both completion orders. Required CI is running; the final
-candidate's independent whole-diff review is still outstanding. Release-candidate
-TUI proof, OpenAPI regeneration, merge, release-please, published-artifact
-checks and installed-client acceptance also remain open. No S04 release result
+candidate's independent whole-diff review was waived by BK until Anthropic is
+available again. API-reference regeneration and the docs build passed. Merge,
+release-please, published-artifact checks and installed-client acceptance remain
+open. No S04 release result
 is established.

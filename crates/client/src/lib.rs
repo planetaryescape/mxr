@@ -308,7 +308,6 @@ impl IpcConnection {
                 Response::Ok {
                     data: ResponseData::Status {
                         send_outcome_supported: true,
-                        archive_recovery_supported: true,
                         ..
                     }
                 }
@@ -335,7 +334,6 @@ impl IpcConnection {
                     data: ResponseData::Status {
                         draft_revision_supported: true,
                         send_outcome_supported: true,
-                        archive_recovery_supported: true,
                         ..
                     }
                 }

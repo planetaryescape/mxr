@@ -655,6 +655,10 @@ impl App {
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
                             );
+                            if let Some(dispatch) = self.modals.pending_platform_dispatch.last_mut()
+                            {
+                                dispatch.compose = Some(Box::new(pending));
+                            }
                         }
                         return None;
                     }
@@ -764,6 +768,7 @@ impl App {
                             self.compose.pending_send_confirm = Some(pending);
                             return None;
                         }
+                        let retained = pending.clone();
                         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
                             mxr_core::types::ReplyHeaders {
@@ -798,11 +803,14 @@ impl App {
                             created_at: now,
                             updated_at: now,
                         };
-                        self.queue_mutation(
+                        let id = self.queue_mutation(
                             Request::SaveDraftToServer { draft },
                             MutationEffect::StatusOnly("Draft saved to server".into()),
                             "Saving draft...".into(),
                         );
+                        self.compose
+                            .pending_send_mutations
+                            .insert(id, (retained, false));
                     }
                     return None;
                 }

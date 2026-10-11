@@ -2,8 +2,10 @@
 """Verify durable send recovery using only an isolated fake-provider profile."""
 
 import argparse
+import copy
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -184,7 +186,7 @@ def ipc(request):
             return data
 
         response = json.loads(read(struct.unpack(">I", read(4))[0]))["payload"]
-        records.append({"ipc_request": request, "ipc_response": response})
+        records.append({"ipc_request": copy.deepcopy(request), "ipc_response": response})
         return response
 
 
@@ -394,7 +396,30 @@ try:
     ), sent
     corrected_outcome = outcome(corrected_account, corrected_retry["operation_id"])
     assert corrected_outcome["state"] == "accepted"
+    # One-shot sends publish their recovery handle before the effect.
+    # Query a timed-out compose; recreating it would mint a different draft.
+    (r / "spool/send-pause-after-accept").touch()
+    one_shot = cli("compose", "--to", "recipient@example.com", "--subject", "One-shot lost response", "--body", "Synthetic body", "--yes", "--format", "jsonl", short=True)
+    recovery = re.search(r"recover with mxr send-outcome '([^']+)' --account ([^) ]+)", one_shot.stderr)
+    assert one_shot.returncode != 0 and recovery, one_shot.stderr
+    one_operation, one_account = recovery.groups()
+    (r / "spool/send-pause-after-accept").unlink()
+    one_outcome = wait_outcome(one_account, one_operation, "accepted")
+    assert count() == 8
+    # Provider-confirmed rejection exercises reply/forward's shared finalizer.
+    rejected_one_shots = []
+    message = accepted["local_message_id"]
+    (r / "spool/send-reject").touch()
+    for command in [("reply", message), ("forward", message, "--to", "recipient@example.com")]:
+        failed = cli(*command, "--body", "Synthetic reply or forward", "--yes", "--format", "jsonl")
+        handle = re.search(r"recover with mxr send-outcome '([^']+)' --account ([^) ]+)", failed.stderr)
+        assert failed.returncode != 0 and handle, failed.stderr
+        rejected_one_shots.append(outcome(handle.group(2), handle.group(1)))
+        assert rejected_one_shots[-1]["state"] == "not_accepted" and count() == 8
+    (r / "spool/send-reject").unlink()
     result = {
+        "one_shot_lost_response": one_outcome,
+        "one_shot_rejected_reply_forward": rejected_one_shots,
         "immediate_accepted_query": immediate_accepted,
         "accepted_after_response_loss": accepted,
         "accepted_after_restart": outcome(account, identity["operation_id"]),

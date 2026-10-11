@@ -2,6 +2,22 @@ use super::*;
 use mxr_protocol::Request;
 
 impl App {
+    pub(crate) fn restore_failed_compose(&mut self, pending: PendingSend) {
+        if self.compose.pending_send_confirm.is_none() && self.compose.pending_compose.is_none() {
+            self.compose.pending_send_confirm = Some(pending);
+        } else {
+            self.compose.failed_send = Some(pending);
+        }
+    }
+
+    pub(crate) fn finish_compose_schedule(&mut self, pending: PendingSend, accepted: bool) {
+        if accepted {
+            self.schedule_draft_cleanup(pending.draft_path);
+        } else {
+            self.restore_failed_compose(pending);
+        }
+    }
+
     pub(crate) fn schedule_draft_cleanup(&mut self, path: std::path::PathBuf) {
         if !self.compose.pending_draft_cleanup.contains(&path) {
             self.compose.pending_draft_cleanup.push(path);
@@ -50,6 +66,8 @@ impl App {
         override_safety_token: Option<String>,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
     ) {
+        // Keep the reviewed file reachable even when local preparation fails.
+        self.compose.pending_send_confirm = Some(pending.clone());
         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
         let reply_headers =
             pending
@@ -93,8 +111,8 @@ impl App {
             to: parse_addrs(&pending.fm.to),
             cc: parse_addrs(&pending.fm.cc),
             bcc: parse_addrs(&pending.fm.bcc),
-            subject: pending.fm.subject,
-            content: mxr_core::DraftContent::markdown(pending.body),
+            subject: pending.fm.subject.clone(),
+            content: mxr_core::DraftContent::markdown(pending.body.clone()),
             attachments: pending
                 .fm
                 .attach
@@ -113,16 +131,19 @@ impl App {
         self.compose.last_send_identity = Some((draft.account_id.clone(), identity.clone()));
         #[cfg(not(test))]
         {
-            if let Err(error) =
-                crate::send_recovery_state::retain(&draft.account_id, &draft.id, &identity)
-            {
+            if let Err(error) = crate::send_recovery_state::retain_compose(
+                &draft.account_id,
+                &draft.id,
+                &identity,
+                &pending.draft_path,
+            ) {
                 self.push_toast(Toast::error(format!(
                     "Cannot retain send identity: {error}"
                 )));
                 return;
             }
         }
-        self.queue_mutation(
+        let id = self.queue_mutation(
             Request::SendDraft {
                 send_identity: Some(identity),
                 draft,
@@ -136,5 +157,9 @@ impl App {
             },
             "Sending...".into(),
         );
+        self.compose.pending_send_confirm = None;
+        self.compose
+            .pending_send_mutations
+            .insert(id, (pending, true));
     }
 }

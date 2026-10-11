@@ -93,6 +93,37 @@ impl App {
                 self.screen = Screen::Rules;
                 self.rules.page.refresh_pending = true;
             }
+            Action::ReopenLastSendDraft => {
+                if self.compose.pending_send_confirm.is_some()
+                    || self.compose.pending_compose.is_some()
+                {
+                    self.push_toast(Toast::info(
+                        "Close the current compose review before reopening a retained draft",
+                    ));
+                    return;
+                }
+                if let Some(pending) = self.compose.failed_send.take() {
+                    self.compose.pending_compose = Some(super::ComposeAction::EditDraft {
+                        path: pending.draft_path,
+                        account_id: pending.account_id,
+                    });
+                    return;
+                }
+                match crate::send_recovery_state::last_compose() {
+                    Ok(Some((account_id, path))) if path.is_file() => {
+                        self.compose.pending_compose =
+                            Some(super::ComposeAction::EditDraft { path, account_id });
+                    }
+                    Ok(_) => self.push_toast(Toast::info(
+                        "No retained compose file; check the send outcome",
+                    )),
+                    Err(error) => {
+                        self.push_toast(Toast::error(format!(
+                            "Cannot read send recovery: {error}"
+                        )));
+                    }
+                }
+            }
             Action::CheckLastSendOutcome => {
                 if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
                     self.queue_mutation(

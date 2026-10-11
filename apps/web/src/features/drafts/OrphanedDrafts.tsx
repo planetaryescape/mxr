@@ -12,11 +12,22 @@ function OutcomeRow({ reference }: { reference: SendReference }) {
     queryFn: () => fetchSendOutcome(reference.accountId, reference.operationId),
   });
   const state = outcome.data?.outcome?.state;
+  const description = outcome.isPending
+    ? "Checking send outcome…"
+    : outcome.isError
+      ? "Could not check the send outcome. Check again before deciding whether to send."
+      : state === "accepted"
+        ? "Provider accepted this send."
+        : state === "not_accepted"
+          ? "Provider did not accept this send. Review the draft before a new attempt."
+          : state === "unknown"
+            ? "Acceptance is uncertain. Do not resend."
+            : "No submission was claimed for this operation. Review the saved draft before sending.";
   return <li className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5">
     <div className="min-w-0 flex-1">
       <div className="truncate text-[13px] font-medium">Send {reference.draftId}</div>
       <div className="text-2xs text-muted-foreground">
-        {state === "accepted" ? "Provider accepted this send." : state === "not_accepted" ? "Provider did not accept this send. Review the draft before a new attempt." : "Acceptance is uncertain. Do not resend."}
+        {description}
       </div>
       <div className="truncate font-mono text-2xs">{outcome.data?.outcome?.identity.operation_id ?? reference.operationId}</div>
       {outcome.error && <div role="alert">{outcome.error.message}</div>}

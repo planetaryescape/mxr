@@ -1882,14 +1882,14 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     // Lost scheduled sends: a scheduled-send attempt whose outcome was
     // never recorded means the daemon died between clearing `send_at` and
     // the send resolving — the message may or may not have gone out.
-    // Surface each so the user can check and resend, then mark it resolved
+    // Surface each so the user can query its outcome, then mark it resolved
     // (`interrupted`) so it isn't reported again on the next startup.
     if let Ok(lost) = state.store.list_lost_scheduled_sends().await {
         for entry in &lost {
             tracing::warn!(
                 draft_id = %entry.draft_id,
                 "startup: scheduled send may not have completed before a daemon restart; \
-                 verify and resend if needed"
+                 query the send outcome; do not resend blindly"
             );
             let _ = state
                 .store
@@ -1897,8 +1897,8 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
                     "warn",
                     "scheduled_send",
                     &format!(
-                        "Scheduled send for draft {} may not have completed (daemon restarted mid-send). Verify and resend if needed.",
-                        entry.draft_id
+                        "Scheduled send for draft {} may not have completed (daemon restarted mid-send). Query mxr send-outcome 'draft:{}' --account <account-id>; do not resend blindly.",
+                        entry.draft_id, entry.draft_id
                     ),
                     None,
                     Some(&format!("draft_id={}", entry.draft_id)),

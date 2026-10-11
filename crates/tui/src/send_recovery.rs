@@ -76,7 +76,27 @@ pub(crate) async fn prepare_reviewed_send(
         Response::Ok {
             data: ResponseData::Draft { draft: stored },
         } => {
-            if stored.account_id != draft.account_id || stored.revision != draft.revision {
+            if stored.account_id != draft.account_id {
+                return Err(MxrError::Ipc(
+                    "Reviewed draft belongs to another account".into(),
+                ));
+            }
+            if stored.revision != draft.revision {
+                // A previous conditional save may have committed before its reply or
+                // retained identity was lost. Only the exact reviewed command can
+                // recover that revision; another writer's content stays stale.
+                if stored.revision > draft.revision && same_reviewed_content(&stored, &draft)? {
+                    let revision = stored.revision.ok_or_else(|| {
+                        MxrError::Ipc("Saved draft has no reviewed revision".into())
+                    })?;
+                    let mut selected = SendIdentity::for_revision(&stored.id, revision);
+                    if reviewed != identity {
+                        selected
+                            .operation_id
+                            .push_str(&format!(":retry:{}", DraftId::new()));
+                    }
+                    return Ok((stored, selected));
+                }
                 return Err(MxrError::Ipc(
                     "Reviewed draft revision is stale; reopen and review before sending".into(),
                 ));
@@ -109,6 +129,20 @@ pub(crate) async fn prepare_reviewed_send(
         Response::Error { message, .. } => Err(MxrError::Ipc(message)),
         _ => Err(MxrError::Ipc("Unexpected reviewed draft response".into())),
     }
+}
+
+fn same_reviewed_content(
+    left: &mxr_core::Draft,
+    right: &mxr_core::Draft,
+) -> Result<bool, MxrError> {
+    let normalize = |draft: &mxr_core::Draft| {
+        let mut draft = draft.clone();
+        draft.revision = None;
+        draft.created_at = chrono::DateTime::UNIX_EPOCH;
+        draft.updated_at = chrono::DateTime::UNIX_EPOCH;
+        serde_json::to_value(draft).map_err(|error| MxrError::Ipc(error.to_string()))
+    };
+    Ok(normalize(left)? == normalize(right)?)
 }
 
 #[cfg(test)]
@@ -164,30 +198,14 @@ mod tests {
     }
     #[tokio::test]
     async fn send_corrected_content_updates_only_the_reviewed_revision() {
-        let now = chrono::Utc::now();
-        let draft = mxr_core::Draft {
-            revision: Some(1),
-            id: DraftId::new(),
-            account_id: AccountId::new(),
-            from: None,
-            reply_headers: None,
-            intent: mxr_core::DraftIntent::New,
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Corrected subject".into(),
-            content: mxr_core::DraftContent::markdown("reviewed correction"),
-            attachments: vec![],
-            inline_assets: vec![],
-            inline_calendar_reply: None,
-            created_at: now,
-            updated_at: now,
-        };
+        let draft = reviewed_fixture();
         let identity = SendIdentity::for_draft(&draft);
-        for stored_revision in [1, 2] {
+        for (stored_revision, matching_content) in [(1, false), (2, false), (2, true)] {
             let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
             let mut stored = draft.clone();
-            stored.subject = "Rejected subject".into();
+            if !matching_content {
+                stored.subject = "Rejected subject".into();
+            }
             stored.revision = Some(stored_revision);
             let proof = DraftSendOutcome {
                 identity: identity.clone(),
@@ -234,7 +252,7 @@ mod tests {
                 assert!(rx.try_recv().is_err());
             });
             let result = prepare_reviewed_send(&tx, draft.clone(), identity.clone()).await;
-            if stored_revision == 1 {
+            if stored_revision == 1 || matching_content {
                 let (saved, operation) = result.unwrap();
                 assert_eq!(saved.id, draft.id);
                 assert_eq!(saved.subject, draft.subject);
@@ -246,5 +264,84 @@ mod tests {
             }
             server.await.unwrap();
         }
+    }
+    fn reviewed_fixture() -> mxr_core::Draft {
+        let now = chrono::Utc::now();
+        mxr_core::Draft {
+            revision: Some(1),
+            id: DraftId::new(),
+            account_id: AccountId::new(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Corrected subject".into(),
+            content: mxr_core::DraftContent::markdown("reviewed correction"),
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn send_recovers_its_committed_edit_after_update_reply_loss() {
+        let draft = reviewed_fixture();
+        let identity = SendIdentity::for_draft(&draft);
+        let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
+        let stored = draft.clone();
+        let server = tokio::spawn(async move {
+            let mut stored = stored;
+            for attempt in 0..2 {
+                let outcome = rx.recv().await.unwrap();
+                assert!(matches!(outcome.request, Request::GetSendOutcome { .. }));
+                outcome
+                    .reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::SendOutcome { outcome: None },
+                    }))
+                    .unwrap();
+                let get = rx.recv().await.unwrap();
+                assert!(matches!(get.request, Request::GetDraft { .. }));
+                get.reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::Draft {
+                            draft: stored.clone(),
+                        },
+                    }))
+                    .unwrap();
+                if attempt == 0 {
+                    let update = rx.recv().await.unwrap();
+                    let Request::UpdateDraft { mut draft } = update.request else {
+                        panic!("expected reviewed edit")
+                    };
+                    draft.revision = Some(2);
+                    stored = draft;
+                    // Commit happened; only the reply was lost.
+                    update
+                        .reply
+                        .send(Err(MxrError::Ipc("connection closed after update".into())))
+                        .unwrap();
+                }
+            }
+            assert!(
+                rx.try_recv().is_err(),
+                "recovery must not edit or submit again"
+            );
+        });
+        assert!(prepare_reviewed_send(&tx, draft.clone(), identity.clone())
+            .await
+            .is_err());
+        let (recovered, selected) = prepare_reviewed_send(&tx, draft.clone(), identity)
+            .await
+            .unwrap();
+        assert_eq!(recovered.id, draft.id);
+        assert_eq!(recovered.subject, draft.subject);
+        assert_eq!(recovered.revision, Some(2));
+        assert_eq!(selected.expected_revision, 2);
+        server.await.unwrap();
     }
 }

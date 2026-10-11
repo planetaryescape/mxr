@@ -1434,12 +1434,14 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Ok { .. }) => {}
                         Ok(Response::Error { message, .. }) => {
                             return AsyncResult::PlatformModalLoaded {
+                                compose: pending.compose,
                                 title,
                                 result: Err(MxrError::Ipc(message)),
                             };
                         }
                         Err(e) => {
                             return AsyncResult::PlatformModalLoaded {
+                                compose: pending.compose,
                                 title,
                                 result: Err(e),
                             };
@@ -1452,7 +1454,11 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                 };
-                AsyncResult::PlatformModalLoaded { title, result }
+                AsyncResult::PlatformModalLoaded {
+                    compose: pending.compose,
+                    title,
+                    result,
+                }
             });
         }
 
@@ -3630,6 +3636,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.finish_pending_mutation();
                             match *outcome {
                                 Ok(effect) => {
+                                    app.finish_compose_mutation(id);
                                     // Daemon ack'd the mutation: discard the rollback
                                     // snapshot — there's no longer anything to revert.
                                     let _ = app.mutation_snapshots.take(id);
@@ -4082,7 +4089,10 @@ pub async fn run() -> anyhow::Result<()> {
                                 format!("The daemon returned: {e}"),
                             );
                         }
-                        AsyncResult::PlatformModalLoaded { title, result } => {
+                        AsyncResult::PlatformModalLoaded { compose, title, result } => {
+                            if let Some(pending) = compose {
+                                app.finish_compose_schedule(*pending, result.is_ok());
+                            }
                             app.modals.platform.title = title;
                             match result {
                                 Ok(body) => app.modals.platform.set_body(body),

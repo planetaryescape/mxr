@@ -167,10 +167,12 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     if sending {
+        let identity = mxr_core::SendIdentity::for_draft(&draft);
+        print_send_recovery(&draft.account_id, &identity);
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
-                    send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
+                    send_identity: Some(identity),
                     draft: draft.clone(),
                     override_safety_token: None,
                 })
@@ -634,17 +636,19 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     }
 
     if !sending && remind_after.is_some() {
-        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --remind-after <time>`");
+        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --expected-revision <reviewed-revision> --remind-after <time>`");
     }
     // Resolve the reminder before sending: a phrase that doesn't parse must
     // stop the send, not surface after the mail has already gone.
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
     if sending {
+        let identity = mxr_core::SendIdentity::for_draft(&outgoing);
+        print_send_recovery(&outgoing.account_id, &identity);
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
-                    send_identity: Some(mxr_core::SendIdentity::for_draft(&outgoing)),
+                    send_identity: Some(identity),
                     draft: outgoing.clone(),
                     override_safety_token: None,
                 })
@@ -864,7 +868,7 @@ pub async fn drafts_recover(
                     println!("  {} — {}", d.id, d.subject);
                 }
                 println!();
-                println!("Check whether it was sent before resuming: mxr drafts resume <draft-id>");
+                println!("Check the durable outcome: mxr send-outcome 'draft:<draft-id>' --account <account-id>. Do not resend an uncertain send.");
                 println!(
                     "After resolving it, preview deletion: mxr drafts delete <draft-id> --dry-run"
                 );
@@ -874,9 +878,7 @@ pub async fn drafts_recover(
     Ok(())
 }
 
-/// CLI surface for `mxr drafts resume <id>`. Force-resets the draft to
-/// `'draft'` status so the user can retry the send via the normal
-/// pipeline. Idempotent — already-`'draft'` drafts are a no-op.
+/// Compatibility surface; unresolved send outcomes cannot be reset for retry.
 pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
     let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -891,7 +893,7 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            println!("Draft {parsed} reset to 'draft' — retry with `mxr send {parsed}`");
+            println!("Draft {parsed} has no unresolved send claim. Review with `mxr send {parsed} --dry-run`, then supply that preview's --expected-revision.");
             Ok(())
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
@@ -1240,11 +1242,7 @@ pub async fn send_draft(
     if draft.revision != Some(reviewed_revision) {
         anyhow::bail!("Reviewed draft revision is stale; review again before sending");
     }
-    // The identity is known before effects and remains usable after cleanup.
-    eprintln!(
-        "Send operation: {} (recover with mxr send-outcome '{}' --account {})",
-        identity.operation_id, identity.operation_id, draft.account_id
-    );
+    print_send_recovery(&draft.account_id, &identity);
     let response = client
         .request(Request::SendStoredDraft {
             send_identity: Some(identity.clone()),
@@ -3061,4 +3059,11 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
             assert!(sent.contains("Local message id: msg-123"), "sent={sent}");
         }
     }
+}
+
+fn print_send_recovery(account: &mxr_core::AccountId, identity: &mxr_core::SendIdentity) {
+    eprintln!(
+        "Send operation: {} (recover with mxr send-outcome '{}' --account {}). If the response is lost, query this operation; do not rerun compose, reply or forward.",
+        identity.operation_id, identity.operation_id, account
+    );
 }

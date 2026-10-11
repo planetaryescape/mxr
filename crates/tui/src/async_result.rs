@@ -280,6 +280,7 @@ pub(crate) enum AsyncResult {
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
     PlatformModalLoaded {
+        compose: Option<Box<app::PendingSend>>,
         title: String,
         result: Result<String, MxrError>,
     },

@@ -50,6 +50,8 @@ describe("DraftsRoute", () => {
   beforeEach(() => {
     vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockReset();
+    vi.mocked(fetchSendOutcome).mockReset();
+    vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockResolvedValue({ ok: true });
     api.fetchDrafts.mockReset();
     api.fetchOrphanedDrafts.mockReset();
@@ -187,11 +189,37 @@ describe("DraftsRoute", () => {
       expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
     });
 
+    test("no claim is distinct from uncertain acceptance", async () => {
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("No submission was claimed for this operation. Review the saved draft before sending.")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
+    });
+
+    test("a pending lookup makes no acceptance claim", async () => {
+      vi.mocked(fetchSendOutcome).mockReturnValue(new Promise(() => {}));
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("Checking send outcome…")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Check outcome" })).toBeDisabled();
+    });
+
+    test("a failed lookup offers checking without a retry", async () => {
+      vi.mocked(fetchSendOutcome).mockRejectedValue(new Error("Connection lost"));
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("Could not check the send outcome. Check again before deciding whether to send.")).toBeVisible();
+      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Retry|Send now/ })).not.toBeInTheDocument();
+    });
+
     test("uncertain sends only expose an outcome query", async () => {
+      vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: { identity: { operation_id: "draft:draft-7", expected_revision: 1 }, state: "unknown", local_message_id: null } });
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
       expect(await screen.findByText("Send outcomes")).toBeVisible();
-      expect(screen.getByText("Acceptance is uncertain. Do not resend.")).toBeVisible();
+      expect(await screen.findByText("Acceptance is uncertain. Do not resend.")).toBeVisible();
       await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledWith("account-1", "draft:draft-7"));
       expect(screen.queryByRole("button", { name: /Reset|Send now/ })).not.toBeInTheDocument();
       expect(api.resetOrphanedDraft).not.toHaveBeenCalled();

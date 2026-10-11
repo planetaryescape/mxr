@@ -6,6 +6,7 @@ use mxr_protocol::{CalendarInviteActionData, ReplyContext};
 use std::collections::HashMap;
 
 /// Draft waiting for user confirmation after editor closes.
+#[derive(Debug, Clone)]
 pub struct PendingSend {
     pub account_id: AccountId,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
@@ -128,6 +129,8 @@ pub struct DeferredCompose {
 
 #[derive(Default)]
 pub struct ComposeState {
+    pub failed_send: Option<PendingSend>,
+    pub pending_send_mutations: HashMap<crate::app::MutationId, (PendingSend, bool)>,
     pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,

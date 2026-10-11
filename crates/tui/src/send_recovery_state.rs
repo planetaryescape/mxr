@@ -5,6 +5,10 @@ use std::{collections::HashMap, io::Write, path::Path, sync::Mutex};
 static WRITER: Mutex<()> = Mutex::new(());
 #[derive(Default, Serialize, Deserialize)]
 struct Recovery {
+    #[serde(default)]
+    compose: Option<(AccountId, std::path::PathBuf)>,
+    #[serde(default)]
+    compose_files: Vec<(AccountId, std::path::PathBuf)>,
     last: Option<(AccountId, SendIdentity)>,
     operations: HashMap<DraftId, (AccountId, SendIdentity)>,
 }
@@ -21,6 +25,17 @@ fn load_at(path: &Path) -> std::io::Result<Recovery> {
 pub(crate) fn last() -> std::io::Result<Option<(AccountId, SendIdentity)>> {
     Ok(load_at(&path())?.last)
 }
+pub(crate) fn last_compose() -> std::io::Result<Option<(AccountId, std::path::PathBuf)>> {
+    Ok(reopenable_compose(load_at(&path())?))
+}
+fn reopenable_compose(recovery: Recovery) -> Option<(AccountId, std::path::PathBuf)> {
+    recovery
+        .compose_files
+        .into_iter()
+        .rev()
+        .find(|(_, path)| path.is_file())
+        .or_else(|| recovery.compose.filter(|(_, path)| path.is_file()))
+}
 pub(crate) fn for_draft(draft: &DraftId) -> std::io::Result<Option<(AccountId, SendIdentity)>> {
     Ok(load_at(&path())?.operations.get(draft).cloned())
 }
@@ -30,18 +45,37 @@ pub(crate) fn retain(
     draft: &DraftId,
     identity: &SendIdentity,
 ) -> std::io::Result<()> {
-    retain_at(&path(), account, draft, identity)
+    retain_at(&path(), account, draft, identity, None)
+}
+#[cfg(not(test))]
+pub(crate) fn retain_compose(
+    account: &AccountId,
+    draft: &DraftId,
+    identity: &SendIdentity,
+    file: &Path,
+) -> std::io::Result<()> {
+    retain_at(&path(), account, draft, identity, Some(file))
 }
 fn retain_at(
     path: &Path,
     account: &AccountId,
     draft: &DraftId,
     identity: &SendIdentity,
+    compose: Option<&Path>,
 ) -> std::io::Result<()> {
     let _guard = WRITER
         .lock()
         .map_err(|_| std::io::Error::other("send recovery writer poisoned"))?;
     let mut recovery = load_at(path)?;
+    if let Some(file) = compose {
+        recovery.compose = Some((account.clone(), file.to_path_buf()));
+        recovery
+            .compose_files
+            .retain(|(_, retained)| retained != file);
+        recovery
+            .compose_files
+            .push((account.clone(), file.to_path_buf()));
+    }
     recovery.last = Some((account.clone(), identity.clone()));
     recovery
         .operations
@@ -85,22 +119,69 @@ mod tests {
         let account = AccountId::new();
         let draft = DraftId::new();
         let mut identity = SendIdentity::for_revision(&draft, 1);
-        retain_at(&path, &account, &draft, &identity).unwrap();
+        retain_at(
+            &path,
+            &account,
+            &draft,
+            &identity,
+            Some(Path::new("/tmp/reviewed-compose.md")),
+        )
+        .unwrap();
         identity.operation_id.push_str(":retry:latest");
         identity.expected_revision = 2;
-        retain_at(&path, &account, &draft, &identity).unwrap();
+        retain_at(
+            &path,
+            &account,
+            &draft,
+            &identity,
+            Some(Path::new("/tmp/reviewed-compose.md")),
+        )
+        .unwrap();
         crate::local_state::save_to_path(&ui_path, &stale_ui).unwrap();
         let reloaded = load_at(&path).unwrap();
         assert_eq!(reloaded.last, Some((account, identity)));
+        assert_eq!(
+            reloaded.compose,
+            Some((
+                reloaded.last.as_ref().unwrap().0.clone(),
+                Path::new("/tmp/reviewed-compose.md").to_path_buf()
+            ))
+        );
         assert_eq!(reloaded.operations[&draft].1.expected_revision, 2);
         std::fs::write(&path, "malformed").unwrap();
         assert!(retain_at(
             &path,
             &AccountId::new(),
             &draft,
-            &SendIdentity::for_revision(&draft, 1)
+            &SendIdentity::for_revision(&draft, 1),
+            None,
         )
         .is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "malformed");
+    }
+    #[test]
+    fn failed_send_file_remains_reopenable_after_a_later_success_and_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("recovery.json");
+        let account = AccountId::new();
+        let a = directory.path().join("A.md");
+        let b = directory.path().join("B.md");
+        for file in [&a, &b] {
+            std::fs::write(file, "retained text").unwrap();
+            let id = DraftId::from_provider_id("compose-file", &file.to_string_lossy());
+            retain_at(
+                &state,
+                &account,
+                &id,
+                &SendIdentity::for_revision(&id, 1),
+                Some(file),
+            )
+            .unwrap();
+        }
+        std::fs::remove_file(&b).unwrap();
+        assert_eq!(
+            reopenable_compose(load_at(&state).unwrap()),
+            Some((account, a))
+        );
     }
 }

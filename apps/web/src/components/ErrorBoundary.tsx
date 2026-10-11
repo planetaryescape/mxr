@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { RequestErrorDetails } from "@/components/RequestError";
 
 interface Props {
   children: ReactNode;
@@ -38,9 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
           <AlertTriangle className="size-6 text-destructive" />
           <div className="text-md font-medium">Something went wrong</div>
-          <div className="max-w-sm font-mono text-xs text-muted-foreground">
-            {this.state.error.message}
-          </div>
+          <RequestErrorDetails error={this.state.error} />
           <Button onClick={this.reset} variant="outline" size="sm">
             Try again
           </Button>

@@ -117,11 +117,28 @@ export function OnboardingRoute() {
       {step === 1 ? (
         <section>
           <p className="max-w-[60ch] text-[13px] leading-relaxed text-muted-foreground">
-            mxr keeps your mail in a local SQLite store, syncs it in the background daemon, and
-            searches it without a round trip. Connect a mailbox to start, or run{" "}
-            <code className="font-mono text-xs text-foreground">mxr demo</code> in a terminal for a
-            sample inbox with threads, attachments, newsletters, rules and analytics.
+            mxr keeps a local copy of your mail so you can read and search it on this computer.
+            Connect a mailbox to get started, or try a separate sample inbox first. The sample uses
+            made-up mail and does not touch your mailbox. Run{" "}
+            <code className="font-mono text-xs text-foreground">mxr demo</code> in a terminal.
           </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              if (!navigator.clipboard) {
+                toast.error("Copy is unavailable in this browser");
+                return;
+              }
+              void navigator.clipboard
+                .writeText("mxr demo")
+                .then(() => toast.success("Command copied"))
+                .catch(() => toast.error("Could not copy the command"));
+            }}
+          >
+            Copy demo command
+          </Button>
           <Button className="mt-6" size="sm" onClick={() => setStep(2)}>
             Connect first account
           </Button>
@@ -136,6 +153,7 @@ export function OnboardingRoute() {
                 type="button"
                 role="radio"
                 aria-checked={provider === tile.id}
+                tabIndex={provider === tile.id ? 0 : -1}
                 className={cn(
                   "rounded-md border p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   provider === tile.id
@@ -143,6 +161,29 @@ export function OnboardingRoute() {
                     : "border-border hover:bg-muted/40",
                 )}
                 onClick={() => setProvider(tile.id)}
+                onKeyDown={(event) => {
+                  const direction =
+                    event.key === "ArrowRight" || event.key === "ArrowDown"
+                      ? 1
+                      : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                        ? -1
+                        : 0;
+                  if (event.key !== "Home" && event.key !== "End" && direction === 0) return;
+                  event.preventDefault();
+                  const currentIndex = providerTiles.findIndex((option) => option.id === tile.id);
+                  const nextIndex =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? providerTiles.length - 1
+                        : (currentIndex + direction + providerTiles.length) % providerTiles.length;
+                  setProvider(providerTiles[nextIndex]!.id);
+                  const radios =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      "[role='radio']",
+                    );
+                  radios?.[nextIndex]?.focus();
+                }}
               >
                 <tile.Icon className="mb-2 size-4 text-primary" />
                 <div className="text-[13px] font-medium">{tile.label}</div>
@@ -343,7 +384,7 @@ export function OnboardingRoute() {
       ) : null}
       {step === 4 ? (
         <FirstSync
-          onOpenInbox={() => navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } })}
+          onOpenNow={() => navigate({ to: "/now" })}
           onManage={() => navigate({ to: "/accounts" })}
           sync={sync}
         />
@@ -392,11 +433,11 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
  */
 function FirstSync({
   sync,
-  onOpenInbox,
+  onOpenNow,
   onManage,
 }: {
   sync: { current: number; total: number } | undefined;
-  onOpenInbox: () => void;
+  onOpenNow: () => void;
   onManage: () => void;
 }) {
   const [started, setStarted] = useState(false);
@@ -409,7 +450,7 @@ function FirstSync({
   return (
     <section>
       <p className="text-[13px] text-muted-foreground">
-        The daemon keeps syncing if you leave this page.
+        mxr keeps syncing after you leave this page.
       </p>
       <div className="mt-5 border-y border-border py-5" role="status">
         <div className="text-[15px] font-semibold">
@@ -434,8 +475,8 @@ function FirstSync({
         </div>
       </div>
       <div className="mt-4 flex gap-2">
-        <Button size="sm" onClick={onOpenInbox}>
-          Open inbox
+        <Button size="sm" onClick={onOpenNow}>
+          Open Now
         </Button>
         <Button variant="ghost" size="sm" onClick={onManage}>
           Manage accounts
@@ -446,17 +487,17 @@ function FirstSync({
 }
 
 const providerTiles = [
-  { id: "gmail" as const, label: "Gmail", description: "Bundled OAuth when available", Icon: Mail },
+  { id: "gmail" as const, label: "Gmail", description: "Sign in with Google", Icon: Mail },
   {
     id: "outlook" as const,
     label: "Outlook",
-    description: "Personal Microsoft account",
+    description: "Sign in with Microsoft",
     Icon: Mail,
   },
   {
     id: "imap" as const,
     label: "IMAP/SMTP",
-    description: "Bring any standards-based mailbox",
+    description: "Use your mail server's IMAP and SMTP settings",
     Icon: Server,
   },
 ];

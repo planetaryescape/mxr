@@ -132,23 +132,27 @@ impl App {
             }
             // Command palette
             Action::SyncNow => {
-                if !self.user_sync_pending {
-                    self.user_sync_targets.clear();
-                    self.user_sync_events_before_ack.clear();
-                    self.user_sync_acknowledgements_pending = 0;
+                // Coalesce only while the daemon has not answered this
+                // request. Once acknowledged, another click sends SyncAll
+                // again so the daemon can truthfully report Started or Joined.
+                if self.user_sync_acknowledgements_pending == 0 {
+                    if !self.user_sync_pending {
+                        self.user_sync_targets.clear();
+                        self.user_sync_events_before_ack.clear();
+                    }
+                    self.user_sync_pending = true;
+                    self.user_sync_acknowledgements_pending += 1;
+                    // Background: the daemon acks as soon as the sync starts, so a
+                    // backfill that runs longer than the client's 60s IPC timeout
+                    // no longer times out the request. Progress arrives as
+                    // `OperationProgress` events and the list refreshes on
+                    // `SyncCompleted`.
+                    self.queue_mutation(
+                        Request::SyncAll,
+                        MutationEffect::RefreshList,
+                        "Syncing...".into(),
+                    );
                 }
-                self.user_sync_pending = true;
-                self.user_sync_acknowledgements_pending += 1;
-                // Background: the daemon acks as soon as the sync starts, so a
-                // backfill that runs longer than the client's 60s IPC timeout
-                // no longer times out the request. Progress arrives as
-                // `OperationProgress` events and the list refreshes on
-                // `SyncCompleted`.
-                self.queue_mutation(
-                    Request::SyncAll,
-                    MutationEffect::RefreshList,
-                    "Syncing...".into(),
-                );
             }
             // Message view
             Action::Noop => {}

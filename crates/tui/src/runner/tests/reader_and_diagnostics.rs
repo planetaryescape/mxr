@@ -1464,12 +1464,31 @@ fn sync_now_action_asks_the_daemon_to_sync_every_account() {
     let mut app = App::new();
 
     app.apply(Action::SyncNow);
+    app.apply(Action::SyncNow);
 
-    let queued = app
+    assert_eq!(
+        app.pending_mutation_queue.len(),
+        1,
+        "a click while the daemon acknowledgement is pending is coalesced"
+    );
+    let account_id = mxr_core::AccountId::new();
+    crate::daemon_events::handle_sync_batch(
+        &mut app,
+        vec![mxr_protocol::SyncAccountResult {
+            account_id: account_id.clone(),
+            account_name: "Work".into(),
+            result: mxr_protocol::SyncAccountResultKind::Started,
+            error: None,
+        }],
+    );
+    app.apply(Action::SyncNow);
+
+    assert_eq!(app.pending_mutation_queue.len(), 2);
+    assert!(app
         .pending_mutation_queue
-        .first()
-        .expect("SyncNow should queue a request");
-    assert!(matches!(queued.request, Request::SyncAll));
+        .iter()
+        .all(|queued| matches!(queued.request, Request::SyncAll)));
+    assert!(app.user_sync_targets.contains(&account_id));
 }
 
 /// A resolved thread queues its context facts at once and its gist after the

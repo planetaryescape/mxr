@@ -662,15 +662,16 @@ mod tests {
     }
 
     #[test]
-    fn overlapping_global_sync_acknowledgements_merge_targets() {
-        let first = mxr_core::AccountId::new();
-        let second = mxr_core::AccountId::new();
-        let mut app = app_with_account(&first);
+    fn a_second_acknowledged_join_keeps_the_same_account_tracked() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
         app.user_sync_pending = true;
-        app.user_sync_acknowledgements_pending = 2;
-        handle_sync_batch(&mut app, vec![sync_result(&first, "First")]);
-        handle_sync_batch(&mut app, vec![sync_result(&second, "Second")]);
-        assert_eq!(app.user_sync_targets.len(), 2);
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
+        assert_eq!(app.user_sync_targets.len(), 1);
+        assert!(app.user_sync_targets.contains(&account_id));
         assert!(app.user_sync_pending);
         assert_eq!(app.user_sync_acknowledgements_pending, 0);
     }

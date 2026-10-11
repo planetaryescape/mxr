@@ -2396,7 +2396,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let outcome = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Ack | ResponseData::Draft { .. },
-                    }) => Ok(effect),
+                    }) if !is_sync_all_request => Ok(effect),
                     Ok(Response::Ok {
                         data:
                             ResponseData::SendReceipt {
@@ -2714,13 +2714,11 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to mutation".into())),
                 };
-                if is_sync_all_request && !sync_batch_received {
-                    let _ = result_tx_inner.send(AsyncResult::SyncRequestFailed);
-                }
                 AsyncResult::MutationResult {
                     id: mutation_id,
                     best_effort,
                     retry: retry.map(Box::new),
+                    sync_request_pending_failure: is_sync_all_request && !sync_batch_received,
                     outcome: Box::new(outcome),
                 }
             });
@@ -3592,6 +3590,7 @@ pub async fn run() -> anyhow::Result<()> {
                             id,
                             best_effort,
                             retry,
+                            sync_request_pending_failure,
                             outcome,
                         } => {
                             app.finish_pending_mutation();
@@ -3626,6 +3625,9 @@ pub async fn run() -> anyhow::Result<()> {
                                             app.schedule_mutation_retry(*retry, &e);
                                             continue;
                                         }
+                                    }
+                                    if sync_request_pending_failure {
+                                        handle_sync_request_failed(&mut app);
                                     }
                                     app.handle_mutation_failure_result(id, best_effort, &e);
                                 }
@@ -3980,9 +3982,6 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::SyncBatch(results) => {
                             handle_sync_batch(&mut app, results);
-                        }
-                        AsyncResult::SyncRequestFailed => {
-                            handle_sync_request_failed(&mut app);
                         }
                         AsyncResult::SavedSearchMutation(Ok(())) => {
                             // Trigger a follow-up list refresh on the next

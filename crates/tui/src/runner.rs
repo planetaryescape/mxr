@@ -23,7 +23,7 @@ use crate::compose_flow::{
 use crate::daemon_events::{
     apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_context_loaded,
     apply_thread_gist_loaded, apply_thread_summary_loaded, format_mutation_failure,
-    handle_daemon_event, mutation_verb_past, restore_mail_list_selection,
+    handle_daemon_event, handle_sync_batch, mutation_verb_past, restore_mail_list_selection,
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
@@ -2432,26 +2432,33 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::SyncBatch { results },
                     }) => {
-                        let failures = results
-                            .iter()
-                            .filter(|result| {
-                                result.result == mxr_protocol::SyncAccountResultKind::Failed
-                            })
-                            .map(|result| {
-                                format!(
-                                    "{}: {}",
-                                    result.account_name,
-                                    result.error.as_deref().unwrap_or("sync couldn't start")
-                                )
-                            })
-                            .collect::<Vec<_>>();
-                        if failures.is_empty() {
-                            Ok(effect)
+                        let _ = result_tx_inner.send(AsyncResult::SyncBatch(results.clone()));
+                        if results.is_empty() {
+                            Ok(app::MutationEffect::StatusOnly(
+                                "No enabled sync-capable accounts".into(),
+                            ))
                         } else {
-                            Err(MxrError::Ipc(format!(
-                                "Some accounts couldn't sync: {}",
-                                failures.join("; ")
-                            )))
+                            let failures = results
+                                .iter()
+                                .filter(|result| {
+                                    result.result == mxr_protocol::SyncAccountResultKind::Failed
+                                })
+                                .map(|result| {
+                                    format!(
+                                        "{}: {}",
+                                        result.account_name,
+                                        result.error.as_deref().unwrap_or("sync couldn't start")
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            if failures.is_empty() {
+                                Ok(effect)
+                            } else {
+                                Err(MxrError::Ipc(format!(
+                                    "Some accounts couldn't sync: {}",
+                                    failures.join("; ")
+                                )))
+                            }
                         }
                     }
                     Ok(Response::Ok {
@@ -3963,6 +3970,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::UndoCaptured(undo) => {
                             app.set_pending_undo(undo);
+                        }
+                        AsyncResult::SyncBatch(results) => {
+                            handle_sync_batch(&mut app, results);
                         }
                         AsyncResult::SavedSearchMutation(Ok(())) => {
                             // Trigger a follow-up list refresh on the next

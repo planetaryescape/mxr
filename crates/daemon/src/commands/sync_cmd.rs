@@ -218,7 +218,7 @@ pub async fn run(
         }
         let after = waited?;
         if let Some(before) = before.as_deref() {
-            let failures = sync_failures(before, &after);
+            let failures = sync_failures_since(before, &after);
             if !failures.is_empty() {
                 anyhow::bail!("{}", failures.join("; "));
             }
@@ -289,20 +289,8 @@ async fn run_all(
         return Ok(());
     }
 
-    // Keep the before/after comparison for the accounts selected by the
-    // actual dispatch result; preview and execution can be separated by a
-    // configuration change.
-    let before = if wait {
-        match fetch_sync_statuses(client, None).await {
-            Ok(statuses) => Some(statuses),
-            Err(error) => {
-                tracing::debug!(%error, "could not read sync status before global trigger");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    // The dispatch result is authoritative: preview and execution can be
+    // separated by a configuration change.
     let progress = ProgressPrinter::new(json_mode);
     let response = client
         .request_with_events(Request::SyncAll, progress.event_callback())
@@ -339,8 +327,8 @@ async fn run_all(
             )
         })
         .collect::<Vec<_>>();
-    if let Some(before) = before.as_deref() {
-        failures.extend(sync_failures(before, &statuses));
+    if wait {
+        failures.extend(sync_failures(&results, &statuses));
     }
     match resolve_format(format) {
         OutputFormat::Json if wait => println!(
@@ -358,7 +346,7 @@ async fn run_all(
             }))?
         ),
         OutputFormat::Jsonl => {
-            for result in results {
+            for result in &results {
                 println!(
                     "{}",
                     serde_json::to_string(&serde_json::json!({
@@ -366,13 +354,37 @@ async fn run_all(
                         "result": result,
                     }))?
                 );
+                if result.result == mxr_protocol::SyncAccountResultKind::Failed {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "type": "sync_failure",
+                            "account_id": result.account_id,
+                            "account_name": result.account_name,
+                            "error": result.error,
+                        }))?
+                    );
+                }
             }
-            for sync in statuses {
+            for sync in &statuses {
                 println!(
                     "{}",
                     serde_json::to_string(&serde_json::json!({
                         "type": "sync_status",
                         "status": sync,
+                    }))?
+                );
+                let (kind, error) = match sync.last_error.as_deref() {
+                    Some(error) => ("sync_failed", Some(error)),
+                    None => ("sync_completed", None),
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": kind,
+                        "account_id": sync.account_id,
+                        "account_name": sync.account_name,
+                        "error": error,
                     }))?
                 );
             }
@@ -414,6 +426,19 @@ fn sync_wait_target_ids(
         .collect()
 }
 
+fn sync_targets_quiescent(
+    statuses: &[AccountSyncStatus],
+    target_ids: &std::collections::HashSet<AccountId>,
+) -> bool {
+    statuses.len() == target_ids.len()
+        && statuses
+            .iter()
+            .map(|status| &status.account_id)
+            .collect::<std::collections::HashSet<_>>()
+            == target_ids.iter().collect()
+        && !statuses.iter().any(|status| status.sync_in_progress)
+}
+
 async fn wait_for_sync_targets(
     client: &mut IpcClient,
     target_ids: &std::collections::HashSet<AccountId>,
@@ -430,7 +455,7 @@ async fn wait_for_sync_targets(
         match poll_sync_statuses(client, None).await {
             StatusPoll::Statuses(mut statuses) => {
                 statuses.retain(|status| target_ids.contains(&status.account_id));
-                if !statuses.iter().any(|status| status.sync_in_progress) {
+                if sync_targets_quiescent(&statuses, target_ids) {
                     progress.finish();
                     return Ok(statuses);
                 }
@@ -457,15 +482,36 @@ async fn wait_for_sync_targets(
     }
 }
 
-/// Errors left by a sync that ran while we were waiting.
+/// Errors left by a sync that this invocation started or joined.
 ///
-/// An account that is idle is not an account that succeeded: a failed sync
-/// clears `sync_in_progress` on its way out, so quiescence alone would have
-/// `mxr sync --wait` exit 0 on a sync that failed. An error only counts when
-/// the attempt carrying it is newer than the one we saw before triggering —
-/// otherwise every wait would fail on an error the account has been carrying
-/// since yesterday.
-fn sync_failures(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
+/// Success clears `last_error`; a failed retry can retain the exact same error
+/// and attempt timestamp as the status observed before joining. Therefore an
+/// idle selected account with an error is a failed wait, while errors for
+/// accounts outside the dispatched target set are irrelevant.
+fn sync_failures(
+    results: &[mxr_protocol::SyncAccountResult],
+    statuses: &[AccountSyncStatus],
+) -> Vec<String> {
+    let selected = results
+        .iter()
+        .filter(|result| result.result != mxr_protocol::SyncAccountResultKind::Failed)
+        .map(|result| &result.account_id)
+        .collect::<std::collections::HashSet<_>>();
+    statuses
+        .iter()
+        .filter(|status| selected.contains(&status.account_id))
+        .filter_map(|status| {
+            status
+                .last_error
+                .as_deref()
+                .map(|error| format!("sync failed for {}: {error}", status.account_name))
+        })
+        .collect()
+}
+
+/// Legacy account-scoped sync has no dispatch result set, so it compares its
+/// selected status with the snapshot taken before its one-account request.
+fn sync_failures_since(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
     after
         .iter()
         .filter_map(|status| {
@@ -796,6 +842,18 @@ mod tests {
     }
 
     #[test]
+    fn legacy_unscoped_sync_request_still_targets_default_account_only() {
+        assert!(matches!(
+            build_sync_request(None),
+            Request::SyncNow {
+                account_id: None,
+                background: true,
+            }
+        ));
+        assert!(!matches!(build_sync_request(None), Request::SyncAll));
+    }
+
+    #[test]
     fn sync_wait_only_tracks_accounts_that_started_or_joined() {
         let started = AccountId::from_provider_id("fake", "started@example.com");
         let joined = AccountId::from_provider_id("fake", "joined@example.com");
@@ -902,31 +960,75 @@ mod tests {
         );
     }
 
-    /// A failed sync goes idle on its way out, so quiescence alone would have
-    /// `--wait` report success on a sync that failed.
     #[test]
-    fn sync_failures_reports_an_error_from_an_attempt_we_waited_on() {
-        let before = vec![status("personal", "t0", None)];
+    fn sync_failures_reports_an_error_when_the_initial_status_read_was_unavailable() {
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
         let after = vec![status("personal", "t1", Some("imap: connection refused"))];
         assert_eq!(
-            sync_failures(&before, &after),
+            sync_failures(&[result], &after),
             vec!["sync failed for personal: imap: connection refused".to_string()]
         );
     }
 
-    /// An account that was already carrying an error before we triggered, and
-    /// has not been attempted since, is not this command's failure to report.
     #[test]
-    fn sync_failures_ignores_an_error_that_predates_the_trigger() {
-        let before = vec![status("personal", "t0", Some("stale auth failure"))];
-        let after = vec![status("personal", "t0", Some("stale auth failure"))];
-        assert!(sync_failures(&before, &after).is_empty());
+    fn sync_failures_reports_the_same_error_after_a_joined_retry() {
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Joined);
+        let after = vec![status("personal", "t0", Some("same provider error"))];
+        assert_eq!(
+            sync_failures(&[result], &after),
+            vec!["sync failed for personal: same provider error".to_string()]
+        );
     }
 
     #[test]
     fn sync_failures_is_empty_when_the_sync_succeeded() {
-        let before = vec![status("personal", "t0", None)];
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
         let after = vec![status("personal", "t1", None)];
-        assert!(sync_failures(&before, &after).is_empty());
+        assert!(sync_failures(&[result], &after).is_empty());
+    }
+
+    #[test]
+    fn sync_failures_ignores_errors_for_unselected_accounts() {
+        let selected = sync_result("selected", mxr_protocol::SyncAccountResultKind::Started);
+        let statuses = vec![
+            status("selected", "t1", None),
+            status("unselected", "t0", Some("old failure")),
+        ];
+        assert!(sync_failures(&[selected], &statuses).is_empty());
+    }
+
+    #[test]
+    fn wait_does_not_treat_a_missing_selected_account_as_quiescent() {
+        let selected = AccountId::from_provider_id("fake", "selected");
+        let target_ids = std::collections::HashSet::from([selected]);
+        assert!(!sync_targets_quiescent(&[], &target_ids));
+        assert!(sync_targets_quiescent(
+            &[status("selected", "t1", None)],
+            &target_ids
+        ));
+    }
+
+    #[test]
+    fn wait_rejects_partial_status_sets_even_when_returned_accounts_are_idle() {
+        let target_ids = std::collections::HashSet::from([
+            AccountId::from_provider_id("fake", "selected"),
+            AccountId::from_provider_id("fake", "missing"),
+        ]);
+        assert!(!sync_targets_quiescent(
+            &[status("selected", "t1", None)],
+            &target_ids
+        ));
+    }
+
+    fn sync_result(
+        account_name: &str,
+        result: mxr_protocol::SyncAccountResultKind,
+    ) -> mxr_protocol::SyncAccountResult {
+        mxr_protocol::SyncAccountResult {
+            account_id: AccountId::from_provider_id("fake", account_name),
+            account_name: account_name.into(),
+            result,
+            error: None,
+        }
     }
 }

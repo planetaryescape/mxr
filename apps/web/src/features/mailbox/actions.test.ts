@@ -43,7 +43,7 @@ describe("syncNow", () => {
   test("starts or joins every account without a redundant success toast", async () => {
     client.apiFetch.mockResolvedValue({
       results: [
-        { account_name: "Work", result: "started" },
+        { account_name: "Work", result: "started", error: null },
         { account_name: "Personal", result: "joined" },
       ],
     });
@@ -92,6 +92,18 @@ describe("syncNow", () => {
     await syncNow();
 
     expect(toast.info).toHaveBeenCalledWith("No enabled sync-capable accounts");
+  });
+
+  test("rejects an invalid per-account response", async () => {
+    client.apiFetch.mockResolvedValue({
+      results: [{ account_name: "Work", result: "sometimes" }],
+    });
+
+    await syncNow();
+
+    expect(toast.error).toHaveBeenCalledWith("Sync failed to start", {
+      description: "The daemon returned an invalid account sync result",
+    });
   });
 });
 

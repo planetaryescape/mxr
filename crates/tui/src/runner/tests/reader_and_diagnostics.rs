@@ -1469,7 +1469,7 @@ fn sync_now_action_asks_the_daemon_to_sync_every_account() {
         .pending_mutation_queue
         .first()
         .expect("SyncNow should queue a request");
-    assert_eq!(queued.request, Request::SyncAll);
+    assert!(matches!(queued.request, Request::SyncAll));
 }
 
 /// A resolved thread queues its context facts at once and its gist after the

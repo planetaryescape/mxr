@@ -305,6 +305,11 @@ pub struct App {
     /// You asked for a sync and it has not finished: its failure is worth a
     /// status line, where a background retry's is not.
     pub user_sync_pending: bool,
+    /// Accounts returned as Started or Joined by the user's SyncAll request.
+    pub user_sync_targets: HashSet<mxr_core::AccountId>,
+    /// Events can race the SyncAll acknowledgement. Defer them until the
+    /// daemon tells us which accounts belong to this user request.
+    pub user_sync_events_before_ack: Vec<mxr_protocol::DaemonEvent>,
     pub visible_height: usize,
     pub html_image_support: Option<TerminalImageSupport>,
     pub html_image_assets: HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
@@ -497,6 +502,8 @@ impl App {
             last_sync_status: None,
             freshness: None,
             user_sync_pending: false,
+            user_sync_targets: HashSet::new(),
+            user_sync_events_before_ack: Vec::new(),
             visible_height: 20,
             html_image_support: None,
             html_image_assets: HashMap::new(),

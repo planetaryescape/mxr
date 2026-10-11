@@ -133,6 +133,8 @@ impl App {
             // Command palette
             Action::SyncNow => {
                 self.user_sync_pending = true;
+                self.user_sync_targets.clear();
+                self.user_sync_events_before_ack.clear();
                 // Background: the daemon acks as soon as the sync starts, so a
                 // backfill that runs longer than the client's 60s IPC timeout
                 // no longer times out the request. Progress arrives as

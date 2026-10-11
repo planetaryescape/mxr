@@ -49,15 +49,20 @@ function syncResults(value: unknown): Array<{
     if (
       typeof item.account_name !== "string" ||
       (item.result !== "started" && item.result !== "joined" && item.result !== "failed") ||
-      (item.error !== undefined && typeof item.error !== "string")
+      (item.error !== undefined && item.error !== null && typeof item.error !== "string")
     ) {
       throw new Error("The daemon returned an invalid account sync result");
     }
-    return {
+    const result: {
+      account_name: string;
+      result: "started" | "joined" | "failed";
+      error?: string;
+    } = {
       account_name: item.account_name,
       result: item.result,
-      ...(typeof item.error === "string" ? { error: item.error } : {}),
     };
+    if (typeof item.error === "string") result.error = item.error;
+    return result;
   });
 }
 

@@ -980,6 +980,12 @@ pub enum Command {
     Sync {
         #[arg(long)]
         account: Option<String>,
+        /// Start or join sync for every enabled sync-capable account.
+        #[arg(long, conflicts_with = "account")]
+        all: bool,
+        /// Show the exact accounts selected for --all without starting sync.
+        #[arg(long, requires = "all", conflicts_with_all = ["status", "wait"])]
+        dry_run: bool,
         #[arg(long)]
         status: bool,
         /// Keep waiting until the account itself reports idle, then print its status in JSON mode.

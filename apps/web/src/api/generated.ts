@@ -2442,8 +2442,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Trigger sync */
+        /** Trigger default-account sync */
         post: operations["mail_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/sync/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger global sync */
+        post: operations["mail_sync_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/sync/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview accounts selected for global sync */
+        post: operations["mail_sync_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8156,6 +8190,12 @@ export interface components {
             /** @enum {string} */
             cmd: "SyncNow";
         } | {
+            /** @enum {string} */
+            cmd: "PreviewSyncAll";
+        } | {
+            /** @enum {string} */
+            cmd: "SyncAll";
+        } | {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "GetSyncStatus";
@@ -9300,6 +9340,14 @@ export interface components {
             /** @enum {string} */
             kind: "SyncStatus";
             sync: components["schemas"]["AccountSyncStatus"];
+        } | {
+            /** @enum {string} */
+            kind: "SyncPlan";
+            targets: components["schemas"]["SyncTarget"][];
+        } | {
+            /** @enum {string} */
+            kind: "SyncBatch";
+            results: components["schemas"]["SyncAccountResult"][];
         } | {
             freshness: components["schemas"]["FreshnessData"];
             /** @enum {string} */
@@ -10687,6 +10735,18 @@ export interface components {
             sender_email: string;
             sender_name?: string | null;
         };
+        SyncAccountResult: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            error?: string | null;
+            result: components["schemas"]["SyncAccountResultKind"];
+        };
+        /**
+         * @description Whether a global sync started new work, joined work already in progress,
+         *     or could not start for this account.
+         * @enum {string}
+         */
+        SyncAccountResultKind: "started" | "joined" | "failed";
         /** @description The last sync failure of one account. */
         SyncErrorData: {
             /** Format: int32 */
@@ -10726,6 +10786,16 @@ export interface components {
             message: string;
             /** Format: int32 */
             total?: number | null;
+        };
+        /** @description One enabled, sync-capable account selected by the global sync preview. */
+        SyncTarget: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /**
+             * @description False means the account is configured for sync but the running daemon
+             *     has no registered sync provider for it.
+             */
+            provider_available: boolean;
         };
         TextPlainFormat: "Fixed" | {
             Flowed: {
@@ -16477,6 +16547,56 @@ export interface operations {
         };
     };
     mail_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_sync_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_sync_preview: {
         parameters: {
             query?: never;
             header?: never;

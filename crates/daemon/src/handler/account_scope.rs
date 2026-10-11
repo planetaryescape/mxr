@@ -29,6 +29,9 @@ enum RequestScope<'a> {
     /// that mixes accounts (logs, rules, the activity log). A scoped agent
     /// can't be given part of it, so it is denied.
     AllAccounts,
+    /// Global sync is narrowed to accounts on the caller profile's allowlist
+    /// by the sync target selector before any provider is touched.
+    AllAllowedSyncAccounts,
     /// Touches exactly these accounts, named directly or through the
     /// entities they own. An empty list touches no account.
     Targets(Vec<ScopeTarget<'a>>),
@@ -68,7 +71,7 @@ enum ScopeTarget<'a> {
     Job(&'a str),
 }
 
-use RequestScope::{AllAccounts, Targets, Unscoped};
+use RequestScope::{AllAccounts, AllAllowedSyncAccounts, Targets, Unscoped};
 use ScopeTarget as T;
 
 fn account(account_id: &AccountId) -> RequestScope<'_> {
@@ -175,6 +178,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExportRecords { account_id, .. }
         | Request::ListPlace { account_id, .. }
         | Request::SweepPlace { account_id, .. } => optional_account(account_id.as_ref()),
+        Request::PreviewSyncAll | Request::SyncAll => AllAllowedSyncAccounts,
         Request::ArchiveAsk { filters, .. } => optional_account(filters.account_id.as_ref()),
         Request::GetPerson {
             account_id, topic, ..
@@ -774,6 +778,7 @@ pub(super) async fn enforce_account_allowlist(
 ) -> Result<(), String> {
     let targets = match request_scope(req) {
         Unscoped => return Ok(()),
+        AllAllowedSyncAccounts => return Ok(()),
         AllAccounts => {
             return Err(format!(
                 "Request `{}` rejected by {profile_name} profile account allowlist; it spans every account, so name an allowed account where the request takes one",

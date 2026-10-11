@@ -23,7 +23,8 @@ use crate::compose_flow::{
 use crate::daemon_events::{
     apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_context_loaded,
     apply_thread_gist_loaded, apply_thread_summary_loaded, format_mutation_failure,
-    handle_daemon_event, mutation_verb_past, restore_mail_list_selection,
+    handle_daemon_event, handle_sync_batch, handle_sync_request_failed, mutation_verb_past,
+    restore_mail_list_selection,
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
@@ -34,6 +35,16 @@ use crate::runtime::{
 };
 
 const SUMMARY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(150);
+
+fn require_sync_all_protocol(protocol_version: u32) -> Result<(), MxrError> {
+    if protocol_version < mxr_protocol::IPC_PROTOCOL_VERSION {
+        return Err(MxrError::Ipc(format!(
+            "Global sync requires daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",
+            mxr_protocol::IPC_PROTOCOL_VERSION
+        )));
+    }
+    Ok(())
+}
 
 fn run_with_terminal_suspended_with<
     Terminal,
@@ -2436,6 +2447,8 @@ pub async fn run() -> anyhow::Result<()> {
                 .get(&mutation_id)
                 .map(|(pending, _)| pending.draft_path.clone());
             let _ = submit_task(&queued, async move {
+                let is_sync_all_request = matches!(&req, Request::SyncAll);
+                let mut sync_batch_received = false;
                 let verb = mutation_verb_past(&req);
                 let move_not_sure = matches!(
                     &req,
@@ -2506,13 +2519,32 @@ pub async fn run() -> anyhow::Result<()> {
                             identity,
                         ));
                     }
+                    if is_sync_all_request {
+                        let protocol_version = match ipc_call(&bg, Request::GetStatus).await? {
+                            Response::Ok {
+                                data:
+                                    ResponseData::Status {
+                                        protocol_version, ..
+                                    },
+                            } => protocol_version,
+                            Response::Error { message, .. } => {
+                                return Err(MxrError::Ipc(message));
+                            }
+                            _ => {
+                                return Err(MxrError::Ipc(
+                                    "unexpected response while checking global sync support".into(),
+                                ));
+                            }
+                        };
+                        require_sync_all_protocol(protocol_version)?;
+                    }
                     ipc_call(&bg, req).await
                 }
                 .await;
                 let outcome = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Ack | ResponseData::Draft { .. },
-                    }) => Ok(effect),
+                    }) if !is_sync_all_request => Ok(effect),
                     Ok(Response::Ok {
                         data:
                             ResponseData::SendReceipt {
@@ -2574,6 +2606,39 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::InviteResponseSent { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::SyncBatch { results },
+                    }) => {
+                        sync_batch_received = true;
+                        let _ = result_tx_inner.send(AsyncResult::SyncBatch(results.clone()));
+                        if results.is_empty() {
+                            Ok(app::MutationEffect::StatusOnly(
+                                "No enabled sync-capable accounts".into(),
+                            ))
+                        } else {
+                            let failures = results
+                                .iter()
+                                .filter(|result| {
+                                    result.result == mxr_protocol::SyncAccountResultKind::Failed
+                                })
+                                .map(|result| {
+                                    format!(
+                                        "{}: {}",
+                                        result.account_name,
+                                        result.error.as_deref().unwrap_or("sync couldn't start")
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            if failures.is_empty() {
+                                Ok(effect)
+                            } else {
+                                Err(MxrError::Ipc(format!(
+                                    "Some accounts couldn't sync: {}",
+                                    failures.join("; ")
+                                )))
+                            }
+                        }
+                    }
                     Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
                     }) => Ok(effect),
@@ -2843,6 +2908,7 @@ pub async fn run() -> anyhow::Result<()> {
                     id: mutation_id,
                     best_effort,
                     retry: retry.map(Box::new),
+                    sync_request_pending_failure: is_sync_all_request && !sync_batch_received,
                     outcome: Box::new(outcome),
                 }
             });
@@ -3722,6 +3788,7 @@ pub async fn run() -> anyhow::Result<()> {
                             id,
                             best_effort,
                             retry,
+                            sync_request_pending_failure,
                             outcome,
                         } => {
                             app.finish_pending_mutation();
@@ -3757,6 +3824,9 @@ pub async fn run() -> anyhow::Result<()> {
                                             app.schedule_mutation_retry(*retry, &e);
                                             continue;
                                         }
+                                    }
+                                    if sync_request_pending_failure {
+                                        handle_sync_request_failed(&mut app);
                                     }
                                     app.handle_mutation_failure_result(id, best_effort, &e);
                                 }
@@ -4108,6 +4178,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::UndoCaptured(undo) => {
                             app.set_pending_undo(undo);
+                        }
+                        AsyncResult::SyncBatch(results) => {
+                            handle_sync_batch(&mut app, results);
                         }
                         AsyncResult::SavedSearchMutation(Ok(())) => {
                             // Trigger a follow-up list refresh on the next
@@ -5236,5 +5309,23 @@ mod undo_retry_tests {
             Some(2)
         );
         assert_eq!(super::undo_retry_count("undo: window expired"), None);
+    }
+}
+
+#[cfg(test)]
+mod sync_all_protocol_tests {
+    use super::require_sync_all_protocol;
+
+    #[test]
+    fn global_sync_requires_protocol_six() {
+        for version in [4, 5] {
+            let error =
+                require_sync_all_protocol(version).expect_err("an older daemon cannot sync all");
+            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error
+                .to_string()
+                .contains(&format!("running daemon uses {version}")));
+        }
+        assert!(require_sync_all_protocol(6).is_ok());
     }
 }

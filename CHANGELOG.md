@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.76](https://github.com/planetaryescape/mxr/compare/v0.6.75...v0.6.76) (2026-10-11)
+
+
+### Bug Fixes
+
+* identify account in sweep confirmation ([#380](https://github.com/planetaryescape/mxr/issues/380)) ([1397f4b](https://github.com/planetaryescape/mxr/commit/1397f4b6dc7f4965df547eebf715bd10756e5d80))
+
 ## [0.6.75](https://github.com/planetaryescape/mxr/compare/v0.6.74...v0.6.75) (2026-10-11)
 
 

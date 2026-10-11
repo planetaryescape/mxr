@@ -159,9 +159,16 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         &["archive", "--dry-run", "--format", "json"],
         &format!("{message_id}\n"),
     );
-    assert_eq!(archive_preview["dry_run"].as_bool(), Some(true));
-    assert_eq!(archive_preview["action"].as_str(), Some("archive"));
-    assert_eq!(archive_preview["message_ids"][0].as_str(), Some(message_id));
+    assert_eq!(archive_preview["accepted"].as_bool(), Some(false));
+    assert!(archive_preview["identity"]["operation_id"]
+        .as_str()
+        .is_some());
+    assert!(archive_preview["review_id"].as_str().is_some());
+    assert_eq!(archive_preview["items"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        archive_preview["items"][0]["message_id"].as_str(),
+        Some(message_id)
+    );
 
     // count --format json reports the same query.
     let count = run_json(

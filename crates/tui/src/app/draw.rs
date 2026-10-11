@@ -673,7 +673,13 @@ impl App {
         );
 
         // Place overlays: the sweep preview and the "move sender to…" menu.
-        ui::place_lens::draw_sweep_confirm(frame, area, self.mailbox.sweep_confirm.as_ref(), theme);
+        ui::place_lens::draw_sweep_confirm(
+            frame,
+            area,
+            self.mailbox.sweep_confirm.as_ref(),
+            &self.accounts.page.accounts,
+            theme,
+        );
         ui::place_lens::draw_sender_kind_menu(
             frame,
             area,

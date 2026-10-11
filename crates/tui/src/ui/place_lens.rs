@@ -6,7 +6,9 @@
 //! the sweep preview and the "move sender to…" menu. Pure render; wiring
 //! lives in `app/place_actions.rs`.
 
-use mxr_protocol::{MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData};
+use mxr_protocol::{
+    AccountSummaryData, MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData,
+};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -210,6 +212,7 @@ pub fn draw_sweep_confirm(
     frame: &mut Frame,
     area: Rect,
     confirm: Option<&PendingSweepConfirm>,
+    accounts: &[AccountSummaryData],
     theme: &crate::theme::Theme,
 ) {
     let Some(confirm) = confirm else {
@@ -258,6 +261,38 @@ pub fn draw_sweep_confirm(
             String::new()
         }
     ))];
+    let subject_width = (inner.width as usize).saturating_sub(2);
+    let account_prefix = "Account: ";
+    let account_width = (inner.width as usize).saturating_sub(Line::from(account_prefix).width());
+    let account = match confirm.target.account_id.as_ref() {
+        Some(account_id) => accounts
+            .iter()
+            .find(|account| &account.account_id == account_id)
+            .map_or_else(
+                || "unknown account".into(),
+                |account| {
+                    let name = one_line(&account.name);
+                    let email = one_line(&account.email);
+                    let identity = if name.trim().is_empty() || name == email {
+                        email.clone()
+                    } else {
+                        format!("{name} <{email}>")
+                    };
+                    // Keep a useful address visible when a configured account
+                    // name would otherwise consume the whole line.
+                    if Line::from(identity.as_str()).width() > account_width {
+                        email
+                    } else {
+                        identity
+                    }
+                },
+            ),
+        None => "all accounts".into(),
+    };
+    lines.push(Line::from(format!(
+        "{account_prefix}{}",
+        truncate(&account, account_width)
+    )));
     if confirm.target.sender_email.is_none() {
         lines.push(Line::from(Span::styled(
             format!(
@@ -270,7 +305,7 @@ pub fn draw_sweep_confirm(
     lines.push(Line::from(""));
     for subject in &preview.sample_subjects {
         lines.push(Line::from(Span::styled(
-            format!("  {}", truncate(&one_line(subject), 56)),
+            format!("  {}", truncate(&one_line(subject), subject_width)),
             Style::default().fg(theme.text_secondary),
         )));
     }
@@ -489,6 +524,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 30),
                 Some(&confirm),
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -497,5 +533,156 @@ mod tests {
             "{rendered}"
         );
         assert!(rendered.contains("Receipt 14"));
+    }
+
+    #[test]
+    fn the_sweep_confirmation_keeps_account_identity_visible_at_80_columns() {
+        let account = mxr_protocol::AccountSummaryData {
+            account_id: AccountId::new(),
+            key: Some("work".into()),
+            name: "A deliberately long configured account label that should not hide the address"
+                .into(),
+            email: "work+updates+alerts@very-long-company.example".into(),
+            provider_kind: "gmail".into(),
+            sync_kind: Some("gmail".into()),
+            send_kind: Some("gmail".into()),
+            enabled: true,
+            is_default: false,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+        };
+        let mut confirm = PendingSweepConfirm {
+            target: SweepTarget {
+                place: MailPlaceData::PaperTrail,
+                account_id: Some(account.account_id.clone()),
+                sender_email: Some("a-very-long-automated-sender-name@shop.example".into()),
+            },
+            preview: SweepPreviewData {
+                place: MailPlaceData::PaperTrail,
+                sender_email: Some("a-very-long-automated-sender-name@shop.example".into()),
+                count: 13,
+                pinned_excluded: 1,
+                senders: vec![],
+                sample_subjects: vec![
+                    "Receipt 11: quarterly statement with reference 394817 and account details"
+                        .into(),
+                    "Receipt 12: quarterly statement with reference 394818 and account details"
+                        .into(),
+                    "Receipt 13: quarterly statement with reference 394819 and account details"
+                        .into(),
+                    "Receipt 14: quarterly statement with reference 394820 and account details"
+                        .into(),
+                    "Receipt 15: quarterly statement with reference 394821 and account details"
+                        .into(),
+                ],
+                preview_token: Some("tok".into()),
+            },
+            shown: 1,
+            sweep_focused: true,
+            from_updates: true,
+        };
+        let render = |confirm: &PendingSweepConfirm,
+                      accounts: &[mxr_protocol::AccountSummaryData]| {
+            render_to_string(80, 24, |frame| {
+                draw_sweep_confirm(
+                    frame,
+                    Rect::new(0, 0, 80, 24),
+                    Some(confirm),
+                    accounts,
+                    &crate::theme::Theme::default(),
+                );
+            })
+        };
+
+        let rendered = render(&confirm, std::slice::from_ref(&account));
+        let account_line = rendered
+            .lines()
+            .find(|line| line.contains("Account:"))
+            .expect("account line is rendered");
+        assert!(
+            account_line.contains("Account: work+updates+alerts@very-long"),
+            "{rendered}"
+        );
+        assert!(
+            account_line.trim_end_matches('"').trim_end().ends_with('│'),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Archive 13 messages; 1 pinned message stays."),
+            "{rendered}"
+        );
+        let subject_rows: Vec<_> = rendered
+            .lines()
+            .filter(|line| line.contains("Receipt "))
+            .collect();
+        assert_eq!(subject_rows.len(), 5, "{rendered}");
+        assert!(
+            subject_rows
+                .iter()
+                .all(|line| line.trim_end_matches('"').trim_end().ends_with('│')),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Cancel"), "{rendered}");
+        assert!(rendered.contains("Archive 13 messages"), "{rendered}");
+        assert!(
+            rendered.contains("Tab switches, Enter chooses"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Esc cancels; u undoes"), "{rendered}");
+
+        confirm.target.account_id = None;
+        confirm.target.sender_email = None;
+        confirm.preview.sender_email = None;
+        confirm.preview.senders = vec![
+            mxr_protocol::SweepSenderData {
+                account_id: AccountId::new(),
+                sender_email: "one@example.com".into(),
+                sender_name: None,
+                count: 1,
+            },
+            mxr_protocol::SweepSenderData {
+                account_id: AccountId::new(),
+                sender_email: "two@example.com".into(),
+                sender_name: None,
+                count: 1,
+            },
+        ];
+        let all_senders_rendered = render(&confirm, &[]);
+        assert!(
+            all_senders_rendered.contains("Account: all accounts"),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("From 2 senders"),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("Archive 13 messages; 1 pinned message stays."),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("Archive all 13 from 2 senders"),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("Cancel"),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("Tab switches, Enter chooses"),
+            "{all_senders_rendered}"
+        );
+        assert!(
+            all_senders_rendered.contains("Esc cancels; u undoes"),
+            "{all_senders_rendered}"
+        );
+
+        confirm.target.sender_email = Some("receipts@shop.example".into());
+        confirm.preview.sender_email = Some("receipts@shop.example".into());
+        confirm.target.account_id = Some(AccountId::new());
+        assert!(render(&confirm, &[]).contains("Account: unknown account"));
     }
 }

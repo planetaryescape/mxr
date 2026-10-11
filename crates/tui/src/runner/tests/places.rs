@@ -454,6 +454,7 @@ fn the_whole_place_confirm_names_its_scope_and_count() {
             frame,
             ratatui::layout::Rect::new(0, 0, 100, 30),
             app.mailbox.sweep_confirm.as_ref(),
+            &[],
             &crate::theme::Theme::default(),
         );
     });

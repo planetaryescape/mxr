@@ -227,6 +227,24 @@ pub struct Label {
     pub role: Option<Role>,
 }
 
+/// A profile-local category used to group messages without changing provider state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PersonalCategory {
+    pub id: CategoryId,
+    pub name: String,
+    pub unread_count: u32,
+    pub total_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CategoryMembershipState {
+    pub category_id: CategoryId,
+    pub selected_messages: u32,
+    pub assigned_messages: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum LabelKind {

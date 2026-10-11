@@ -14,8 +14,9 @@ export interface SnoozePreset {
 }
 
 export interface MailboxLensParams {
-  lens_kind: "inbox" | "all_mail" | "label" | "saved_search" | "subscription";
+  lens_kind: "inbox" | "all_mail" | "label" | "category" | "saved_search" | "subscription";
   label_id?: string;
+  category_id?: string;
   saved_search?: string;
   sender_email?: string;
 }
@@ -45,6 +46,7 @@ export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxR
   query.set("limit", String(params.limit ?? 200));
   query.set("offset", String(params.offset ?? 0));
   if (params.label_id) query.set("label_id", params.label_id);
+  if (params.category_id) query.set("category_id", params.category_id);
   if (params.saved_search) query.set("saved_search", params.saved_search);
   if (params.sender_email) query.set("sender_email", params.sender_email);
   if (params.account) query.set("account", params.account);
@@ -270,6 +272,54 @@ export function deleteLabel(input: { name: string; accountId?: string }): Promis
       ...(input.accountId ? { account_id: input.accountId } : {}),
     },
   });
+}
+
+export interface PersonalCategoryView { id: string; name: string; unread_count: number; total_count: number }
+export interface CategoryMembershipPreview { category_ids: string[]; message_count: number; added: number; removed: number; preview_token: string }
+export interface CategoryDeletePreview { category_id: string; name: string; affected_messages: number; preview_token: string }
+
+export async function fetchCategories(accountId?: string): Promise<PersonalCategoryView[]> {
+  const query = new URLSearchParams();
+  if (accountId) query.set("account_id", accountId);
+  const result = await apiFetch<{ categories: PersonalCategoryView[] }>(`/api/v1/mail/categories?${query}`);
+  return result.categories;
+}
+
+export async function fetchCategoryMemberships(input: { accountId?: string; messageIds: string[]; categoryIds: string[] }): Promise<{ category_id: string; selected_messages: number; assigned_messages: number }[]> {
+  const result = await apiFetch<{ states: { category_id: string; selected_messages: number; assigned_messages: number }[] }>("/api/v1/mail/categories/memberships", {
+    method: "POST", body: { ...(input.accountId ? { account_id: input.accountId } : {}), message_ids: input.messageIds, category_ids: input.categoryIds },
+  });
+  return result.states;
+}
+
+export function createCategory(name: string): Promise<{ categories: PersonalCategoryView[] }> {
+  return apiFetch("/api/v1/mail/categories", { method: "POST", body: { name } });
+}
+
+export function renameCategory(categoryId: string, name: string): Promise<{ categories: PersonalCategoryView[] }> {
+  return apiFetch("/api/v1/mail/categories/rename", { method: "POST", body: { category_id: categoryId, name } });
+}
+
+export function previewCategoryMembership(input: { accountId?: string; messageIds: string[]; addCategoryIds: string[]; removeCategoryIds: string[] }): Promise<CategoryMembershipPreview> {
+  return apiFetch("/api/v1/mail/categories/assignment/preview", { method: "POST", body: {
+    ...(input.accountId ? { account_id: input.accountId } : {}), message_ids: input.messageIds,
+    add_category_ids: input.addCategoryIds, remove_category_ids: input.removeCategoryIds,
+  } });
+}
+
+export function applyCategoryMembership(previewToken: string): Promise<{ mutation_id: string; added: number; removed: number }> {
+  return apiFetch("/api/v1/mail/categories/assignment/apply", { method: "POST", body: { preview_token: previewToken } });
+}
+
+export function previewOrDeleteCategory(input: { categoryId?: string; previewToken?: string }): Promise<CategoryDeletePreview | { category_id: string; name: string }> {
+  return apiFetch("/api/v1/mail/categories/delete", { method: "POST", body: {
+    ...(input.categoryId ? { category_id: input.categoryId } : {}),
+    ...(input.previewToken ? { preview_token: input.previewToken } : {}),
+  } });
+}
+
+export function undoCategoryMembership(mutationId: string): Promise<{ restored: number; skipped: number }> {
+  return apiFetch("/api/v1/mail/categories/undo", { method: "POST", body: { mutation_id: mutationId } });
 }
 
 export function moveMessagesToLabel(

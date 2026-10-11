@@ -70,6 +70,7 @@ export interface MailboxCounts {
 export interface SidebarLens {
   kind: "inbox" | "all_mail" | "label" | "saved_search" | "subscription" | string;
   labelId?: string | null;
+  categoryId?: string | null;
   savedSearch?: string | null;
   senderEmail?: string | null;
 }

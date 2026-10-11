@@ -14,6 +14,7 @@ import {
 } from "@/features/todo/TodoDialogs";
 
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
+import { CategoriesDialog } from "./dialogs/CategoriesDialog";
 import { LabelsDialog } from "./dialogs/LabelsDialog";
 import { LinksDialog } from "./dialogs/LinksDialog";
 import { MoveDialog } from "./dialogs/MoveDialog";
@@ -50,6 +51,8 @@ export function MailDialogs() {
       );
     case "labels":
       return <LabelsDialog target={dialog.target} onClose={close} />;
+    case "categories":
+      return <CategoriesDialog target={dialog.target} onClose={close} />;
     case "move":
       return (
         <MoveDialog

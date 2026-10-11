@@ -237,6 +237,15 @@ endpoint!(post attachment_download "/api/v1/mail/attachments/download", "Downloa
 endpoint!(post label_create "/api/v1/mail/labels/create", "Create a label");
 endpoint!(post label_rename "/api/v1/mail/labels/rename", "Rename a label");
 endpoint!(post label_delete "/api/v1/mail/labels/delete", "Delete a label");
+endpoint!(get categories_list "/api/v1/mail/categories", "List personal categories");
+endpoint!(get categories_messages "/api/v1/mail/categories/messages", "List messages in a category");
+endpoint!(post categories_memberships "/api/v1/mail/categories/memberships", "Read category assignments for selected messages");
+endpoint!(post categories_create "/api/v1/mail/categories", "Create a personal category");
+endpoint!(post categories_rename "/api/v1/mail/categories/rename", "Rename a personal category");
+endpoint!(post categories_assignment_preview "/api/v1/mail/categories/assignment/preview", "Preview category assignments");
+endpoint!(post categories_assignment_apply "/api/v1/mail/categories/assignment/apply", "Apply previewed category assignments");
+endpoint!(post categories_delete "/api/v1/mail/categories/delete", "Preview or delete a personal category");
+endpoint!(post categories_undo "/api/v1/mail/categories/undo", "Undo category assignments");
 endpoint!(post mail_unsnooze_one "/api/v1/mail/snoozed/{message_id}/wake", "Wake one snoozed message");
 
 endpoint!(get reply_later_list "/api/v1/mail/reply-later", "List reply-later messages");

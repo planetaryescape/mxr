@@ -3,7 +3,7 @@ use super::envelope_list::{
     sorted_saved_searches,
 };
 use super::*;
-use mxr_core::{LabelKind, MessageFlags, SavedSearch, SubscriptionSummary};
+use mxr_core::{LabelKind, MessageFlags, PersonalCategory, SavedSearch, SubscriptionSummary};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -13,6 +13,7 @@ pub(crate) struct BridgeChrome {
     pub(crate) shell: serde_json::Value,
     pub(crate) sidebar: serde_json::Value,
     pub(crate) labels: Vec<Label>,
+    pub(crate) categories: Vec<PersonalCategory>,
     pub(crate) inbox_label_id: Option<mxr_core::LabelId>,
     pub(crate) searches: Vec<SavedSearch>,
     pub(crate) subscriptions: Vec<SubscriptionSummary>,
@@ -177,6 +178,18 @@ pub(crate) async fn build_bridge_chrome(
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
+    let categories = match ipc_request(
+        socket_path,
+        Request::ListCategories {
+            account_id: account_id.cloned(),
+        },
+    )
+    .await?
+    {
+        ResponseData::Categories { categories } => categories,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+
     let searches = match ipc_request(socket_path, Request::ListSavedSearches).await? {
         ResponseData::SavedSearches { searches } => searches,
         _ => return Err(BridgeError::UnexpectedResponse),
@@ -205,9 +218,10 @@ pub(crate) async fn build_bridge_chrome(
             "statusMessage": status_message,
             "commandHint": "Ctrl-p",
         }),
-        sidebar: json!({ "sections": build_sidebar_sections(&labels, &searches, &subscriptions, total_messages, active_lens) }),
+        sidebar: json!({ "sections": build_sidebar_sections(&labels, &categories, &searches, &subscriptions, total_messages, active_lens) }),
         inbox_label_id: find_inbox_label(&labels).map(|label| label.id.clone()),
         labels,
+        categories,
         searches,
         subscriptions,
     })
@@ -276,6 +290,7 @@ pub(crate) fn derived_counts(envelopes: &[Envelope]) -> serde_json::Value {
 
 pub(crate) fn build_sidebar_sections(
     labels: &[Label],
+    categories: &[PersonalCategory],
     searches: &[SavedSearch],
     subscriptions: &[SubscriptionSummary],
     total_messages: u32,
@@ -386,6 +401,20 @@ pub(crate) fn build_sidebar_sections(
             "items": user_labels,
         }));
     }
+    if !categories.is_empty() {
+        sections.push(json!({
+            "id": "categories",
+            "title": "Categories",
+            "items": categories.iter().map(|category| json!({
+                "id": category.id.to_string(),
+                "label": &category.name,
+                "unread": category.unread_count,
+                "total": category.total_count,
+                "active": active_lens.kind == MailboxLensKind::Category && active_lens.category_id.as_deref() == Some(&category.id.to_string()),
+                "lens": { "kind": "category", "categoryId": category.id.to_string() },
+            })).collect::<Vec<_>>(),
+        }));
+    }
     if !saved_search_items.is_empty() {
         sections.push(json!({
             "id": "saved-searches",
@@ -471,6 +500,42 @@ pub(crate) async fn load_mailbox_selection(
                         })
                     },
                 ),
+                envelopes,
+            })
+        }
+        MailboxLensKind::Category => {
+            let category_id: mxr_core::CategoryId = lens
+                .category_id
+                .as_deref()
+                .ok_or_else(|| BridgeError::BadRequest("category lens missing category_id".into()))?
+                .parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))?;
+            let data = ipc_request(
+                socket_path,
+                Request::ListCategoryMessages {
+                    category_id: category_id.clone(),
+                    account_id: account_id.cloned(),
+                    limit,
+                    offset,
+                },
+            )
+            .await?;
+            let (envelopes, total) = match data {
+                ResponseData::CategoryMessages {
+                    envelopes, total, ..
+                } => (envelopes, total),
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+            let category = chrome
+                .categories
+                .iter()
+                .find(|item| item.id == category_id)
+                .ok_or_else(|| {
+                    BridgeError::BadRequest("category not found in this account".into())
+                })?;
+            Ok(MailboxSelection {
+                lens_label: category.name.clone(),
+                counts: json!({ "unread": category.unread_count, "total": total }),
                 envelopes,
             })
         }

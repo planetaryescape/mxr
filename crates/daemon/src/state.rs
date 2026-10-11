@@ -444,6 +444,7 @@ pub struct AppState {
     pub(crate) treatment_previews: crate::handler::rule_treatment::TreatmentPreviews,
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
+    pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
     pub(crate) sweep_gate: crate::handler::places::SweepGate,
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
@@ -745,6 +746,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -1909,6 +1911,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -1987,6 +1990,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -2091,6 +2095,7 @@ impl AppState {
                 treatment_previews: Default::default(),
                 sweep_previews: Default::default(),
                 purge_previews: Default::default(),
+                category_previews: Default::default(),
                 sweep_gate: Default::default(),
                 gist_queue: Default::default(),
                 runtime: RwLock::new(ProviderRuntime {

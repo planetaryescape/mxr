@@ -661,6 +661,45 @@ pub enum Request {
         new: String,
         account_id: Option<AccountId>,
     },
+    ListCategories {
+        account_id: Option<AccountId>,
+    },
+    ListCategoryMessages {
+        category_id: CategoryId,
+        account_id: Option<AccountId>,
+        limit: u32,
+        offset: u32,
+    },
+    GetCategoryMemberships {
+        account_id: Option<AccountId>,
+        message_ids: Vec<MessageId>,
+        category_ids: Vec<CategoryId>,
+    },
+    CreateCategory {
+        name: String,
+    },
+    RenameCategory {
+        category_id: CategoryId,
+        new_name: String,
+    },
+    PreviewCategoryMembership {
+        account_id: Option<AccountId>,
+        message_ids: Vec<MessageId>,
+        add_category_ids: Vec<CategoryId>,
+        remove_category_ids: Vec<CategoryId>,
+    },
+    ApplyCategoryMembership {
+        preview_token: String,
+    },
+    PreviewDeleteCategory {
+        category_id: CategoryId,
+    },
+    DeleteCategory {
+        preview_token: String,
+    },
+    UndoCategoryMembership {
+        mutation_id: String,
+    },
 
     // mxr app/platform. Product/runtime capabilities shared by multiple clients.
     ListAccounts,
@@ -2385,6 +2424,16 @@ impl Request {
             | Self::CreateLabel { .. }
             | Self::DeleteLabel { .. }
             | Self::RenameLabel { .. }
+            | Self::ListCategories { .. }
+            | Self::ListCategoryMessages { .. }
+            | Self::GetCategoryMemberships { .. }
+            | Self::CreateCategory { .. }
+            | Self::RenameCategory { .. }
+            | Self::PreviewCategoryMembership { .. }
+            | Self::ApplyCategoryMembership { .. }
+            | Self::PreviewDeleteCategory { .. }
+            | Self::DeleteCategory { .. }
+            | Self::UndoCategoryMembership { .. }
             | Self::Search { .. }
             | Self::SyncNow { .. }
             | Self::GetSyncStatus { .. }
@@ -2994,6 +3043,36 @@ pub enum ResponseData {
     },
     Label {
         label: Label,
+    },
+    Categories {
+        categories: Vec<PersonalCategory>,
+    },
+    CategoryMessages {
+        envelopes: Vec<Envelope>,
+        total: u32,
+        has_more: bool,
+    },
+    CategoryMembershipStates {
+        states: Vec<CategoryMembershipState>,
+    },
+    CategoryMembershipPreview {
+        preview: CategoryMembershipPreview,
+    },
+    CategoryMembershipApplied {
+        mutation_id: String,
+        added: u32,
+        removed: u32,
+    },
+    CategoryDeletePreview {
+        preview: CategoryDeletePreview,
+    },
+    CategoryDeleted {
+        category_id: CategoryId,
+        name: String,
+    },
+    CategoryMembershipUndone {
+        restored: u32,
+        skipped: u32,
     },
 
     SearchResults {
@@ -3738,6 +3817,25 @@ pub enum ResponseData {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CategoryMembershipPreview {
+    pub category_ids: Vec<CategoryId>,
+    pub message_count: u32,
+    pub added: u32,
+    pub removed: u32,
+    pub preview_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CategoryDeletePreview {
+    pub category_id: CategoryId,
+    pub name: String,
+    pub affected_messages: u32,
+    pub preview_token: String,
+}
+
 impl ResponseData {
     /// The `ResolveTime` answer for `input`: a failed parse is data, not an
     /// IPC error, so previews can show why.
@@ -3776,6 +3874,14 @@ impl ResponseData {
             | Self::Threads { .. }
             | Self::Labels { .. }
             | Self::Label { .. }
+            | Self::Categories { .. }
+            | Self::CategoryMessages { .. }
+            | Self::CategoryMembershipStates { .. }
+            | Self::CategoryMembershipPreview { .. }
+            | Self::CategoryMembershipApplied { .. }
+            | Self::CategoryDeletePreview { .. }
+            | Self::CategoryDeleted { .. }
+            | Self::CategoryMembershipUndone { .. }
             | Self::SearchResults { .. }
             | Self::SyncStatus { .. }
             | Self::Freshness { .. }

@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use mxr_client::{ClientError, IpcConnection};
-use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
+use mxr_core::{
+    id::{CategoryId, MessageId},
+    AccountId, Draft, DraftId, ThreadId,
+};
 use mxr_protocol::{
     ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData, RecordKindData,
     Request, Response, ResponseData,
@@ -205,8 +208,170 @@ pub struct RuleKeyParams {
     pub rule: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryNameParams {
+    pub category_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryCreateParams {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryListParams {
+    pub account_id: Option<String>,
+    pub category_id: Option<String>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryAssignmentParams {
+    pub account_id: Option<String>,
+    pub message_ids: Vec<String>,
+    pub add_category_ids: Vec<String>,
+    pub remove_category_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryDeleteParams {
+    pub category_id: Option<String>,
+    pub preview_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryTokenParams {
+    pub preview_token: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryUndoParams {
+    pub mutation_id: String,
+}
+
 #[tool_router(router = tool_router)]
 impl MxrMcpServer {
+    #[tool(
+        description = "List personal categories, optionally scoped to an account; with category_id, list its messages."
+    )]
+    async fn mxr_categories(
+        &self,
+        Parameters(p): Parameters<CategoryListParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let account_id = p
+            .account_id
+            .map(|id| parse_id::<AccountId>(&id))
+            .transpose()?;
+        let request = if let Some(category_id) = p.category_id {
+            Request::ListCategoryMessages {
+                category_id: parse_id::<CategoryId>(&category_id)?,
+                account_id,
+                limit: p.limit.unwrap_or(50),
+                offset: p.offset.unwrap_or(0),
+            }
+        } else {
+            Request::ListCategories { account_id }
+        };
+        self.daemon_json(request).await
+    }
+
+    #[tool(description = "Create a profile-wide personal category.")]
+    async fn mxr_category_create(
+        &self,
+        Parameters(p): Parameters<CategoryCreateParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::CreateCategory { name: p.name })
+            .await
+    }
+
+    #[tool(description = "Rename a personal category while preserving its stable ID.")]
+    async fn mxr_category_rename(
+        &self,
+        Parameters(p): Parameters<CategoryNameParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::RenameCategory {
+            category_id: parse_id::<CategoryId>(&p.category_id)?,
+            new_name: p.name,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Preview a manual category assignment. The returned preview_token is required to apply the unchanged selection."
+    )]
+    async fn mxr_category_assignment_preview(
+        &self,
+        Parameters(p): Parameters<CategoryAssignmentParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::PreviewCategoryMembership {
+            account_id: p
+                .account_id
+                .map(|id| parse_id::<AccountId>(&id))
+                .transpose()?,
+            message_ids: p
+                .message_ids
+                .iter()
+                .map(|id| parse_id::<MessageId>(id))
+                .collect::<Result<_, _>>()?,
+            add_category_ids: p
+                .add_category_ids
+                .iter()
+                .map(|id| parse_id::<CategoryId>(id))
+                .collect::<Result<_, _>>()?,
+            remove_category_ids: p
+                .remove_category_ids
+                .iter()
+                .map(|id| parse_id::<CategoryId>(id))
+                .collect::<Result<_, _>>()?,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Apply the exact message/category assignment returned by its preview token."
+    )]
+    async fn mxr_category_assignment_apply(
+        &self,
+        Parameters(p): Parameters<CategoryTokenParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ApplyCategoryMembership {
+            preview_token: p.preview_token,
+        })
+        .await
+    }
+
+    #[tool(description = "Preview category deletion or apply a reviewed preview token.")]
+    async fn mxr_category_delete(
+        &self,
+        Parameters(p): Parameters<CategoryDeleteParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let request = if let Some(token) = p.preview_token {
+            Request::DeleteCategory {
+                preview_token: token,
+            }
+        } else {
+            Request::PreviewDeleteCategory {
+                category_id: parse_id::<CategoryId>(&p.category_id.ok_or_else(|| {
+                    ErrorData::invalid_params("category_id is required for preview", None)
+                })?)?,
+            }
+        };
+        self.daemon_json(request).await
+    }
+
+    #[tool(description = "Undo a personal category assignment using its returned mutation_id.")]
+    async fn mxr_category_undo(
+        &self,
+        Parameters(p): Parameters<CategoryUndoParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::UndoCategoryMembership {
+            mutation_id: p.mutation_id,
+        })
+        .await
+    }
+
     #[tool(
         description = "Read the complete editable rule form including account scope and all actions. Use before editing a sorting rule to preserve unrelated actions."
     )]

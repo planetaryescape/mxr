@@ -72,6 +72,7 @@ typed_id!(AccountId);
 typed_id!(MessageId);
 typed_id!(ThreadId);
 typed_id!(LabelId);
+typed_id!(CategoryId);
 typed_id!(DraftId);
 typed_id!(AttachmentId);
 typed_id!(CalendarInviteId);

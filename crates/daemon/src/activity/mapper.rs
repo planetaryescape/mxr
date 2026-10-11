@@ -958,6 +958,21 @@ pub fn map_request(
                 "server draft persistence is not in the activity catalog"
             );
         }
+        Request::ListCategories { .. }
+        | Request::ListCategoryMessages { .. }
+        | Request::GetCategoryMemberships { .. }
+        | Request::CreateCategory { .. }
+        | Request::RenameCategory { .. }
+        | Request::PreviewCategoryMembership { .. }
+        | Request::ApplyCategoryMembership { .. }
+        | Request::PreviewDeleteCategory { .. }
+        | Request::DeleteCategory { .. }
+        | Request::UndoCategoryMembership { .. } => {
+            skip_activity!(
+                "personal_categories",
+                "category catalog and membership actions are not activity"
+            );
+        }
         Request::ListEvents { .. }
         | Request::GetLogs { .. }
         | Request::ListEventCategories

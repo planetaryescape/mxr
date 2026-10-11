@@ -16,6 +16,7 @@ mod archive_ask;
 pub(crate) mod arrivals;
 mod auth_sessions;
 mod briefing;
+pub(crate) mod categories;
 mod commitments;
 mod commitments_extract;
 mod conversation_shape;
@@ -621,6 +622,65 @@ async fn dispatch(
             new,
             account_id,
         } => mailbox::rename_label(state, old, new, account_id.as_ref()).await,
+        Request::ListCategories { account_id } => categories::list(state, account_id.as_ref())
+            .await
+            .map_err(Into::into),
+        Request::ListCategoryMessages {
+            category_id,
+            account_id,
+            limit,
+            offset,
+        } => categories::list_messages(state, category_id, account_id.as_ref(), *limit, *offset)
+            .await
+            .map_err(Into::into),
+        Request::GetCategoryMemberships {
+            account_id,
+            message_ids,
+            category_ids,
+        } => categories::membership_states(state, account_id.as_ref(), message_ids, category_ids)
+            .await
+            .map_err(Into::into),
+        Request::CreateCategory { name } => {
+            categories::create(state, name).await.map_err(Into::into)
+        }
+        Request::RenameCategory {
+            category_id,
+            new_name,
+        } => categories::rename(state, category_id, new_name)
+            .await
+            .map_err(Into::into),
+        Request::PreviewCategoryMembership {
+            account_id,
+            message_ids,
+            add_category_ids,
+            remove_category_ids,
+        } => Box::pin(categories::preview_membership(
+            state,
+            account_id.as_ref(),
+            message_ids,
+            add_category_ids,
+            remove_category_ids,
+        ))
+        .await
+        .map_err(Into::into),
+        Request::ApplyCategoryMembership { preview_token } => {
+            Box::pin(categories::apply_membership(state, preview_token))
+                .await
+                .map_err(Into::into)
+        }
+        Request::PreviewDeleteCategory { category_id } => {
+            categories::preview_delete(state, category_id)
+                .await
+                .map_err(Into::into)
+        }
+        Request::DeleteCategory { preview_token } => categories::delete(state, preview_token)
+            .await
+            .map_err(Into::into),
+        Request::UndoCategoryMembership { mutation_id } => {
+            categories::undo_membership(state, mutation_id)
+                .await
+                .map_err(Into::into)
+        }
         // mxr app/platform
         Request::ListAccounts => accounts::list_accounts(state).await,
         Request::ListAccountsConfig => accounts::list_accounts_config(),
@@ -1979,6 +2039,11 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetThread { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
+        | Request::ListCategories { .. }
+        | Request::ListCategoryMessages { .. }
+        | Request::GetCategoryMemberships { .. }
+        | Request::PreviewCategoryMembership { .. }
+        | Request::PreviewDeleteCategory { .. }
         | Request::RuleTreatment {
             preview_token: None,
             ..
@@ -2125,6 +2190,7 @@ fn classify_request(req: &Request) -> RequestClass {
         Request::Mutation { .. }
         | Request::StartMutationJob { .. }
         | Request::DeleteLabel { .. }
+        | Request::DeleteCategory { .. }
         | Request::RemoveAccountConfig { .. }
         | Request::Unsubscribe { .. }
         | Request::UnsubscribePurge { .. }
@@ -2151,6 +2217,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::OpenAttachment { .. }
         | Request::CreateLabel { .. }
         | Request::RenameLabel { .. }
+        | Request::CreateCategory { .. }
+        | Request::RenameCategory { .. }
+        | Request::ApplyCategoryMembership { .. }
+        | Request::UndoCategoryMembership { .. }
         | Request::AuthorizeAccountConfig { .. }
         | Request::StartAuthSession { .. }
         | Request::CancelAuthSession { .. }
@@ -2296,6 +2366,16 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThread { .. } => "get_thread",
         Request::ListThreads { .. } => "list_threads",
         Request::ListLabels { .. } => "list_labels",
+        Request::ListCategories { .. } => "list_categories",
+        Request::ListCategoryMessages { .. } => "list_category_messages",
+        Request::GetCategoryMemberships { .. } => "get_category_memberships",
+        Request::CreateCategory { .. } => "create_category",
+        Request::RenameCategory { .. } => "rename_category",
+        Request::PreviewCategoryMembership { .. } => "preview_category_membership",
+        Request::ApplyCategoryMembership { .. } => "apply_category_membership",
+        Request::PreviewDeleteCategory { .. } => "preview_delete_category",
+        Request::DeleteCategory { .. } => "delete_category",
+        Request::UndoCategoryMembership { .. } => "undo_category_membership",
         Request::CreateLabel { .. } => "create_label",
         Request::DeleteLabel { .. } => "delete_label",
         Request::RenameLabel { .. } => "rename_label",

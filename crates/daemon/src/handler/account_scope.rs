@@ -9,7 +9,7 @@
 use super::{reading, records, request_kind, todos};
 use crate::state::AppState;
 use mxr_config::AgentProfileConfig;
-use mxr_core::id::{AccountId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
+use mxr_core::id::{AccountId, CategoryId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
 use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
@@ -46,6 +46,7 @@ enum ScopeTarget<'a> {
     /// label ignores the account, so a foreign label would list another
     /// account's mail.
     LabelIn(&'a LabelId, &'a AccountId),
+    CategoryIn(&'a CategoryId, &'a AccountId),
     Message(&'a MessageId),
     Thread(&'a ThreadId),
     Draft(&'a DraftId),
@@ -65,6 +66,8 @@ enum ScopeTarget<'a> {
     /// A move or Not-sure correction, by its row id.
     MoveCorrection(i64),
     Undo(&'a str),
+    CategoryPreview(&'a str),
+    CategoryUndo(&'a str),
     Job(&'a str),
 }
 
@@ -125,6 +128,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::ListInvites { account_id, .. }
         | Request::BackfillCalendarInvites { account_id }
         | Request::ListLabels { account_id }
+        | Request::ListCategories { account_id }
         | Request::CreateLabel { account_id, .. }
         | Request::DeleteLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }
@@ -316,6 +320,29 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
                 })
                 .collect(),
         ),
+        Request::ListCategoryMessages { category_id, account_id, .. } => match account_id {
+            Some(account_id) => Targets(vec![T::Account(account_id), T::CategoryIn(category_id, account_id)]),
+            None => AllAccounts,
+        },
+        Request::GetCategoryMemberships { account_id, message_ids, category_ids } => {
+            let mut targets: Vec<_> = message_ids.iter().map(T::Message).collect();
+            if let Some(account_id) = account_id {
+                targets.push(T::Account(account_id));
+                targets.extend(category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+            }
+            Targets(targets)
+        }
+        Request::PreviewCategoryMembership { account_id, message_ids, add_category_ids, remove_category_ids } => {
+            let mut targets: Vec<_> = message_ids.iter().map(T::Message).collect();
+            if let Some(account_id) = account_id {
+                targets.push(T::Account(account_id));
+                targets.extend(add_category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+                targets.extend(remove_category_ids.iter().map(|category_id| T::CategoryIn(category_id, account_id)));
+            }
+            Targets(targets)
+        }
+        Request::ApplyCategoryMembership { preview_token } => Targets(vec![T::CategoryPreview(preview_token)]),
+        Request::UndoCategoryMembership { mutation_id } => Targets(vec![T::CategoryUndo(mutation_id)]),
         Request::GetModeMembership {
             message_id,
             thread_id,
@@ -407,6 +434,10 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // ----- Every account, or daemon-wide data that mixes them -----
         Request::ListAccounts
         | Request::ListAccountsConfig
+        | Request::CreateCategory { .. }
+        | Request::RenameCategory { .. }
+        | Request::PreviewDeleteCategory { .. }
+        | Request::DeleteCategory { .. }
         | Request::ListRules
         | Request::UpsertRule { .. }
         | Request::UpsertRuleForm { .. }
@@ -557,6 +588,17 @@ async fn resolve_targets(
                     return Err(format!("Label {label_id} is not in account {account_id}"));
                 }
             }
+            T::CategoryIn(category_id, account_id) => {
+                if !state
+                    .store
+                    .category_exists_in_account(category_id, account_id)
+                    .await?
+                {
+                    return Err(format!(
+                        "Category {category_id} is not visible in account {account_id}"
+                    ));
+                }
+            }
             T::Message(message_id) => resolved.push(message_account(state, message_id).await?),
             T::ReadingItem(key) => {
                 let (message_id, _) =
@@ -624,6 +666,29 @@ async fn resolve_targets(
             }
             T::Undo(mutation_id) => {
                 resolve_undo(state, mutation_id, &mut resolved, &mut todo_ids).await?;
+            }
+            T::CategoryPreview(token) => {
+                let (accounts, category_ids) =
+                    state.category_previews.membership_scope_for_token(token)?;
+                for account_id in &accounts {
+                    for category_id in &category_ids {
+                        if !state
+                            .store
+                            .category_exists_in_account(category_id, account_id)
+                            .await?
+                        {
+                            return Err(format!(
+                                "Category {category_id} is no longer visible in account {account_id}"
+                            ));
+                        }
+                    }
+                    resolved.push(account_id.clone());
+                }
+            }
+            T::CategoryUndo(mutation_id) => {
+                for account_id in state.store.category_undo_accounts(mutation_id).await? {
+                    resolved.push(account_id);
+                }
             }
             T::Job(job_id) => {
                 for account_id in job_accounts(state, job_id).await? {
@@ -761,6 +826,21 @@ pub(super) async fn enforce_account_allowlist(
     profile: &AgentProfileConfig,
     req: &Request,
 ) -> Result<(), String> {
+    if matches!(
+        req,
+        Request::GetCategoryMemberships {
+            account_id: None,
+            ..
+        } | Request::PreviewCategoryMembership {
+            account_id: None,
+            ..
+        }
+    ) {
+        return Err(format!(
+            "Request `{}` rejected by {profile_name} profile account allowlist; category membership requests must name an account",
+            request_kind(req)
+        ));
+    }
     let targets = match request_scope(req) {
         Unscoped => return Ok(()),
         AllAccounts => {

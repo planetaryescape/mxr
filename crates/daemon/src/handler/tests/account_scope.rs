@@ -273,6 +273,114 @@ async fn assert_scoped(s: &Scoped, build: impl Fn(&Owned) -> Request) {
     }
 }
 
+#[tokio::test]
+async fn scoped_profiles_only_see_and_use_categories_visible_in_the_named_account() {
+    let s = scoped().await;
+    let visible =
+        s.fx.state
+            .store
+            .create_personal_category("Visible")
+            .await
+            .unwrap();
+    let hidden =
+        s.fx.state
+            .store
+            .create_personal_category("Hidden")
+            .await
+            .unwrap();
+    for (message_id, category_id) in [
+        (&s.own.message, &visible.id),
+        (&s.other.message, &hidden.id),
+    ] {
+        let before =
+            s.fx.state
+                .store
+                .category_membership_versions(
+                    None,
+                    std::slice::from_ref(message_id),
+                    std::slice::from_ref(category_id),
+                )
+                .await
+                .unwrap()
+                .remove(0);
+        s.fx.state
+            .store
+            .apply_category_membership_changes(&[mxr_store::CategoryMembershipChange {
+                before,
+                assigned: true,
+            }])
+            .await
+            .unwrap();
+    }
+
+    assert!(check(
+        &s,
+        &Request::ListCategories {
+            account_id: Some(s.own.account.clone())
+        }
+    )
+    .await
+    .is_ok());
+    assert!(check(&s, &Request::ListCategories { account_id: None })
+        .await
+        .unwrap_err()
+        .contains("every account"));
+    assert!(check(
+        &s,
+        &Request::ListCategoryMessages {
+            category_id: hidden.id.clone(),
+            account_id: Some(s.own.account.clone()),
+            limit: 10,
+            offset: 0,
+        }
+    )
+    .await
+    .is_err());
+    assert!(check(
+        &s,
+        &Request::GetCategoryMemberships {
+            account_id: None,
+            message_ids: vec![s.own.message.clone()],
+            category_ids: vec![visible.id.clone()],
+        }
+    )
+    .await
+    .unwrap_err()
+    .contains("must name an account"));
+    assert!(check(
+        &s,
+        &Request::GetCategoryMemberships {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            category_ids: vec![hidden.id.clone()],
+        }
+    )
+    .await
+    .is_err());
+    assert!(check(
+        &s,
+        &Request::PreviewCategoryMembership {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            add_category_ids: vec![visible.id.clone()],
+            remove_category_ids: vec![],
+        }
+    )
+    .await
+    .is_ok());
+    assert!(check(
+        &s,
+        &Request::PreviewCategoryMembership {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            add_category_ids: vec![hidden.id],
+            remove_category_ids: vec![],
+        }
+    )
+    .await
+    .is_err());
+}
+
 async fn assert_denied(s: &Scoped, req: &Request) {
     match check(s, req).await {
         Ok(()) => panic!("`{}` was allowed", request_kind(req)),

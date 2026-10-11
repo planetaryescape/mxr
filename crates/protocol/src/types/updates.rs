@@ -470,7 +470,8 @@ mod tests {
             serde_json::from_value(old_payload).expect("pre-pin digest payloads remain readable");
         assert!(!line.latest_message_pinned);
         assert_eq!(
-            serde_json::to_value(line).unwrap()["latest_message_pinned"],
+            serde_json::to_value(line).expect("update line serializes to JSON")
+                ["latest_message_pinned"],
             false,
             "new payloads state the value explicitly"
         );

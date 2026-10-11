@@ -83,7 +83,7 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
 
     // Archive is refused up front: the row stays, and the toast says why.
     await page.keyboard.press("e");
-    await expect(page.getByText("Can't archive while mxr's daemon is stopped")).toBeVisible();
+    await expect(page.getByText("Can't archive while mxr is unavailable")).toBeVisible();
     await expect(page.getByText("Nothing changed. Try again once it's back.")).toBeVisible();
     await expect(rowById(page, first!)).toBeVisible();
     await expect(page.getByText(/^Archived/)).toHaveCount(0);
@@ -153,7 +153,7 @@ test("a reply typed while the daemon is stopped keeps its text and saves once it
     // Past the autosave debounce: nothing could save, the text is all there.
     await page.waitForTimeout(4_000);
     await expect(
-      inlineComposer(page).getByText(/Not saved: mxr's daemon is stopped/),
+      inlineComposer(page).getByText(/Not saved: mxr is unavailable/),
     ).toBeVisible();
     await expect(body).toContainText("Written before the stop. Written while it was stopped.");
 
@@ -240,7 +240,7 @@ test("confirming the send dialog while the daemon is stopped sends nothing, then
   try {
     await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
     await confirm.getByRole("button", { name: /^Send$/ }).click();
-    await expect(page.getByText("Can't send while mxr's daemon is stopped")).toBeVisible();
+    await expect(page.getByText("Can't send while mxr is unavailable")).toBeVisible();
     await expect(page.getByText(/^Sending in \d+s/)).toHaveCount(0);
     await restartDaemon();
     restarted = true;
@@ -268,7 +268,7 @@ test("a send whose undo window closes while the daemon is stopped is cancelled, 
   try {
     await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
     // The 10 s window closes while the daemon is still down.
-    await expect(page.getByText("Can't send while mxr's daemon is stopped")).toBeVisible({
+    await expect(page.getByText("Can't send while mxr is unavailable")).toBeVisible({
       timeout: 15_000,
     });
     await restartDaemon();

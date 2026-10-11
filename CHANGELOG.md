@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.71](https://github.com/planetaryescape/mxr/compare/v0.6.70...v0.6.71) (2026-10-11)
+
+
+### Bug Fixes
+
+* quiet repeated sync failures and clarify account status ([#352](https://github.com/planetaryescape/mxr/issues/352)) ([a5cce8b](https://github.com/planetaryescape/mxr/commit/a5cce8bbce0cbe400cc8482784e1fa809726c975))
+
 ## [0.6.70](https://github.com/planetaryescape/mxr/compare/v0.6.69...v0.6.70) (2026-10-11)
 
 

@@ -200,6 +200,14 @@ constrained to safe destination roots. Inline and remote HTML assets live
 under mxr's attachment cache, get private file permissions, and remote
 asset fetches have a fixed body-size cap.
 
+Attachment transfers return bounded chunks with message and attachment IDs,
+then clients verify the complete length and SHA-256. CLI and TUI save/open
+operations write on the client machine. The browser verifies the assembled
+bytes before downloading or opening a passive text or raster image in a
+separate tab; HTML, SVG, PDF and other types download instead. Provider fetches
+still materialize a complete byte vector on the daemon, and browser transfers
+assemble a complete Blob in memory.
+
 ## Agent and MCP boundaries
 
 The first-party MCP server and agent-origin permission profiles now run through

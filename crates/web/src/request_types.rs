@@ -299,10 +299,18 @@ pub(super) struct CompleteAuthSessionRequest {
     pub(super) save_account: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct AttachmentRequest {
     pub(super) message_id: String,
     pub(super) attachment_id: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(super) struct AttachmentChunkRequest {
+    pub(super) message_id: String,
+    pub(super) attachment_id: String,
+    pub(super) offset: u64,
+    pub(super) length: u32,
 }
 
 #[derive(Debug, Deserialize)]

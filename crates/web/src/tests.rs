@@ -32,6 +32,104 @@ mod unsaved_recovery;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 
+#[tokio::test]
+async fn attachment_transfer_routes_return_path_free_typed_responses() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let message_id = MessageId::new();
+    let attachment_id = AttachmentId::new();
+    let expected_message = message_id.clone();
+    let expected_attachment = attachment_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::GetAttachmentTransferMetadata {
+                message_id,
+                attachment_id,
+            } if message_id == expected_message && attachment_id == expected_attachment => {
+                Some(Response::Ok {
+                    data: ResponseData::AttachmentTransferMetadata {
+                        metadata: mxr_protocol::AttachmentTransferMetadata {
+                            message_id,
+                            attachment_id,
+                            filename: "report.txt".into(),
+                            mime_type: "text/plain".into(),
+                            length_bytes: 3,
+                            sha256:
+                                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                                    .into(),
+                            max_chunk_bytes: 256 * 1024,
+                        },
+                    },
+                })
+            }
+            Request::ReadAttachmentChunk {
+                message_id,
+                attachment_id,
+                offset: 0,
+                length: 3,
+            } if message_id == expected_message && attachment_id == expected_attachment => {
+                Some(Response::Ok {
+                    data: ResponseData::AttachmentChunk {
+                        chunk: mxr_protocol::AttachmentChunk {
+                            message_id,
+                            attachment_id,
+                            offset: 0,
+                            data_base64: "YWJj".into(),
+                        },
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}/api/v1/mail/attachments/transfer");
+    let body = serde_json::json!({
+        "message_id": message_id.to_string(),
+        "attachment_id": attachment_id.to_string(),
+    });
+
+    let metadata_response = client
+        .post(format!("{base}/metadata"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(metadata_response.status(), reqwest::StatusCode::OK);
+    let metadata: serde_json::Value = metadata_response.json().await.unwrap();
+    assert_eq!(metadata["filename"], "report.txt");
+    assert_eq!(metadata["length_bytes"], 3);
+    assert!(metadata.get("path").is_none());
+
+    let chunk_response = client
+        .post(format!("{base}/chunk"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "message_id": message_id.to_string(),
+            "attachment_id": attachment_id.to_string(),
+            "offset": 0,
+            "length": 3,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(chunk_response.status(), reqwest::StatusCode::OK);
+    let chunk: serde_json::Value = chunk_response.json().await.unwrap();
+    assert_eq!(chunk["data_base64"], "YWJj");
+    assert!(chunk.get("path").is_none());
+}
+
 /// Read `session.draftPath` out of a compose-session response.
 ///
 /// The bridge answers a failed compose start with an error object, so a bare
@@ -189,6 +287,7 @@ async fn status_endpoint_proxies_ipc_status() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 17,
@@ -558,6 +657,7 @@ async fn auth_accepts_authorization_bearer_header() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -959,6 +1059,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 99,
                     accounts: vec!["work".into()],
                     total_messages: 7,
@@ -1369,6 +1470,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1468,6 +1570,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1591,6 +1694,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    attachment_transfer_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -4391,6 +4495,7 @@ fn sample_status() -> ResponseData {
         draft_revision_supported: true,
         send_outcome_supported: true,
         archive_recovery_supported: true,
+        attachment_transfer_supported: true,
         uptime_secs: 1,
         accounts: vec!["personal".into()],
         total_messages: 10,

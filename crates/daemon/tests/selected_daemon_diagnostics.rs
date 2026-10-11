@@ -67,6 +67,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                             draft_revision_supported: true,
                             send_outcome_supported: true,
                             archive_recovery_supported: true,
+                            attachment_transfer_supported: true,
                             uptime_secs: 73,
                             accounts: vec!["target-account".into()],
                             total_messages: 19,

@@ -27,8 +27,11 @@ export function AttachmentActions({ attachment, messageId, className }: Attachme
         action === "open"
           ? await openAttachment({ messageId: resolvedMessageId, attachmentId: attachment.id })
           : await downloadAttachment({ messageId: resolvedMessageId, attachmentId: attachment.id });
-      toast.success(action === "open" ? "Opening attachment" : "Attachment downloaded", {
-        description: result.file ?? filename,
+      toast.success(result.opened ? "Opening attachment" : "Attachment downloaded", {
+        description:
+          action === "open" && !result.opened
+            ? `${result.filename} · open it from Downloads`
+            : result.filename,
       });
     } catch (error) {
       toast.error(action === "open" ? "Open failed" : "Download failed", {

@@ -13,6 +13,29 @@ pub struct Client {
 }
 
 impl Client {
+    pub async fn transfer_attachment_to(
+        &mut self,
+        message_id: &MessageId,
+        attachment_id: &AttachmentId,
+        destination: &Path,
+        replace_existing: bool,
+    ) -> Result<AttachmentFile, MxrError> {
+        let downloaded = mxr_client::download_attachment_to(
+            &mut self.conn,
+            message_id,
+            attachment_id,
+            destination,
+            replace_existing,
+        )
+        .await
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+        Ok(AttachmentFile {
+            attachment_id: attachment_id.clone(),
+            filename: downloaded.filename,
+            path: downloaded.path.display().to_string(),
+        })
+    }
+
     pub async fn connect(socket_path: &Path) -> std::io::Result<Self> {
         // Surface the raw `io::Error` so the worker's autostart classifier
         // (`should_autostart_daemon`) can inspect its `ErrorKind`.

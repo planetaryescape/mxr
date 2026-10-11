@@ -624,6 +624,18 @@ pub enum Request {
         #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
         destination: Option<std::path::PathBuf>,
     },
+    /// Describe an attachment for a path-free, integrity-checked transfer.
+    GetAttachmentTransferMetadata {
+        message_id: MessageId,
+        attachment_id: AttachmentId,
+    },
+    /// Read one bounded range from a previously described attachment.
+    ReadAttachmentChunk {
+        message_id: MessageId,
+        attachment_id: AttachmentId,
+        offset: u64,
+        length: u32,
+    },
     OpenAttachment {
         message_id: MessageId,
         attachment_id: AttachmentId,
@@ -2406,6 +2418,8 @@ impl Request {
             | Self::MarkInviteAnswered { .. }
             | Self::GetHtmlImageAssets { .. }
             | Self::DownloadAttachment { .. }
+            | Self::GetAttachmentTransferMetadata { .. }
+            | Self::ReadAttachmentChunk { .. }
             | Self::OpenAttachment { .. }
             | Self::ListBodies { .. }
             | Self::GetThread { .. }
@@ -3011,6 +3025,12 @@ pub enum ResponseData {
     AttachmentFile {
         file: AttachmentFile,
     },
+    AttachmentTransferMetadata {
+        metadata: AttachmentTransferMetadata,
+    },
+    AttachmentChunk {
+        chunk: AttachmentChunk,
+    },
     Bodies {
         bodies: Vec<MessageBody>,
         #[serde(default)]
@@ -3340,6 +3360,8 @@ pub enum ResponseData {
         send_outcome_supported: bool,
         #[serde(default)]
         archive_recovery_supported: bool,
+        #[serde(default)]
+        attachment_transfer_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
@@ -3829,6 +3851,8 @@ impl ResponseData {
             | Self::InviteResponseSent { .. }
             | Self::HtmlImageAssets { .. }
             | Self::AttachmentFile { .. }
+            | Self::AttachmentTransferMetadata { .. }
+            | Self::AttachmentChunk { .. }
             | Self::Bodies { .. }
             | Self::Thread { .. }
             | Self::Threads { .. }
@@ -4145,6 +4169,31 @@ pub struct AttachmentFile {
     pub attachment_id: AttachmentId,
     pub filename: String,
     pub path: String,
+}
+
+pub const MAX_ATTACHMENT_CHUNK_BYTES: u32 = 256 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AttachmentTransferMetadata {
+    pub message_id: MessageId,
+    pub attachment_id: AttachmentId,
+    pub filename: String,
+    pub mime_type: String,
+    pub length_bytes: u64,
+    /// Lowercase hexadecimal SHA-256 of the complete attachment.
+    pub sha256: String,
+    pub max_chunk_bytes: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AttachmentChunk {
+    pub message_id: MessageId,
+    pub attachment_id: AttachmentId,
+    pub offset: u64,
+    /// Standard base64 bytes; never a JSON integer array.
+    pub data_base64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

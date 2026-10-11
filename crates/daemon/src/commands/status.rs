@@ -221,6 +221,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         draft_revision_supported: _,
                         send_outcome_supported: _,
                         archive_recovery_supported: _,
+                        attachment_transfer_supported: _,
                         uptime_secs,
                         accounts,
                         total_messages,

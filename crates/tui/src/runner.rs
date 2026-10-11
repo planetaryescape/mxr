@@ -27,7 +27,10 @@ use crate::daemon_events::{
     restore_mail_list_selection,
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
-use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
+use crate::ipc::{
+    ipc_call, ipc_call_dedicated, ipc_transfer_attachment, spawn_ipc_worker,
+    AttachmentTransferRequest, IpcRequest,
+};
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
 use crate::runtime::{
     spawn_replaceable_request_worker, spawn_task_worker, submit_task, ReplaceableRequest,
@@ -2439,26 +2442,62 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(pending) = app.mailbox.pending_attachment_action.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let request = match pending.operation {
-                    AttachmentOperation::Open => Request::OpenAttachment {
-                        message_id: pending.message_id,
-                        attachment_id: pending.attachment_id,
-                    },
-                    AttachmentOperation::Download => Request::DownloadAttachment {
-                        message_id: pending.message_id,
-                        attachment_id: pending.attachment_id,
-                        destination: pending.destination,
+                let destination = match pending.operation {
+                    AttachmentOperation::Open => {
+                        let dir = mxr_config::data_dir().join("attachments");
+                        if let Err(error) = std::fs::create_dir_all(&dir) {
+                            return AsyncResult::AttachmentFile {
+                                operation: pending.operation,
+                                result: Err(MxrError::Ipc(error.to_string())),
+                            };
+                        }
+                        let safe_name = std::path::Path::new(&pending.filename)
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .filter(|name| !name.is_empty() && *name != "." && *name != "..")
+                            .unwrap_or("attachment");
+                        dir.join(format!("{}-{safe_name}", pending.attachment_id))
+                    }
+                    AttachmentOperation::Download => match pending.destination.clone() {
+                        Some(path) => path,
+                        None => {
+                            return AsyncResult::AttachmentFile {
+                                operation: pending.operation,
+                                result: Err(MxrError::Ipc(
+                                    "download destination is missing".into(),
+                                )),
+                            };
+                        }
                     },
                 };
-                let resp = ipc_call(&bg, request).await;
-                let result = match resp {
+                let response = ipc_transfer_attachment(
+                    &bg,
+                    AttachmentTransferRequest {
+                        message_id: pending.message_id,
+                        attachment_id: pending.attachment_id,
+                        destination,
+                        replace_existing: true,
+                    },
+                )
+                .await;
+                let result = match response {
                     Ok(Response::Ok {
                         data: ResponseData::AttachmentFile { file },
-                    }) => Ok(file),
+                    }) => {
+                        if pending.operation == AttachmentOperation::Open {
+                            open::that(&file.path).map(|()| file).map_err(|error| {
+                                MxrError::Ipc(format!(
+                                    "attachment downloaded but could not be opened: {error}"
+                                ))
+                            })
+                        } else {
+                            Ok(file)
+                        }
+                    }
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
+                    Err(error) => Err(error),
                     _ => Err(MxrError::Ipc(
-                        "unexpected response to DownloadAttachment".into(),
+                        "unexpected response to attachment transfer".into(),
                     )),
                 };
                 AsyncResult::AttachmentFile {

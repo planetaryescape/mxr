@@ -340,6 +340,7 @@ impl App {
                 self.mailbox.pending_attachment_action = Some(PendingAttachmentAction {
                     message_id: pdf.message_id.clone(),
                     attachment_id,
+                    filename: pdf.filename.clone(),
                     operation: AttachmentOperation::Open,
                     destination: None,
                 });

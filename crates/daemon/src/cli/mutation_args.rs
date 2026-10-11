@@ -323,6 +323,9 @@ pub enum AttachmentAction {
         /// Output directory
         #[arg(long)]
         dir: Option<PathBuf>,
+        /// Output format for completed local paths
+        #[arg(long)]
+        format: Option<crate::cli::OutputFormat>,
     },
     /// Open attachment with system handler
     #[command(name = "open")]
@@ -332,5 +335,8 @@ pub enum AttachmentAction {
         account: Option<String>,
         /// Attachment index (1-based)
         index: usize,
+        /// Output format for the local file
+        #[arg(long)]
+        format: Option<crate::cli::OutputFormat>,
     },
 }

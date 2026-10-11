@@ -795,7 +795,10 @@ pub fn map_request(
                 "post-send invite bookkeeping is not direct user activity"
             );
         }
-        Request::DownloadAttachment { .. } | Request::OpenAttachment { .. } => {
+        Request::DownloadAttachment { .. }
+        | Request::GetAttachmentTransferMetadata { .. }
+        | Request::ReadAttachmentChunk { .. }
+        | Request::OpenAttachment { .. } => {
             skip_activity!(
                 "attachment",
                 "attachment materialization/opening is not in the activity catalog"

@@ -191,6 +191,7 @@ impl App {
         self.mailbox.pending_attachment_action = Some(PendingAttachmentAction {
             message_id,
             attachment_id: attachment.id,
+            filename: attachment.filename.clone(),
             operation,
             destination,
         });

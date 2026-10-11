@@ -1554,16 +1554,21 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     account,
                     index,
                     dir,
+                    format,
                 } => {
-                    commands::mutations::attachments_download(message_id, account, index, dir)
-                        .await?;
+                    commands::mutations::attachments_download(
+                        message_id, account, index, dir, format,
+                    )
+                    .await?;
                 }
                 cli::AttachmentAction::OpenAttachment {
                     message_id,
                     account,
                     index,
+                    format,
                 } => {
-                    commands::mutations::attachments_open(message_id, account, index).await?;
+                    commands::mutations::attachments_open(message_id, account, index, format)
+                        .await?;
                 }
             }
         }

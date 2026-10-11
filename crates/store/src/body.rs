@@ -4,6 +4,27 @@ use mxr_core::types::*;
 use sqlx::Row;
 
 impl super::Store {
+    /// Update only the downloaded attachment row so a stale message body
+    /// cannot replace sibling attachments or calendar metadata.
+    pub async fn set_attachment_cache(
+        &self,
+        message_id: &MessageId,
+        attachment_id: &AttachmentId,
+        path: &std::path::Path,
+        size_bytes: u64,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE attachments SET local_path = ?, size_bytes = ? WHERE message_id = ? AND id = ?",
+        )
+        .bind(path.to_string_lossy().to_string())
+        .bind(i64::try_from(size_bytes).unwrap_or(i64::MAX))
+        .bind(message_id.as_str())
+        .bind(attachment_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     pub async fn get_body(
         &self,
         message_id: &MessageId,
@@ -250,6 +271,53 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(provider_ids, vec!["first"]);
+    }
+
+    #[tokio::test]
+    async fn attachment_cache_update_changes_only_the_selected_attachment() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+        let first = attachment(envelope.id.clone(), "first");
+        let second = attachment(envelope.id.clone(), "second");
+        store
+            .insert_body(&body(
+                envelope.id.clone(),
+                vec![first.clone(), second.clone()],
+            ))
+            .await
+            .unwrap();
+
+        let path = std::path::Path::new("/private/first.bin");
+        assert!(store
+            .set_attachment_cache(&envelope.id, &first.id, path, 12)
+            .await
+            .unwrap());
+        assert!(!store
+            .set_attachment_cache(&envelope.id, &mxr_core::AttachmentId::new(), path, 12,)
+            .await
+            .unwrap());
+
+        let refreshed = store.get_body(&envelope.id).await.unwrap().unwrap();
+        assert_eq!(refreshed.attachments.len(), 2);
+        let cached = refreshed
+            .attachments
+            .iter()
+            .find(|attachment| attachment.id == first.id)
+            .unwrap();
+        assert_eq!(cached.local_path.as_deref(), Some(path));
+        assert_eq!(cached.size_bytes, 12);
+        let sibling = refreshed
+            .attachments
+            .iter()
+            .find(|attachment| attachment.id == second.id)
+            .unwrap();
+        assert_eq!(sibling.local_path, None);
+        assert_eq!(sibling.size_bytes, second.size_bytes);
     }
 
     #[tokio::test]

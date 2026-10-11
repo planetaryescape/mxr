@@ -635,7 +635,7 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         );
 
     // Archive it via the CLI. Capture stdout so we can extract the
-    // mutation_id printed by handle_mutation_response.
+    // mutation_id in the retained Archive receipt.
     let archive = run_status_only(
         &instance,
         &data_dir,
@@ -652,7 +652,7 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         .or_else(|| {
             serde_json::from_str::<Value>(&archive.stdout)
                 .ok()
-                .and_then(|value| value["result"]["mutation_id"].as_str().map(str::to_string))
+                .and_then(|value| value["mutation_id"].as_str().map(str::to_string))
         })
         .unwrap_or_else(|| {
             panic!(

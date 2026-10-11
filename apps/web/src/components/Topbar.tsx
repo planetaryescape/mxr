@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, PenSquare, Search } from "lucide-react";
+import { ChevronRight, CircleHelp, PenSquare, Search } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -142,6 +142,7 @@ const PHONE_QUERY = "(max-width: 639px)";
 export function Topbar() {
   const location = useRouterState({ select: (s) => s.location });
   const setSearchOpen = useModals((state) => state.setSearchPaletteOpen);
+  const setHelpOpen = useModals((state) => state.setHelpOpen);
   const crumbs = useBreadcrumb(location.pathname, location.searchStr ?? "");
   const { data: status } = useQuery({
     queryKey: ["admin-status-is-demo"],
@@ -211,8 +212,24 @@ export function Topbar() {
         <KeyChip>/</KeyChip>
       </Button>
 
+      {phone ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          onClick={() => setHelpOpen(true)}
+          aria-label="Keyboard help"
+          title="Keyboard help"
+        >
+          <CircleHelp className="size-4" />
+        </Button>
+      ) : null}
+
       <Button
         size="sm"
+        variant="secondary"
+        className="border-t border-primary/35 shadow-sm shadow-black/5"
         onClick={() => useComposeUi.getState().openCompose(newMessageIntent(), "overlay")}
         aria-label="Compose new email"
         title={`Compose (${formatChord("c")})`}

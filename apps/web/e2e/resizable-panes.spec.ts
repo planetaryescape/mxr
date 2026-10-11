@@ -17,6 +17,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 interface FrameWidths {
   people: number[];
   sidebar: number[];
+  saved: { people: string | null; sidebar: string | null } | null;
 }
 
 declare global {
@@ -173,18 +174,38 @@ test("a saved width is there on the first frame, with no shift as the page loads
   await drag(page, handle(page, "Resize sidebar"), 40);
   const people = await width(page, PEOPLE);
   const sidebar = await width(page, SIDEBAR);
+  const savedBeforeReload = await page.evaluate(() => ({
+    people: window.localStorage.getItem("mxr:split:messages"),
+    sidebar: window.localStorage.getItem("mxr:split:shell-sidebar"),
+  }));
 
   // Sample both widths on every frame from the first one that has them.
   await page.addInitScript(
     ({ peopleSelector, sidebarSelector }) => {
-      const seen: FrameWidths = { people: [], sidebar: [] };
+      const seen: FrameWidths = {
+        people: [],
+        sidebar: [],
+        saved: null,
+      };
       window.__widths = seen;
       const sample = () => {
         const list = document.querySelector(peopleSelector);
         const rail = document.querySelector(sidebarSelector);
-        if (list) seen.people.push(Math.round(list.getBoundingClientRect().width));
-        if (rail) seen.sidebar.push(Math.round(rail.getBoundingClientRect().width));
-        if (seen.people.length < 120) requestAnimationFrame(sample);
+        if (seen.saved === null) {
+          seen.saved = {
+            people: window.localStorage.getItem("mxr:split:messages"),
+            sidebar: window.localStorage.getItem("mxr:split:shell-sidebar"),
+          };
+        }
+        if (list) {
+          const width = list.getBoundingClientRect().width;
+          seen.people.push(width);
+        }
+        if (rail) {
+          const width = rail.getBoundingClientRect().width;
+          seen.sidebar.push(width);
+        }
+        if (seen.people.length < 120 || seen.sidebar.length < 120) requestAnimationFrame(sample);
       };
       requestAnimationFrame(sample);
     },
@@ -193,11 +214,50 @@ test("a saved width is there on the first frame, with no shift as the page loads
   await page.reload();
   await expect(handle(page, "Resize people list")).toBeVisible();
   await expect
-    .poll(() => page.evaluate(() => window.__widths?.people.length ?? 0))
-    .toBeGreaterThanOrEqual(120);
-  const widths = await page.evaluate(() => window.__widths ?? { people: [], sidebar: [] });
-  expect(new Set(widths.people)).toEqual(new Set([Math.round(people)]));
-  expect(new Set(widths.sidebar)).toEqual(new Set([Math.round(sidebar)]));
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const widths = window.__widths;
+          return Boolean(widths && widths.people.length >= 120 && widths.sidebar.length >= 120);
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  const widths = await page.evaluate(() => window.__widths);
+  if (!widths) throw new Error("pane widths were not sampled after reload");
+  const storedWidth = (value: string | null, pane: string) => {
+    expect(value, `${pane} width is saved as an integer`).toMatch(/^\d+$/);
+    const pixels = Number(value);
+    expect(Number.isSafeInteger(pixels), `${pane} width is a safe integer`).toBe(true);
+    return pixels;
+  };
+  const peopleSaved = storedWidth(savedBeforeReload.people, "People pane");
+  const sidebarSaved = storedWidth(savedBeforeReload.sidebar, "Sidebar");
+  expect(widths.saved).toEqual(savedBeforeReload);
+  await test.info().attach("pane-width-audit.json", {
+    body: JSON.stringify(
+      {
+        beforeReload: { people, sidebar },
+        savedBeforeReload,
+        frames: widths,
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+  });
+  const firstPeopleWidth = widths.people[0];
+  const firstSidebarWidth = widths.sidebar[0];
+  if (firstPeopleWidth === undefined) {
+    throw new Error("people pane has no first-frame width sample");
+  }
+  if (firstSidebarWidth === undefined) {
+    throw new Error("sidebar has no first-frame width sample");
+  }
+  expect(Math.round(firstPeopleWidth)).toBe(peopleSaved);
+  expect(new Set(widths.people.map(Math.round))).toEqual(new Set([peopleSaved]));
+  expect(Math.round(firstSidebarWidth)).toBe(sidebarSaved);
+  expect(new Set(widths.sidebar.map(Math.round))).toEqual(new Set([sidebarSaved]));
 });
 
 test("mail lists resize beside the reader and share one saved width", async ({ page }) => {

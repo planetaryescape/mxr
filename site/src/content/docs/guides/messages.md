@@ -60,20 +60,27 @@ Opening a person shows how you know them ("You've written 48 times since
 2023. Last: Tuesday."), every topic with them, group threads as "with
 Ruth: Pricing copy", and the selected topic as a conversation.
 
-Each message shows what it says that the thread didn't already: the
-quoted history and signature are removed. mxr finds the quote by matching
-the message against the earlier messages in the thread, as well as by
-Gmail, Apple Mail and Outlook's quote markers, so it also catches quotes
-no client marked. A message that lost anything says "trimmed: quote, sig"
-(or "footer" for a disclaimer or unsubscribe footer), and `o` (or `v`)
-shows it as sent. A reply that is nothing but quoted text reads "(only
-quoted text)", so nobody's earlier words pass as the sender's. The CLI, TUI, web app and MCP all show
-the same text.
+Read the conversation directly. mxr removes repeated trailing history,
+signatures and footers when it can identify them. Quoted questions beside
+inline answers stay together, and forwarded messages keep their attribution
+and contents. A message with retained context stays expanded.
 
-Length decides the layout. A message of three lines or fewer reads like
-chat, theirs on the left and yours on the right. A longer one is a
-full-width letter with "Read all N paragraphs". Letters are never put in
-bubbles.
+When something was removed, the message says `trimmed: quote, sig` (or
+`footer`). Select that marker, or press `o` or `v`, to see the message as
+sent. A reply containing only repeated quoted text says `(only quoted text)`.
+The CLI, TUI, web app and MCP use the same extracted text.
+
+Short messages read like chat. Longer letters lead with the paragraph
+containing the request when one is identified; otherwise they show the
+opening paragraph, including the next paragraph if the first is only a
+greeting. Choose `Read all N paragraphs` to expand the letter, then
+`Show less` to collapse it. Retained inline or forwarded context is shown
+in full.
+
+If mxr has only a provider preview, it labels that text as incomplete.
+Choose `Check the original` to try loading the full message. If it is still
+unavailable, mxr says so. HTML shown as sent follows your global or saved
+sender [mail appearance choice](/guides/web-app/#the-reader).
 
 The reply box sits at the bottom, already addressed ("Reply to Samir ·
 Contract renewal"), with reply all on by default in a group.
@@ -143,7 +150,9 @@ mxr messages split samir.p@home.example
 
 `mxr messages --format json` returns every band with each row's topics,
 preview, closeness and why line. `mxr messages person ID --format json`
-returns the page with each message's new text and its `trimmed` flags.
+returns the page with each message's text, `trimmed` flags, `source`
+(`stored_body` or `provider_snippet`; omitted by older daemons), and
+`has_preserved_context`.
 The bridge serves the same data under `/api/v1/mail/people`, and the MCP
 server has `mxr_messages`, `mxr_person` and `mxr_got_it` (which previews
 unless confirmed with the previewed text).

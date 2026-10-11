@@ -4,7 +4,10 @@ import { describe, expect, test } from "vitest";
 
 import {
   emailHtmlThemeForSender,
+  applyContrastAttribute,
   migrateUiPrefs,
+  resolveContrast,
+  watchSystemContrast,
   readEmailHtmlSenderOverrides,
   useUiPrefs,
 } from "./uiPrefsStore";
@@ -34,11 +37,15 @@ describe("theme preference", () => {
     expect(useUiPrefs.getInitialState().emailHtmlTheme).toBe("auto");
     expect(migrateUiPrefs({ emailHtmlTheme: "dark" }, 4)).toEqual({
       emailHtmlTheme: "dark",
+      contrast: "system",
     });
     expect(migrateUiPrefs({ emailHtmlTheme: "original" }, 4)).toEqual({
       emailHtmlTheme: "original",
+      contrast: "system",
     });
-    expect(migrateUiPrefs({ emailHtmlTheme: "unexpected" }, 4)).toEqual({});
+    expect(migrateUiPrefs({ emailHtmlTheme: "unexpected" }, 4)).toEqual({
+      contrast: "system",
+    });
   });
 
   test("sender overrides normalize identity and reject malformed map entries", () => {
@@ -59,6 +66,102 @@ describe("theme preference", () => {
   });
 });
 
+describe("contrast preference", () => {
+  test("defaults to system and migrates existing v5 preferences without changing saved choices", () => {
+    expect(useUiPrefs.getInitialState().contrast).toBe("system");
+    expect(migrateUiPrefs({ theme: "paper" }, 5)).toEqual({
+      theme: "paper",
+      contrast: "system",
+    });
+    expect(migrateUiPrefs({ contrast: "increased" }, 5)).toEqual({
+      contrast: "system",
+    });
+    expect(
+      migrateUiPrefs(
+        {
+          emailHtmlTheme: "original",
+          emailHtmlSenderOverrides: [{ sender: "news@example.com", theme: "dark" }],
+        },
+        5,
+      ),
+    ).toEqual({
+      emailHtmlTheme: "original",
+      emailHtmlSenderOverrides: [{ sender: "news@example.com", theme: "dark" }],
+      contrast: "system",
+    });
+  });
+
+  test("system resolves only increased contrast; explicit choices ignore the OS", () => {
+    const original = window.matchMedia;
+    // The test only exercises the MediaQueryList members the resolver reads.
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(prefers-contrast: more)",
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      expect(resolveContrast("system")).toBe("increased");
+      expect(resolveContrast("standard")).toBe("standard");
+      expect(resolveContrast("increased")).toBe("increased");
+      applyContrastAttribute("standard");
+      expect(document.documentElement.dataset.contrast).toBe("standard");
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  test("a system change is live, but explicit preferences stay in force", () => {
+    let listener: (() => void) | undefined;
+    let matches = false;
+    const original = window.matchMedia;
+    // Capture change listeners to exercise subscribe, explicit override, and cleanup.
+    window.matchMedia = ((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: (_type: string, callback: () => void) => {
+        listener = callback;
+      },
+      removeEventListener: (_type: string, callback: () => void) => {
+        if (listener === callback) listener = undefined;
+      },
+    })) as unknown as typeof window.matchMedia;
+    const previous = useUiPrefs.getState().contrast;
+    try {
+      useUiPrefs.getState().setContrast("system");
+      const stop = watchSystemContrast();
+      matches = true;
+      listener?.();
+      expect(document.documentElement.dataset.contrast).toBe("increased");
+      useUiPrefs.getState().setContrast("standard");
+      applyContrastAttribute("standard");
+      matches = false;
+      listener?.();
+      expect(document.documentElement.dataset.contrast).toBe("standard");
+      stop();
+      expect(listener).toBeUndefined();
+    } finally {
+      useUiPrefs.getState().setContrast(previous);
+      window.matchMedia = original;
+    }
+  });
+
+  test("persists the selected contrast value", async () => {
+    const previous = useUiPrefs.getState().contrast;
+    try {
+      useUiPrefs.getState().setContrast("increased");
+      const saved = await useUiPrefs.persist.getOptions().storage?.getItem("mxr.uiPrefs");
+      expect(saved).toEqual(
+        expect.objectContaining({
+          state: expect.objectContaining({ contrast: "increased" }),
+        }),
+      );
+    } finally {
+      useUiPrefs.getState().setContrast(previous);
+    }
+  });
+});
+
 describe("home and sidebar prefs", () => {
   test("new installs land on Now with only places unfolded", () => {
     const initial = useUiPrefs.getInitialState();
@@ -71,10 +174,12 @@ describe("home and sidebar prefs", () => {
       theme: "paper",
       collapsedSections: ["tools", "saved", "more", "labels"],
       home: "now",
+      contrast: "system",
     });
     expect(migrateUiPrefs(undefined, 1)).toEqual({
       collapsedSections: ["tools", "more", "labels"],
       home: "now",
+      contrast: "system",
     });
   });
 
@@ -82,13 +187,14 @@ describe("home and sidebar prefs", () => {
     expect(migrateUiPrefs({ home: "desk", collapsedSections: [] }, 3)).toEqual({
       home: "now",
       collapsedSections: [],
+      contrast: "system",
     });
     const inbox = { home: "inbox", collapsedSections: [] };
-    expect(migrateUiPrefs(inbox, 3)).toBe(inbox);
+    expect(migrateUiPrefs(inbox, 3)).toEqual({ ...inbox, contrast: "system" });
   });
 
-  test("v4 prefs pass through untouched", () => {
+  test("v6 prefs pass through untouched", () => {
     const saved = { home: "now", collapsedSections: [] };
-    expect(migrateUiPrefs(saved, 4)).toBe(saved);
+    expect(migrateUiPrefs(saved, 6)).toBe(saved);
   });
 });

@@ -120,6 +120,12 @@ impl ToastQueue {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Time until the next queued toast expires. An already-expired entry
+    /// returns zero once, letting the loop sweep it before scheduling again.
+    pub(crate) fn next_expiry(&self, now: Instant) -> Option<Duration> {
+        self.entries.iter().map(|toast| toast.remaining(now)).min()
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +205,26 @@ mod tests {
         assert_eq!(toast.remaining(t0 + Duration::from_secs(4)).as_secs(), 6);
         assert!(toast.remaining(t0 + Duration::from_secs(11)).is_zero());
         assert!(toast.expired(t0 + Duration::from_secs(11)));
+    }
+
+    #[test]
+    fn next_expiry_requests_a_sweep_before_the_next_live_deadline() {
+        let t0 = Instant::now();
+        let mut queue = ToastQueue::default();
+        queue.push(toast_at("expired", t0, Duration::from_secs(1)));
+        queue.push(toast_at("later", t0, Duration::from_secs(10)));
+        queue.push(toast_at(
+            "sooner",
+            t0 + Duration::from_secs(2),
+            Duration::from_secs(5),
+        ));
+
+        let now = t0 + Duration::from_secs(3);
+        assert_eq!(queue.next_expiry(now), Some(Duration::ZERO));
+        queue.sweep_expired(now);
+        assert_eq!(queue.next_expiry(now), Some(Duration::from_secs(4)));
+        let after_all_expired = t0 + Duration::from_secs(10);
+        queue.sweep_expired(after_all_expired);
+        assert_eq!(queue.next_expiry(after_all_expired), None);
     }
 }

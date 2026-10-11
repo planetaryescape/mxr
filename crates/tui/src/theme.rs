@@ -53,6 +53,7 @@ impl Theme {
 
         match normalized.to_ascii_lowercase().as_str() {
             "default" | "dark" => Self::dark(),
+            "midnight" => Self::midnight(),
             "minimal" => Self::minimal(),
             "light" => Self::light(),
             "catppuccin" => Self::catppuccin(),
@@ -112,6 +113,35 @@ impl Theme {
             signature_fg: Color::DarkGray,
             line_number_fg: Color::DarkGray,
             link_fg: Color::Cyan,
+        }
+    }
+
+    /// A navy palette with cool blue accents for terminals that support RGB.
+    /// `default` remains the terminal-native ANSI palette for compatibility.
+    pub fn midnight() -> Self {
+        Self {
+            border_focused: Color::Rgb(84, 221, 255),
+            border_unfocused: Color::Rgb(72, 88, 105),
+            text_primary: Color::Rgb(226, 233, 240),
+            text_secondary: Color::Rgb(187, 197, 209),
+            text_muted: Color::Rgb(153, 166, 181),
+            accent: Color::Rgb(92, 213, 252),
+            accent_dim: Color::Rgb(80, 151, 220),
+            selection_bg: Color::Rgb(35, 58, 75),
+            selection_fg: Color::Rgb(238, 246, 252),
+            error: Color::Rgb(253, 138, 140),
+            warning: Color::Rgb(248, 202, 101),
+            success: Color::Rgb(104, 215, 161),
+            contrast_dark: Color::Rgb(3, 24, 38),
+            contrast_light: Color::Rgb(238, 246, 252),
+            unread_fg: Color::Rgb(238, 246, 252),
+            label_bg: Color::Rgb(1, 57, 74),
+            modal_bg: Color::Rgb(23, 32, 42),
+            hint_bar_bg: Color::Rgb(8, 15, 23),
+            quote_fg: Color::Rgb(153, 166, 181),
+            signature_fg: Color::Rgb(153, 166, 181),
+            line_number_fg: Color::Rgb(114, 129, 144),
+            link_fg: Color::Rgb(126, 190, 255),
         }
     }
 
@@ -360,5 +390,21 @@ fn parse_named_color(value: &str) -> Option<Color> {
             Some(Color::Rgb(r, g, b))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Theme;
+    use ratatui::style::Color;
+
+    #[test]
+    fn midnight_is_selectable_and_default_remains_terminal_native() {
+        assert_eq!(
+            Theme::from_spec("midnight").accent,
+            Color::Rgb(92, 213, 252)
+        );
+        assert_eq!(Theme::from_spec("default").accent, Color::Cyan);
+        assert_eq!(Theme::default().accent, Color::Cyan);
     }
 }

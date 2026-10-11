@@ -303,8 +303,8 @@ mod tests {
     }
     #[test]
     fn unavailable_outcome_never_turns_provider_text_into_retry_permission() {
-        let (dir, _, mut manifest) = fixture(true);
-        let stub = Stub::failing("private-provider-text");
+        let (dir, stub, mut manifest) = fixture(true);
+        std::fs::write(stub.dir().join("outcomes/draft-1"), "private-provider-text").unwrap();
         assert_eq!(
             dispatch_record(
                 &Mxr::new(Some(stub.binary())),

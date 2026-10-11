@@ -1477,3 +1477,30 @@ fn visual_line_selection_expands_thread_rows_not_flat_envelope_indices() {
         "must not select the flat envelope slice — in Threads mode row index is not envelope index"
     );
 }
+
+#[test]
+fn recoverable_archive_never_automatically_creates_a_retry_identity() {
+    assert!(!super::super::mutation_can_auto_retry(&Request::mutation(
+        MutationCommand::Archive {
+            message_ids: vec![MessageId::new()]
+        }
+    )));
+    assert!(super::super::mutation_can_auto_retry(&Request::mutation(
+        MutationCommand::SetRead {
+            message_ids: vec![MessageId::new()],
+            read: true
+        }
+    )));
+}
+
+#[test]
+fn archive_preview_retains_selection_without_queueing_a_mutation() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    let selected = app.mailbox.envelopes[0].id.clone();
+    app.apply(Action::PreviewArchiveSelection);
+    assert_eq!(app.pending_archive_preview, Some(vec![selected]));
+    assert!(app.pending_mutation_queue.is_empty());
+    assert!(app.modals.platform.visible && app.modals.platform.loading);
+}

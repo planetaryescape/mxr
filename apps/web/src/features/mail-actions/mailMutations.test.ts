@@ -35,6 +35,8 @@ vi.mock("@/features/mailbox/api", async (importOriginal) => ({
   ...api,
 }));
 
+vi.mock("./archiveRecovery", () => ({ archiveMessagesRecoverably: api.archiveMessages }));
+
 interface ToastOptions {
   description?: string;
   action?: { label: ReactNode; onClick: () => void };
@@ -153,18 +155,18 @@ afterEach(() => {
 });
 
 describe("performMailAction", () => {
-  test("the row leaves the view before the request resolves", async () => {
+  test("Archive keeps the row visible until the daemon result is known", async () => {
     const request = deferred<MutationResponse>();
     api.archiveMessages.mockReturnValue(request.promise);
 
     const done = performMailAction("archive", ["a-1", "a-2"]);
 
-    expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
+    expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
     request.resolve(ok(2));
     await done;
   });
 
-  test("success toasts with Undo and keeps the op until the refetch lands", async () => {
+  test("Archive success toasts with Undo and waits for the confirmed refetch", async () => {
     api.archiveMessages.mockResolvedValue(ok(2, "mut-1"));
     const serverAnswer = deferred<MailboxResponse>();
     refetch.mockReturnValueOnce(serverAnswer.promise);
@@ -179,9 +181,9 @@ describe("performMailAction", () => {
     expect(message).toBe("Archived 2 messages");
     expect(isUndoLabel(options?.action?.label)).toBe(true);
     expect(useUndo.getState().lastMutationId).toBe("mut-1");
-    // The old cache still has row a; the op keeps it hidden meanwhile.
-    expect(usePendingMailOps.getState().ops).toHaveLength(1);
-    expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
+    // Archive uses the confirmed receipt, so only the server refetch removes the row.
+    expect(usePendingMailOps.getState().ops).toHaveLength(0);
+    expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
 
     serverAnswer.resolve(page([row("b")]));
     await expect(done).resolves.toMatchObject({ ok: true });
@@ -198,6 +200,7 @@ describe("performMailAction", () => {
     const first = performMailAction("archive", ["a-1", "a-2"]);
     const second = performMailAction("star", ["b-1", "b-2"]);
     expect(renderedInbox().map(({ id, starred }) => ({ id, starred }))).toEqual([
+      { id: "a", starred: false },
       { id: "b", starred: true },
     ]);
 

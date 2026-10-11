@@ -14,10 +14,12 @@ pub(super) struct Fixture {
     pub(super) fake: Arc<mxr_provider_fake::FakeProvider>,
     pub(super) account: mxr_core::AccountId,
     pub(super) inbox: LabelId,
+    now: chrono::DateTime<chrono::Utc>,
 }
 
 impl Fixture {
     pub(super) async fn new() -> Self {
+        let now = chrono::Utc::now();
         let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
         let account = state.default_account_id();
@@ -42,6 +44,7 @@ impl Fixture {
             fake,
             account,
             inbox,
+            now,
         }
     }
 
@@ -75,7 +78,7 @@ impl Fixture {
             cc: vec![],
             bcc: vec![],
             subject: "Re: Launch plan".into(),
-            date: chrono::Utc::now() - age,
+            date: self.now - age,
             flags: if outbound {
                 MessageFlags::READ | MessageFlags::SENT
             } else {

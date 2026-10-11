@@ -921,6 +921,115 @@ async fn start_mutation_job(
     Ok(Json(value))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(crate) struct ArchivePreviewBody {
+    pub identity: mxr_protocol::ArchiveIdentityData,
+    pub mutation: MutationCommand,
+}
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(crate) struct ArchiveSubmitBody {
+    pub identity: mxr_protocol::ArchiveIdentityData,
+    pub review_id: String,
+    pub mutation: MutationCommand,
+}
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(crate) struct ArchiveQueryBody {
+    pub identity: mxr_protocol::ArchiveIdentityData,
+}
+async fn archive_workspace(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::GetArchiveWorkspace,
+        )
+        .await?,
+    )
+}
+async fn archive_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    body: Result<Json<ArchivePreviewBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let Json(body) = body.map_err(|rejection| {
+        BridgeError::BadRequest(format!(
+            "Invalid Archive request: {}",
+            rejection.body_text()
+        ))
+    })?;
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::PreviewArchive {
+                identity: body.identity,
+                mutation: body.mutation,
+            },
+        )
+        .await?,
+    )
+}
+async fn archive_submit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    body: Result<Json<ArchiveSubmitBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let Json(body) = body.map_err(|rejection| {
+        BridgeError::BadRequest(format!(
+            "Invalid Archive request: {}",
+            rejection.body_text()
+        ))
+    })?;
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::SubmitArchive {
+                identity: body.identity,
+                review_id: body.review_id,
+                mutation: body.mutation,
+            },
+        )
+        .await?,
+    )
+}
+async fn archive_query(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    body: Result<Json<ArchiveQueryBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let Json(body) = body.map_err(|rejection| {
+        BridgeError::BadRequest(format!(
+            "Invalid Archive request: {}",
+            rejection.body_text()
+        ))
+    })?;
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::GetArchiveOperation {
+                identity: body.identity,
+            },
+        )
+        .await?,
+    )
+}
+
 async fn list_jobs(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2875,6 +2984,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             post(reset_orphaned_draft),
         )
         .route("/drafts/{draft_id}/send-stored", post(send_stored_draft))
+        .route("/archive-operations/workspace", get(archive_workspace))
+        .route("/archive-operations/preview", post(archive_preview))
+        .route("/archive-operations/submit", post(archive_submit))
+        .route("/archive-operations/query", post(archive_query))
         .route("/send-outcomes/{operation_id}", get(get_send_outcome))
         .route("/drafts/{draft_id}/stored", delete(delete_draft_stored))
         .route("/signatures", get(list_signatures).post(set_signature))

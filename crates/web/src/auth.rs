@@ -17,6 +17,13 @@ pub(super) enum BridgeError {
     #[error("{message}")]
     Daemon { message: String, kind: IpcErrorKind },
     #[error("{message}")]
+    ArchiveConflict {
+        message: String,
+        code: String,
+        kind: IpcErrorKind,
+        details: Option<serde_json::Value>,
+    },
+    #[error("{message}")]
     DraftConflict {
         message: String,
         details: Option<serde_json::Value>,
@@ -81,13 +88,20 @@ impl BridgeError {
             }
             return body;
         }
-        json!({ "error": self.to_string(), "code": self.code(), "details": match self { Self::DraftConflict { details, .. } => details.clone(), _ => None } })
+        json!({ "error": self.to_string(), "code": self.code(), "details": match self { Self::DraftConflict { details, .. } | Self::ArchiveConflict { details, .. } => details.clone(), _ => None } })
     }
 
     pub(super) fn status(&self) -> StatusCode {
         match self {
             Self::ComposeRecovery { source, .. } => source.status(),
             Self::DraftConflict { .. } => StatusCode::CONFLICT,
+            Self::ArchiveConflict { kind, .. } => {
+                if matches!(kind, IpcErrorKind::Store | IpcErrorKind::Internal) {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                } else {
+                    StatusCode::CONFLICT
+                }
+            }
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -111,9 +125,10 @@ impl BridgeError {
 
     /// Machine-readable companion to `error`: the daemon's `IpcErrorKind`
     /// code for daemon errors, otherwise the bridge failure class.
-    pub(super) fn code(&self) -> &'static str {
+    pub(super) fn code(&self) -> &str {
         match self {
             Self::ComposeRecovery { source, .. } => source.code(),
+            Self::ArchiveConflict { code, .. } => code,
             Self::DraftConflict { .. } => "draft_revision_conflict",
             Self::Daemon { kind, .. } => kind.as_code(),
             // Same code the daemon uses for its own draft validation, so a
@@ -230,6 +245,7 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Connect(_) => "connect",
         BridgeError::Ipc(_) => "ipc",
         BridgeError::Timeout(_) => "timeout",
+        BridgeError::ArchiveConflict { .. } => "archive_conflict",
         BridgeError::DraftConflict { .. } => "draft_revision_conflict",
         BridgeError::Daemon { .. } => "daemon",
         BridgeError::BadRequest(_) => "bad_request",

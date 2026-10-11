@@ -22,6 +22,14 @@ pub(crate) enum HandlerError {
         expected: Option<i64>,
         current: Option<i64>,
     },
+    #[error("{message}")]
+    Archive {
+        message: String,
+        code: &'static str,
+        identity: Box<mxr_protocol::ArchiveIdentityData>,
+        kind: IpcErrorKind,
+        state: &'static str,
+    },
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -44,6 +52,10 @@ impl HandlerError {
                 kind: IpcErrorKind::InvalidRequest,
                 code: "draft_revision_conflict".into(), retryable: false,
                 details: Some(serde_json::json!({"expected_revision": expected, "current_revision": current})),
+            },
+            Self::Archive { message, code, identity, kind, state } => Response::Error {
+                message, kind, code: code.into(), retryable: false,
+                details: Some(serde_json::json!({"identity": identity, "state": state, "retry_guidance": "Query this identity; never create a new identity to retry an uncertain effect"})),
             },
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)

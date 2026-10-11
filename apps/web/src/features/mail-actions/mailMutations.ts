@@ -51,7 +51,8 @@ export async function performMailAction(
   }
   const opId = `op-${Date.now()}-${(opSequence += 1)}`;
   const pending = usePendingMailOps.getState();
-  pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
+  if (action !== "archive")
+    pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
   if (isDestructive(action)) useSelection.getState().clear();
   // The row leaves the list at once, so `u` can come before the daemon
   // answers. Claim the undo slot now; an early `u` waits for the answer.
@@ -60,7 +61,7 @@ export async function performMailAction(
   try {
     const command = jobCommand(action, ids, options.payload);
     const response =
-      command && ids.length >= JOB_THRESHOLD
+      action !== "archive" && command && ids.length >= JOB_THRESHOLD
         ? await runAsJob(action, command, ids.length, options.payload)
         : await requestCoordinator.enqueueMutation(() => runAction(action, ids, options));
     assertCompleted(response, ids.length);

@@ -49,6 +49,7 @@ impl CommandPalette {
         self.visible = !self.visible;
         if self.visible {
             self.context = context;
+            add_archive_recovery_commands(&mut self.commands);
             // Re-derive shortcuts for the focused view so each row shows
             // the key that actually fires there (e.g. thread-view chords
             // when the palette opens over a message). Mail-list shortcuts
@@ -1075,8 +1076,48 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Diagnostics".into(),
         },
     ];
+    add_archive_recovery_commands(&mut commands);
     apply_registered_mail_list_shortcuts(&mut commands);
     commands
+}
+
+fn add_archive_recovery_commands(commands: &mut Vec<PaletteCommand>) {
+    if !commands
+        .iter()
+        .any(|command| command.action == Action::PreviewArchiveSelection)
+    {
+        commands.push(PaletteCommand {
+            label: "Preview Archive selection".into(),
+            category: "Recovery".into(),
+            shortcut: String::new(),
+            action: Action::PreviewArchiveSelection,
+        });
+    }
+    commands.retain(|command| {
+        !matches!(
+            command.action,
+            Action::CheckArchiveOperation(_) | Action::SubmitArchiveOperation(_)
+        )
+    });
+    if let Ok(operations) =
+        mxr_client::ArchiveJournal::new(&mxr_config::data_dir()).and_then(|journal| journal.list())
+    {
+        for operation in operations {
+            let id = operation.identity.operation_id;
+            commands.push(PaletteCommand {
+                label: format!("Archive recovery: query {id}"),
+                shortcut: String::new(),
+                action: Action::CheckArchiveOperation(id.clone()),
+                category: "Recovery".into(),
+            });
+            commands.push(PaletteCommand {
+                label: format!("Archive recovery: submit reviewed {id}"),
+                shortcut: String::new(),
+                action: Action::SubmitArchiveOperation(id),
+                category: "Recovery".into(),
+            });
+        }
+    }
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {

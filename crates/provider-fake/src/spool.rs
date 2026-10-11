@@ -87,6 +87,38 @@ impl Spool {
         self.dir.join("send-pause-after-accept").exists()
     }
 
+    /// Optional per-message controls; an empty file applies to every mutation.
+    pub(crate) fn mutation_control(&self, name: &str, provider_id: &str) -> bool {
+        std::fs::read_to_string(self.dir.join(name))
+            .is_ok_and(|value| value.trim().is_empty() || value.trim() == provider_id)
+    }
+
+    /// Each invocation and acceptance survives daemon restart, without mail content.
+    pub(crate) fn record_mutation(
+        &self,
+        phase: &str,
+        mutation_id: &str,
+        account_id: &AccountId,
+        provider_id: &str,
+    ) -> Result<(), MxrError> {
+        use std::io::Write;
+        let path = self
+            .dir
+            .join(format!("mutation-{phase}-{}.json", uuid::Uuid::now_v7()));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        file.write_all(serde_json::json!({"mutation_id": mutation_id, "account_id": account_id, "provider_message_id": provider_id, "phase": phase}).to_string().as_bytes())
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        file.sync_all()
+            .map_err(|error| MxrError::Provider(error.to_string()))?;
+        std::fs::File::open(&self.dir)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| MxrError::Provider(error.to_string()))
+    }
+
     /// The error every sync fails with while `fail` exists.
     pub(crate) fn failure(&self) -> Option<MxrError> {
         let text = std::fs::read_to_string(self.dir.join(FAIL_FILE)).ok()?;

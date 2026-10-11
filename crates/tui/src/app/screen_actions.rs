@@ -138,6 +138,8 @@ impl App {
                 if self.user_sync_acknowledgements_pending == 0 {
                     if !self.user_sync_pending {
                         self.user_sync_targets.clear();
+                        self.user_sync_batch_accounts.clear();
+                        self.user_sync_batch_failures.clear();
                         self.user_sync_events_before_ack.clear();
                     }
                     self.user_sync_pending = true;
@@ -149,7 +151,7 @@ impl App {
                     // `SyncCompleted`.
                     self.queue_mutation(
                         Request::SyncAll,
-                        MutationEffect::RefreshList,
+                        MutationEffect::StatusOnly(String::new()),
                         "Syncing...".into(),
                     );
                 }

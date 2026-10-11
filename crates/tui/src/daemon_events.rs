@@ -54,7 +54,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     }
     match event {
         DaemonEvent::SyncCompleted {
-            account_id: _,
+            account_id,
             messages_synced,
         } => {
             app.mailbox.pending_labels_refresh = true;
@@ -76,7 +76,9 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if let Some(label_id) = app.mailbox.active_label.clone() {
                 app.mailbox.pending_label_fetch = Some(label_id);
             }
-            if messages_synced > 0 {
+            if messages_synced > 0
+                && !sync_event_hidden_by_batch_failure(app, "sync", Some(&account_id))
+            {
                 app.status_message = Some(format!("Synced {messages_synced} messages"));
             }
         }
@@ -124,24 +126,38 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         // analytics, reindex) in the status bar so the user can see
         // the daemon is actually doing work, not hung.
         DaemonEvent::OperationStarted {
-            operation, message, ..
+            operation,
+            account_id,
+            message,
+            ..
         } => {
-            app.status_message = Some(format!("{operation}: {message}"));
+            if !sync_event_hidden_by_batch_failure(app, &operation, account_id.as_ref()) {
+                app.status_message = Some(format!("{operation}: {message}"));
+            }
         }
         DaemonEvent::OperationProgress {
             operation,
+            account_id,
             current,
             total,
             message,
             ..
         } => {
-            let total_str = total.map_or_else(|| "?".into(), |t| t.to_string());
-            app.status_message = Some(format!("{operation} [{current}/{total_str}]: {message}"));
+            if !sync_event_hidden_by_batch_failure(app, &operation, account_id.as_ref()) {
+                let total_str = total.map_or_else(|| "?".into(), |t| t.to_string());
+                app.status_message =
+                    Some(format!("{operation} [{current}/{total_str}]: {message}"));
+            }
         }
         DaemonEvent::OperationCompleted {
-            operation, message, ..
+            operation,
+            account_id,
+            message,
+            ..
         } => {
-            app.status_message = Some(format!("{operation}: {message}"));
+            if !sync_event_hidden_by_batch_failure(app, &operation, account_id.as_ref()) {
+                app.status_message = Some(format!("{operation}: {message}"));
+            }
             // Contacts-related rebuild may have changed analytics
             // data; nudge the active analytics view to refresh.
             if operation == "rebuild-analytics" && app.screen == app::Screen::Analytics {
@@ -149,8 +165,19 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::OperationFailed {
-            operation, error, ..
+            operation,
+            account_id,
+            error,
+            ..
         } => {
+            if operation == "sync" {
+                if let Some(account_id) = account_id.as_ref() {
+                    if app.user_sync_batch_accounts.contains(account_id) {
+                        app.user_sync_batch_failures
+                            .insert(account_id.clone(), error.clone());
+                    }
+                }
+            }
             app.status_message = Some(format!("{operation} failed: {error}"));
         }
         DaemonEvent::MutationReconciliationFailed {
@@ -223,6 +250,19 @@ pub(super) fn handle_sync_batch(app: &mut App, results: Vec<mxr_protocol::SyncAc
     }
     app.user_sync_acknowledgements_pending =
         app.user_sync_acknowledgements_pending.saturating_sub(1);
+    for result in &results {
+        app.user_sync_batch_accounts
+            .insert(result.account_id.clone());
+        if result.result == mxr_protocol::SyncAccountResultKind::Failed {
+            let error = result
+                .error
+                .clone()
+                .unwrap_or_else(|| "sync couldn't start".into());
+            app.user_sync_batch_failures
+                .insert(result.account_id.clone(), error.clone());
+            app.status_message = Some(format!("Sync failed for {}: {error}", result.account_name));
+        }
+    }
     app.user_sync_targets.extend(
         results
             .iter()
@@ -276,10 +316,22 @@ fn apply_user_sync_outcome(app: &mut App, event: &DaemonEvent) {
     match event {
         DaemonEvent::SyncCompleted { account_id, .. } => {
             app.user_sync_targets.remove(account_id);
+            if app.user_sync_batch_failures.remove(account_id).is_some() {
+                app.status_message = sync_batch_failure_message(app).or_else(|| {
+                    Some(format!(
+                        "Sync recovered for {}",
+                        app.account_display_name(account_id)
+                    ))
+                });
+            }
         }
         DaemonEvent::SyncError { account_id, error }
-            if app.user_sync_targets.remove(account_id) =>
+            if app.user_sync_targets.remove(account_id)
+                || app.user_sync_batch_accounts.contains(account_id) =>
         {
+            app.user_sync_batch_accounts.insert(account_id.clone());
+            app.user_sync_batch_failures
+                .insert(account_id.clone(), error.clone());
             app.status_message = Some(format!(
                 "Sync failed for {}: {error}",
                 app.account_display_name(account_id)
@@ -288,6 +340,27 @@ fn apply_user_sync_outcome(app: &mut App, event: &DaemonEvent) {
         _ => {}
     }
     settle_user_sync_pending(app);
+}
+
+fn sync_event_hidden_by_batch_failure(
+    app: &App,
+    operation: &str,
+    account_id: Option<&mxr_core::AccountId>,
+) -> bool {
+    operation == "sync"
+        && !app.user_sync_batch_failures.is_empty()
+        && account_id.is_some_and(|id| app.user_sync_batch_accounts.contains(id))
+}
+
+fn sync_batch_failure_message(app: &App) -> Option<String> {
+    let (account_id, error) = app
+        .user_sync_batch_failures
+        .iter()
+        .min_by_key(|(account_id, _)| account_id.to_string())?;
+    Some(format!(
+        "Sync failed for {}: {error}",
+        app.account_display_name(account_id)
+    ))
 }
 
 fn settle_user_sync_pending(app: &mut App) {
@@ -618,6 +691,162 @@ mod tests {
         assert_eq!(
             app.status_message.as_deref(),
             Some("Sync failed for Work: connection refused")
+        );
+    }
+
+    #[test]
+    fn global_sync_failure_survives_later_healthy_completion_and_operation_ack() {
+        let failed = mxr_core::AccountId::new();
+        let healthy = mxr_core::AccountId::new();
+        let mut app = app_with_account(&failed);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(
+            &mut app,
+            vec![
+                sync_result(&failed, "Work"),
+                sync_result(&healthy, "Personal"),
+            ],
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id: failed,
+                error: "connection refused".into(),
+            },
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: healthy.clone(),
+                messages_synced: 3,
+            },
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationCompleted {
+                operation_id: "healthy-sync".into(),
+                operation: "sync".into(),
+                account_id: Some(healthy),
+                message: "Sync complete: 3 message(s) updated".into(),
+            },
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Sync failed for Work: connection refused")
+        );
+    }
+
+    #[test]
+    fn global_sync_failure_buffered_before_ack_beats_healthy_operation_completion() {
+        let failed = mxr_core::AccountId::new();
+        let healthy = mxr_core::AccountId::new();
+        let mut app = app_with_account(&failed);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id: failed.clone(),
+                error: "connection refused".into(),
+            },
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationCompleted {
+                operation_id: "healthy-sync".into(),
+                operation: "sync".into(),
+                account_id: Some(healthy.clone()),
+                message: "Sync complete: 3 message(s) updated".into(),
+            },
+        );
+        handle_sync_batch(
+            &mut app,
+            vec![
+                sync_result(&failed, "Work"),
+                sync_result(&healthy, "Personal"),
+            ],
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Sync failed for Work: connection refused")
+        );
+    }
+
+    #[test]
+    fn a_later_success_for_the_failed_account_clears_its_batch_failure() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id: account_id.clone(),
+                error: "connection refused".into(),
+            },
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: account_id.clone(),
+                messages_synced: 1,
+            },
+        );
+        assert!(app.user_sync_batch_failures.is_empty());
+        assert_eq!(app.status_message.as_deref(), Some("Synced 1 messages"));
+    }
+
+    #[test]
+    fn recovery_keeps_another_account_failure_visible() {
+        let first = mxr_core::AccountId::new();
+        let second = mxr_core::AccountId::new();
+        let mut app = app_with_account(&first);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(
+            &mut app,
+            vec![
+                sync_result(&first, "Work"),
+                sync_result(&second, "Personal"),
+            ],
+        );
+        for (account_id, error) in [
+            (&first, "work connection refused"),
+            (&second, "personal connection refused"),
+        ] {
+            handle_daemon_event(
+                &mut app,
+                DaemonEvent::SyncError {
+                    account_id: account_id.clone(),
+                    error: error.into(),
+                },
+            );
+        }
+        let recovered = if first.to_string() < second.to_string() {
+            first.clone()
+        } else {
+            second.clone()
+        };
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: recovered.clone(),
+                messages_synced: 0,
+            },
+        );
+        let (remaining_id, error) = app.user_sync_batch_failures.iter().next().unwrap();
+        assert_ne!(remaining_id, &recovered);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some(
+                format!(
+                    "Sync failed for {}: {error}",
+                    app.account_display_name(remaining_id)
+                )
+                .as_str()
+            )
         );
     }
 

@@ -308,6 +308,11 @@ pub struct App {
     pub user_sync_acknowledgements_pending: usize,
     /// Accounts returned as Started or Joined by the user's SyncAll request.
     pub user_sync_targets: HashSet<mxr_core::AccountId>,
+    /// Accounts selected by the current explicit batch, including accounts
+    /// whose start was rejected before a sync event could be emitted.
+    pub user_sync_batch_accounts: HashSet<mxr_core::AccountId>,
+    /// A later account's completion must not hide a failure from this batch.
+    pub user_sync_batch_failures: HashMap<mxr_core::AccountId, String>,
     /// Events can race the SyncAll acknowledgement. Defer them until the
     /// daemon tells us which accounts belong to this user request.
     pub user_sync_events_before_ack: Vec<mxr_protocol::DaemonEvent>,
@@ -505,6 +510,8 @@ impl App {
             user_sync_pending: false,
             user_sync_acknowledgements_pending: 0,
             user_sync_targets: HashSet::new(),
+            user_sync_batch_accounts: HashSet::new(),
+            user_sync_batch_failures: HashMap::new(),
             user_sync_events_before_ack: Vec::new(),
             visible_height: 20,
             html_image_support: None,

@@ -66,16 +66,25 @@ pub(crate) async fn handle_compose_action(
     let mut invite_reply: Option<mxr_core::types::InlineCalendarReply> = None;
     let (account_id, intent, from, kind, signature_kind) = match action {
         ComposeAction::EditDraft { path, account_id } => {
-            // Re-edit existing draft — skip creating a new file
-            let cursor_line = 1;
+            let initial_content = mxr_compose::read_draft_file_async(&path)
+                .await
+                .map_err(|error| MxrError::Ipc(error.to_string()))?;
+            let draft_id =
+                mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
+            let retained = crate::send_recovery_state::for_draft(&draft_id)
+                .map_err(|error| MxrError::Ipc(format!("Cannot read send recovery: {error}")))?;
+            // Reopening a retained send is an explicit review even without edits.
+            // A later Send press still queries acceptance before updating or sending.
             return Ok(ComposeReadyData {
                 account_id,
                 intent: mxr_core::DraftIntent::New,
-                draft_path: path.clone(),
-                cursor_line,
-                initial_content: mxr_compose::read_draft_file_async(&path)
-                    .await
-                    .map_err(|e| MxrError::Ipc(e.to_string()))?,
+                draft_path: path,
+                cursor_line: 1,
+                initial_content: if retained.is_some() {
+                    String::new()
+                } else {
+                    initial_content
+                },
                 invite_reply: None,
             });
         }
@@ -591,7 +600,9 @@ pub(crate) async fn handle_compose_editor_status(
                 match resolve_pending_from(&pending, bg).await {
                     Ok(resolved) => pending.resolved_from = resolved,
                     Err(message) => {
-                        app.report_error("From address rejected", message);
+                        let path = pending.draft_path.display().to_string();
+                        app.restore_failed_compose(pending);
+                        app.report_error("From address rejected", format!("{message}\n\nYour text is still at {path}; close this message and edit the draft."));
                         return;
                     }
                 }
@@ -613,10 +624,12 @@ pub(crate) async fn handle_compose_editor_status(
             let _ = mxr_compose::delete_draft_file_async(&data.draft_path).await;
         }
         Err(error) => {
-            app.schedule_draft_cleanup(data.draft_path.clone());
             app.report_error(
                 "Compose Failed",
-                format!("Failed to launch editor: {error}"),
+                format!(
+                    "Failed to launch editor: {error}\n\nYour draft is still at {}",
+                    data.draft_path.display()
+                ),
             );
         }
     }
@@ -727,8 +740,8 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             });
     let now = chrono::Utc::now();
     mxr_core::Draft {
-        revision: None,
-        id: mxr_core::id::DraftId::new(),
+        revision: Some(1),
+        id: pending.draft_id(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
         // `pending_send_from_edited_draft` before a PendingSend exists, so a
@@ -886,10 +899,9 @@ mod tests {
         let _ = std::fs::remove_file(ready.draft_path);
     }
 
-    /// Plan 004 / Step 4a: editor-launch failure schedules the draft
-    /// file for cleanup so the file is not stranded on disk.
+    /// Editor failure must preserve the user's file and expose its path.
     #[tokio::test]
-    async fn editor_launch_failure_schedules_draft_cleanup() {
+    async fn editor_launch_failure_preserves_draft_and_exposes_path() {
         use crate::app::App;
         use crate::async_result::ComposeReadyData;
 
@@ -919,10 +931,15 @@ mod tests {
         .await;
 
         let cleanup_paths = app.take_pending_draft_cleanup();
-        assert!(
-            cleanup_paths.contains(&temp),
-            "expected {temp:?} in cleanup queue, got: {cleanup_paths:?}"
-        );
+        assert!(cleanup_paths.is_empty());
+        assert!(temp.is_file());
+        assert!(app
+            .modals
+            .error
+            .as_ref()
+            .unwrap()
+            .detail
+            .contains(&temp.display().to_string()));
 
         let _ = std::fs::remove_file(&temp);
     }

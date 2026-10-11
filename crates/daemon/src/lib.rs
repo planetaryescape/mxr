@@ -1138,7 +1138,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 }
             }
         }
+        Some(Command::SendOutcome {
+            operation_id,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::send_outcome(operation_id, account, format).await?;
+        }
         Some(Command::Send {
+            expected_revision,
+            operation_id,
             draft_id,
             account,
             dry_run,
@@ -1153,7 +1163,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             if check {
                 commands::mutations::check_send(draft_id, account, format, no_llm).await?;
             } else if let Some(when) = at {
-                commands::mutations::schedule_send(draft_id, account, when).await?;
+                commands::mutations::schedule_send(draft_id, account, when, expected_revision)
+                    .await?;
             } else {
                 commands::mutations::send_draft(
                     draft_id,
@@ -1162,6 +1173,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     format,
                     override_safety,
                     remind_after,
+                    commands::mutations::SavedSendReview {
+                        expected_revision,
+                        operation_id,
+                    },
                 )
                 .await?;
             }

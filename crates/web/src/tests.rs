@@ -187,6 +187,7 @@ async fn status_endpoint_proxies_ipc_status() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 17,
@@ -554,6 +555,7 @@ async fn auth_accepts_authorization_bearer_header() {
             Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -953,6 +955,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 99,
                     accounts: vec!["work".into()],
                     total_messages: 7,
@@ -1361,6 +1364,7 @@ async fn mailbox_endpoint_lists_envelopes() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1458,6 +1462,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1579,6 +1584,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
+                    send_outcome_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -4377,6 +4383,7 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
 fn sample_status() -> ResponseData {
     ResponseData::Status {
         draft_revision_supported: true,
+        send_outcome_supported: true,
         uptime_secs: 1,
         accounts: vec!["personal".into()],
         total_messages: 10,

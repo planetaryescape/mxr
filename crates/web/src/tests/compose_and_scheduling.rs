@@ -286,7 +286,7 @@ async fn send_stored_adds_message_id_and_draft_id_to_the_receipt() {
 
     let json: serde_json::Value = reqwest::Client::new()
         .post(format!(
-            "http://{addr}/api/v1/mail/drafts/{draft_id}/send-stored"
+            "http://{addr}/api/v1/mail/drafts/{draft_id}/send-stored?expected_revision=1&operation_id={draft_id}:1"
         ))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -397,7 +397,9 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     let scheduled = requests
         .iter()
         .find_map(|request| match request {
-            Request::ScheduleSend { draft_id, send_at } => Some((draft_id.clone(), *send_at)),
+            Request::ScheduleSend {
+                draft_id, send_at, ..
+            } => Some((draft_id.clone(), *send_at)),
             _ => None,
         })
         .expect("stored draft scheduled");

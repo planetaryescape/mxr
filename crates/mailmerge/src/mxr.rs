@@ -5,7 +5,17 @@
 //! safety pipeline, and account/alias ownership checks all apply — a companion
 //! cannot weaken them because it never gets to skip them.
 
+use crate::manifest::SendReview;
 use anyhow::{bail, Context};
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OutcomeState {
+    Accepted,
+    NotAccepted,
+    Unknown,
+}
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -98,25 +108,99 @@ impl Mxr {
         })
     }
 
-    /// Send or schedule one already-created draft through mxr's normal path.
-    pub fn send_draft(&self, draft_id: &str, at: Option<&str>) -> anyhow::Result<()> {
+    pub fn preview(&self, account: &str, draft_id: &str) -> anyhow::Result<SendReview> {
+        let output = Command::new(&self.binary)
+            .args([
+                "send",
+                draft_id,
+                "--account",
+                account,
+                "--dry-run",
+                "--format",
+                "json",
+            ])
+            .output()
+            .context("running reviewed preview")?;
+        anyhow::ensure!(output.status.success(), "reviewed preview failed");
+        #[derive(Deserialize)]
+        struct Identity {
+            operation_id: String,
+            expected_revision: i64,
+        }
+        #[derive(Deserialize)]
+        struct Draft {
+            id: String,
+            account_id: String,
+            revision: i64,
+        }
+        #[derive(Deserialize)]
+        struct Preview {
+            draft: Draft,
+            send_identity: Identity,
+        }
+        let preview: Preview =
+            serde_json::from_slice(&output.stdout).context("invalid reviewed preview")?;
+        anyhow::ensure!(
+            preview.draft.id == draft_id
+                && preview.draft.revision == preview.send_identity.expected_revision
+                && preview.draft.revision > 0
+                && !preview.draft.account_id.is_empty()
+                && !preview.send_identity.operation_id.is_empty(),
+            "reviewed preview conflicts with selected draft"
+        );
+        Ok(SendReview {
+            account_id: preview.draft.account_id,
+            expected_revision: preview.draft.revision,
+            operation_id: preview.send_identity.operation_id,
+            attempt: 0,
+            scheduled_at: None,
+        })
+    }
+    pub fn outcome(&self, account: &str, operation: &str) -> anyhow::Result<Option<OutcomeState>> {
+        let output = Command::new(&self.binary)
+            .args([
+                "send-outcome",
+                operation,
+                "--account",
+                account,
+                "--format",
+                "json",
+            ])
+            .output()
+            .context("running send outcome query")?;
+        anyhow::ensure!(output.status.success(), "send outcome query failed");
+        #[derive(Deserialize)]
+        struct Outcome {
+            state: OutcomeState,
+        }
+        Ok(serde_json::from_slice::<Option<Outcome>>(&output.stdout)
+            .context("invalid send outcome response")?
+            .map(|o| o.state))
+    }
+    /// Submit only the manifest's durably retained reviewed command.
+    pub fn send_draft(&self, draft_id: &str, review: &SendReview) -> anyhow::Result<()> {
         let mut command = Command::new(&self.binary);
-        command.arg("send").arg(draft_id);
-        if let Some(at) = at {
-            command.arg("--at").arg(at);
+        command.args([
+            "send",
+            draft_id,
+            "--account",
+            &review.account_id,
+            "--expected-revision",
+            &review.expected_revision.to_string(),
+            "--operation-id",
+            &review.operation_id,
+        ]);
+        if let Some(at) = &review.scheduled_at {
+            command.args(["--at", at]);
         }
         let output = command
-            .arg("--format")
-            .arg("json")
+            .args(["--format", "json"])
             .output()
-            .with_context(|| format!("running `{} send`", self.binary))?;
-
-        if !output.status.success() {
-            bail!(
-                "{}",
-                first_lines(&String::from_utf8_lossy(&output.stderr), 6)
-            );
-        }
+            .context("running reviewed send")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "reviewed send or schedule did not acknowledge success"
+        );
         Ok(())
     }
 
@@ -365,7 +449,17 @@ mod tests {
         fn send_hands_the_draft_id_back_to_mxr() {
             let stub = Stub::new();
             let mxr = Mxr::new(Some(stub.binary()));
-            mxr.send_draft("draft-7", None).unwrap();
+            mxr.send_draft(
+                "draft-7",
+                &SendReview {
+                    account_id: "notto".into(),
+                    expected_revision: 1,
+                    operation_id: "draft-7:1".into(),
+                    attempt: 0,
+                    scheduled_at: None,
+                },
+            )
+            .unwrap();
 
             let argv = stub.calls().remove(0);
             assert_eq!(argv[0], "send");
@@ -377,8 +471,17 @@ mod tests {
         fn scheduled_send_hands_one_absolute_time_to_mxr() {
             let stub = Stub::new();
             let mxr = Mxr::new(Some(stub.binary()));
-            mxr.send_draft("draft-7", Some("2026-08-05T08:00:00Z"))
-                .unwrap();
+            mxr.send_draft(
+                "draft-7",
+                &SendReview {
+                    account_id: "notto".into(),
+                    expected_revision: 1,
+                    operation_id: "draft-7:1".into(),
+                    attempt: 0,
+                    scheduled_at: Some("2026-08-05T08:00:00Z".into()),
+                },
+            )
+            .unwrap();
 
             let argv = stub.calls_to("send").remove(0);
             assert_eq!(argv[1], "draft-7");
@@ -392,9 +495,18 @@ mod tests {
         fn a_failing_send_is_an_error() {
             let stub = Stub::failing("smtp said no");
             let err = Mxr::new(Some(stub.binary()))
-                .send_draft("draft-7", None)
+                .send_draft(
+                    "draft-7",
+                    &SendReview {
+                        account_id: "notto".into(),
+                        expected_revision: 1,
+                        operation_id: "draft-7:1".into(),
+                        attempt: 0,
+                        scheduled_at: None,
+                    },
+                )
                 .unwrap_err();
-            assert!(err.to_string().contains("smtp said no"), "{err}");
+            assert!(err.to_string().contains("did not acknowledge"), "{err}");
         }
 
         #[test]

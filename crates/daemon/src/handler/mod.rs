@@ -111,8 +111,11 @@ pub(crate) use account_config::{list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
+#[cfg(test)]
+pub(crate) use mutations::send_stored_draft;
+
 pub(crate) use mutations::{
-    drain_search_reindex_pending, reconcile_provider_drafts, send_stored_draft,
+    drain_search_reindex_pending, reconcile_provider_drafts, send_stored_draft_reviewed,
 };
 pub(crate) use status_helpers::{
     build_doctor_findings, doctor_data_stats, latest_successful_sync_at, no_error_findings,
@@ -1089,9 +1092,11 @@ async fn dispatch(
         Request::CancelAutoReminder { sent_message_id } => {
             reply_later::cancel_auto_reminder(state, sent_message_id).await
         }
-        Request::ScheduleSend { draft_id, send_at } => {
-            mutations::schedule_send(state, draft_id, *send_at).await
-        }
+        Request::ScheduleSend {
+            draft_id,
+            send_at,
+            expected_revision,
+        } => mutations::schedule_send(state, draft_id, *send_at, *expected_revision).await,
         Request::CancelScheduledSend { draft_id } => {
             mutations::cancel_scheduled_send(state, draft_id).await
         }
@@ -1726,13 +1731,35 @@ async fn dispatch(
         }
         Request::SendDraft {
             draft,
+            send_identity,
             override_safety_token,
-        } => mutations::send_draft(state, draft, override_safety_token.as_deref()).await,
+        } => {
+            mutations::send_draft_reviewed(
+                state,
+                draft,
+                send_identity.as_ref(),
+                override_safety_token.as_deref(),
+            )
+            .await
+        }
         Request::SaveDraft { draft } => mutations::save_draft(state, draft).await,
         Request::SendStoredDraft {
             draft_id,
+            send_identity,
             override_safety_token,
-        } => mutations::send_stored_draft(state, draft_id, override_safety_token.as_deref()).await,
+        } => {
+            mutations::send_stored_draft_reviewed(
+                state,
+                draft_id,
+                send_identity.as_ref(),
+                override_safety_token.as_deref(),
+            )
+            .await
+        }
+        Request::GetSendOutcome {
+            account_id,
+            operation_id,
+        } => mutations::get_send_outcome(state, account_id, operation_id).await,
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
@@ -2115,6 +2142,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListDrafts
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
+        | Request::GetSendOutcome { .. }
         | Request::GetDraft { .. }
         | Request::ExportThread { .. }
         | Request::ExportSearch { .. }
@@ -2531,6 +2559,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListCadenceWatch { .. } => "list_cadence_watch",
         Request::ListCadenceDrift { .. } => "list_cadence_drift",
         Request::DeleteDraft { .. } => "delete_draft",
+        Request::GetSendOutcome { .. } => "get_send_outcome",
         Request::GetDraft { .. } => "get_draft",
         Request::UpdateDraft { .. } => "update_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",

@@ -168,7 +168,7 @@ async fn plan(
         ));
     }
     if let Some(claim) = state.store.got_it_for(&target.id).await? {
-        return Err(refuse(already(&claim)));
+        return Err(refuse(already(&claim, &account_id)));
     }
     // Anything of yours after their message answers it: a repeat Got it,
     // or a reply you already sent.
@@ -369,13 +369,13 @@ fn token(plan: &AckPlanData, in_reply_to: &str, issued: i64) -> String {
 }
 
 /// Why a message can't be acknowledged again.
-fn already(claim: &mxr_store::GotItRecord) -> String {
+fn already(claim: &mxr_store::GotItRecord, account: &mxr_core::AccountId) -> String {
     if claim.sent_message_id.is_some() {
         "Already acknowledged: Got it went to that message.".to_string()
     } else {
         format!(
-            "A Got it to that message may already have gone out (draft {}), so it won't be sent again. Check Sent, and reply by hand if it didn't arrive.",
-            claim.draft_id
+            "A Got it to that message needs an outcome check (draft {}). It won't be sent again. Query mxr send-outcome 'draft:{}' --account {}; do not resend blindly.",
+            claim.draft_id, claim.draft_id, account
         )
     }
 }
@@ -493,7 +493,9 @@ pub(super) async fn ack_at(
         .await?
     {
         mxr_store::GotItClaim::Claimed => {}
-        mxr_store::GotItClaim::Existing(claim) => return Err(refuse(already(&claim))),
+        mxr_store::GotItClaim::Existing(claim) => {
+            return Err(refuse(already(&claim, &draft.account_id)))
+        }
     }
     let sent = match super::mutations::send_draft(state, &draft, None).await {
         Ok(ResponseData::SendReceipt {
@@ -501,8 +503,8 @@ pub(super) async fn ack_at(
         }) => local_message_id,
         Ok(_) | Err(_) => {
             return Err(HandlerError::Message(format!(
-                "Got it may not have gone out (draft {}). It won't be sent again; check Sent, and reply by hand if it didn't arrive.",
-                draft.id
+                "Got it needs an outcome check (draft {}). It won't be sent again. Query mxr send-outcome 'draft:{}' --account {}; do not resend blindly.",
+                draft.id, draft.id, draft.account_id
             )));
         }
     };

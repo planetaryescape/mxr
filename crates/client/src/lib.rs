@@ -267,6 +267,31 @@ impl IpcConnection {
     {
         if matches!(
             request,
+            Request::SendDraft { .. }
+                | Request::SendStoredDraft { .. }
+                | Request::ScheduleSend { .. }
+                | Request::GetSendOutcome { .. }
+        ) {
+            let status = self
+                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .await?;
+            if !matches!(
+                status,
+                Response::Ok {
+                    data: ResponseData::Status {
+                        send_outcome_supported: true,
+                        ..
+                    }
+                }
+            ) {
+                return Ok(Response::error_kinded(
+                    "Daemon does not support reviewed send outcomes; upgrade before sending",
+                    mxr_protocol::IpcErrorKind::Unsupported,
+                ));
+            }
+        }
+        if matches!(
+            request,
             Request::SaveDraft { .. }
                 | Request::UpdateDraft { .. }
                 | Request::DeleteDraft { .. }
@@ -280,6 +305,7 @@ impl IpcConnection {
                 Response::Ok {
                     data: ResponseData::Status {
                         draft_revision_supported: true,
+                        send_outcome_supported: true,
                         ..
                     }
                 }
@@ -897,5 +923,63 @@ mod draft_revision_compatibility_tests {
         ));
         server.await.expect("compatibility test fixture");
         let _ = AccountId::new();
+    }
+    #[tokio::test]
+    async fn legacy_daemon_receives_no_reviewed_send_without_outcome_capability() {
+        let dir = tempfile::tempdir().expect("send compatibility fixture");
+        let sock = dir.path().join("legacy-send.sock");
+        let listener = UnixListener::bind(&sock).expect("send compatibility fixture");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("send compatibility fixture");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            let request = framed
+                .next()
+                .await
+                .expect("send compatibility fixture")
+                .expect("send compatibility fixture");
+            assert!(matches!(
+                request.payload,
+                IpcPayload::Request(Request::GetStatus)
+            ));
+            framed
+                .send(IpcMessage {
+                    id: request.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok {
+                        data: ResponseData::Ack,
+                    }),
+                })
+                .await
+                .expect("send compatibility fixture");
+            assert!(
+                tokio::time::timeout(Duration::from_millis(100), framed.next())
+                    .await
+                    .is_err()
+            );
+        });
+        let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
+            .await
+            .expect("send compatibility fixture");
+        let draft_id = DraftId::new();
+        let response = connection
+            .request_response(
+                Request::SendStoredDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_revision(&draft_id, 1)),
+                    draft_id,
+                    override_safety_token: None,
+                },
+                |_| {},
+                Some(Duration::from_secs(1)),
+            )
+            .await
+            .expect("send compatibility fixture");
+        assert!(matches!(
+            response,
+            Response::Error {
+                kind: IpcErrorKind::Unsupported,
+                ..
+            }
+        ));
+        server.await.expect("send compatibility fixture");
     }
 }

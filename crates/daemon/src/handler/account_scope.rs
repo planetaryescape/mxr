@@ -367,6 +367,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Targets(vec![T::DraftBody(draft)]),
+        Request::GetSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
         Request::DraftRefine { draft_id, .. }
         | Request::SendStoredDraft { draft_id, .. }
         | Request::ScheduleSend { draft_id, .. }
@@ -573,9 +574,19 @@ async fn resolve_targets(
                     .store
                     .get_draft(draft_id)
                     .await
+                    .map_err(|e| e.to_string())?;
+                if let Some(draft) = draft {
+                    resolved.push(draft.account_id);
+                } else if let Some(outcome) = state
+                    .store
+                    .get_draft_send_outcome(draft_id)
+                    .await
                     .map_err(|e| e.to_string())?
-                    .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
-                resolved.push(draft.account_id);
+                {
+                    resolved.push(outcome.account_id);
+                } else {
+                    return Err(format!("Draft not found: {draft_id}"));
+                }
             }
             T::DraftBody(draft) => {
                 resolved.push(draft.account_id.clone());
@@ -883,6 +894,7 @@ pub(super) async fn scope_response(
     match data {
         ResponseData::Status {
             draft_revision_supported,
+            send_outcome_supported,
             uptime_secs,
             accounts: _,
             total_messages,
@@ -917,6 +929,7 @@ pub(super) async fn scope_response(
             };
             Ok(ResponseData::Status {
                 draft_revision_supported,
+                send_outcome_supported,
                 uptime_secs,
                 accounts: allowed
                     .iter()

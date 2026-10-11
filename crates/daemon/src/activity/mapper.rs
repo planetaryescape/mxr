@@ -414,7 +414,9 @@ pub fn map_request(
                 "dry_run": dry_run,
             })),
         ),
-        Request::ScheduleSend { draft_id, send_at } => (
+        Request::ScheduleSend {
+            draft_id, send_at, ..
+        } => (
             "mail.send",
             Some("draft"),
             Some(draft_id.as_str().clone()),
@@ -720,6 +722,7 @@ pub fn map_request(
         | Request::ListDrafts
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
+        | Request::GetSendOutcome { .. }
         | Request::GetDraft { .. } => {
             skip_activity!(
                 "read_list_status",
@@ -1391,6 +1394,7 @@ mod tests {
         );
 
         let entry = ok_map(&Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         })
@@ -1427,6 +1431,7 @@ mod tests {
         );
 
         let entry = ok_map(&Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         })

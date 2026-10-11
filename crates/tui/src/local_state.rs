@@ -35,7 +35,7 @@ pub async fn save_async(state: TuiLocalState) -> std::io::Result<()> {
     tokio::fs::write(path, content).await
 }
 
-fn save_to_path(path: &std::path::Path, state: &TuiLocalState) -> std::io::Result<()> {
+pub(crate) fn save_to_path(path: &std::path::Path, state: &TuiLocalState) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

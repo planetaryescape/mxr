@@ -143,6 +143,19 @@ pub trait MailSendProvider: Send + Sync {
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt>;
 
+    /// Adapters override this only when they have evidence that submission
+    /// did not happen. A generic provider error cannot establish safe retry.
+    async fn send_classified(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> std::result::Result<SendReceipt, SendFailure> {
+        self.send(draft, from, rfc2822_message_id)
+            .await
+            .map_err(SendFailure::Unknown)
+    }
+
     async fn send_calendar_reply(
         &self,
         _reply: &CalendarReplyMessage,
@@ -197,4 +210,10 @@ pub trait MailSendProvider: Send + Sync {
             "Server-side draft deletion not supported by this provider".to_string(),
         ))
     }
+}
+
+#[derive(Debug)]
+pub enum SendFailure {
+    NotAccepted(MxrError),
+    Unknown(MxrError),
 }

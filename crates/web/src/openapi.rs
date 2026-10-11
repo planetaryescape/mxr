@@ -240,16 +240,215 @@ endpoint!(post attachment_download "/api/v1/mail/attachments/download", "Downloa
 endpoint!(post label_create "/api/v1/mail/labels/create", "Create a label");
 endpoint!(post label_rename "/api/v1/mail/labels/rename", "Rename a label");
 endpoint!(post label_delete "/api/v1/mail/labels/delete", "Delete a label");
-endpoint!(get categories_list "/api/v1/mail/categories", "List personal categories");
-endpoint!(get categories_messages "/api/v1/mail/categories/messages", "List messages in a category");
-endpoint!(post categories_memberships "/api/v1/mail/categories/memberships", "Read category assignments for selected messages");
-endpoint!(post categories_create "/api/v1/mail/categories", "Create a personal category");
-endpoint!(post categories_name_preview "/api/v1/mail/categories/name/preview", "Validate a personal category name");
-endpoint!(post categories_rename "/api/v1/mail/categories/rename", "Rename a personal category");
-endpoint!(post categories_assignment_preview "/api/v1/mail/categories/assignment/preview", "Preview category assignments");
-endpoint!(post categories_assignment_apply "/api/v1/mail/categories/assignment/apply", "Apply previewed category assignments");
-endpoint!(post categories_delete "/api/v1/mail/categories/delete", "Preview or delete a personal category");
-endpoint!(post categories_undo "/api/v1/mail/categories/undo", "Undo category assignments");
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoriesResponse {
+    categories: Vec<mxr_core::PersonalCategory>,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryMessagesResponse {
+    envelopes: Vec<mxr_core::Envelope>,
+    total: u32,
+    has_more: bool,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryMembershipStatesResponse {
+    states: Vec<mxr_core::CategoryMembershipState>,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryNamePreviewResponse {
+    normalized_name: String,
+    available: bool,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryMembershipAppliedResponse {
+    mutation_id: String,
+    added: u32,
+    removed: u32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum CategoryDeleteResponse {
+    Preview(mxr_protocol::CategoryDeletePreview),
+    Deleted(CategoryDeletedResponse),
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryDeletedResponse {
+    category_id: mxr_core::CategoryId,
+    name: String,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct CategoryMembershipUndoneResponse {
+    restored: u32,
+    skipped: u32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/categories",
+    summary = "List personal categories",
+    params(("account_id" = Option<String>, Query, description = "Filter membership counts to this account")),
+    responses(
+        (status = 200, description = "Personal categories and account-scoped counts", body = CategoriesResponse),
+        (status = 400, description = "Malformed account id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_list() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/categories/messages",
+    summary = "List messages in a personal category",
+    params(
+        ("category_id" = String, Query, description = "Stable category id"),
+        ("account_id" = Option<String>, Query, description = "Restrict messages to this account"),
+        ("limit" = Option<u32>, Query, description = "Page size; defaults to 50"),
+        ("offset" = Option<u32>, Query, description = "Zero-based page offset")
+    ),
+    responses(
+        (status = 200, description = "Page of category messages", body = CategoryMessagesResponse),
+        (status = 400, description = "Missing or invalid category id"),
+        (status = 404, description = "Category was not found"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_messages() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/memberships",
+    summary = "Read category assignments for selected messages",
+    request_body = crate::CategoryMembershipStateBody,
+    responses(
+        (status = 200, description = "Membership counts for each selected category", body = CategoryMembershipStatesResponse),
+        (status = 400, description = "Malformed account, message, or category id"),
+        (status = 422, description = "The daemon rejected this account-scoped lookup"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_memberships() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories",
+    summary = "Create a personal category",
+    request_body = crate::CategoryNameBody,
+    responses(
+        (status = 200, description = "Updated personal category catalog", body = CategoriesResponse),
+        (status = 422, description = "The daemon rejected an invalid or duplicate category name"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_create() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/name/preview",
+    summary = "Validate a personal category name without changing the catalog",
+    request_body = crate::CategoryNamePreviewBody,
+    responses(
+        (status = 200, description = "Normalized name and whether it is available", body = CategoryNamePreviewResponse),
+        (status = 400, description = "Malformed category id"),
+        (status = 422, description = "The daemon rejected an invalid category name"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_name_preview() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/rename",
+    summary = "Rename a personal category while preserving its id and memberships",
+    request_body = crate::RenameCategoryBody,
+    responses(
+        (status = 200, description = "Updated personal category catalog", body = CategoriesResponse),
+        (status = 400, description = "Malformed category id"),
+        (status = 422, description = "The daemon rejected an invalid or duplicate category name"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_rename() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/assignment/preview",
+    summary = "Preview category assignments for selected messages",
+    request_body = crate::CategoryMembershipBody,
+    responses(
+        (status = 200, description = "Stale-safe assignment preview and confirmation token", body = mxr_protocol::CategoryMembershipPreview),
+        (status = 400, description = "Malformed account, message, or category id"),
+        (status = 422, description = "The daemon rejected this account-scoped selection or category"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_assignment_preview() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/assignment/apply",
+    summary = "Apply previewed category assignments",
+    request_body = crate::CategoryTokenBody,
+    responses(
+        (status = 200, description = "Applied assignment counts and Undo mutation id", body = CategoryMembershipAppliedResponse),
+        (status = 422, description = "The daemon rejected an invalid, stale, or expired preview token"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_assignment_apply() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/delete",
+    summary = "Preview category deletion or apply its stale-safe preview",
+    request_body = crate::DeleteCategoryBody,
+    responses(
+        (status = 200, description = "Deletion preview, or deleted category id and name", body = CategoryDeleteResponse),
+        (status = 400, description = "Malformed category id"),
+        (status = 404, description = "Category was not found"),
+        (status = 422, description = "The daemon rejected a stale, missing, or expired preview token"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_delete() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/categories/undo",
+    summary = "Undo a category assignment mutation",
+    request_body = crate::CategoryUndoBody,
+    responses(
+        (status = 200, description = "Restored and skipped membership counts", body = CategoryMembershipUndoneResponse),
+        (status = 404, description = "Mutation was not found"),
+        (status = 422, description = "The daemon rejected an invalid, stale, or expired mutation id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn categories_undo() {}
 endpoint!(post mail_unsnooze_one "/api/v1/mail/snoozed/{message_id}/wake", "Wake one snoozed message");
 
 endpoint!(get reply_later_list "/api/v1/mail/reply-later", "List reply-later messages");

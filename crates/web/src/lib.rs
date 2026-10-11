@@ -3715,7 +3715,7 @@ async fn delete_label(
     .await
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryQuery {
     #[serde(default)]
     account_id: Option<String>,
@@ -3790,7 +3790,7 @@ async fn list_category_messages(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryMembershipStateBody {
     account_id: Option<String>,
     message_ids: Vec<String>,
@@ -3840,12 +3840,12 @@ async fn get_category_memberships(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryNameBody {
     name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryNamePreviewBody {
     #[serde(default)]
     category_id: Option<String>,
@@ -3904,7 +3904,7 @@ async fn create_category(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct RenameCategoryBody {
     category_id: String,
     name: String,
@@ -3935,7 +3935,7 @@ async fn rename_category(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryMembershipBody {
     #[serde(default)]
     account_id: Option<String>,
@@ -4001,11 +4001,11 @@ async fn preview_category_membership(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryTokenBody {
     preview_token: String,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct CategoryUndoBody {
     mutation_id: String,
 }
@@ -4036,7 +4036,7 @@ async fn apply_category_membership(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct DeleteCategoryBody {
     #[serde(default)]
     category_id: Option<String>,

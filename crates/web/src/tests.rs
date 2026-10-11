@@ -1027,6 +1027,38 @@ async fn openapi_spec_snapshot() {
         .await
         .unwrap();
 
+    let paths = &json["paths"];
+    let create = &paths["/api/v1/mail/categories"]["post"];
+    let create_schema = create
+        .pointer("/requestBody/content/application~1json/schema")
+        .map(|schema| openapi_schema(&json, schema))
+        .expect("category create request schema");
+    assert_eq!(create_schema["properties"]["name"]["type"], "string");
+    assert!(create_schema["required"]
+        .as_array()
+        .is_some_and(|required| required.iter().any(|field| field == "name")));
+
+    let apply = &paths["/api/v1/mail/categories/assignment/apply"]["post"];
+    let apply_schema = apply
+        .pointer("/requestBody/content/application~1json/schema")
+        .map(|schema| openapi_schema(&json, schema))
+        .expect("category assignment apply request schema");
+    assert_eq!(
+        apply_schema["properties"]["preview_token"]["type"],
+        "string"
+    );
+    assert!(apply_schema["required"]
+        .as_array()
+        .is_some_and(|required| required.iter().any(|field| field == "preview_token")));
+
+    let account_filter = paths["/api/v1/mail/categories"]["get"]["parameters"]
+        .as_array()
+        .expect("category account filter parameters")
+        .iter()
+        .find(|parameter| parameter["name"] == "account_id")
+        .expect("account_id query filter");
+    assert_eq!(account_filter["in"], "query");
+
     // Snapshot a stable subset (top-level metadata + security scheme +
     // schema names). Snapshotting the full spec is too noisy across
     // utoipa version bumps; snapshotting nothing means drift slips by.
@@ -1045,6 +1077,17 @@ async fn openapi_spec_snapshot() {
     });
 
     insta::assert_json_snapshot!("openapi_spec_summary", summary);
+}
+
+fn openapi_schema<'a>(
+    spec: &'a serde_json::Value,
+    schema: &'a serde_json::Value,
+) -> &'a serde_json::Value {
+    schema
+        .get("$ref")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|reference| spec.pointer(reference.strip_prefix('#').unwrap_or(reference)))
+        .unwrap_or(schema)
 }
 
 /// Slice 2 — Swagger UI is served to authenticated local clients so

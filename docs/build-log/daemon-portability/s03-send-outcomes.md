@@ -1,16 +1,20 @@
 # Reviewed sends retain outcomes after disconnect
 
-S03 adds a durable send operation to the saved draft pipeline. The completion
-check is an isolated fake-provider CLI send whose response is lost, followed by
-an outcome query after draft cleanup and daemon restart with one provider
-acceptance. A provider acceptance followed by an error, process interruption or
-receipt-write failure remains uncertain and blocks another send.
+The reviewed S03 candidate adds a durable send operation to the saved-draft
+pipeline. The completion check uses an isolated fake-provider CLI send whose
+response is lost, followed by an outcome query after draft cleanup and daemon
+restart with one provider acceptance. The first observed `accepted` query
+already had a local message ID;
+a separate injected ingest failure proves that `accepted` can remain recorded
+without one. A provider acceptance followed by an error, process interruption
+or receipt-write failure remains uncertain and blocks another send.
 
 ## Review supplies the revision and query identity
 
 ```sh
 mxr send DRAFT_ID --dry-run --format json
-mxr send DRAFT_ID --expected-revision REVISION --format json
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW --format json
 mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
 ```
 
@@ -85,11 +89,13 @@ python3 scripts/verify-send-outcomes.py --binary target-cli/debug/mxr \
   --runtime /tmp/mxr-s03-new-runtime --evidence /tmp/mxr-s03-new-evidence.json
 ```
 
-It exercises lost IPC response, accepted query before optional local indexing,
-restart, authenticated HTTP query after cleanup, uncertain acceptance, a process
-crash before receipt persistence, and an unchanged reviewed retry after proven
-non-acceptance, pipeable reminder JSONL and accepted state when optional local
-indexing/reminder setup fails. The acceptance counter is external to SQLite and survives restart.
+It exercises lost IPC response, an accepted query after local indexing, restart,
+authenticated HTTP query after cleanup, uncertain acceptance, a process crash
+before receipt persistence, and an unchanged reviewed retry after proven
+non-acceptance. A separate injected ingest failure verifies acceptance without
+a local message ID. The acceptance counter is external to SQLite and survives
+restart. Reminder JSONL remains pipeable, and reminder-setup failure does not
+change the recorded accepted outcome.
 Root owns the installed-release rerun and release verification.
 
 ## Inline review keeps this send-specific
@@ -113,8 +119,9 @@ Replacing these conventions across the suite is outside this slice.
 
 Two failed assumptions were corrected: migration files need explicit registration
 in this store, and a missing provider is a pre-claim failure rather than evidence
-of a claimed heartbeat. The first consumer poll can observe accepted state before
-local indexing; the smoke now records that state and waits separately for cleanup.
+of a claimed send outcome. The first accepted consumer query already contained a
+local message ID; the no-local-ID accepted state is established separately by
+the injected ingest failure.
 
 The implementation began from freshly fetched main
 `a928c63f9a0fd3c2c9e3e78fdbb157695ebf8b80`. Exact candidate identity, gate results,

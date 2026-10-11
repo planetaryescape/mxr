@@ -4,4 +4,11 @@ At candidate `010ae9518c5ee9bf96c194628483e10a0f0ac4ce`, CI run [38128915333](ht
 
 The final S02 CI run at candidate `3d338bebfa9e6b714b6f9503ed5546c037d5eef1` passed all 381 browser tests without retries, including this test. The [curated run record](../build-log/daemon-portability/evidence/s02-ci-38130635937-3d338beb.json) confirms zero flaky tests. That clean run does not establish the cause of the earlier mismatch.
 
+The S03 baseline at `3b5648422e1d284cf369e54c1dfae99052ac93da` saw the same
+expected-453/received-452 mismatch at [the unchanged first-frame assertion](https://github.com/planetaryescape/mxr/blob/3b5648422e1d284cf369e54c1dfae99052ac93da/apps/web/e2e/resizable-panes.spec.ts#L199)
+in [CI run 38138146795, Web E2E job 114466290553](https://github.com/planetaryescape/mxr/actions/runs/38138146795/job/114466290553).
+The retry passed; the job reported 380 passed and one flaky test, plus four
+passing speed checks. The log does not identify the cause. The final corrected
+S03 CI run is pending and tracked separately.
+
 Reproduce the specific test and capture the persisted width, viewport and frame measurements before choosing a fix. Keep the assertion that reload does not visibly shift the pane; do not replace it with an arbitrary larger tolerance. This is outside S02 draft revision behavior and does not block S02 release acceptance.

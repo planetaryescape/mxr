@@ -88,7 +88,8 @@ mxr compose --account notto --to person@example.com \
 ```
 
 `--draft` cannot send: it conflicts with `--yes` in the parser. Sending stays a
-separate `mxr send DRAFT_ID` call.
+separate reviewed `mxr send DRAFT_ID` call using the revision and operation ID
+from its preview.
 
 This CLI contract is the supported integration path for external tools such as
 [`mxr-mailmerge`](/guides/mail-merge/). The daemon socket exists but is not a
@@ -160,10 +161,19 @@ mxr archive --search 'from:noreply@example.com older_than:30d' --account work --
 ## Idempotency
 
 - `mxr archive` / `read-archive` / `trash` / `spam` / `star` / `unstar` / `read` / `unread` / `label` / `unlabel` / `move` / `snooze` / `unsnooze` are **idempotent** — re-running with the same target IDs leaves state unchanged after the first call.
-- `mxr send DRAFT_ID` is **not idempotent** — calling twice will send twice (the daemon schedules the second send). Always check `mxr drafts list` first.
+- A saved-draft send is bound to its reviewed revision and operation ID. Repeating the same operation ID retrieves its retained outcome; it does not start another send. An `unknown` outcome may have been accepted, so query it and do not resend. A `not_accepted` outcome means that operation was not accepted; review again and use a fresh operation ID for a new attempt.
 - `mxr unsubscribe` may hit a provider URL once; re-running on an already-unsubscribed message is harmless but emits no useful new state.
 - `mxr undo MUTATION_ID` works within a 60-second window; after that it returns an error.
 - An undoable mutation normally returns a `mutation_id`. If that field is absent **and** the result has `"undo_unavailable": true`, the mutation succeeded but its undo entry could not be recorded — it can't be reversed with `mxr undo`. A plain absent `mutation_id` (no `undo_unavailable`) just means nothing was changed that undo could reverse (a dry run, or every message skipped).
+
+For a saved draft, preview first and retain both the reviewed revision and the
+operation ID. The send command prints the ID and an outcome-query command to
+stderr before submission. Query that ID after a lost response rather than
+rerunning a one-shot command. `compose`, `reply`, `reply-all`, and `forward`
+with `--yes` create and send a new draft on each invocation, so rerunning one
+can create a second message even though saved-draft operations are protected.
+See [crash-safe drafts](/guides/crash-safe-drafts/) for the review and recovery
+steps.
 
 ## See also
 

@@ -54,7 +54,9 @@ mxr export <thread_id>                       # Markdown export
 # Compose / send / undo
 mxr compose --to a@x.com --subject "Hi" --body "Hello"
 mxr reply <id> --body "Thanks!"
-mxr send <draft_id> --at "monday 9am"        # Scheduled send
+mxr send DRAFT_ID --dry-run --format json    # Review revision and operation
+mxr send DRAFT_ID --at "monday 9am" \
+  --expected-revision REVISION_FROM_PREVIEW
 mxr drafts scheduled                         # What is going out later
 mxr unsend <draft_id>                        # Cancel a scheduled send
 mxr undo <mutation_id>                       # ~60s window on destructive ops
@@ -142,11 +144,19 @@ mxr response-time                            # My reply percentiles
 **Schedule and unsend:**
 ```bash
 mxr compose --to a@x.com --subject "..." --body "..."       # Becomes draft
-mxr send <draft_id> --at "monday 9am"
+mxr send DRAFT_ID --dry-run --format json
+mxr send DRAFT_ID --at "monday 9am" \
+  --expected-revision REVISION_FROM_PREVIEW
 mxr unsend <draft_id>                                       # Before it fires
 ```
 
 For the full skill content, see [SKILL.md on GitHub](https://github.com/planetaryescape/mxr/blob/main/.agents/skills/mxr/SKILL.md) and [references/commands.md](https://github.com/planetaryescape/mxr/blob/main/.agents/skills/mxr/references/commands.md). For the human-facing surface, see [the CLI overview](/reference/cli/) and the [automation contract](/guides/automation-contract/).
+
+For saved-draft sends, retain the revision and operation ID from the preview.
+If a response is lost, query that operation; do not retry an `unknown` send.
+One-shot compose, reply, reply-all, and forward commands with `--yes` print
+their operation ID to stderr before submission, but rerunning one creates a
+new draft.
 
 ## Install — Cursor
 

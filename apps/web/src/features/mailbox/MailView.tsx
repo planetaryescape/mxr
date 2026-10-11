@@ -34,6 +34,26 @@ export function MailView({ route }: { route: LensRoute }) {
   if (route.kind === "system" && PAGE_MAILBOXES[route.mailbox]) {
     return <Navigate to={PAGE_MAILBOXES[route.mailbox]!} replace />;
   }
+  const needsShell = route.kind !== "system" || route.mailbox !== "inbox";
+  if (needsShell && !shell.data && (shell.fetchStatus === "paused" || shell.isError)) {
+    const waiting = shell.fetchStatus === "paused";
+    return (
+      <Centered
+        icon={<RefreshCw className="size-6" />}
+        title={waiting ? "Waiting for mxr" : "Couldn't load mail lists"}
+        body={
+          waiting
+            ? "Labels and saved searches will appear when mxr reconnects."
+            : shell.error?.message
+        }
+        action={
+          <Button size="sm" onClick={() => void shell.refetch()}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
   const lens = resolveLens(route, lenses);
   if (!lens) {
     if (phase !== "ready") return <ListSkeleton quiet={phase === "quiet"} />;

@@ -9,6 +9,7 @@ import { DENSITIES } from "./AppearanceSection";
 import { SelectSetting, SettingRow } from "./settingsParts";
 import { Button } from "@/components/ui/button";
 import {
+  readEmailHtmlSenderOverrides,
   useUiPrefs,
   type EmailHtmlTheme,
   type ReaderLayout,
@@ -17,6 +18,7 @@ import {
 
 export function ReaderSection() {
   const prefs = useUiPrefs();
+  const emailHtmlSenderOverrides = readEmailHtmlSenderOverrides(prefs.emailHtmlSenderOverrides);
   return (
     <div>
       <SelectSetting<ReaderLayout>
@@ -59,14 +61,42 @@ export function ReaderSection() {
       />
       <SelectSetting<EmailHtmlTheme>
         label="HTML mail canvas"
-        description="Dark renders HTML mail on a dark canvas; original keeps the sender's colours."
+        description="Auto adapts simple mail for dark mode and preserves designed mail; choose a canvas per message when needed."
         value={prefs.emailHtmlTheme}
         options={[
+          { value: "auto", label: "Auto" },
           { value: "dark", label: "Dark" },
           { value: "original", label: "Original" },
         ]}
         onChange={prefs.setEmailHtmlTheme}
       />
+      {emailHtmlSenderOverrides.length > 0 ? (
+        <SettingRow
+          label="HTML mail preferences by sender"
+          description="These choices override Auto for that sender."
+        >
+          <ul aria-label="HTML mail preferences by sender" className="w-full">
+            {emailHtmlSenderOverrides.map(({ sender, theme }) => (
+              <li
+                key={sender}
+                className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 pl-3"
+              >
+                <span className="min-w-0 truncate font-mono text-xs">
+                  {sender} · {theme === "dark" ? "Dark" : "Original"}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Reset HTML mail preference for ${sender}`}
+                  onClick={() => prefs.forgetEmailHtmlThemeForSender(sender)}
+                >
+                  <X />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </SettingRow>
+      ) : null}
       <SettingRow
         label="Always load images from"
         description="Remote images are blocked until you allow them. Senders you always allow are listed here."

@@ -212,6 +212,9 @@ surfaces. Each row names the interface, its role, and one concrete
 command or request. The section follows sync so the shared daemon
 model answers how all interfaces see the same mailbox.
 
+The browser conversation reader is one raised plane against the mail
+list and page; individual messages remain ruled rows rather than cards.
+
 ### Daily mail tools (§06)
 
 A compact scan grid holds the useful features that do not need a full

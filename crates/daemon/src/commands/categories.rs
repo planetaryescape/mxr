@@ -143,12 +143,12 @@ async fn preview_category_name(
     category_id: Option<CategoryId>,
     name: &str,
 ) -> anyhow::Result<Response> {
-    Ok(client
+    client
         .request(Request::PreviewCategoryName {
             category_id,
             name: name.to_string(),
         })
-        .await?)
+        .await
 }
 
 fn ensure_category_name_available(response: Response) -> anyhow::Result<()> {

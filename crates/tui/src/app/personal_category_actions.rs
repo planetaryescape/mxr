@@ -406,7 +406,7 @@ impl App {
                 state.selected = (state.selected + 1).min(count.saturating_sub(1));
             }
             (KeyCode::Up | KeyCode::Char('k'), _) => {
-                state.selected = state.selected.saturating_sub(1)
+                state.selected = state.selected.saturating_sub(1);
             }
             (KeyCode::PageDown, _)
                 if state.surface == Some(CategorySurface::View)
@@ -562,13 +562,13 @@ impl App {
             (KeyCode::Char(' '), KeyModifiers::NONE)
                 if state.surface == Some(CategorySurface::Assign) =>
             {
-                state.toggle_selected()
+                state.toggle_selected();
             }
-            (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) if !c.is_control() => {
-                if state.filtering {
-                    state.input.push(c);
-                    state.selected = 0;
-                }
+            (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT)
+                if !c.is_control() && state.filtering =>
+            {
+                state.input.push(c);
+                state.selected = 0;
             }
             _ => {}
         }

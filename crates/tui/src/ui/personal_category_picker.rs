@@ -249,7 +249,7 @@ pub fn draw(
             .iter()
             .map(|mail| ListItem::new(format!("{}  {}", mail.from.email, mail.subject)))
             .collect::<Vec<_>>();
-        let mut list_state = picker.list_state.clone();
+        let mut list_state = picker.list_state;
         list_state.select(Some(picker.selected));
         frame.render_stateful_widget(
             List::new(items)
@@ -340,7 +340,7 @@ pub fn draw(
         };
         frame.render_widget(Paragraph::new(message), list_area);
     } else {
-        let mut list_state = picker.list_state.clone();
+        let mut list_state = picker.list_state;
         list_state.select(Some(picker.selected));
         frame.render_stateful_widget(
             List::new(items)

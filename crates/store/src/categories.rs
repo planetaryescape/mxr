@@ -80,8 +80,8 @@ impl super::Store {
              LEFT JOIN messages m ON m.id = cm.message_id AND (? IS NULL OR m.account_id = ?)
              GROUP BY c.id, c.name ORDER BY c.normalized_name, c.id",
         )
-        .bind(account_id.map(|account| account.as_str()))
-        .bind(account_id.map(|account| account.as_str()))
+        .bind(account_id.map(mxr_core::AccountId::as_str))
+        .bind(account_id.map(mxr_core::AccountId::as_str))
         .fetch_all(self.reader())
         .await
         .map_err(|error| error.to_string())?;

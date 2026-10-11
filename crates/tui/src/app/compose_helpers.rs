@@ -2,6 +2,25 @@ use super::*;
 use mxr_protocol::Request;
 
 impl App {
+    pub(crate) fn apply_retained_send_identity(
+        &mut self,
+        account: mxr_core::AccountId,
+        identity: mxr_core::SendIdentity,
+    ) {
+        if self
+            .compose
+            .last_send_identity
+            .as_ref()
+            .is_none_or(|(current_account, current)| {
+                current_account == &account
+                    && current.operation_id.split(':').next()
+                        == identity.operation_id.split(':').next()
+                    && current.expected_revision <= identity.expected_revision
+            })
+        {
+            self.compose.last_send_identity = Some((account, identity));
+        }
+    }
     pub(crate) fn restore_failed_compose(&mut self, pending: PendingSend) {
         if self.compose.pending_send_confirm.is_none() && self.compose.pending_compose.is_none() {
             self.compose.pending_send_confirm = Some(pending);

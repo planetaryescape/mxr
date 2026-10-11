@@ -1452,34 +1452,39 @@ pub async fn run() -> anyhow::Result<()> {
         for pending in platform_dispatch {
             let bg = bg.clone();
             let title = pending.title.clone();
+            let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
-                for request in pending.prelude {
-                    match ipc_call(&bg, request).await {
-                        Ok(Response::Ok { .. }) => {}
-                        Ok(Response::Error { message, .. }) => {
-                            return AsyncResult::PlatformModalLoaded {
-                                compose: pending.compose,
-                                title,
-                                result: Err(MxrError::Ipc(message)),
-                            };
-                        }
-                        Err(e) => {
-                            return AsyncResult::PlatformModalLoaded {
-                                compose: pending.compose,
-                                title,
-                                result: Err(e),
-                            };
+                let mut pending = pending;
+                let compose = pending.compose.clone();
+                let result = async {
+                    if let Some((account, identity)) =
+                        crate::compose_persistence::prepare_compose_schedule(&bg, &mut pending)
+                            .await?
+                    {
+                        let _ = result_tx_inner
+                            .send(AsyncResult::SendIdentityRetained(account, identity));
+                    }
+                    for request in pending.prelude.drain(..) {
+                        match ipc_call(&bg, request).await {
+                            Ok(Response::Ok { .. }) => {}
+                            Ok(Response::Error { message, .. }) => {
+                                return Err(MxrError::Ipc(message));
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
                         }
                     }
+                    let resp = ipc_call(&bg, pending.request).await;
+                    match resp {
+                        Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                    }
                 }
-                let resp = ipc_call(&bg, pending.request).await;
-                let result: Result<String, MxrError> = match resp {
-                    Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                };
+                .await;
                 AsyncResult::PlatformModalLoaded {
-                    compose: pending.compose,
+                    compose,
                     title,
                     result,
                 }
@@ -2419,6 +2424,11 @@ pub async fn run() -> anyhow::Result<()> {
             });
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
+            let compose_file = app
+                .compose
+                .pending_send_mutations
+                .get(&mutation_id)
+                .map(|(pending, _)| pending.draft_path.clone());
             let _ = submit_task(&queued, async move {
                 let verb = mutation_verb_past(&req);
                 let move_not_sure = matches!(
@@ -2459,6 +2469,22 @@ pub async fn run() -> anyhow::Result<()> {
                                 identity.clone(),
                             ));
                         }
+                    }
+                    if let (Some(file), Request::SaveDraftToServer { draft }) =
+                        (compose_file.as_ref(), &mut req)
+                    {
+                        let (canonical, identity) =
+                            crate::compose_persistence::prepare_reviewed_compose(
+                                &bg,
+                                draft.clone(),
+                                file,
+                            )
+                            .await?;
+                        *draft = canonical;
+                        let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
+                            draft.account_id.clone(),
+                            identity,
+                        ));
                     }
                     ipc_call(&bg, req).await
                 }
@@ -2992,7 +3018,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Search count failed: {error}"));
                         }
                         AsyncResult::SendIdentityRetained(account, identity) => {
-                            app.compose.last_send_identity = Some((account, identity));
+                            app.apply_retained_send_identity(account, identity);
                         }
                         AsyncResult::Rules(Ok(rules)) => {
                             app.replace_rule_list(rules);

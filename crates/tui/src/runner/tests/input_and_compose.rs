@@ -2135,3 +2135,294 @@ fn send_outcome_modal_distinguishes_no_claimed_submission() {
     });
     assert_eq!(body, "No submission outcome recorded for this operation.");
 }
+
+async fn canonical_compose_ipc(
+    edited: mxr_core::Draft,
+    blocked: Option<mxr_core::SendOutcomeState>,
+) -> (
+    tokio::sync::mpsc::UnboundedSender<crate::ipc::IpcRequest>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
+    let server = tokio::spawn(async move {
+        let mut stored = edited.clone();
+        stored.content = mxr_core::DraftContent::markdown("Original text");
+        while let Some(request) = rx.recv().await {
+            let data = match request.request {
+                Request::GetSendOutcome { .. } => mxr_protocol::ResponseData::SendOutcome {
+                    outcome: blocked.clone().map(|state| mxr_core::DraftSendOutcome {
+                        identity: mxr_core::SendIdentity::for_draft(&stored),
+                        draft_id: stored.id.clone(),
+                        account_id: stored.account_id.clone(),
+                        state,
+                        local_message_id: None,
+                        provider_message_id: None,
+                        rfc2822_message_id: None,
+                    }),
+                },
+                Request::GetDraft { .. } => mxr_protocol::ResponseData::Draft {
+                    draft: stored.clone(),
+                },
+                Request::UpdateDraft { draft } => {
+                    assert_eq!(
+                        draft.content.analysis_text(),
+                        edited.content.analysis_text()
+                    );
+                    assert_eq!(draft.revision, Some(1));
+                    stored = draft;
+                    stored.revision = Some(2);
+                    mxr_protocol::ResponseData::Draft {
+                        draft: stored.clone(),
+                    }
+                }
+                Request::SaveDraft { draft } => {
+                    assert_eq!(draft.revision, Some(2));
+                    assert_eq!(
+                        draft.content.analysis_text(),
+                        edited.content.analysis_text()
+                    );
+                    mxr_protocol::ResponseData::Draft {
+                        draft: stored.clone(),
+                    }
+                }
+                Request::SaveDraftToServer { draft } => {
+                    assert_eq!(draft.revision, stored.revision);
+                    assert_eq!(
+                        draft.content.analysis_text(),
+                        stored.content.analysis_text()
+                    );
+                    mxr_protocol::ResponseData::Draft {
+                        draft: stored.clone(),
+                    }
+                }
+                Request::ScheduleSend {
+                    expected_revision, ..
+                } => {
+                    assert_eq!(expected_revision, Some(2));
+                    mxr_protocol::ResponseData::Ack
+                }
+                other => panic!("unexpected {other:?}"),
+            };
+            request
+                .reply
+                .send(Ok(mxr_protocol::Response::Ok { data }))
+                .unwrap();
+        }
+    });
+    (tx, server)
+}
+
+#[tokio::test]
+async fn edited_provider_save_key_dispatch_uses_canonical_revision_before_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("review.md");
+    std::fs::write(&file, "edited").unwrap();
+    let mut app = App::new();
+    let mut pending = recovery_pending(file.clone());
+    pending.body = "Edited reviewed text".into();
+    app.compose.pending_send_confirm = Some(pending);
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().unwrap();
+    let Request::SaveDraftToServer { draft } = queued.request else {
+        panic!("save request")
+    };
+    let (tx, server) = canonical_compose_ipc(draft.clone(), None).await;
+    let (canonical, _) = crate::compose_persistence::prepare_reviewed_compose(&tx, draft, &file)
+        .await
+        .unwrap();
+    crate::ipc::ipc_call(&tx, Request::SaveDraftToServer { draft: canonical })
+        .await
+        .unwrap();
+    assert!(app.take_pending_draft_cleanup().is_empty());
+    let b = recovery_pending(dir.path().join("newer.md"));
+    let b_id = b.draft_id();
+    app.compose.pending_send_confirm = Some(b);
+    app.finish_pending_mutation();
+    app.finish_compose_mutation(queued.id);
+    assert_eq!(app.take_pending_draft_cleanup(), vec![file]);
+    assert_eq!(app.compose.pending_send_confirm.unwrap().draft_id(), b_id);
+    drop(tx);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn compose_schedule_key_dispatch_uses_conditional_canonical_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("schedule.md");
+    let mut app = App::new();
+    let mut pending = recovery_pending(file.clone());
+    pending.body = "Scheduled edit".into();
+    app.compose.pending_send_confirm = Some(pending);
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    app.compose.pending_send_at_input = Some("in 2h".into());
+    app.compose
+        .pending_time
+        .update("in 2h", &app.modals.snooze_config);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let mut dispatch = app.take_pending_platform_dispatch().pop().unwrap();
+    let Request::SaveDraft { draft } = dispatch.prelude[0].clone() else {
+        panic!("review")
+    };
+    let (tx, server) = canonical_compose_ipc(draft, None).await;
+    crate::compose_persistence::prepare_compose_schedule(&tx, &mut dispatch)
+        .await
+        .unwrap();
+    assert!(dispatch.prelude.is_empty());
+    crate::ipc::ipc_call(&tx, dispatch.request).await.unwrap();
+    app.finish_compose_schedule(*dispatch.compose.unwrap(), true);
+    assert_eq!(app.take_pending_draft_cleanup(), vec![file]);
+    drop(tx);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence() {
+    for state in [
+        mxr_core::SendOutcomeState::Unknown,
+        mxr_core::SendOutcomeState::Accepted,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("review.md");
+        std::fs::write(&file, "review").unwrap();
+        let mut app = App::new();
+        app.compose.pending_send_confirm = Some(recovery_pending(file.clone()));
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        let queued = app.pending_mutation_queue.pop().unwrap();
+        let Request::SaveDraftToServer { draft } = queued.request else {
+            panic!("save")
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
+        let account = draft.account_id.clone();
+        let id = draft.id.clone();
+        let server = tokio::spawn(async move {
+            let q = rx.recv().await.unwrap();
+            assert!(matches!(q.request, Request::GetSendOutcome { .. }));
+            q.reply
+                .send(Ok(mxr_protocol::Response::Ok {
+                    data: mxr_protocol::ResponseData::SendOutcome {
+                        outcome: Some(mxr_core::DraftSendOutcome {
+                            identity: mxr_core::SendIdentity::for_revision(&id, 1),
+                            draft_id: id,
+                            account_id: account,
+                            state,
+                            local_message_id: None,
+                            provider_message_id: None,
+                            rfc2822_message_id: None,
+                        }),
+                    },
+                }))
+                .unwrap();
+            assert!(rx.recv().await.is_none());
+        });
+        let error = crate::compose_persistence::prepare_reviewed_compose(&tx, draft, &file)
+            .await
+            .unwrap_err();
+        app.finish_pending_mutation();
+        app.handle_mutation_failure_result(queued.id, false, &error);
+        assert!(file.exists());
+        assert!(app.take_pending_draft_cleanup().is_empty());
+        assert!(app.compose.pending_send_confirm.is_some());
+        drop(tx);
+        server.await.unwrap();
+    }
+}
+
+#[test]
+fn late_reviewed_revision_result_preserves_newer_compose_owner() {
+    let mut app = App::new();
+    let account = mxr_core::AccountId::new();
+    let a = mxr_core::DraftId::new();
+    let b = mxr_core::DraftId::new();
+    let newer = mxr_core::SendIdentity::for_revision(&b, 1);
+    app.compose.last_send_identity = Some((account.clone(), newer.clone()));
+    app.apply_retained_send_identity(account.clone(), mxr_core::SendIdentity::for_revision(&a, 2));
+    assert_eq!(
+        app.compose.last_send_identity,
+        Some((account.clone(), newer))
+    );
+    app.apply_retained_send_identity(account.clone(), mxr_core::SendIdentity::for_revision(&b, 2));
+    assert_eq!(
+        app.compose.last_send_identity.unwrap().1.expected_revision,
+        2
+    );
+}
+
+#[tokio::test]
+async fn schedule_action_blocks_unknown_before_creating_deleted_draft() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("unknown.md");
+    std::fs::write(&file, "review").unwrap();
+    let mut app = App::new();
+    app.compose.pending_send_confirm = Some(recovery_pending(file.clone()));
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    app.compose.pending_send_at_input = Some("in 2h".into());
+    app.compose
+        .pending_time
+        .update("in 2h", &app.modals.snooze_config);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let mut dispatch = app.take_pending_platform_dispatch().pop().unwrap();
+    let Request::SaveDraft { draft } = dispatch.prelude[0].clone() else {
+        panic!("draft")
+    };
+    let (tx, server) =
+        canonical_compose_ipc(draft, Some(mxr_core::SendOutcomeState::Unknown)).await;
+    assert!(
+        crate::compose_persistence::prepare_compose_schedule(&tx, &mut dispatch)
+            .await
+            .is_err()
+    );
+    app.finish_compose_schedule(*dispatch.compose.unwrap(), false);
+    assert!(file.exists());
+    assert!(app.take_pending_draft_cleanup().is_empty());
+    assert!(app.compose.pending_send_confirm.is_some());
+    drop(tx);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_provider_save_keeps_edited_file_and_has_no_provider_effect() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("stale.md");
+    std::fs::write(&file, "unsaved edit").unwrap();
+    let mut app = App::new();
+    app.compose.pending_send_confirm = Some(recovery_pending(file.clone()));
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().unwrap();
+    let Request::SaveDraftToServer { draft } = queued.request else {
+        panic!("save")
+    };
+    let mut newer = draft.clone();
+    newer.revision = Some(2);
+    newer.content = mxr_core::DraftContent::markdown("another writer's text");
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
+    let server = tokio::spawn(async move {
+        for _ in 0..2 {
+            let q = rx.recv().await.unwrap();
+            assert!(matches!(q.request, Request::GetSendOutcome { .. }));
+            q.reply
+                .send(Ok(mxr_protocol::Response::Ok {
+                    data: mxr_protocol::ResponseData::SendOutcome { outcome: None },
+                }))
+                .unwrap();
+        }
+        let q = rx.recv().await.unwrap();
+        assert!(matches!(q.request, Request::GetDraft { .. }));
+        q.reply
+            .send(Ok(mxr_protocol::Response::Ok {
+                data: mxr_protocol::ResponseData::Draft { draft: newer },
+            }))
+            .unwrap();
+        assert!(rx.recv().await.is_none());
+    });
+    let error = crate::compose_persistence::prepare_reviewed_compose(&tx, draft, &file)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("stale"));
+    app.finish_pending_mutation();
+    app.handle_mutation_failure_result(queued.id, false, &error);
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "unsaved edit");
+    assert!(app.take_pending_draft_cleanup().is_empty());
+    assert!(app.compose.pending_send_confirm.is_some());
+    drop(tx);
+    server.await.unwrap();
+}

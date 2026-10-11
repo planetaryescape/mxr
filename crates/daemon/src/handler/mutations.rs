@@ -203,7 +203,7 @@ async fn enforce_draft_safety_with_override(
 
     // Mint a single-use override token scoped to this draft and the
     // blocker kinds that fired, and surface it in the error so the
-    // caller can resend with `--override-safety <token>` without a
+    // caller can use the reviewed revision/operation with `--override-safety <token>` without a
     // separate `mxr send --check` round-trip. This does NOT auto-approve
     // the send: the token only exists in the rejection, and the user
     // must consciously re-issue the send carrying it.
@@ -213,7 +213,7 @@ async fn enforce_draft_safety_with_override(
         .await
     {
         Ok(token) => {
-            format!(" — to send anyway after review, resend with --override-safety {token}")
+            format!(" — to send anyway after review, use the preview's --expected-revision and --operation-id, then --override-safety {token}")
         }
         Err(error) => {
             tracing::warn!(%error, "failed to mint override token for blocked send");
@@ -3285,37 +3285,39 @@ pub(super) async fn get_send_outcome(
     account_id: &mxr_core::AccountId,
     operation_id: &str,
 ) -> HandlerResult {
-    let outcome = if let Some(raw) = operation_id.strip_prefix("draft:") {
-        let draft_id: mxr_core::DraftId = raw
-            .parse()
-            .map_err(|e| format!("Invalid draft identity: {e}"))?;
-        match state.store.get_draft_send_outcome(&draft_id).await? {
-            Some(outcome) => Some(outcome),
-            None => match state.store.get_draft(&draft_id).await? {
-                Some(draft)
-                    if state.store.get_draft_status(&draft_id).await?
-                        == Some(DraftStatus::Sending) =>
-                {
-                    Some(mxr_core::DraftSendOutcome {
-                        identity: mxr_core::SendIdentity::for_draft(&draft),
-                        draft_id,
-                        account_id: draft.account_id,
-                        state: mxr_core::SendOutcomeState::Unknown,
-                        local_message_id: None,
-                        provider_message_id: None,
-                        rfc2822_message_id: None,
-                    })
-                }
-                _ => None,
-            },
-        }
-    } else {
-        state
-            .store
-            .get_send_outcome(operation_id)
-            .await?
-            .map(|(outcome, _)| outcome)
-    };
+    let outcome =
+        if let Some(raw) = operation_id.strip_prefix("draft:") {
+            let draft_id: mxr_core::DraftId = raw
+                .parse()
+                .map_err(|e| format!("Invalid draft identity: {e}"))?;
+            match state.store.get_draft_send_outcome(&draft_id).await? {
+                Some(outcome) => Some(outcome),
+                None => match state.store.get_draft(&draft_id).await? {
+                    Some(draft)
+                        if state.store.get_draft_status(&draft_id).await?.is_some_and(
+                            |status| matches!(status, DraftStatus::Sending | DraftStatus::Sent),
+                        ) =>
+                    {
+                        Some(mxr_core::DraftSendOutcome {
+                            identity: mxr_core::SendIdentity::for_draft(&draft),
+                            draft_id,
+                            account_id: draft.account_id,
+                            state: mxr_core::SendOutcomeState::Unknown,
+                            local_message_id: None,
+                            provider_message_id: None,
+                            rfc2822_message_id: None,
+                        })
+                    }
+                    _ => None,
+                },
+            }
+        } else {
+            state
+                .store
+                .get_send_outcome(operation_id)
+                .await?
+                .map(|(outcome, _)| outcome)
+        };
     if outcome
         .as_ref()
         .is_some_and(|o| &o.account_id != account_id)

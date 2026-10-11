@@ -56,6 +56,15 @@ pub(crate) fn retain_compose(
 ) -> std::io::Result<()> {
     retain_at(&path(), account, draft, identity, Some(file))
 }
+#[cfg(not(test))]
+pub(crate) fn retain_reviewed_compose(
+    account: &AccountId,
+    draft: &DraftId,
+    identity: &SendIdentity,
+    file: &Path,
+) -> std::io::Result<()> {
+    retain_at_owned(&path(), account, draft, identity, Some(file), false)
+}
 fn retain_at(
     path: &Path,
     account: &AccountId,
@@ -63,20 +72,56 @@ fn retain_at(
     identity: &SendIdentity,
     compose: Option<&Path>,
 ) -> std::io::Result<()> {
+    retain_at_owned(path, account, draft, identity, compose, true)
+}
+fn retain_at_owned(
+    path: &Path,
+    account: &AccountId,
+    draft: &DraftId,
+    identity: &SendIdentity,
+    compose: Option<&Path>,
+    promote: bool,
+) -> std::io::Result<()> {
     let _guard = WRITER
         .lock()
         .map_err(|_| std::io::Error::other("send recovery writer poisoned"))?;
     let mut recovery = load_at(path)?;
     if let Some(file) = compose {
-        recovery.compose = Some((account.clone(), file.to_path_buf()));
-        recovery
-            .compose_files
-            .retain(|(_, retained)| retained != file);
-        recovery
-            .compose_files
-            .push((account.clone(), file.to_path_buf()));
+        if promote
+            || recovery.compose.is_none()
+            || recovery
+                .compose
+                .as_ref()
+                .is_some_and(|(_, retained)| retained == file)
+        {
+            recovery.compose = Some((account.clone(), file.to_path_buf()));
+        }
+        if promote
+            || !recovery
+                .compose_files
+                .iter()
+                .any(|(_, retained)| retained == file)
+        {
+            recovery
+                .compose_files
+                .retain(|(_, retained)| retained != file);
+            recovery
+                .compose_files
+                .push((account.clone(), file.to_path_buf()));
+        }
     }
-    recovery.last = Some((account.clone(), identity.clone()));
+    let previous = recovery.operations.get(draft);
+    if !promote
+        && previous
+            .is_some_and(|(_, retained)| retained.expected_revision > identity.expected_revision)
+    {
+        return Err(std::io::Error::other(
+            "A newer reviewed revision is already retained",
+        ));
+    }
+    if promote || recovery.last.is_none() || recovery.last.as_ref() == previous {
+        recovery.last = Some((account.clone(), identity.clone()));
+    }
     recovery
         .operations
         .insert(draft.clone(), (account.clone(), identity.clone()));
@@ -183,5 +228,45 @@ mod tests {
             reopenable_compose(load_at(&state).unwrap()),
             Some((account, a))
         );
+    }
+}
+
+#[cfg(test)]
+mod revision_owner_tests {
+    use super::*;
+    #[test]
+    fn late_compose_revision_keeps_newer_compose_identity_and_reopen_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("recovery.json");
+        let a = dir.path().join("a.md");
+        let b = dir.path().join("b.md");
+        std::fs::write(&a, "A").unwrap();
+        std::fs::write(&b, "B").unwrap();
+        let account = AccountId::new();
+        let draft_a = DraftId::new();
+        let draft_b = DraftId::new();
+        retain_at(
+            &path,
+            &account,
+            &draft_a,
+            &SendIdentity::for_revision(&draft_a, 1),
+            Some(&a),
+        )
+        .unwrap();
+        let b_identity = SendIdentity::for_revision(&draft_b, 1);
+        retain_at(&path, &account, &draft_b, &b_identity, Some(&b)).unwrap();
+        retain_at_owned(
+            &path,
+            &account,
+            &draft_a,
+            &SendIdentity::for_revision(&draft_a, 2),
+            Some(&a),
+            false,
+        )
+        .unwrap();
+        let recovery = load_at(&path).unwrap();
+        assert_eq!(recovery.last, Some((account.clone(), b_identity)));
+        assert_eq!(recovery.operations[&draft_a].1.expected_revision, 2);
+        assert_eq!(reopenable_compose(recovery), Some((account, b)));
     }
 }

@@ -14,6 +14,7 @@ pub mod app;
 mod async_result;
 pub mod client;
 mod compose_flow;
+mod compose_persistence;
 mod daemon_events;
 mod editor;
 pub mod input;

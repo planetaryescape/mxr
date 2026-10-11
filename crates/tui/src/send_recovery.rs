@@ -98,7 +98,7 @@ pub(crate) async fn prepare_reviewed_send(
                     return Ok((stored, selected));
                 }
                 return Err(MxrError::Ipc(
-                    "Reviewed draft revision is stale; reopen and review before sending".into(),
+                    "Reviewed draft revision is stale. Your file is preserved; compare it with the saved canonical draft before continuing. Reopening alone cannot reconcile different text.".into(),
                 ));
             }
             match ipc_call(bg, Request::UpdateDraft { draft }).await? {

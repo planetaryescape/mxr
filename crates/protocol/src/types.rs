@@ -1530,12 +1530,12 @@ pub enum Request {
     ListDrafts,
     /// List drafts that look orphaned mid-send: status `'sending'` with
     /// a stale `last_heartbeat_at` (or `status_updated_at` fallback)
-    /// older than 1h. Surfaces what the daemon-startup recovery loop
-    /// would also auto-reset.
+    /// older than 1h. Query their send outcome before taking any action;
+    /// startup preserves uncertain submissions.
     ListOrphanedDrafts,
-    /// Force-reset an orphaned `'sending'` draft back to `'draft'` so
-    /// the user can retry the send. Idempotent: already-`'draft'` rows
-    /// return the no-op variant. `'sent'` rows refuse.
+    /// Check an orphaned draft conservatively: uncertain or sent rows
+    /// refuse reset. Already-`'draft'` rows return the no-op variant.
+    /// Query the retained send outcome rather than resending blindly.
     ResetOrphanedDraft {
         draft_id: DraftId,
     },

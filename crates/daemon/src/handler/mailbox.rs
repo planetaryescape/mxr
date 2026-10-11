@@ -3,6 +3,7 @@ use super::{
     populate_envelope_label_provider_ids, HandlerResult,
 };
 use crate::state::AppState;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mxr_core::i18n::SendableCalendarPartstat;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
@@ -11,10 +12,12 @@ use mxr_core::types::{
     InlineCalendarReply, MessageBody,
 };
 use mxr_protocol::{
-    BodyFailure, CalendarInviteActionData, CalendarInviteData, CalendarInviteResponsePreview,
-    CalendarInviteResponseResult, ResponseData,
+    AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
+    CalendarInviteData, CalendarInviteResponsePreview, CalendarInviteResponseResult, ResponseData,
+    MAX_ATTACHMENT_CHUNK_BYTES,
 };
 use scraper::{Html, Selector};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -697,6 +700,115 @@ pub(super) async fn open_attachment(
     let file = materialize_attachment_file(state, message_id, attachment_id).await?;
     open_local_file(&file.path).map_err(|e| e.to_string())?;
     Ok(ResponseData::AttachmentFile { file })
+}
+
+pub(super) async fn attachment_transfer_metadata(
+    state: &AppState,
+    message_id: &MessageId,
+    attachment_id: &AttachmentId,
+) -> HandlerResult {
+    materialize_attachment_file(state, message_id, attachment_id).await?;
+    let body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("message body {message_id} not found"))?;
+    let attachment = body
+        .attachments
+        .iter()
+        .find(|item| &item.id == attachment_id)
+        .ok_or_else(|| format!("attachment {attachment_id} not found in message {message_id}"))?;
+    let path = attachment
+        .local_path
+        .as_deref()
+        .ok_or_else(|| "attachment cache path missing".to_string())?;
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let length_bytes = file.metadata().await.map_err(|e| e.to_string())?.len();
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        use tokio::io::AsyncReadExt;
+        let read = file.read(&mut buffer).await.map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let sha256: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok(ResponseData::AttachmentTransferMetadata {
+        metadata: AttachmentTransferMetadata {
+            message_id: message_id.clone(),
+            attachment_id: attachment.id.clone(),
+            filename: attachment.filename.clone(),
+            mime_type: attachment.mime_type.clone(),
+            length_bytes,
+            sha256,
+            max_chunk_bytes: MAX_ATTACHMENT_CHUNK_BYTES,
+        },
+    })
+}
+
+pub(super) async fn read_attachment_chunk(
+    state: &AppState,
+    message_id: &MessageId,
+    attachment_id: &AttachmentId,
+    offset: u64,
+    length: u32,
+) -> HandlerResult {
+    if length == 0 || length > MAX_ATTACHMENT_CHUNK_BYTES {
+        return Err(
+            format!("chunk length must be between 1 and {MAX_ATTACHMENT_CHUNK_BYTES}").into(),
+        );
+    }
+    let end = offset
+        .checked_add(u64::from(length))
+        .ok_or_else(|| "chunk range overflow".to_string())?;
+    materialize_attachment_file(state, message_id, attachment_id).await?;
+    let body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("message body {message_id} not found"))?;
+    let attachment = body
+        .attachments
+        .iter()
+        .find(|item| &item.id == attachment_id)
+        .ok_or_else(|| format!("attachment {attachment_id} not found in message {message_id}"))?;
+    let path = attachment
+        .local_path
+        .as_deref()
+        .ok_or_else(|| "attachment cache path missing".to_string())?;
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let file_length = file.metadata().await.map_err(|e| e.to_string())?.len();
+    if end > file_length {
+        return Err("chunk range exceeds attachment length".into());
+    }
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    file.seek(std::io::SeekFrom::Start(offset))
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut bytes = vec![0; length as usize];
+    file.read_exact(&mut bytes)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::AttachmentChunk {
+        chunk: AttachmentChunk {
+            message_id: message_id.clone(),
+            attachment_id: attachment_id.clone(),
+            offset,
+            data_base64: STANDARD.encode(bytes),
+        },
+    })
 }
 
 fn collect_html_image_sources(html: &str) -> Vec<String> {

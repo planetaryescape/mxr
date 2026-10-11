@@ -409,6 +409,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
 
         // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
         Request::DownloadAttachment { .. }
+        | Request::GetAttachmentTransferMetadata { .. }
+        | Request::ReadAttachmentChunk { .. }
         | Request::OpenAttachment { .. }
         | Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
@@ -586,6 +588,18 @@ async fn dispatch(
         } => {
             mailbox::download_attachment(state, message_id, attachment_id, destination.as_deref())
                 .await
+        }
+        Request::GetAttachmentTransferMetadata {
+            message_id,
+            attachment_id,
+        } => mailbox::attachment_transfer_metadata(state, message_id, attachment_id).await,
+        Request::ReadAttachmentChunk {
+            message_id,
+            attachment_id,
+            offset,
+            length,
+        } => {
+            mailbox::read_attachment_chunk(state, message_id, attachment_id, *offset, *length).await
         }
         Request::OpenAttachment {
             message_id,
@@ -2219,6 +2233,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::MarkInviteAnswered { .. }
         | Request::GetHtmlImageAssets { .. }
         | Request::DownloadAttachment { .. }
+        | Request::GetAttachmentTransferMetadata { .. }
+        | Request::ReadAttachmentChunk { .. }
         | Request::OpenAttachment { .. }
         | Request::CreateLabel { .. }
         | Request::RenameLabel { .. }
@@ -2363,6 +2379,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::MarkInviteAnswered { .. } => "mark_invite_answered",
         Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
         Request::DownloadAttachment { .. } => "download_attachment",
+        Request::GetAttachmentTransferMetadata { .. } => "attachment_transfer_metadata",
+        Request::ReadAttachmentChunk { .. } => "read_attachment_chunk",
         Request::OpenAttachment { .. } => "open_attachment",
         Request::ListBodies { .. } => "list_bodies",
         Request::GetThread { .. } => "get_thread",
@@ -3661,6 +3679,9 @@ pub(super) async fn materialize_attachment_capped(
     attachment_id: &mxr_core::AttachmentId,
     cap: Option<u64>,
 ) -> Result<Materialized, mxr_core::MxrError> {
+    let _materialization = state
+        .acquire_attachment_materialization(message_id, attachment_id)
+        .await;
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3668,7 +3689,7 @@ pub(super) async fn materialize_attachment_capped(
         .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?
         .ok_or_else(|| mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
 
-    let mut body = state.sync_engine.get_body(message_id).await?;
+    let body = state.sync_engine.get_body(message_id).await?;
     let attachment = body
         .attachments
         .iter()
@@ -3708,29 +3729,52 @@ pub(super) async fn materialize_attachment_capped(
         .map_err(mxr_core::MxrError::Io)?;
 
     let filename = sanitized_attachment_filename(&attachment.filename, &attachment.id);
-    let path = target_dir.join(filename);
+    let path = target_dir.join(format!("{}.{}", uuid::Uuid::now_v7(), filename));
+    let temporary = target_dir.join(format!(".{}.{}.tmp", attachment.id, uuid::Uuid::now_v7()));
     let saved = async {
-        tokio::fs::write(&path, &bytes)
+        use tokio::io::AsyncWriteExt;
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&temporary)
             .await
             .map_err(mxr_core::MxrError::Io)?;
-        set_private_file_permissions(&path).await
+        file.write_all(&bytes)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        file.sync_all().await.map_err(mxr_core::MxrError::Io)?;
+        drop(file);
+        set_private_file_permissions(&temporary).await?;
+        tokio::fs::rename(&temporary, &path)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        Ok::<(), mxr_core::MxrError>(())
     }
     .await;
     if let Err(error) = saved {
-        // A half-written file is never left behind.
-        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_file(&temporary).await;
         return Err(error);
     }
-
-    for existing in &mut body.attachments {
-        if existing.id == *attachment_id {
-            existing.local_path = Some(path.clone());
-            existing.size_bytes = written;
+    let recorded = match state
+        .store
+        .set_attachment_cache(message_id, attachment_id, &path, written)
+        .await
+    {
+        Ok(recorded) => recorded,
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&path).await;
+            return Err(mxr_core::MxrError::Store(error.to_string()));
         }
-    }
-    if let Err(error) = state.store.insert_body(&body).await {
+    };
+    if !recorded {
         let _ = tokio::fs::remove_file(&path).await;
-        return Err(mxr_core::MxrError::Store(error.to_string()));
+        return Err(mxr_core::MxrError::NotFound(format!(
+            "attachment {attachment_id}"
+        )));
     }
 
     Ok(Materialized::Written {

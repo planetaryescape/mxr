@@ -1678,6 +1678,50 @@ async fn download_attachment(
     }
 }
 
+async fn attachment_transfer_metadata(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<AttachmentRequest>,
+) -> Result<Json<mxr_protocol::AttachmentTransferMetadata>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetAttachmentTransferMetadata {
+            message_id: parse_message_id(&request.message_id)?,
+            attachment_id: parse_attachment_id(&request.attachment_id)?,
+        },
+    )
+    .await?
+    {
+        ResponseData::AttachmentTransferMetadata { metadata } => Ok(Json(metadata)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn attachment_transfer_chunk(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<AttachmentChunkRequest>,
+) -> Result<Json<mxr_protocol::AttachmentChunk>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ReadAttachmentChunk {
+            message_id: parse_message_id(&request.message_id)?,
+            attachment_id: parse_attachment_id(&request.attachment_id)?,
+            offset: request.offset,
+            length: request.length,
+        },
+    )
+    .await?
+    {
+        ResponseData::AttachmentChunk { chunk } => Ok(Json(chunk)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn rules(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -49,7 +49,7 @@ use utoipa::{
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
         mutation_route, mutation_undo, action_snooze_presets, action_snooze,
-        action_unsubscribe, action_unsubscribe_purge, action_commit_unsubscribe_preview, action_invite_reply, attachment_open, attachment_download,
+        action_unsubscribe, action_unsubscribe_purge, action_commit_unsubscribe_preview, action_invite_reply, attachment_open, attachment_download, attachment_transfer_metadata, attachment_transfer_chunk,
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
         scheduled_sends_list, scheduled_sends_create, scheduled_sends_cancel, snippets_list,
@@ -238,6 +238,24 @@ fn action_commit_unsubscribe_preview() {}
 endpoint!(post action_invite_reply "/api/v1/mail/actions/invite/reply", "Reply to a calendar invite");
 endpoint!(post attachment_open "/api/v1/mail/attachments/open", "Open an attachment");
 endpoint!(post attachment_download "/api/v1/mail/attachments/download", "Download an attachment");
+#[utoipa::path(
+    post, path = "/api/v1/mail/attachments/transfer/metadata",
+    summary = "Get attachment transfer metadata",
+    request_body = crate::request_types::AttachmentRequest,
+    responses((status = 200, body = mxr_protocol::AttachmentTransferMetadata),
+        (status = 401, description = "Missing or invalid bridge token"))
+)]
+#[allow(dead_code)]
+fn attachment_transfer_metadata() {}
+#[utoipa::path(
+    post, path = "/api/v1/mail/attachments/transfer/chunk",
+    summary = "Read a bounded attachment transfer chunk",
+    request_body = crate::request_types::AttachmentChunkRequest,
+    responses((status = 200, body = mxr_protocol::AttachmentChunk),
+        (status = 401, description = "Missing or invalid bridge token"))
+)]
+#[allow(dead_code)]
+fn attachment_transfer_chunk() {}
 endpoint!(post label_create "/api/v1/mail/labels/create", "Create a label");
 endpoint!(post label_rename "/api/v1/mail/labels/rename", "Rename a label");
 endpoint!(post label_delete "/api/v1/mail/labels/delete", "Delete a label");

@@ -690,7 +690,7 @@ async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
 
 #[tokio::test]
 async fn dispatch_download_attachment_persists_local_path() {
-    let state = AppState::in_memory().await.unwrap();
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     state.set_attachment_dir_for_tests(
         std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4())),
     );
@@ -738,8 +738,8 @@ async fn dispatch_download_attachment_persists_local_path() {
         other => panic!("Expected Body, got {other:?}"),
     };
 
-    let download_msg = IpcMessage {
-        id: 16,
+    let download_message = |id| IpcMessage {
+        id,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DownloadAttachment {
             message_id: envelope.id.clone(),
@@ -747,13 +747,36 @@ async fn dispatch_download_attachment_persists_local_path() {
             destination: None,
         }),
     };
-    let resp = handle_request(&state, &download_msg).await;
-    let path = match resp.payload {
+    let (fetch_started, fetch_release) = fake.pause_attachment_fetches();
+    let first_message = download_message(16);
+    let first_state = Arc::clone(&state);
+    let first = tokio::spawn(async move { handle_request(&first_state, &first_message).await });
+    fetch_started.notified().await;
+    let second_message = download_message(19);
+    let second_state = Arc::clone(&state);
+    let second = tokio::spawn(async move { handle_request(&second_state, &second_message).await });
+    tokio::task::yield_now().await;
+    assert_eq!(
+        fake.attachment_fetch_count(),
+        1,
+        "the second request waits for the first cache publication"
+    );
+    fetch_release.notify_one();
+    let first = first.await.unwrap();
+    let second = second.await.unwrap();
+    assert_eq!(
+        fake.attachment_fetch_count(),
+        1,
+        "a cache miss fetches the provider once"
+    );
+    let path_from_response = |resp: IpcMessage| match resp.payload {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::AttachmentFile { file },
         }) => std::path::PathBuf::from(file.path),
         other => panic!("Expected AttachmentFile, got {other:?}"),
     };
+    let path = path_from_response(first);
+    assert_eq!(path_from_response(second), path);
 
     assert!(path.exists(), "downloaded attachment should exist on disk");
     #[cfg(unix)]
@@ -776,6 +799,60 @@ async fn dispatch_download_attachment_persists_local_path() {
         .find(|attachment| attachment.id == attachment_id)
         .expect("attachment should still exist");
     assert_eq!(attachment.local_path.as_ref(), Some(&path));
+
+    let metadata_msg = IpcMessage {
+        id: 17,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetAttachmentTransferMetadata {
+            message_id: envelope.id.clone(),
+            attachment_id: attachment_id.clone(),
+        }),
+    };
+    let response = handle_request(&state, &metadata_msg).await;
+    let metadata = match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::AttachmentTransferMetadata { metadata },
+        }) => metadata,
+        other => panic!("Expected attachment transfer metadata, got {other:?}"),
+    };
+    assert_eq!(metadata.message_id, envelope.id);
+    assert_eq!(metadata.attachment_id, attachment_id);
+    assert_eq!(
+        metadata.length_bytes,
+        std::fs::metadata(&path).unwrap().len()
+    );
+    assert_eq!(metadata.sha256.len(), 64);
+    assert!(!serde_json::to_string(&metadata)
+        .unwrap()
+        .contains(path.to_str().unwrap()));
+
+    let chunk_msg = IpcMessage {
+        id: 18,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ReadAttachmentChunk {
+            message_id: envelope.id.clone(),
+            attachment_id: attachment_id.clone(),
+            offset: 0,
+            length: 8,
+        }),
+    };
+    let response = handle_request(&state, &chunk_msg).await;
+    let chunk = match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::AttachmentChunk { chunk },
+        }) => chunk,
+        other => panic!("Expected attachment chunk, got {other:?}"),
+    };
+    use base64::Engine as _;
+    assert_eq!(chunk.message_id, envelope.id);
+    assert_eq!(chunk.attachment_id, attachment_id);
+    assert_eq!(chunk.offset, 0);
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(chunk.data_base64)
+            .unwrap(),
+        std::fs::read(&path).unwrap()[..8]
+    );
 
     let _ = std::fs::remove_dir_all(state.attachment_dir());
 }

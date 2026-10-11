@@ -8,7 +8,6 @@ use mxr_protocol::*;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
 
 pub(super) fn parse_message_id(id_str: &str) -> anyhow::Result<MessageId> {
     selection_parse_id(id_str)
@@ -875,20 +874,6 @@ pub(super) fn attachment_by_index(
     attachments
         .get(index.saturating_sub(1))
         .ok_or_else(|| anyhow::anyhow!("Attachment index {index} out of range"))
-}
-
-pub(super) async fn request_attachment_file(
-    client: &mut IpcClient,
-    request: Request,
-) -> anyhow::Result<PathBuf> {
-    let resp = client.request(request).await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::AttachmentFile { file },
-        } => Ok(PathBuf::from(file.path)),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
-    }
 }
 
 #[cfg(test)]

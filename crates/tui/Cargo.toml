@@ -28,6 +28,7 @@ html2text = { workspace = true }
 htmlescape = { workspace = true }
 image = { workspace = true }
 nucleo = { workspace = true }
+open = { workspace = true }
 ratatui = { workspace = true }
 ratatui-image = { workspace = true }
 regex = { workspace = true }

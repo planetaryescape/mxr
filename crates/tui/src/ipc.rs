@@ -18,7 +18,15 @@ pub(crate) const IPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// A request sent from the main loop to the background IPC worker.
 pub(crate) struct IpcRequest {
     pub(crate) request: Request,
+    pub(crate) attachment_transfer: Option<AttachmentTransferRequest>,
     pub(crate) reply: oneshot::Sender<Result<Response, MxrError>>,
+}
+
+pub(crate) struct AttachmentTransferRequest {
+    pub(crate) message_id: mxr_core::MessageId,
+    pub(crate) attachment_id: mxr_core::AttachmentId,
+    pub(crate) destination: std::path::PathBuf,
+    pub(crate) replace_existing: bool,
 }
 
 /// Runs a single persistent daemon connection in a background task.
@@ -83,9 +91,24 @@ pub(crate) fn spawn_ipc_worker(
                             // behind the stuck one. Slow LLM work doesn't go
                             // through this worker (see ipc_call_dedicated), so
                             // a generous bound only ever fires on a dead peer.
+                            let is_transfer = req.attachment_transfer.is_some();
+                            let transfer = req.attachment_transfer;
+                            let operation = async {
+                                if let Some(transfer) = transfer {
+                                    let file = client.transfer_attachment_to(
+                                        &transfer.message_id,
+                                        &transfer.attachment_id,
+                                        &transfer.destination,
+                                        transfer.replace_existing,
+                                    ).await?;
+                                    Ok(Response::Ok { data: mxr_protocol::ResponseData::AttachmentFile { file } })
+                                } else {
+                                    client.raw_request(req.request.clone()).await
+                                }
+                            };
                             let mut result = match tokio::time::timeout(
                                 IPC_REQUEST_TIMEOUT,
-                                client.raw_request(req.request.clone()),
+                                operation,
                             )
                             .await
                             {
@@ -108,7 +131,7 @@ pub(crate) fn spawn_ipc_worker(
                                     )))
                                 }
                             };
-                            if should_reconnect_ipc(&result)
+                            if !is_transfer && should_reconnect_ipc(&result)
                                 && request_supports_retry(&req.request)
                             {
                                 match connect_ipc_client(&socket_path, event_tx.clone()).await {
@@ -307,6 +330,26 @@ pub(crate) async fn ipc_call(
     let (reply_tx, reply_rx) = oneshot::channel();
     tx.send(IpcRequest {
         request,
+        attachment_transfer: None,
+        reply: reply_tx,
+    })
+    .map_err(|_| MxrError::Ipc("IPC worker closed".into()))?;
+    reply_rx
+        .await
+        .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
+}
+
+pub(crate) async fn ipc_transfer_attachment(
+    tx: &mpsc::UnboundedSender<IpcRequest>,
+    transfer: AttachmentTransferRequest,
+) -> Result<Response, MxrError> {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    tx.send(IpcRequest {
+        request: Request::GetAttachmentTransferMetadata {
+            message_id: transfer.message_id.clone(),
+            attachment_id: transfer.attachment_id.clone(),
+        },
+        attachment_transfer: Some(transfer),
         reply: reply_tx,
     })
     .map_err(|_| MxrError::Ipc("IPC worker closed".into()))?;

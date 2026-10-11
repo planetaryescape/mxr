@@ -1820,6 +1820,7 @@ mod tests {
             draft_revision_supported: true,
             send_outcome_supported: true,
             archive_recovery_supported: true,
+            attachment_transfer_supported: true,
             uptime_secs: 1,
             accounts: Vec::new(),
             total_messages: 0,

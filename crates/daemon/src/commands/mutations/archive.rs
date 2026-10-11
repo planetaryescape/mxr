@@ -98,6 +98,9 @@ pub(super) fn print_operation(
                 "Recover: mxr archive-operation {}",
                 operation.identity.operation_id
             );
+            if operation.undo_available {
+                println!("Undo with: mxr undo {}", operation.mutation_id);
+            }
             if !operation.accepted {
                 println!(
                     "Submit reviewed selection: mxr archive-operation {} --submit",

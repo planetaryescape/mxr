@@ -8,7 +8,7 @@ The S03 baseline at `3b5648422e1d284cf369e54c1dfae99052ac93da` saw the same
 expected-453/received-452 mismatch at [the unchanged first-frame assertion](https://github.com/planetaryescape/mxr/blob/3b5648422e1d284cf369e54c1dfae99052ac93da/apps/web/e2e/resizable-panes.spec.ts#L199)
 in [CI run 38138146795, Web E2E job 114466290553](https://github.com/planetaryescape/mxr/actions/runs/38138146795/job/114466290553).
 The retry passed; the job reported 380 passed and one flaky test, plus four
-passing speed checks. The final S03 candidate run at `7413df8716410b67b75c6051c920aa6e2060551a`
+passing speed checks. The S03 candidate run at `7413df8716410b67b75c6051c920aa6e2060551a`
 also passed on retry: [CI run 38140757563, Web E2E job 114474067681](https://github.com/planetaryescape/mxr/actions/runs/38140757563/job/114474067681)
 reported 380 passed and the same one-pixel mismatch at the unchanged assertion.
 The run record gives a 14m06s Web E2E job and 14m45s total CI elapsed time.

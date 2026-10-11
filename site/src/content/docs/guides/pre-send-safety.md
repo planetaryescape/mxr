@@ -257,9 +257,9 @@ temperature = 0.0
 ## The override flow
 
 When a check fires a Blocker, mxr mints a single-use override token. You
-do **not** need a separate `--check` run to get one: a plain `mxr send`
-of a blocked draft is rejected with the token and the preview-bound
-arguments needed for a reviewed send, e.g.
+do **not** need a separate `--check` run to get one: a saved-draft send
+with its required reviewed identity can be refused with the token and
+the preview-bound arguments needed for a reviewed send, e.g.
 
 ```text
 draft safety blocked send: PEM private key detected in draft — to send anyway after review, use the preview's --expected-revision and --operation-id, then --override-safety {token}
@@ -304,7 +304,6 @@ read -r REVIEWED_REVISION OPERATION_ID
 TOKEN=$(mxr send "$DRAFT_ID" --check --format json | \
   jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
 [ -z "$TOKEN" ] && exit 0  # nothing to override; safe to send
-# Use this only when the outcome query says the operation was not accepted.
 mxr send "$DRAFT_ID" --expected-revision "$REVIEWED_REVISION" \
   --operation-id "$OPERATION_ID" --override-safety "$TOKEN"
 ```

@@ -1460,7 +1460,7 @@ fn refresh_analytics_action_clears_error_and_marks_pending() {
 /// runs far longer than that and used to time the request out (and reconnect)
 /// while the sync carried on.
 #[test]
-fn sync_now_action_asks_the_daemon_to_sync_in_the_background() {
+fn sync_now_action_asks_the_daemon_to_sync_every_account() {
     let mut app = App::new();
 
     app.apply(Action::SyncNow);
@@ -1469,16 +1469,7 @@ fn sync_now_action_asks_the_daemon_to_sync_in_the_background() {
         .pending_mutation_queue
         .first()
         .expect("SyncNow should queue a request");
-    match &queued.request {
-        Request::SyncNow {
-            account_id,
-            background,
-        } => {
-            assert_eq!(account_id, &None);
-            assert!(background, "the TUI must not block on the sync");
-        }
-        other => panic!("Expected SyncNow request, got {other:?}"),
-    }
+    assert_eq!(queued.request, Request::SyncAll);
 }
 
 /// A resolved thread queues its context facts at once and its gist after the

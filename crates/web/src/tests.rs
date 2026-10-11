@@ -291,6 +291,19 @@ async fn slice6_routes_dispatch_correct_request_variants() {
                     },
                 },
             }),
+            Request::SyncAll => Some(Response::Ok {
+                data: ResponseData::SyncBatch {
+                    results: vec![mxr_protocol::SyncAccountResult {
+                        account_id: AccountId::new(),
+                        account_name: "Work".into(),
+                        result: mxr_protocol::SyncAccountResultKind::Started,
+                        error: None,
+                    }],
+                },
+            }),
+            Request::PreviewSyncAll => Some(Response::Ok {
+                data: ResponseData::SyncPlan { targets: vec![] },
+            }),
             _ => None,
         },
         None,
@@ -317,6 +330,27 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["pong"], true);
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["results"][0]["account_name"], "Work");
+    assert_eq!(json["results"][0]["result"], "started");
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync/preview"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["targets"], serde_json::json!([]));
 
     // ResponseData uses #[serde(tag = "kind")] (internally tagged), so
     // the JSON shape is {"kind": "Variant", ...fields}.

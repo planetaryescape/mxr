@@ -963,6 +963,11 @@ pub enum Request {
         #[serde(default)]
         background: bool,
     },
+    /// Preview the accounts an explicit global sync would target. This keeps
+    /// the old `SyncNow { account_id: None }` default-account meaning intact.
+    PreviewSyncAll,
+    /// Start or join a background sync for every enabled sync-capable account.
+    SyncAll,
     GetSyncStatus {
         account_id: AccountId,
     },
@@ -2387,6 +2392,8 @@ impl Request {
             | Self::RenameLabel { .. }
             | Self::Search { .. }
             | Self::SyncNow { .. }
+            | Self::PreviewSyncAll
+            | Self::SyncAll
             | Self::GetSyncStatus { .. }
             | Self::GetFreshness { .. }
             | Self::SetFlags { .. }
@@ -3008,6 +3015,14 @@ pub enum ResponseData {
     },
     SyncStatus {
         sync: AccountSyncStatus,
+    },
+    /// Targets selected by `Request::PreviewSyncAll`.
+    SyncPlan {
+        targets: Vec<SyncTarget>,
+    },
+    /// Per-account result of `Request::SyncAll`.
+    SyncBatch {
+        results: Vec<SyncAccountResult>,
     },
     /// Returned by `Request::GetFreshness`.
     Freshness {
@@ -3778,6 +3793,8 @@ impl ResponseData {
             | Self::Label { .. }
             | Self::SearchResults { .. }
             | Self::SyncStatus { .. }
+            | Self::SyncPlan { .. }
+            | Self::SyncBatch { .. }
             | Self::Freshness { .. }
             | Self::Count { .. }
             | Self::SearchAggregation { .. }
@@ -4168,6 +4185,38 @@ pub struct AccountSyncStatus {
     /// reported it is gone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress: Option<SyncProgressData>,
+}
+
+/// One enabled, sync-capable account selected by the global sync preview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SyncTarget {
+    pub account_id: AccountId,
+    pub account_name: String,
+    /// False means the account is configured for sync but the running daemon
+    /// has no registered sync provider for it.
+    pub provider_available: bool,
+}
+
+/// Whether a global sync started new work, joined work already in progress,
+/// or could not start for this account.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SyncAccountResultKind {
+    Started,
+    Joined,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SyncAccountResult {
+    pub account_id: AccountId,
+    pub account_name: String,
+    pub result: SyncAccountResultKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// How far the sync pass running for an account has got.

@@ -9,24 +9,60 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/api/client";
 import type { Action } from "@/lib/actions/types";
-import { useConnectionStore } from "@/state/connectionStore";
 import { useModals } from "@/state/modalStore";
 
 export async function syncNow(): Promise<void> {
-  if (useConnectionStore.getState().syncProgress) {
-    toast.info("A sync is already running");
-    return;
-  }
   try {
-    await apiFetch<unknown>("/api/v1/mail/sync", { method: "POST", body: {} });
-    toast.success("Sync started", { description: "Progress shows in the status bar" });
+    const response = await apiFetch<unknown>("/api/v1/mail/sync", { method: "POST", body: {} });
+    const results = syncResults(response);
+    if (results.length === 0) {
+      toast.info("No enabled sync-capable accounts");
+      return;
+    }
+    const failures = results.filter((result) => result.result === "failed");
+    if (failures.length > 0) {
+      toast.error("Some accounts couldn't sync", {
+        description: failures
+          .map((failure) => `${failure.account_name}: ${failure.error ?? "Sync couldn't start"}`)
+          .join("; "),
+      });
+    }
   } catch (error) {
-    // Nothing is running: let the next "Sync now" through.
-    useConnectionStore.getState().setState({ syncProgress: undefined });
     toast.error("Sync failed to start", {
       description: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function syncResults(value: unknown): Array<{
+  account_name: string;
+  result: "started" | "joined" | "failed";
+  error?: string;
+}> {
+  if (!isRecord(value) || !Array.isArray(value.results)) {
+    throw new Error("The daemon returned an invalid sync result");
+  }
+  return value.results.map((item) => {
+    if (!isRecord(item)) {
+      throw new Error("The daemon returned an invalid account sync result");
+    }
+    if (
+      typeof item.account_name !== "string" ||
+      (item.result !== "started" && item.result !== "joined" && item.result !== "failed") ||
+      (item.error !== undefined && typeof item.error !== "string")
+    ) {
+      throw new Error("The daemon returned an invalid account sync result");
+    }
+    return {
+      account_name: item.account_name,
+      result: item.result,
+      ...(typeof item.error === "string" ? { error: item.error } : {}),
+    };
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export const mailboxActions: Action[] = [

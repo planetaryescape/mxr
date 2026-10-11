@@ -2430,6 +2430,31 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::InviteResponseSent { .. },
                     }) => Ok(effect),
                     Ok(Response::Ok {
+                        data: ResponseData::SyncBatch { results },
+                    }) => {
+                        let failures = results
+                            .iter()
+                            .filter(|result| {
+                                result.result == mxr_protocol::SyncAccountResultKind::Failed
+                            })
+                            .map(|result| {
+                                format!(
+                                    "{}: {}",
+                                    result.account_name,
+                                    result.error.as_deref().unwrap_or("sync couldn't start")
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        if failures.is_empty() {
+                            Ok(effect)
+                        } else {
+                            Err(MxrError::Ipc(format!(
+                                "Some accounts couldn't sync: {}",
+                                failures.join("; ")
+                            )))
+                        }
+                    }
+                    Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
                     }) => Ok(effect),
                     // Reading: the daemon's own words where it has them.

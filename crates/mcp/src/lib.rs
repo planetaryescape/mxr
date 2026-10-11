@@ -280,6 +280,14 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_sync",
+        description = "Start or join sync for every enabled sync-capable account. Returns per-account started, joined, or failed results; use mxr_status to read progress and completion."
+    )]
+    pub async fn sync_all(&self) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::SyncAll).await
+    }
+
+    #[tool(
         name = "mxr_list_messages",
         description = "List message envelopes without body content. Use mxr_read_message with include_body=true to explicitly read bodies."
     )]
@@ -1556,6 +1564,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(names.contains(&"mxr_status"));
+        assert!(names.contains(&"mxr_sync"));
         assert!(names.contains(&"mxr_read_message"));
         assert!(names.contains(&"mxr_thread_context"));
         assert!(names.contains(&"mxr_thread_gists"));
@@ -1588,6 +1597,19 @@ mod tests {
 
         drop(client);
         server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn sync_tool_uses_the_explicit_all_accounts_request() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+
+        server.sync_all().await.expect("sync tool result");
+
+        assert_eq!(
+            requester.requests.lock().expect("requests lock").as_slice(),
+            &[Request::SyncAll]
+        );
     }
 
     #[tokio::test]

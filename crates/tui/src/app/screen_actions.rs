@@ -139,10 +139,7 @@ impl App {
                 // `OperationProgress` events and the list refreshes on
                 // `SyncCompleted`.
                 self.queue_mutation(
-                    Request::SyncNow {
-                        account_id: None,
-                        background: true,
-                    },
+                    Request::SyncAll,
                     MutationEffect::RefreshList,
                     "Syncing...".into(),
                 );

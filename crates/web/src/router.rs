@@ -102,6 +102,7 @@ fn mail_router() -> Router<AppState> {
         .route("/deliveries/{delivery_id}/resolve", post(resolve_delivery))
         .route("/deliveries/{delivery_id}/dismiss", post(dismiss_delivery))
         .route("/sync", post(trigger_sync))
+        .route("/sync/preview", post(preview_sync_all))
         .route("/mutations/archive", post(archive))
         .route("/mutations/trash", post(trash))
         .route("/mutations/spam", post(spam))

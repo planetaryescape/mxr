@@ -40,22 +40,40 @@ afterEach(() => {
 });
 
 describe("syncNow", () => {
-  test("starts a sync", async () => {
-    client.apiFetch.mockResolvedValue({});
+  test("starts or joins every account without a redundant success toast", async () => {
+    client.apiFetch.mockResolvedValue({
+      results: [
+        { account_name: "Work", result: "started" },
+        { account_name: "Personal", result: "joined" },
+      ],
+    });
 
     await syncNow();
 
     expect(client.apiFetch).toHaveBeenCalledWith("/api/v1/mail/sync", { method: "POST", body: {} });
-    expect(toast.success).toHaveBeenCalledWith("Sync started", expect.anything());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
-  test("doesn't start a second sync while one is running", async () => {
+  test("still triggers global sync while a different account is already running", async () => {
     useConnectionStore.setState({ syncProgress: { account_id: "a", current: 1, total: 9 } });
+    client.apiFetch.mockResolvedValue({ results: [{ account_name: "Work", result: "joined" }] });
 
     await syncNow();
 
-    expect(client.apiFetch).not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalledWith("A sync is already running");
+    expect(client.apiFetch).toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  test("shows failures next to the affected account", async () => {
+    client.apiFetch.mockResolvedValue({
+      results: [{ account_name: "Work", result: "failed", error: "offline" }],
+    });
+
+    await syncNow();
+
+    expect(toast.error).toHaveBeenCalledWith("Some accounts couldn't sync", {
+      description: "Work: offline",
+    });
   });
 
   test("reports a failure to start", async () => {
@@ -66,6 +84,14 @@ describe("syncNow", () => {
     expect(toast.error).toHaveBeenCalledWith("Sync failed to start", {
       description: "daemon unreachable",
     });
+  });
+
+  test("explains when there is nothing to sync", async () => {
+    client.apiFetch.mockResolvedValue({ results: [] });
+
+    await syncNow();
+
+    expect(toast.info).toHaveBeenCalledWith("No enabled sync-capable accounts");
   });
 });
 

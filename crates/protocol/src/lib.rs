@@ -612,6 +612,8 @@ mod tests {
                 },
                 IpcCategory::CoreMail,
             ),
+            (Request::PreviewSyncAll, IpcCategory::CoreMail),
+            (Request::SyncAll, IpcCategory::CoreMail),
             (
                 Request::GetSyncStatus {
                     account_id: AccountId::new(),

@@ -839,13 +839,24 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
         Some(Command::Sync {
             account,
+            all,
+            dry_run,
             status,
             wait,
             wait_timeout_secs,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::sync_cmd::run(account, status, wait, wait_timeout_secs, format).await?;
+            commands::sync_cmd::run(
+                account,
+                all,
+                dry_run,
+                status,
+                wait,
+                wait_timeout_secs,
+                format,
+            )
+            .await?;
         }
         Some(Command::Status {
             format,

@@ -616,6 +616,12 @@ pub fn map_request(
             account.as_ref().map(|a| a.as_str().clone()),
             None,
         ),
+        Request::SyncAll => (
+            "account.sync",
+            Some("account"),
+            None,
+            Some(serde_json::json!({ "scope": "all_enabled_sync_accounts" })),
+        ),
         Request::SetDefaultAccount { key } => (
             "account.rename",
             Some("account"),
@@ -685,6 +691,7 @@ pub fn map_request(
         | Request::ResolveTime { .. }
         | Request::GetSemanticStatus
         | Request::GetSyncStatus { .. }
+        | Request::PreviewSyncAll
         | Request::Count { .. }
         | Request::SearchAggregation { .. }
         | Request::GetHeaders { .. }

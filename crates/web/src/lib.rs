@@ -3947,17 +3947,22 @@ async fn trigger_sync(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    // Background: the HTTP handler answers as soon as the daemon has started
-    // the sync instead of holding the request open for the whole pass, which
-    // on a first backfill is minutes.
-    ack_request(
-        &state.config.socket_path,
-        Request::SyncNow {
-            account_id: None,
-            background: true,
-        },
-    )
-    .await
+    match ipc_request(&state.config.socket_path, Request::SyncAll).await? {
+        ResponseData::SyncBatch { results } => Ok(Json(json!({ "results": results }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn preview_sync_all(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(&state.config.socket_path, Request::PreviewSyncAll).await? {
+        ResponseData::SyncPlan { targets } => Ok(Json(json!({ "targets": targets }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 async fn get_semantic_status(

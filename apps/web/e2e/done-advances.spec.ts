@@ -673,3 +673,42 @@ test.describe("Now and Updates", () => {
     await expect(lines.filter({ hasText: firstSource })).toHaveCount(1, { timeout: 15_000 });
   });
 });
+
+test.describe("Reading: the email reader after archive", () => {
+  let mutations: Tracked;
+  test.beforeEach(({ page }) => {
+    mutations = trackMutations(page);
+  });
+  test.afterEach(async ({ page }) => {
+    await undoAll(page, mutations);
+  });
+
+  test("delayed archive-previous keeps its direction through undo", async ({ page }) => {
+    await openApp(page, "/reading");
+    const rows = page.getByTestId("reading-item");
+    await expect(rows.nth(2)).toBeVisible({ timeout: 60_000 });
+    const previousThread = await rows.nth(0).getAttribute("data-thread");
+    const selectedThread = await rows.nth(1).getAttribute("data-thread");
+    expect(previousThread).toBeTruthy();
+    expect(selectedThread).toBeTruthy();
+
+    await rows.nth(1).click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("o");
+    await expect(page).toHaveURL(`/reading/${encodeURIComponent(selectedThread!)}`);
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+    const selectedUrl = page.url();
+
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
+    await page.keyboard.press("[");
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(`/reading/${encodeURIComponent(previousThread!)}`);
+
+    await page.keyboard.press("u");
+    await expect(page).toHaveURL(selectedUrl);
+  });
+});

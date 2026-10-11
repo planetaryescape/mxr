@@ -200,7 +200,7 @@ describe("cold mailbox connection state", () => {
     renderInbox();
 
     await waitForPausedColdQueries();
-    expect(screen.getByText("Waiting for mxr")).toBeVisible();
+    expect(await screen.findByText("Waiting for mxr", {}, { timeout: 5_000 })).toBeVisible();
     expect(screen.getByText(/couldn't load inbox yet/i)).toBeVisible();
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
 

@@ -229,8 +229,25 @@ after two missed charges or a cancellation email from the same sender. A
 price change on the newest charge, a missed charge, and a yearly
 subscription two weeks from renewing each show as a suggestion in
 Archive's Coming up strip and on Now, worked out from the charge dates
-alone. None of them files a to-do on its own; press `t` on the record
-when one needs doing.
+alone. With To do enabled, an annual renewal within fourteen days also
+creates a task such as "Review Admiral renewal". Its date and amount are
+estimates from the charge history, with source mail and unchecked field
+provenance. A yearly plan seen twice can qualify; it is still unconfirmed.
+
+```bash
+mxr todo list --format json
+mxr todo why TODO_ID --format json
+mxr todo dismiss TODO_ID --dry-run
+mxr todo dismiss TODO_ID
+mxr todo undo TODO_ID
+```
+
+Edits, dismissals and completions survive repeated scans, restarts and
+older-history backfill. A new annual charge can produce a review for the
+next cycle. Monthly and ended subscriptions create no renewal reviews.
+An inferred cancellation or date does not close an existing review, and
+ticking it off does not file a renewed contract. Review the plan, price
+and date with the provider before deciding what to do.
 
 Totals are per currency, never converted; the month is the year over
 twelve. Every field says where it came from: the amount and dates keep the

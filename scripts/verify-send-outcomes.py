@@ -387,7 +387,11 @@ try:
             "override_safety_token": None,
         }
     )
-    assert sent["type"] == "Ok" and count() == 7, sent
+    assert (
+        sent["status"] == "Ok"
+        and sent["data"]["kind"] in {"SendReceipt", "SendOutcome"}
+        and count() == 7
+    ), sent
     corrected_outcome = outcome(corrected_account, corrected_retry["operation_id"])
     assert corrected_outcome["state"] == "accepted"
     result = {

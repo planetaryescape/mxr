@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -25,6 +25,7 @@ interface HelpDialogProps {
  */
 export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
   const [query, setQuery] = useState("");
+  const openerRef = useRef<HTMLElement | null>(null);
   const ctx = useActionContext();
   const sections = useShortcutSections(ctx);
   const mode = modeOfScopes(ctx.scopes);
@@ -51,7 +52,24 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
         onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[85dvh] max-w-4xl flex-col gap-3">
+      <DialogContent
+        className="flex max-h-[85dvh] max-w-4xl flex-col gap-3"
+        onOpenAutoFocus={() => {
+          const activeElement = document.activeElement;
+          openerRef.current =
+            activeElement instanceof HTMLElement && activeElement !== document.body
+              ? activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          const opener = openerRef.current;
+          openerRef.current = null;
+          if (!opener?.isConnected || opener.matches(":disabled")) return;
+
+          event.preventDefault();
+          opener.focus({ preventScroll: true });
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Help and keyboard shortcuts</DialogTitle>
           <DialogDescription>
@@ -60,7 +78,6 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
         </DialogHeader>
         {mode ? <ModeHelp mode={mode} /> : null}
         <Input
-          autoFocus
           aria-label="Filter shortcuts"
           value={query}
           onChange={(event) => setQuery(event.target.value)}

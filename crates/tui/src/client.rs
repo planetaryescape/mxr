@@ -41,14 +41,31 @@ impl Client {
         {
             let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())
                 .map_err(|e| MxrError::Ipc(e.to_string()))?;
+            let event_tx = self.event_tx.clone();
+            let mut forward_event = move |event| {
+                if let Some(tx) = &event_tx {
+                    let _ = tx.send(event);
+                }
+            };
             let operation = self
                 .conn
-                .preview_archive(&journal, MutationCommand::Archive { message_ids })
+                .preview_archive_with_events(
+                    &journal,
+                    MutationCommand::Archive { message_ids },
+                    &mut forward_event,
+                )
                 .await
                 .map_err(map_request_error)?;
             let id = operation.identity.operation_id.clone();
-            self.conn.submit_archive(&journal, &operation).await.map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
-            let outcome = self.conn.wait_archive(operation.identity).await.map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
+            self.conn
+                .submit_archive_with_events(&journal, &operation, &mut forward_event)
+                .await
+                .map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
+            let outcome = self
+                .conn
+                .wait_archive_with_events(operation.identity, &mut forward_event)
+                .await
+                .map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
             let succeeded = outcome
                 .items
                 .iter()

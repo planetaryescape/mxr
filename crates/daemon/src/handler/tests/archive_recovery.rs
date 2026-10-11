@@ -102,6 +102,37 @@ async fn overwrite(state: &AppState, operation: &ArchiveOperationData) {
         .unwrap());
 }
 
+async fn assert_completed_history(state: &AppState, operation: &ArchiveOperationData) {
+    let entries = state
+        .store
+        .list_events(100, None, Some("mutation"))
+        .await
+        .unwrap();
+    for item in &operation.items {
+        let matching = entries
+            .iter()
+            .filter(|event| event.message_id.as_deref() == Some(item.message_id.as_str().as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            matching.len(),
+            usize::from(item.state == ItemState::Completed)
+        );
+        if let Some(event) = matching.first() {
+            let envelope = state
+                .store
+                .get_envelope(&item.message_id)
+                .await
+                .unwrap()
+                .unwrap();
+            let (summary, details) =
+                super::super::mutations::mutation_log_entry(&mutation(operation), &envelope);
+            assert_eq!(event.summary, summary);
+            assert_eq!(event.details, details);
+            assert_eq!(event.account_id.as_ref(), Some(&item.account_id));
+        }
+    }
+}
+
 #[tokio::test]
 async fn archive_lost_acceptance_and_completion_replies_concurrent_replays_never_repeat() {
     let (state, provider, operation) = fixture().await;
@@ -118,6 +149,7 @@ async fn archive_lost_acceptance_and_completion_replies_concurrent_replays_never
     assert_eq!(replay.items, outcome.items);
     assert_eq!(provider.mutations().len(), 2);
     assert_eq!(replay.mutation_id, operation.mutation_id);
+    assert_completed_history(&state, &replay).await;
 }
 
 #[tokio::test]
@@ -211,6 +243,7 @@ async fn archive_provider_acceptance_response_loss_stays_unknown_after_replay() 
         .iter()
         .all(|item| item.state == ItemState::Unknown));
     assert_eq!(provider.mutations().len(), 2);
+    assert_completed_history(&state, &outcome).await;
 }
 
 #[tokio::test]
@@ -226,6 +259,7 @@ async fn archive_partial_batch_known_rejection_is_separate_from_uncertainty() {
     submit(&state, &operation).await.unwrap();
     wait(&state, &operation).await;
     assert_eq!(provider.mutations().len(), 1);
+    assert_completed_history(&state, &outcome).await;
 }
 
 #[tokio::test]
@@ -275,6 +309,7 @@ async fn archive_failed_success_receipt_never_repeats_accepted_provider_effect()
     assert_eq!(outcome.items[0].state, ItemState::Unknown);
     assert_eq!(outcome.items[1].state, ItemState::Completed);
     assert_eq!(provider.mutations().len(), 2);
+    assert_completed_history(&state, &outcome).await;
 }
 
 #[tokio::test]
@@ -318,6 +353,7 @@ async fn archive_known_provider_success_failed_local_reconciliation_is_not_retry
     submit(&state, &operation).await.unwrap();
     wait(&state, &operation).await;
     assert_eq!(provider.mutations().len(), 2);
+    assert_completed_history(&state, &outcome).await;
 }
 
 #[tokio::test]
@@ -396,3 +432,5 @@ async fn archive_terminal_resubmission_does_not_rearm_consumed_undo() {
         .is_none());
     assert_eq!(provider.mutations().len(), 2);
 }
+
+mod completion;

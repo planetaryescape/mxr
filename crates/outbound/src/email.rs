@@ -360,6 +360,7 @@ mod tests {
         };
         let now = chrono::Utc::now();
         let draft = Draft {
+            revision: Some(1),
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
             from: None,
@@ -414,6 +415,7 @@ mod tests {
 
     fn plain_draft(subject: &str, body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
             from: None,

@@ -79,6 +79,7 @@ impl App {
                 });
                 let now = chrono::Utc::now();
                 let draft = mxr_core::Draft {
+                    revision: None,
                     id: draft_id.clone(),
                     account_id: pending.account_id.clone(),
                     from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)

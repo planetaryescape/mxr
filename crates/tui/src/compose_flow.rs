@@ -260,11 +260,11 @@ pub(crate) async fn prepare_draft_edit(
 
     let dir = mxr_compose::private_tmp::private_scratch_dir()
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
-    let path = dir.join(format!("mxr-draft-edit-{}.md", draft.id));
-    // Best-effort: clear a stale file left behind by a previous
-    // cancelled/failed edit of this same draft — `write_private` uses
-    // O_EXCL and would otherwise refuse to write.
-    let _ = tokio::fs::remove_file(&path).await;
+    let path = dir.join(format!(
+        "mxr-draft-edit-{}-{}.md",
+        draft.id,
+        mxr_core::DraftId::new()
+    ));
     mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
         .await
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
@@ -321,7 +321,7 @@ pub(crate) async fn handle_draft_edit_status(
 
             match ipc_call(bg, Request::UpdateDraft { draft: updated }).await {
                 Ok(Response::Ok {
-                    data: ResponseData::Ack,
+                    data: ResponseData::Ack | ResponseData::Draft { .. },
                 }) => {
                     app.status_message = Some("Draft updated".into());
                     app.schedule_draft_cleanup(data.path.clone());
@@ -727,6 +727,7 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             });
     let now = chrono::Utc::now();
     mxr_core::Draft {
+        revision: None,
         id: mxr_core::id::DraftId::new(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
@@ -927,8 +928,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reopening_draft_edit_preserves_the_previous_invocations_text() {
+        let account = test_account_summary("me@example.com", true, true);
+        let draft = mxr_core::Draft {
+            revision: Some(1),
+            id: mxr_core::DraftId::new(),
+            account_id: account.account_id.clone(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Preserved edit".into(),
+            content: mxr_core::DraftContent::markdown("stored text"),
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let (bg, mut requests) = mpsc::unbounded_channel::<IpcRequest>();
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                let request = requests.recv().await.expect("account lookup");
+                assert!(matches!(request.request, Request::ListAccounts));
+                request
+                    .reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::Accounts {
+                            accounts: vec![account.clone()],
+                        },
+                    }))
+                    .expect("account reply");
+            }
+        });
+        let first = super::prepare_draft_edit(&bg, draft.clone())
+            .await
+            .expect("first edit");
+        tokio::fs::write(&first.path, "unsent conflict text")
+            .await
+            .expect("retained edit");
+        let second = super::prepare_draft_edit(&bg, draft)
+            .await
+            .expect("second edit");
+        assert_ne!(first.path, second.path);
+        assert_eq!(
+            tokio::fs::read_to_string(&first.path)
+                .await
+                .expect("first retained"),
+            "unsent conflict text"
+        );
+        assert!(tokio::fs::read_to_string(&second.path)
+            .await
+            .expect("second file")
+            .contains("stored text"));
+        tokio::fs::remove_file(&second.path)
+            .await
+            .expect("second cleanup");
+        assert!(
+            first.path.exists(),
+            "success cleanup must leave the earlier conflict file"
+        );
+        tokio::fs::remove_file(first.path)
+            .await
+            .expect("first cleanup");
+    }
+
+    #[tokio::test]
     async fn prepare_draft_edit_refuses_an_html_draft_without_asking_the_daemon() {
         let draft = mxr_core::Draft {
+            revision: Some(1),
             id: mxr_core::id::DraftId::new(),
             account_id: mxr_core::AccountId::new(),
             from: None,

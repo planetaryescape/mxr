@@ -13,7 +13,12 @@ import type {
 } from "../api";
 
 export interface ComposeDraftState {
+  draftId?: string;
+  revision?: number | null;
   draftPath: string;
+  /** Keeps queued saves ordered when a conflict moves this editor to a recovery file. */
+  recoverySourcePath?: string;
+  preservedRecoveryPath?: string;
   rawContent: string;
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
@@ -46,7 +51,11 @@ export interface ComposeIntent {
 }
 
 export interface ComposeSaveSnapshot {
+  draftId?: string;
+  revision?: number | null;
   draftPath: string;
+  /** Keeps queued saves ordered when a conflict moves this editor to a recovery file. */
+  recoverySourcePath?: string;
   accountId: string;
   fingerprint: string;
   frontmatter: ComposeFrontmatter;
@@ -89,7 +98,10 @@ export function draftFromSession(
   fallbackAccountId = "",
 ): ComposeDraftState {
   return {
+    draftId: session.draftId ?? undefined,
+    revision: session.revision,
     draftPath: session.draftPath,
+    recoverySourcePath: session.recoverySourcePath ?? undefined,
     rawContent: session.rawContent,
     frontmatter: {
       to: session.frontmatter.to ?? "",
@@ -103,14 +115,17 @@ export function draftFromSession(
     issues: session.issues ?? [],
     accountId: session.accountId ?? fallbackAccountId,
     kind: session.kind ?? "new",
-    editorCommand: session.editorCommand,
-    cursorLine: session.cursorLine,
+    editorCommand: session.editorCommand ?? undefined,
+    cursorLine: session.cursorLine ?? undefined,
   };
 }
 
 export function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapshot {
   return {
+    draftId: draft.draftId,
+    revision: draft.revision,
     draftPath: draft.draftPath,
+    recoverySourcePath: draft.recoverySourcePath,
     accountId: draft.accountId,
     fingerprint: draftFingerprint(draft),
     frontmatter: { ...draft.frontmatter, attach: [...draft.frontmatter.attach] },
@@ -118,12 +133,13 @@ export function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapsh
   };
 }
 
-export function composeQueueKey(draftPath: string): string {
-  return `compose:${draftPath}`;
+export function composeQueueKey(draftPath: string, recoverySourcePath?: string): string {
+  return `compose:${recoverySourcePath ?? draftPath}`;
 }
 
 export function draftFingerprint(draft: ComposeDraftState): string {
   return JSON.stringify({
+    accountId: draft.accountId,
     to: draft.frontmatter.to,
     cc: draft.frontmatter.cc,
     bcc: draft.frontmatter.bcc,

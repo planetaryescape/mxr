@@ -16,6 +16,17 @@ pub(super) enum BridgeError {
     /// class, so the HTTP status follows it instead of blaming the gateway.
     #[error("{message}")]
     Daemon { message: String, kind: IpcErrorKind },
+    #[error("{message}")]
+    DraftConflict {
+        message: String,
+        details: Option<serde_json::Value>,
+    },
+    #[error("{source}")]
+    ComposeRecovery {
+        source: Box<Self>,
+        accepted_draft: Option<AcceptedComposeDraft>,
+        recovery_session: Option<RecoveredComposeSession>,
+    },
     /// The HTTP request itself is malformed (bad id, unknown enum value,
     /// missing lens parameter). Never reaches the daemon.
     #[error("{0}")]
@@ -32,8 +43,51 @@ pub(super) enum BridgeError {
 }
 
 impl BridgeError {
+    pub(super) fn with_compose_evidence(
+        self,
+        accepted: Option<&Draft>,
+        recovery_session: Option<RecoveredComposeSession>,
+    ) -> Self {
+        let accepted_draft = accepted.and_then(|draft| {
+            draft.revision.map(|revision| AcceptedComposeDraft {
+                draft_id: draft.id.clone(),
+                revision,
+            })
+        });
+        Self::ComposeRecovery {
+            source: Box::new(self),
+            accepted_draft,
+            recovery_session,
+        }
+    }
+
+    fn response_body(&self) -> serde_json::Value {
+        if let Self::ComposeRecovery {
+            source,
+            accepted_draft,
+            recovery_session,
+        } = self
+        {
+            let mut body = source.response_body();
+            if let Some(accepted) = accepted_draft {
+                body["accepted_draft"] = json!(accepted);
+            }
+            if let Some(recovery) = recovery_session {
+                body["recovery_session"] = json!(recovery);
+                body["error"] = json!(format!(
+                    "{source}. Your unsent edits remain at {}",
+                    recovery.draft_path
+                ));
+            }
+            return body;
+        }
+        json!({ "error": self.to_string(), "code": self.code(), "details": match self { Self::DraftConflict { details, .. } => details.clone(), _ => None } })
+    }
+
     pub(super) fn status(&self) -> StatusCode {
         match self {
+            Self::ComposeRecovery { source, .. } => source.status(),
+            Self::DraftConflict { .. } => StatusCode::CONFLICT,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -59,6 +113,8 @@ impl BridgeError {
     /// code for daemon errors, otherwise the bridge failure class.
     pub(super) fn code(&self) -> &'static str {
         match self {
+            Self::ComposeRecovery { source, .. } => source.code(),
+            Self::DraftConflict { .. } => "draft_revision_conflict",
             Self::Daemon { kind, .. } => kind.as_code(),
             // Same code the daemon uses for its own draft validation, so a
             // client handles "fix your draft" once whichever side caught it.
@@ -70,16 +126,14 @@ impl BridgeError {
 
 impl IntoResponse for BridgeError {
     fn into_response(self) -> Response {
-        (
-            self.status(),
-            Json(serde_json::json!({ "error": self.to_string(), "code": self.code() })),
-        )
-            .into_response()
+        (self.status(), Json(self.response_body())).into_response()
     }
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct AuthQuery {
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -172,9 +226,11 @@ pub(super) fn bridge_request_id(headers: &HeaderMap) -> u64 {
 
 pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
     match error {
+        BridgeError::ComposeRecovery { source, .. } => bridge_error_kind(source),
         BridgeError::Connect(_) => "connect",
         BridgeError::Ipc(_) => "ipc",
         BridgeError::Timeout(_) => "timeout",
+        BridgeError::DraftConflict { .. } => "draft_revision_conflict",
         BridgeError::Daemon { .. } => "daemon",
         BridgeError::BadRequest(_) => "bad_request",
         BridgeError::InvalidDraft(_) => "invalid_draft",

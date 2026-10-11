@@ -228,6 +228,7 @@ mod tests {
         store.insert_saved_search(&saved).await.unwrap();
 
         let draft = Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: account.id.clone(),
             from: None,

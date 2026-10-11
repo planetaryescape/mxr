@@ -36,13 +36,13 @@ fn sample_scheduled_send(account_id: &AccountId) -> mxr_protocol::ScheduledSendD
 }
 
 /// Start a compose session, write recipients and a body into it, and return
-/// `(draft_path, account_id)`.
+/// `(draft_path, account_id, accepted_revision)`.
 async fn prepared_session(
     client: &reqwest::Client,
     addr: std::net::SocketAddr,
     start: serde_json::Value,
     to: &str,
-) -> (String, String) {
+) -> (String, String, Option<i64>) {
     let started: serde_json::Value = client
         .post(format!("http://{addr}/api/v1/mail/compose/session"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -79,7 +79,12 @@ async fn prepared_session(
         .await
         .unwrap();
     assert_eq!(updated.status(), reqwest::StatusCode::OK);
-    (draft_path, account_id)
+    let accepted: serde_json::Value = updated.json().await.unwrap();
+    (
+        draft_path,
+        account_id,
+        accepted["session"]["revision"].as_i64(),
+    )
 }
 
 #[tokio::test]
@@ -235,7 +240,7 @@ async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -246,7 +251,7 @@ async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
     let response = client
         .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
         .bearer_auth(TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision }))
         .send()
         .await
         .unwrap();
@@ -340,7 +345,7 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "reply", "message_id": source_message_id.to_string() }),
@@ -356,6 +361,7 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": expected_revision,
             "send_at": "2026-10-01T09:00:00Z",
         }))
         .send()
@@ -409,12 +415,22 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     let socket_path = temp.path().join("mxr.sock");
     let account = sample_account(&AccountId::new());
     let stored_id = DraftId::new();
+    let stored = markdown_draft(
+        &stored_id,
+        &account.account_id,
+        "Hello",
+        "original",
+        Utc::now(),
+    );
     let requests = Arc::new(Mutex::new(Vec::<Request>::new()));
     let seen = requests.clone();
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
             let response = match &request {
+                Request::ListDrafts => ok(ResponseData::Drafts {
+                    drafts: vec![stored.clone()],
+                }),
                 Request::ListAccounts => ok(ResponseData::Accounts {
                     accounts: vec![account.clone()],
                 }),
@@ -429,13 +445,13 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
-        &client,
-        addr,
-        serde_json::json!({ "kind": "new" }),
-        "alice@example.com",
-    )
-    .await;
+    let draft_path = restore_session_path(&client, addr, &stored_id).await;
+    edit_session(&client, addr, &draft_path, "Hello", "Body text").await;
+    let metadata = read_draft_session_metadata(Path::new(&draft_path))
+        .await
+        .unwrap()
+        .unwrap();
+    let account_id = metadata.account_id.to_string();
 
     let response = client
         .post(format!(
@@ -446,6 +462,7 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
             "draft_path": draft_path,
             "account_id": account_id,
             "draft_id": stored_id.to_string(),
+            "expected_revision": metadata.revision,
             "send_at": "2026-10-01T09:00:00Z",
         }))
         .send()
@@ -465,6 +482,148 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     assert!(requests.iter().any(
         |request| matches!(request, Request::ScheduleSend { draft_id, .. } if *draft_id == stored_id)
     ));
+}
+
+#[tokio::test]
+async fn failed_scheduling_keeps_the_accepted_revision_for_the_next_edit() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Schedule retry",
+        " original whitespace \n",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account_id));
+    let scheduled = Arc::new(Mutex::new(0_u32));
+    let scheduled_seen = scheduled.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ScheduleSend { .. } => {
+                *scheduled_seen.lock().unwrap() += 1;
+                Some(Response::error_kinded(
+                    "Scheduling unavailable",
+                    mxr_protocol::IpcErrorKind::Internal,
+                ))
+            }
+            Request::SendDraft { .. } => panic!("scheduling must never send mail"),
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &draft_id).await;
+    let response = client
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/schedule"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(
+            &json!({ "draft_path": path, "account_id": account_id, "draft_id": draft_id,
+            "expected_revision": 1, "send_at": "2027-01-01T09:00:00Z" }),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    let failure: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(failure["code"], "internal");
+    assert_eq!(failure["accepted_draft"]["draft_id"], draft_id.to_string());
+    assert_eq!(failure["accepted_draft"]["revision"], 2);
+    assert!(
+        Path::new(&path).exists(),
+        "failed scheduling keeps the compose file"
+    );
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(2)
+    );
+    let accepted = store.snapshot();
+    assert_eq!(accepted.len(), 1);
+    assert_eq!(accepted[0].revision, Some(2));
+    edit_session(&client, addr, &path, "Schedule retry", "retry text").await;
+    let edited = store.snapshot();
+    assert_eq!(edited.len(), 1);
+    assert_eq!(edited[0].revision, Some(3));
+    assert_eq!(edited[0].content.analysis_text(), "retry text");
+    assert_eq!(*scheduled.lock().unwrap(), 1);
+    remove_compose_file(Path::new(&path)).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_discard_preserves_the_saved_draft_and_compose_file() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &draft_id,
+        &account_id,
+        "Retained",
+        "original",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account_id));
+    let deletes = Arc::new(Mutex::new(0_u32));
+    let deletes_seen = deletes.clone();
+    let deletion_store = store.clone();
+    let _ipc = spawn_fake_ipc_server(&socket_path, move |request| match request {
+        Request::DeleteDraft { expected_revision, .. } => {
+            let current_revision = deletion_store.snapshot()[0].revision;
+            if expected_revision != current_revision {
+                Some(Response::Error { message: "Draft revision conflict".into(),
+                    kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: "draft_revision_conflict".into(),
+                    retryable: false, details: Some(json!({ "expected_revision": expected_revision, "current_revision": current_revision })) })
+            } else {
+                *deletes_seen.lock().unwrap() += 1;
+                deletion_store.clear();
+                ok(ResponseData::Ack)
+            }
+        }
+        other => responder(other),
+    }, None).await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &draft_id).await;
+    let mut other_editor = store.snapshot()[0].clone();
+    other_editor.content = DraftContent::markdown("accepted elsewhere");
+    store.update(other_editor).unwrap();
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({ "draft_path": path, "expected_revision": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    assert!(Path::new(&path).exists());
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(1)
+    );
+    assert_eq!(
+        store.snapshot()[0].content.analysis_text(),
+        "accepted elsewhere"
+    );
+    assert_eq!(*deletes.lock().unwrap(), 0);
+    remove_compose_file(Path::new(&path)).await.unwrap();
 }
 
 #[tokio::test]
@@ -495,18 +654,18 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
     // No recipients: a draft error the user has to fix.
-    let (draft_path, account_id) =
+    let (draft_path, account_id, expected_revision) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
 
+    *daemon_sends.lock().unwrap() = 0;
     for (route, extra) in [
         ("send", serde_json::json!({})),
-        ("save", serde_json::json!({})),
         (
             "schedule",
             serde_json::json!({ "send_at": "2026-10-01T09:00:00Z" }),
         ),
     ] {
-        let mut body = serde_json::json!({ "draft_path": draft_path, "account_id": account_id });
+        let mut body = serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision });
         body.as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
@@ -636,7 +795,7 @@ async fn compose_promises_send_the_session_draft_and_the_browser_zone() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, _expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -762,7 +921,7 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
     .await;
     let addr = serve(socket_path).await;
     let client = reqwest::Client::new();
-    let (draft_path, account_id) = prepared_session(
+    let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
         serde_json::json!({ "kind": "new" }),
@@ -774,7 +933,7 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
     let response = client
         .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
         .bearer_auth(TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id, "expected_revision": expected_revision }))
         .send()
         .await
         .unwrap();
@@ -793,4 +952,293 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
         .unwrap()
         .starts_with("Couldn't remove the session file"));
     std::fs::remove_dir_all(&draft_path).unwrap();
+}
+
+#[tokio::test]
+async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed_token() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Shared",
+        "original",
+        Utc::now(),
+    )]);
+    let effects = Arc::new(Mutex::new(0));
+    let seen = effects.clone();
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |request| {
+            if matches!(
+                &request,
+                Request::SendDraft { .. }
+                    | Request::SaveDraftToServer { .. }
+                    | Request::ScheduleSend { .. }
+                    | Request::DeleteDraft { .. }
+            ) {
+                *seen.lock().unwrap() += 1;
+            }
+            responder(request)
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    let submit = |body: &'static str| {
+        client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({ "draft_path": path, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body }))
+            .send()
+    };
+    let (left, right) = tokio::join!(submit("left snapshot"), submit("right snapshot"));
+    let left = left.unwrap();
+    let right = right.unwrap();
+    let (accepted, rejected, winning, losing) = if left.status() == reqwest::StatusCode::OK {
+        (left, right, "left snapshot", "right snapshot")
+    } else {
+        (right, left, "right snapshot", "left snapshot")
+    };
+    assert_eq!(accepted.status(), reqwest::StatusCode::OK);
+    assert_eq!(rejected.status(), reqwest::StatusCode::CONFLICT);
+    let success: serde_json::Value = accepted.json().await.unwrap();
+    assert_eq!(success["session"]["bodyMarkdown"], winning);
+    assert_eq!(success["session"]["revision"], 2);
+    assert_eq!(store.snapshot()[0].content.analysis_text(), winning);
+    let failure: serde_json::Value = rejected.json().await.unwrap();
+    assert_eq!(failure["code"], "draft_revision_conflict");
+    assert_eq!(failure["details"]["current_revision"], 2);
+    assert!(failure.get("accepted_draft").is_none());
+    let recovered = failure["recovery_session"]["draft_path"].as_str().unwrap();
+    let refreshed = load_compose_session(Path::new(&path)).await.unwrap();
+    assert_eq!(refreshed["bodyMarkdown"], winning);
+    assert_eq!(refreshed["revision"], 2);
+    let losing_session = load_compose_session(Path::new(recovered)).await.unwrap();
+    assert_eq!(losing_session["bodyMarkdown"], losing);
+    assert_eq!(losing_session["revision"], 1);
+    assert_eq!(losing_session["recoverySourcePath"], path);
+    for body in ["latest before close", "latest before close"] {
+        let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body}))
+            .send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let local: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(local["session"]["draftPath"], recovered);
+        assert_eq!(local["session"]["revision"], 1);
+        assert_eq!(local["session"]["bodyMarkdown"], body);
+        assert_eq!(store.snapshot()[0].revision, Some(2));
+        assert_eq!(store.snapshot()[0].content.analysis_text(), winning);
+    }
+    // Recovery cannot cause effects, including requests from null-token clients.
+    for endpoint in ["send", "save", "schedule", "safety-check"] {
+        let blocked = client.post(format!("http://{addr}/api/v1/mail/compose/session/{endpoint}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered, "account_id": account, "draft_id": id,
+                "expected_revision": null, "save_to_server": true, "send_at": "2026-12-01T12:00:00Z"}))
+            .send().await.unwrap();
+        assert_eq!(
+            blocked.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "{endpoint}"
+        );
+    }
+    // Explicit canonical restore does not erase the rejected editor's text.
+    let reopened = restore_session_path(&client, addr, &id).await;
+    let canonical = load_compose_session(Path::new(&reopened)).await.unwrap();
+    assert_eq!(canonical["bodyMarkdown"], winning);
+    assert_eq!(canonical["revision"], 2);
+    assert_eq!(
+        load_compose_session(Path::new(recovered)).await.unwrap()["bodyMarkdown"],
+        "latest before close"
+    );
+    // Two explicit reopens own independent editable copies, even when they
+    // began with the same remembered recovery path.
+    let mut opened = Vec::new();
+    for _ in 0..2 {
+        let response: serde_json::Value = client
+            .post(format!("http://{addr}/api/v1/mail/compose/session/refresh"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let copy = response["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(copy, recovered);
+        opened.push(copy);
+    }
+    assert_ne!(opened[0], opened[1]);
+    for (copy, body) in opened
+        .iter()
+        .zip(["first reopened editor", "second reopened editor"])
+    {
+        let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": copy, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body}))
+            .send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    assert_eq!(
+        load_compose_session(Path::new(recovered)).await.unwrap()["bodyMarkdown"],
+        "latest before close"
+    );
+    let deleted_copy = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": opened[0], "expected_revision": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(deleted_copy.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        load_compose_session(Path::new(&opened[1])).await.unwrap()["bodyMarkdown"],
+        "second reopened editor"
+    );
+    assert_eq!(store.snapshot()[0].revision, Some(2));
+    remove_compose_file(Path::new(&opened[1])).await.unwrap();
+    let discarded = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": recovered, "expected_revision": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(discarded.status(), reqwest::StatusCode::OK);
+    assert!(!Path::new(recovered).exists());
+    assert_eq!(store.snapshot()[0].revision, Some(2));
+    assert_eq!(*effects.lock().unwrap(), 0);
+    remove_compose_file(Path::new(&path)).await.unwrap();
+    if reopened != path {
+        remove_compose_file(Path::new(&reopened)).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn failed_provider_save_reports_its_accepted_revision_even_after_another_writer_advances() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Partial",
+        " original whitespace \n",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
+    let provider_store = store.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |request| match request {
+            Request::SaveDraftToServer { draft } => {
+                assert_eq!(draft.revision, Some(2));
+                let mut other = provider_store.snapshot()[0].clone();
+                other.content = DraftContent::markdown("another editor's newer text");
+                provider_store.update(other).unwrap();
+                Some(Response::Error {
+                    message: "Provider conflict".into(),
+                    kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+                    code: "draft_revision_conflict".into(),
+                    retryable: false,
+                    details: Some(json!({"expected_revision": 2, "current_revision": 3})),
+                })
+            }
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/save"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": path, "draft_id": id, "account_id": account, "expected_revision": 1, "save_to_server": true}))
+        .send().await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let failure: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(failure["error"], "Provider conflict");
+    assert_eq!(failure["code"], "draft_revision_conflict");
+    assert_eq!(failure["details"]["current_revision"], 3);
+    assert_eq!(failure["accepted_draft"]["draft_id"], id.to_string());
+    assert_eq!(failure["accepted_draft"]["revision"], 2);
+    assert_eq!(
+        read_draft_session_metadata(Path::new(&path))
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        Some(2)
+    );
+    assert_eq!(store.snapshot()[0].revision, Some(3));
+    remove_compose_file(Path::new(&path)).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_shared_path_send_cannot_send_another_editors_message() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let id = DraftId::new();
+    let store = FakeDraftStore::with(vec![markdown_draft(
+        &id,
+        &account,
+        "Reviewed",
+        "reviewed by old tab",
+        Utc::now(),
+    )]);
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
+    let sends = Arc::new(Mutex::new(0));
+    let seen = sends.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |request| match request {
+            Request::SendDraft { .. } | Request::CheckDraftSafety { .. } => {
+                *seen.lock().unwrap() += 1;
+                ok(ResponseData::Ack)
+            }
+            other => responder(other),
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket).await;
+    let client = reqwest::Client::new();
+    let path = restore_session_path(&client, addr, &id).await;
+    edit_session(&client, addr, &path, "Reviewed", "another tab's message").await;
+    for route in ["send", "safety-check"] {
+        let response = client
+            .post(format!("http://{addr}/api/v1/mail/compose/session/{route}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({ "draft_path": path, "account_id": account, "expected_revision": 1 }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+        let failure: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(failure["code"], "draft_revision_conflict");
+        assert_eq!(failure["details"]["current_revision"], 2);
+    }
+    assert_eq!(*sends.lock().unwrap(), 0);
+    assert!(Path::new(&path).exists());
+    assert_eq!(
+        store.snapshot()[0].content.analysis_text(),
+        "another tab's message"
+    );
+    remove_compose_file(Path::new(&path)).await.unwrap();
 }

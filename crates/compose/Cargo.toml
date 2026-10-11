@@ -9,6 +9,9 @@ description = "Internal: $EDITOR compose flow, frontmatter, draft UX for mxr"
 publish = false
 
 
+[features]
+openapi = ["dep:utoipa", "mxr-core/openapi"]
+
 [lints]
 workspace = true
 
@@ -28,6 +31,7 @@ serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
+utoipa = { workspace = true, optional = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

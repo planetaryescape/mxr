@@ -371,6 +371,7 @@ async fn one_route_per_bucket_dispatches() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -466,6 +467,7 @@ async fn legacy_path_redirect_round_trip_smoke() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,

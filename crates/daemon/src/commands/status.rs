@@ -218,6 +218,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
             Response::Ok {
                 data:
                     ResponseData::Status {
+                        draft_revision_supported: _,
                         uptime_secs,
                         accounts,
                         total_messages,

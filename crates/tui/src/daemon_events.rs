@@ -170,15 +170,24 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             error,
             ..
         } => {
-            if operation == "sync" {
-                if let Some(account_id) = account_id.as_ref() {
+            let selected_sync_failure = if operation == "sync" {
+                account_id.as_ref().is_some_and(|account_id| {
                     if app.user_sync_batch_accounts.contains(account_id) {
                         app.user_sync_batch_failures
                             .insert(account_id.clone(), error.clone());
+                        true
+                    } else {
+                        false
                     }
-                }
+                })
+            } else {
+                false
+            };
+            if selected_sync_failure {
+                app.status_message = sync_batch_failure_message(app);
+            } else {
+                app.status_message = Some(format!("{operation} failed: {error}"));
             }
-            app.status_message = Some(format!("{operation} failed: {error}"));
         }
         DaemonEvent::MutationReconciliationFailed {
             client_correlation_id,
@@ -733,6 +742,38 @@ mod tests {
                 message: "Sync complete: 3 message(s) updated".into(),
             },
         );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Sync failed for Work: connection refused")
+        );
+    }
+
+    #[test]
+    fn sync_operation_failure_keeps_the_selected_account_name_after_sync_error() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
+        app.user_sync_pending = true;
+        app.user_sync_acknowledgements_pending = 1;
+        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id: account_id.clone(),
+                error: "connection refused".into(),
+            },
+        );
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationFailed {
+                operation_id: "selected-sync".into(),
+                operation: "sync".into(),
+                account_id: Some(account_id),
+                error: "connection refused".into(),
+                retryable: true,
+            },
+        );
+
         assert_eq!(
             app.status_message.as_deref(),
             Some("Sync failed for Work: connection refused")

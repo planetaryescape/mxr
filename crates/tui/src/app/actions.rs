@@ -113,7 +113,7 @@ impl App {
             | Action::SetDefaultAccount
             | Action::SwitchAccount(_) => self.apply_account_action(action),
             Action::TogglePin if self.mailbox.mailbox_view == MailboxView::Updates => {
-                self.apply_updates_action(action)
+                self.apply_updates_action(action);
             }
             Action::OpenPlace(_)
             | Action::TogglePin

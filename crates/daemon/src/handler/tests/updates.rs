@@ -104,10 +104,12 @@ async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
         cut - Duration::hours(1),
     )
     .await;
-    let rolled = all_lines(&digest(&fx, now).await)
+    let rolled_digest = digest(&fx, now).await;
+    let rolled = all_lines(&rolled_digest)
         .into_iter()
         .find(|line| line.latest_message_id.as_ref() == Some(&next.id))
-        .unwrap();
+        .unwrap()
+        .clone();
     assert!(!rolled.latest_message_pinned);
     assert_ne!(older.id, latest.id);
 }

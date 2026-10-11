@@ -1,0 +1,158 @@
+{
+  "observer": "agent-browser live network requests",
+  "fields": "observer sequence, method, same-origin path, status; capture timestamps show repeated snapshots",
+  "deduplication": "cumulative snapshots from browser-actions.jsonl were deduplicated by observer_sequence + method + path + status. Repeated capture timestamps are retained; sequence is an observer event index, not a server request ID.",
+  "request_bodies_or_headers_captured": false,
+  "empty_har_used_as_evidence": false,
+  "raw_source": "stage-01/.s02-web-dependencies/runtime/installed-mj4l10s_/evidence/browser-actions.jsonl (ignored runtime source; not copied into curated packet)",
+  "events": [
+    {
+      "observer_sequence": "19696.124",
+      "method": "POST",
+      "path": "/api/v1/mail/compose/session/send",
+      "status": 502,
+      "capture_times": [
+        "2026-10-11T17:03:48.294469+01:00",
+        "2026-10-11T17:04:29.803919+01:00",
+        "2026-10-11T17:06:15.658433+01:00",
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.133",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6cf7-7e22-9f59-68bb5a0b686e%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:04:29.803919+01:00",
+        "2026-10-11T17:06:15.658433+01:00",
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.167",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.179",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6cf7-7e22-9f59-68bb5a0b686e%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.193",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6cf7-7e22-9f59-68bb5a0b686e%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.219",
+      "method": "POST",
+      "path": "/api/v1/mail/compose/session/send",
+      "status": 502,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.225",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6d05-7642-9dc3-5fe701e513fe%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.226",
+      "method": "POST",
+      "path": "/api/v1/mail/compose/session/send",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.23",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:01:33.810432+01:00",
+        "2026-10-11T17:03:48.294469+01:00",
+        "2026-10-11T17:04:29.803919+01:00",
+        "2026-10-11T17:06:15.658433+01:00",
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "19696.74",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:01:33.810432+01:00",
+        "2026-10-11T17:03:48.294469+01:00",
+        "2026-10-11T17:04:29.803919+01:00",
+        "2026-10-11T17:06:15.658433+01:00",
+        "2026-10-11T17:07:40.909838+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "33225.112",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:08:42.162676+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "33225.123",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6cf7-7e22-9f59-68bb5a0b686e%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:08:42.162676+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "33225.124",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6d05-7642-9dc3-5fe701e513fe%3A1",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:08:42.162676+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "33225.125",
+      "method": "GET",
+      "path": "/api/v1/mail/send-outcomes/01a12bb2-6d05-7642-9dc3-5fe701e513fe%3A1%3Aretry%3A5dd6d4a7-dcac-4cf9-980a-a603b913bf8c",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:08:42.162676+01:00"
+      ]
+    },
+    {
+      "observer_sequence": "33225.45",
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "capture_times": [
+        "2026-10-11T17:08:42.162676+01:00"
+      ]
+    }
+  ]
+}

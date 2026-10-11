@@ -1,0 +1,57 @@
+{
+  "binary_sha256": "51a89aec14f4b9c3fae384c567f825e2fd575239f9a34369ee1cfb5259c860ee",
+  "cleanup": {
+    "daemon_panic": false,
+    "owned_ports_18414_18415_closed": true,
+    "source_changed": false
+  },
+  "elapsed_seconds": 385.9073088169098,
+  "journeys": {
+    "provider_save": {
+      "acceptances": 0,
+      "canonical_revision_after_save": 2,
+      "competing_revision": 3,
+      "provider_draft_link_present": true,
+      "scratch_preserved_at_refusal": true,
+      "stale_save_refused": true,
+      "visible_frame": "stale-error.txt"
+    },
+    "rejection_edit_retry": {
+      "acceptances": 1,
+      "attempts": [
+        {
+          "reviewed_revision": 1,
+          "state": "not_accepted"
+        },
+        {
+          "reviewed_revision": 2,
+          "state": "accepted"
+        }
+      ],
+      "draft_removed_after_acceptance": true
+    },
+    "same_file_submission_ownership": {
+      "editor_calls": 2,
+      "scratch_preserved_while_in_flight": true,
+      "send_status": "unknown",
+      "third_editor_refused": true,
+      "visible_frame": "ownership-paused.txt"
+    },
+    "unknown_after_restart": {
+      "acceptances_before_after": [
+        1,
+        1
+      ],
+      "another_send_blocked": true,
+      "blocked_frame": "unknown-blocked.txt",
+      "operation_id": "d4ce8db7-79f5-5273-8b3b-b53a0d1f4da7:1",
+      "query_frame": "retained-query.txt",
+      "scratch_preserved": true,
+      "state_after_query": "unknown",
+      "state_before_query": "unknown"
+    }
+  },
+  "source": "621e9e49739eeb80abbccea0916578420941c3fc",
+  "tag": "v0.6.68",
+  "tree": "6d391d9d90db51339d9a8d100e50915732a895eb"
+}

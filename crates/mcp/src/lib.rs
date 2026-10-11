@@ -319,7 +319,9 @@ impl MxrMcpServer {
         self.daemon_json(request).await
     }
 
-    #[tool(description = "Create a profile-wide personal category; set dry_run to preview normalized name validity and uniqueness without writing.")]
+    #[tool(
+        description = "Create a profile-wide personal category; set dry_run to preview normalized name validity and uniqueness without writing."
+    )]
     async fn mxr_category_create(
         &self,
         Parameters(p): Parameters<CategoryCreateParams>,
@@ -337,7 +339,9 @@ impl MxrMcpServer {
             .await
     }
 
-    #[tool(description = "Rename a personal category while preserving its stable ID; set dry_run to preview normalized name validity and uniqueness without writing.")]
+    #[tool(
+        description = "Rename a personal category while preserving its stable ID; set dry_run to preview normalized name validity and uniqueness without writing."
+    )]
     async fn mxr_category_rename(
         &self,
         Parameters(p): Parameters<CategoryNameParams>,

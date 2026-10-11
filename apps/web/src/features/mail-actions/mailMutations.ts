@@ -83,7 +83,7 @@ export async function performMailAction(
     claim?.settle(undo);
     announceFailure(action, error, options.payload, undo);
     if (action !== "archive") void invalidateMailQueries().catch(() => undefined);
-    return { ok: false, error };
+    return { ok: false, error, response: response ?? undefined };
   } finally {
     usePendingMailOps.getState().remove(opId);
   }

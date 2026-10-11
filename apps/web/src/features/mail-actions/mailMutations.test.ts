@@ -248,6 +248,7 @@ describe("performMailAction", () => {
     const outcome = await performMailAction("archive", ["a-1", "a-2", "b-1"]);
 
     expect(outcome.ok).toBe(false);
+    expect(outcome.response?.result?.succeeded).toBe(2);
     expect(toast.success).not.toHaveBeenCalled();
     // Part done is a warning, not an error.
     expect(toast.error).not.toHaveBeenCalled();

@@ -10,7 +10,7 @@
  */
 
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { nextAfterRemoval } from "@/lib/listAdvance";
 
@@ -38,6 +38,8 @@ export interface AdvanceOnRemoval {
   onEmpty: (removed: string) => void;
 }
 
+export type ExpectRemoval = (id: string, direction: 1 | -1) => (keepForRemoval?: boolean) => void;
+
 interface Move {
   from: string;
   /** Where the selection went; null when the pane closed. */
@@ -52,7 +54,7 @@ export function useAdvanceOnRemoval({
   ready = true,
   onAdvance,
   onEmpty,
-}: AdvanceOnRemoval): void {
+}: AdvanceOnRemoval): ExpectRemoval {
   const previous = useRef<readonly string[]>([]);
   const previousSelected = useRef<string | null>(null);
   // The row already moved on from, so a render before the new selection
@@ -61,11 +63,31 @@ export function useAdvanceOnRemoval({
   // The latest selection change, and the one that followed a row leaving.
   const moved = useRef<Move | null>(null);
   const restore = useRef<Move | null>(null);
+  const expected = useRef(
+    new Map<
+      string,
+      { direction: 1 | -1; token: symbol; completed: boolean; expiresAt: number | null }
+    >(),
+  );
+  const [expectedRevision, setExpectedRevision] = useState(0);
   // Rows that just left, with the list they left: a selection that lands
   // on one a moment later (a click racing the verb) still moves on.
   const gone = useRef(new Map<string, { list: readonly string[]; at: number }>());
   const latest = useRef({ isPresent, onAdvance, onEmpty });
   latest.current = { isPresent, onAdvance, onEmpty };
+  const expectRemoval = useCallback<ExpectRemoval>((id, direction) => {
+    const token = Symbol(id);
+    expected.current.set(id, { direction, token, completed: false, expiresAt: null });
+    return (keepForRemoval = true) => {
+      const intent = expected.current.get(id);
+      if (intent?.token !== token) return;
+      if (!keepForRemoval) expected.current.delete(id);
+      intent.completed = true;
+      // A fallback can move first; keep its removal linked to Undo only while Undo is available.
+      intent.expiresAt = Date.now() + UNDO_WINDOW_MS;
+      setExpectedRevision((revision) => revision + 1);
+    };
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -75,6 +97,8 @@ export function useAdvanceOnRemoval({
     previousSelected.current = selectedId;
     const now = Date.now();
     const present = latest.current.isPresent ?? ((id: string) => ids.includes(id));
+    for (const [id, intent] of expected.current)
+      if (intent.expiresAt !== null && now > intent.expiresAt) expected.current.delete(id);
     for (const [id, left] of gone.current) {
       if (now - left.at > LEAVE_WINDOW_MS || present(id)) gone.current.delete(id);
     }
@@ -82,8 +106,16 @@ export function useAdvanceOnRemoval({
       if (!present(id) && !gone.current.has(id)) gone.current.set(id, { list: before, at: now });
     }
 
+    const abandonedExpectedRemoval =
+      wasSelected !== null &&
+      wasSelected !== selectedId &&
+      expected.current.get(wasSelected)?.completed === false &&
+      present(wasSelected);
+    if (abandonedExpectedRemoval) expected.current.delete(wasSelected);
     if (wasSelected && wasSelected !== selectedId) {
-      moved.current = { from: wasSelected, to: selectedId, at: now };
+      moved.current = abandonedExpectedRemoval
+        ? null
+        : { from: wasSelected, to: selectedId, at: now };
     }
     // Moving anywhere else gives up the way back.
     const way = restore.current;
@@ -94,12 +126,13 @@ export function useAdvanceOnRemoval({
     if (
       move &&
       move.to === selectedId &&
-      now - move.at < LEAVE_WINDOW_MS &&
+      (now - move.at < LEAVE_WINDOW_MS || expected.current.has(move.from)) &&
       before.includes(move.from) &&
       !present(move.from)
     ) {
       restore.current = move;
       moved.current = null;
+      expected.current.delete(move.from);
     }
 
     // Undo brought back the row we moved off: open it again.
@@ -119,11 +152,16 @@ export function useAdvanceOnRemoval({
     const list = before.includes(selectedId) ? before : gone.current.get(selectedId)?.list;
     if (handled.current === selectedId || !list) return;
     handled.current = selectedId;
-    const next = nextAfterRemoval(list, selectedId, present);
+    const intent = expected.current.get(selectedId);
+    if (intent) expected.current.delete(selectedId);
+    const ordered = intent?.direction === -1 ? list.toReversed() : list;
+    const next = nextAfterRemoval(ordered, selectedId, present);
     restore.current = { from: selectedId, to: next, at: now };
     if (next) latest.current.onAdvance(next, selectedId);
     else latest.current.onEmpty(selectedId);
-  }, [ids, ready, selectedId]);
+  }, [expectedRevision, ids, ready, selectedId]);
+
+  return expectRemoval;
 }
 
 /**

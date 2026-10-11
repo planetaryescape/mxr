@@ -25,6 +25,7 @@ import { useModals } from "@/state/modalStore";
 
 import { openMailDialog } from "./mailDialogStore";
 import { performMailAction, refuseMailActionWhileDaemonDown } from "./mailMutations";
+import type { MailMutationOutcome } from "./mailMutations";
 import type { MailAction } from "./pendingMailOps";
 import { ensureThread, type MailTarget } from "./target";
 
@@ -32,6 +33,8 @@ export interface MailVerbHooks {
   getTarget: () => MailTarget | null;
   /** Runs right after a verb that takes the target out of the view. */
   afterLeave?: (action: MailAction) => void;
+  /** The reader owns Archive's delayed list removal and navigation. */
+  afterArchive?: (run: () => Promise<MailMutationOutcome>) => void;
   /** Where replies open: inline under the thread, or an overlay. */
   composeSurface: "inline" | "overlay";
   /**
@@ -94,7 +97,12 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     }
     const run = () => {
       commit?.();
-      void performMailAction(action, target.messageIds);
+      const operation = () => performMailAction(action, target.messageIds);
+      if (action === "archive" && hooks.afterArchive) {
+        hooks.afterArchive(operation);
+        return;
+      }
+      void operation();
       if (action !== "star" && action !== "unstar" && action !== "read" && action !== "unread") {
         hooks.afterLeave?.(action);
       }

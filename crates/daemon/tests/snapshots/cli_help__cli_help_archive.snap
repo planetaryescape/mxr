@@ -15,5 +15,5 @@ Options:
       --yes                Skip confirmation
       --dry-run            Show what would happen
       --async              Submit in the background; query the retained ID with `mxr archive-operation`
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+      --format <FORMAT>    Output format: table, json, jsonl, ids
   -h, --help               Print help

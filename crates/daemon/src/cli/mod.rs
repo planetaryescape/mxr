@@ -1567,7 +1567,11 @@ pub enum Command {
         /// Submit in the background; query the retained ID with `mxr archive-operation`.
         #[arg(long = "async")]
         async_job: bool,
-        #[arg(long)]
+        #[arg(
+            long,
+            hide_possible_values = true,
+            help = "Output format: table, json, jsonl, ids"
+        )]
         format: Option<OutputFormat>,
     },
     /// Query retained Archive outcomes, or submit the exact retained review.
@@ -1575,7 +1579,11 @@ pub enum Command {
         operation_id: Option<String>,
         #[arg(long)]
         submit: bool,
-        #[arg(long)]
+        #[arg(
+            long,
+            hide_possible_values = true,
+            help = "Output format: table, json, jsonl, ids"
+        )]
         format: Option<OutputFormat>,
     },
     /// Mark message as read and archive it

@@ -258,12 +258,16 @@ temperature = 0.0
 
 When a check fires a Blocker, mxr mints a single-use override token. You
 do **not** need a separate `--check` run to get one: a plain `mxr send`
-of a blocked draft is rejected with the token and the exact resend
-command right in the error, e.g.
+of a blocked draft is rejected with the token and the preview-bound
+arguments needed for a reviewed send, e.g.
 
 ```text
-draft safety blocked send: PEM private key detected in draft — to send anyway after review, resend with --override-safety 01HXYZ...
+draft safety blocked send: PEM private key detected in draft — to send anyway after review, use the preview's --expected-revision and --operation-id, then --override-safety {token}
 ```
+
+Replace `{token}` with the token printed by the refusal. Use the revision
+and operation ID from the saved-draft preview; do not reuse a token after
+editing the draft or retry an operation whose outcome is unknown.
 
 `--check` still mints and stamps the token onto each blocker issue when
 you want to inspect the report first (or in the TUI/web pre-send modal).
@@ -278,13 +282,14 @@ The token has these properties:
   recorded in `draft_safety_runs` / `draft_safety_overrides`.
 
 ```bash
-# Step 1: check, see the blocker, copy the token.
+# Step 1: preview the saved draft and retain its revision and operation ID.
 mxr send DRAFT_ID --dry-run --format json
+# Step 2: inspect the blocker and copy its token.
 mxr send DRAFT_ID --check
 # [BLOCK] PiiSecret: PEM private key detected in draft
 #         Override token: OVERRIDE_TOKEN_FROM_CHECK
 
-# Step 2: send with the token. mxr verifies it covers every active
+# Step 3: send with the preview identity and token. mxr verifies it covers every active
 # blocker before any provider call.
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
   --operation-id OPERATION_ID_FROM_PREVIEW \
@@ -299,6 +304,7 @@ read -r REVIEWED_REVISION OPERATION_ID
 TOKEN=$(mxr send "$DRAFT_ID" --check --format json | \
   jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
 [ -z "$TOKEN" ] && exit 0  # nothing to override; safe to send
+# Use this only when the outcome query says the operation was not accepted.
 mxr send "$DRAFT_ID" --expected-revision "$REVIEWED_REVISION" \
   --operation-id "$OPERATION_ID" --override-safety "$TOKEN"
 ```

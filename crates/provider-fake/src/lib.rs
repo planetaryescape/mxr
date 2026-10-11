@@ -136,6 +136,7 @@ pub struct FakeProvider {
     /// When set, `send` takes the mail (it lands in `sent_drafts`) and then
     /// fails, as a timeout after the provider accepted it does.
     sends_fail_after_accepting: AtomicBool,
+    mutations_fail_after_accepting: AtomicBool,
     /// When set, every mutation of this one message fails, so a batch
     /// fails part way: the messages before it change, the rest don't.
     failing_message: Mutex<Option<String>>,
@@ -232,10 +233,16 @@ impl FakeProvider {
             server_drafts_fail: AtomicBool::new(false),
             label_changes_fail: AtomicBool::new(false),
             sends_fail_after_accepting: AtomicBool::new(false),
+            mutations_fail_after_accepting: AtomicBool::new(false),
             failing_message: Mutex::new(None),
             page_size: SYNC_PAGE_SIZE,
             spool: spool::Spool::from_env(),
         }
+    }
+
+    pub fn fail_mutations_after_accepting(&self, fail: bool) {
+        self.mutations_fail_after_accepting
+            .store(fail, Ordering::SeqCst);
     }
 
     /// Make every subsequent label change fail, or succeed again.
@@ -497,6 +504,73 @@ impl MailSyncProvider for FakeProvider {
             },
         };
         self.mutations_guard().push(recorded);
+        if self.mutations_fail_after_accepting.load(Ordering::SeqCst) {
+            return Err(MxrError::Provider(
+                "fake: reply lost after mutation acceptance".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn apply_mutation_classified(
+        &self,
+        mutation_id: &str,
+        mutation: &Mutation,
+    ) -> Result<(), mxr_core::MutationFailure> {
+        if let Some(spool) = &self.spool {
+            spool
+                .record_mutation(
+                    "dispatched",
+                    mutation_id,
+                    &self.account_id,
+                    mutation.provider_message_id(),
+                )
+                .map_err(mxr_core::MutationFailure::Unknown)?;
+            if spool.mutation_control("mutation-reject", mutation.provider_message_id()) {
+                return Err(mxr_core::MutationFailure::NotAccepted(MxrError::Provider(
+                    "fake: mutation rejected before acceptance".into(),
+                )));
+            }
+        }
+        if (matches!(mutation, Mutation::ModifyLabels { .. })
+            && self.label_changes_fail.load(Ordering::SeqCst))
+            || self
+                .failing_message
+                .lock()
+                .expect("fake failure mutex")
+                .as_ref()
+                .is_some_and(|id| mutation.provider_message_id() == id)
+        {
+            return Err(mxr_core::MutationFailure::NotAccepted(MxrError::Provider(
+                "fake: mutation rejected before acceptance".into(),
+            )));
+        }
+        self.apply_mutation(mutation_id, mutation)
+            .await
+            .map_err(mxr_core::MutationFailure::Unknown)?;
+        if let Some(spool) = &self.spool {
+            spool
+                .record_mutation(
+                    "accepted",
+                    mutation_id,
+                    &self.account_id,
+                    mutation.provider_message_id(),
+                )
+                .map_err(mxr_core::MutationFailure::Unknown)?;
+            let until = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+            while spool.mutation_control(
+                "mutation-pause-after-accept",
+                mutation.provider_message_id(),
+            ) && tokio::time::Instant::now() < until
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            if spool.mutation_control("mutation-uncertain", mutation.provider_message_id()) {
+                return Err(mxr_core::MutationFailure::Unknown(MxrError::Provider(
+                    "fake: reply lost after mutation acceptance".into(),
+                )));
+            }
+        }
         Ok(())
     }
 

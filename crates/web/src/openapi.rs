@@ -43,6 +43,7 @@ use utoipa::{
         admin_status, admin_diagnostics, admin_bug_report, admin_events,
         admin_logs, admin_ping, admin_shutdown,
         mail_mailbox, mail_search, mail_search_groups, mail_thread, mail_thread_export,
+        archive_workspace, archive_preview, archive_submit, archive_query,
         mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
@@ -1452,3 +1453,22 @@ pub fn cached_spec() -> utoipa::openapi::OpenApi {
     })
     .clone()
 }
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct ArchiveErrorResponse {
+    error: String,
+    code: String,
+    details: Option<serde_json::Value>,
+}
+#[utoipa::path(get, path = "/api/v1/mail/archive-operations/workspace", responses((status = 200, description = "Selected workspace and recovery generation", body = ResponseData), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 500, description = "Receipt persistence unavailable", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn archive_workspace() {}
+#[utoipa::path(post, path = "/api/v1/mail/archive-operations/preview", request_body = crate::routes_v6::ArchivePreviewBody, responses((status = 200, description = "Immutable Archive review", body = ResponseData), (status = 409, description = "Identity, workspace or selection conflict", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon or policy", body = ArchiveErrorResponse), (status = 500, description = "Review persistence failed", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn archive_preview() {}
+#[utoipa::path(post, path = "/api/v1/mail/archive-operations/submit", request_body = crate::routes_v6::ArchiveSubmitBody, responses((status = 200, description = "Durable acceptance or retained per-item outcome", body = ResponseData), (status = 409, description = "Identity, workspace or review conflict", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon or policy", body = ArchiveErrorResponse), (status = 500, description = "Acceptance persistence failed", body = ArchiveErrorResponse), (status = 502, description = "Reply lost; query retained identity", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 504, description = "Reply timed out; query retained identity", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn archive_submit() {}
+#[utoipa::path(post, path = "/api/v1/mail/archive-operations/query", request_body = crate::routes_v6::ArchiveQueryBody, responses((status = 200, description = "Side-effect-free retained receipt", body = ResponseData), (status = 409, description = "Identity or workspace conflict", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon or policy", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 500, description = "Receipt persistence unavailable", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn archive_query() {}

@@ -373,6 +373,7 @@ async fn one_route_per_bucket_dispatches() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -470,6 +471,7 @@ async fn legacy_path_redirect_round_trip_smoke() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -501,4 +503,28 @@ async fn legacy_path_redirect_round_trip_smoke() {
     assert_eq!(response.status(), 200);
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["protocol_version"], IPC_PROTOCOL_VERSION);
+}
+
+#[tokio::test]
+async fn archive_boundary_errors_are_structured_before_any_ipc_dispatch() {
+    let temp = TempDir::new().unwrap();
+    let addr = boot_bridge(temp.path().join("no-daemon.sock")).await;
+    for route in ["preview", "submit", "query"] {
+        let response = reqwest::Client::new()
+            .post(format!(
+                "http://{addr}/api/v1/mail/archive-operations/{route}"
+            ))
+            .bearer_auth(TEST_TOKEN)
+            .json(&serde_json::json!({"identity": 42}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["code"], "bad_request");
+        assert!(body["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid Archive request"));
+    }
 }

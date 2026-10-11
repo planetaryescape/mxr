@@ -20,6 +20,7 @@ const OUTCOME_TEXT: Record<NonNullable<ScheduledSend["last_attempt_outcome"]>, s
   blocked: "Last attempt was blocked by a safety check",
   failed: "Last attempt failed",
   interrupted: "Last attempt was interrupted",
+  uncertain: "Provider acceptance is uncertain. Do not resend.",
 };
 
 function recipients(send: ScheduledSend): string {

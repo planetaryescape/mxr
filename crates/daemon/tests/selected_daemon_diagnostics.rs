@@ -65,6 +65,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                     let data = match message.payload {
                         IpcPayload::Request(Request::GetStatus) => ResponseData::Status {
                             draft_revision_supported: true,
+                            send_outcome_supported: true,
                             uptime_secs: 73,
                             accounts: vec!["target-account".into()],
                             total_messages: 19,

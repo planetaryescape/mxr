@@ -1099,6 +1099,8 @@ pub enum Request {
     /// loop scans due rows on a 60-second cadence and runs them through
     /// the same `send_stored_draft` pipeline that interactive sends use.
     ScheduleSend {
+        #[serde(default)]
+        expected_revision: Option<i64>,
         draft_id: DraftId,
         send_at: chrono::DateTime<chrono::Utc>,
     },
@@ -1337,14 +1339,22 @@ pub enum Request {
         message_id: MessageId,
     },
     SendDraft {
+        #[serde(default)]
+        send_identity: Option<mxr_core::SendIdentity>,
         draft: Draft,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_safety_token: Option<String>,
+    },
+    GetSendOutcome {
+        account_id: AccountId,
+        operation_id: String,
     },
     SaveDraft {
         draft: Draft,
     },
     SendStoredDraft {
+        #[serde(default)]
+        send_identity: Option<mxr_core::SendIdentity>,
         draft_id: DraftId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_safety_token: Option<String>,
@@ -1520,12 +1530,12 @@ pub enum Request {
     ListDrafts,
     /// List drafts that look orphaned mid-send: status `'sending'` with
     /// a stale `last_heartbeat_at` (or `status_updated_at` fallback)
-    /// older than 1h. Surfaces what the daemon-startup recovery loop
-    /// would also auto-reset.
+    /// older than 1h. Query their send outcome before taking any action;
+    /// startup preserves uncertain submissions.
     ListOrphanedDrafts,
-    /// Force-reset an orphaned `'sending'` draft back to `'draft'` so
-    /// the user can retry the send. Idempotent: already-`'draft'` rows
-    /// return the no-op variant. `'sent'` rows refuse.
+    /// Check an orphaned draft conservatively: uncertain or sent rows
+    /// refuse reset. Already-`'draft'` rows return the no-op variant.
+    /// Query the retained send outcome rather than resending blindly.
     ResetOrphanedDraft {
         draft_id: DraftId,
     },
@@ -2449,6 +2459,7 @@ impl Request {
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
+            | Self::GetSendOutcome { .. }
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
@@ -3286,6 +3297,8 @@ pub enum ResponseData {
     Status {
         #[serde(default)]
         draft_revision_supported: bool,
+        #[serde(default)]
+        send_outcome_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
@@ -3327,6 +3340,10 @@ pub enum ResponseData {
         local_message_id: MessageId,
         provider_message_id: Option<String>,
         rfc2822_message_id: String,
+    },
+    /// Durable result of `Request::GetSendOutcome`.
+    SendOutcome {
+        outcome: Option<mxr_core::DraftSendOutcome>,
     },
     /// Returned by `Request::ExtractDraftCommitments`.
     DraftCommitments {
@@ -3818,6 +3835,7 @@ impl ResponseData {
             | Self::Jobs { .. }
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
+            | Self::SendOutcome { .. }
             | Self::SendReceipt { .. }
             | Self::ResolvedSendFrom { .. }
             | Self::DraftSafetyReportResponse { .. }

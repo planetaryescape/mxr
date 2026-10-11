@@ -14,6 +14,7 @@ pub mod app;
 mod async_result;
 pub mod client;
 mod compose_flow;
+mod compose_persistence;
 mod daemon_events;
 mod editor;
 pub mod input;
@@ -24,6 +25,8 @@ pub mod local_state;
 mod runner;
 mod runtime;
 mod search_ipc;
+mod send_recovery;
+mod send_recovery_state;
 pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;

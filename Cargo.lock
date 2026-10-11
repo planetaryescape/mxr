@@ -4617,6 +4617,7 @@ dependencies = [
  "chrono",
  "mail-builder",
  "mxr-core",
+ "serde_json",
  "tokio",
  "uuid",
 ]

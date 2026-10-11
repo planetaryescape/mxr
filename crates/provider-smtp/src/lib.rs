@@ -119,11 +119,31 @@ impl MailSendProvider for SmtpSendProvider {
         draft: &Draft,
         from: &Address,
         rfc2822_message_id: &str,
-    ) -> Result<SendReceipt, MxrError> {
-        let attachments = load_attachments(&draft.attachments).await?;
+    ) -> std::result::Result<SendReceipt, MxrError> {
+        self.send_classified(draft, from, rfc2822_message_id)
+            .await
+            .map_err(|failure| match failure {
+                mxr_core::SendFailure::NotAccepted(error)
+                | mxr_core::SendFailure::Unknown(error) => error,
+            })
+    }
+
+    async fn send_classified(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt, mxr_core::SendFailure> {
+        let attachments = load_attachments(&draft.attachments)
+            .await
+            .map_err(mxr_core::SendFailure::NotAccepted)?;
         let inline_assets = load_inline_assets_async(&draft.inline_assets)
             .await
-            .map_err(|e| MxrError::Provider(format!("Failed to load inline assets: {e}")))?;
+            .map_err(|e| {
+                mxr_core::SendFailure::NotAccepted(MxrError::Provider(format!(
+                    "Failed to load inline assets: {e}"
+                )))
+            })?;
         let started_at = Instant::now();
         let message = mxr_outbound::email::build_message_with_id_and_parts(
             draft,
@@ -133,7 +153,11 @@ impl MailSendProvider for SmtpSendProvider {
             &inline_assets,
             rfc2822_message_id,
         )
-        .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
+        .map_err(|e| {
+            mxr_core::SendFailure::NotAccepted(MxrError::Provider(format!(
+                "Failed to build message: {e}"
+            )))
+        })?;
         tracing::trace!(
             attachment_count = attachments.len(),
             elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
@@ -142,23 +166,21 @@ impl MailSendProvider for SmtpSendProvider {
 
         #[cfg(test)]
         if let Some(sender) = &self.test_sender {
-            sender
-                .send(message)
-                .await
-                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+            sender.send(message).await.map_err(|e| {
+                mxr_core::SendFailure::Unknown(MxrError::Provider(format!("SMTP send failed: {e}")))
+            })?;
         }
 
         #[cfg(not(test))]
         {
-            let transport = self
-                .build_transport()
-                .await
-                .map_err(|e| MxrError::Provider(e.to_string()))?;
+            let transport = self.build_transport().await.map_err(|e| {
+                mxr_core::SendFailure::NotAccepted(MxrError::Provider(e.to_string()))
+            })?;
 
             transport
                 .send(message)
                 .await
-                .map_err(|e| classify_smtp_send_error(&e))?;
+                .map_err(|e| mxr_core::SendFailure::Unknown(classify_smtp_send_error(&e)))?;
         }
 
         Ok(SendReceipt {
@@ -317,6 +339,36 @@ mod tests {
         async fn test_connection(&self) -> Result<(), String> {
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn send_classification_keeps_pre_submission_failure_distinct() {
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "unused".into(),
+            false,
+            true,
+        );
+        let provider = SmtpSendProvider::new(config);
+        let mut draft = test_draft();
+        draft
+            .attachments
+            .push(PathBuf::from("/nonexistent/mxr-s03-attachment"));
+        assert!(matches!(
+            provider
+                .send_classified(
+                    &draft,
+                    &Address {
+                        name: None,
+                        email: "sender@example.com".into()
+                    },
+                    "<test@fake.local>"
+                )
+                .await,
+            Err(mxr_core::SendFailure::NotAccepted(_))
+        ));
     }
 
     #[test]

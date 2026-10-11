@@ -2435,6 +2435,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/sync/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger global sync */
+        post: operations["mail_sync_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/sync/preview": {
         parameters: {
             query?: never;
@@ -16425,6 +16442,31 @@ export interface operations {
         };
     };
     mail_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_sync_all: {
         parameters: {
             query?: never;
             header?: never;

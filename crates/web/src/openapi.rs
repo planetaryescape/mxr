@@ -43,7 +43,7 @@ use utoipa::{
         admin_status, admin_diagnostics, admin_bug_report, admin_events,
         admin_logs, admin_ping, admin_shutdown,
         mail_mailbox, mail_search, mail_search_groups, mail_thread, mail_thread_export,
-        mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync, mail_sync_preview,
+        mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync, mail_sync_all, mail_sync_preview,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
         mutation_route, mutation_undo, action_snooze_presets, action_snooze,

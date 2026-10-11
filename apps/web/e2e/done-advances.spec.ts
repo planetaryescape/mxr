@@ -491,7 +491,25 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
   });
 
-  test("archive in the reader on the last row goes to the one before, and u reopens it", async ({
+  test("canceling archive review in the reader keeps the conversation open", async ({ page }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("G");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const openedUrl = page.url();
+    const openedTitle = await reader(page).getAttribute("aria-label");
+    const dialogPromise = page.waitForEvent("dialog");
+
+    await page.keyboard.press("e");
+    const dialog = await dialogPromise;
+    expect(dialog.type()).toBe("confirm");
+    await dialog.dismiss();
+
+    await expect(page).toHaveURL(openedUrl);
+    await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
+  });
+
+  test("delayed archive in the reader on the last row advances, and u reopens it", async ({
     page,
   }) => {
     await openList(page, "/m/inbox");
@@ -500,15 +518,75 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
     const lastUrl = page.url();
     const lastTitle = await reader(page).getAttribute("aria-label");
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
     const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("e");
-    await consent;
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(lastUrl);
     await expect(page).not.toHaveURL(lastUrl);
     await expect(reader(page)).toBeVisible();
     await expect(reader(page)).not.toHaveAttribute("aria-label", lastTitle!);
 
     await page.keyboard.press("u");
     await expect(page).toHaveURL(lastUrl);
+  });
+
+  test("delayed archive-previous in the reader keeps its direction through undo", async ({
+    page,
+  }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const previousUrl = page.url();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+    await page.keyboard.press("n");
+    await expect(page).not.toHaveURL(previousUrl);
+    const openedUrl = page.url();
+    expect(openedUrl).not.toBe(previousUrl);
+    const openedTitle = await reader(page).getAttribute("aria-label");
+
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
+    await page.keyboard.press("[");
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(openedUrl);
+    await expect(page).toHaveURL(previousUrl);
+
+    await page.keyboard.press("u");
+    await expect(page).toHaveURL(openedUrl);
+    await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
+  });
+
+  test("archive in All Mail advances even though the row stays in the list", async ({ page }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const threadId = decodeURIComponent(page.url().split("/").at(-1)!);
+    await openList(page, "/m/archive");
+    await page.goto(`/m/archive/${encodeURIComponent(threadId)}`);
+    await expect(page).toHaveURL(/\/m\/archive\/[^/]+$/);
+    const openedUrl = page.url();
+    await reader(page).getByTestId("thread-scroll").focus();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+
+    const consent = acceptArchiveReview(page);
+    await page.keyboard.press("e");
+    await consent;
+    await expect(page).not.toHaveURL(openedUrl);
+    await expect(page).toHaveURL(/\/m\/archive\/[^/]+$/);
+
+    await page.keyboard.press("u");
+    await expect(page).not.toHaveURL(openedUrl);
+    await expect(page.getByText(/^Undone$/)).toBeVisible();
   });
 
   test("a conversation archived elsewhere, seen at the next sync, hands the reader to the next one", async ({

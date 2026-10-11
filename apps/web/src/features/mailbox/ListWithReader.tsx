@@ -148,20 +148,6 @@ export function ListWithReader({
     (row: MessageRowView, options: { focusReader: boolean }) => open(row.thread_id, options),
     [open],
   );
-  const nav = useMemo<ReaderNav>(
-    () => ({
-      // Step through what the list shows, so n/N respect the filter.
-      threadIds: () => [
-        ...new Set(visibleGroups.flatMap((group) => group.rows.map((row) => row.thread_id))),
-      ],
-      open,
-      close,
-      queueLabel: listProps.queueLabel,
-      intercept: listProps.interceptVerb,
-    }),
-    [close, visibleGroups, listProps.queueLabel, listProps.interceptVerb, open],
-  );
-
   // The open conversation left the list from somewhere other than the
   // reader (the list's own archive, sync): open its neighbour. The list
   // as loaded, not as filtered, so typing a filter never moves the reader.
@@ -169,8 +155,11 @@ export function ListWithReader({
     () => [...new Set(groups.flatMap((group) => group.rows.map((row) => row.thread_id)))],
     [groups],
   );
+  const loadedIdsRef = useRef(loadedIds);
+  loadedIdsRef.current = loadedIds;
+  const isListed = useCallback((id: string) => loadedIdsRef.current.includes(id), []);
   const stillShows = useRouteStillShows();
-  useAdvanceOnRemoval({
+  const expectRemoval = useAdvanceOnRemoval({
     ids: loadedIds,
     ready: !status.isLoading,
     selectedId: threadId ?? null,
@@ -182,6 +171,29 @@ export function ListWithReader({
       if (stillShows(removed)) close();
     },
   });
+  const nav = useMemo<ReaderNav>(
+    () => ({
+      // Step through what the list shows, so n/N respect the filter.
+      threadIds: () => [
+        ...new Set(visibleGroups.flatMap((group) => group.rows.map((row) => row.thread_id))),
+      ],
+      open,
+      close,
+      expectRemoval,
+      isListed,
+      queueLabel: listProps.queueLabel,
+      intercept: listProps.interceptVerb,
+    }),
+    [
+      close,
+      expectRemoval,
+      visibleGroups,
+      isListed,
+      listProps.queueLabel,
+      listProps.interceptVerb,
+      open,
+    ],
+  );
 
   return (
     <ReaderNavContext.Provider value={nav}>

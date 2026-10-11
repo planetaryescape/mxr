@@ -287,6 +287,19 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     ] as const;
   });
   expect(contrastRatio(colors[0], colors[1])).toBeGreaterThanOrEqual(4.5);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const appearance = lightReader.getByRole("button", { name: "Email appearance: dark" });
+  const appearanceBox = await appearance.boundingBox();
+  if (!appearanceBox) throw new Error("appearance control has no layout box");
+  expect(appearanceBox.x).toBeGreaterThanOrEqual(0);
+  expect(appearanceBox.x + appearanceBox.width).toBeLessThanOrEqual(390);
+  await appearance.click();
+  const autoForMessage = page.getByRole("menuitemradio", { name: "Auto for this message" });
+  const menuBox = await autoForMessage.boundingBox();
+  if (!menuBox) throw new Error("appearance menu item has no layout box");
+  expect(menuBox.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);
+  await page.keyboard.press("Escape");
 
   // The frame sizes to its content, not to a fixed default.
   await expect

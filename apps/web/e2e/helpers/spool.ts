@@ -4,7 +4,7 @@
  * sync until it is removed.
  */
 
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { readE2EState } from "./state";
@@ -45,4 +45,12 @@ export function failSyncs(error: string): void {
 
 export function restoreSyncs(): void {
   rmSync(join(spoolDir(), "fail"), { force: true });
+}
+
+/** Reject one fake-provider mutation until the returned cleanup is called. */
+export function rejectMutationFor(providerId: string): () => void {
+  const path = join(spoolDir(), "mutation-reject");
+  if (existsSync(path)) throw new Error("fake-provider mutation rejection is already configured");
+  writeFileSync(path, `${providerId}\n`);
+  return () => rmSync(path, { force: true });
 }

@@ -309,7 +309,7 @@ The existing `/mail/actions/unsubscribe-purge` commit retains its clear-mail beh
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/mail/scheduled-sends` | `{draft_id, send_at}` |
+| `POST` | `/mail/scheduled-sends` | `{draft_id, send_at, expected_revision}`; `expected_revision` is required for scheduling |
 | `DELETE` | `/mail/scheduled-sends/{draft_id}` | Cancel pending send |
 
 ### Snippets
@@ -370,9 +370,18 @@ emails from sender" and deep-link directly into the matching thread.
 |--------|------|---------|
 | `GET` | `/mail/drafts/orphaned` | Mid-send / stuck drafts |
 | `POST` | `/mail/drafts/save-local` | Persist a draft row without compose session |
-| `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Recover an orphaned send |
-| `POST` | `/mail/drafts/{draft_id}/send-stored` | Send a stored draft by id |
+| `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Legacy orphan check; cannot prove rejection or clear a retained send outcome |
+| `POST` | `/mail/drafts/{draft_id}/send-stored?expected_revision=REVISION&operation_id=OPERATION_ID` | Send a stored draft with its reviewed revision and operation ID |
+| `GET` | `/mail/send-outcomes/{operation_id}?account_id=ACCOUNT_ID` | Query a retained send outcome |
 | `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft and its linked provider draft |
+
+The stored-send query parameters `expected_revision` and `operation_id` are
+required. A schedule body also needs the revision returned by the saved-draft
+preview. Query outcomes with the owning `account_id`; after scheduling, use the
+draft alias `draft:DRAFT_ID` when the schedule operation ID is not known. The
+legacy orphan endpoint does not reset or erase accepted or unknown outcome
+evidence; a draft still marked Sending is refused because elapsed time cannot
+prove non-acceptance.
 
 ### Signatures
 

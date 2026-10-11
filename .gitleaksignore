@@ -14,3 +14,10 @@ cf38094f63ba4196a08ab048d2eb9936e18103b2:crates/safety/tests/no_raw_secrets.rs:g
 cf38094f63ba4196a08ab048d2eb9936e18103b2:crates/safety/tests/no_raw_secrets.rs:github-pat:42
 7c9323056cc9c3459d85c80fee28d92c3756a77c:crates/daemon/src/handler/mod.rs:private-key:7536
 024f3022ea1c348854494ab951f2e8f9f2eab6e9:crates/safety/src/pii.rs:private-key:218
+
+# Verified SHA-256 evidence digests, now qualified with sha256: in the tree.
+# Exact historical fingerprints only; future matches still fail scanning.
+71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/selection-provenance.json:generic-api-key:29
+71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/selection-provenance.json:generic-api-key:45
+71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/selection-provenance.json:generic-api-key:85
+71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/selection-provenance.json:generic-api-key:90

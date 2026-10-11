@@ -76,9 +76,11 @@ mxr unsend DRAFT_ID
 ```
 
 The scheduler assigns a separate operation identity. If delivery is interrupted,
-query the latest attempt with
+query that scheduled draft with
 `mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
 The ordinary send preview's operation ID does not identify a scheduled attempt.
+The global last-send query can still refer to a different draft; use the draft
+alias for this schedule.
 If you cancel before
 the scheduled attempt starts, the draft stays available to edit and review
 again. After an attempt has started, query its outcome before scheduling again.
@@ -88,10 +90,9 @@ again. After an attempt has started, query its outcome before scheduling again.
 The flusher clears the `send_at` flag on a draft *before* invoking the
 send, and sends only the revision reviewed when you scheduled it. A later
 edit does not silently replace that message. If an attempt's result is
-uncertain, query its outcome using the draft alias above
-and do not schedule another send unless the outcome is explicitly
-`not_accepted`. The scheduler does not make an uncertain send safe by retrying
-it after restart.
+uncertain, query its outcome using the draft alias above and do not schedule
+another send unless the outcome is explicitly `not_accepted`. The scheduler
+does not make an uncertain send safe by retrying it after restart.
 
 ## Time syntax
 

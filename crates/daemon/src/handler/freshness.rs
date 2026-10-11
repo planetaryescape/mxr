@@ -9,14 +9,13 @@
 
 use super::desk::{self_matcher, Senders};
 use super::mail_kind;
-use super::mode_rules::{membership, provider_name};
+use super::mode_rules::membership;
 use super::modes::{is_early, signals};
 use super::places::scoped_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::ProviderKind;
 use mxr_core::Account;
 use mxr_protocol::{
     AccountFreshnessData, ArrivalData, FreshnessData, ModeKindData, ModeMembershipData,
@@ -77,7 +76,6 @@ pub(super) async fn get_freshness(
             runtime.remove(id).as_ref(),
             AccountView {
                 newest_message_at: newest,
-                named_by_provider: accounts.len() == 1,
             },
             now,
             stale_after,
@@ -119,30 +117,18 @@ async fn received_mail(
         .await?)
 }
 
-/// What a warning calls the account: "Gmail" or "Outlook" when it is the
-/// only account, else its own name, so two Gmail accounts never read the
-/// same.
-fn account_label(account: &Account, named_by_provider: bool) -> String {
-    if !named_by_provider {
-        return account.name.clone();
-    }
-    match account
-        .sync_backend
-        .as_ref()
-        .map(|backend| &backend.provider_kind)
-    {
-        kind @ Some(
-            ProviderKind::Gmail | ProviderKind::OutlookPersonal | ProviderKind::OutlookWork,
-        ) => provider_name(kind).to_string(),
-        _ => account.name.clone(),
+/// Status names the actual account so two accounts on one provider are clear.
+fn account_label(account: &Account) -> String {
+    if account.email.trim().is_empty() {
+        account.name.clone()
+    } else {
+        account.email.clone()
     }
 }
 
 /// What the reply knows about an account beyond its sync status.
 pub(super) struct AccountView {
     pub newest_message_at: Option<DateTime<Utc>>,
-    /// The only account: warnings may call it by its provider ("Gmail").
-    pub named_by_provider: bool,
 }
 
 pub(super) fn account_freshness(
@@ -177,7 +163,7 @@ pub(super) fn account_freshness(
     AccountFreshnessData {
         account_id: account.id.clone(),
         account_name: account.name.clone(),
-        label: account_label(account, view.named_by_provider),
+        label: account_label(account),
         newest_message_at: view.newest_message_at,
         last_sync_ok_at: last_ok,
         last_sync_attempt_at: runtime.and_then(|row| row.last_attempt_at),
@@ -299,7 +285,7 @@ mod tests {
             name: "work".into(),
             email: "me@example.com".into(),
             sync_backend: Some(BackendRef {
-                provider_kind: ProviderKind::Gmail,
+                provider_kind: mxr_core::types::ProviderKind::Gmail,
                 config_key: "work".into(),
             }),
             send_backend: None,
@@ -310,7 +296,6 @@ mod tests {
     fn only() -> AccountView {
         AccountView {
             newest_message_at: None,
-            named_by_provider: true,
         }
     }
 
@@ -337,7 +322,7 @@ mod tests {
         let mut status = row(&account, now);
         let fresh = account_freshness(&account, Some(&status), only(), now, 900);
         assert_eq!(fresh.health, SyncHealthData::Ok);
-        assert_eq!(fresh.label, "Gmail");
+        assert_eq!(fresh.label, "me@example.com");
 
         status.last_success_at = Some(now - Duration::hours(2));
         let stale = account_freshness(&account, Some(&status), only(), now, 900);

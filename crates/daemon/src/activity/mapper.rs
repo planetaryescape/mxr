@@ -794,13 +794,17 @@ pub fn map_request(
                 "attachment materialization/opening is not in the activity catalog"
             );
         }
-        Request::StartMutationJob { .. } => {
+        Request::SubmitArchive { .. } | Request::StartMutationJob { .. } => {
             skip_activity!(
                 "mutation_job_enqueue",
                 "mutation job enqueue is currently outside request-mapper capture"
             );
         }
-        Request::ListJobs | Request::GetJob { .. } => {
+        Request::GetArchiveWorkspace
+        | Request::PreviewArchive { .. }
+        | Request::GetArchiveOperation { .. }
+        | Request::ListJobs
+        | Request::GetJob { .. } => {
             skip_activity!("job_polling", "background job polling is not activity");
         }
         Request::ListDeliveries { .. }

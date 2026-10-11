@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
+import { ArchiveRecoveryPanel } from "@/features/mail-actions/ArchiveRecoveryPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileTabs } from "@/components/MobileTabs";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -170,6 +171,7 @@ export function AppShell() {
 
   return (
     <>
+      <ArchiveRecoveryPanel />
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcedRouteTitle}
       </div>

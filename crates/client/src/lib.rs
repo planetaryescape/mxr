@@ -29,6 +29,9 @@
 //! # }
 //! ```
 
+mod archive;
+pub use archive::ArchiveJournal;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -267,6 +270,31 @@ impl IpcConnection {
     {
         if matches!(
             request,
+            Request::GetArchiveWorkspace
+                | Request::PreviewArchive { .. }
+                | Request::SubmitArchive { .. }
+                | Request::GetArchiveOperation { .. }
+        ) {
+            let status = self
+                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .await?;
+            if !matches!(
+                status,
+                Response::Ok {
+                    data: ResponseData::Status {
+                        archive_recovery_supported: true,
+                        ..
+                    }
+                }
+            ) {
+                return Ok(Response::error_kinded(
+                    "Daemon does not support recoverable Archive; upgrade before submitting",
+                    IpcErrorKind::Unsupported,
+                ));
+            }
+        }
+        if matches!(
+            request,
             Request::SendDraft { .. }
                 | Request::SendStoredDraft { .. }
                 | Request::ScheduleSend { .. }
@@ -280,6 +308,7 @@ impl IpcConnection {
                 Response::Ok {
                     data: ResponseData::Status {
                         send_outcome_supported: true,
+                        archive_recovery_supported: true,
                         ..
                     }
                 }
@@ -306,6 +335,7 @@ impl IpcConnection {
                     data: ResponseData::Status {
                         draft_revision_supported: true,
                         send_outcome_supported: true,
+                        archive_recovery_supported: true,
                         ..
                     }
                 }
@@ -395,7 +425,9 @@ impl IpcConnection {
     pub async fn notify(&mut self, request: Request) -> Result<(), ClientError> {
         if matches!(
             request,
-            Request::SaveDraft { .. }
+            Request::PreviewArchive { .. }
+                | Request::SubmitArchive { .. }
+                | Request::SaveDraft { .. }
                 | Request::UpdateDraft { .. }
                 | Request::DeleteDraft { .. }
                 | Request::SaveDraftToServer { .. }

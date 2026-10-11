@@ -61,8 +61,7 @@ impl App {
                             pluralize_messages(ids.len())
                         ))
                     };
-                    let optimistic_effect =
-                        removes_from_view.then(|| remove_from_list_effect(&ids));
+                    let optimistic_effect = None;
                     self.queue_or_confirm_bulk_action(BulkActionRequest {
                         title: "Archive messages".into(),
                         detail: bulk_message_detail("archive", ids.len()),

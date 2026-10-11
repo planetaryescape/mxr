@@ -64,6 +64,17 @@ pub trait MailSyncProvider: Send + Sync {
     /// request may map to move or copy semantics instead.
     async fn apply_mutation(&self, mutation_id: &str, mutation: &Mutation) -> Result<()>;
 
+    /// Only adapters with proof of non-acceptance may classify a mutation as rejected.
+    async fn apply_mutation_classified(
+        &self,
+        mutation_id: &str,
+        mutation: &Mutation,
+    ) -> std::result::Result<(), MutationFailure> {
+        self.apply_mutation(mutation_id, mutation)
+            .await
+            .map_err(MutationFailure::Unknown)
+    }
+
     async fn create_label(&self, _name: &str, _color: Option<&str>) -> Result<Label> {
         Err(MxrError::Provider(
             "Label creation not supported".to_string(),
@@ -214,6 +225,12 @@ pub trait MailSendProvider: Send + Sync {
 
 #[derive(Debug)]
 pub enum SendFailure {
+    NotAccepted(MxrError),
+    Unknown(MxrError),
+}
+
+#[derive(Debug)]
+pub enum MutationFailure {
     NotAccepted(MxrError),
     Unknown(MxrError),
 }

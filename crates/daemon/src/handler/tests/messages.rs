@@ -513,6 +513,10 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
     let conversation = page.conversation.unwrap();
     let last = conversation.messages.last().unwrap();
     assert_eq!(last.text, "Yes, keep it at 5%.");
+    assert_eq!(
+        last.source,
+        Some(mxr_protocol::MessageTextSourceData::StoredBody)
+    );
     assert!(last.trimmed.quote);
     assert_eq!(last.trimmed_label.as_deref(), Some("trimmed: quote"));
     assert_eq!(last.layout, mxr_protocol::MessageLayoutData::Compact);
@@ -522,6 +526,61 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
     let messages = list(&fx).await;
     let preview = messages.your_turn[0].preview.as_ref().unwrap();
     assert_eq!(preview.text, "Yes, keep it at 5%.");
+}
+
+#[tokio::test]
+async fn conversation_marks_snippet_fallback_and_preserves_stored_empty_body() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let stored = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Status",
+        Duration::days(1),
+    )
+    .await;
+    body(&fx, &stored.id, Some("Stored body."), None).await;
+    let empty = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Status",
+        Duration::hours(2),
+    )
+    .await;
+    body(&fx, &empty.id, Some("  "), None).await;
+    let preview = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Status",
+        Duration::hours(1),
+    )
+    .await;
+    let page = person(&fx, SAMIR, Some(&thread)).await;
+    let messages = page.conversation.unwrap().messages;
+    assert_eq!(
+        messages[0].source,
+        Some(mxr_protocol::MessageTextSourceData::StoredBody)
+    );
+    assert_eq!(
+        messages[1].source,
+        Some(mxr_protocol::MessageTextSourceData::StoredBody)
+    );
+    assert_eq!(messages[1].text, "");
+    assert_eq!(messages[2].message_id, preview.id);
+    assert_eq!(
+        messages[2].source,
+        Some(mxr_protocol::MessageTextSourceData::ProviderSnippet)
+    );
+    assert_eq!(messages[2].text, preview.snippet);
 }
 
 /// A thread where Samir answered your deck: Got it has someone to thank.

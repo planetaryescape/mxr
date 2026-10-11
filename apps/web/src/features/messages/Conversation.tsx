@@ -126,6 +126,20 @@ function MessageItem({
           ))}
         </div>
       )}
+      {!asSent && message.source === "provider_snippet" ? (
+        <p data-testid="provider-preview" className="mt-1 text-[12px] text-muted-foreground">
+          {message.text.trim()
+            ? "Provider preview only; the full message is unavailable."
+            : "No provider preview is available; the full message is unavailable."} {" "}
+          <button
+            type="button"
+            onClick={onToggleAsSent}
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Check the original
+          </button>
+        </p>
+      ) : null}
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
         {!asSent && hidden > 0 ? (
           <button
@@ -172,7 +186,11 @@ function AsSent({ threadId, messageId }: { threadId: string; messageId: string }
   if (!body) {
     return (
       <p data-testid="as-sent" className="text-[13px] text-muted-foreground">
-        {thread.isError ? "Couldn't load the message as sent." : "Loading the message as sent…"}
+        {thread.isError
+          ? "Couldn't load the message as sent."
+          : thread.isSuccess
+            ? "The full message is unavailable."
+            : "Loading the message as sent…"}
       </p>
     );
   }

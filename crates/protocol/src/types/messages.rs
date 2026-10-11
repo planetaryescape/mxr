@@ -337,6 +337,16 @@ pub struct ConversationAttachmentData {
     pub size_bytes: u64,
 }
 
+/// Where a conversation's displayed message text came from. This describes
+/// body availability, independently of any quote trimming or UI expansion.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum MessageTextSourceData {
+    StoredBody,
+    ProviderSnippet,
+}
+
 /// One message in a conversation, as its new text.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -348,6 +358,13 @@ pub struct ConversationMessageData {
     /// What this message says that the thread didn't already: quotes and
     /// signature removed, the same text in every client.
     pub text: String,
+    /// Preserved question, quote or forwarded source context is part of this
+    /// message; clients must keep the whole text visible when excerpting.
+    #[serde(default)]
+    pub has_preserved_context: bool,
+    /// Missing in older daemon payloads; clients must treat that as unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<MessageTextSourceData>,
     pub trimmed: TrimmedData,
     /// Nothing but quoted text: `text` is the "(only quoted text)"
     /// placeholder, and the message as sent is the way to read it.
@@ -364,6 +381,29 @@ pub struct ConversationMessageData {
     /// The ask, verbatim, when this message makes it: clients highlight it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ask_quote: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conversation_message_without_source_deserializes_as_unknown() {
+        let value = serde_json::json!({
+            "message_id": MessageId::new(),
+            "from": {"email": "alex@example.test", "name": null},
+            "from_me": false,
+            "date": "2026-10-11T12:00:00Z",
+            "text": "A short message.",
+            "trimmed": {"quote": false, "signature": false, "footer": false},
+            "layout": "compact",
+            "paragraphs": 1
+        });
+        let message: ConversationMessageData = serde_json::from_value(value)
+            .expect("message payload from an older daemon should deserialize");
+        assert_eq!(message.source, None);
+        assert!(!message.has_preserved_context);
+    }
 }
 
 /// The box at the bottom, already addressed.

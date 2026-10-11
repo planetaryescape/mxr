@@ -40,8 +40,12 @@ static ON_WROTE: Lazy<Regex> = Lazy::new(|| {
 static QUOTE_PREFIX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^\s*>").expect("quote-prefix regex should compile"));
 static ORIGINAL_MESSAGE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^\s*-{2,}\s*(original message|forwarded message|reply message)\s*-{2,}\s*$")
+    Regex::new(r"(?i)^\s*-{2,}\s*(original message|reply message)\s*-{2,}\s*$")
         .expect("original-message regex should compile")
+});
+static FORWARDED_HEADER: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^\s*(?:-{2,}\s*forwarded message\s*-{2,}|begin forwarded message:)\s*$")
+        .expect("forwarded-header regex should compile")
 });
 static HEADER_FROM: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^\s*\*?from:\*?\s+\S").expect("from-header regex"));
@@ -82,6 +86,8 @@ impl Trimmed {
 pub struct NewText {
     pub text: String,
     pub trimmed: Trimmed,
+    /// Quoted or forwarded source context remains beside authored text.
+    pub has_preserved_context: bool,
     /// Everything was quoted: `text` is `ONLY_QUOTED_TEXT`, and the message
     /// as sent is the only way to read it.
     pub only_quoted: bool,
@@ -114,6 +120,9 @@ pub fn new_text(
     let html_part = html_body
         .or_else(|| text.filter(|t| html::looks_like_html_document(t)))
         .map(split_html_quote);
+    let mut has_preserved_context = html_part
+        .as_ref()
+        .is_some_and(|parts| parts.has_preserved_quote);
     let raw = match &html_part {
         Some(parts) if parts.has_quote || parts.has_signature => {
             trimmed.quote |= parts.has_quote;
@@ -123,9 +132,18 @@ pub fn new_text(
         _ => plain_text(text, html_body),
     };
 
-    let (body, quoted) = strip_marked_quotes(&raw);
+    let has_forwarded_context = raw.lines().any(|line| FORWARDED_HEADER.is_match(line));
+    let (body, quoted, inline_context) = strip_marked_quotes(&raw);
+    has_preserved_context |= inline_context || has_forwarded_context;
     trimmed.quote |= quoted;
-    let (body, matched) = strip_thread_quote(&body, earlier);
+    // Marked inline questions are part of the reply's meaning. The marked
+    // pass already folds a trailing quote; matching the remaining mixed
+    // block against prior messages could otherwise cut the answers too.
+    let (body, matched) = if raw.lines().any(|line| QUOTE_PREFIX.is_match(line)) {
+        (body, false)
+    } else {
+        strip_thread_quote(&body, earlier)
+    };
     trimmed.quote |= matched;
 
     let (mut body, signature) = signatures::strip(&body);
@@ -144,6 +162,7 @@ pub fn new_text(
             return NewText {
                 text: String::new(),
                 trimmed: Trimmed::default(),
+                has_preserved_context,
                 only_quoted: false,
             };
         }
@@ -153,6 +172,7 @@ pub fn new_text(
         return NewText {
             text: ONLY_QUOTED_TEXT.to_string(),
             trimmed,
+            has_preserved_context,
             only_quoted: true,
         };
     }
@@ -165,37 +185,55 @@ pub fn new_text(
                 .trim_end()
                 .to_string(),
             trimmed,
+            has_preserved_context,
             only_quoted: false,
         };
     }
     NewText {
         text: body,
         trimmed,
+        has_preserved_context,
         only_quoted: false,
     }
 }
 
-/// Remove `>`-prefixed lines, the "On ... wrote:" line heading them, and
-/// everything from a strong quote header ("-----Original Message-----", an
-/// Outlook "From: / Sent:" block) on. Inline replies between quoted lines
-/// stay.
-fn strip_marked_quotes(text: &str) -> (String, bool) {
+/// Fold trailing `>` history and strong reply headers. Quoted questions
+/// with an authored answer below them stay beside that answer. Forward
+/// headers are retained because the forwarded content is what the message
+/// says.
+fn strip_marked_quotes(text: &str) -> (String, bool, bool) {
     let lines: Vec<&str> = text.lines().collect();
     let cut = lines
         .iter()
         .enumerate()
         .find(|(index, line)| is_strong_header(&lines, *index, line))
         .map_or(lines.len(), |(index, _)| index);
+    let last_authored = lines[..cut]
+        .iter()
+        .rposition(|line| !line.trim().is_empty() && !QUOTE_PREFIX.is_match(line));
+    let inline_answer = last_authored.is_some_and(|last| {
+        lines[..=last]
+            .iter()
+            .any(|line| QUOTE_PREFIX.is_match(line))
+    });
     let mut removed = cut < lines.len();
     let mut kept = Vec::with_capacity(cut);
-    for line in &lines[..cut] {
-        if QUOTE_PREFIX.is_match(line) || ON_WROTE.is_match(line) {
+    for (index, line) in lines[..cut].iter().enumerate() {
+        let inline_quote = inline_answer && last_authored.is_some_and(|last| index < last);
+        if QUOTE_PREFIX.is_match(line) && !inline_quote || ON_WROTE.is_match(line) {
             removed = true;
-            continue;
+        } else {
+            // Preserve the original `>` markers so readers can distinguish
+            // an inline question from the sender's answer.
+            kept.push(*line);
         }
-        kept.push(*line);
     }
-    (kept.join("\n"), removed)
+    // A forwarded section is retained as attributed context, even when it
+    // is the entire body. It must not be presented as the forwarder's words.
+    if lines.iter().any(|line| FORWARDED_HEADER.is_match(line)) {
+        return (text.trim_matches(['\n', '\r']).to_string(), false, false);
+    }
+    (kept.join("\n"), removed, inline_answer)
 }
 
 fn is_strong_header(lines: &[&str], index: usize, line: &str) -> bool {

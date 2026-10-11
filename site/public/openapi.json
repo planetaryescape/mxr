@@ -7666,6 +7666,10 @@
           "from_me": {
             "type": "boolean"
           },
+          "has_preserved_context": {
+            "type": "boolean",
+            "description": "Preserved question, quote or forwarded source context is part of this\nmessage; clients must keep the whole text visible when excerpting."
+          },
           "layout": {
             "$ref": "#/components/schemas/MessageLayoutData"
           },
@@ -7680,6 +7684,17 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageTextSourceData",
+                "description": "Missing in older daemon payloads; clients must treat that as unknown."
+              }
+            ]
           },
           "text": {
             "type": "string",
@@ -32343,6 +32358,14 @@
             "minimum": 0
           }
         }
+      },
+      "MessageTextSourceData": {
+        "type": "string",
+        "description": "Where a conversation's displayed message text came from. This describes\nbody availability, independently of any quote trimming or UI expansion.",
+        "enum": [
+          "stored_body",
+          "provider_snippet"
+        ]
       }
     },
     "securitySchemes": {

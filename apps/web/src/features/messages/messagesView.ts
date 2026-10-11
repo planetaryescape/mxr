@@ -159,6 +159,7 @@ export function paragraphBlocks(text: string): { at: number; text: string }[] {
  */
 export function letterLead(message: ConversationMessage): { lead: string; hidden: number } {
   const blocks = paragraphs(message.text);
+  if (message.has_preserved_context) return { lead: message.text, hidden: 0 };
   if (message.layout === "compact" || blocks.length <= 1) {
     return { lead: message.text, hidden: 0 };
   }

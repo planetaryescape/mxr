@@ -4597,6 +4597,11 @@ export interface components {
             date: string;
             from: components["schemas"]["Address"];
             from_me: boolean;
+            /**
+             * @description Preserved question, quote or forwarded source context is part of this
+             *     message; clients must keep the whole text visible when excerpting.
+             */
+            has_preserved_context?: boolean;
             layout: components["schemas"]["MessageLayoutData"];
             message_id: components["schemas"]["MessageId"];
             /**
@@ -4606,6 +4611,7 @@ export interface components {
             only_quoted?: boolean;
             /** Format: int32 */
             paragraphs: number;
+            source?: null | components["schemas"]["MessageTextSourceData"];
             /**
              * @description What this message says that the thread didn't already: quotes and
              *     signature removed, the same text in every client.
@@ -5836,6 +5842,12 @@ export interface components {
             text_plain_format?: null | components["schemas"]["TextPlainFormat"];
             text_plain_source?: null | components["schemas"]["BodyPartSource"];
         };
+        /**
+         * @description Where a conversation's displayed message text came from. This describes
+         *     body availability, independently of any quote trimming or UI expansion.
+         * @enum {string}
+         */
+        MessageTextSourceData: "stored_body" | "provider_snippet";
         /**
          * @description The bands, top to bottom.
          * @enum {string}

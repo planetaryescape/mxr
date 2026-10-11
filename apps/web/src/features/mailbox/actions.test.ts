@@ -9,10 +9,14 @@ import { useModals } from "@/state/modalStore";
 const client = vi.hoisted(() => ({
   apiFetch: vi.fn<(path: string, init?: unknown) => Promise<unknown>>(),
 }));
+const bridgeHealth = vi.hoisted(() => ({
+  fetch: vi.fn<() => Promise<{ protocol_version?: number }>>(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   apiFetch: client.apiFetch,
 }));
+vi.mock("@/lib/bridgeHealth", () => ({ fetchBridgeHealth: bridgeHealth.fetch }));
 
 const toast = vi.hoisted(() => ({
   success: vi.fn<(message: string, options?: unknown) => void>(),
@@ -34,6 +38,7 @@ const ctx: ActionContext = {
 beforeEach(() => {
   useConnectionStore.setState({ syncProgress: undefined });
   useModals.setState({ commandPaletteOpen: false, rightRail: null });
+  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 6 });
 });
 
 afterEach(() => {
@@ -55,7 +60,53 @@ describe("syncNow", () => {
       method: "POST",
       body: {},
     });
+    expect(bridgeHealth.fetch).toHaveBeenCalledOnce();
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  test.each([{ protocol: 4 }, { protocol: 5 }, { protocol: undefined }])(
+    "does not start sync when bridge protocol is $protocol",
+    async ({ protocol }) => {
+      bridgeHealth.fetch.mockResolvedValue(
+        protocol === undefined ? {} : { protocol_version: protocol },
+      );
+
+      await syncNow();
+
+      expect(client.apiFetch).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        "Update mxr to sync all accounts",
+        expect.objectContaining({
+          description: expect.stringContaining(
+            "This version of mxr needs updating before it can sync all accounts.",
+          ),
+        }),
+      );
+      expect(toast.error).toHaveBeenCalledWith(
+        "Update mxr to sync all accounts",
+        expect.objectContaining({ description: expect.stringContaining("Update mxr:") }),
+      );
+    },
+  );
+
+  test("does not start sync when the compatibility check fails", async () => {
+    bridgeHealth.fetch.mockRejectedValue(new Error("health unavailable"));
+
+    await syncNow();
+
+    expect(client.apiFetch).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Couldn't verify mxr compatibility",
+      expect.objectContaining({
+        description: expect.stringContaining("mxr couldn't be reached, so sync wasn't started"),
+      }),
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      "Couldn't verify mxr compatibility",
+      expect.objectContaining({
+        description: expect.stringContaining("health unavailable"),
+      }),
+    );
   });
 
   test("still triggers global sync while a different account is already running", async () => {
@@ -90,14 +141,39 @@ describe("syncNow", () => {
     });
   });
 
-  test("explains when the daemon lacks the global sync endpoint", async () => {
-    client.apiFetch.mockRejectedValue(new BridgeRequestError(404, "Not Found"));
+  test.each([404, 405])(
+    "explains when the bridge lacks the global sync endpoint (%i)",
+    async (status) => {
+      client.apiFetch.mockRejectedValue(new BridgeRequestError(status, "Unsupported route"));
+
+      await syncNow();
+
+      expect(toast.error).toHaveBeenCalledWith("Update mxr to sync all accounts", {
+        description: expect.stringContaining("This daemon doesn't support global Sync now yet."),
+      });
+    },
+  );
+
+  test("explains a daemon protocol race after compatibility preflight", async () => {
+    client.apiFetch.mockRejectedValue(
+      new BridgeRequestError(
+        426,
+        "Global sync requires daemon IPC protocol 6; running daemon uses 5.",
+        "protocol_mismatch",
+      ),
+    );
 
     await syncNow();
 
-    expect(toast.error).toHaveBeenCalledWith("Update mxr to sync all accounts", {
-      description: "This daemon doesn't support global Sync now yet.",
-    });
+    expect(client.apiFetch).toHaveBeenCalledOnce();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Update mxr to sync all accounts",
+      expect.objectContaining({
+        description: expect.stringContaining(
+          "This version of mxr needs updating before it can sync all accounts.",
+        ),
+      }),
+    );
   });
 
   test("explains when there is nothing to sync", async () => {

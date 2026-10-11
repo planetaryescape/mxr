@@ -3984,6 +3984,7 @@ async fn trigger_sync_all(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    ensure_sync_all_protocol(&state.config.socket_path).await?;
     match ipc_request(&state.config.socket_path, Request::SyncAll).await? {
         ResponseData::SyncBatch { results } => Ok(Json(json!({ "results": results }))),
         _ => Err(BridgeError::UnexpectedResponse),
@@ -3996,8 +3997,24 @@ async fn preview_sync_all(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    ensure_sync_all_protocol(&state.config.socket_path).await?;
     match ipc_request(&state.config.socket_path, Request::PreviewSyncAll).await? {
         ResponseData::SyncPlan { targets } => Ok(Json(json!({ "targets": targets }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn ensure_sync_all_protocol(socket_path: &Path) -> Result<(), BridgeError> {
+    match ipc_request(socket_path, Request::GetStatus).await? {
+        ResponseData::Status {
+            protocol_version, ..
+        } if protocol_version < mxr_protocol::IPC_PROTOCOL_VERSION => {
+            Err(BridgeError::UnsupportedProtocol {
+                required: mxr_protocol::IPC_PROTOCOL_VERSION,
+                actual: protocol_version,
+            })
+        }
+        ResponseData::Status { .. } => Ok(()),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

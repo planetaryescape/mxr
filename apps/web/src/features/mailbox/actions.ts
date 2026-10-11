@@ -9,9 +9,31 @@ import { toast } from "sonner";
 
 import { apiFetch, BridgeRequestError } from "@/api/client";
 import type { Action } from "@/lib/actions/types";
+import { fetchBridgeHealth } from "@/lib/bridgeHealth";
+import {
+  buildProtocolUpdateSteps,
+  evaluateProtocolCompatibility,
+} from "@/lib/protocolCompatibility";
 import { useModals } from "@/state/modalStore";
 
 export async function syncNow(): Promise<void> {
+  try {
+    const health = await fetchBridgeHealth();
+    const mismatch = evaluateProtocolCompatibility(health);
+    if (mismatch) {
+      toast.error("Update mxr to sync all accounts", {
+        description: protocolMismatchDescription(),
+      });
+      return;
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    toast.error("Couldn't verify mxr compatibility", {
+      description: `mxr couldn't be reached, so sync wasn't started. (${reason})`,
+    });
+    return;
+  }
+
   try {
     const response = await apiFetch<unknown>("/api/v1/mail/sync/all", { method: "POST", body: {} });
     const results = syncResults(response);
@@ -28,9 +50,18 @@ export async function syncNow(): Promise<void> {
       });
     }
   } catch (error) {
-    if (error instanceof BridgeRequestError && error.status === 404) {
+    if (error instanceof BridgeRequestError && (error.status === 404 || error.status === 405)) {
       toast.error("Update mxr to sync all accounts", {
-        description: "This daemon doesn't support global Sync now yet.",
+        description: `This daemon doesn't support global Sync now yet. Update mxr: ${buildProtocolUpdateSteps().join(" · ")}`,
+      });
+      return;
+    }
+    if (
+      error instanceof BridgeRequestError &&
+      (error.status === 426 || error.code === "protocol_mismatch")
+    ) {
+      toast.error("Update mxr to sync all accounts", {
+        description: protocolMismatchDescription(),
       });
       return;
     }
@@ -38,6 +69,10 @@ export async function syncNow(): Promise<void> {
       description: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function protocolMismatchDescription(): string {
+  return `This version of mxr needs updating before it can sync all accounts. Update mxr: ${buildProtocolUpdateSteps().join(" · ")}`;
 }
 
 function syncResults(value: unknown): Array<{

@@ -16,6 +16,8 @@ pub(super) enum BridgeError {
     /// class, so the HTTP status follows it instead of blaming the gateway.
     #[error("{message}")]
     Daemon { message: String, kind: IpcErrorKind },
+    #[error("Global sync requires daemon IPC protocol {required}; running daemon uses {actual}. Update or restart mxr before retrying.")]
+    UnsupportedProtocol { required: u32, actual: u32 },
     #[error("{message}")]
     DraftConflict {
         message: String,
@@ -81,13 +83,25 @@ impl BridgeError {
             }
             return body;
         }
-        json!({ "error": self.to_string(), "code": self.code(), "details": match self { Self::DraftConflict { details, .. } => details.clone(), _ => None } })
+        json!({
+            "error": self.to_string(),
+            "code": self.code(),
+            "details": match self {
+                Self::DraftConflict { details, .. } => details.clone(),
+                Self::UnsupportedProtocol { required, actual } => Some(json!({
+                    "required_protocol": required,
+                    "actual_protocol": actual,
+                })),
+                _ => None,
+            }
+        })
     }
 
     pub(super) fn status(&self) -> StatusCode {
         match self {
             Self::ComposeRecovery { source, .. } => source.status(),
             Self::DraftConflict { .. } => StatusCode::CONFLICT,
+            Self::UnsupportedProtocol { .. } => StatusCode::UPGRADE_REQUIRED,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -115,6 +129,7 @@ impl BridgeError {
         match self {
             Self::ComposeRecovery { source, .. } => source.code(),
             Self::DraftConflict { .. } => "draft_revision_conflict",
+            Self::UnsupportedProtocol { .. } => "protocol_mismatch",
             Self::Daemon { kind, .. } => kind.as_code(),
             // Same code the daemon uses for its own draft validation, so a
             // client handles "fix your draft" once whichever side caught it.
@@ -232,6 +247,7 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Timeout(_) => "timeout",
         BridgeError::DraftConflict { .. } => "draft_revision_conflict",
         BridgeError::Daemon { .. } => "daemon",
+        BridgeError::UnsupportedProtocol { .. } => "protocol_mismatch",
         BridgeError::BadRequest(_) => "bad_request",
         BridgeError::InvalidDraft(_) => "invalid_draft",
         BridgeError::Unauthorized => "unauthorized",

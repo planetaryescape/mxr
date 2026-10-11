@@ -88,6 +88,24 @@ post-cancellation state clear, or restore the selection, so the user does not
 have to infer why the messages disappeared from the selection. Cancellation
 does not dispatch the provider action.
 
+## Ignore a second list Archive while the first review is unresolved
+
+On candidate `80457e31199d31f73c9dc891fbb17b343efc27b3`, Archive does not add
+the row to `pendingMailOps`, and the list verb path has no per-message
+Archive-pending guard (`apps/web/src/features/mail-actions/mailMutations.ts#L52-L60`,
+`apps/web/src/features/mail-actions/mailVerbs.ts#L86-L114`). Pressing `e` again
+while the row remains visible can open a second confirmation for that same
+message; accepting it claims the newest `u` slot. The first action's toast
+still has its own Undo (`apps/web/src/features/mail-actions/mailUndo.ts#L179-L192`),
+but keyboard Undo can now belong to the second action. If the second review
+sees the message already outside Inbox, the runner completes it without a
+provider call or Undo snapshot
+(`crates/daemon/src/handler/archive_recovery/runner.rs#L159-L170`,
+`#L253-L270`). Avoid offering a second list Archive for a message with an
+unresolved Archive review, or keep the row visibly pending without removing it.
+This can obscure which action `u` will undo; the observed path does not repeat a
+provider effect.
+
 ## Show useful message details in the browser Archive confirmation
 
 On candidate `f3986183c92f532e125304cb15c3a70eb9c44c7c`, the native confirmation

@@ -34,6 +34,15 @@ browser, Archive refreshes mail queries before settling the early Undo claim on
 both success and partial failure, so Undo does not appear ahead of the refreshed
 mailbox.
 
+In the mailbox and Reading readers, `e`, `]` and `[` keep their navigation
+direction through delayed Archive completion and the resulting list update.
+Undo returns to the affected message; successful Archive from All Mail advances
+while retaining Undo, and cancelling review leaves the reader route in place.
+The corrected and original Reading journeys both passed. `PlaceLayout` now
+supplies the live `isListed` and `expectRemoval` context; hook tests cover both
+completion orders. No timing race was reproduced. Partial Archive failures
+preserve their mutation response for the caller.
+
 ## The dispatch receipt commits before the provider effect
 
 Migration 075 stores workspace identity and recovery generation. Reviewed
@@ -62,7 +71,9 @@ rows remain visibly unaccepted. Client journal failure prevents submission.
 Existing Undo links use the internal mutation ID, and browser partial results
 retain that link while naming uncertain effects explicitly. The TUI retains
 partial Undo for confirmed completed items even when other items fail. A terminal
-same-identity submission cannot recreate a consumed or expired Undo entry.
+same-identity submission cannot recreate a consumed or expired Undo entry. A
+runner that starts after completion and finds no pending items returns without
+rearming an Undo entry the user already consumed.
 
 A successful acceptance compare-and-swap records `mail.archive` through the
 existing local activity recorder, with the original client source and
@@ -72,31 +83,22 @@ best effort and respects `MXR_ACTIVITY=off`.
 
 ## The checks use synthetic provider acceptance witnesses
 
-The final integrated candidate currently under review is
-`f3986183c92f532e125304cb15c3a70eb9c44c7c`, tree
-`d2ccd484e206b414be52668954104a0075e3082a`. It is not merged or released.
-The [candidate evidence record](evidence/s04-f3986183-integrated-acceptance.md)
-pins the binary, runtime checks and still-pending release gates. Root owns
-integration, independent review, release and published-artifact acceptance.
+The pending-release candidate is `80457e31199d31f73c9dc891fbb17b343efc27b3`,
+tree `a754ecb025c4c39d86522979d0552ff314755c8f`, based on
+`ab2103ad8144e1f8d2b99f5717666fa2edbd5b6d`. It is not merged or released.
 
-Focused daemon tests covered lost replies, concurrent submission, command and
-identity conflicts, stale item binding, acceptance/dispatch/success receipt
-failures, partial rejection, interrupted Pending/Unknown items, retention,
-local reconciliation failure and intervening-label Undo. Client tests consumed
-a lost submission response and recovered the same journal identity. The named
-older-daemon fixture is v0.6.68 Status without Archive capability; it refuses
-new requests while existing draft and send surfaces still proceed. This is not
-a claim about arbitrary version compatibility.
-
-The candidate's isolated CLI/IPC/HTTP harness passed seventeen recorded checks,
-including concurrent replay, changed-payload refusal, restart recovery,
-unknown outcomes, and receipt failures. Its actual MCP harness passed three
-checks for preview confirmation, restart recovery and no-repeat handling of
-unknown outcomes. Both used the same candidate binary and synthetic provider
-acceptance witnesses. The process-crash probe killed only its owned daemon; the
-CLI and MCP harnesses reported their owned processes stopped. These checks do
-not establish recovery after an operating-system crash or power loss. The
-candidate evidence record names each check and its source manifest.
+The immutable runtime binary was built from `f718eecd4300e7a120324e39be2d2ba46cdf371a`,
+tree `97770f3e4bd734cadd927daa22cae9e6384dbd95`, and has SHA-256
+`sha256:cf19aa7afd396425a2242e1768240b9a41a3cc9e999ac185e301ecd689f7b418`. It passed
+17 CLI/IPC/HTTP scenarios and 3 actual MCP scenarios with synthetic provider
+acceptance witnesses. Both harnesses reported their owned processes stopped; root separately
+verified their ports were closed. Candidate 804 differs from that runtime source only in the
+final E2E fixture and upstream 0.6.76 version metadata; production logic is
+unchanged. This is runtime evidence for that production logic, not a binary
+build of candidate 804. The process-crash checks do not establish recovery after
+an operating-system crash or power loss. The final repository evidence packet will be added after published-artifact
+acceptance. The [earlier candidate packet](evidence/s04-f3986183-integrated-acceptance.md)
+is historical evidence, not verification of candidate 804.
 
 The fake spool opt-in uses `mutation-reject`, `mutation-uncertain`, and
 `mutation-pause-after-accept`. Empty controls apply to all messages; otherwise
@@ -116,10 +118,10 @@ reconciliation workflow are tracked in
 That issue also records the current per-account batch behavior after an unknown
 result, panic cleanup, and the SQLite power-loss durability boundary.
 
-The final candidate binary build took 88 seconds, and the SPA build took 3.95
-seconds. The focused verification passed fourteen unit tests and two E2E tests;
-typecheck and lint also passed. These measured command durations are not a total
-wall-clock or agent-time estimate. CI, whole-diff review, final TUI/browser
-acceptance against the release candidate, OpenAPI regeneration and published
-artifact checks remain separate gates; see the evidence record for the current
-status.
+The corrected and original Reading E2E journeys passed (jobs 5706 and 5709),
+along with typecheck (5698), implementation lint (5716) and formatting (5718).
+Hook tests force both completion orders. Required CI is running; the final
+candidate's independent whole-diff review is still outstanding. Release-candidate
+TUI proof, OpenAPI regeneration, merge, release-please, published-artifact
+checks and installed-client acceptance also remain open. No S04 release result
+is established.

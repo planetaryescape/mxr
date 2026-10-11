@@ -268,23 +268,25 @@ pub fn draw_sweep_confirm(
         Some(account_id) => accounts
             .iter()
             .find(|account| &account.account_id == account_id)
-            .map(|account| {
-                let name = one_line(&account.name);
-                let email = one_line(&account.email);
-                let identity = if name.trim().is_empty() || name == email {
-                    email.clone()
-                } else {
-                    format!("{name} <{email}>")
-                };
-                // Keep a useful address visible when a configured account
-                // name would otherwise consume the whole line.
-                if Line::from(identity.as_str()).width() > account_width {
-                    email
-                } else {
-                    identity
-                }
-            })
-            .unwrap_or_else(|| "unknown account".into()),
+            .map_or_else(
+                || "unknown account".into(),
+                |account| {
+                    let name = one_line(&account.name);
+                    let email = one_line(&account.email);
+                    let identity = if name.trim().is_empty() || name == email {
+                        email.clone()
+                    } else {
+                        format!("{name} <{email}>")
+                    };
+                    // Keep a useful address visible when a configured account
+                    // name would otherwise consume the whole line.
+                    if Line::from(identity.as_str()).width() > account_width {
+                        email
+                    } else {
+                        identity
+                    }
+                },
+            ),
         None => "all accounts".into(),
     };
     lines.push(Line::from(format!(

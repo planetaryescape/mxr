@@ -1,0 +1,75 @@
+{
+  "assets": [
+    {
+      "bytes": 59462302,
+      "name": "mxr-v0.6.68-macos-aarch64.tar.gz",
+      "sha256": "44f2900c08e8bae9e98d0c3ba9e77ac0d1f08b0791b54cf09239c98a46cf09d3",
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.68/mxr-v0.6.68-macos-aarch64.tar.gz"
+    },
+    {
+      "bytes": 64379091,
+      "name": "mxr-v0.6.68-linux-x86_64.tar.gz",
+      "sha256": "c7825b4bff384a1ddc8b7bc3bb25d803b5920f3c78732b47ff50896fd9e137fc",
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.68/mxr-v0.6.68-linux-x86_64.tar.gz"
+    }
+  ],
+  "installed_binaries": {
+    "mxr": {
+      "homebrew_path": "/opt/homebrew/Cellar/mxr/0.6.68/bin/mxr",
+      "matches_archive_and_installer": true,
+      "sha256": "51a89aec14f4b9c3fae384c567f825e2fd575239f9a34369ee1cfb5259c860ee",
+      "version": "mxr 0.6.68"
+    },
+    "mxr-mailmerge": {
+      "homebrew_path": "/opt/homebrew/Cellar/mxr/0.6.68/bin/mxr-mailmerge",
+      "matches_archive_and_installer": true,
+      "sha256": "f4657818e12639d23f43d8e36a473a9df35d4cf75d62d8a55a3e30ae1b711105",
+      "version": "mxr-mailmerge 0.6.68"
+    }
+  },
+  "installed_cli": {
+    "ambiguous_and_crashed_sends_remain_unknown": true,
+    "commands": 50,
+    "fake_provider_acceptances": 8,
+    "http_query_after_draft_cleanup": true,
+    "lost_ack_restart_same_identity": true,
+    "stored_outcome_counts": {
+      "accepted": 6,
+      "not_accepted": 4,
+      "unknown": 2
+    }
+  },
+  "installed_companion": {
+    "fake_provider_acceptances": 4,
+    "manifest_states": {
+      "immediate": "sent",
+      "lost-immediate": "sent",
+      "lost-schedule": "schedule_uncertain",
+      "rejected": "sent",
+      "scheduled": "scheduled",
+      "unknown": "uncertain"
+    },
+    "pre_effect_witnesses": 7,
+    "wall_seconds": 9.366320833993086
+  },
+  "native_build_seconds": {
+    "linux_x86_64": 868,
+    "macos_aarch64": 1135
+  },
+  "no_real_mail_sent": true,
+  "published_at": "2026-10-11T15:56:03Z",
+  "release": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.68",
+  "source": "621e9e49739eeb80abbccea0916578420941c3fc",
+  "source_record_sha256": {
+    "install_convergence": "046922c0871105fa0d691bd80f4496cb69e2a28fc781cc5e0e4bc827eb81b2b0",
+    "installed_cli_companion": "740b40a7c4c2f11f787a06d3dba8fbbe3dc434fae2b7989397130b0ceb6d27fe",
+    "published_release": "03ed70b2f77df6485eeeb99f6005851514dc45fe244c689249f3ab61476b286a",
+    "release_workflow": "86a392c3d608549e23cc28d2cbdf4e8db49137847156e61ed2f701a95d2a1a6c"
+  },
+  "tag": "v0.6.68",
+  "tree": "6d391d9d90db51339d9a8d100e50915732a895eb",
+  "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38151840433",
+  "workflow_completed_at": "2026-10-11T15:58:17Z",
+  "workflow_started_at": "2026-10-11T15:34:28Z",
+  "workflow_wall_seconds": 1429
+}

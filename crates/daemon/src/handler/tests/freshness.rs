@@ -184,7 +184,7 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
 
     let signed_out = by_id(&gmail.id);
     assert_eq!(signed_out.health, SyncHealthData::Failing);
-    assert_eq!(signed_out.label, "work", "several accounts: named by name");
+    assert_eq!(signed_out.label, "work@example.com");
     assert_eq!(
         signed_out.last_sync_error.as_ref().unwrap().kind,
         SyncErrorKindData::Auth
@@ -192,7 +192,7 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
 
     let offline = by_id(&imap.id);
     assert_eq!(offline.health, SyncHealthData::Failing);
-    assert_eq!(offline.label, "home");
+    assert_eq!(offline.label, "home@example.com");
     assert_eq!(
         offline.last_sync_error.as_ref().unwrap().kind,
         SyncErrorKindData::Offline

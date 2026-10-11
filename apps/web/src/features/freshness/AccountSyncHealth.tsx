@@ -178,7 +178,7 @@ export function useSyncHealthToasts(): void {
       if (was === undefined || was === now) continue;
       const id = `sync-health-${account.account_id}`;
       if (now) {
-        toast.warning(`${account.account_name} can't sync`, {
+        toast.warning(`${account.label} can't sync`, {
           id,
           description: plainReason(account, new Date()) ?? undefined,
           action: needsSignIn(account)
@@ -186,7 +186,7 @@ export function useSyncHealthToasts(): void {
             : undefined,
         });
       } else {
-        toast.success(`${account.account_name} is syncing again`, { id });
+        toast.success(`${account.label} is syncing again`, { id });
       }
     }
   }, [data, signInAgain]);

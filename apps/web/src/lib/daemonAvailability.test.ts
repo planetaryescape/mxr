@@ -160,7 +160,7 @@ describe("daemon availability", () => {
     daemonUp = false;
     await probeDaemon();
     expect(refuseWhileDaemonDown("archive")).toBe(true);
-    expect(toast.warning).toHaveBeenCalledWith("Can't archive while mxr's daemon is stopped", {
+    expect(toast.warning).toHaveBeenCalledWith("Can't archive while mxr is unavailable", {
       id: "daemon-down-refusal",
       description: "Nothing changed. Try again once it's back.",
     });

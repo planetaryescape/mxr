@@ -21,4 +21,11 @@ The job reported 380 passed and one flaky test that passed on retry; four
 speed checks also passed in 18 seconds. The cause remains unknown. This is
 historical evidence for candidate 7e, not a verdict on later code.
 
+The reviewed S03 candidate `04a72f7bef8dcbebb3aa4838b15c855247566348`, merged
+as `d6ba93ba7082a644e027b331e67da44d8e6dd4e8`, repeated the unchanged
+expected-453/received-452 observation and passed it on retry in
+[CI run 38146965743](https://github.com/planetaryescape/mxr/actions/runs/38146965743).
+The browser job reported 380 passing tests; four speed checks passed in 23.8
+seconds. The log still does not identify the cause.
+
 Reproduce the specific test and capture the persisted width, viewport and frame measurements before choosing a fix. Keep the assertion that reload does not visibly shift the pane; do not replace it with an arbitrary larger tolerance. This is outside S02 draft revision behavior and does not block S02 release acceptance.

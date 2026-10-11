@@ -14,6 +14,8 @@ pub struct StatusBarState {
     pub starred_count: usize,
     pub body_status: Option<String>,
     pub sync_status: Option<String>,
+    /// Short account/action copy used only when the full warning would clip.
+    pub compact_sync_status: Option<String>,
     /// The sync words are a warning (failing, paused or stale sync): drawn
     /// in the warning colour so they stand out from the counts.
     pub sync_warning: bool,
@@ -38,7 +40,7 @@ pub fn draw(
 ) {
     let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
-    let status: Vec<Span<'static>> = if state
+    let mut status: Vec<Span<'static>> = if state
         .status_message
         .as_deref()
         .is_some_and(|message| message.starts_with("Error:"))
@@ -88,6 +90,40 @@ pub fn draw(
         }
         vec![Span::raw(counts), sync, Span::raw(tail)]
     };
+
+    let demo_width = if mxr_config::is_demo_instance() { 6 } else { 0 };
+    let spinner_width = usize::from(state.busy && spinner.is_some()) * 2;
+    let available_width = area.width.saturating_sub(demo_width) as usize;
+    if state.sync_warning
+        && status.len() == 3
+        && Line::from(status.clone()).width() + spinner_width > available_width
+    {
+        if let Some(compact) = state.compact_sync_status.as_deref() {
+            status[1] = Span::styled(
+                format!("! {compact}"),
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+            if Line::from(status.clone()).width() + spinner_width > available_width {
+                let total = state
+                    .total_count
+                    .map_or_else(|| "?".to_string(), |count| count.to_string());
+                status[0] = Span::raw(format!(
+                    "={} {}/{}= ",
+                    state.mailbox_name, state.unread_count, total
+                ));
+                status[2] = Span::raw(String::new());
+            }
+
+            if Line::from(status.clone()).width() + spinner_width > available_width {
+                // A long account label still gets the available cells before
+                // routine mailbox counts do.
+                status[0] = Span::raw(String::new());
+            }
+        }
+    }
 
     // Prepend an animated spinner while background work is in flight so
     // the user can tell the daemon is busy even without a pane-local
@@ -174,6 +210,7 @@ mod tests {
             starred_count: 0,
             body_status: None,
             sync_status: None,
+            compact_sync_status: None,
             sync_warning: false,
             feature_health_status: None,
             status_message: None,
@@ -241,5 +278,36 @@ mod tests {
             .unwrap_or_else(|| panic!("warning missing: {line}"));
         let column = u16::try_from(line[..at].chars().count()).unwrap();
         assert_eq!(buffer[(column, 0)].fg, theme.warning);
+    }
+
+    #[test]
+    fn a_narrow_warning_keeps_the_account_and_retry_time_visible() {
+        let mut warning = state(0, 0);
+        warning.mailbox_name = "ALL MAIL".into();
+        warning.total_count = Some(166);
+        warning.unread_count = 77;
+        warning.starred_count = 7;
+        warning.body_status = Some("Latest mail 42m ago".into());
+        warning.sync_status =
+            Some("Latest mail 25m ago · Can't reach alex@demo.mxr.local, retrying 14:27".into());
+        warning.compact_sync_status = Some("alex@demo.mxr.local: retrying 14:27".into());
+        warning.feature_health_status = Some("3 feature warnings".into());
+        warning.sync_warning = true;
+        let theme = crate::theme::Theme::default();
+        let spinner = ThrobberState::default();
+        // 74 cells is the warning area left by the demo chip in an 80-column
+        // terminal; the warning must survive the counts and freshness tails.
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(74, 1)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), &warning, Some(&spinner), &theme))
+            .unwrap();
+        let line = text(terminal.backend().buffer());
+        assert!(
+            line.contains("! alex@demo.mxr.local: retrying 14:27"),
+            "{line}"
+        );
+        assert!(line.contains("=ALL MAIL 77/166="), "{line}");
+        assert!(!line.contains("Latest mail"), "{line}");
+        assert!(!line.contains("feature warnings"), "{line}");
     }
 }

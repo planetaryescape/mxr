@@ -3,7 +3,7 @@ use mxr_client::{ClientError, IpcConnection};
 use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
 use mxr_protocol::{
     ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData, RecordKindData,
-    Request, Response, ResponseData,
+    Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
 use rmcp::{
     handler::server::{
@@ -284,6 +284,39 @@ impl MxrMcpServer {
         description = "Start or join sync for every enabled sync-capable account. Returns per-account started, joined, or failed results; use mxr_status to read progress and completion."
     )]
     pub async fn sync_all(&self) -> Result<McpJson<Value>, ErrorData> {
+        let status = self
+            .requester
+            .request(Request::GetStatus)
+            .await
+            .map_err(mcp_error)?;
+        let protocol_version = match status {
+            Response::Ok {
+                data:
+                    ResponseData::Status {
+                        protocol_version, ..
+                    },
+            } => protocol_version,
+            Response::Error { message, code, .. } => {
+                return Err(ErrorData::internal_error(
+                    format!("daemon error {code}: {message}"),
+                    None,
+                ));
+            }
+            _ => {
+                return Err(ErrorData::internal_error(
+                    "daemon returned an unexpected response while checking global sync support",
+                    None,
+                ));
+            }
+        };
+        if protocol_version < IPC_PROTOCOL_VERSION {
+            return Err(ErrorData::internal_error(
+                format!(
+                    "Global sync requires daemon IPC protocol {IPC_PROTOCOL_VERSION}; running daemon uses {protocol_version}. Update or restart the daemon before retrying."
+                ),
+                None,
+            ));
+        }
         self.daemon_json(Request::SyncAll).await
     }
 
@@ -1499,6 +1532,44 @@ mod tests {
     }
 
     #[derive(Debug)]
+    struct VersionedSyncRequester {
+        version: u32,
+        requests: Mutex<Vec<Request>>,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for VersionedSyncRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            self.requests
+                .lock()
+                .expect("requests lock")
+                .push(request.clone());
+            let data = match request {
+                Request::GetStatus => ResponseData::Status {
+                    draft_revision_supported: false,
+                    uptime_secs: 1,
+                    accounts: Vec::new(),
+                    total_messages: 0,
+                    daemon_pid: None,
+                    sync_statuses: Vec::new(),
+                    protocol_version: self.version,
+                    daemon_version: None,
+                    daemon_build_id: None,
+                    repair_required: false,
+                    semantic_runtime: None,
+                    feature_health: None,
+                    degraded: false,
+                },
+                Request::SyncAll => ResponseData::SyncBatch {
+                    results: Vec::new(),
+                },
+                _ => ResponseData::Pong,
+            };
+            Ok(Response::Ok { data })
+        }
+    }
+
+    #[derive(Debug)]
     struct DraftRequester {
         draft: Draft,
     }
@@ -1601,15 +1672,38 @@ mod tests {
 
     #[tokio::test]
     async fn sync_tool_uses_the_explicit_all_accounts_request() {
-        let requester = Arc::new(FakeRequester::default());
+        let requester = Arc::new(VersionedSyncRequester {
+            version: IPC_PROTOCOL_VERSION,
+            requests: Mutex::new(Vec::new()),
+        });
         let server = MxrMcpServer::from_requester(requester.clone());
 
         server.sync_all().await.expect("sync tool result");
 
-        assert_eq!(
-            requester.requests.lock().expect("requests lock").as_slice(),
-            &[Request::SyncAll]
-        );
+        let requests = requester.requests.lock().expect("requests lock");
+        assert_eq!(requests.len(), 2);
+        assert!(matches!(requests[0], Request::GetStatus));
+        assert!(matches!(requests[1], Request::SyncAll));
+    }
+
+    #[tokio::test]
+    async fn sync_tool_explains_protocol_four_daemon_without_sending_new_request() {
+        let requester = Arc::new(VersionedSyncRequester {
+            version: 4,
+            requests: Mutex::new(Vec::new()),
+        });
+        let server = MxrMcpServer::from_requester(requester.clone());
+
+        let error = match server.sync_all().await {
+            Err(error) => error,
+            Ok(_) => panic!("old daemon must be rejected before SyncAll"),
+        };
+
+        assert!(error.message.contains("requires daemon IPC protocol 5"));
+        assert!(error.message.contains("running daemon uses 4"));
+        let requests = requester.requests.lock().expect("requests lock");
+        assert_eq!(requests.len(), 1);
+        assert!(matches!(requests[0], Request::GetStatus));
     }
 
     #[tokio::test]

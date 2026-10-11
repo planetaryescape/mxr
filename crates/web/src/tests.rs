@@ -291,6 +291,12 @@ async fn slice6_routes_dispatch_correct_request_variants() {
                     },
                 },
             }),
+            Request::SyncNow {
+                account_id: None,
+                background: true,
+            } => Some(Response::Ok {
+                data: ResponseData::Ack,
+            }),
             Request::SyncAll => Some(Response::Ok {
                 data: ResponseData::SyncBatch {
                     results: vec![mxr_protocol::SyncAccountResult {
@@ -333,6 +339,19 @@ async fn slice6_routes_dispatch_correct_request_variants() {
 
     let response = client
         .post(format!("http://{addr}/api/v1/mail/sync"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        json["ok"], true,
+        "legacy route still acknowledges default sync"
+    );
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/sync/all"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
         .await

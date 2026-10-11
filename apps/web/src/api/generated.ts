@@ -2427,7 +2427,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Trigger sync */
+        /** Trigger default-account sync */
         post: operations["mail_sync"];
         delete?: never;
         options?: never;

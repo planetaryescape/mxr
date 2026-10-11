@@ -7,13 +7,13 @@
 import { RefreshCw, Route as RouteIcon, Sparkles, UserSearch } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch, BridgeRequestError } from "@/api/client";
 import type { Action } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
 export async function syncNow(): Promise<void> {
   try {
-    const response = await apiFetch<unknown>("/api/v1/mail/sync", { method: "POST", body: {} });
+    const response = await apiFetch<unknown>("/api/v1/mail/sync/all", { method: "POST", body: {} });
     const results = syncResults(response);
     if (results.length === 0) {
       toast.info("No enabled sync-capable accounts");
@@ -28,6 +28,12 @@ export async function syncNow(): Promise<void> {
       });
     }
   } catch (error) {
+    if (error instanceof BridgeRequestError && error.status === 404) {
+      toast.error("Update mxr to sync all accounts", {
+        description: "This daemon doesn't support global Sync now yet.",
+      });
+      return;
+    }
     toast.error("Sync failed to start", {
       description: error instanceof Error ? error.message : String(error),
     });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { mailboxActions, syncNow } from "./actions";
+import { BridgeRequestError } from "@/api/client";
 import type { ActionContext } from "@/lib/actions/types";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useModals } from "@/state/modalStore";
@@ -50,7 +51,7 @@ describe("syncNow", () => {
 
     await syncNow();
 
-    expect(client.apiFetch).toHaveBeenCalledWith("/api/v1/mail/sync", { method: "POST", body: {} });
+    expect(client.apiFetch).toHaveBeenCalledWith("/api/v1/mail/sync/all", { method: "POST", body: {} });
     expect(toast.success).not.toHaveBeenCalled();
   });
 
@@ -83,6 +84,16 @@ describe("syncNow", () => {
 
     expect(toast.error).toHaveBeenCalledWith("Sync failed to start", {
       description: "daemon unreachable",
+    });
+  });
+
+  test("explains when the daemon lacks the global sync endpoint", async () => {
+    client.apiFetch.mockRejectedValue(new BridgeRequestError(404, "Not Found"));
+
+    await syncNow();
+
+    expect(toast.error).toHaveBeenCalledWith("Update mxr to sync all accounts", {
+      description: "This daemon doesn't support global Sync now yet.",
     });
   });
 

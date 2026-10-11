@@ -32,7 +32,7 @@ pub use types::*;
 /// Wire revision of the IPC protocol. Bumped only for breaking changes to
 /// the message shapes; additive fields stay decodable across versions via
 /// serde defaults.
-pub const IPC_PROTOCOL_VERSION: u32 = 4;
+pub const IPC_PROTOCOL_VERSION: u32 = 5;
 
 #[cfg(test)]
 mod tests {

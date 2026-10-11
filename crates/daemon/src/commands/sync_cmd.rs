@@ -240,6 +240,17 @@ async fn run_all(
         return Ok(());
     }
 
+    let protocol_version = match client.request(Request::GetStatus).await? {
+        Response::Ok {
+            data: ResponseData::Status {
+                protocol_version, ..
+            },
+        } => protocol_version,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from daemon while checking global sync support"),
+    };
+    ensure_sync_all_protocol(protocol_version)?;
+
     let json_mode = matches!(
         resolve_format(format.clone()),
         OutputFormat::Json | OutputFormat::Jsonl
@@ -412,6 +423,15 @@ async fn run_all(
     }
     if !failures.is_empty() {
         anyhow::bail!("{}", failures.join("; "));
+    }
+    Ok(())
+}
+
+fn ensure_sync_all_protocol(protocol_version: u32) -> anyhow::Result<()> {
+    if protocol_version < IPC_PROTOCOL_VERSION {
+        anyhow::bail!(
+            "Global sync requires daemon IPC protocol {IPC_PROTOCOL_VERSION}; running daemon uses {protocol_version}. Update or restart the daemon before retrying."
+        );
     }
     Ok(())
 }
@@ -700,6 +720,14 @@ async fn reconnect_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_sync_requires_protocol_five() {
+        let error = ensure_sync_all_protocol(4).expect_err("protocol 4 cannot sync all");
+        assert!(error.to_string().contains("requires daemon IPC protocol 5"));
+        assert!(error.to_string().contains("running daemon uses 4"));
+        assert!(ensure_sync_all_protocol(5).is_ok());
+    }
 
     fn sample_config() -> MxrConfig {
         let mut config = MxrConfig::default();

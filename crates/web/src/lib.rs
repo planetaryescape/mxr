@@ -3947,6 +3947,25 @@ async fn trigger_sync(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    // Keep the pre-existing HTTP contract scoped to the default account.
+    // Global sync has its own additive endpoint so older SPAs keep their
+    // historical behavior when they talk to a newer bridge.
+    ack_request(
+        &state.config.socket_path,
+        Request::SyncNow {
+            account_id: None,
+            background: true,
+        },
+    )
+    .await
+}
+
+async fn trigger_sync_all(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::SyncAll).await? {
         ResponseData::SyncBatch { results } => Ok(Json(json!({ "results": results }))),
         _ => Err(BridgeError::UnexpectedResponse),

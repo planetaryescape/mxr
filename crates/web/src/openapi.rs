@@ -204,7 +204,8 @@ endpoint!(post mail_mutation_jobs "/api/v1/mail/mutation-jobs", "Start a mutatio
 endpoint!(get mail_jobs "/api/v1/mail/jobs", "List background jobs");
 endpoint!(get mail_job_detail "/api/v1/mail/jobs/{job_id}", "Inspect a background job");
 endpoint!(get mail_sync_status "/api/v1/mail/sync/status", "Sync status");
-endpoint!(post mail_sync "/api/v1/mail/sync", "Trigger sync");
+endpoint!(post mail_sync "/api/v1/mail/sync", "Trigger default-account sync");
+endpoint!(post mail_sync_all "/api/v1/mail/sync/all", "Trigger global sync");
 endpoint!(post mail_sync_preview "/api/v1/mail/sync/preview", "Preview accounts selected for global sync");
 
 endpoint!(post mutation_archive "/api/v1/mail/mutations/archive", "Archive messages");

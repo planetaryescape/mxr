@@ -15,11 +15,15 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test("reports missing or mismatched bridge protocols", () => {
-    expect(evaluateProtocolCompatibility({ protocol_version: 1 })).toMatchObject({
-      actualProtocol: 1,
+  test("requires an update from the protocol 4 bridge", () => {
+    expect(evaluateProtocolCompatibility({ protocol_version: 4 })).toMatchObject({
+      actualProtocol: 4,
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
+      detail: "mxr Web needs a compatible bridge before it can safely use daemon APIs.",
     });
+  });
+
+  test("reports missing bridge protocols", () => {
     expect(evaluateProtocolCompatibility({})).toMatchObject({ actualProtocol: null });
   });
 

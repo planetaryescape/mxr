@@ -155,10 +155,15 @@ impl App {
                     let status = undo.undoing_label();
                     match undo.action {
                         UndoAction::Mutations(mutation_ids) => {
+                            let effect = if self.mailbox.mailbox_view == MailboxView::Updates {
+                                MutationEffect::RefreshUpdates(String::new())
+                            } else {
+                                MutationEffect::RefreshList
+                            };
                             for mutation_id in mutation_ids {
                                 self.queue_mutation(
                                     Request::UndoMutation { mutation_id },
-                                    MutationEffect::RefreshList,
+                                    effect.clone(),
                                     status.clone(),
                                 );
                             }
@@ -202,6 +207,16 @@ impl App {
                                     dry_run: false,
                                 },
                                 MutationEffect::ModeDone("Source set back".into()),
+                                status,
+                            );
+                        }
+                        UndoAction::UpdatesPin { message_id, pinned } => {
+                            self.queue_mutation(
+                                Request::PinMessages {
+                                    message_ids: vec![message_id],
+                                    pinned,
+                                },
+                                MutationEffect::RefreshUpdates("Pin set back".into()),
                                 status,
                             );
                         }

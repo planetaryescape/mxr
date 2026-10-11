@@ -515,6 +515,7 @@ pub struct PendingSweepConfirm {
     /// on Sweep; the whole place opens on Cancel, so a slip from `S` to
     /// `A` followed by Enter archives nothing.
     pub sweep_focused: bool,
+    pub from_updates: bool,
 }
 
 /// The "move sender to…" menu for the sender under the cursor.

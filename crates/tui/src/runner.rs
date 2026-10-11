@@ -2022,6 +2022,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(target) = app.mailbox.pending_sweep_preview.take() {
+            let from_updates = app.mailbox.mailbox_view == crate::app::MailboxView::Updates;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, sweep_request(&target, true, None)).await;
@@ -2033,6 +2034,7 @@ pub async fn run() -> anyhow::Result<()> {
                         preview,
                         shown: 0,
                         sweep_focused: false,
+                        from_updates,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Ok(_) => Err(MxrError::Ipc("unexpected response to SweepPlace".into())),
@@ -2646,9 +2648,25 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data:
                             ResponseData::DeskThreadsDismissed { .. }
-                            | ResponseData::DeskThreadsRestored { .. }
-                            | ResponseData::MessagesPinned { .. },
+                            | ResponseData::DeskThreadsRestored { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::MessagesPinned { changed, .. },
+                    }) => match effect {
+                        app::MutationEffect::UpdatesPin {
+                            message_id,
+                            prior_pinned,
+                            status,
+                        } => {
+                            let (effect, undo) =
+                                updates_pin_outcome(message_id, prior_pinned, status, changed);
+                            if let Some(undo) = undo {
+                                let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                            }
+                            Ok(effect)
+                        }
+                        effect => Ok(effect),
+                    },
                     Ok(Response::Ok {
                         data: ResponseData::MessageMoved { outcome },
                     }) => {
@@ -4543,6 +4561,27 @@ pub(crate) fn updates_let_go_outcome(
         copy.push_str(" Its undo couldn't be saved.");
     }
     (Ok(app::MutationEffect::ModeDone(copy)), undo)
+}
+
+/// The TUI's pin request names one exact latest message. The daemon reports
+/// whether it actually changed; a no-op refreshes the digest without
+/// replacing a still-valid undo from an earlier action.
+pub(crate) fn updates_pin_outcome(
+    message_id: mxr_core::MessageId,
+    prior_pinned: bool,
+    status: String,
+    changed: u32,
+) -> (app::MutationEffect, Option<app::PendingUndo>) {
+    let undo = (changed > 0).then(|| app::PendingUndo {
+        action: app::UndoAction::UpdatesPin {
+            message_id,
+            pinned: prior_pinned,
+        },
+        verb_past: if prior_pinned { "Unpinned" } else { "Pinned" }.into(),
+        count: 1,
+        applied_at: std::time::Instant::now(),
+    });
+    (app::MutationEffect::RefreshUpdates(status), undo)
 }
 
 /// The daemon's dry run of letting go of the digest at `cut`, or of one

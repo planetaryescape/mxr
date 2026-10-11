@@ -51,6 +51,14 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
         "verb": "let go of this source"
       },
       {
+        "key": "p",
+        "verb": "pin latest email"
+      },
+      {
+        "key": "S",
+        "verb": "sweep sender"
+      },
+      {
         "key": "t",
         "verb": "this needs me"
       },

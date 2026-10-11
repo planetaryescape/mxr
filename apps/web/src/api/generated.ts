@@ -12476,6 +12476,15 @@ export interface operations {
                     "application/json": components["schemas"]["ResponseData"];
                 };
             };
+            /** @description Malformed Archive request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Bridge authorization required */
             401: {
                 headers: {
@@ -12512,8 +12521,26 @@ export interface operations {
                     "application/json": components["schemas"]["ArchiveErrorResponse"];
                 };
             };
+            /** @description IPC response unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Selected daemon unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description IPC response timed out */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12545,6 +12572,15 @@ export interface operations {
                     "application/json": components["schemas"]["ResponseData"];
                 };
             };
+            /** @description Malformed Archive request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Bridge authorization required */
             401: {
                 headers: {
@@ -12572,8 +12608,35 @@ export interface operations {
                     "application/json": components["schemas"]["ArchiveErrorResponse"];
                 };
             };
+            /** @description Receipt persistence unavailable */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description IPC response unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Selected daemon unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description IPC response timed out */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12603,6 +12666,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Malformed Archive request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
                 };
             };
             /** @description Bridge authorization required */
@@ -12688,6 +12760,15 @@ export interface operations {
                     "application/json": components["schemas"]["ResponseData"];
                 };
             };
+            /** @description Malformed Archive request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Bridge authorization required */
             401: {
                 headers: {
@@ -12706,8 +12787,35 @@ export interface operations {
                     "application/json": components["schemas"]["ArchiveErrorResponse"];
                 };
             };
+            /** @description Receipt persistence unavailable */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description IPC response unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
             /** @description Selected daemon unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description IPC response timed out */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

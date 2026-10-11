@@ -241,6 +241,7 @@ pub(super) async fn get(state: &AppState, identity: &ArchiveIdentityData) -> Han
 
 pub(super) async fn submit(
     state: Arc<AppState>,
+    source: mxr_protocol::ClientKind,
     identity: &ArchiveIdentityData,
     review_id: &str,
     mutation: &MutationCommand,
@@ -270,9 +271,32 @@ pub(super) async fn submit(
             )
             .await?
         {
+            // Acceptance records user intent once; item receipts describe provider outcomes.
+            state.activity.record(crate::activity::OwnedEntry {
+                ts: crate::activity::current_unix_ms(),
+                account_id: None,
+                source,
+                action: "mail.archive".into(),
+                target_kind: Some("message".into()),
+                target_id: operation.items.first().map(|item| item.message_id.as_str().clone()),
+                tier: crate::activity::tier::tier_for("mail.archive"),
+                context: Some(serde_json::json!({
+                    "count": operation.items.len(),
+                    "target_ids": operation.items.iter().map(|item| item.message_id.as_str()).collect::<Vec<_>>(),
+                    "operation_id": identity.operation_id,
+                    "phase": "accepted",
+                })),
+            });
             break operation;
         }
     };
+    if !operation
+        .items
+        .iter()
+        .any(|item| item.state == ItemState::Pending)
+    {
+        return get(&state, identity).await;
+    }
     let mut operation = operation;
     if !state.archive_runners.lock().insert(job_key(identity)) {
         operation.running = true;

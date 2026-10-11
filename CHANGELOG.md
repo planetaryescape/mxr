@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.75](https://github.com/planetaryescape/mxr/compare/v0.6.74...v0.6.75) (2026-10-11)
+
+
+### Features
+
+* sync all enabled accounts across clients ([#353](https://github.com/planetaryescape/mxr/issues/353)) ([e7006ee](https://github.com/planetaryescape/mxr/commit/e7006ee47cd42f18e193950b4d076a9f9110abd7))
+
 ## [0.6.74](https://github.com/planetaryescape/mxr/compare/v0.6.73...v0.6.74) (2026-10-11)
 
 

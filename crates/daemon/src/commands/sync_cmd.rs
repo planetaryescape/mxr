@@ -111,6 +111,8 @@ fn build_sync_request(account_id: Option<AccountId>) -> Request {
 
 pub async fn run(
     account: Option<String>,
+    all: bool,
+    dry_run: bool,
     status: bool,
     wait: bool,
     wait_timeout_secs: u64,
@@ -118,6 +120,18 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_account_id(account.as_deref())?;
+
+    if all {
+        return run_all(
+            &mut client,
+            dry_run,
+            status,
+            wait,
+            wait_timeout_secs,
+            format,
+        )
+        .await;
+    }
 
     if status {
         let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
@@ -204,7 +218,7 @@ pub async fn run(
         }
         let after = waited?;
         if let Some(before) = before.as_deref() {
-            let failures = sync_failures(before, &after);
+            let failures = sync_failures_since(before, &after);
             if !failures.is_empty() {
                 anyhow::bail!("{}", failures.join("; "));
             }
@@ -213,15 +227,311 @@ pub async fn run(
     Ok(())
 }
 
-/// Errors left by a sync that ran while we were waiting.
+async fn run_all(
+    client: &mut IpcClient,
+    dry_run: bool,
+    status: bool,
+    wait: bool,
+    wait_timeout_secs: u64,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    if status {
+        render_status(&fetch_sync_statuses(client, None).await?, format);
+        return Ok(());
+    }
+
+    let protocol_version = match client.request(Request::GetStatus).await? {
+        Response::Ok {
+            data: ResponseData::Status {
+                protocol_version, ..
+            },
+        } => protocol_version,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from daemon while checking global sync support"),
+    };
+    ensure_sync_all_protocol(protocol_version)?;
+
+    let json_mode = matches!(
+        resolve_format(format.clone()),
+        OutputFormat::Json | OutputFormat::Jsonl
+    );
+    if dry_run {
+        let targets = match client.request(Request::PreviewSyncAll).await? {
+            Response::Ok {
+                data: ResponseData::SyncPlan { targets },
+            } => targets,
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response from daemon while selecting sync targets"),
+        };
+        match resolve_format(format) {
+            OutputFormat::Json => println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "dry_run": true,
+                    "targets": targets,
+                }))?
+            ),
+            OutputFormat::Jsonl => {
+                for target in targets {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "type": "sync_target",
+                            "target": target,
+                        }))?
+                    );
+                }
+            }
+            _ if targets.is_empty() => println!("No enabled sync-capable accounts"),
+            _ => {
+                for target in targets {
+                    let availability = if target.provider_available {
+                        "provider ready"
+                    } else {
+                        "provider unavailable"
+                    };
+                    println!(
+                        "{} ({}) — {availability}",
+                        target.account_name, target.account_id
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // The dispatch result is authoritative: preview and execution can be
+    // separated by a configuration change.
+    let progress = ProgressPrinter::new(json_mode);
+    let response = client
+        .request_with_events(Request::SyncAll, progress.event_callback())
+        .await;
+    progress.finish();
+    let results = match response? {
+        Response::Ok {
+            data: ResponseData::SyncBatch { results },
+        } => results,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from daemon while starting global sync"),
+    };
+
+    let target_ids = sync_wait_target_ids(&results);
+    let statuses = if wait {
+        wait_for_sync_targets(
+            client,
+            &target_ids,
+            Duration::from_secs(wait_timeout_secs),
+            json_mode,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+    let mut failures = results
+        .iter()
+        .filter(|result| result.result == mxr_protocol::SyncAccountResultKind::Failed)
+        .map(|result| {
+            format!(
+                "sync failed for {}: {}",
+                result.account_name,
+                result.error.as_deref().unwrap_or("couldn't start")
+            )
+        })
+        .collect::<Vec<_>>();
+    if wait {
+        failures.extend(sync_failures(&results, &statuses));
+    }
+    match resolve_format(format) {
+        OutputFormat::Json if wait => println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "results": results,
+                "statuses": statuses,
+                "failures": failures,
+            }))?
+        ),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "results": results,
+            }))?
+        ),
+        OutputFormat::Jsonl => {
+            for result in &results {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": "sync_result",
+                        "result": result,
+                    }))?
+                );
+                if result.result == mxr_protocol::SyncAccountResultKind::Failed {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&serde_json::json!({
+                            "type": "sync_failure",
+                            "account_id": result.account_id,
+                            "account_name": result.account_name,
+                            "error": result.error,
+                        }))?
+                    );
+                }
+            }
+            for sync in &statuses {
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": "sync_status",
+                        "status": sync,
+                    }))?
+                );
+                let (kind, error) = match sync.last_error.as_deref() {
+                    Some(error) => ("sync_failed", Some(error)),
+                    None => ("sync_completed", None),
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "type": kind,
+                        "account_id": sync.account_id,
+                        "account_name": sync.account_name,
+                        "error": error,
+                    }))?
+                );
+            }
+        }
+        _ => {
+            for result in &results {
+                match result.result {
+                    mxr_protocol::SyncAccountResultKind::Started => {
+                        println!("{}: sync started", result.account_name);
+                    }
+                    mxr_protocol::SyncAccountResultKind::Joined => {
+                        println!("{}: joined the running sync", result.account_name);
+                    }
+                    mxr_protocol::SyncAccountResultKind::Failed => println!(
+                        "{}: sync failed to start: {}",
+                        result.account_name,
+                        result.error.as_deref().unwrap_or("unknown error")
+                    ),
+                }
+            }
+            if wait {
+                render_sync_status(&statuses, IPC_PROTOCOL_VERSION);
+            }
+        }
+    }
+    if !failures.is_empty() {
+        anyhow::bail!("{}", failures.join("; "));
+    }
+    Ok(())
+}
+
+fn ensure_sync_all_protocol(protocol_version: u32) -> anyhow::Result<()> {
+    if protocol_version < IPC_PROTOCOL_VERSION {
+        anyhow::bail!(
+            "Global sync requires daemon IPC protocol {IPC_PROTOCOL_VERSION}; running daemon uses {protocol_version}. Update or restart the daemon before retrying."
+        );
+    }
+    Ok(())
+}
+
+fn sync_wait_target_ids(
+    results: &[mxr_protocol::SyncAccountResult],
+) -> std::collections::HashSet<AccountId> {
+    results
+        .iter()
+        .filter(|result| result.result != mxr_protocol::SyncAccountResultKind::Failed)
+        .map(|result| result.account_id.clone())
+        .collect()
+}
+
+fn sync_targets_quiescent(
+    statuses: &[AccountSyncStatus],
+    target_ids: &std::collections::HashSet<AccountId>,
+) -> bool {
+    statuses.len() == target_ids.len()
+        && statuses
+            .iter()
+            .map(|status| &status.account_id)
+            .collect::<std::collections::HashSet<_>>()
+            == target_ids.iter().collect()
+        && !statuses.iter().any(|status| status.sync_in_progress)
+}
+
+async fn wait_for_sync_targets(
+    client: &mut IpcClient,
+    target_ids: &std::collections::HashSet<AccountId>,
+    timeout: Duration,
+    json_mode: bool,
+) -> anyhow::Result<Vec<AccountSyncStatus>> {
+    if target_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let progress = ProgressPrinter::new(json_mode);
+    let deadline = Instant::now() + timeout;
+    let mut last_line: Option<String> = None;
+    loop {
+        match poll_sync_statuses(client, None).await {
+            StatusPoll::Statuses(mut statuses) => {
+                statuses.retain(|status| target_ids.contains(&status.account_id));
+                if sync_targets_quiescent(&statuses, target_ids) {
+                    progress.finish();
+                    return Ok(statuses);
+                }
+                let line = sync_progress_line(&statuses);
+                if line.is_some() && line != last_line {
+                    if let Some(line) = line.as_deref() {
+                        progress.note(line);
+                    }
+                    last_line = line;
+                }
+            }
+            StatusPoll::Degraded => {}
+            StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
+            StatusPoll::Disconnected(error) => *client = reconnect_client(&error).await?,
+        }
+        if Instant::now() >= deadline {
+            progress.finish();
+            anyhow::bail!(
+                "timed out after {}s waiting for sync to quiesce",
+                timeout.as_secs()
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Errors left by a sync that this invocation started or joined.
 ///
-/// An account that is idle is not an account that succeeded: a failed sync
-/// clears `sync_in_progress` on its way out, so quiescence alone would have
-/// `mxr sync --wait` exit 0 on a sync that failed. An error only counts when
-/// the attempt carrying it is newer than the one we saw before triggering —
-/// otherwise every wait would fail on an error the account has been carrying
-/// since yesterday.
-fn sync_failures(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
+/// Success clears `last_error`; a failed retry can retain the exact same error
+/// and attempt timestamp as the status observed before joining. Therefore an
+/// idle selected account with an error is a failed wait, while errors for
+/// accounts outside the dispatched target set are irrelevant.
+fn sync_failures(
+    results: &[mxr_protocol::SyncAccountResult],
+    statuses: &[AccountSyncStatus],
+) -> Vec<String> {
+    let selected = results
+        .iter()
+        .filter(|result| result.result != mxr_protocol::SyncAccountResultKind::Failed)
+        .map(|result| &result.account_id)
+        .collect::<std::collections::HashSet<_>>();
+    statuses
+        .iter()
+        .filter(|status| selected.contains(&status.account_id))
+        .filter_map(|status| {
+            status
+                .last_error
+                .as_deref()
+                .map(|error| format!("sync failed for {}: {error}", status.account_name))
+        })
+        .collect()
+}
+
+/// Legacy account-scoped sync has no dispatch result set, so it compares its
+/// selected status with the snapshot taken before its one-account request.
+fn sync_failures_since(before: &[AccountSyncStatus], after: &[AccountSyncStatus]) -> Vec<String> {
     after
         .iter()
         .filter_map(|status| {
@@ -411,6 +721,19 @@ async fn reconnect_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn global_sync_requires_protocol_six() {
+        for version in [4, 5] {
+            let error =
+                ensure_sync_all_protocol(version).expect_err("an older protocol cannot sync all");
+            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error
+                .to_string()
+                .contains(&format!("running daemon uses {version}")));
+        }
+        assert!(ensure_sync_all_protocol(6).is_ok());
+    }
+
     fn sample_config() -> MxrConfig {
         let mut config = MxrConfig::default();
         config.accounts.insert(
@@ -551,6 +874,50 @@ mod tests {
         assert_eq!(requested_account_id, Some(account_id));
     }
 
+    #[test]
+    fn legacy_unscoped_sync_request_still_targets_default_account_only() {
+        assert!(matches!(
+            build_sync_request(None),
+            Request::SyncNow {
+                account_id: None,
+                background: true,
+            }
+        ));
+        assert!(!matches!(build_sync_request(None), Request::SyncAll));
+    }
+
+    #[test]
+    fn sync_wait_only_tracks_accounts_that_started_or_joined() {
+        let started = AccountId::from_provider_id("fake", "started@example.com");
+        let joined = AccountId::from_provider_id("fake", "joined@example.com");
+        let failed = AccountId::from_provider_id("fake", "failed@example.com");
+        let results = [
+            mxr_protocol::SyncAccountResult {
+                account_id: started.clone(),
+                account_name: "Started".into(),
+                result: mxr_protocol::SyncAccountResultKind::Started,
+                error: None,
+            },
+            mxr_protocol::SyncAccountResult {
+                account_id: joined.clone(),
+                account_name: "Joined".into(),
+                result: mxr_protocol::SyncAccountResultKind::Joined,
+                error: None,
+            },
+            mxr_protocol::SyncAccountResult {
+                account_id: failed.clone(),
+                account_name: "Failed".into(),
+                result: mxr_protocol::SyncAccountResultKind::Failed,
+                error: Some("provider unavailable".into()),
+            },
+        ];
+
+        assert_eq!(
+            sync_wait_target_ids(&results),
+            std::collections::HashSet::from([started, joined])
+        );
+    }
+
     fn status(name: &str, attempt: &str, error: Option<&str>) -> AccountSyncStatus {
         AccountSyncStatus {
             account_id: AccountId::from_provider_id("fake", name),
@@ -626,31 +993,92 @@ mod tests {
         );
     }
 
-    /// A failed sync goes idle on its way out, so quiescence alone would have
-    /// `--wait` report success on a sync that failed.
     #[test]
-    fn sync_failures_reports_an_error_from_an_attempt_we_waited_on() {
-        let before = vec![status("personal", "t0", None)];
+    fn sync_failures_reports_an_error_when_the_initial_status_read_was_unavailable() {
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
         let after = vec![status("personal", "t1", Some("imap: connection refused"))];
         assert_eq!(
-            sync_failures(&before, &after),
+            sync_failures(&[result], &after),
             vec!["sync failed for personal: imap: connection refused".to_string()]
         );
     }
 
-    /// An account that was already carrying an error before we triggered, and
-    /// has not been attempted since, is not this command's failure to report.
     #[test]
-    fn sync_failures_ignores_an_error_that_predates_the_trigger() {
-        let before = vec![status("personal", "t0", Some("stale auth failure"))];
-        let after = vec![status("personal", "t0", Some("stale auth failure"))];
-        assert!(sync_failures(&before, &after).is_empty());
+    fn sync_failures_reports_the_same_error_after_a_joined_retry() {
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Joined);
+        let after = vec![status("personal", "t0", Some("same provider error"))];
+        assert_eq!(
+            sync_failures(&[result], &after),
+            vec!["sync failed for personal: same provider error".to_string()]
+        );
     }
 
     #[test]
     fn sync_failures_is_empty_when_the_sync_succeeded() {
-        let before = vec![status("personal", "t0", None)];
+        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
         let after = vec![status("personal", "t1", None)];
-        assert!(sync_failures(&before, &after).is_empty());
+        assert!(sync_failures(&[result], &after).is_empty());
+    }
+
+    #[test]
+    fn sync_failures_ignores_errors_for_unselected_accounts() {
+        let selected = sync_result("selected", mxr_protocol::SyncAccountResultKind::Started);
+        let statuses = vec![
+            status("selected", "t1", None),
+            status("unselected", "t0", Some("old failure")),
+        ];
+        assert!(sync_failures(&[selected], &statuses).is_empty());
+    }
+
+    #[test]
+    fn legacy_sync_failures_reports_a_new_account_error() {
+        let before = vec![status("personal", "t0", None)];
+        let after = vec![status("personal", "t1", Some("connection refused"))];
+        assert_eq!(
+            sync_failures_since(&before, &after),
+            vec!["sync failed for personal: connection refused".to_string()]
+        );
+    }
+
+    #[test]
+    fn legacy_sync_failures_ignores_an_error_that_predates_the_request() {
+        let before = vec![status("personal", "t0", Some("stale auth failure"))];
+        let after = vec![status("personal", "t0", Some("stale auth failure"))];
+        assert!(sync_failures_since(&before, &after).is_empty());
+    }
+
+    #[test]
+    fn wait_does_not_treat_a_missing_selected_account_as_quiescent() {
+        let selected = AccountId::from_provider_id("fake", "selected");
+        let target_ids = std::collections::HashSet::from([selected]);
+        assert!(!sync_targets_quiescent(&[], &target_ids));
+        assert!(sync_targets_quiescent(
+            &[status("selected", "t1", None)],
+            &target_ids
+        ));
+    }
+
+    #[test]
+    fn wait_rejects_partial_status_sets_even_when_returned_accounts_are_idle() {
+        let target_ids = std::collections::HashSet::from([
+            AccountId::from_provider_id("fake", "selected"),
+            AccountId::from_provider_id("fake", "missing"),
+        ]);
+        assert!(!sync_targets_quiescent(
+            &[status("selected", "t1", None)],
+            &target_ids
+        ));
+    }
+
+    fn sync_result(
+        account_name: &str,
+        result: mxr_protocol::SyncAccountResultKind,
+    ) -> mxr_protocol::SyncAccountResult {
+        mxr_protocol::SyncAccountResult {
+            account_id: AccountId::from_provider_id("fake", account_name),
+            account_name: account_name.into(),
+            result,
+            error: None,
+        }
     }
 }

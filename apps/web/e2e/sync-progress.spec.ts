@@ -7,7 +7,7 @@ test("Sync now shows progress in the status bar until the sync completes", async
   const statusBar = page.getByRole("contentinfo");
   await expect(statusBar.getByText(/^connected$/i)).toBeVisible();
 
-  const syncResponse = page.waitForResponse("**/api/v1/mail/sync");
+  const syncResponse = page.waitForResponse("**/api/v1/mail/sync/all");
   await statusBar.getByRole("button", { name: "Sync now" }).click();
 
   const progress = statusBar.getByRole("status").filter({ hasText: /^syncing/ });

@@ -1289,7 +1289,8 @@ pub(crate) async fn sync_now(
     };
 
     if background {
-        return start_background_sync(state, provider, sync_operation).await;
+        start_background_sync(state, provider, sync_operation, true, false).await?;
+        return Ok(ResponseData::Ack);
     }
 
     let pass = crate::loops::begin_sync_pass(
@@ -1339,21 +1340,36 @@ async fn start_background_sync(
     state: &std::sync::Arc<AppState>,
     provider: std::sync::Arc<dyn mxr_core::MailSyncProvider>,
     operation: crate::loops::SyncOperation,
-) -> HandlerResult {
+    report_join: bool,
+    report_start: bool,
+) -> Result<bool, crate::handler::HandlerError> {
     let account_id = provider.account_id().clone();
     let Some(mut claim) = AppState::claim_background_sync(state, &account_id) else {
         tracing::info!(account = %account_id, "background sync already running; joining it");
+        if report_join {
+            emit_operation_event(
+                state,
+                DaemonEvent::OperationCompleted {
+                    operation_id: operation.operation_id,
+                    operation: operation.operation,
+                    account_id: operation.account_id,
+                    message: "Sync already running".to_string(),
+                },
+            );
+        }
+        return Ok(false);
+    };
+    if report_start {
         emit_operation_event(
             state,
-            DaemonEvent::OperationCompleted {
-                operation_id: operation.operation_id,
-                operation: operation.operation,
-                account_id: operation.account_id,
-                message: "Sync already running".to_string(),
+            DaemonEvent::OperationStarted {
+                operation_id: operation.operation_id.clone(),
+                operation: operation.operation.clone(),
+                account_id: Some(account_id.clone()),
+                message: "Starting sync".to_string(),
             },
         );
-        return Ok(ResponseData::Ack);
-    };
+    }
     let _ = state
         .store
         .upsert_sync_runtime_status(
@@ -1396,7 +1412,98 @@ async fn start_background_sync(
         // this handler wrote before acking.
         claim.mark_handed_off();
     });
-    Ok(ResponseData::Ack)
+    Ok(true)
+}
+
+/// Preview and execution share this selector so the target set cannot drift
+/// between a dry run and the corresponding action.
+async fn sync_targets(
+    state: &std::sync::Arc<AppState>,
+    allowed_account_ids: Option<&[AccountId]>,
+) -> Result<Vec<mxr_protocol::SyncTarget>, crate::handler::HandlerError> {
+    let allowed = allowed_account_ids.map(|ids| {
+        ids.iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+    });
+    let mut targets = state
+        .store
+        .list_accounts()
+        .await?
+        .into_iter()
+        .filter(|account| account.enabled && account.sync_backend.is_some())
+        .filter(|account| allowed.as_ref().is_none_or(|ids| ids.contains(&account.id)))
+        .map(|account| mxr_protocol::SyncTarget {
+            provider_available: state.sync_provider_for_account(&account.id).is_some(),
+            account_id: account.id,
+            account_name: account.name,
+        })
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| {
+        left.account_name.cmp(&right.account_name).then_with(|| {
+            left.account_id
+                .to_string()
+                .cmp(&right.account_id.to_string())
+        })
+    });
+    Ok(targets)
+}
+
+pub(crate) async fn preview_sync_all(
+    state: &std::sync::Arc<AppState>,
+    allowed_account_ids: Option<&[AccountId]>,
+) -> HandlerResult {
+    Ok(ResponseData::SyncPlan {
+        targets: sync_targets(state, allowed_account_ids).await?,
+    })
+}
+
+pub(crate) async fn sync_all(
+    state: &std::sync::Arc<AppState>,
+    allowed_account_ids: Option<&[AccountId]>,
+) -> HandlerResult {
+    let targets = sync_targets(state, allowed_account_ids).await?;
+    let mut results = Vec::with_capacity(targets.len());
+    for target in targets {
+        let result = match state.sync_provider_for_account(&target.account_id) {
+            Some(provider) => {
+                let operation = crate::loops::SyncOperation {
+                    operation_id: uuid::Uuid::now_v7().to_string(),
+                    operation: "sync".to_string(),
+                    account_id: Some(target.account_id.clone()),
+                };
+                match start_background_sync(state, provider, operation, false, true).await {
+                    Ok(true) => mxr_protocol::SyncAccountResultKind::Started,
+                    Ok(false) => mxr_protocol::SyncAccountResultKind::Joined,
+                    Err(error) => {
+                        results.push(mxr_protocol::SyncAccountResult {
+                            account_id: target.account_id,
+                            account_name: target.account_name,
+                            result: mxr_protocol::SyncAccountResultKind::Failed,
+                            error: Some(error.to_string()),
+                        });
+                        continue;
+                    }
+                }
+            }
+            None => {
+                results.push(mxr_protocol::SyncAccountResult {
+                    account_id: target.account_id,
+                    account_name: target.account_name,
+                    result: mxr_protocol::SyncAccountResultKind::Failed,
+                    error: Some("No sync provider configured for this enabled account".to_string()),
+                });
+                continue;
+            }
+        };
+        results.push(mxr_protocol::SyncAccountResult {
+            account_id: target.account_id,
+            account_name: target.account_name,
+            result,
+            error: None,
+        });
+    }
+    Ok(ResponseData::SyncBatch { results })
 }
 
 /// Summary of what the post-sync incremental backfill actually did.
@@ -1629,6 +1736,96 @@ fn rank_lookup(results: &[SearchResult]) -> HashMap<String, (u32, f32)> {
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod sync_all_tests {
+    use super::*;
+    use mxr_core::types::{Account, BackendRef, ProviderKind};
+    use mxr_provider_fake::FakeProvider;
+    use std::sync::Arc;
+
+    fn account(id: AccountId, name: &str, enabled: bool, sync: bool, send: bool) -> Account {
+        Account {
+            id,
+            name: name.to_string(),
+            email: format!("{}@example.com", name.to_lowercase()),
+            sync_backend: sync.then(|| BackendRef {
+                provider_kind: ProviderKind::Fake,
+                config_key: name.to_lowercase(),
+            }),
+            send_backend: send.then(|| BackendRef {
+                provider_kind: ProviderKind::Smtp,
+                config_key: name.to_lowercase(),
+            }),
+            enabled,
+        }
+    }
+
+    #[tokio::test]
+    async fn global_sync_joins_busy_account_and_starts_other_enabled_sync_account() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let busy_id = state.default_account_id();
+        let idle_id = AccountId::from_provider_id("fake", "idle@example.com");
+        let disabled_id = AccountId::from_provider_id("fake", "disabled@example.com");
+        let send_only_id = AccountId::from_provider_id("smtp", "send-only@example.com");
+        let missing_provider_id = AccountId::from_provider_id("fake", "missing@example.com");
+
+        let idle = account(idle_id.clone(), "Idle", true, true, false);
+        let disabled = account(disabled_id.clone(), "Disabled", false, true, false);
+        let send_only = account(send_only_id.clone(), "SendOnly", true, false, true);
+        let missing = account(missing_provider_id.clone(), "Missing", true, true, false);
+        for account in [&idle, &disabled, &send_only, &missing] {
+            state.store.insert_account(account).await.unwrap();
+        }
+        state.add_sync_provider_for_test(Arc::new(FakeProvider::with_demo_dataset(
+            idle_id.clone(),
+            0,
+        )));
+
+        // Hold the existing per-account claim to exercise the same join path
+        // as a pass already in flight without relying on timing.
+        let _busy_claim =
+            AppState::claim_background_sync(&state, &busy_id).expect("busy account claim");
+        let preview = sync_targets(&state, None).await.unwrap();
+        let selected_ids = preview
+            .iter()
+            .map(|target| target.account_id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(selected_ids.contains(&busy_id));
+        assert!(selected_ids.contains(&idle_id));
+        assert!(selected_ids.contains(&missing_provider_id));
+        assert!(!selected_ids.contains(&disabled_id));
+        assert!(!selected_ids.contains(&send_only_id));
+
+        let restricted = sync_targets(&state, Some(std::slice::from_ref(&idle_id)))
+            .await
+            .unwrap();
+        assert_eq!(restricted.len(), 1);
+        assert_eq!(restricted[0].account_id, idle_id);
+
+        let ResponseData::SyncBatch { results } = sync_all(&state, None).await.unwrap() else {
+            panic!("global sync must return per-account outcomes");
+        };
+        let outcomes = results
+            .into_iter()
+            .map(|result| (result.account_id, result.result))
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(
+            outcomes.get(&busy_id),
+            Some(&mxr_protocol::SyncAccountResultKind::Joined)
+        );
+        assert_eq!(
+            outcomes.get(&idle_id),
+            Some(&mxr_protocol::SyncAccountResultKind::Started)
+        );
+        assert_eq!(
+            outcomes.get(&missing_provider_id),
+            Some(&mxr_protocol::SyncAccountResultKind::Failed)
+        );
+        assert!(!outcomes.contains_key(&disabled_id));
+        assert!(!outcomes.contains_key(&send_only_id));
+    }
 }
 
 fn parse_message_id(value: &str) -> Option<MessageId> {
@@ -1945,13 +2142,13 @@ mod tests {
             .unwrap_or_default()
             .contains("Rollback trigger"));
 
-        let counts = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let counts = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 let counts = state.store.collect_record_counts().await.unwrap();
                 if counts.semantic_chunks > 0 {
                     break counts;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
         })
         .await

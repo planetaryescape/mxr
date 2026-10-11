@@ -1,7 +1,7 @@
 //! IPC conformance corpus (transport-adapter initiative).
 //!
 //! An executable specification of the daemon's *connection-level* behavior on
-//! protocol v4: id correlation, out-of-order completion, lane back-pressure,
+//! protocol v6: id correlation, out-of-order completion, lane back-pressure,
 //! event fan-out, framing edges, disconnect handling, panic recovery, and the
 //! current (UDS) auth posture. It is characterization — every test PINS what
 //! the serve loop does today so transport refactors land guarded, and the same

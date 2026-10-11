@@ -36,6 +36,16 @@ use crate::runtime::{
 
 const SUMMARY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(150);
 
+fn require_sync_all_protocol(protocol_version: u32) -> Result<(), MxrError> {
+    if protocol_version < mxr_protocol::IPC_PROTOCOL_VERSION {
+        return Err(MxrError::Ipc(format!(
+            "Global sync requires daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",
+            mxr_protocol::IPC_PROTOCOL_VERSION
+        )));
+    }
+    Ok(())
+}
+
 fn run_with_terminal_suspended_with<
     Terminal,
     Events,
@@ -2506,6 +2516,25 @@ pub async fn run() -> anyhow::Result<()> {
                             draft.account_id.clone(),
                             identity,
                         ));
+                    }
+                    if is_sync_all_request {
+                        let protocol_version = match ipc_call(&bg, Request::GetStatus).await? {
+                            Response::Ok {
+                                data:
+                                    ResponseData::Status {
+                                        protocol_version, ..
+                                    },
+                            } => protocol_version,
+                            Response::Error { message, .. } => {
+                                return Err(MxrError::Ipc(message));
+                            }
+                            _ => {
+                                return Err(MxrError::Ipc(
+                                    "unexpected response while checking global sync support".into(),
+                                ));
+                            }
+                        };
+                        require_sync_all_protocol(protocol_version)?;
                     }
                     ipc_call(&bg, req).await
                 }
@@ -5241,5 +5270,23 @@ mod undo_retry_tests {
             Some(2)
         );
         assert_eq!(super::undo_retry_count("undo: window expired"), None);
+    }
+}
+
+#[cfg(test)]
+mod sync_all_protocol_tests {
+    use super::require_sync_all_protocol;
+
+    #[test]
+    fn global_sync_requires_protocol_six() {
+        for version in [4, 5] {
+            let error =
+                require_sync_all_protocol(version).expect_err("an older daemon cannot sync all");
+            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error
+                .to_string()
+                .contains(&format!("running daemon uses {version}")));
+        }
+        assert!(require_sync_all_protocol(6).is_ok());
     }
 }

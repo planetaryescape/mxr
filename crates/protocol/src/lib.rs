@@ -29,10 +29,10 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
-/// Wire revision of the IPC protocol. Bumped only for breaking changes to
-/// the message shapes; additive fields stay decodable across versions via
-/// serde defaults.
-pub const IPC_PROTOCOL_VERSION: u32 = 5;
+/// Wire revision of the IPC protocol. Bumped when a client needs a daemon
+/// capability that older protocol versions cannot provide; additive fields
+/// stay decodable across versions via serde defaults.
+pub const IPC_PROTOCOL_VERSION: u32 = 6;
 
 #[cfg(test)]
 mod tests {

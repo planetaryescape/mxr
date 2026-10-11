@@ -1573,6 +1573,7 @@ mod tests {
             let data = match request {
                 Request::GetStatus => ResponseData::Status {
                     draft_revision_supported: false,
+                    send_outcome_supported: true,
                     uptime_secs: 1,
                     accounts: Vec::new(),
                     total_messages: 0,
@@ -1713,27 +1714,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_tool_explains_protocol_four_daemon_without_sending_new_request() {
-        let requester = Arc::new(VersionedSyncRequester {
-            version: 4,
-            requests: Mutex::new(Vec::new()),
-        });
-        let server = MxrMcpServer::from_requester(requester.clone());
+    async fn sync_tool_explains_older_daemons_without_sending_new_request() {
+        for version in [4, 5] {
+            let requester = Arc::new(VersionedSyncRequester {
+                version,
+                requests: Mutex::new(Vec::new()),
+            });
+            let server = MxrMcpServer::from_requester(requester.clone());
 
-        let result = server.sync_all().await;
-        assert!(
-            result.is_err(),
-            "old daemon must be rejected before SyncAll"
-        );
-        let Some(error) = result.err() else {
-            return;
-        };
+            let result = server.sync_all().await;
+            assert!(
+                result.is_err(),
+                "old daemon must be rejected before SyncAll"
+            );
+            let Some(error) = result.err() else {
+                continue;
+            };
 
-        assert!(error.message.contains("requires daemon IPC protocol 5"));
-        assert!(error.message.contains("running daemon uses 4"));
-        let requests = requester.requests.lock().expect("requests lock");
-        assert_eq!(requests.len(), 1);
-        assert!(matches!(requests[0], Request::GetStatus));
+            assert!(error.message.contains("requires daemon IPC protocol 6"));
+            assert!(error
+                .message
+                .contains(&format!("running daemon uses {version}")));
+            let requests = requester.requests.lock().expect("requests lock");
+            assert_eq!(requests.len(), 1);
+            assert!(matches!(requests[0], Request::GetStatus));
+        }
     }
 
     #[tokio::test]

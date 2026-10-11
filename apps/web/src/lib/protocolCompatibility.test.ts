@@ -15,9 +15,9 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test("requires an update from the protocol 4 bridge", () => {
-    expect(evaluateProtocolCompatibility({ protocol_version: 4 })).toMatchObject({
-      actualProtocol: 4,
+  test.each([4, 5])("requires an update from the protocol %i bridge", (protocolVersion) => {
+    expect(evaluateProtocolCompatibility({ protocol_version: protocolVersion })).toMatchObject({
+      actualProtocol: protocolVersion,
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
       detail: "mxr Web needs a compatible bridge before it can safely use daemon APIs.",
     });

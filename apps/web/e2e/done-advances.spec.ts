@@ -686,17 +686,27 @@ test.describe("Reading: the email reader after archive", () => {
   test("delayed archive-previous keeps its direction through undo", async ({ page }) => {
     await openApp(page, "/reading");
     const rows = page.getByTestId("reading-item");
-    await expect(rows.nth(2)).toBeVisible({ timeout: 60_000 });
-    const previousThread = await rows.nth(0).getAttribute("data-thread");
-    const selectedThread = await rows.nth(1).getAttribute("data-thread");
-    expect(previousThread).toBeTruthy();
-    expect(selectedThread).toBeTruthy();
-
-    await rows.nth(1).click({ position: { x: 5, y: 5 } });
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    await rows.first().click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("o");
-    await expect(page).toHaveURL(`/reading/${encodeURIComponent(selectedThread!)}`);
     await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+
+    const previous = reader(page).getByRole("button", { name: "Previous conversation (N)" });
+    // This route step must settle before we can know which thread comes before it.
+    // eslint-disable-next-line no-await-in-loop
+    while (!(await previous.isDisabled())) {
+      const before = page.url();
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.press("N");
+      // eslint-disable-next-line no-await-in-loop
+      await expect(page).not.toHaveURL(before);
+    }
+    const previousUrl = page.url();
+    await page.keyboard.press("n");
+    await expect(page).not.toHaveURL(previousUrl);
     const selectedUrl = page.url();
+    await reader(page).getByTestId("thread-scroll").focus();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
 
     await page.route("**/archive-operations/submit", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
@@ -706,7 +716,7 @@ test.describe("Reading: the email reader after archive", () => {
     const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("[");
     await Promise.all([consent, submitStarted]);
-    await expect(page).toHaveURL(`/reading/${encodeURIComponent(previousThread!)}`);
+    await expect(page).toHaveURL(previousUrl);
 
     await page.keyboard.press("u");
     await expect(page).toHaveURL(selectedUrl);

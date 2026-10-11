@@ -98,6 +98,58 @@ restart. Reminder JSONL remains pipeable, and reminder-setup failure does not
 change the recorded accepted outcome.
 Root owns the installed-release rerun and release verification.
 
+## The mail-merge companion checkpoints recovery before dispatch
+
+Candidate `8e1289708bd835b3a410683c0c90f9e299414565` updates the shipped
+`mxr-mailmerge` companion to preview an initial send or schedule, or a permitted
+retry after confirmed rejection, and save the account, reviewed revision,
+operation ID and delivery time in its campaign manifest before invoking the
+real `mxr` binary. A retained command reuses its saved identity while checking
+the outcome. Immediately after an immediate send, it queries the exact reviewed
+account and operation ID. On a later campaign run for an immediate send,
+reconciliation starts with the account-scoped `draft:DRAFT_ID` alias and checks
+the retained operation ID when needed. An accepted result can reconcile the
+manifest after the provider response was lost and the draft was deleted. `unknown` and outcome-query errors remain
+visible as uncertain; `--retry-failed` does not authorize resending them. A
+confirmed `not_accepted` result becomes failed, and an explicit
+`--retry-failed` obtains a fresh preview and operation ID before another
+attempt. This is durable recovery evidence, not an end-to-end exactly-once
+delivery guarantee.
+
+A lost schedule acknowledgement remains `schedule_uncertain` with the reviewed
+delivery time retained. Query `mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID`;
+a missing result is not proof that scheduling was rejected, and
+the companion does not automatically reschedule it. Retry that retained
+schedule only after confirmed `not_accepted` and an explicit retry; initial
+scheduling does not require a previous rejection. Existing manifests with no
+review object remain readable, but a legacy attempt without a retained daemon
+outcome has no recoverable operation identity and requires reconciliation before
+retry.
+
+The TUI will not reopen a compose file while send, provider save, scheduling or
+asynchronous cleanup owns it. Other retained files remain available. A late
+identity update for file A preserves file B's newer recovery selection.
+
+The reusable synthetic consumer check uses both built binaries:
+
+```sh
+python3 scripts/verify-mailmerge-outcomes.py \
+  --mxr target/debug/mxr \
+  --mailmerge target/debug/mxr-mailmerge \
+  --runtime /tmp/mxr-mailmerge-outcomes \
+  --evidence /tmp/mxr-mailmerge-outcomes/evidence.json
+```
+
+The intermediate consumer-02 run recorded four provider acceptances in
+11.185 seconds. It exercised immediate acceptance/recovery, confirmed
+rejection and explicit retry, uncertainty across restart, and scheduled versus
+schedule-uncertain manifest states. This synthetic run is not final candidate
+CI or release acceptance. Its recorded binary SHA-256 values are
+`d8e54b04e9edc73f7ebc4c62eef12ec67c23ae0c9b5510cf83853523303da09f` (`mxr`)
+and `141688284db63920577b28948512afca45249ca70b5794e4b0576c2bda9f5e43`
+(`mxr-mailmerge`). Root owns the final focused gates, whole-candidate review,
+release and installed verification.
+
 ## Inline review keeps this send-specific
 
 The simplification pass preserves the existing send choke point and provider

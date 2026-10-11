@@ -152,11 +152,7 @@ impl App {
                     // RefreshList re-fetches the active label so restored
                     // messages reappear; the status reads "Undoing..." until
                     // the daemon acknowledges.
-                    let status = format!(
-                        "Undoing {} {}...",
-                        undo.verb_past.to_lowercase(),
-                        undo.count
-                    );
+                    let status = undo.undoing_label();
                     match undo.action {
                         UndoAction::Mutations(mutation_ids) => {
                             let effect = if self.mailbox.mailbox_view == MailboxView::Updates {

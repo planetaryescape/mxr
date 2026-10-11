@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   Bell,
@@ -12,6 +13,7 @@ import {
   Pencil,
   SearchX,
   Volume2,
+  Users,
 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 
@@ -28,6 +30,7 @@ import { VoiceSection } from "./VoiceSection";
 import { FactList, PageEmpty } from "@/components/PageParts";
 import { Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
+import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { cn } from "@/lib/utils";
 
 interface SectionDef {
@@ -114,20 +117,22 @@ const SECTIONS: SectionDef[] = [
     render: () => <TokenSection />,
   },
   {
+    id: "accounts",
+    label: "Accounts",
+    description: "Mailboxes connected to mxr.",
+    icon: Users,
+    render: () => (
+      <Button size="sm" variant="outline" asChild>
+        <Link to="/accounts">Manage accounts</Link>
+      </Button>
+    ),
+  },
+  {
     id: "about",
     label: "About",
     description: "Versions and where this app gets its data.",
     icon: Info,
-    render: () => (
-      <FactList
-        columns={1}
-        facts={[
-          ["App", "mxr web"],
-          ["Version", import.meta.env.PACKAGE_VERSION ?? "dev"],
-          ["Data", "local daemon over HTTP and WebSocket"],
-        ]}
-      />
-    ),
+    render: () => <AboutSection />,
   },
 ];
 
@@ -213,7 +218,7 @@ function NarrowSectionPicker({ current }: { current: string }) {
             params={{ section: id }}
             aria-current={id === current ? "page" : undefined}
             className={cn(
-              "block whitespace-nowrap rounded-md px-2 py-1 text-xs",
+              "flex min-h-6 items-center whitespace-nowrap rounded-md px-2 py-1 text-xs",
               id === current ? "bg-primary-muted text-foreground" : "text-muted-foreground",
             )}
           >
@@ -222,5 +227,35 @@ function NarrowSectionPicker({ current }: { current: string }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function AboutSection() {
+  const status = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: fetchAdminStatus,
+    staleTime: 60_000,
+  });
+  const version = status.isPending
+    ? "Checking…"
+    : status.isError
+      ? "Unavailable"
+      : typeof status.data.daemon_version === "string" && status.data.daemon_version.trim()
+        ? status.data.daemon_version
+        : "Unavailable";
+  return (
+    <>
+      <FactList
+        columns={1}
+        facts={[
+          ["App", "mxr web"],
+          ["Connected daemon version", version],
+          ["Mail storage", "On the computer running mxr"],
+        ]}
+      />
+      <Button className="mt-4" size="sm" variant="outline" asChild>
+        <Link to="/diagnostics">Open diagnostics</Link>
+      </Button>
+    </>
   );
 }

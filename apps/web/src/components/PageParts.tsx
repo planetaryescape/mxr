@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { RequestErrorDetails } from "@/components/RequestError";
 
 /** Ruled placeholder rows, shown while a query has no data yet. */
 export function PageSkeleton({ rows = 6, label = "Loading" }: { rows?: number; label?: string }) {
@@ -48,9 +49,7 @@ export function PageError({
     >
       <AlertTriangle className="size-5 text-destructive" />
       <h2 className="text-[15px] font-semibold">{title}</h2>
-      <p className="max-w-md break-words font-mono text-2xs text-muted-foreground">
-        {error?.message || "The daemon did not answer."}
-      </p>
+      <RequestErrorDetails error={error ?? new Error("The daemon did not answer.")} />
       {onRetry ? (
         <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
           <RefreshCw className="size-3" />

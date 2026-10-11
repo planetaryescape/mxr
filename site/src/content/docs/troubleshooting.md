@@ -140,21 +140,26 @@ mxr reset --hard                  # destructive; preserves config + credentials
 
 `mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait --wait-timeout-secs 900` after — that resync is a full backfill.
 
-## Web app says "mxr's daemon is stopped"
+## Web app cannot reach mxr
 
-The web app couldn't reach the daemon. What's already loaded stays readable,
-but changes are refused until the daemon answers again. Check it and start it:
+If the web app says **Could not reach mxr**, check the connection first. Mail
+already loaded on the page may still be available, but new pages and changes
+need mxr to answer. The banner's **Copy command** button copies
+`mxr restart`; run it on the computer running mxr. If copying is unavailable,
+use the command below. You can also check the connection and restart mxr there:
 
 ```bash
 mxr status
 mxr restart
 ```
 
-The banner clears on its own once the daemon is back; you don't need to
-reload the page. If the banner says "Live updates are paused" instead, the
-daemon is answering but the live event stream isn't: mail still loads and
-changes still work, and new mail shows up once the stream reconnects. That
-usually means a proxy in front of the bridge doesn't pass WebSockets.
+For a remote bridge, check the tunnel or network connection before restarting
+the daemon. The banner clears when mxr is reachable again; you do not need to
+reload the page. If a request error has a **Technical details** disclosure,
+expand it to see the underlying error. If the banner says **Live updates are
+paused** instead, mxr is answering but the event stream is disconnected: mail
+still loads, changes still work, and new mail appears when the stream
+reconnects. A proxy that does not pass WebSockets can cause that state.
 
 ## Daemon unreachable after an upgrade
 

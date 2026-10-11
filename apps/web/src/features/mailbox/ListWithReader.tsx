@@ -23,6 +23,8 @@ export interface ListStatus {
   isError: boolean;
   error: Error | null;
   refetch: () => unknown;
+  fetchStatus?: "fetching" | "paused" | "idle";
+  data?: unknown;
 }
 
 interface ListWithReaderProps extends Pick<
@@ -91,6 +93,7 @@ export function ListWithReader({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const threadOpen = Boolean(threadId);
   const phase = useDelayedPending(status.isLoading);
+  const hasData = status.data !== undefined || groups.length > 0;
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
@@ -196,7 +199,7 @@ export function ListWithReader({
             <header className="shrink-0 border-b border-border">
               <ModeFrame>
                 {heading ?? (
-                  <div className="flex h-11 items-center gap-3 px-4">
+                  <div className="flex h-11 items-center gap-3 pl-7 pr-4">
                     <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
                     {meta ? (
                       <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
@@ -258,7 +261,18 @@ export function ListWithReader({
             </header>
             {phase !== "ready" ? (
               <ListSkeleton quiet={phase === "quiet"} />
-            ) : status.isError && groups.length === 0 ? (
+            ) : status.fetchStatus === "paused" && !hasData ? (
+              <Centered
+                icon={<RefreshCw className="size-6" />}
+                title="Waiting for mxr"
+                body={`Couldn't load ${title.toLowerCase()} yet. It will appear when mxr reconnects.`}
+                action={
+                  <Button size="sm" onClick={() => void status.refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
+            ) : status.isError && !hasData ? (
               <Centered
                 icon={<RefreshCw className="size-6" />}
                 title={`Couldn't load ${title.toLowerCase()}`}

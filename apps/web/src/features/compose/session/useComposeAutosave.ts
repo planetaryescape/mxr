@@ -31,7 +31,7 @@ import {
   type ComposeDraftState,
 } from "./composeDraft";
 
-const DAEMON_DOWN_NOTE = "mxr's daemon is stopped. Your text stays here and saves when it's back.";
+const DAEMON_DOWN_NOTE = "mxr is unavailable. Your text stays here and saves when it reconnects.";
 
 interface ComposeAutosaveInput {
   intentKey: string;

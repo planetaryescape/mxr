@@ -1,0 +1,40 @@
+{
+  "duration_seconds": 519,
+  "provider": "fake-only; no real mail or credentials",
+  "release": {
+    "binary_sha256": "51a89aec14f4b9c3fae384c567f825e2fd575239f9a34369ee1cfb5259c860ee",
+    "source": "621e9e49739eeb80abbccea0916578420941c3fc",
+    "tag": "v0.6.68",
+    "tree": "6d391d9d90db51339d9a8d100e50915732a895eb"
+  },
+  "results": {
+    "bridge_health": "healthy; not degraded",
+    "bridge_port_closed_after_run": true,
+    "browser_errors": "empty",
+    "explicit_retry_used_distinct_operation_and_was_accepted": true,
+    "final_persisted_fake_acceptance_records": 2,
+    "known_rejection_preserved_reviewable_draft": true,
+    "observer_sequence_is_event_index_not_server_request_id": true,
+    "read_only_sqlite_confirmed_outcome_identities": [
+      "Unknown",
+      "NotAccepted",
+      "Accepted"
+    ],
+    "restart_screenshot": "06-restarted-drafts.png",
+    "same_scoped_local_storage_key_survived_restart": true,
+    "three_distinct_deduplicated_send_observer_entries_statuses": [
+      502,
+      502,
+      200
+    ],
+    "unclassified_uds_warnings": 3,
+    "unknown_operation_remained_unknown_after_reload_and_explicit_query": true,
+    "unknown_repeat_send_refused": true
+  },
+  "timing_limits": {
+    "does_not_prove_storage_before_provider_effect": true,
+    "final_count_is_supported_by_persistent_spool_records_and_root_sqlite_query": true,
+    "intermediate_count_sequence_was_observed_in_transcript_not_saved_individually": true,
+    "scoped_storage_captured_after_fake_acceptance_record_and_before_timeout_response": true
+  }
+}

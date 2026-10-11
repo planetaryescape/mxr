@@ -12,7 +12,12 @@ export type Density = "compact" | "regular" | "comfortable";
 /** "system" follows the OS reduced-motion preference. */
 export type MotionPref = "system" | "reduced" | "full";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
-export type EmailHtmlTheme = "dark" | "original";
+export type EmailHtmlTheme = "auto" | "dark" | "original";
+export type ExplicitEmailHtmlTheme = Exclude<EmailHtmlTheme, "auto">;
+export interface EmailHtmlSenderOverride {
+  sender: string;
+  theme: ExplicitEmailHtmlTheme;
+}
 export type ReaderLayout = "split" | "full";
 export type ReaderView = "formatted" | "reader" | "plain";
 /** Undo-send window in seconds; 0 sends immediately. */
@@ -28,6 +33,7 @@ export interface UiPrefsState {
   sidebarCollapsed: boolean;
   composeEditor: ComposeEditor;
   emailHtmlTheme: EmailHtmlTheme;
+  emailHtmlSenderOverrides: EmailHtmlSenderOverride[];
   readerLayout: ReaderLayout;
   notificationsEnabled: boolean;
   notifyAllNewMail: boolean;
@@ -58,6 +64,8 @@ export interface UiPrefsState {
   setSidebarCollapsed: (b: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
+  setEmailHtmlThemeForSender: (sender: string, theme: ExplicitEmailHtmlTheme) => void;
+  forgetEmailHtmlThemeForSender: (sender: string) => void;
   setReaderLayout: (layout: ReaderLayout) => void;
   setNotificationsEnabled: (b: boolean) => void;
   setNotifyAllNewMail: (b: boolean) => void;
@@ -77,7 +85,8 @@ export const useUiPrefs = create<UiPrefsState>()(
       // Locked product decision (docs/web-app.md): CodeMirror + vim is the
       // default. Only the default changes; a persisted choice is kept as is.
       composeEditor: "codemirror-vim",
-      emailHtmlTheme: "dark",
+      emailHtmlTheme: "auto",
+      emailHtmlSenderOverrides: [],
       readerLayout: "split",
       notificationsEnabled: false,
       notifyAllNewMail: false,
@@ -124,6 +133,29 @@ export const useUiPrefs = create<UiPrefsState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
+      setEmailHtmlThemeForSender: (sender, theme) =>
+        set((state) => {
+          const normalizedSender = normalizeSender(sender);
+          if (!normalizedSender) return state;
+          return {
+            emailHtmlSenderOverrides: [
+              ...readEmailHtmlSenderOverrides(state.emailHtmlSenderOverrides).filter(
+                (override) => override.sender !== normalizedSender,
+              ),
+              { sender: normalizedSender, theme },
+            ],
+          };
+        }),
+      forgetEmailHtmlThemeForSender: (sender) =>
+        set((state) => {
+          const normalizedSender = normalizeSender(sender);
+          if (!normalizedSender) return state;
+          return {
+            emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(
+              state.emailHtmlSenderOverrides,
+            ).filter((override) => override.sender !== normalizedSender),
+          };
+        }),
       setReaderLayout: (readerLayout) => set({ readerLayout }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setNotifyAllNewMail: (notifyAllNewMail) => set({ notifyAllNewMail }),
@@ -139,7 +171,8 @@ export const useUiPrefs = create<UiPrefsState>()(
     {
       name: "mxr.uiPrefs",
       storage: createJSONStorage(() => uiPrefsStorage()),
-      version: 4,
+      version: 5,
+      merge: (persisted, current) => mergeUiPrefs(persisted, current),
       // persist merges what migrate returns over the defaults, so a partial
       // state is what it expects at runtime; its type says the whole store.
       migrate: (persisted, version) => migrateUiPrefs(persisted, version) as UiPrefsState,
@@ -151,7 +184,8 @@ export const useUiPrefs = create<UiPrefsState>()(
  * v3 folds the sidebar's new "More" and "Labels" groups for people who
  * already had saved prefs, so the sidebar opens on places for everyone.
  * v4: Now replaced the desk as the front page, so a saved "desk" home is
- * Now. Earlier versions carried no shape changes, so their state is kept.
+ * Now. v5 adds sender-specific HTML canvas preferences; previous explicit
+ * Dark and Original choices stay as they were.
  */
 export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
   let state: Partial<UiPrefsState> =
@@ -161,7 +195,68 @@ export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiP
     state = { ...state, collapsedSections: [...new Set([...folded, "more", "labels"])] };
   }
   if (version < 4 && state.home !== "inbox") state = { ...state, home: "now" };
-  return state;
+  let migrated = state;
+  if ("emailHtmlTheme" in migrated && !isEmailHtmlTheme(migrated.emailHtmlTheme)) {
+    migrated = { ...migrated };
+    delete migrated.emailHtmlTheme;
+  }
+  if ("emailHtmlSenderOverrides" in migrated) {
+    migrated = {
+      ...migrated,
+      emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(migrated.emailHtmlSenderOverrides),
+    };
+  }
+  return migrated;
+}
+
+export function normalizeSender(sender: string): string {
+  return sender.trim().toLowerCase();
+}
+
+export function readEmailHtmlSenderOverrides(value: unknown): EmailHtmlSenderOverride[] {
+  if (!Array.isArray(value)) return [];
+  const overrides = new Map<string, ExplicitEmailHtmlTheme>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const candidate = item as { sender?: unknown; theme?: unknown };
+    if (typeof candidate.sender !== "string" || !isExplicitEmailHtmlTheme(candidate.theme))
+      continue;
+    const sender = normalizeSender(candidate.sender);
+    if (sender) overrides.set(sender, candidate.theme);
+  }
+  return [...overrides].map(([sender, theme]) => ({ sender, theme }));
+}
+
+export function emailHtmlThemeForSender(
+  overrides: unknown,
+  sender: string | null,
+): ExplicitEmailHtmlTheme | undefined {
+  if (!sender) return undefined;
+  const normalizedSender = normalizeSender(sender);
+  return readEmailHtmlSenderOverrides(overrides).find(
+    (override) => override.sender === normalizedSender,
+  )?.theme;
+}
+
+function mergeUiPrefs(persisted: unknown, current: UiPrefsState): UiPrefsState {
+  const saved = persisted && typeof persisted === "object" ? persisted : {};
+  const state = saved as Partial<UiPrefsState>;
+  return {
+    ...current,
+    ...state,
+    emailHtmlTheme: isEmailHtmlTheme(state.emailHtmlTheme)
+      ? state.emailHtmlTheme
+      : current.emailHtmlTheme,
+    emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(state.emailHtmlSenderOverrides),
+  };
+}
+
+function isEmailHtmlTheme(value: unknown): value is EmailHtmlTheme {
+  return value === "auto" || isExplicitEmailHtmlTheme(value);
+}
+
+function isExplicitEmailHtmlTheme(value: unknown): value is ExplicitEmailHtmlTheme {
+  return value === "dark" || value === "original";
 }
 
 const memoryPrefsStorage = new Map<string, string>();

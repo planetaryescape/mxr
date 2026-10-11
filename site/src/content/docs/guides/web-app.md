@@ -27,6 +27,12 @@ against the daemon, with **no token paste prompt**.
 
 If you'd rather just see the URL, pass `--no-open` or `--print-url`.
 
+Press `?` in the web app to open the view's shortcuts; type to filter the
+list. The dialog links to the [account setup guide](/guides/accounts/).
+Open **Settings > About** to check the connected daemon version. It says
+mail is stored on the computer running mxr. If no version is available,
+About shows **Unavailable**.
+
 ## Demo mode in the web app
 
 `mxr web` works transparently while demo mode is active. After running
@@ -276,6 +282,14 @@ The view switch, and a key for each view, choose between the formatted
 HTML, a cleaned reading view, and plain text; as in the TUI, pressing the
 HTML or reader key again goes back to plain text.
 
+In the formatted view, **Appearance** lets you choose **Auto for this message**,
+**Original for this message**, or **Dark for this message**. Auto follows the
+app’s current light or dark scheme: in light scheme it shows the original,
+while in dark scheme it uses a warm paper canvas for designed mail and a dark
+canvas for simple mail. The app’s **System** theme follows your OS appearance.
+To keep an Original or Dark choice for a sender, use **Always show Original**
+or **Always use Dark**; **Reset sender preference** removes that saved choice.
+
 Tracking pixels are always removed, and remote images stay blocked until you
 choose **Show images** (or press its key), or choose **Always for** a sender, so a
 sender cannot tell when you read their mail. A quiet line under the message
@@ -316,23 +330,23 @@ conversation. **Wake now** wakes every snoozed message in
 that conversation. On both lists, the row-action key runs the row's button
 for the row under the cursor.
 
-## When the daemon stops
+## When mxr is unavailable
 
-If the daemon stops or restarts while the web app is open, a banner says
-so within a second or two. Everything already loaded stays on screen: lists,
-the desk and conversations you opened. `j`, `k`, `Enter`, `Esc` and the
-`g` jumps keep working on them. Views you hadn't opened yet wait to load.
+If mxr becomes unreachable while the web app is open, a banner says so within
+a second or two. Mail already loaded may still be available; new pages and
+changes need mxr to answer. `j`, `k`, `Enter`, `Esc` and the `g` jumps keep
+working on loaded views. Views you haven't opened yet wait to load.
 
 Changes don't queue. Archive, trash, labels, snooze, Done, undo, send and
-opening the composer are refused with a toast such as "Can't archive while
-mxr's daemon is stopped", and nothing moves on screen. A reply you were
-writing keeps its text; the composer shows that it isn't saved and saves
-it once the daemon is back.
+opening the composer are refused until mxr can be reached again, and nothing
+moves on screen. A reply you were writing keeps its text; the composer shows
+that it isn't saved and saves it once mxr is reachable again.
 
-While it's down the app checks again every few seconds (backing off to
-about every 8 seconds). When the daemon answers, the banner clears, the
-lists refresh and live updates reconnect, with no page reload. Start the
-daemon with `mxr daemon` or `mxr restart`.
+The banner's **Copy command** button copies `mxr restart`. Run it on the
+computer running mxr; for a remote bridge, check the tunnel or network first.
+The app checks again while disconnected. When mxr is reachable, the banner
+clears, lists refresh and live updates reconnect without a page reload. For
+request errors, expand **Technical details** to see the underlying error.
 
 ## Command palette
 

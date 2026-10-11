@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.6.72](https://github.com/planetaryescape/mxr/compare/v0.6.71...v0.6.72) (2026-10-11)
+
+
+### Features
+
+* persist Updates pins and add terminal pin and sweep actions ([#354](https://github.com/planetaryescape/mxr/issues/354)) ([9881acc](https://github.com/planetaryescape/mxr/commit/9881acca60ec7a26072338435212da4b907d4c55))
+
+
+### Documentation
+
+* explain reader appearance choices ([#371](https://github.com/planetaryescape/mxr/issues/371)) ([caae87c](https://github.com/planetaryescape/mxr/commit/caae87ca1aa254cafa235351cd963ecab2a81c1a))
+
+## [0.6.71](https://github.com/planetaryescape/mxr/compare/v0.6.70...v0.6.71) (2026-10-11)
+
+
+### Bug Fixes
+
+* quiet repeated sync failures and clarify account status ([#352](https://github.com/planetaryescape/mxr/issues/352)) ([a5cce8b](https://github.com/planetaryescape/mxr/commit/a5cce8bbce0cbe400cc8482784e1fa809726c975))
+
+## [0.6.70](https://github.com/planetaryescape/mxr/compare/v0.6.69...v0.6.70) (2026-10-11)
+
+
+### Features
+
+* add comfortable automatic email canvases ([#349](https://github.com/planetaryescape/mxr/issues/349)) ([dbab130](https://github.com/planetaryescape/mxr/commit/dbab13027822d8b46576f17bb215c61d8f2d305d))
+
+
+### Bug Fixes
+
+* keep paused cold mail loads out of empty state ([#366](https://github.com/planetaryescape/mxr/issues/366)) ([75678e7](https://github.com/planetaryescape/mxr/commit/75678e7d4c4ea57408d43a5620df0150e8e0693a))
+
+
+### Documentation
+
+* clarify web app help and recovery ([#360](https://github.com/planetaryescape/mxr/issues/360)) ([5e284b0](https://github.com/planetaryescape/mxr/commit/5e284b00b147b0c5c97bc3790aeb11574307e585))
+* close out published send recovery readiness ([#362](https://github.com/planetaryescape/mxr/issues/362)) ([49e40f0](https://github.com/planetaryescape/mxr/commit/49e40f036ad83d68e09cf3d9de6e016d877d6ccc))
+
+## [0.6.69](https://github.com/planetaryescape/mxr/compare/v0.6.68...v0.6.69) (2026-10-11)
+
+
+### Bug Fixes
+
+* improve mailbox spacing and setup recovery ([#351](https://github.com/planetaryescape/mxr/issues/351)) ([35c4f72](https://github.com/planetaryescape/mxr/commit/35c4f7232125cd595bc2169abbf951152a7aa06d))
+
 ## [0.6.68](https://github.com/planetaryescape/mxr/compare/v0.6.67...v0.6.68) (2026-10-11)
 
 

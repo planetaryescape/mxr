@@ -142,7 +142,7 @@ mod tests {
             accounts: vec![AccountFreshnessData {
                 account_id: account_id.clone(),
                 account_name: "work".into(),
-                label: "Gmail".into(),
+                label: "me@example.com".into(),
                 newest_message_at: Some(now - Duration::minutes(5)),
                 last_sync_ok_at: Some(now - Duration::minutes(3)),
                 last_sync_attempt_at: Some(now),
@@ -181,7 +181,7 @@ mod tests {
         let text = render_text(&data, now, &Utc);
         assert!(text.starts_with("Latest mail 5m ago (09:37)\n"), "{text}");
         assert!(
-            text.contains("Sync: Gmail paused: rate limited, retrying 09:50"),
+            text.contains("Sync: me@example.com paused: rate limited, retrying 09:50"),
             "{text}"
         );
         assert!(

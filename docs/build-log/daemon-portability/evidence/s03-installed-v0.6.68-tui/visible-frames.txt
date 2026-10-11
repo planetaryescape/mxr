@@ -1,0 +1,14 @@
+Published v0.6.68 TUI screen excerpts (160x42 pyte-reconstructed frames)
+
+Stale provider save after a competing revision:
+Draft save failed
+IPC error: Reviewed draft revision is stale. Your file is preserved; compare it with the saved canonical draft before continuing.
+
+Same-file submission ownership:
+Retained compose is still submitting; wait for…
+
+Outcome query after restart:
+Acceptance uncertain. Do not resend.
+
+Blocked send with the retained Unknown operation:
+IPC error: Acceptance uncertain; check the send outcome and do not resend

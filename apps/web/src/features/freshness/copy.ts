@@ -71,17 +71,18 @@ export function healthTone(health: SyncHealth): "ok" | "warn" | "bad" {
 }
 
 /**
- * When a failing account tries again: "retrying now" while a retry runs or
- * is due, "retrying 9:50 AM" when one is scheduled.
+ * When a failing account tries again: "retrying now" when its recorded
+ * retry is due, or "retrying 9:50 AM" when one is scheduled.
  */
 function retrying(account: AccountFreshness, now: Date): string | null {
   const retryAt = account.last_sync_error?.retry_at;
-  if (account.sync_in_progress || (retryAt && new Date(retryAt) <= now)) return "retrying now";
+  if (account.sync_in_progress) return "syncing now";
+  if (retryAt && new Date(retryAt) <= now) return "retrying now";
   return retryAt ? `retrying ${formatTime(new Date(retryAt))}` : null;
 }
 
 /**
- * One account's sync line: "synced 2m ago", "Gmail paused: rate limited,
+ * One account's sync line: "synced 2m ago", "mail@example.com paused: rate limited,
  * retrying 9:50 AM", "Last sync 2h ago".
  */
 export function syncLine(account: AccountFreshness, staleAfterSecs: number, now: Date): string {
@@ -103,12 +104,12 @@ export function syncLine(account: AccountFreshness, staleAfterSecs: number, now:
     case "failing": {
       const kind = account.last_sync_error?.kind ?? "unknown";
       if (kind === "auth") return `${label} needs you to sign in again`;
-      const what =
-        kind === "rate_limited"
-          ? "rate limited"
-          : kind === "offline"
-            ? "unreachable"
-            : "sync failing";
+      if (kind === "offline") {
+        const retry = retrying(account, now);
+        if (retry) return `Can't reach ${label}, ${retry}`;
+        return lastOk ? `Can't reach ${label}, last sync ${lastOk}` : `Can't reach ${label}`;
+      }
+      const what = kind === "rate_limited" ? "rate limited" : "sync failing";
       const retry = retrying(account, now);
       if (retry) return `${label} ${what}, ${retry}`;
       return lastOk ? `${label} ${what}, last sync ${lastOk}` : `${label} ${what}`;
@@ -162,7 +163,7 @@ export function plainReason(account: AccountFreshness, now: Date): string | null
     case "rate_limited":
       return `${account.label} asked mxr to slow down.${next}`;
     case "auth":
-      return `${account.label} signed mxr out. Sign in again to keep syncing.`;
+      return `${account.label} needs you to sign in again.`;
     case "offline":
       return `Can't reach ${account.label}.${next}`;
     case "provider":

@@ -221,6 +221,8 @@ export const SAME_ACTION: Record<string, string[]> = {
   "updates.tune": ["UpdatesTune"],
   "updates.link": ["UpdatesOpenLink"],
   "updates.open-email": ["UpdatesOpenEmail"],
+  "updates.pin": ["TogglePin"],
+  "updates.sweep": ["UpdatesSweep"],
   "updates.close-hint": ["UpdatesClose"],
   "reading.down": ["MoveDown"],
   "reading.up": ["MoveUp"],
@@ -543,12 +545,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
-  },
-  {
-    context: "updates",
-    keys: ["p", "S"],
-    bound: "web",
-    why: "Pin and sweep a source's sender are web-only for now; the TUI's Updates lens has no pin or sweep yet",
   },
   // Reading.
   {

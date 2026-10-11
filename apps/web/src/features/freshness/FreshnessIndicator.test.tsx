@@ -52,7 +52,7 @@ function freshness(overrides: Partial<Freshness> = {}): Freshness {
       {
         account_id: "acct-1",
         account_name: "work",
-        label: "Gmail",
+        label: "work@example.com",
         health: "ok",
         last_sync_ok_at: minutesAgo(1),
         newest_message_at: minutesAgo(5),
@@ -132,7 +132,7 @@ describe("FreshnessIndicator", () => {
         {
           account_id: "acct-1",
           account_name: "work",
-          label: "Gmail",
+          label: "work@example.com",
           health: "paused",
           last_sync_ok_at: minutesAgo(3),
           sync_in_progress: false,
@@ -147,7 +147,7 @@ describe("FreshnessIndicator", () => {
     });
     renderIndicator();
     expect(screen.getByTestId("freshness-warning")).toHaveTextContent(
-      /Gmail paused: rate limited, retrying 9:50/,
+      /work@example.com paused: rate limited, retrying 9:50/,
     );
     expect(screen.getByTestId("freshness-trigger").querySelector("[data-tone]")).toHaveAttribute(
       "data-tone",
@@ -161,7 +161,7 @@ describe("FreshnessIndicator", () => {
         {
           account_id: "acct-1",
           account_name: "work",
-          label: "Gmail",
+          label: "work@example.com",
           health: "failing",
           sync_in_progress: false,
           last_sync_error: { kind: "auth", message: "oauth", consecutive_failures: 3 },
@@ -172,7 +172,7 @@ describe("FreshnessIndicator", () => {
     const trigger = screen.getByTestId("freshness-trigger");
     expect(trigger).toHaveTextContent(/^5m ago$/);
     expect(trigger.querySelector("[data-tone]")).toHaveAttribute("data-tone", "bad");
-    expect(trigger).toHaveAccessibleName(/Gmail needs you to sign in again/);
+    expect(trigger).toHaveAccessibleName(/work@example.com needs you to sign in again/);
     expect(screen.queryByTestId("freshness-warning")).toBeNull();
   });
 

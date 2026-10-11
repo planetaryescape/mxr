@@ -197,6 +197,7 @@ fn s_previews_the_bundle_sweep_and_enter_runs_exactly_that_preview() {
         preview,
         shown: 0,
         sweep_focused: false,
+        from_updates: false,
     });
     assert_eq!(
         app.mailbox.sweep_confirm.as_ref().map(|c| c.shown),
@@ -409,6 +410,7 @@ fn whole_place_preview() -> App {
         },
         shown: 0,
         sweep_focused: true,
+        from_updates: false,
     });
     app
 }

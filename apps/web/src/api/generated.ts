@@ -3815,9 +3815,8 @@ export interface components {
              */
             health: components["schemas"]["SyncHealthData"];
             /**
-             * @description How the account is named in a warning: "Gmail" or "Outlook" when it
-             *     is the only account, else the account's own name, so two Gmail
-             *     accounts never read the same.
+             * @description Actual account identity used in status copy, normally its email
+             *     address; never a provider-wide label such as "Gmail".
              */
             label: string;
             /** Format: date-time */
@@ -11499,6 +11498,11 @@ export interface components {
             /** Format: date-time */
             latest_at: string;
             latest_message_id?: null | components["schemas"]["MessageId"];
+            /**
+             * @description Whether the exact latest email is pinned in the local store. Older
+             *     digest payloads omit this and are deliberately treated as unpinned.
+             */
+            latest_message_pinned?: boolean;
             latest_thread_id?: null | components["schemas"]["ThreadId"];
             link?: null | components["schemas"]["UpdateLinkData"];
             message_ids?: components["schemas"]["MessageId"][];

@@ -133,6 +133,14 @@ pub enum MutationEffect {
         flag: bool,
         status: String,
     },
+    RefreshUpdates(String),
+    /// A pin requested from an Updates row: only the daemon's changed count
+    /// can make the prior value an available undo.
+    UpdatesPin {
+        message_id: MessageId,
+        prior_pinned: bool,
+        status: String,
+    },
     RefreshList,
     StatusOnly(String),
     /// A pin or a sender-kind change: refetch the place on screen and the
@@ -237,6 +245,8 @@ pub enum UndoAction {
         source_key: String,
         prior: mxr_protocol::UpdateSourceSettingData,
     },
+    /// A pin on an Updates line: restore exactly the previous value.
+    UpdatesPin { message_id: MessageId, pinned: bool },
     /// A move of an email or a sender (`MoveMessage`): put back exactly
     /// as it was (`UndoMove`).
     Move(i64),
@@ -251,6 +261,42 @@ pub struct PendingUndo {
     pub verb_past: String,
     pub count: u32,
     pub applied_at: std::time::Instant,
+}
+
+impl PendingUndo {
+    fn toast_label(&self) -> String {
+        if matches!(&self.action, UndoAction::Todos(_)) {
+            return match self.verb_past.as_str() {
+                "Ticked off" => format!(
+                    "Ticked off {} {}",
+                    self.count,
+                    if self.count == 1 { "to-do" } else { "to-dos" }
+                ),
+                "Marked not a to-do" => format!(
+                    "Marked {} {} as not a to-do",
+                    self.count,
+                    if self.count == 1 { "item" } else { "items" }
+                ),
+                _ => format!("{} {}", self.verb_past, self.count),
+            };
+        }
+        format!("{} {}", self.verb_past, self.count)
+    }
+
+    pub(crate) fn undoing_label(&self) -> String {
+        if matches!(&self.action, UndoAction::Todos(_)) {
+            return format!(
+                "Undoing {} {}...",
+                self.count,
+                if self.count == 1 { "task" } else { "tasks" }
+            );
+        }
+        format!(
+            "Undoing {} {}...",
+            self.verb_past.to_lowercase(),
+            self.count
+        )
+    }
 }
 
 /// Hold-and-undo window for an iCal invite RSVP. Differs from `PendingUndo`
@@ -759,7 +805,7 @@ impl App {
     pub fn pending_undo_toast(&self, now: std::time::Instant) -> Option<Toast> {
         let undo = self.pending_undo.as_ref()?;
         let toast = Toast {
-            text: format!("{} {}", undo.verb_past, undo.count),
+            text: undo.toast_label(),
             severity: ToastSeverity::Success,
             created_at: undo.applied_at,
             ttl: UNDO_HINT_TTL,

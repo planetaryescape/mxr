@@ -467,6 +467,9 @@ pub struct AppState {
     /// interval.
     idle_notifies: ParkingMutex<HashMap<AccountId, Arc<Notify>>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
+    /// Accounts whose current sync failure has already produced an alert.
+    /// Cleared only by a successful sync event.
+    pub(crate) sync_error_chimes: crate::chimes::SyncErrorChimes,
     pub start_time: Instant,
     /// Memoized reply quoted-text per message. Bodies are immutable
     /// post-sync, so this never needs invalidation. Lets `PrepareReply`
@@ -760,6 +763,7 @@ impl AppState {
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
+            sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
@@ -1799,6 +1803,8 @@ impl AppState {
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
+        self.sync_error_chimes
+            .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 
         {
             let mut runtime = self.runtime.write();
@@ -1924,6 +1930,7 @@ impl AppState {
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
+            sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
@@ -2002,6 +2009,7 @@ impl AppState {
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
+            sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
@@ -2106,6 +2114,7 @@ impl AppState {
                 idle_loop_accounts: ParkingMutex::new(HashSet::new()),
                 idle_notifies: ParkingMutex::new(HashMap::new()),
                 event_tx,
+                sync_error_chimes: Default::default(),
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),

@@ -25,7 +25,7 @@ function renderLine(line: UpdateLine) {
 }
 
 describe("UpdateLineRow", () => {
-  test("reads as a source and its fact, with the computed delta and why", () => {
+  test("reads as a source and its fact, with the computed delta and disclosed why", () => {
     const { row, handlers } = renderLine(lineFixture());
     const view = within(row);
     expect(view.getByTestId("update-source")).toHaveTextContent("Strava");
@@ -35,6 +35,10 @@ describe("UpdateLineRow", () => {
       "title",
       "Computed from 21.3 km and 19.0 km",
     );
+    const why = view.getByText("Why this update?");
+    expect(why.parentElement).not.toHaveAttribute("open");
+    why.focus();
+    fireEvent.click(why);
     expect(view.getByTestId("update-why")).toHaveTextContent("In the 08:00 digest.");
     expect(view.getByRole("link", { name: "Open strava.com" })).toHaveAttribute(
       "href",
@@ -44,6 +48,19 @@ describe("UpdateLineRow", () => {
     expect(handlers.onNeedsMe).toHaveBeenCalledTimes(1);
     fireEvent.click(view.getByRole("button", { name: "Let go" }));
     expect(handlers.onLetGo).toHaveBeenCalledTimes(1);
+  });
+
+  test("a suggested to-do has one task action and pin state comes from the digest", () => {
+    const { row, handlers } = renderLine(lineFixture({
+      todo_suggestion: "Suggested to-do: failed payment (rule). t adds it.",
+      latest_message_pinned: true,
+    }));
+    const view = within(row);
+    expect(view.getByRole("button", { name: "Add to To do" })).toBeInTheDocument();
+    expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
+    expect(view.getByRole("button", { name: "Unpin" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(view.getByRole("button", { name: "Add to To do" }));
+    expect(handlers.onNeedsMe).toHaveBeenCalledTimes(1);
   });
 
   test("a sign-in already in To do says so and opens no link", () => {

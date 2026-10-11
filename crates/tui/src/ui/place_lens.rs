@@ -221,7 +221,15 @@ pub fn draw_sweep_confirm(
     let popup = centered_rect_fixed_height(64, height, area);
     frame.render_widget(Clear, popup);
     let scope = match &confirm.target.sender_email {
-        Some(sender) => format!("{sender} in {}", place_title(confirm.target.place)),
+        Some(sender) => format!(
+            "{sender} in {}{}",
+            place_title(confirm.target.place),
+            if confirm.from_updates {
+                " · Updates"
+            } else {
+                ""
+            }
+        ),
         None => format!("all of {}", place_title(confirm.target.place)),
     };
     let block = Block::bordered()
@@ -233,7 +241,7 @@ pub fn draw_sweep_confirm(
     frame.render_widget(block, popup);
 
     // A sweep reaches mail the lens has not loaded yet: say how much.
-    let shown = if confirm.shown < preview.count {
+    let shown = if !confirm.from_updates && confirm.shown < preview.count {
         format!(" ({} shown here)", confirm.shown)
     } else {
         String::new()
@@ -474,6 +482,7 @@ mod tests {
             },
             shown: 1,
             sweep_focused: true,
+            from_updates: false,
         };
         let rendered = render_to_string(100, 30, |frame| {
             draw_sweep_confirm(

@@ -37,6 +37,8 @@ impl App {
             Action::UpdatesLetGoSource => self.updates_let_go_source(),
             Action::UpdatesNeedsMe => self.updates_needs_me(),
             Action::UpdatesTune => self.updates_tune(),
+            Action::UpdatesSweep => self.updates_sweep(),
+            Action::TogglePin => self.updates_toggle_pin(),
             Action::UpdatesTuneChoice(choice) => self.updates_tune_choice(choice),
             Action::UpdatesOpenLink => self.updates_open_link(),
             Action::UpdatesClose => self.updates_close(),
@@ -251,6 +253,49 @@ impl App {
         });
     }
 
+    fn updates_toggle_pin(&mut self) {
+        let Some(line) = self.selected_updates_line() else {
+            return;
+        };
+        let Some(message_id) = line.latest_message_id else {
+            self.status_message = Some("This update has no email to pin".into());
+            return;
+        };
+        let pinned = !line.latest_message_pinned;
+        self.queue_mutation(
+            Request::PinMessages {
+                message_ids: vec![message_id.clone()],
+                pinned,
+            },
+            MutationEffect::UpdatesPin {
+                message_id,
+                prior_pinned: line.latest_message_pinned,
+                status: if pinned {
+                    "Pinned latest email"
+                } else {
+                    "Unpinned latest email"
+                }
+                .into(),
+            },
+            if pinned { "Pinning..." } else { "Unpinning..." }.into(),
+        );
+    }
+
+    fn updates_sweep(&mut self) {
+        let Some(line) = self.selected_updates_line() else {
+            return;
+        };
+        if line.sender_email.is_empty() || is_tracker_line(&line) {
+            self.status_message = Some("This update has no sender to sweep".into());
+            return;
+        }
+        self.mailbox.pending_sweep_preview = Some(SweepTarget {
+            place: mxr_protocol::MailPlaceData::PaperTrail,
+            account_id: Some(line.account_id),
+            sender_email: Some(line.sender_email),
+        });
+    }
+
     fn updates_tune_choice(&mut self, choice: usize) {
         let Some(menu) = self.mailbox.updates_page.tune.take() else {
             return;
@@ -340,6 +385,8 @@ impl App {
             KeyCode::Char('t') if plain => Some(Action::UpdatesNeedsMe),
             KeyCode::Char('A') if shifted => Some(Action::UpdatesLetGoAll),
             KeyCode::Char('K') if shifted => Some(Action::UpdatesTune),
+            KeyCode::Char('p') if plain => Some(Action::TogglePin),
+            KeyCode::Char('S') if shifted => Some(Action::UpdatesSweep),
             KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Char('L') if shifted => Some(Action::UpdatesOpenLink),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),

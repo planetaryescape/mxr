@@ -1,0 +1,40 @@
+{
+  "status": "published-release browser acceptance passed; fake-only profile",
+  "release": {
+    "version": "0.6.68",
+    "tag": "v0.6.68",
+    "source_commit": "621e9e49739eeb80abbccea0916578420941c3fc",
+    "source_tree": "6d391d9d90db51339d9a8d100e50915732a895eb",
+    "binary_sha256": "51a89aec14f4b9c3fae384c567f825e2fd575239f9a34369ee1cfb5259c860ee",
+    "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.68"
+  },
+  "profile": {
+    "bridge": "127.0.0.1:18413",
+    "provider": "fake only",
+    "mailbox": "synthetic@example.com",
+    "no_real_mail_or_credentials": true
+  },
+  "results": {
+    "accepted_record_counts": [
+      0,
+      1,
+      1,
+      1,
+      2,
+      2
+    ],
+    "checks": [
+      "A operation reference for this single-attempt journey was present in the scoped localStorage key after fake-provider acceptance had been recorded but before its held response timed out; this does not establish pre-effect timing.",
+      "Injected uncertain result remained Unknown after reload and an explicit outcome check; deduplicated observer event indices show one A send POST followed by outcome GETs and no second A send POST.",
+      "Known rejection preserved the same reviewable draft; explicit unchanged retry minted a distinct retry operation ID and was accepted.",
+      "Accepted, Unknown and NotAccepted outcome references and the single localStorage key survived browser and daemon restart."
+    ],
+    "final_accepted_records": 2
+  },
+  "limitations": [
+    "Live agent-browser observer captured only method/path/status; it was used instead of treating empty HAR as proof.",
+    "No request bodies, auth headers, or whole browser storage were captured.",
+    "Three UDS peer-credential warnings are retained as unclassified; browser errors output was empty.",
+    "Network snapshots were cumulative; event-index deduplication and repeated capture timestamps are in observed-network-metadata.json. Accepted-count evidence is the in-run spool count sequence plus persisted fake accepted-record files/timestamps in count-evidence.json; intermediate count outputs were not separately saved."
+  ]
+}

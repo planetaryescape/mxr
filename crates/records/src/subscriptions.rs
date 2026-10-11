@@ -878,7 +878,7 @@ fn set_status(subscription: &mut Subscription, today: NaiveDate) {
 
 /// How long before a yearly subscription's next charge it is worth a
 /// look: the lead time a renewal email would typically give.
-const RENEWAL_LEAD_DAYS: i64 = 14;
+pub(crate) const RENEWAL_LEAD_DAYS: i64 = 14;
 
 /// Something about a subscription worth a look.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -894,8 +894,8 @@ pub enum Signal {
         expected: NaiveDate,
     },
     /// A yearly subscription's next charge is within the lead time: worth
-    /// comparing quotes before it renews. A suggestion only; nothing
-    /// files a to-do from it.
+    /// comparing quotes before it renews. The renewal task pass shares
+    /// this fourteen-day lead time.
     RenewalApproaching {
         subscription_id: String,
         due: NaiveDate,

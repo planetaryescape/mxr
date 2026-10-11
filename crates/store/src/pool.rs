@@ -1089,6 +1089,11 @@ const MIGRATIONS: &[Migration] = &[
             sql: include_str!("../migrations/072_draft_revision.sql"),
         }]),
     },
+    Migration {
+        version: 73,
+        name: "record_renewal_cycles",
+        kind: MigrationKind::Sql(include_str!("../migrations/073_record_renewal_cycles.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

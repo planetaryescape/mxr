@@ -502,6 +502,10 @@ where
     Tz: TimeZone,
     Tz::Offset: std::fmt::Display,
 {
+    // Reviewing an inferred renewal is not proof that a contract renewed.
+    if todo.dedup_key.starts_with("record-renewal|") {
+        return Ok(None);
+    }
     let Some(kind) = todo_record_kind(&todo.kind) else {
         return Ok(None);
     };

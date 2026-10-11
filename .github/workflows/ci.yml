@@ -378,13 +378,22 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
-      # cmd:// tests kill child transports when their streams close. A child
-      # can be stopped during profile writing; keep valid samples and enforce
-      # the same coverage thresholds instead of failing on that partial file.
+      # Restore the library report from before package consolidation (b83b9e6).
+      # The crates returned in 09fba614, but the old 90/75 thresholds were left
+      # measuring only the daemon. Run its integration tests for library coverage.
+      # cmd:// children can stop during profile writing; merge complete samples.
       - run: >
           cargo llvm-cov
           --failure-mode all
+          --package mxr-compose
+          --package mxr-provider-gmail
+          --package mxr-provider-imap
+          --package mxr-provider-smtp
+          --package mxr-reader
+          --package mxr-export
+          --package mxr-sync
           --package mxr
+          --exclude-from-report mxr
           --features semantic-local
           --ignore-filename-regex 'crates/provider-gmail/src/(auth|client)\.rs|crates/provider-imap/src/session\.rs'
           --summary-only

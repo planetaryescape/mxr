@@ -188,7 +188,7 @@ impl App {
                     self.mailbox.reply_later_message_ids.remove(message_id);
                 }
             }
-            MutationEffect::RefreshUpdates(_) => {}
+            MutationEffect::RefreshUpdates(_) | MutationEffect::UpdatesPin { .. } => {}
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)
@@ -304,6 +304,12 @@ impl App {
                 self.mailbox.updates_page.pending_refresh = true;
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
+                }
+            }
+            MutationEffect::UpdatesPin { status, .. } => {
+                self.refresh_updates();
+                if show_completion_status && !status.is_empty() {
+                    self.push_toast(Toast::success(status));
                 }
             }
             MutationEffect::Messages(msg) => {
@@ -528,7 +534,9 @@ impl App {
                 message_id.clone(),
                 self.mailbox.reply_later_message_ids.contains(message_id),
             )]),
-            MutationEffect::RefreshUpdates(_) => MutationSnapshot::None,
+            MutationEffect::RefreshUpdates(_) | MutationEffect::UpdatesPin { .. } => {
+                MutationSnapshot::None
+            }
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)

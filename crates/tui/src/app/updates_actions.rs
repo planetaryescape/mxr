@@ -264,17 +264,19 @@ impl App {
         let pinned = !line.latest_message_pinned;
         self.queue_mutation(
             Request::PinMessages {
-                message_ids: vec![message_id],
+                message_ids: vec![message_id.clone()],
                 pinned,
             },
-            MutationEffect::RefreshUpdates(
-                if pinned {
+            MutationEffect::UpdatesPin {
+                message_id,
+                prior_pinned: line.latest_message_pinned,
+                status: if pinned {
                     "Pinned latest email"
                 } else {
                     "Unpinned latest email"
                 }
                 .into(),
-            ),
+            },
             if pinned { "Pinning..." } else { "Unpinning..." }.into(),
         );
     }

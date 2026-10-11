@@ -214,6 +214,16 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::UpdatesPin { message_id, pinned } => {
+                            self.queue_mutation(
+                                Request::PinMessages {
+                                    message_ids: vec![message_id],
+                                    pinned,
+                                },
+                                MutationEffect::RefreshUpdates("Pin set back".into()),
+                                status,
+                            );
+                        }
                         // The daemon puts the move back and says where to.
                         UndoAction::Move(correction_id) => {
                             self.queue_mutation(

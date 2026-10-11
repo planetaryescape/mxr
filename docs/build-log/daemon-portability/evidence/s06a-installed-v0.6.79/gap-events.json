@@ -1,0 +1,117 @@
+[
+  {
+    "at": "2026-10-11T22:38:24.831Z",
+    "kind": "control",
+    "blockEvents": true,
+    "blockComposeWrites": true
+  },
+  {
+    "at": "2026-10-11T22:38:24.833Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/admin/status",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.094Z",
+    "kind": "ws-upgrade",
+    "path": "/api/v1/events",
+    "blocked": true
+  },
+  {
+    "at": "2026-10-11T22:38:25.484Z",
+    "kind": "control",
+    "blockEvents": false,
+    "blockComposeWrites": true
+  },
+  {
+    "at": "2026-10-11T22:38:25.618Z",
+    "kind": "ws-upgrade",
+    "path": "/api/v1/events",
+    "blocked": false
+  },
+  {
+    "at": "2026-10-11T22:38:25.621Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/platform/accounts",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.622Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/reply-later",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.622Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/admin/status",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.624Z",
+    "kind": "http",
+    "method": "POST",
+    "path": "/api/v1/mail/arrivals/modes",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.625Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/client/shell",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.625Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/snippets",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.626Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/desk",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.626Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/platform/accounts/8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d/addresses",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.627Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/freshness",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.632Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/rail",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.634Z",
+    "kind": "http",
+    "method": "GET",
+    "path": "/api/v1/mail/mailbox",
+    "status": 200
+  },
+  {
+    "at": "2026-10-11T22:38:25.639Z",
+    "kind": "http",
+    "method": "POST",
+    "path": "/api/v1/mail/arrivals/modes",
+    "status": 200
+  }
+]

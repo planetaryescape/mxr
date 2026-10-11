@@ -1,0 +1,34 @@
+{
+  "observed_at": "2026-10-11T22:39:48.437908+00:00",
+  "source": "f56ac1527787ca312bda7b52935947ee94495251",
+  "tree": "6363d8b3058b6924827b335ff47d311a4aa15c2f",
+  "version": "0.6.79",
+  "binary_sha256": "9999eb3ce4d3a84785ef8ecaf9f7aa5e41f014f549284d744aade7876b8a376e",
+  "files": {
+    "acceptance.json": "sha256:8d81e84ed18dc5a85b12a57fbabc9bc8680d88b958a3dced0c796469fbfa1dd7",
+    "after-gap.json": "sha256:27908b6381966114c1f1363956d701188b2a9e332dfd06e1530e0e298ee4cabc",
+    "before-gap.json": "sha256:e8c3d6fd48aa6c90746bd1ddfc10b52dc3c526531287607fcc7de65a935129ae",
+    "browser-console.json": "sha256:37e1db040c93411d4605b08b35291eb0d6e5ed53be4cd9ae093d8e5d7ee3cea1",
+    "browser-errors.json": "sha256:0c4c045b36df143cde1f1bb4d4cac6389ef8fd6945c2365c41d20bf73322020c",
+    "cleanup.json": "sha256:42af610b06cff557aff5b13d114959ad1bf84223a9371511b9db357a37b9058f",
+    "gap-events.json": "sha256:a5e0ad2776585f5502570736cecceac9a0e9cc15b429550aa23716d751746085",
+    "homebrew.json": "sha256:ac888ceb489fb09e17c99074235a36266a49c3de52e030cfb603bc4ae024bb62",
+    "recovered.png": "sha256:8d63c72617ab6160924f70f177db6eb7bf90b200840bbd6087e4b4eac6d7ad4a",
+    "release-workflow.json": "sha256:fd3118fc7c4fd1b100fbc1e463b3949e0356945f9dc9f3385ab4a6da574593c6",
+    "release.json": "sha256:1b7b098f9509080201c7ef0d28292df36f2723d1e4e95ef056c519bdb2546df0"
+  },
+  "limits": [
+    "Synthetic mail and a loopback fault proxy; no live provider.",
+    "The compose save is deliberately rejected before the event gap to witness unsaved client text.",
+    "POST arrivals/modes is a read-only GetArrivalModes lookup, allowed by the replay check.",
+    "Published Linux archive was checksum-verified; the browser journey ran on macOS."
+  ],
+  "cleanup": {
+    "browser_closed": true,
+    "ports_closed": [
+      18458,
+      18459
+    ],
+    "personal_daemon_restarted": false
+  }
+}

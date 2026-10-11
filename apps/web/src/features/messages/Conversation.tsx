@@ -6,6 +6,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { fetchThread } from "@/features/mailbox/api";
 import { MessageBody } from "@/features/thread/MessageBody";
 import { cn } from "@/lib/utils";
+import { emailHtmlThemeForSender, useUiPrefs } from "@/state/uiPrefsStore";
 
 import type { Conversation as ConversationData, ConversationMessage } from "./api";
 import { letterLead, paragraphBlocks, splitAsk } from "./messagesView";
@@ -90,7 +91,11 @@ function MessageItem({
         {when(message.date)}
       </p>
       {asSent ? (
-        <AsSent threadId={threadId} messageId={message.message_id} />
+        <AsSent
+          threadId={threadId}
+          messageId={message.message_id}
+          senderEmail={message.from.email}
+        />
       ) : message.only_quoted ? (
         // Nothing new in it: the placeholder says so, and the message as
         // sent (the marker below, or v) is how to read it.
@@ -176,7 +181,18 @@ function MessageItem({
 }
 
 /** The message as it arrived: its HTML, else its plain text. */
-function AsSent({ threadId, messageId }: { threadId: string; messageId: string }) {
+function AsSent({
+  threadId,
+  messageId,
+  senderEmail,
+}: {
+  threadId: string;
+  messageId: string;
+  senderEmail: string;
+}) {
+  const globalTheme = useUiPrefs((state) => state.emailHtmlTheme);
+  const senderOverrides = useUiPrefs((state) => state.emailHtmlSenderOverrides);
+  const theme = emailHtmlThemeForSender(senderOverrides, senderEmail) ?? globalTheme;
   const thread = useQuery({
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
@@ -197,7 +213,7 @@ function AsSent({ threadId, messageId }: { threadId: string; messageId: string }
   return (
     <div data-testid="as-sent" className="w-full rounded-md border border-border">
       {body.text_html ? (
-        <MessageBody html={body.text_html} />
+        <MessageBody html={body.text_html} theme={theme} />
       ) : (
         <pre className="whitespace-pre-wrap p-3 font-sans text-[13.5px] leading-6">
           {body.text_plain ?? ""}

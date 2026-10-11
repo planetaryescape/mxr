@@ -25,7 +25,7 @@ async fn archive_history_failure_rolls_back_completion_without_repeating_provide
 }
 
 #[tokio::test]
-async fn archive_completion_batch_count_is_zero_on_replay() {
+async fn archive_terminal_replay_does_not_rearm_undo_or_repeat_effects() {
     let (state, provider, mut operation) = fixture().await;
     operation.accepted = true;
     overwrite(&state, &operation).await;
@@ -35,13 +35,32 @@ async fn archive_completion_batch_count_is_zero_on_replay() {
             .unwrap(),
         2
     );
+    assert!(state
+        .store
+        .read_undo_entry(&operation.mutation_id)
+        .await
+        .unwrap()
+        .is_some());
+    let mutations_before_replay = provider.mutations().len();
+    state
+        .store
+        .delete_undo_entry(&operation.mutation_id)
+        .await
+        .unwrap();
+
     assert_eq!(
         archive_recovery::run_for_test(&state, &operation.identity)
             .await
             .unwrap(),
         0
     );
-    assert_eq!(provider.mutations().len(), 2);
+    assert!(state
+        .store
+        .read_undo_entry(&operation.mutation_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(provider.mutations().len(), mutations_before_replay);
     assert_completed_history(&state, &query(&state, &operation).await).await;
 }
 

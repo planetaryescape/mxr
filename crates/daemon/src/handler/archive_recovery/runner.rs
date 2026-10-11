@@ -114,6 +114,15 @@ pub(in crate::handler) async fn run(
     identity: &ArchiveIdentityData,
 ) -> Result<u32, HandlerError> {
     let (_, operation) = load(state, identity).await?;
+    // A runner started after completion must not restore an Undo entry the
+    // user has already consumed.
+    if !operation
+        .items
+        .iter()
+        .any(|item| item.state == ItemState::Pending)
+    {
+        return Ok(0);
+    }
     let mut completed = 0;
     for item in operation.items {
         if item.state != ItemState::Pending {

@@ -29,6 +29,11 @@ uses the same route for selections above the old 200-message job threshold.
 MCP exposes `mxr_archive_preview`, `mxr_archive_submit` with explicit confirmation,
 and side-effect-free `mxr_archive_outcome`.
 
+The CLI's Archive request continues to honor `MXR_IPC_TIMEOUT_SECS`. In the
+browser, Archive refreshes mail queries before settling the early Undo claim on
+both success and partial failure, so Undo does not appear ahead of the refreshed
+mailbox.
+
 ## The dispatch receipt commits before the provider effect
 
 Migration 075 stores workspace identity and recovery generation. Reviewed
@@ -67,10 +72,12 @@ best effort and respects `MXR_ACTIVITY=off`.
 
 ## The checks use synthetic provider acceptance witnesses
 
-Initial implementation base: `35c4f7232125cd595bc2169abbf951152a7aa06d`, tree
-`ebda2a4070d577e4a690fedf7b21bfd23e1e538c`. The implementation was rebased onto
-`49e40f036ad83d68e09cf3d9de6e016d877d6ccc`; root owns the final integrated source,
-independent review, release and published-artifact acceptance.
+The final integrated candidate currently under review is
+`f3986183c92f532e125304cb15c3a70eb9c44c7c`, tree
+`d2ccd484e206b414be52668954104a0075e3082a`. It is not merged or released.
+The [candidate evidence record](evidence/s04-f3986183-integrated-acceptance.md)
+pins the binary, runtime checks and still-pending release gates. Root owns
+integration, independent review, release and published-artifact acceptance.
 
 Focused daemon tests covered lost replies, concurrent submission, command and
 identity conflicts, stale item binding, acceptance/dispatch/success receipt
@@ -81,14 +88,15 @@ older-daemon fixture is v0.6.68 Status without Archive capability; it refuses
 new requests while existing draft and send surfaces still proceed. This is not
 a claim about arbitrary version compatibility.
 
-Root's isolated CLI/IPC/HTTP harness passed twelve recorded checks with persistent
-fake-provider dispatch and acceptance witnesses. It killed only its own daemon
-for the crash probe and stopped owned processes afterwards. The immutable first
-binary's SHA256 was
-`55650c365da08d5189161a61024c8d22d50a474b36a868df07cf33f86de402d7`.
-Runtime evidence is retained under `target/s04-evidence/`, including
-`root-fourth-cli-ipc-http.json`; final TUI/browser evidence and binary provenance
-are added to the handoff after their checks complete.
+The candidate's isolated CLI/IPC/HTTP harness passed seventeen recorded checks,
+including concurrent replay, changed-payload refusal, restart recovery,
+unknown outcomes, and receipt failures. Its actual MCP harness passed three
+checks for preview confirmation, restart recovery and no-repeat handling of
+unknown outcomes. Both used the same candidate binary and synthetic provider
+acceptance witnesses. The process-crash probe killed only its owned daemon; the
+CLI and MCP harnesses reported their owned processes stopped. These checks do
+not establish recovery after an operating-system crash or power loss. The
+candidate evidence record names each check and its source manifest.
 
 The fake spool opt-in uses `mutation-reject`, `mutation-uncertain`, and
 `mutation-pause-after-accept`. Empty controls apply to all messages; otherwise
@@ -103,11 +111,15 @@ uncertain effects. `provider_succeeded` reports incomplete local reconciliation;
 query and resubmission do not repeat its effect. There is no generic repair,
 rollback, scheduling, Send-and-Archive atomicity or provider idempotency claim.
 Reviewed rows have no cleanup policy yet; retention limits and a later explicit
-reconciliation workflow are follow-up candidates.
+reconciliation workflow are tracked in
+[`archive-operation-recovery-followups.md`](../../issues/archive-operation-recovery-followups.md).
+That issue also records the current per-account batch behavior after an unknown
+result, panic cleanup, and the SQLite power-loss durability boundary.
 
-Effort comes from the parent dispatch and tool transcript timestamps. The exact
-wall-clock, agent/wait split and final source/runtime identities belong to the
-completion packet; worker time is a delivery lower bound. Initial exporter build took 28s,
-first binary build 56s, focused incremental daemon verification 17s, and the SPA
-build 4s. Failed checks exposed fixture/API mismatches and lint issues; they did
-not justify broader local workspace runs. CI owns the workspace gate.
+The final candidate binary build took 88 seconds, and the SPA build took 3.95
+seconds. The focused verification passed fourteen unit tests and two E2E tests;
+typecheck and lint also passed. These measured command durations are not a total
+wall-clock or agent-time estimate. CI, whole-diff review, final TUI/browser
+acceptance against the release candidate, OpenAPI regeneration and published
+artifact checks remain separate gates; see the evidence record for the current
+status.

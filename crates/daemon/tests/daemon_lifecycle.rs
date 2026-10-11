@@ -9,6 +9,55 @@ use tempfile::TempDir;
 
 static DAEMON_LIFECYCLE_LOCK: Mutex<()> = Mutex::new(());
 
+fn shutdown_warning_records(log: &str) -> Vec<(String, String)> {
+    log.lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("daemon file log should be JSON"))
+        .filter_map(|entry| {
+            let fields = entry.get("fields")?;
+            let message = fields.get("message")?.as_str()?;
+            let (kind, field) = if message == "client connection drain timed out" {
+                ("client drain timeout", None)
+            } else if message == "service shutdown signal timed out" {
+                ("service timeout", Some("service"))
+            } else if message == "service shutdown signal failed" {
+                ("service failure", Some("service"))
+            } else if message == "runtime task drain timed out" {
+                ("runtime task timeout", Some("task"))
+            } else if message.starts_with("runtime task join failed") {
+                ("runtime task failure", Some("task"))
+            } else {
+                return None;
+            };
+            Some((
+                kind.to_owned(),
+                field
+                    .and_then(|field| fields.get(field))
+                    .and_then(Value::as_str)
+                    .unwrap_or("<missing>")
+                    .to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn assert_shutdown_warnings(log: &str, allowed: &[(&str, &str)]) {
+    let warnings = shutdown_warning_records(log);
+    for warning in &warnings {
+        assert!(
+            allowed.contains(&(warning.0.as_str(), warning.1.as_str())),
+            "unexpected shutdown warning {warning:?}; all warnings: {warnings:?}"
+        );
+    }
+    let mut unique = warnings.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        warnings.len(),
+        "duplicate shutdown warnings: {warnings:?}"
+    );
+}
+
 struct TestDaemon {
     socket_path: PathBuf,
     pid_path: PathBuf,
@@ -26,6 +75,10 @@ impl TestDaemon {
 
     fn set_pid(&mut self, pid: u64) {
         self.pid = Some(pid);
+    }
+
+    fn clear_pid(&mut self) {
+        self.pid = None;
     }
 }
 
@@ -296,6 +349,303 @@ fn status_recovers_running_daemon_when_socket_path_disappears() {
         second_stderr.contains("Restarting daemon to recover from a missing IPC socket... ready."),
         "expected recovery restart message, stderr={second_stderr:?}"
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+// Keep the shared daemon fixture serialized while the async client is active.
+#[allow(clippy::await_holding_lock, clippy::panic)]
+async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
+    use futures::{SinkExt, StreamExt};
+    use mxr_protocol::{
+        ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
+    };
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+    use std::process::{Child, Stdio};
+
+    let _guard = daemon_lifecycle_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name("mxr-test-supervised-stop");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let home_dir = temp.path().join("home");
+    let xdg_config_home = home_dir.join(".config");
+    let socket_path = temp.path().join("mxr.sock");
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::create_dir_all(&xdg_config_home).expect("fixture XDG config dir");
+    mxr_test_support::daemon::write_fake_account_config(&config_dir);
+    let config_path = config_dir.join("config.toml");
+    let mut config = std::fs::read_to_string(&config_path).expect("read fake account config");
+    config.push_str("\n[search.semantic]\nenabled = false\nauto_download_models = false\n\n[llm]\nenabled = false\n");
+    std::fs::write(&config_path, config).expect("disable model downloads for fixture");
+    let mut daemon = TestDaemon::new(socket_path.clone(), pid_path.clone());
+    let inherited_env = std::env::vars_os()
+        .filter(|(key, _)| {
+            let key = key.to_string_lossy();
+            !key.starts_with("MXR_") && key != "RUST_LOG"
+        })
+        .collect::<Vec<_>>();
+    let stderr_path = data_dir.join("foreground.stderr.log");
+
+    let spawn = || {
+        let mut command = StdCommand::new(env!("CARGO_BIN_EXE_mxr"));
+        let stderr = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&stderr_path)
+            .expect("open fixture daemon stderr log");
+        command
+            .env_clear()
+            .envs(inherited_env.clone())
+            .env("HOME", &home_dir)
+            .env("XDG_CONFIG_HOME", &xdg_config_home)
+            .args(["daemon", "--foreground", "--no-bridge"])
+            .env("MXR_INSTANCE", &instance)
+            .env("MXR_DATA_DIR", &data_dir)
+            .env("MXR_CONFIG_DIR", &config_dir)
+            .env("MXR_SOCKET_PATH", &socket_path)
+            .env("MXR_ACTIVITY", "off")
+            .env("NO_COLOR", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(stderr))
+            .env("RUST_LOG", "info")
+            .spawn()
+            .expect("spawn foreground daemon")
+    };
+    let run_cli = |args: &[&str]| {
+        let mut command = StdCommand::new(env!("CARGO_BIN_EXE_mxr"));
+        command
+            .env_clear()
+            .envs(inherited_env.clone())
+            .env("HOME", &home_dir)
+            .env("XDG_CONFIG_HOME", &xdg_config_home)
+            .env("MXR_INSTANCE", &instance)
+            .env("MXR_DATA_DIR", &data_dir)
+            .env("MXR_CONFIG_DIR", &config_dir)
+            .env("MXR_SOCKET_PATH", &socket_path)
+            .env("MXR_ACTIVITY", "off")
+            .args(args)
+            .output()
+            .expect("run mxr against isolated daemon")
+    };
+    let stop_owned_child = |child: &mut Child, daemon: &mut TestDaemon| {
+        let _ = child.kill();
+        let _ = child.wait();
+        daemon.clear_pid();
+    };
+    let read_stderr = || match std::fs::read(&stderr_path) {
+        Ok(bytes) => {
+            let start = bytes.len().saturating_sub(8 * 1024);
+            String::from_utf8_lossy(&bytes[start..]).into_owned()
+        }
+        Err(error) => format!("could not read fixture daemon stderr: {error}"),
+    };
+    let wait_ready = |child: &mut Child, daemon: &mut TestDaemon| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let mut last_status = String::from("status command has not run");
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    daemon.clear_pid();
+                    panic!(
+                        "foreground daemon exited before readiness: {status}; stderr: {}",
+                        read_stderr()
+                    );
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    stop_owned_child(child, daemon);
+                    panic!("could not poll foreground daemon: {error}");
+                }
+            }
+            if socket_path.exists() && pid_path.exists() {
+                let output = run_cli(&["status", "--format", "json"]);
+                if output.status.success() {
+                    return;
+                }
+                last_status = format!(
+                    "exit={}; stdout={:?}; stderr={:?}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            if std::time::Instant::now() >= deadline {
+                let last_child_status = child.try_wait();
+                if let Ok(Some(status)) = &last_child_status {
+                    daemon.clear_pid();
+                    panic!(
+                        "foreground daemon exited before readiness: {status}; last status: {last_status}; stderr: {}",
+                        read_stderr()
+                    );
+                }
+                stop_owned_child(child, daemon);
+                panic!(
+                    "daemon did not become ready; last child try_wait: {last_child_status:?}; last status: {last_status}; stderr: {}",
+                    read_stderr()
+                );
+            }
+            sleep(Duration::from_millis(25));
+        }
+    };
+    let stop_and_wait = |child: &mut Child, daemon: &mut TestDaemon, signal: Signal| {
+        let pid = Pid::from_raw(child.id() as i32);
+        if let Err(error) = kill(pid, signal) {
+            stop_owned_child(child, daemon);
+            panic!("send {signal} to fixture daemon child: {error}");
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            let status = match child.try_wait() {
+                Ok(status) => status,
+                Err(error) => {
+                    stop_owned_child(child, daemon);
+                    panic!("could not poll stopped daemon: {error}");
+                }
+            };
+            if let Some(status) = status {
+                daemon.clear_pid();
+                assert!(
+                    status.success(),
+                    "signal shutdown should exit successfully: {status}"
+                );
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                stop_owned_child(child, daemon);
+                panic!("daemon shutdown exceeded bound");
+            }
+            sleep(Duration::from_millis(25));
+        }
+        assert!(!socket_path.exists(), "shutdown should remove owned socket");
+        assert!(!pid_path.exists(), "shutdown should remove owned pid file");
+    };
+
+    let mut first = spawn();
+    daemon.set_pid(first.id() as u64);
+    wait_ready(&mut first, &mut daemon);
+    let sync = run_cli(&["sync", "--wait", "--wait-timeout-secs", "30"]);
+    assert!(
+        sync.status.success(),
+        "fake sync failed: {}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+    let before = run_cli(&["search", "deployment", "--format", "json", "--limit", "50"]);
+    assert!(before.status.success(), "search before stop should succeed");
+    let before: Value = serde_json::from_slice(&before.stdout).expect("search JSON before stop");
+    let before_results = before
+        .as_array()
+        .or_else(|| before.get("results").and_then(Value::as_array))
+        .expect("search response contains results");
+    assert!(
+        !before_results.is_empty(),
+        "fake sync should persist matching mail"
+    );
+    let before_message_ids = before_results
+        .iter()
+        .map(|result| {
+            result["message_id"]
+                .as_str()
+                .expect("message id")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+
+    let mut active_client = tokio_util::codec::Framed::new(
+        tokio::net::UnixStream::connect(&socket_path)
+            .await
+            .expect("connect an active client before shutdown"),
+        IpcCodec::new(),
+    );
+    active_client
+        .send(IpcMessage {
+            id: 1,
+            source: ClientKind::Cli,
+            payload: IpcPayload::Request(Request::Ping),
+        })
+        .await
+        .expect("send ping on active client");
+    let ping_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let message = tokio::time::timeout_at(ping_deadline, active_client.next())
+            .await
+            .expect("active client ping timed out")
+            .expect("daemon closed active client before Ping response")
+            .expect("active client Ping frame should decode");
+        if message.id == 0 && matches!(&message.payload, IpcPayload::Event(_)) {
+            continue;
+        }
+        assert!(matches!(
+            message,
+            IpcMessage {
+                id: 1,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Pong
+                }),
+                ..
+            }
+        ));
+        break;
+    }
+    stop_and_wait(&mut first, &mut daemon, Signal::SIGTERM);
+    drop(active_client);
+    let log = std::fs::read_to_string(data_dir.join("logs").join("mxr.log"))
+        .expect("read daemon shutdown log");
+    assert!(log.contains("SIGTERM received"), "signal should be logged");
+    assert!(
+        log.contains("daemon shutdown drain completed"),
+        "ordered runtime drain should complete"
+    );
+    assert_shutdown_warnings(
+        &log,
+        &[
+            ("service timeout", "relationship"),
+            ("runtime task timeout", "relationship_worker"),
+        ],
+    );
+    let first_log_length = log.len();
+
+    let mut second = spawn();
+    daemon.set_pid(second.id() as u64);
+    wait_ready(&mut second, &mut daemon);
+    let after = run_cli(&["search", "deployment", "--format", "json", "--limit", "50"]);
+    assert!(
+        after.status.success(),
+        "search after restart should succeed"
+    );
+    let after: Value = serde_json::from_slice(&after.stdout).expect("search JSON after restart");
+    let after_results = after
+        .as_array()
+        .or_else(|| after.get("results").and_then(Value::as_array))
+        .expect("search response contains results after restart");
+    assert_eq!(
+        after_results
+            .iter()
+            .map(|result| result["message_id"]
+                .as_str()
+                .expect("message id")
+                .to_owned())
+            .collect::<Vec<_>>(),
+        before_message_ids,
+        "restart should retain the acknowledged search results"
+    );
+
+    stop_and_wait(&mut second, &mut daemon, Signal::SIGINT);
+    let log = std::fs::read_to_string(data_dir.join("logs").join("mxr.log"))
+        .expect("read idle restart shutdown log");
+    let idle_shutdown_log = &log[first_log_length..];
+    assert!(
+        idle_shutdown_log.contains("SIGINT received"),
+        "restarted daemon should log SIGINT"
+    );
+    assert!(
+        idle_shutdown_log.contains("daemon shutdown drain completed"),
+        "restarted daemon should complete its idle runtime drain"
+    );
+    assert_shutdown_warnings(idle_shutdown_log, &[]);
 }
 
 fn daemon_lifecycle_guard() -> MutexGuard<'static, ()> {

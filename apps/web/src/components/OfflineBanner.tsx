@@ -49,7 +49,7 @@ export function OfflineBanner() {
   const banner = daemonDown
     ? {
         kind: "daemon",
-        text: "mxr's local app is not responding. Mail already loaded on this page may still be available, but new pages and changes need the app to be running. Restart it with mxr restart.",
+        text: "Could not reach mxr. Mail already loaded on this page may still be available, but new pages and changes need a connection. Check the connection, or run mxr restart on the computer running mxr.",
       }
     : offlineSince && now - offlineSince >= STREAM_BANNER_DELAY_MS
       ? {

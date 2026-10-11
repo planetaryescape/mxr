@@ -49,7 +49,7 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
             ? "text-warning"
             : "text-destructive";
   const label = daemonDown
-    ? "local app stopped"
+    ? "mxr unavailable"
     : protocolMismatch
       ? "protocol mismatch"
       : status === "connected"
@@ -83,7 +83,7 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
       </TooltipTrigger>
       <TooltipContent>
         {daemonDown
-          ? "mxr's local app is not responding. Run `mxr restart` to start it again."
+          ? "Could not reach mxr. Check the connection, or run mxr restart on the computer running mxr."
           : protocolMismatch
             ? `IPC v${protocolMismatch.actualProtocol ?? "missing"}; expected v${protocolMismatch.requiredProtocol}`
             : errorMessage

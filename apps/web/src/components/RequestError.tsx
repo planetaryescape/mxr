@@ -4,7 +4,7 @@ export function describeRequestError(error: unknown): { summary: string; technic
   const technical = error instanceof Error ? error.message : "No additional detail was provided.";
   if (error instanceof DaemonUnavailableError) {
     return {
-      summary: "mxr's local app is not responding. Run `mxr restart`, then try again.",
+      summary: "Could not reach mxr. Check the connection, or run mxr restart on the computer running mxr.",
       technical,
     };
   }

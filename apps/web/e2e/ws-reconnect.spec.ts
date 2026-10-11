@@ -12,7 +12,7 @@ test("a stopped local app is distinguished from an event reconnect and recovers"
   await stopDaemon();
   try {
     await expect(
-      page.getByRole("contentinfo").getByText("local app stopped", { exact: true }),
+      page.getByRole("contentinfo").getByText("mxr unavailable", { exact: true }),
     ).toBeVisible({
       timeout: 10_000,
     });

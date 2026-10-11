@@ -6,7 +6,9 @@ import { describeRequestError } from "./RequestError";
 describe("describeRequestError", () => {
   it("gives a restart action for an unavailable daemon and keeps its detail", () => {
     const result = describeRequestError(new DaemonUnavailableError());
-    expect(result.summary).toContain("mxr restart");
+    expect(result.summary).toBe(
+      "Could not reach mxr. Check the connection, or run mxr restart on the computer running mxr.",
+    );
     expect(result.technical).toContain("Couldn't reach");
   });
 

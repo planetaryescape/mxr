@@ -250,7 +250,7 @@ function AboutSection() {
         facts={[
           ["App", "mxr web"],
           ["Connected daemon version", version],
-          ["Mail storage", "On this computer"],
+          ["Mail storage", "On the computer running mxr"],
         ]}
       />
       <Button className="mt-4" size="sm" variant="outline" asChild>

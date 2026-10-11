@@ -455,8 +455,15 @@ lives server-side until you send/save/discard.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/mail/attachments/open` | Materialise attachment to a tempfile |
-| `POST` | `/mail/attachments/download` | Stream the attachment |
+| `POST` | `/mail/attachments/open` | Open the daemon-local attachment and return its path (legacy local-client contract) |
+| `POST` | `/mail/attachments/download` | Materialise the daemon-local attachment and return its path (legacy local-client contract) |
+| `POST` | `/mail/attachments/transfer/metadata` | Get path-free attachment identity, filename, MIME type, exact length, SHA-256 and maximum chunk size |
+| `POST` | `/mail/attachments/transfer/chunk` | Read a bounded base64 chunk by byte offset; the response echoes message ID, attachment ID and offset |
+
+The transfer routes require the bridge token on every request. Clients verify
+the complete length and SHA-256 after assembling chunks. The original open and
+download routes remain available for local clients that expect daemon-path
+responses; they do not provide client-local files to a remote caller.
 
 ### Labels
 

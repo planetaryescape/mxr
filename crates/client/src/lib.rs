@@ -31,6 +31,8 @@
 
 mod archive;
 pub use archive::ArchiveJournal;
+mod attachment_transfer;
+pub use attachment_transfer::{download_attachment_to, DownloadedAttachment};
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -177,6 +179,7 @@ pub struct IpcConnection {
     next_id: AtomicU64,
     source: ClientKind,
     default_timeout: Option<Duration>,
+    attachment_transfer_supported: Option<bool>,
 }
 
 impl IpcConnection {
@@ -218,6 +221,7 @@ impl IpcConnection {
             next_id: AtomicU64::new(1),
             source,
             default_timeout: None,
+            attachment_transfer_supported: None,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate
         // in-band as the FIRST request on the connection. The byte-stream seam
@@ -299,6 +303,42 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        if matches!(
+            request,
+            Request::GetAttachmentTransferMetadata { .. } | Request::ReadAttachmentChunk { .. }
+        ) && self.attachment_transfer_supported != Some(true)
+        {
+            let status = self
+                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .await?;
+            match status {
+                error @ Response::Error { .. } => return Ok(error),
+                Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            attachment_transfer_supported: true,
+                            ..
+                        },
+                } => self.attachment_transfer_supported = Some(true),
+                Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            attachment_transfer_supported: false,
+                            ..
+                        },
+                } => {
+                    return Ok(Response::error_kinded(
+                        "Daemon does not support path-free attachment transfers; upgrade the daemon before downloading",
+                        IpcErrorKind::Unsupported,
+                    ));
+                }
+                _ => {
+                    return Err(ClientError::Io(std::io::Error::other(
+                        "Unexpected GetStatus response while checking attachment transfer support",
+                    )));
+                }
+            }
+        }
         if matches!(
             request,
             Request::GetArchiveWorkspace

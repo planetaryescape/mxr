@@ -65,10 +65,8 @@ impl App {
         self.mailbox.pending_attachment_action = None;
     }
 
-    /// Open the "save attachment as..." modal pre-filled with
-    /// `<download_dir>/<sanitized-filename>`. Triggered by `d` in the
-    /// attachment list. Replaces the previous behavior of silently
-    /// dropping into the daemon's internal cache directory.
+    /// Open the "save attachment as..." modal with a user-chosen destination.
+    /// Triggered by `d` in the attachment list.
     pub fn open_save_attachment_modal(&mut self) {
         let Some(message_id) = self.mailbox.attachment_panel.message_id.clone() else {
             return;
@@ -160,22 +158,27 @@ impl App {
         }
         // Ensure the panel knows which message we're acting on.
         self.mailbox.attachment_panel.message_id = Some(message_id);
-        self.queue_attachment_action_to(AttachmentOperation::Download, Some(expanded));
+        self.queue_attachment_action_to(
+            AttachmentOperation::Download,
+            Some(expanded),
+            self.modals.save_attachment.awaiting_overwrite_confirm,
+        );
         self.modals.save_attachment.close();
     }
 
     pub fn queue_attachment_action(&mut self, operation: AttachmentOperation) {
-        self.queue_attachment_action_to(operation, None);
+        self.queue_attachment_action_to(operation, None, false);
     }
 
     /// Queue an attachment Open/Download with an explicit destination
     /// path. Pass `Some(path)` when the user has chosen where to save
-    /// (the save-attachment modal flow); pass `None` for the daemon's
-    /// internal cache (used by Open).
+    /// (the save-attachment modal flow); pass `None` for the TUI client's
+    /// local cache (used by Open).
     pub fn queue_attachment_action_to(
         &mut self,
         operation: AttachmentOperation,
         destination: Option<std::path::PathBuf>,
+        replace_existing: bool,
     ) {
         let Some(message_id) = self.mailbox.attachment_panel.message_id.clone() else {
             return;
@@ -191,8 +194,10 @@ impl App {
         self.mailbox.pending_attachment_action = Some(PendingAttachmentAction {
             message_id,
             attachment_id: attachment.id,
+            filename: attachment.filename.clone(),
             operation,
             destination,
+            replace_existing,
         });
     }
 
@@ -280,5 +285,68 @@ impl App {
                         .contains(&message.id),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod attachment_save_tests {
+    use super::*;
+
+    #[test]
+    fn save_modal_carries_only_explicit_overwrite_confirmation() {
+        let directory = tempfile::tempdir().expect("temporary directory is created");
+        let destination = directory.path().join("note.txt");
+        let message_id = mxr_core::MessageId::new();
+        let attachment_id = mxr_core::AttachmentId::new();
+        let mut app = App::new();
+        app.mailbox.attachment_panel.message_id = Some(message_id.clone());
+        app.mailbox.attachment_panel.attachments = vec![mxr_core::AttachmentMeta {
+            id: attachment_id.clone(),
+            message_id: message_id.clone(),
+            filename: "note.txt".into(),
+            mime_type: "text/plain".into(),
+            disposition: Default::default(),
+            content_id: None,
+            content_location: None,
+            size_bytes: 3,
+            local_path: None,
+            provider_id: "fixture".into(),
+        }];
+
+        app.modals.save_attachment.open(
+            message_id.clone(),
+            attachment_id.clone(),
+            "note.txt".into(),
+            destination.display().to_string(),
+        );
+        app.save_attachment_confirm();
+        assert!(
+            !app.mailbox
+                .pending_attachment_action
+                .as_ref()
+                .expect("unconfirmed save is queued")
+                .replace_existing
+        );
+
+        app.mailbox.pending_attachment_action = None;
+        std::fs::write(&destination, b"existing").expect("existing file is created");
+        app.modals.save_attachment.open(
+            message_id,
+            attachment_id,
+            "note.txt".into(),
+            destination.display().to_string(),
+        );
+        app.save_attachment_confirm();
+        assert!(app.modals.save_attachment.awaiting_overwrite_confirm);
+        assert!(app.mailbox.pending_attachment_action.is_none());
+
+        app.save_attachment_confirm();
+        assert!(
+            app.mailbox
+                .pending_attachment_action
+                .as_ref()
+                .expect("confirmed save is queued")
+                .replace_existing
+        );
     }
 }

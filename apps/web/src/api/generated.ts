@@ -459,6 +459,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/attachments/transfer/chunk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a bounded attachment transfer chunk */
+        post: operations["attachment_transfer_chunk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/attachments/transfer/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get attachment transfer metadata */
+        post: operations["attachment_transfer_metadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/commitments": {
         parameters: {
             query?: never;
@@ -4360,6 +4394,22 @@ export interface components {
             /** Format: date-time */
             until: string;
         };
+        AttachmentChunk: {
+            attachment_id: components["schemas"]["AttachmentId"];
+            /** @description Standard base64 bytes; never a JSON integer array. */
+            data_base64: string;
+            message_id: components["schemas"]["MessageId"];
+            /** Format: int64 */
+            offset: number;
+        };
+        AttachmentChunkRequest: {
+            attachment_id: string;
+            /** Format: int32 */
+            length: number;
+            message_id: string;
+            /** Format: int64 */
+            offset: number;
+        };
         /** @enum {string} */
         AttachmentDisposition: "attachment" | "inline" | "unspecified";
         AttachmentFile: {
@@ -4381,6 +4431,22 @@ export interface components {
             provider_id: string;
             /** Format: int64 */
             size_bytes: number;
+        };
+        AttachmentRequest: {
+            attachment_id: string;
+            message_id: string;
+        };
+        AttachmentTransferMetadata: {
+            attachment_id: components["schemas"]["AttachmentId"];
+            filename: string;
+            /** Format: int64 */
+            length_bytes: number;
+            /** Format: int32 */
+            max_chunk_bytes: number;
+            message_id: components["schemas"]["MessageId"];
+            mime_type: string;
+            /** @description Lowercase hexadecimal SHA-256 of the complete attachment. */
+            sha256: string;
         };
         /** @enum {string} */
         AuthFlowData: "auto" | "installed" | "device";
@@ -7910,6 +7976,20 @@ export interface components {
         } | {
             attachment_id: components["schemas"]["AttachmentId"];
             /** @enum {string} */
+            cmd: "GetAttachmentTransferMetadata";
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            attachment_id: components["schemas"]["AttachmentId"];
+            /** @enum {string} */
+            cmd: "ReadAttachmentChunk";
+            /** Format: int32 */
+            length: number;
+            message_id: components["schemas"]["MessageId"];
+            /** Format: int64 */
+            offset: number;
+        } | {
+            attachment_id: components["schemas"]["AttachmentId"];
+            /** @enum {string} */
             cmd: "OpenAttachment";
             message_id: components["schemas"]["MessageId"];
         } | {
@@ -9451,6 +9531,14 @@ export interface components {
             /** @enum {string} */
             kind: "AttachmentFile";
         } | {
+            /** @enum {string} */
+            kind: "AttachmentTransferMetadata";
+            metadata: components["schemas"]["AttachmentTransferMetadata"];
+        } | {
+            chunk: components["schemas"]["AttachmentChunk"];
+            /** @enum {string} */
+            kind: "AttachmentChunk";
+        } | {
             bodies: components["schemas"]["MessageBody"][];
             failures?: components["schemas"]["BodyFailure"][];
             /** @enum {string} */
@@ -9843,6 +9931,7 @@ export interface components {
         } | {
             accounts: string[];
             archive_recovery_supported?: boolean;
+            attachment_transfer_supported?: boolean;
             daemon_build_id?: string | null;
             /** Format: int32 */
             daemon_pid?: number | null;
@@ -13084,6 +13173,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    attachment_transfer_chunk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentChunkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentChunk"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    attachment_transfer_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentTransferMetadata"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

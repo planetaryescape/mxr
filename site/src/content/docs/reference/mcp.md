@@ -51,6 +51,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_list_messages`
 - `mxr_search`
 - `mxr_read_message`
+- `mxr_attachment_metadata`
+- `mxr_attachment_chunk`
 - `mxr_read_thread`
 - `mxr_thread_context`
 - `mxr_thread_gists`
@@ -93,6 +95,16 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_reading_highlights`
 
 `mxr_read_message` only includes full body content when `include_body = true`.
+`mxr_attachment_metadata` returns the filename, MIME type, exact byte length,
+SHA-256 and chunk bound for one message attachment. Read it before calling
+`mxr_attachment_chunk`, which returns at most 64 KiB of base64 data and echoes
+the message ID, attachment ID and offset. Assemble the chunks and verify the
+reported length and SHA-256 before saving or opening the untrusted bytes. Both
+tools accept an optional `account_id` assertion; the daemon checks account
+scope on each request.
+Because attachment fetching can contact the provider, both tools require
+`safety_policy = "full"` and `allow_destructive = true` in the MCP profile.
+Keep `allowed_accounts` scoped; `allow_send` can remain false.
 `mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
 promises) and, with `include_gist = true`, the model's gist and verified ask.
 It has no refresh option, so a cached gist is reused.

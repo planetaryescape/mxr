@@ -17,7 +17,7 @@ use mxr_core::{
     IdleWatcher, MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities,
 };
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Notify;
@@ -122,6 +122,8 @@ pub struct FakeProvider {
     /// (primary vs a per-message alias override).
     sent_from: Mutex<Vec<Address>>,
     mutations: Mutex<Vec<RecordedMutation>>,
+    attachment_fetch_count: AtomicUsize,
+    attachment_fetch_gate: Mutex<Option<(Arc<Notify>, Arc<Notify>)>>,
     /// Phase 3.1: when set, `idle_watch` returns a watcher that emits a
     /// notification each time `idle_trigger.notify_one()` is called.
     /// Tests use this to simulate server-pushed EXISTS / EXPUNGE events.
@@ -172,6 +174,23 @@ pub enum RecordedMutation {
 }
 
 impl FakeProvider {
+    pub fn attachment_fetch_count(&self) -> usize {
+        self.attachment_fetch_count.load(Ordering::SeqCst)
+    }
+
+    /// Pause attachment fetches until the returned release notification fires.
+    /// The started notification is signalled once per provider call.
+    pub fn pause_attachment_fetches(&self) -> (Arc<Notify>, Arc<Notify>) {
+        let started = Arc::new(Notify::new());
+        let released = Arc::new(Notify::new());
+        *self
+            .attachment_fetch_gate
+            .lock()
+            .expect("fake provider attachment gate mutex should not be poisoned") =
+            Some((Arc::clone(&started), Arc::clone(&released)));
+        (started, released)
+    }
+
     fn labels_guard(&self) -> std::sync::MutexGuard<'_, Vec<Label>> {
         self.labels
             .lock()
@@ -229,6 +248,8 @@ impl FakeProvider {
             server_draft_revisions: Mutex::new(HashMap::new()),
             sent_from: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
+            attachment_fetch_count: AtomicUsize::new(0),
+            attachment_fetch_gate: Mutex::new(None),
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
             label_changes_fail: AtomicBool::new(false),
@@ -443,6 +464,16 @@ impl MailSyncProvider for FakeProvider {
         _provider_message_id: &str,
         _provider_attachment_id: &str,
     ) -> Result<Vec<u8>, MxrError> {
+        self.attachment_fetch_count.fetch_add(1, Ordering::SeqCst);
+        let gate = self
+            .attachment_fetch_gate
+            .lock()
+            .expect("fake provider attachment gate mutex should not be poisoned")
+            .clone();
+        if let Some((started, released)) = gate {
+            started.notify_one();
+            released.notified().await;
+        }
         Ok(b"fake attachment content".to_vec())
     }
 

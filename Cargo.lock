@@ -4382,12 +4382,14 @@ dependencies = [
 name = "mxr-client"
 version = "0.6.79"
 dependencies = [
+ "base64 0.22.1",
  "futures",
  "mxr-core",
  "mxr-protocol",
  "mxr-transport",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
@@ -4981,6 +4983,7 @@ dependencies = [
  "mxr-reader",
  "mxr-test-support",
  "nucleo",
+ "open",
  "pretty_assertions",
  "ratatui",
  "ratatui-image",

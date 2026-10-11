@@ -17,6 +17,9 @@ use tokio::sync::{
 };
 use tokio::task::JoinHandle;
 
+type AttachmentMaterializationKey = (mxr_core::MessageId, mxr_core::AttachmentId);
+type AttachmentMaterializationLock = Arc<TokioMutex<()>>;
+
 pub(crate) struct ProviderSetup {
     pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
     pub send_providers: HashMap<AccountId, Arc<dyn MailSendProvider>>,
@@ -449,6 +452,8 @@ pub struct AppState {
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
     runtime: RwLock<ProviderRuntime>,
     draft_operation_locks: ParkingMutex<HashMap<mxr_core::DraftId, Arc<TokioMutex<()>>>>,
+    attachment_materialization_locks:
+        ParkingMutex<HashMap<AttachmentMaterializationKey, AttachmentMaterializationLock>>,
     pub(crate) archive_runners: ParkingMutex<HashSet<String>>,
     provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
     /// Held by a mutation's search reindex from its store reads through its
@@ -758,6 +763,7 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
@@ -1225,6 +1231,23 @@ impl AppState {
             let mut locks = self.provider_operation_locks.lock();
             locks
                 .entry(account_id.clone())
+                .or_insert_with(|| Arc::new(TokioMutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
+    }
+
+    pub(crate) async fn acquire_attachment_materialization(
+        &self,
+        message_id: &mxr_core::MessageId,
+        attachment_id: &mxr_core::AttachmentId,
+    ) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.attachment_materialization_locks.lock();
+            // Completed keys have no users and can be dropped before admitting another key.
+            locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+            locks
+                .entry((message_id.clone(), attachment_id.clone()))
                 .or_insert_with(|| Arc::new(TokioMutex::new(())))
                 .clone()
         };
@@ -1926,6 +1949,7 @@ impl AppState {
                 default_send_provider: send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
@@ -2006,6 +2030,7 @@ impl AppState {
                 default_send_provider: None,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
             search_reindex: TokioMutex::new(HashSet::new()),
@@ -2112,6 +2137,7 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 draft_operation_locks: ParkingMutex::new(HashMap::new()),
+                attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
                 archive_runners: ParkingMutex::new(HashSet::new()),
                 provider_operation_locks: ParkingMutex::new(HashMap::new()),
                 search_reindex: TokioMutex::new(HashSet::new()),
@@ -2333,6 +2359,37 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
 mod tests {
 
     use super::*;
+
+    #[tokio::test]
+    async fn attachment_materialization_serializes_same_attachment_and_prunes_idle_keys() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let message_id = mxr_core::MessageId::new();
+        let attachment_id = mxr_core::AttachmentId::new();
+        let first = state
+            .acquire_attachment_materialization(&message_id, &attachment_id)
+            .await;
+        let state_ref = Arc::clone(&state);
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let second = tokio::spawn(async move {
+            let _ = started.send(());
+            state_ref
+                .acquire_attachment_materialization(&message_id, &attachment_id)
+                .await
+        });
+        started_rx.await.expect("second acquisition started");
+        tokio::task::yield_now().await;
+        assert!(!second.is_finished(), "second download waits for the first");
+        drop(first);
+        let second = second.await.expect("second acquisition completes");
+        drop(second);
+
+        let other_message = mxr_core::MessageId::new();
+        let other_attachment = mxr_core::AttachmentId::new();
+        let _other = state
+            .acquire_attachment_materialization(&other_message, &other_attachment)
+            .await;
+        assert_eq!(state.attachment_materialization_locks.lock().len(), 1);
+    }
 
     fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {
         mxr_config::load_config_from_str(&format!(

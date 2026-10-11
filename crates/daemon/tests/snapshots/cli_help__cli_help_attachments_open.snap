@@ -12,4 +12,5 @@ Arguments:
 
 Options:
       --account <ACCOUNT>
+      --format <FORMAT>    Output format for the local file [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

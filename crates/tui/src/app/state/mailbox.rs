@@ -551,11 +551,14 @@ pub struct AttachmentPanelState {
 pub struct PendingAttachmentAction {
     pub message_id: MessageId,
     pub attachment_id: AttachmentId,
+    pub filename: String,
     pub operation: AttachmentOperation,
     /// User-chosen save destination for `Download` operations. Set by
-    /// the save-attachment modal; `None` falls back to the daemon's
-    /// internal cache (used by `Open`).
+    /// the save-attachment modal; `None` falls back to the TUI's
+    /// client-local attachment cache (used by `Open`).
     pub destination: Option<std::path::PathBuf>,
+    /// True only when the save modal confirmed replacing an existing file.
+    pub replace_existing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

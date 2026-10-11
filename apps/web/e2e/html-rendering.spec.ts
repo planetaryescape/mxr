@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 import { openApp } from "./helpers/state";
@@ -340,8 +342,11 @@ test("message attachments can be opened and downloaded", async ({ page }) => {
     starred: false,
     has_attachments: true,
   };
-  let openBody: unknown;
-  let downloadBody: unknown;
+  const attachment = Buffer.alloc(4096, "attachment fixture\n");
+  const metadataBodies: unknown[] = [];
+  const chunkBodies: unknown[] = [];
+  const legacyRequests: string[] = [];
+  const identity = { message_id: "msg-attachment", attachment_id: "att-report" };
 
   await page.route("**/api/v1/mail/mailbox?*", async (route) => {
     await route.fulfill({
@@ -393,27 +398,56 @@ test("message attachments can be opened and downloaded", async ({ page }) => {
     });
   });
 
-  await page.route("**/api/v1/mail/attachments/open", async (route) => {
-    openBody = route.request().postDataJSON();
-    await route.fulfill({ contentType: "application/json", json: { file: "/tmp/report.pdf" } });
+  await page.route("**/api/v1/mail/attachments/transfer/metadata", async (route) => {
+    metadataBodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        ...identity,
+        filename: "report.pdf",
+        mime_type: "application/pdf",
+        length_bytes: attachment.length,
+        sha256: createHash("sha256").update(attachment).digest("hex"),
+        max_chunk_bytes: 1024,
+      },
+    });
   });
-  await page.route("**/api/v1/mail/attachments/download", async (route) => {
-    downloadBody = route.request().postDataJSON();
-    await route.fulfill({ contentType: "application/json", json: { file: "/tmp/report.pdf" } });
+  await page.route("**/api/v1/mail/attachments/transfer/chunk", async (route) => {
+    const offset = (chunkBodies.length % 4) * 1024;
+    const body: unknown = route.request().postDataJSON();
+    expect(body).toEqual({ ...identity, offset, length: 1024 });
+    chunkBodies.push(body);
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        ...identity,
+        offset,
+        data_base64: attachment.subarray(offset, offset + 1024).toString("base64"),
+      },
+    });
+  });
+  await page.route(/\/api\/v1\/mail\/attachments\/(open|download)$/, async (route) => {
+    legacyRequests.push(route.request().url());
+    await route.fulfill({ status: 500 });
   });
 
   await openApp(page, "/m/inbox");
   await page.getByRole("option", { name: /attachment smoke/ }).click();
 
-  await page.getByRole("button", { name: "Open report.pdf" }).click();
-  await expect
-    .poll(() => openBody)
-    .toEqual({ message_id: "msg-attachment", attachment_id: "att-report" });
-
-  await page.getByRole("button", { name: "Download report.pdf" }).click();
-  await expect
-    .poll(() => downloadBody)
-    .toEqual({ message_id: "msg-attachment", attachment_id: "att-report" });
+  // PDFs use the verified download fallback, including when Open is selected.
+  async function checkDownload(action: "Open" | "Download") {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: `${action} report.pdf` }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("report.pdf");
+    expect(await readFile(await download.path())).toEqual(attachment);
+  }
+  await checkDownload("Open");
+  await checkDownload("Download");
+  expect(metadataBodies).toEqual([identity, identity]);
+  expect(chunkBodies).toHaveLength(8);
+  expect(legacyRequests).toEqual([]);
+  await expect.poll(() => page.context().pages().length).toBe(1);
 
   const layout = await page.getByTestId("thread-scroll").evaluate((scrollNode) => {
     const frameNode = scrollNode.querySelector("iframe");

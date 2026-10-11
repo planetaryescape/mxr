@@ -124,6 +124,14 @@ fn mail_router() -> Router<AppState> {
         .route("/actions/invite/reply", post(reply_to_invite))
         .route("/attachments/open", post(open_attachment))
         .route("/attachments/download", post(download_attachment))
+        .route(
+            "/attachments/transfer/metadata",
+            post(attachment_transfer_metadata),
+        )
+        .route(
+            "/attachments/transfer/chunk",
+            post(attachment_transfer_chunk),
+        )
         .route("/labels/create", post(create_label))
         .route("/labels/rename", post(rename_label))
         .route("/labels/delete", post(delete_label))

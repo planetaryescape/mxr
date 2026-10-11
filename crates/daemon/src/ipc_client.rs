@@ -53,6 +53,24 @@ pub struct IpcClient {
 }
 
 impl IpcClient {
+    pub async fn transfer_attachment_to(
+        &mut self,
+        message_id: &mxr_core::MessageId,
+        attachment_id: &mxr_core::AttachmentId,
+        destination: &Path,
+        replace_existing: bool,
+    ) -> anyhow::Result<mxr_client::DownloadedAttachment> {
+        mxr_client::download_attachment_to(
+            &mut self.conn,
+            message_id,
+            attachment_id,
+            destination,
+            replace_existing,
+        )
+        .await
+        .map_err(map_request_error)
+    }
+
     pub async fn connect() -> anyhow::Result<Self> {
         // Build the connector from MXR_DAEMON_ADDR (unix:// default, tcp://
         // loopback+token, or cmd:// spawn-and-pipe) so the request path agrees

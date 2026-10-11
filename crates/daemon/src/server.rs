@@ -3045,6 +3045,7 @@ mod tests {
                                 draft_revision_supported: true,
                                 send_outcome_supported: true,
                                 archive_recovery_supported: true,
+                                attachment_transfer_supported: true,
                                 uptime_secs: 1,
                                 accounts: vec!["personal".to_string()],
                                 total_messages: 1,

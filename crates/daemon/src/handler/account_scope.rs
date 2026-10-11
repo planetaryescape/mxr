@@ -249,6 +249,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::MarkInviteAnswered { message_id, .. }
         | Request::GetHtmlImageAssets { message_id, .. }
         | Request::DownloadAttachment { message_id, .. }
+        | Request::GetAttachmentTransferMetadata { message_id, .. }
+        | Request::ReadAttachmentChunk { message_id, .. }
         | Request::OpenAttachment { message_id, .. }
         | Request::SetFlags { message_id, .. }
         | Request::GetHeaders { message_id }
@@ -916,6 +918,7 @@ pub(super) async fn scope_response(
             draft_revision_supported,
             send_outcome_supported,
             archive_recovery_supported,
+            attachment_transfer_supported,
             uptime_secs,
             accounts: _,
             total_messages,
@@ -952,6 +955,7 @@ pub(super) async fn scope_response(
                 draft_revision_supported,
                 send_outcome_supported,
                 archive_recovery_supported,
+                attachment_transfer_supported,
                 uptime_secs,
                 accounts: allowed
                     .iter()

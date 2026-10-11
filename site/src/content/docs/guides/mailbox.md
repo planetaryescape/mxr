@@ -156,6 +156,11 @@ When a message has attachments:
 - `Enter` / `o` opens the selected attachment
 - `d` downloads it
 
+The browser assembles and verifies attachment bytes on the client. It opens
+plain text and common raster images in a separate tab; other file types and
+blocked popups download the file instead. Open downloaded files from the
+browser's Downloads list.
+
 ## Snooze
 
 `Z` opens the snooze modal with presets such as tomorrow morning, tonight, weekend, and next Monday.

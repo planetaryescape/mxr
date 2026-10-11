@@ -9,12 +9,10 @@ use std::path::PathBuf;
 
 use super::helpers::{
     attachment_by_index, format_bytes, load_attachments, parse_message_id as parse_id_for_legacy,
-    request_attachment_file,
 };
 
-// `parse_id_for_legacy` is kept around for the download/open paths
-// that still take a single positional string. The list path now
-// resolves through the shared `selection` module.
+// Attachment commands retain positional message IDs while the list path uses
+// the shared selection module.
 
 pub async fn attachments_list(
     message_id: Option<String>,
@@ -195,60 +193,111 @@ fn safe_download_name(raw: &str, attachment_id: &mxr_core::AttachmentId) -> Stri
         )
 }
 
+#[derive(serde::Serialize)]
+struct AttachmentTransferResult {
+    #[serde(skip_serializing)]
+    index: usize,
+    message_id: String,
+    attachment_id: String,
+    filename: String,
+    path: String,
+    length_bytes: u64,
+    sha256: String,
+}
+
+fn print_transfer_results(
+    results: &[AttachmentTransferResult],
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            for item in results {
+                println!("{}", format_transfer_table_line(item));
+            }
+        }
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(results)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(results)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "message_id",
+                "attachment_id",
+                "filename",
+                "path",
+                "length_bytes",
+                "sha256",
+            ])?;
+            for item in results {
+                writer.write_record([
+                    &item.message_id,
+                    &item.attachment_id,
+                    &item.filename,
+                    &item.path,
+                    &item.length_bytes.to_string(),
+                    &item.sha256,
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for item in results {
+                println!("{}", item.attachment_id);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn format_transfer_table_line(item: &AttachmentTransferResult) -> String {
+    format!("#{} {} -> {}", item.index, item.filename, item.path)
+}
+
 pub async fn attachments_download(
     message_id: String,
     account: Option<String>,
     index: Option<usize>,
     dir: Option<PathBuf>,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
     let attachments = load_attachments(&mut client, &id).await?;
-
     let selected: Vec<(usize, &mxr_core::AttachmentMeta)> = match index {
         Some(index) => vec![(index, attachment_by_index(&attachments, index)?)],
         None => attachments
             .iter()
             .enumerate()
-            .map(|(idx, attachment)| (idx + 1, attachment))
+            .map(|(idx, item)| (idx + 1, item))
             .collect(),
     };
-
+    let target_dir = dir.unwrap_or(std::env::current_dir()?);
+    std::fs::create_dir_all(&target_dir)?;
+    let mut results = Vec::new();
     for (display_index, attachment) in selected {
-        let path = request_attachment_file(
-            &mut client,
-            Request::DownloadAttachment {
-                message_id: id.clone(),
-                attachment_id: attachment.id.clone(),
-                destination: None,
-            },
-        )
-        .await?;
-        let final_path = if let Some(target_dir) = dir.as_ref() {
-            std::fs::create_dir_all(target_dir)?;
-            let target = target_dir.join(safe_download_name(&attachment.filename, &attachment.id));
-            std::fs::copy(&path, &target)?;
-            target
-        } else {
-            path
-        };
-        println!(
-            "#{} {} -> {}",
-            display_index,
-            attachment.filename,
-            final_path.display()
-        );
+        let target = target_dir.join(safe_download_name(&attachment.filename, &attachment.id));
+        let downloaded = client
+            .transfer_attachment_to(&id, &attachment.id, &target, false)
+            .await?;
+        results.push(AttachmentTransferResult {
+            index: display_index,
+            message_id: id.as_str(),
+            attachment_id: attachment.id.as_str(),
+            filename: downloaded.filename,
+            path: downloaded.path.display().to_string(),
+            length_bytes: downloaded.length_bytes,
+            sha256: downloaded.sha256,
+        });
     }
-
-    Ok(())
+    print_transfer_results(&results, format)
 }
 
 pub async fn attachments_open(
     message_id: String,
     account: Option<String>,
     index: usize,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
@@ -256,22 +305,34 @@ pub async fn attachments_open(
     ensure_message_account(&mut client, &id, account_id.as_ref()).await?;
     let attachments = load_attachments(&mut client, &id).await?;
     let attachment = attachment_by_index(&attachments, index)?;
-
-    let path = request_attachment_file(
-        &mut client,
-        Request::OpenAttachment {
-            message_id: id,
-            attachment_id: attachment.id.clone(),
-        },
+    let target_dir = mxr_config::data_dir().join("attachments");
+    std::fs::create_dir_all(&target_dir)?;
+    let target = target_dir.join(format!(
+        "{}-{}",
+        attachment.id,
+        safe_download_name(&attachment.filename, &attachment.id)
+    ));
+    let downloaded = client
+        .transfer_attachment_to(&id, &attachment.id, &target, true)
+        .await?;
+    open::that(&downloaded.path)?;
+    print_transfer_results(
+        &[AttachmentTransferResult {
+            index,
+            message_id: id.as_str(),
+            attachment_id: attachment.id.as_str(),
+            filename: downloaded.filename,
+            path: downloaded.path.display().to_string(),
+            length_bytes: downloaded.length_bytes,
+            sha256: downloaded.sha256,
+        }],
+        format,
     )
-    .await?;
-    println!("Opened {} ({})", attachment.filename, path.display());
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::safe_download_name;
+    use super::{format_transfer_table_line, safe_download_name, AttachmentTransferResult};
     use mxr_core::AttachmentId;
     use std::path::Path;
 
@@ -302,5 +363,23 @@ mod tests {
         assert_eq!(safe_download_name("report.pdf", &id), "report.pdf");
         let target = target_dir.join(safe_download_name("report.pdf", &id));
         assert_eq!(target.parent(), Some(target_dir));
+    }
+
+    #[test]
+    fn transfer_table_keeps_the_selected_attachment_index() {
+        let row = AttachmentTransferResult {
+            index: 3,
+            message_id: "message".into(),
+            attachment_id: "attachment".into(),
+            filename: "invoice.pdf".into(),
+            path: "/tmp/invoice.pdf".into(),
+            length_bytes: 1,
+            sha256: "0".repeat(64),
+        };
+
+        assert_eq!(
+            format_transfer_table_line(&row),
+            "#3 invoice.pdf -> /tmp/invoice.pdf"
+        );
     }
 }

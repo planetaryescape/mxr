@@ -1,5 +1,7 @@
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
+export { downloadAttachment, openAttachment } from "./attachmentTransfer";
+export type { AttachmentActionResult } from "./attachmentTransfer";
 
 import type { MailboxResponse, MutationResponse, ShellResponse, ThreadResponse } from "./types";
 
@@ -167,31 +169,6 @@ export function getRelationshipProfile(input: {
 }): Promise<unknown> {
   const query = new URLSearchParams({ account_id: input.accountId, email: input.email });
   return apiFetch<unknown>(`/api/v1/mail/relationship?${query.toString()}`);
-}
-
-interface AttachmentActionInput {
-  messageId: string;
-  attachmentId: string;
-}
-
-interface AttachmentActionResponse {
-  file?: string;
-}
-
-export function openAttachment(input: AttachmentActionInput): Promise<AttachmentActionResponse> {
-  return apiFetch<AttachmentActionResponse>("/api/v1/mail/attachments/open", {
-    method: "POST",
-    body: { message_id: input.messageId, attachment_id: input.attachmentId },
-  });
-}
-
-export function downloadAttachment(
-  input: AttachmentActionInput,
-): Promise<AttachmentActionResponse> {
-  return apiFetch<AttachmentActionResponse>("/api/v1/mail/attachments/download", {
-    method: "POST",
-    body: { message_id: input.messageId, attachment_id: input.attachmentId },
-  });
 }
 
 export function archiveMessages(messageIds: string[]): Promise<MutationResponse> {

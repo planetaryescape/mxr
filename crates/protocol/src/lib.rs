@@ -23,9 +23,11 @@
 //! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding;
 //! the version only moves for breaking shape changes.
 
+mod archive;
 mod codec;
 mod types;
 
+pub use archive::*;
 pub use codec::IpcCodec;
 pub use types::*;
 
@@ -883,6 +885,7 @@ mod tests {
                 ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 0,
                     accounts: Vec::new(),
                     total_messages: 0,

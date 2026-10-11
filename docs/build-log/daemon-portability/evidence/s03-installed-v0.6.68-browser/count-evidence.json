@@ -1,0 +1,33 @@
+{
+  "count_sequence_observed_during_run": [
+    0,
+    1,
+    1,
+    1,
+    2,
+    2
+  ],
+  "measurement_command": "find <isolated-run>/spool -maxdepth 1 -name accepted-*.json -type f | wc -l",
+  "persistent_raw_source": "stage-01/.s02-web-dependencies/runtime/installed-mj4l10s_/spool/accepted-*.json (each contains only message_id)",
+  "current_persisted_records": [
+    {
+      "file": "accepted-01a12bb3-81bd-7b02-a9a7-28aebb685a64.json",
+      "observed_mtime": "2026-10-11T17:02:26.877512+0100",
+      "byte_length": 67,
+      "record_fields": [
+        "message_id"
+      ],
+      "message_id": "<01a12bb3-81bc-7ec3-ab88-4f59cf6b97e1@example.com>"
+    },
+    {
+      "file": "accepted-01a12bb8-4259-7e51-8682-452ed8e15b7d.json",
+      "observed_mtime": "2026-10-11T17:07:38.329936+0100",
+      "byte_length": 67,
+      "record_fields": [
+        "message_id"
+      ],
+      "message_id": "<01a12bb7-fbb8-7343-aa9f-81e2535b9996@example.com>"
+    }
+  ],
+  "qualification": "The intermediate count outputs were observed in the execution transcript, not separately written to a file. Persisted spool file timestamps show one acceptance before the uncertainty timeout and one later acceptance after the explicit retry; final count is two."
+}

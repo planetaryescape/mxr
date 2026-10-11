@@ -35,6 +35,24 @@ use crate::runtime::{
 
 const SUMMARY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(150);
 
+fn archive_partial_undo(
+    details: Option<serde_json::Value>,
+    verb: &str,
+) -> Option<app::PendingUndo> {
+    let operation: mxr_protocol::ArchiveOperationData = serde_json::from_value(details?).ok()?;
+    let count = operation
+        .items
+        .iter()
+        .filter(|item| item.state == mxr_protocol::ArchiveItemStateData::Completed)
+        .count() as u32;
+    (operation.undo_available && count > 0).then(|| app::PendingUndo {
+        action: app::UndoAction::Mutations(vec![operation.mutation_id]),
+        verb_past: verb.into(),
+        count,
+        applied_at: std::time::Instant::now(),
+    })
+}
+
 fn mutation_can_auto_retry(request: &Request) -> bool {
     !matches!(
         request,
@@ -2883,7 +2901,17 @@ pub async fn run() -> anyhow::Result<()> {
                             Some(error) => Err(MxrError::Ipc(format!("Not set: {error}"))),
                         }
                     }
-                    Ok(Response::Error { message, .. }) => {
+                    Ok(Response::Error {
+                        message,
+                        details,
+                        code,
+                        ..
+                    }) => {
+                        if code == "archive_incomplete" {
+                            if let Some(undo) = archive_partial_undo(details, verb) {
+                                let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                            }
+                        }
                         // A partly failed undo keeps what failed under the
                         // same id: `u` again retries just those.
                         if let (Some(mutation_id), Some(failed)) =

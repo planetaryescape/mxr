@@ -104,7 +104,14 @@ def start():
     for _ in range(150):
         if daemon.poll() is not None:
             raise RuntimeError((r / "daemon.log").read_text())
-        if Path(sock).exists():
+        pid_file = r / "data/daemon.pid"
+        # CLI status can auto-start a daemon; wait for this owned foreground
+        # process to publish its PID before probing after a crash.
+        if (
+            Path(sock).exists()
+            and pid_file.exists()
+            and pid_file.read_text().strip() == str(daemon.pid)
+        ):
             v = cli("status", "--format", "json")
             if v.returncode == 0:
                 assert json.loads(v.stdout)["daemon_pid"] == daemon.pid

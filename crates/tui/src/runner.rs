@@ -302,7 +302,12 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
-    app.compose.last_send_identity = local_state.last_send_identity.clone();
+    match crate::send_recovery_state::last() {
+        Ok(identity) => app.compose.last_send_identity = identity,
+        Err(error) => app.push_toast(crate::app::Toast::error(format!(
+            "Cannot read send recovery; do not resend: {error}"
+        ))),
+    }
     app.command_palette
         .palette
         .restore_recents_from_labels(&local_state.recent_action_labels);
@@ -2402,24 +2407,23 @@ pub async fn run() -> anyhow::Result<()> {
                         ..
                     } = &mut req
                     {
-                        let reviewed = crate::send_recovery::reviewed_send_identity(
-                            &bg,
-                            &draft.account_id,
-                            &draft.id,
-                            identity,
-                        )
-                        .await?;
-                        if reviewed != *identity {
-                            *identity = reviewed;
-                            #[cfg(not(test))]
-                            {
-                                let mut local = crate::local_state::load();
-                                local.last_send_identity =
-                                    Some((draft.account_id.clone(), identity.clone()));
-                                crate::local_state::save(&local).map_err(|error| {
-                                    MxrError::Ipc(format!("Cannot retain retry identity: {error}"))
-                                })?;
-                            }
+                        let (reviewed_draft, reviewed) =
+                            crate::send_recovery::prepare_reviewed_send(
+                                &bg,
+                                draft.clone(),
+                                identity.clone(),
+                            )
+                            .await?;
+                        *draft = reviewed_draft;
+                        *identity = reviewed;
+                        #[cfg(not(test))]
+                        crate::send_recovery_state::retain(&draft.account_id, &draft.id, identity)
+                            .map_err(|error| {
+                                MxrError::Ipc(format!(
+                                    "Cannot retain reviewed send identity: {error}"
+                                ))
+                            })?;
+                        {
                             let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
                                 draft.account_id.clone(),
                                 identity.clone(),

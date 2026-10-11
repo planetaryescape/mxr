@@ -1248,6 +1248,7 @@ pub async fn send_draft(
         .await?;
     let receipt = expect_send_receipt(response)?;
     set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_at).await?;
+    report_promises_after_send(&mut client, receipt.as_ref(), format.clone()).await;
     let payload = serde_json::json!({"operation_id": identity.operation_id, "draft_id": draft_id, "state": "accepted", "local_message_id": receipt.as_ref().map(|r| &r.local_message_id)});
     match resolve_format(format) {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
@@ -2184,19 +2185,24 @@ async fn set_auto_reminder_after_send(
     let Some(remind) = remind else {
         return Ok(());
     };
-    match client
-        .request(auto_reminder_request_after_send(receipt, remind.at)?)
-        .await?
-    {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => {
-            println!("Reminder set for {}", remind.description);
-            Ok(())
+    let follow_up = async {
+        match client
+            .request(auto_reminder_request_after_send(receipt, remind.at)?)
+            .await?
+        {
+            Response::Ok {
+                data: ResponseData::Ack,
+            } => Ok(()),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response setting reminder"),
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response setting reminder"),
     }
+    .await;
+    match follow_up {
+        Ok(()) => eprintln!("Reminder set for {}", remind.description),
+        Err(error) => eprintln!("Send accepted; reminder setup failed: {error}. Do not resend."),
+    }
+    Ok(())
 }
 
 /// Resolve (and ownership-validate) the effective From a draft would send

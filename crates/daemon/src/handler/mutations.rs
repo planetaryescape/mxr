@@ -2348,10 +2348,7 @@ pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::Drafts { drafts })
 }
 
-/// Force-reset an orphaned draft from `'sending'` to `'draft'`.
-/// Idempotent: the underlying CAS returns `false` when the draft is
-/// already in `'draft'`, which we surface as an `Ack` rather than an
-/// error so scripts can call this safely.
+/// Legacy compatibility endpoint; elapsed time cannot prove provider rejection.
 pub(super) async fn reset_orphaned_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
@@ -2485,7 +2482,7 @@ pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) ->
         .store
         .get_draft(draft_id)
         .await?
-        .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("Draft not found: {draft_id}")))?;
     Ok(ResponseData::Draft { draft })
 }
 

@@ -20,7 +20,10 @@ also requires that revision and refuses to follow later edits silently. Querying
 requires the owning account even when the draft no longer exists.
 
 Web retains operation references before HTTP submission and exposes them in
-Drafts. The TUI retains its latest operation before submission and exposes a
+Drafts. The TUI retains its latest operation and per-draft revision atomically in
+`tui-send-recovery.json`, independently of delayed palette-recents saves. Edited
+retries conditional-update the reviewed saved revision before sending; a newer
+saved revision refuses the attempt. The TUI exposes a
 palette query. Send, safety preview, provider save and scheduling use the same
 compose-file draft identity; those alternate actions cannot clone an uncertain
 submission into another resource. Provider save and scheduling keep the local
@@ -85,7 +88,8 @@ python3 scripts/verify-send-outcomes.py --binary target-cli/debug/mxr \
 It exercises lost IPC response, accepted query before optional local indexing,
 restart, authenticated HTTP query after cleanup, uncertain acceptance, a process
 crash before receipt persistence, and an unchanged reviewed retry after proven
-non-acceptance. The acceptance counter is external to SQLite and survives restart.
+non-acceptance, pipeable reminder JSONL and accepted state when optional local
+indexing/reminder setup fails. The acceptance counter is external to SQLite and survives restart.
 Root owns the installed-release rerun and release verification.
 
 ## Inline review keeps this send-specific

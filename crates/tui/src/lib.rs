@@ -25,6 +25,7 @@ mod runner;
 mod runtime;
 mod search_ipc;
 mod send_recovery;
+mod send_recovery_state;
 pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;

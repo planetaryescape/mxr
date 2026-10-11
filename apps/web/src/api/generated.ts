@@ -908,7 +908,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send stored draft by id */
         post: operations["mail_drafts_send_stored"];
         delete?: never;
         options?: never;
@@ -2202,7 +2201,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Inspect durable send evidence without resending */
         get: operations["mail_send_outcome"];
         put?: never;
         post?: never;
@@ -13628,21 +13626,30 @@ export interface operations {
     };
     mail_drafts_send_stored: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Retained reviewed send operation */
+                operation_id: string;
+                /** @description Reviewed draft revision */
+                expected_revision: number;
+            };
             header?: never;
-            path?: never;
+            path: {
+                draft_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Send receipt or outcome */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -16042,21 +16049,28 @@ export interface operations {
     };
     mail_send_outcome: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Owning account ID */
+                account_id: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                operation_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Durable send outcome */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;

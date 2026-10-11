@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import signal
-import socket
+import sqlite3
 import subprocess
 import time
 import uuid
@@ -274,6 +274,53 @@ try:
     json.load(urlopen(request))
     retry_outcome = outcome(retry_account, retry_operation)
     assert retry_outcome["state"] == "accepted" and count() == 4
+    reminder_id, reminder_account, reminder_identity = draft("Machine reminder output")
+    v = cli(
+        "send",
+        reminder_id,
+        "--expected-revision",
+        str(reminder_identity["expected_revision"]),
+        "--remind-after",
+        "in 2h",
+        "--format",
+        "jsonl",
+    )
+    assert v.returncode == 0, v.stderr
+    lines = [json.loads(line) for line in v.stdout.splitlines()]
+    assert len(lines) == 1 and lines[0]["state"] == "accepted"
+    assert "Reminder set" in v.stderr and count() == 5
+    no_local_id, no_local_account, no_local_identity = draft(
+        "Accepted without local indexing"
+    )
+    with sqlite3.connect(r / "data/mxr.db") as db:
+        db.execute(
+            "CREATE TRIGGER s03_fail_local BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'controlled local ingest failure'); END"
+        )
+    v = cli(
+        "send",
+        no_local_id,
+        "--expected-revision",
+        str(no_local_identity["expected_revision"]),
+        "--remind-after",
+        "in 2h",
+        "--format",
+        "jsonl",
+    )
+    assert v.returncode == 0 and "Send accepted; reminder setup failed" in v.stderr, (
+        v.stderr
+    )
+    no_local_result = json.loads(v.stdout)
+    assert (
+        no_local_result["state"] == "accepted"
+        and no_local_result["local_message_id"] is None
+    )
+    assert (
+        outcome(no_local_account, no_local_identity["operation_id"])["state"]
+        == "accepted"
+        and count() == 6
+    )
+    with sqlite3.connect(r / "data/mxr.db") as db:
+        db.execute("DROP TRIGGER s03_fail_local")
     result = {
         "immediate_accepted_query": immediate_accepted,
         "accepted_after_response_loss": accepted,
@@ -284,6 +331,8 @@ try:
         "controlled_acceptances": count(),
         "crash_after_acceptance": crash_outcome,
         "unchanged_reviewed_retry": retry_outcome,
+        "reminder_jsonl": lines,
+        "accepted_without_local_id": no_local_result,
         "http_query_after_cleanup": http,
         "actions": records,
     }

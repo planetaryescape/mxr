@@ -1380,8 +1380,12 @@ endpoint!(get mail_drafts_orphaned_list "/api/v1/mail/drafts/orphaned", "List or
 #[allow(dead_code)]
 fn mail_drafts_save_local() {}
 endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-orphan", "Reset orphaned sending draft");
-endpoint!(get mail_send_outcome "/api/v1/mail/send-outcomes/{operation_id}", "Inspect durable send evidence without resending");
-endpoint!(post mail_drafts_send_stored "/api/v1/mail/drafts/{draft_id}/send-stored", "Send stored draft by id");
+#[utoipa::path(get, path = "/api/v1/mail/send-outcomes/{operation_id}", params(("operation_id" = String, Path), ("account_id" = String, Query, description = "Owning account ID")), responses((status = 200, description = "Durable send outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn mail_send_outcome() {}
+#[utoipa::path(post, path = "/api/v1/mail/drafts/{draft_id}/send-stored", params(("draft_id" = String, Path), ("operation_id" = String, Query, description = "Retained reviewed send operation"), ("expected_revision" = i64, Query, description = "Reviewed draft revision")), responses((status = 200, description = "Send receipt or outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
+#[allow(dead_code)]
+fn mail_drafts_send_stored() {}
 #[utoipa::path(delete, path = "/api/v1/mail/drafts/{draft_id}/stored", params(("draft_id" = String, Path), ("expected_revision" = i64, Query, description = "Revision from the deletion preview")), responses((status = 200, description = "Draft deleted", body = ResponseData), (status = 409, description = "Stale revision", body = DraftConflictResponse), (status = 422, description = "Legacy daemon", body = DraftConflictResponse)))]
 #[allow(dead_code)]
 fn mail_drafts_delete_stored() {}

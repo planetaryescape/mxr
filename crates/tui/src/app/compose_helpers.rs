@@ -62,8 +62,25 @@ impl App {
                     thread_id: pending.fm.thread_id.clone(),
                 });
         let now = chrono::Utc::now();
+        let retained = match crate::send_recovery_state::for_draft(&pending.draft_id()) {
+            Ok(retained) => retained,
+            Err(error) => {
+                self.push_toast(Toast::error(format!("Cannot read send recovery: {error}")));
+                return;
+            }
+        };
+        if retained
+            .as_ref()
+            .is_some_and(|(account, _)| account != &pending.account_id)
+        {
+            self.push_toast(Toast::error("Reviewed send belongs to another account"));
+            return;
+        }
+        let revision = retained
+            .as_ref()
+            .map_or(1, |(_, identity)| identity.expected_revision);
         let draft = mxr_core::Draft {
-            revision: Some(1),
+            revision: Some(revision),
             id: pending.draft_id(),
             account_id: pending.account_id.clone(),
             // `fm.from` was validated when the PendingSend was built; a parse
@@ -89,26 +106,16 @@ impl App {
             created_at: now,
             updated_at: now,
         };
-        let default_identity = mxr_core::SendIdentity::for_draft(&draft);
-        let identity = self
-            .compose
-            .last_send_identity
-            .as_ref()
-            .filter(|(account, identity)| {
-                account == &draft.account_id
-                    && identity.operation_id.starts_with(&format!("{}:", draft.id))
-                    && identity.expected_revision == 1
-            })
-            .map(|(_, identity)| identity.clone())
-            .unwrap_or(default_identity);
+        let identity = retained.map_or_else(
+            || mxr_core::SendIdentity::for_draft(&draft),
+            |(_, identity)| identity,
+        );
         self.compose.last_send_identity = Some((draft.account_id.clone(), identity.clone()));
         #[cfg(not(test))]
         {
-            let local_state = crate::local_state::TuiLocalState {
-                last_send_identity: self.compose.last_send_identity.clone(),
-                recent_action_labels: self.command_palette.palette.recent_labels_snapshot(),
-            };
-            if let Err(error) = crate::local_state::save(&local_state) {
+            if let Err(error) =
+                crate::send_recovery_state::retain(&draft.account_id, &draft.id, &identity)
+            {
                 self.push_toast(Toast::error(format!(
                     "Cannot retain send identity: {error}"
                 )));

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.65](https://github.com/planetaryescape/mxr/compare/v0.6.64...v0.6.65) (2026-10-11)
+
+
+### Features
+
+* preserve draft revisions across clients ([#341](https://github.com/planetaryescape/mxr/issues/341)) ([a631583](https://github.com/planetaryescape/mxr/commit/a631583c8fd8438abc6892fdf10fb49dc09e3748))
+
 ## [0.6.64](https://github.com/planetaryescape/mxr/compare/v0.6.63...v0.6.64) (2026-10-11)
 
 

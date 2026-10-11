@@ -57,6 +57,36 @@ impl Spool {
             .expect("fake spool mutex should not be poisoned")
     }
 
+    /// Durable fake acceptance evidence, containing identifiers only.
+    pub(crate) fn record_acceptance(&self, message_id: &str) -> Result<(), MxrError> {
+        use std::io::Write;
+        let path = self
+            .dir
+            .join(format!("accepted-{}.json", uuid::Uuid::now_v7()));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        file.write_all(
+            serde_json::json!({"message_id": message_id})
+                .to_string()
+                .as_bytes(),
+        )
+        .map_err(|e| MxrError::Provider(e.to_string()))?;
+        file.sync_all()
+            .map_err(|e| MxrError::Provider(e.to_string()))
+    }
+    pub(crate) fn send_not_accepted(&self) -> bool {
+        self.dir.join("send-reject").exists()
+    }
+    pub(crate) fn send_uncertain(&self) -> bool {
+        self.dir.join("send-uncertain").exists()
+    }
+    pub(crate) fn pause_after_acceptance(&self) -> bool {
+        self.dir.join("send-pause-after-accept").exists()
+    }
+
     /// The error every sync fails with while `fail` exists.
     pub(crate) fn failure(&self) -> Option<MxrError> {
         let text = std::fs::read_to_string(self.dir.join(FAIL_FILE)).ok()?;

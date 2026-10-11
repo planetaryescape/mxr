@@ -607,6 +607,10 @@ fn classify_request_pins_previously_broken_reads() {
 fn classify_request_keeps_send_and_destructive_gates() {
     // Sends require the send capability.
     let send = Request::SendStoredDraft {
+        send_identity: Some(mxr_core::SendIdentity::for_revision(
+            &mxr_core::DraftId::new(),
+            1,
+        )),
         draft_id: mxr_core::DraftId::new(),
         override_safety_token: None,
     };
@@ -716,6 +720,7 @@ mod reading;
 mod record_subscriptions;
 mod records;
 mod routing_and_search;
+mod send_outcomes;
 mod stars;
 mod thread_gists;
 mod todo;

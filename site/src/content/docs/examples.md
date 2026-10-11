@@ -127,7 +127,10 @@ Send later, set send-and-remind, and unsend within the window.
 
 ```bash
 mxr time "tomorrow 9am"                          # see when a phrase resolves
-mxr send DRAFT_ID --at "tomorrow 9am"
+mxr send DRAFT_ID --dry-run --format json          # review the saved draft
+mxr send DRAFT_ID --at "tomorrow 9am" \
+  --expected-revision REVISION_FROM_PREVIEW
+mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json
 mxr reply MESSAGE_ID --body "On it." --yes --remind-after "in 5d"
 mxr unsend DRAFT_ID
 ```

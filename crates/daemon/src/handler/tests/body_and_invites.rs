@@ -1201,6 +1201,7 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
             id: 400,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ScheduleSend {
+                expected_revision: Some(1),
                 draft_id: draft.id.clone(),
                 send_at: chrono::Utc::now() - chrono::Duration::hours(1),
             }),
@@ -1306,6 +1307,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
             id: 410,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ScheduleSend {
+                expected_revision: Some(1),
                 draft_id: draft.id.clone(),
                 send_at: chrono::Utc::now() - chrono::Duration::hours(1),
             }),
@@ -1415,6 +1417,7 @@ async fn dispatch_list_scheduled_sends_lists_pending_across_accounts_and_scopes(
                 id: 421,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ScheduleSend {
+                    expected_revision: Some(1),
                     draft_id: draft_id.clone(),
                     send_at,
                 }),
@@ -1630,6 +1633,7 @@ fn send_invite_reply_msg(draft: mxr_core::types::Draft) -> IpcMessage {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
+            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
             draft,
             override_safety_token: None,
         }),

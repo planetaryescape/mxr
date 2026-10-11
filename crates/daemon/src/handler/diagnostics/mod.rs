@@ -1227,6 +1227,7 @@ pub(crate) async fn get_status_within_budget(
         };
     Ok(ResponseData::Status {
         draft_revision_supported: true,
+        send_outcome_supported: true,
         uptime_secs: state.uptime_secs(),
         accounts,
         total_messages,

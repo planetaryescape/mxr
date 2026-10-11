@@ -47,8 +47,12 @@ mxr send DRAFT_ID --check --format json
 # Useful in scripts and CI: pipe a body in and assert the JSON.
 mxr compose --to alice@example.com --body "see attached" --check
 
-# Send a draft that hit a Blocker, with the token printed by --check.
-mxr send DRAFT_ID --override-safety 01HXYZ...
+# Preview a saved draft and retain the revision and operation ID it shows.
+mxr send DRAFT_ID --dry-run --format json
+
+# Send a draft that hit a Blocker with the token printed by --check.
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK
 
 # Skip the LLM-backed answer-coverage check (e.g. rate-limited model).
 mxr send DRAFT_ID --check --no-llm
@@ -94,7 +98,9 @@ mxr send DRAFT_ID --check
 #                  configured sensitive-domain list
 #           Override token: 01HXYZ-...
 
-mxr send DRAFT_ID --override-safety 01HXYZ-...
+mxr send DRAFT_ID --dry-run --format json
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK
 ```
 
 ## Missing attachment
@@ -251,13 +257,17 @@ temperature = 0.0
 ## The override flow
 
 When a check fires a Blocker, mxr mints a single-use override token. You
-do **not** need a separate `--check` run to get one: a plain `mxr send`
-of a blocked draft is rejected with the token and the exact resend
-command right in the error, e.g.
+do **not** need a separate `--check` run to get one: a saved-draft send
+with its required reviewed identity can be refused with the token and
+the preview-bound arguments needed for a reviewed send, e.g.
 
 ```text
-draft safety blocked send: PEM private key detected in draft — to send anyway after review, resend with --override-safety 01HXYZ...
+draft safety blocked send: PEM private key detected in draft — to send anyway after review, use the preview's --expected-revision and --operation-id, then --override-safety {token}
 ```
+
+Replace `{token}` with the token printed by the refusal. Use the revision
+and operation ID from the saved-draft preview; do not reuse a token after
+editing the draft or retry an operation whose outcome is unknown.
 
 `--check` still mints and stamps the token onto each blocker issue when
 you want to inspect the report first (or in the TUI/web pre-send modal).
@@ -272,22 +282,30 @@ The token has these properties:
   recorded in `draft_safety_runs` / `draft_safety_overrides`.
 
 ```bash
-# Step 1: check, see the blocker, copy the token.
+# Step 1: preview the saved draft and retain its revision and operation ID.
+mxr send DRAFT_ID --dry-run --format json
+# Step 2: inspect the blocker and copy its token.
 mxr send DRAFT_ID --check
 # [BLOCK] PiiSecret: PEM private key detected in draft
 #         Override token: OVERRIDE_TOKEN_FROM_CHECK
 
-# Step 2: send with the token. mxr verifies it covers every active
+# Step 3: send with the preview identity and token. mxr verifies it covers every active
 # blocker before any provider call.
-mxr send DRAFT_ID --override-safety OVERRIDE_TOKEN_FROM_CHECK
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW \
+  --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
 
 ```bash
-# JSON workflow: parse the token, store it briefly, send.
+# JSON workflow: preview first; retain its revision and operation ID.
+mxr send "$DRAFT_ID" --dry-run --format json
+# Set these from the preview output before running the send below.
+read -r REVIEWED_REVISION OPERATION_ID
 TOKEN=$(mxr send "$DRAFT_ID" --check --format json | \
   jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
 [ -z "$TOKEN" ] && exit 0  # nothing to override; safe to send
-mxr send "$DRAFT_ID" --override-safety "$TOKEN"
+mxr send "$DRAFT_ID" --expected-revision "$REVIEWED_REVISION" \
+  --operation-id "$OPERATION_ID" --override-safety "$TOKEN"
 ```
 
 ## Scheduled sends
@@ -306,8 +324,11 @@ Recover with:
 
 ```bash
 mxr drafts --format json | jq -r '.[] | select(.status == "draft") | .id'
+mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --check       # see the blocker
-mxr send DRAFT_ID --override-safety 01HXYZ-...  # if you accept it
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW \
+  --override-safety TOKEN_FROM_CHECK
 ```
 
 ## TUI flow
@@ -337,10 +358,13 @@ verdict is BLOCKED and no override is in scope.
 ## Agent prompts that work
 
 ```text
-"Before sending DRAFT_ID, run `mxr send DRAFT_ID --check --format json`
-and show me any Blocker issues. If there are none, send it. If there
-is a Blocker for missing attachment, stop and ask me what file to attach.
-For other Blockers, paste the override token and ask if I want to use it."
+"Before sending DRAFT_ID, preview it with `mxr send DRAFT_ID --dry-run
+--format json` and retain the revision and operation ID. Run
+`mxr send DRAFT_ID --check --format json` and show me any Blocker issues.
+If there are none, send with the retained `--expected-revision` and
+`--operation-id`. If there is a Blocker for missing attachment, stop and ask
+me what file to attach. For other Blockers, show me the token and ask whether
+I want to use it with that same reviewed identity."
 ```
 
 ```text

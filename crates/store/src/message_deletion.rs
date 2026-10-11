@@ -101,6 +101,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::KeptNoText("ids a sent draft became"),
     ),
     (
+        "draft_send_outcomes",
+        MessageDeletionRule::KeptNoText(
+            "send identity, command hash and outcome ids; retained to prevent resends after deletion",
+        ),
+    ),
+    (
         "todo_runs",
         MessageDeletionRule::KeptNoText(
             "the first run's newest-first position: an id and a date, never text",

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.58"
+    "version": "0.6.70"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -294,6 +294,418 @@
         }
       }
     },
+    "/api/v1/mail/archive-operations/preview": {
+      "post": {
+        "tags": [],
+        "operationId": "archive_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchivePreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable Archive review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed Archive request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Identity, workspace or selection conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported daemon or policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Review persistence failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "IPC response unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Selected daemon unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "IPC response timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/archive-operations/query": {
+      "post": {
+        "tags": [],
+        "operationId": "archive_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Side-effect-free retained receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed Archive request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Identity or workspace conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported daemon or policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Receipt persistence unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "IPC response unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Selected daemon unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "IPC response timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/archive-operations/submit": {
+      "post": {
+        "tags": [],
+        "operationId": "archive_submit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveSubmitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Durable acceptance or retained per-item outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed Archive request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Identity, workspace or review conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported daemon or policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Acceptance persistence failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Reply lost; query retained identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Selected daemon unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Reply timed out; query retained identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/archive-operations/workspace": {
+      "get": {
+        "tags": [],
+        "operationId": "archive_workspace",
+        "responses": {
+          "200": {
+            "description": "Selected workspace and recovery generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed Archive request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Receipt persistence unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "IPC response unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Selected daemon unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "IPC response timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/arrivals": {
       "get": {
         "tags": [],
@@ -547,14 +959,47 @@
     "/api/v1/mail/compose/session": {
       "post": {
         "tags": [],
-        "summary": "Start compose session",
         "operationId": "compose_session_start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -592,14 +1037,47 @@
     "/api/v1/mail/compose/session/discard": {
       "post": {
         "tags": [],
-        "summary": "Discard compose session",
         "operationId": "compose_session_discard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardedComposeResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -639,14 +1117,47 @@
     "/api/v1/mail/compose/session/refresh": {
       "post": {
         "tags": [],
-        "summary": "Refresh compose session",
         "operationId": "compose_session_refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -656,9 +1167,26 @@
         "tags": [],
         "summary": "Restore compose session",
         "operationId": "compose_session_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -674,12 +1202,42 @@
         "tags": [],
         "summary": "Run the pre-send safety report for a compose session",
         "operationId": "compose_session_safety_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Compose safety report"
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -687,14 +1245,100 @@
     "/api/v1/mail/compose/session/save": {
       "post": {
         "tags": [],
-        "summary": "Save compose session",
         "operationId": "compose_session_save",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -702,14 +1346,100 @@
     "/api/v1/mail/compose/session/schedule": {
       "post": {
         "tags": [],
-        "summary": "Store a compose session as a local draft and schedule it",
         "operationId": "compose_session_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledComposeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -719,12 +1449,42 @@
         "tags": [],
         "summary": "Send compose session",
         "operationId": "compose_session_send",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Sent compose session"
+          },
+          "400": {
+            "description": "Local recovery requires explicit canonical reopen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -732,14 +1492,90 @@
     "/api/v1/mail/compose/session/update": {
       "post": {
         "tags": [],
-        "summary": "Update compose session",
         "operationId": "compose_session_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Saved draft session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or unsupported daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Daemon operation failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bridge IPC failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Daemon connection failed; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Daemon request timed out; may carry an accepted draft revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1026,14 +1862,47 @@
     "/api/v1/mail/drafts/save-local": {
       "post": {
         "tags": [],
-        "summary": "Persist draft locally (SaveDraft)",
         "operationId": "mail_drafts_save_local",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Canonical saved draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid draft or legacy daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1056,14 +1925,49 @@
     "/api/v1/mail/drafts/{draft_id}/send-stored": {
       "post": {
         "tags": [],
-        "summary": "Send stored draft by id",
         "operationId": "mail_drafts_send_stored",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "query",
+            "description": "Retained reviewed send operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "Reviewed draft revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Send receipt or outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing or invalid bridge token"
+            "description": "Missing bridge token"
           }
         }
       }
@@ -1071,14 +1975,57 @@
     "/api/v1/mail/drafts/{draft_id}/stored": {
       "delete": {
         "tags": [],
-        "summary": "Delete stored draft",
         "operationId": "mail_drafts_delete_stored",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "Revision from the deletion preview",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Draft deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Legacy daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3311,6 +4258,46 @@
         }
       }
     },
+    "/api/v1/mail/send-outcomes/{operation_id}": {
+      "get": {
+        "tags": [],
+        "operationId": "mail_send_outcome",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Owning account ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable send outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/send-time": {
       "get": {
         "tags": [],
@@ -4827,6 +5814,21 @@
         }
       }
     },
+    "/api/v1/platform/rules/treatment": {
+      "post": {
+        "tags": [],
+        "summary": "Preview or apply account-scoped sorting",
+        "operationId": "rule_treatment",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/rules/upsert": {
       "post": {
         "tags": [],
@@ -5085,6 +6087,22 @@
   },
   "components": {
     "schemas": {
+      "AcceptedComposeDraft": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "AccountAddress": {
         "type": "object",
         "description": "One owned email address per account. Direction inference compares\n`messages.from_email` against this set to decide inbound vs outbound.",
@@ -6296,6 +7314,164 @@
           }
         }
       },
+      "ArchiveErrorResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {},
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ArchiveIdentityData": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "caller_id",
+          "workspace"
+        ],
+        "properties": {
+          "caller_id": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/ArchiveWorkspaceData"
+          }
+        }
+      },
+      "ArchiveItemData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "provider_id",
+          "was_inbox",
+          "prior_flags_bits",
+          "prior_label_provider_ids",
+          "state"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "prior_flags_bits": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "prior_label_provider_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ArchiveItemStateData"
+          },
+          "was_inbox": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ArchiveItemStateData": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "unknown",
+          "provider_succeeded",
+          "completed",
+          "not_executed"
+        ]
+      },
+      "ArchiveOperationData": {
+        "type": "object",
+        "required": [
+          "identity",
+          "review_id",
+          "mutation_id",
+          "accepted",
+          "started_at",
+          "items"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/ArchiveIdentityData"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArchiveItemData"
+            }
+          },
+          "mutation_id": {
+            "type": "string"
+          },
+          "review_id": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "started_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "undo_available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ArchivePreviewBody": {
+        "type": "object",
+        "required": [
+          "identity",
+          "mutation"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/ArchiveIdentityData"
+          },
+          "mutation": {
+            "$ref": "#/components/schemas/MutationCommand"
+          }
+        }
+      },
+      "ArchiveQueryBody": {
+        "type": "object",
+        "required": [
+          "identity"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/ArchiveIdentityData"
+          }
+        }
+      },
       "ArchiveRetrievalData": {
         "type": "object",
         "required": [
@@ -6314,6 +7490,40 @@
           },
           "requested_mode": {
             "$ref": "#/components/schemas/ArchiveAskMode"
+          }
+        }
+      },
+      "ArchiveSubmitBody": {
+        "type": "object",
+        "required": [
+          "identity",
+          "review_id",
+          "mutation"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/ArchiveIdentityData"
+          },
+          "mutation": {
+            "$ref": "#/components/schemas/MutationCommand"
+          },
+          "review_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ArchiveWorkspaceData": {
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "recovery_generation"
+        ],
+        "properties": {
+          "recovery_generation": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
           }
         }
       },
@@ -7376,6 +8586,386 @@
           "resolved",
           "expired"
         ]
+      },
+      "ComposeFrontmatter": {
+        "type": "object",
+        "description": "YAML frontmatter for compose files.",
+        "required": [
+          "to",
+          "subject",
+          "from"
+        ],
+        "properties": {
+          "attach": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bcc": {
+            "type": "string"
+          },
+          "cc": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "in-reply-to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "intent": {
+            "$ref": "#/components/schemas/DraftIntent"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread-id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread."
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeIssueView": {
+        "type": "object",
+        "required": [
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeSessionData": {
+        "type": "object",
+        "required": [
+          "draftPath",
+          "rawContent",
+          "frontmatter",
+          "bodyMarkdown",
+          "previewHtml",
+          "issues"
+        ],
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bodyMarkdown": {
+            "type": "string"
+          },
+          "cursorLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "draftId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "draftPath": {
+            "type": "string"
+          },
+          "editorCommand": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frontmatter": {
+            "$ref": "#/components/schemas/ComposeFrontmatter"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComposeIssueView"
+            }
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preservedRecoveryPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previewHtml": {
+            "type": "string"
+          },
+          "rawContent": {
+            "type": "string"
+          },
+          "recoverySourcePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Private recovery destination; automatic saves preserve it without canonical effects."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ComposeSessionKindRequest": {
+        "type": "string",
+        "enum": [
+          "new",
+          "reply",
+          "reply_all",
+          "forward",
+          "invite_reply"
+        ]
+      },
+      "ComposeSessionPathRequest": {
+        "type": "object",
+        "required": [
+          "draft_path"
+        ],
+        "properties": {
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ComposeSessionResponse": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/ComposeSessionData"
+          }
+        }
+      },
+      "ComposeSessionRestoreRequest": {
+        "type": "object",
+        "required": [
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeSessionScheduleRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id",
+          "send_at"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stored draft this session was restored from, if any. With it the\nschedule updates that draft in place; without it a new local draft is\nstored."
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ComposeSessionSendRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stored draft this session was restored from, when it was one — the\nsame id the client passed to `ComposeSessionRestoreRequest`. Acted on by\nthe save handler only: with it, saving updates that local draft in\nplace before any requested provider link/sync."
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "override_safety_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Token from a prior safety-check report authorizing a send despite\nblockers. Forwarded to `SendDraft`; ignored by save/check handlers."
+          },
+          "save_to_server": {
+            "type": "boolean",
+            "description": "Explicit provider-link request. Linked drafts already synchronize when\nupdated; this flag links a local-only draft to the provider."
+          }
+        }
+      },
+      "ComposeSessionStartRequest": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when `kind == InviteReply`. One of `accept`, `tentative`,\n`decline`. Ignored for other kinds."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ComposeSessionKindRequest"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ComposeSessionUpdateRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "from"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attach": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bcc": {
+            "type": "string"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cc": {
+            "type": "string"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "from": {
+            "type": "string"
+          },
+          "retry_recovery": {
+            "type": "boolean",
+            "description": "Explicit canonical persistence retry using a private recovery's observed revision."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
       },
       "ComposerData": {
         "type": "object",
@@ -8950,6 +10540,17 @@
           }
         }
       },
+      "DiscardedComposeResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "DoctorDataStats": {
         "type": "object",
         "required": [
@@ -9427,6 +11028,14 @@
                   }
                 ]
               },
+              "revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "Durable local content revision; absent only for unsaved or legacy drafts."
+              },
               "subject": {
                 "type": "string"
               },
@@ -9488,6 +11097,70 @@
           },
           "who_owes": {
             "type": "string"
+          }
+        }
+      },
+      "DraftConflictDetails": {
+        "type": "object",
+        "properties": {
+          "current_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DraftConflictResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "accepted_draft": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AcceptedComposeDraft"
+              }
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftConflictDetails"
+              }
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "recovery_session": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveredComposeSession"
+              }
+            ]
           }
         }
       },
@@ -9907,6 +11580,52 @@
           "warn",
           "blocked"
         ]
+      },
+      "DraftSendOutcome": {
+        "type": "object",
+        "description": "Durable evidence independent of a live draft or a local Sent message.",
+        "required": [
+          "identity",
+          "draft_id",
+          "account_id",
+          "state"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/SendIdentity"
+          },
+          "local_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            ]
+          },
+          "provider_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rfc2822_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/SendOutcomeState"
+          }
+        }
       },
       "DraftSourceData": {
         "type": "object",
@@ -10780,7 +12499,8 @@
           "person",
           "copied",
           "written_to",
-          "moved"
+          "moved",
+          "custom_rule"
         ]
       },
       "Label": {
@@ -16303,6 +18023,36 @@
           }
         }
       },
+      "RecoveredComposeSession": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "draft_id",
+          "attachment_paths"
+        ],
+        "properties": {
+          "attachment_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Confirmed recovery paths in submitted attachment order."
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -17268,6 +19018,31 @@
           },
           {
             "type": "object",
+            "description": "Preview or apply only the sorting action of a draft rule.",
+            "required": [
+              "form",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RuleTreatment"
+                ]
+              },
+              "form": {
+                "$ref": "#/components/schemas/RuleFormData"
+              },
+              "preview_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "cmd"
             ],
@@ -17343,6 +19118,16 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
               "action": {
                 "type": "string"
               },
@@ -18869,6 +20654,86 @@
               "cmd": {
                 "type": "string",
                 "enum": [
+                  "GetArchiveWorkspace"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewArchive"
+                ]
+              },
+              "identity": {
+                "$ref": "#/components/schemas/ArchiveIdentityData"
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity",
+              "review_id",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SubmitArchive"
+                ]
+              },
+              "identity": {
+                "$ref": "#/components/schemas/ArchiveIdentityData"
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              "review_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetArchiveOperation"
+                ]
+              },
+              "identity": {
+                "$ref": "#/components/schemas/ArchiveIdentityData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
                   "ListJobs"
                 ]
               }
@@ -19165,6 +21030,13 @@
               },
               "draft_id": {
                 "$ref": "#/components/schemas/DraftId"
+              },
+              "expected_revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
               },
               "send_at": {
                 "type": "string",
@@ -20205,6 +22077,38 @@
                   "string",
                   "null"
                 ]
+              },
+              "send_identity": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SendIdentity"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "operation_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetSendOutcome"
+                ]
+              },
+              "operation_id": {
+                "type": "string"
               }
             }
           },
@@ -20246,6 +22150,16 @@
                 "type": [
                   "string",
                   "null"
+                ]
+              },
+              "send_identity": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SendIdentity"
+                  }
                 ]
               }
             }
@@ -20721,6 +22635,13 @@
               },
               "draft_id": {
                 "$ref": "#/components/schemas/DraftId"
+              },
+              "expected_revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
               }
             }
           },
@@ -20797,7 +22718,7 @@
           },
           {
             "type": "object",
-            "description": "List drafts that look orphaned mid-send: status `'sending'` with\na stale `last_heartbeat_at` (or `status_updated_at` fallback)\nolder than 1h. Surfaces what the daemon-startup recovery loop\nwould also auto-reset.",
+            "description": "List drafts that look orphaned mid-send: status `'sending'` with\na stale `last_heartbeat_at` (or `status_updated_at` fallback)\nolder than 1h. Query their send outcome before taking any action;\nstartup preserves uncertain submissions.",
             "required": [
               "cmd"
             ],
@@ -20812,7 +22733,7 @@
           },
           {
             "type": "object",
-            "description": "Force-reset an orphaned `'sending'` draft back to `'draft'` so\nthe user can retry the send. Idempotent: already-`'draft'` rows\nreturn the no-op variant. `'sent'` rows refuse.",
+            "description": "Check an orphaned draft conservatively: uncertain or sent rows\nrefuse reset. Already-`'draft'` rows return the no-op variant.\nQuery the retained send outcome rather than resending blindly.",
             "required": [
               "draft_id",
               "cmd"
@@ -24551,6 +26472,42 @@
           {
             "type": "object",
             "required": [
+              "workspace",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ArchiveWorkspace"
+                ]
+              },
+              "workspace": {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "operation",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ArchiveOperation"
+                ]
+              },
+              "operation": {
+                "$ref": "#/components/schemas/ArchiveOperationData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "job",
               "kind"
             ],
@@ -24620,6 +26577,24 @@
               },
               "result": {
                 "$ref": "#/components/schemas/UnsubscribePurgeResultData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RuleTreatmentResult"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/RuleTreatmentPreviewData"
               }
             }
           },
@@ -25288,6 +27263,9 @@
                   "type": "string"
                 }
               },
+              "archive_recovery_supported": {
+                "type": "boolean"
+              },
               "daemon_build_id": {
                 "type": [
                   "string",
@@ -25311,6 +27289,9 @@
               "degraded": {
                 "type": "boolean",
                 "description": "The DB-backed part of this snapshot (`accounts`, `total_messages`,\n`sync_statuses`) timed out and carries no reading: those three\nfields are empty/zero because the daemon could not answer in time,\nnot because the store is empty or idle. Poll again rather than\nconcluding anything from them. The DB-free fields (versions,\n`daemon_pid`, `feature_health`) are always a real reading."
+              },
+              "draft_revision_supported": {
+                "type": "boolean"
               },
               "feature_health": {
                 "oneOf": [
@@ -25345,6 +27326,9 @@
                     "$ref": "#/components/schemas/SemanticRuntimeMetrics"
                   }
                 ]
+              },
+              "send_outcome_supported": {
+                "type": "boolean"
               },
               "sync_statuses": {
                 "type": "array",
@@ -25433,6 +27417,31 @@
               },
               "rfc2822_message_id": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Durable result of `Request::GetSendOutcome`.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SendOutcome"
+                ]
+              },
+              "outcome": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DraftSendOutcome"
+                  }
+                ]
               }
             }
           },
@@ -27414,6 +29423,16 @@
           "enabled"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId"
+              }
+            ]
+          },
           "action": {
             "type": "string"
           },
@@ -27435,6 +29454,114 @@
           "priority": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "RuleTreatmentMatchData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "from",
+          "subject",
+          "before",
+          "after",
+          "reason",
+          "blocked"
+        ],
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "treatment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuleTreatmentPreviewData": {
+        "type": "object",
+        "required": [
+          "applied",
+          "result"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RuleTreatmentSelectionData"
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuleTreatmentSelectionData": {
+        "type": "object",
+        "required": [
+          "matches",
+          "complete",
+          "scan_limit",
+          "unavailable",
+          "notice"
+        ],
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleTreatmentMatchData"
+            }
+          },
+          "notice": {
+            "type": "string"
+          },
+          "scan_limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unavailable": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -27471,6 +29598,28 @@
           },
           "updated_at": {
             "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SavedDraftResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -27530,6 +29679,33 @@
       "SavedSearchId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ScheduledComposeResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "draft_id",
+          "send_at",
+          "cleanup_warnings"
+        ],
+        "properties": {
+          "cleanup_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       },
       "ScheduledSendData": {
         "type": "object",
@@ -28085,6 +30261,31 @@
             "$ref": "#/components/schemas/SemanticRuntimeMetrics"
           }
         }
+      },
+      "SendIdentity": {
+        "type": "object",
+        "description": "Identity retained by a client before submitting a reviewed send.",
+        "required": [
+          "operation_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SendOutcomeState": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "accepted",
+          "not_accepted"
+        ]
       },
       "SendTimeConfidenceData": {
         "type": "string",

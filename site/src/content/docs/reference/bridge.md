@@ -11,12 +11,9 @@ scripts all talk to the same daemon through one stable surface.
 The bridge serves an OpenAPI 3.1 spec at
 `http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable
 in `[bridge]`). The spec is authenticated like the rest of the bridge API. It
-covers most routes and the shared protocol types. Some live routes are missing
-from it, and no route carries its parameters or response body, so a generated
-client gets the path list and the schemas while payload shapes stay untyped.
-That is what the web app runs on: `openapi-typescript` over the spec, then
-`openapi-fetch` on top. Use the route tables below for request and response
-shapes.
+covers most routes and the shared protocol types; a few live routes are still
+missing. The web app uses `openapi-typescript` over the spec, then
+`openapi-fetch` on top. Use the route tables below for operational detail.
 
 :::tip[curl-friendly auth]
 Get the auth token from the active profile config directory's
@@ -160,6 +157,30 @@ clients can reconcile optimistically.
 | `POST` | `/mail/deliveries/{id}/resolve` | Mark a delivery delivered/done |
 | `POST` | `/mail/deliveries/{id}/dismiss` | Hide a false positive |
 | `POST` | `/mail/messages/{message_id}/flags` | Set message flags (bitmask in body) |
+
+### Retained mailbox Archive operations
+
+These routes implement the provider Inbox action, not filing a record in
+[Archive](/guides/archive/) or the desk's **Done** action. Get the workspace
+identity first. Preview retains the reviewed selection; submit must reuse that
+identity, review ID and mutation. Query is read-only. After a timeout, query
+the same identity; submitting it again resumes only `pending` items and never
+repeats an `unknown` provider effect.
+
+| Method | Path | Purpose and JSON body |
+|--------|------|-----------------------|
+| `GET` | `/mail/archive-operations/workspace` | Read `workspace_id` and `recovery_generation` |
+| `POST` | `/mail/archive-operations/preview` | `{identity, mutation}`; retain an immutable review |
+| `POST` | `/mail/archive-operations/submit` | `{identity, review_id, mutation}`; submit that retained review |
+| `POST` | `/mail/archive-operations/query` | `{identity}`; read the retained per-message outcomes |
+
+`identity` contains `operation_id`, `caller_id` and a `workspace` object with
+the two values returned by the workspace route. Before submitting, durably
+retain the complete preview response, including its identity, review ID and
+selection. The server retains the review, but cannot recover the operation ID
+for a client that loses its preview response. Use the retained identity for queries, and include its review ID when
+submitting. Request and response types are defined by the generated OpenAPI
+spec.
 
 ```bash
 curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \

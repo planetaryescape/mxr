@@ -350,6 +350,14 @@ All accept a positional `<MESSAGE_ID>...`, piped IDs on stdin, OR `--search <QUE
 | `mxr move "<label>" <id>` | Move to label/folder |
 | `mxr unsubscribe <id>` | Use List-Unsubscribe header |
 
+### `mxr archive-operation [OPERATION_ID]`
+
+After a lost Archive response, query the retained operation ID before taking
+another action. Submitting the same ID resumes only `pending` items; an
+`unknown` provider effect is never repeated. With no ID, the command lists
+retained operations. Output formats are table, json, jsonl, and ids; CSV is
+rejected. See the [Archive recovery recipe](https://mxr.sh/guides/recipes/#recover-a-mailbox-archive-action).
+
 ### `mxr open [MESSAGE_ID] [OPTIONS]`
 Open in browser (provider web UI).
 ```

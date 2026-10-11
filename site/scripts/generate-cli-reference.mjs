@@ -44,6 +44,14 @@ const COMMAND_EXAMPLES = {
     use: 'Clear mail from the inbox without deleting it. Always dry-run bulk queries first.',
     examples: ["mxr archive MESSAGE_ID", "mxr archive --search 'label:newsletters older_than:30d' --dry-run"],
   },
+  'archive-operation': {
+    use: 'Query a retained mailbox Archive operation or resume its undispatched items with the same operation ID. Unknown effects are never repeated. Supported formats are table, json, jsonl, and ids; CSV is rejected.',
+    examples: [
+      "mxr archive-operation --format json",
+      "mxr archive-operation OPERATION_ID --format json",
+      "mxr archive-operation OPERATION_ID --submit --format json",
+    ],
+  },
   'read-archive': {
     use: 'Mark something done in one step: read it and remove it from the inbox.',
     examples: ["mxr read-archive MESSAGE_ID", "mxr read-archive --search 'from:no-reply older_than:7d' --dry-run"],

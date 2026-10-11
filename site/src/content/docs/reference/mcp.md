@@ -79,6 +79,9 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_copy_draft_to_provider`
 - `mxr_mutation_preview`
 - `mxr_mutate`
+- `mxr_archive_preview`
+- `mxr_archive_submit`
+- `mxr_archive_outcome`
 - `mxr_send_draft`
 - `mxr_reading_edition`
 - `mxr_reading_item`
@@ -96,6 +99,14 @@ calling a model; `generate = true` queues the missing ones from people.
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's
 bundle, would archive. It is read-only: the sweep itself happens in
 `mxr sweep` or the apps.
+`mxr_archive_preview` retains a reviewed mailbox Archive selection without
+dispatching it. `mxr_archive_submit` requires `confirm = true` and the retained
+`operation_id`; it resumes only undispatched items under that identity.
+`mxr_archive_outcome` queries the retained per-message receipt without
+dispatching. After a lost response, query the same operation; an `unknown`
+effect is never repeated. These tools act on provider Inbox mail, not Archive
+records or desk **Done**.
+
 `mxr_records` lists [Archive](/guides/archive/)'s records with month totals,
 facets and what is coming up (`kinds`, `issuer`, `year`, `has_pdf`,
 `checked`, `limit`, `offset`); every field carries its source and whether it

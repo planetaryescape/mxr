@@ -169,6 +169,34 @@ mxr search 'from:billing@example.com' --format ids \
 
 For mxr-on-mxr bulk actions, prefer piping IDs directly into the mutation. Use GNU `parallel` only when you fan out non-mxr work.
 
+### Recover a mailbox Archive action
+
+After a lost response from `mxr archive`, query its retained operation before
+acting again. This is the provider Inbox action, not filing an Archive record
+or using the desk's **Done** action.
+
+```bash
+mxr archive-operation --format json
+mxr archive-operation OPERATION_ID --format json
+mxr archive-operation OPERATION_ID --submit --format json
+```
+
+Use the operation ID from the original retained review. The query is
+read-only; submitting the same ID resumes only `pending` messages. `unknown`
+means mxr cannot prove whether the provider completed the action; durable
+intent can be recorded before the provider call starts. It is never
+resubmitted. Do not create a second operation while the first is unresolved;
+it could dispatch the message again. The command supports `table`, `json`,
+`jsonl`, and `ids` output; CSV is rejected.
+
+The recovery proof covers a daemon process crash and restart, not an operating
+system crash or power loss. The store uses SQLite WAL with
+`synchronous=NORMAL`; SQLite documents that a committed transaction in this
+mode may roll back after those failures
+([synchronous pragma](https://www.sqlite.org/pragma.html#pragma_synchronous)).
+Treat effect receipts as uncertain across that boundary until receipt-specific
+synchronization is evaluated.
+
 ### Dry-run before committing
 
 Always preview when piping into mutations:

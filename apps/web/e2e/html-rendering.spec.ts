@@ -13,7 +13,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     thread_id: "thread-html",
     provider_id: "provider-html",
     sender: "Security Smoke",
-    sender_detail: "security@example.com",
+    sender_detail: "Security@Example.COM",
     subject: "sandbox smoke",
     snippet: "visible body",
     date: "2026-05-11T00:00:00Z",
@@ -60,7 +60,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
           {
             message_id: "msg-html",
             text_plain: "plain fallback",
-            text_html: `<script>window.parent.PWNED=1</script><p>visible body</p><p id="white-panel" style="background-color:#fff;color:#777;font-size:12px">fine print <a href="https://example.com" style="text-decoration:none;color:#777">visible link</a></p><img src="https://cdn.example.com/newsletter.png" width="640" height="360" alt="newsletter image"><img src="https://track.customer.io/open.png" width="640" height="360" alt="tracking pixel">`,
+            text_html: `<script>window.parent.PWNED=1</script><p>visible body</p><p id="white-panel" style="background-color:#fff;color:#777;font-size:12px">fine print <a href="https://example.com" style="text-decoration:none;color:#777">visible link</a></p><div style="color:#111"><div id="inherited-callout" style="background:#e8f0fe">Important condition</div></div><div id="modern-white" style="background-color:rgb(255 255 255)">Modern white</div><img src="https://cdn.example.com/newsletter.png" width="640" height="360" alt="newsletter image"><img src="https://track.customer.io/open.png" width="640" height="360" alt="tracking pixel">`,
             reader_text: "reader fallback",
             attachments: [],
           },
@@ -88,6 +88,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     "background-color",
     "rgb(255, 255, 255)",
   );
+  await expect(body.locator("#modern-white")).toHaveCSS("background-color", "rgb(241, 238, 233)");
   await expect(body.getByRole("link", { name: "visible link" })).toHaveCSS(
     "text-decoration-line",
     "underline",
@@ -107,6 +108,83 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await expect(
     reader.locator("iframe[sandbox]").first().contentFrame().getByAltText("newsletter image"),
   ).toHaveAttribute("src", "https://cdn.example.com/newsletter.png");
+
+  await reader.getByRole("button", { name: "Email appearance: auto" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark for this message" }).click();
+  const callout = frame.contentFrame().locator("#inherited-callout");
+  await expect(callout).toBeVisible();
+  const contrast = await frame.evaluate((element) => {
+    const doc = (element as HTMLIFrameElement).contentDocument;
+    if (!doc) throw new Error("email frame is not readable");
+    const calloutNode = doc.querySelector("#inherited-callout");
+    if (!(calloutNode instanceof HTMLElement)) throw new Error("callout not found");
+    const foreground = getComputedStyle(calloutNode).color;
+    const background = getComputedStyle(doc.body).backgroundColor;
+    const channels = (color: string): [number, number, number] | null => {
+      const values = color
+        .match(/\d+(?:\.\d+)?/g)
+        ?.slice(0, 3)
+        .map(Number);
+      if (!values || values.length < 3 || values.some((value) => !Number.isFinite(value))) {
+        return null;
+      }
+      return [values[0]!, values[1]!, values[2]!];
+    };
+    const fg = channels(foreground);
+    const bg = channels(background);
+    if (!fg || !bg)
+      throw new Error(`could not read computed colors: ${foreground} / ${background}`);
+    const luminance = ([red, green, blue]: [number, number, number]) => {
+      const linear = [red, green, blue].map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+    };
+    const foregroundLuminance = luminance(fg);
+    const backgroundLuminance = luminance(bg);
+    const light = Math.max(foregroundLuminance, backgroundLuminance);
+    const dark = Math.min(foregroundLuminance, backgroundLuminance);
+    return (light + 0.05) / (dark + 0.05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+  await test.info().attach("explicit-dark-inherited-callout", {
+    body: await frame.screenshot(),
+    contentType: "image/png",
+  });
+
+  await reader.getByRole("button", { name: "Email appearance: dark" }).click();
+  await page.getByRole("menuitem", { name: "Always show Original" }).click();
+  const storedSenders = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("mxr.uiPrefs") ?? "{}") as {
+      state?: { emailHtmlSenderOverrides?: unknown };
+    };
+    return saved.state?.emailHtmlSenderOverrides;
+  });
+  expect(storedSenders).toEqual([{ sender: "security@example.com", theme: "original" }]);
+
+  await page.reload();
+  await page.getByRole("option", { name: /sandbox smoke/ }).click();
+  const reloadedReader = page.getByRole("article", { name: "Conversation: sandbox smoke" });
+  const reloadedFrame = reloadedReader.locator("iframe[sandbox]").first();
+  await expect(
+    reloadedReader.getByRole("button", { name: "Email appearance: original" }),
+  ).toBeVisible();
+  await expect(reloadedFrame.contentFrame().locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  await reloadedReader.getByRole("button", { name: "Email appearance: original" }).click();
+  await page.getByRole("menuitem", { name: "Reset sender preference" }).click();
+  await expect(
+    reloadedReader.getByRole("button", { name: "Email appearance: auto" }),
+  ).toBeVisible();
+  const reloadedBody = reloadedFrame.contentFrame().locator("body");
+  await expect(reloadedBody).toHaveCSS("background-color", "rgb(241, 238, 233)");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(reloadedBody).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(reloadedBody).toHaveCSS("background-color", "rgb(241, 238, 233)");
 
   // The frame sizes to its content, not to a fixed default.
   await expect

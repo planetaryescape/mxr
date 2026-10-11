@@ -37,9 +37,43 @@ interface SanitizeOpts {
   stripDarkTextColors?: boolean;
 }
 
+export type EmailHtmlCanvas = "dark" | "paper" | "original";
+export type EmailHtmlPreference = "auto" | "dark" | "original";
+
 export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
+  return sanitizeHtmlWithDesign(html, opts).html;
+}
+
+export function prepareEmailHtml(
+  html: string,
+  options: { allowRemoteImages: boolean; preference: EmailHtmlPreference; darkScheme: boolean },
+): { html: string; canvas: EmailHtmlCanvas; designed: boolean } {
+  const sanitized = sanitizeHtmlWithDesign(html, { allowRemoteImages: options.allowRemoteImages });
+  const canvas: EmailHtmlCanvas =
+    options.preference === "original"
+      ? "original"
+      : options.preference === "dark"
+        ? "dark"
+        : !options.darkScheme
+          ? "original"
+          : sanitized.designed
+            ? "paper"
+            : "dark";
+  return { html: styleForCanvas(sanitized.html, canvas), canvas, designed: sanitized.designed };
+}
+
+function sanitizeHtmlWithDesign(
+  html: string,
+  opts: SanitizeOpts = {},
+): { html: string; designed: boolean } {
   const dom = DOMPurify(window);
-  dom.addHook("afterSanitizeAttributes", (node: Element) => {
+  let designed = false;
+  const beforeSanitizeAttributes = (node: Element) => {
+    // Legacy color attributes are deliberately not added to the allowlist;
+    // observe their presence only to choose a sender-preserving canvas.
+    designed ||= typeof node.hasAttribute === "function" && node.hasAttribute("bgcolor");
+  };
+  const hook = (node: Element) => {
     if (node.tagName === "A") {
       node.setAttribute("rel", "noopener noreferrer");
       node.setAttribute("target", "_blank");
@@ -52,6 +86,7 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
         node.removeAttribute("style");
       }
     }
+    designed ||= hasDesignSignal(node);
     if (node.tagName === "IMG" && isTrackerImage(node)) {
       node.remove();
       return;
@@ -71,101 +106,185 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
       if (alt) note.setAttribute("title", alt);
       node.replaceWith(note);
     }
-  });
-  return dom.sanitize(html, {
-    ALLOWED_TAGS: [
-      "a",
-      "abbr",
-      "address",
-      "article",
-      "aside",
-      "b",
-      "blockquote",
-      "br",
-      "caption",
-      "cite",
-      "code",
-      "col",
-      "colgroup",
-      "dd",
-      "del",
-      "details",
-      "dfn",
-      "div",
-      "dl",
-      "dt",
-      "em",
-      "figcaption",
-      "figure",
-      "footer",
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "header",
-      "hr",
-      "i",
-      "img",
-      "ins",
-      "kbd",
-      "li",
-      "main",
-      "mark",
-      "nav",
-      "ol",
-      "p",
-      "pre",
-      "q",
-      "s",
-      "samp",
-      "section",
-      "small",
-      "span",
-      "strong",
-      "sub",
-      "summary",
-      "sup",
-      "table",
-      "tbody",
-      "td",
-      "tfoot",
-      "th",
-      "thead",
-      "time",
-      "tr",
-      "u",
-      "ul",
-      "var",
-      "wbr",
-    ],
-    ALLOWED_ATTR: [
-      "href",
-      "title",
-      "alt",
-      "src",
-      "width",
-      "height",
-      "rel",
-      "target",
-      "name",
-      "colspan",
-      "rowspan",
-      "scope",
-      "datetime",
-      "cite",
-      "lang",
-      "dir",
-      "id",
-      "class",
-      "style",
-    ],
-    ALLOW_DATA_ATTR: false,
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "link", "meta", "form"],
-    FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
-    ADD_URI_SAFE_ATTR: ["target"],
-  }) as unknown as string;
+  };
+  dom.addHook("beforeSanitizeAttributes", beforeSanitizeAttributes);
+  dom.addHook("afterSanitizeAttributes", hook);
+  let clean: string;
+  try {
+    clean = dom.sanitize(html, {
+      ALLOWED_TAGS: [
+        "a",
+        "abbr",
+        "address",
+        "article",
+        "aside",
+        "b",
+        "blockquote",
+        "br",
+        "caption",
+        "cite",
+        "code",
+        "col",
+        "colgroup",
+        "dd",
+        "del",
+        "details",
+        "dfn",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "i",
+        "img",
+        "ins",
+        "kbd",
+        "li",
+        "main",
+        "mark",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "q",
+        "s",
+        "samp",
+        "section",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "time",
+        "tr",
+        "u",
+        "ul",
+        "var",
+        "wbr",
+      ],
+      ALLOWED_ATTR: [
+        "href",
+        "title",
+        "alt",
+        "src",
+        "width",
+        "height",
+        "rel",
+        "target",
+        "name",
+        "colspan",
+        "rowspan",
+        "scope",
+        "datetime",
+        "cite",
+        "lang",
+        "dir",
+        "id",
+        "class",
+        "style",
+      ],
+      ALLOW_DATA_ATTR: false,
+      FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "link", "meta", "form"],
+      FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
+      ADD_URI_SAFE_ATTR: ["target"],
+    }) as unknown as string;
+  } finally {
+    dom.removeHook("beforeSanitizeAttributes");
+    dom.removeHook("afterSanitizeAttributes");
+  }
+  return { html: clean, designed };
+}
+
+function hasDesignSignal(node: Element): boolean {
+  if (node.tagName === "TABLE") {
+    const width = Number.parseInt(node.getAttribute("width") ?? "", 10);
+    if (Number.isFinite(width) && width >= 500 && width <= 700) return true;
+  }
+  if (node.tagName === "IMG") {
+    const width = Number.parseInt(node.getAttribute("width") ?? "", 10);
+    const height = Number.parseInt(node.getAttribute("height") ?? "", 10);
+    if ((Number.isFinite(width) && width >= 480) || (Number.isFinite(height) && height >= 240)) {
+      return true;
+    }
+  }
+  if (node.hasAttribute("bgcolor")) return true;
+  const style = node.getAttribute("style") ?? "";
+  if (/\bcolor\s*:/i.test(style)) return true;
+  const background = readInlineBackground(node);
+  return background !== null && !isTransparent(background);
+}
+
+function readInlineBackground(node: Element): string | null {
+  const style = node.getAttribute("style");
+  if (!style) return null;
+  const declaration = style
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => /^(background|background-color)\s*:/i.test(part));
+  if (!declaration) return null;
+  return declaration
+    .slice(declaration.indexOf(":") + 1)
+    .replace(/!important/gi, "")
+    .trim();
+}
+
+function styleForCanvas(html: string, canvas: EmailHtmlCanvas): string {
+  if (canvas === "original") return html;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  for (const element of document.body.querySelectorAll<HTMLElement>("[style], [bgcolor]")) {
+    if (canvas === "dark") {
+      element.removeAttribute("bgcolor");
+      element.style.removeProperty("color");
+      element.style.removeProperty("background");
+      element.style.removeProperty("background-color");
+      if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
+      continue;
+    }
+    if (element.hasAttribute("bgcolor")) {
+      const background = element.getAttribute("bgcolor") ?? "";
+      if (isLightNeutralBackground(background)) {
+        if (canvas === "paper") element.setAttribute("bgcolor", "#f1eee9");
+        else element.removeAttribute("bgcolor");
+      }
+    }
+    const style = element.style;
+    if (style.backgroundColor && isLightNeutralBackground(style.backgroundColor)) {
+      if (canvas === "paper") style.backgroundColor = "#f1eee9";
+      else style.removeProperty("background-color");
+    }
+    if (
+      style.background &&
+      style.backgroundColor &&
+      isLightNeutralBackground(style.backgroundColor)
+    ) {
+      if (canvas === "paper") style.background = "#f1eee9";
+      else style.removeProperty("background");
+    }
+  }
+  return document.body.innerHTML;
+}
+
+function isTransparent(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "transparent" || normalized === "none") return true;
+  return readBrowserColor(normalized)?.alpha === 0;
 }
 
 const allowedStyleProperties = new Set([
@@ -222,7 +341,7 @@ function sanitizeInlineStyle(style: string, opts: SanitizeOpts = {}): string {
       if (
         opts.stripLightBackgrounds &&
         isBackgroundProperty(property) &&
-        isLightBackground(value)
+        isLightNeutralBackground(value)
       ) {
         return [];
       }
@@ -238,7 +357,7 @@ function isBackgroundProperty(property: string): boolean {
   return property === "background" || property === "background-color";
 }
 
-function isLightBackground(value: string): boolean {
+function isLightNeutralBackground(value: string): boolean {
   const normalized = value
     .toLowerCase()
     .replace(/!important/g, "")
@@ -247,57 +366,38 @@ function isLightBackground(value: string): boolean {
   if (/\b(white|whitesmoke|snow|ivory|seashell|linen|oldlace|floralwhite)\b/.test(normalized)) {
     return true;
   }
-  const hex = normalized.match(/#([0-9a-f]{3}|[0-9a-f]{6})\b/);
-  const hexValue = hex?.[1];
-  if (hexValue) return isLightNeutralRgb(hexToRgb(hexValue));
-  const rgb = normalized.match(/rgba?\(([^)]+)\)/);
-  const rgbValue = rgb?.[1];
-  if (rgbValue) return isLightNeutralRgb(rgbToTuple(rgbValue));
-  return false;
+  return isLightNeutralRgb(readBrowserColor(normalized)?.rgb);
 }
 
 function isDarkTextColor(value: string): boolean {
-  const normalized = value
-    .toLowerCase()
-    .replace(/!important/g, "")
-    .trim();
-  if (/\b(black|navy|midnightblue|darkslategray|darkslategrey)\b/.test(normalized)) return true;
-  const hex = normalized.match(/#([0-9a-f]{3}|[0-9a-f]{6})\b/);
-  const hexValue = hex?.[1];
-  if (hexValue) return isDarkRgb(hexToRgb(hexValue));
-  const rgb = normalized.match(/rgba?\(([^)]+)\)/);
-  const rgbValue = rgb?.[1];
-  if (rgbValue) return isDarkRgb(rgbToTuple(rgbValue));
-  const hsl = normalized.match(/hsla?\([^,]+,\s*[^,]+,\s*([0-9.]+)%/);
-  const lightness = hsl?.[1];
-  if (lightness) return Number.parseFloat(lightness) < 45;
-  return false;
+  const rgb = readBrowserColor(value)?.rgb;
+  return isDarkRgb(rgb);
 }
 
-function hexToRgb(hex: string): [number, number, number] | undefined {
-  const expanded =
-    hex.length === 3
-      ? hex
-          .split("")
-          .map((char) => `${char}${char}`)
-          .join("")
-      : hex;
-  const parsed = Number.parseInt(expanded, 16);
-  if (!Number.isFinite(parsed)) return undefined;
-  return [(parsed >> 16) & 255, (parsed >> 8) & 255, parsed & 255];
-}
-
-function rgbToTuple(value: string): [number, number, number] | undefined {
-  const channels = value
-    .split(",")
-    .slice(0, 3)
-    .map((part) => Number.parseFloat(part.trim()));
-  if (channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel))) {
+function readBrowserColor(
+  value: string,
+): { rgb: [number, number, number]; alpha: number } | undefined {
+  const probe = document.createElement("span");
+  probe.style.position = "fixed";
+  probe.style.visibility = "hidden";
+  probe.style.backgroundColor = value;
+  if (!probe.style.backgroundColor) return undefined;
+  document.body.append(probe);
+  const normalized = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  const channels = normalized.match(/^rgba?\(([^)]+)\)$/)?.[1];
+  if (!channels) return undefined;
+  const tuple = channels
+    .split(/[\s,/]+/)
+    .filter(Boolean)
+    .map((part) => Number.parseFloat(part));
+  if (tuple.length < 3 || tuple.slice(0, 3).some((channel) => !Number.isFinite(channel))) {
     return undefined;
   }
-  const [red, green, blue] = channels;
-  if (red === undefined || green === undefined || blue === undefined) return undefined;
-  return [red, green, blue];
+  return {
+    rgb: [tuple[0]!, tuple[1]!, tuple[2]!],
+    alpha: tuple[3] ?? 1,
+  };
 }
 
 function isLightNeutralRgb(rgb: [number, number, number] | undefined): boolean {

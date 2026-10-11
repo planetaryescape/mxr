@@ -1,4 +1,4 @@
-import { ChevronDown, MoreHorizontal, Reply, ReplyAll, Forward, Star } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Palette, Reply, ReplyAll, Forward, Star } from "lucide-react";
 import { forwardRef, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -17,7 +20,13 @@ import { formatLongDate, initials, parseAddress, plural } from "@/lib/format";
 import { avatarTone } from "@/components/avatarTone";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
-import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
+import {
+  emailHtmlThemeForSender,
+  useUiPrefs,
+  type ExplicitEmailHtmlTheme,
+  type EmailHtmlTheme,
+  type ReaderView,
+} from "@/state/uiPrefsStore";
 
 import { AttachmentActions } from "./AttachmentActions";
 import { splitHtmlQuote } from "./htmlQuote";
@@ -249,6 +258,12 @@ export function MessageContent({
   senderEmail: string | null;
 }) {
   const emailHtmlTheme = useUiPrefs((s) => s.emailHtmlTheme);
+  const emailHtmlSenderOverrides = useUiPrefs((s) => s.emailHtmlSenderOverrides);
+  const setEmailHtmlThemeForSender = useUiPrefs((s) => s.setEmailHtmlThemeForSender);
+  const forgetEmailHtmlThemeForSender = useUiPrefs((s) => s.forgetEmailHtmlThemeForSender);
+  const [messageThemeOverride, setMessageThemeOverride] = useState<ExplicitEmailHtmlTheme | null>(
+    null,
+  );
   const trustedSenders = useUiPrefs((s) => s.remoteImageSenders);
   const allowSender = useUiPrefs((s) => s.allowRemoteImagesFrom);
   const [showHtmlQuote, setShowHtmlQuote] = useState(false);
@@ -259,6 +274,8 @@ export function MessageContent({
   );
   const senderTrusted = senderEmail ? trustedSenders.includes(senderEmail.toLowerCase()) : false;
   const allowRemote = remoteAllowed || senderTrusted;
+  const senderTheme = emailHtmlThemeForSender(emailHtmlSenderOverrides, senderEmail);
+  const effectiveHtmlTheme = messageThemeOverride ?? senderTheme ?? emailHtmlTheme;
 
   if (!body) {
     return (
@@ -287,10 +304,29 @@ export function MessageContent({
     return (
       <div>
         {privacy}
+        {html ? (
+          <EmailAppearanceMenu
+            theme={effectiveHtmlTheme}
+            messageOverride={messageThemeOverride}
+            senderEmail={senderEmail}
+            hasSenderOverride={senderTheme !== undefined}
+            onChoose={(theme) => setMessageThemeOverride(theme === "auto" ? null : theme)}
+            onRemember={(theme) => {
+              if (!senderEmail) return;
+              setEmailHtmlThemeForSender(senderEmail, theme);
+              setMessageThemeOverride(null);
+            }}
+            onResetSender={() => {
+              if (!senderEmail) return;
+              forgetEmailHtmlThemeForSender(senderEmail);
+              setMessageThemeOverride(null);
+            }}
+          />
+        ) : null}
         <MessageBody
           html={rendered}
           allowRemoteImages={allowRemote}
-          theme={emailHtmlTheme}
+          theme={effectiveHtmlTheme}
           highlight={askQuote}
           highlightLink={highlightLink}
           onInteract={() => useMailboxPane.getState().setActivePane("reader")}
@@ -335,6 +371,75 @@ export function MessageContent({
         highlightLink={highlightLink}
       />
     </>
+  );
+}
+
+function EmailAppearanceMenu({
+  theme,
+  messageOverride,
+  senderEmail,
+  hasSenderOverride,
+  onChoose,
+  onRemember,
+  onResetSender,
+}: {
+  theme: EmailHtmlTheme;
+  messageOverride: ExplicitEmailHtmlTheme | null;
+  senderEmail: string | null;
+  hasSenderOverride: boolean;
+  onChoose: (theme: EmailHtmlTheme) => void;
+  onRemember: (theme: ExplicitEmailHtmlTheme) => void;
+  onResetSender: () => void;
+}) {
+  const choice = messageOverride ?? "auto";
+  return (
+    <div className="mb-1 flex items-center justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="xs" aria-label={`Email appearance: ${theme}`}>
+            <Palette className="size-3.5" />
+            Appearance
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel>Email appearance</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={choice}
+            onValueChange={(value) => {
+              if (value === "auto" || value === "dark" || value === "original") {
+                onChoose(value);
+              }
+            }}
+          >
+            <DropdownMenuRadioItem value="auto">Auto / inherited</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="original">
+              Original for this message
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">Dark for this message</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          {senderEmail ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="max-w-full truncate font-normal text-muted-foreground">
+                Remember for {senderEmail}
+              </DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => onRemember("original")}>
+                Always show Original
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onRemember("dark")}>
+                Always use Dark
+              </DropdownMenuItem>
+              {hasSenderOverride ? (
+                <DropdownMenuItem onSelect={onResetSender}>
+                  Reset sender preference
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 

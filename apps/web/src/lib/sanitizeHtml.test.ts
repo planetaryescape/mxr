@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { remoteHost, sanitizeHtml } from "./sanitizeHtml";
+import { prepareEmailHtml, remoteHost, sanitizeHtml } from "./sanitizeHtml";
 
 describe("sanitizeHtml", () => {
   it("strips inline <script> tags", () => {
@@ -117,5 +117,48 @@ describe("sanitizeHtml", () => {
     expect(remoteHost("//tracker.example/open.png")).toBe("tracker.example");
     expect(remoteHost("images/logo.png")).toBeNull();
     expect(remoteHost("cid:logo")).toBeNull();
+  });
+
+  it("adapts inherited dark text and a tinted callout together on the dark canvas", () => {
+    const prepared = prepareEmailHtml(
+      `<div style="color:#111"><div style="background:#e8f0fe">Important condition</div></div>`,
+      { allowRemoteImages: false, preference: "dark", darkScheme: true },
+    );
+
+    expect(prepared.canvas).toBe("dark");
+    expect(prepared.html).not.toMatch(/color:\s*#111/i);
+    expect(prepared.html).not.toMatch(/background:\s*#e8f0fe/i);
+    expect(prepared.html).toContain("Important condition");
+  });
+
+  it("keeps the authored foreground and tinted background paired on Auto's paper canvas", () => {
+    const prepared = prepareEmailHtml(
+      `<div style="color:#111"><div style="background:#e8f0fe">Important condition</div></div>`,
+      { allowRemoteImages: false, preference: "auto", darkScheme: true },
+    );
+
+    expect(prepared.canvas).toBe("paper");
+    expect(prepared.html).toMatch(/color:\s*#111/i);
+    expect(prepared.html).toMatch(/background:\s*#e8f0fe/i);
+  });
+
+  it("uses an explicit Dark canvas even when the app scheme is light", () => {
+    expect(
+      prepareEmailHtml(`<p>message</p>`, {
+        allowRemoteImages: false,
+        preference: "dark",
+        darkScheme: false,
+      }).canvas,
+    ).toBe("dark");
+  });
+
+  it("lets Auto follow the light app scheme while preserving sender colors", () => {
+    const prepared = prepareEmailHtml(`<p style="color:#111">message</p>`, {
+      allowRemoteImages: false,
+      preference: "auto",
+      darkScheme: false,
+    });
+    expect(prepared.canvas).toBe("original");
+    expect(prepared.html).toMatch(/color:\s*#111/i);
   });
 });

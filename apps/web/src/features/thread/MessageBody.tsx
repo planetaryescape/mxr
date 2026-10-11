@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { BLOCKED_IMAGE_CLASS, sanitizeHtml } from "@/lib/sanitizeHtml";
+import {
+  BLOCKED_IMAGE_CLASS,
+  prepareEmailHtml,
+  type EmailHtmlCanvas,
+  type EmailHtmlPreference,
+} from "@/lib/sanitizeHtml";
 import { useUiPrefs, type EmailHtmlTheme } from "@/state/uiPrefsStore";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 import { ASK_MARK_ATTRIBUTE, markQuoteInDocument } from "./context/askQuote";
 import { LINK_MARK_ATTRIBUTE, markLinkInDocument } from "./linkHighlight";
@@ -38,15 +44,21 @@ export function MessageBody({
   const [height, setHeight] = useState(120);
   const [loaded, setLoaded] = useState(false);
   const appTheme = useUiPrefs((s) => s.theme);
-  // "Dark" email rendering only makes sense under a dark app theme.
-  const effectiveTheme: EmailHtmlTheme =
-    theme === "dark" && document.documentElement.dataset.scheme === "dark" ? "dark" : "original";
-  const palette = useMemo(() => readPalette(), [appTheme]); // eslint-disable-line react-hooks/exhaustive-deps
-  const srcDoc = useMemo(
-    () => renderHtmlDocument(html, allowRemoteImages, effectiveTheme, palette),
-    [allowRemoteImages, html, effectiveTheme, palette],
+  const prefersLight = useMediaQuery("(prefers-color-scheme: light)");
+  const darkScheme =
+    appTheme === "system" ? !prefersLight : document.documentElement.dataset.scheme === "dark";
+  const palette = readPalette();
+  const rendered = useMemo(
+    () => renderHtmlDocument(html, allowRemoteImages, theme, darkScheme, palette),
+    [allowRemoteImages, darkScheme, html, palette, theme],
   );
-  const frameBackground = effectiveTheme === "dark" ? palette.background : "#ffffff";
+  const srcDoc = rendered.srcDoc;
+  const frameBackground =
+    rendered.canvas === "dark"
+      ? palette.background
+      : rendered.canvas === "paper"
+        ? PAPER_BACKGROUND
+        : "#ffffff";
 
   useEffect(() => {
     setLoaded(false);
@@ -137,7 +149,7 @@ export function MessageBody({
         style={{
           height,
           backgroundColor: frameBackground,
-          colorScheme: effectiveTheme === "dark" ? "dark" : "light",
+          colorScheme: rendered.canvas === "dark" ? "dark" : "light",
           opacity: loaded ? 1 : 0,
           transition: "opacity var(--motion-duration-fast) var(--ease-out)",
         }}
@@ -216,21 +228,30 @@ function safeExternalHref(href: string): boolean {
 function renderHtmlDocument(
   html: string,
   allowRemoteImages: boolean,
-  theme: EmailHtmlTheme,
+  theme: EmailHtmlPreference,
+  darkScheme: boolean,
   palette: EmailPalette,
-): string {
-  const sanitized = sanitizeHtml(html, {
+): { srcDoc: string; canvas: EmailHtmlCanvas } {
+  const prepared = prepareEmailHtml(html, {
     allowRemoteImages,
-    stripLightBackgrounds: theme === "dark",
-    stripDarkTextColors: theme === "dark",
+    preference: theme,
+    darkScheme,
   });
-  const style = theme === "dark" ? darkEmailCss(palette) : originalEmailCss;
-  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${MEASURE_CSS}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
+  const style =
+    prepared.canvas === "dark"
+      ? darkEmailCss(palette)
+      : prepared.canvas === "paper"
+        ? paperEmailCss
+        : originalEmailCss;
+  return {
+    canvas: prepared.canvas,
+    srcDoc: `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${prepared.canvas === "dark" ? "dark" : "light"}"><style>${style}${MEASURE_CSS}${askMarkCss(prepared.canvas, palette)}${blockedImageCss(prepared.canvas, palette)}</style></head><body>${prepared.html}</body></html>`,
+  };
 }
 
 /** A standalone copy for "Open original in a new tab" (TUI `O`). */
 export function standaloneHtmlDocument(html: string, allowRemoteImages: boolean): string {
-  return renderHtmlDocument(html, allowRemoteImages, "original", readPalette());
+  return renderHtmlDocument(html, allowRemoteImages, "original", false, readPalette()).srcDoc;
 }
 
 /**
@@ -245,6 +266,8 @@ function frameCsp(allowRemoteImages: boolean): string {
 }
 
 /** Light-theme colours for the always-light "original" email view. */
+const PAPER_BACKGROUND = "#f1eee9";
+
 const LIGHT_EMAIL = {
   muted: "#5b6b78",
   rule: "#c9d4dc",
@@ -253,13 +276,13 @@ const LIGHT_EMAIL = {
 };
 
 /** The quiet note that stands in for a blocked remote image. */
-function blockedImageCss(theme: EmailHtmlTheme, p: EmailPalette): string {
+function blockedImageCss(theme: EmailHtmlCanvas, p: EmailPalette): string {
   const [color, rule] =
     theme === "dark" ? [p.muted, p.rule] : [LIGHT_EMAIL.muted, LIGHT_EMAIL.rule];
   return `.${BLOCKED_IMAGE_CLASS}{display:inline-block;margin:2px 0;padding:0 6px;border:1px solid ${rule};border-radius:4px;font:11px/18px system-ui,-apple-system,sans-serif;color:${color};background:transparent;white-space:nowrap}`;
 }
 
-function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
+function askMarkCss(theme: EmailHtmlCanvas, p: EmailPalette): string {
   const [background, rule] =
     theme === "dark" ? [p.askMark, p.askMarkRule] : [LIGHT_EMAIL.askMark, LIGHT_EMAIL.askMarkRule];
   return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}a[${LINK_MARK_ATTRIBUTE}]{background:${background};outline:2px solid ${rule};outline-offset:2px;border-radius:2px}`;
@@ -275,6 +298,8 @@ function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
 const MEASURE_CSS = `:is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6),body>div:not(:has(table)){max-width:34em}table :is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6,div){max-width:none}`;
 
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;
+
+const paperEmailCss = `html{color-scheme:light;background:${PAPER_BACKGROUND}}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:${PAPER_BACKGROUND};overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{text-decoration:underline!important;text-underline-offset:2px}`;
 
 function darkEmailCss(p: EmailPalette): string {
   return `html{color-scheme:dark;background:${p.background}}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:${p.foreground};background:${p.background};overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}a[href]{color:${p.link}!important;text-decoration:underline!important;text-underline-offset:2px}hr{border:0;border-top:1px solid ${p.rule}}pre,code,kbd,samp{background:${p.code};border-radius:4px}pre{padding:12px;white-space:pre-wrap}blockquote{border-left:3px solid ${p.rule};margin-left:0;padding-left:12px;color:${p.muted}}img{max-width:100%;height:auto;filter:brightness(.95)}`;

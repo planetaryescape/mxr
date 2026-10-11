@@ -2,7 +2,12 @@
 
 import { describe, expect, test } from "vitest";
 
-import { migrateUiPrefs, useUiPrefs } from "./uiPrefsStore";
+import {
+  emailHtmlThemeForSender,
+  migrateUiPrefs,
+  readEmailHtmlSenderOverrides,
+  useUiPrefs,
+} from "./uiPrefsStore";
 
 describe("compose editor preference", () => {
   test("someone with no saved prefs gets the CodeMirror + vim editor", () => {
@@ -23,6 +28,34 @@ describe("compose editor preference", () => {
 describe("theme preference", () => {
   test("someone with no saved prefs follows the OS appearance", () => {
     expect(useUiPrefs.getInitialState().theme).toBe("system");
+  });
+
+  test("new installs use Auto and saved explicit canvas choices survive migration", () => {
+    expect(useUiPrefs.getInitialState().emailHtmlTheme).toBe("auto");
+    expect(migrateUiPrefs({ emailHtmlTheme: "dark" }, 4)).toEqual({
+      emailHtmlTheme: "dark",
+    });
+    expect(migrateUiPrefs({ emailHtmlTheme: "original" }, 4)).toEqual({
+      emailHtmlTheme: "original",
+    });
+    expect(migrateUiPrefs({ emailHtmlTheme: "unexpected" }, 4)).toEqual({});
+  });
+
+  test("sender overrides normalize identity and reject malformed map entries", () => {
+    const overrides = readEmailHtmlSenderOverrides([
+      { sender: "  News@Example.COM ", theme: "original" },
+      { sender: "news@example.com", theme: "dark" },
+      { sender: "constructor", theme: "original" },
+      { sender: "bad@example.com", theme: "auto" },
+      { theme: "dark" },
+    ]);
+    expect(overrides).toEqual([
+      { sender: "news@example.com", theme: "dark" },
+      { sender: "constructor", theme: "original" },
+    ]);
+    expect(emailHtmlThemeForSender(overrides, "NEWS@example.com")).toBe("dark");
+    expect(emailHtmlThemeForSender(overrides, "other@example.com")).toBeUndefined();
+    expect(emailHtmlThemeForSender({ constructor: "dark" }, "constructor")).toBeUndefined();
   });
 });
 

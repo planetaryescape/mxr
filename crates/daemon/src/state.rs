@@ -1803,6 +1803,8 @@ impl AppState {
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
+        self.sync_error_chimes
+            .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 
         {
             let mut runtime = self.runtime.write();

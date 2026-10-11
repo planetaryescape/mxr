@@ -213,13 +213,13 @@ pub mod freshness_copy {
             .last_sync_error
             .as_ref()
             .and_then(|error| error.retry_at);
+        if account.sync_in_progress {
+            return Some("syncing now".to_string());
+        }
         if retry_at.is_some_and(|at| at <= now) {
             return Some("retrying now".to_string());
         }
-        retry_at.map_or_else(
-            || account.sync_in_progress.then(|| "syncing now".to_string()),
-            |at| Some(format!("retrying {}", at.with_timezone(tz).format("%H:%M"))),
-        )
+        retry_at.map(|at| format!("retrying {}", at.with_timezone(tz).format("%H:%M")))
     }
 
     /// One account's sync line at `now`, with clock times in `tz`:
@@ -376,21 +376,16 @@ mod tests {
     }
 
     #[test]
-    fn a_retry_that_is_running_says_so_and_stays_a_warning() {
+    fn an_in_progress_sync_outweighs_a_scheduled_retry_and_stays_a_warning() {
         let now = Utc::now();
         let mut retrying = account(SyncHealthData::Failing, Some(now - Duration::minutes(12)));
         retrying.sync_in_progress = true;
         retrying.last_sync_error = Some(SyncErrorData {
             kind: SyncErrorKindData::Offline,
             message: "dns".into(),
-            retry_at: Some(now - Duration::minutes(1)),
+            retry_at: Some(now + Duration::minutes(8)),
             consecutive_failures: 2,
         });
-        assert_eq!(
-            sync_line(&retrying, 900, now, &Utc),
-            "Can't reach me@example.com, retrying now"
-        );
-        retrying.last_sync_error.as_mut().unwrap().retry_at = None;
         assert_eq!(
             sync_line(&retrying, 900, now, &Utc),
             "Can't reach me@example.com, syncing now"

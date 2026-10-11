@@ -76,12 +76,9 @@ export function healthTone(health: SyncHealth): "ok" | "warn" | "bad" {
  */
 function retrying(account: AccountFreshness, now: Date): string | null {
   const retryAt = account.last_sync_error?.retry_at;
+  if (account.sync_in_progress) return "syncing now";
   if (retryAt && new Date(retryAt) <= now) return "retrying now";
-  return retryAt
-    ? `retrying ${formatTime(new Date(retryAt))}`
-    : account.sync_in_progress
-      ? "syncing now"
-      : null;
+  return retryAt ? `retrying ${formatTime(new Date(retryAt))}` : null;
 }
 
 /**

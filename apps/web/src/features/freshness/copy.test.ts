@@ -92,7 +92,7 @@ describe("freshness words", () => {
     expect(syncLine(retrying, 900, now)).toMatch(/^Can't reach work@example.com, retrying 9:43/);
   });
 
-  test("a retry that is running says so and stays a warning", () => {
+  test("an in-progress sync outranks its scheduled retry and stays a warning", () => {
     const running = account({
       health: "failing",
       sync_in_progress: true,
@@ -100,10 +100,10 @@ describe("freshness words", () => {
         kind: "offline",
         message: "dns",
         consecutive_failures: 2,
-        retry_at: minutesAgo(1),
+        retry_at: minutesAhead(8),
       },
     });
-    expect(syncLine(running, 900, now)).toBe("Can't reach work@example.com, retrying now");
+    expect(syncLine(running, 900, now)).toBe("Can't reach work@example.com, syncing now");
     expect(healthTone(effectiveHealth(running, 900, now))).toBe("bad");
     expect(
       syncLine(

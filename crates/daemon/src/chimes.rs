@@ -22,6 +22,12 @@ pub(crate) struct ChimePlayback {
 pub(crate) struct SyncErrorChimes(Mutex<HashSet<AccountId>>);
 
 impl SyncErrorChimes {
+    pub(crate) fn retain_accounts(&self, accounts: &HashSet<AccountId>) {
+        self.0
+            .lock()
+            .retain(|account_id| accounts.contains(account_id));
+    }
+
     fn should_play(&self, event: &DaemonEvent) -> bool {
         match event {
             DaemonEvent::SyncError { account_id, .. } => self.0.lock().insert(account_id.clone()),
@@ -370,6 +376,20 @@ mod tests {
             account_id: account,
             error: "offline".into(),
         }));
+    }
+
+    #[test]
+    fn removed_accounts_can_chime_again_if_they_return() {
+        let notifications = SyncErrorChimes::default();
+        let account = AccountId::new();
+        let error = || DaemonEvent::SyncError {
+            account_id: account.clone(),
+            error: "offline".into(),
+        };
+
+        assert!(notifications.should_play(&error()));
+        notifications.retain_accounts(&HashSet::new());
+        assert!(notifications.should_play(&error()));
     }
 
     fn mutation_result(succeeded: u32) -> MutationResultData {

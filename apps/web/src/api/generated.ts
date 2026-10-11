@@ -3766,9 +3766,8 @@ export interface components {
              */
             health: components["schemas"]["SyncHealthData"];
             /**
-             * @description How the account is named in a warning: "Gmail" or "Outlook" when it
-             *     is the only account, else the account's own name, so two Gmail
-             *     accounts never read the same.
+             * @description Actual account identity used in status copy, normally its email
+             *     address; never a provider-wide label such as "Gmail".
              */
             label: string;
             /** Format: date-time */

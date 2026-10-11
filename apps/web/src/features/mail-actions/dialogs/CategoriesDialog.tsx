@@ -30,7 +30,8 @@ import {
   fetchCategories,
   fetchCategoryMemberships,
   previewCategoryMembership,
-  previewOrDeleteCategory,
+  deleteCategory,
+  previewDeleteCategory,
   renameCategory,
   shellKey,
   undoCategoryMembership,
@@ -339,12 +340,10 @@ function ManageCategory({
   const remove = async () => {
     try {
       if (!deletePreview) {
-        setDeletePreview(
-          (await previewOrDeleteCategory({ categoryId: category.id })) as CategoryDeletePreview,
-        );
+        setDeletePreview(await previewDeleteCategory(category.id));
         return;
       }
-      await previewOrDeleteCategory({ previewToken: deletePreview.preview_token });
+      await deleteCategory(deletePreview.preview_token);
       await queryClient.invalidateQueries();
       onClose();
       toast.success("Category deleted");

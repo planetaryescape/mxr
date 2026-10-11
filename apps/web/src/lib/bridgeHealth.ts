@@ -1,21 +1,24 @@
 import type { BridgeHealthResponse } from "@/lib/protocolCompatibility";
 import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 
+function isObjectRecord(
+  value: unknown,
+): value is { status?: unknown; service?: unknown; protocol_version?: unknown } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export async function fetchBridgeHealth(signal?: AbortSignal): Promise<BridgeHealthResponse> {
   const response = await fetch(`${getBridgeBaseUrl()}/api/v1/health`, { signal });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   const payload: unknown = await response.json();
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("Invalid bridge health response");
-  }
+  if (!isObjectRecord(payload)) throw new Error("Invalid bridge health response");
 
-  const fields = payload as Record<string, unknown>;
-  const protocolVersion = fields.protocol_version;
-  const status = fields.status;
-  const service = fields.service;
+  const protocolVersion = payload.protocol_version;
+  const status = payload.status;
+  const service = payload.service;
   if (
     protocolVersion !== undefined &&
-    (!Number.isInteger(protocolVersion) || typeof protocolVersion !== "number")
+    (typeof protocolVersion !== "number" || !Number.isInteger(protocolVersion))
   ) {
     throw new Error("Invalid bridge protocol version");
   }

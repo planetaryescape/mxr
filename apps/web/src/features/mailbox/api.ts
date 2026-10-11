@@ -312,15 +312,16 @@ export async function fetchCategoryMemberships(input: {
   messageIds: string[];
   categoryIds: string[];
 }): Promise<{ category_id: string; selected_messages: number; assigned_messages: number }[]> {
+  const body: { account_id?: string; message_ids: string[]; category_ids: string[] } = {
+    message_ids: input.messageIds,
+    category_ids: input.categoryIds,
+  };
+  if (input.accountId) body.account_id = input.accountId;
   const result = await apiFetch<{
     states: { category_id: string; selected_messages: number; assigned_messages: number }[];
   }>("/api/v1/mail/categories/memberships", {
     method: "POST",
-    body: {
-      ...(input.accountId ? { account_id: input.accountId } : {}),
-      message_ids: input.messageIds,
-      category_ids: input.categoryIds,
-    },
+    body,
   });
   return result.states;
 }
@@ -329,9 +330,11 @@ export async function previewCategoryName(
   name: string,
   categoryId?: string,
 ): Promise<CategoryNamePreview> {
+  const body: { name: string; category_id?: string } = { name };
+  if (categoryId) body.category_id = categoryId;
   return apiFetch<CategoryNamePreview>("/api/v1/mail/categories/name/preview", {
     method: "POST",
-    body: { name, ...(categoryId ? { category_id: categoryId } : {}) },
+    body,
   });
 }
 
@@ -361,14 +364,20 @@ export function previewCategoryMembership(input: {
   addCategoryIds: string[];
   removeCategoryIds: string[];
 }): Promise<CategoryMembershipPreview> {
+  const body: {
+    account_id?: string;
+    message_ids: string[];
+    add_category_ids: string[];
+    remove_category_ids: string[];
+  } = {
+    message_ids: input.messageIds,
+    add_category_ids: input.addCategoryIds,
+    remove_category_ids: input.removeCategoryIds,
+  };
+  if (input.accountId) body.account_id = input.accountId;
   return apiFetch("/api/v1/mail/categories/assignment/preview", {
     method: "POST",
-    body: {
-      ...(input.accountId ? { account_id: input.accountId } : {}),
-      message_ids: input.messageIds,
-      add_category_ids: input.addCategoryIds,
-      remove_category_ids: input.removeCategoryIds,
-    },
+    body,
   });
 }
 
@@ -381,16 +390,19 @@ export function applyCategoryMembership(
   });
 }
 
-export function previewOrDeleteCategory(input: {
-  categoryId?: string;
-  previewToken?: string;
-}): Promise<CategoryDeletePreview | { category_id: string; name: string }> {
+export function previewDeleteCategory(categoryId: string): Promise<CategoryDeletePreview> {
   return apiFetch("/api/v1/mail/categories/delete", {
     method: "POST",
-    body: {
-      ...(input.categoryId ? { category_id: input.categoryId } : {}),
-      ...(input.previewToken ? { preview_token: input.previewToken } : {}),
-    },
+    body: { category_id: categoryId },
+  });
+}
+
+export function deleteCategory(
+  previewToken: string,
+): Promise<{ category_id: string; name: string }> {
+  return apiFetch("/api/v1/mail/categories/delete", {
+    method: "POST",
+    body: { preview_token: previewToken },
   });
 }
 

@@ -17,6 +17,36 @@ Design a later evidence-based reconciliation path that can resolve these
 receipts without repeating the provider effect. Do not infer acceptance from
 error text or promise provider idempotency.
 
+## Document the local persistence performed by Archive preview
+
+On candidate `f3986183c92f532e125304cb15c3a70eb9c44c7c`,
+`PreviewArchive` is grouped with read requests in
+`crates/daemon/src/handler/mod.rs#L2064-L2067`, but
+`crates/daemon/src/handler/archive_recovery/mod.rs#L173-L229` stores a retained
+review. `GetArchiveWorkspace` also calls `archive_workspace()`, which inserts
+the workspace identity on first use
+(`crates/store/src/mutation_jobs.rs#L46-L60`). The classifier's `Read` contract
+says requests that persist anything should not use that class
+(`crates/daemon/src/handler/mod.rs#L1980-L1991`). Neither operation dispatches
+a provider action or changes mail. Resolve the classification policy and make
+local persistence and retention explicit where Archive is described as a
+preview or read operation; keep the distinction between no mail effect and no
+local write clear. This is a policy mismatch, not evidence of secret exposure.
+
+## Measure the Archive capability check on the polling path
+
+On the same candidate, `IpcConnection::request_response` asks the daemon for
+`GetStatus` before each Archive workspace, preview, submit and outcome request
+(`crates/client/src/lib.rs#L271-L308`). Status collects a database-backed
+snapshot, checks whether search repair is needed, and requests semantic runtime
+status (`crates/daemon/src/handler/diagnostics/mod.rs#L1185-L1225`). The client
+polls a running Archive operation every 50 ms
+(`crates/client/src/archive.rs#L217-L243`); the browser polls every 100 ms
+(`apps/web/src/features/mail-actions/archiveRecovery.ts#L163-L168`). Measure
+this path before changing it, then evaluate caching capability per connection
+or avoiding the status probe on repeated outcome polls. No latency or load
+estimate is established here.
+
 ## Stop dispatching an account's remaining batch after an unknown result
 
 The runner records `unknown` for an ambiguous provider result or timeout, then
@@ -57,6 +87,15 @@ Cancelling retains the reviewed operation but prevents submission
 post-cancellation state clear, or restore the selection, so the user does not
 have to infer why the messages disappeared from the selection. Cancellation
 does not dispatch the provider action.
+
+## Show useful message details in the browser Archive confirmation
+
+On candidate `f3986183c92f532e125304cb15c3a70eb9c44c7c`, the native confirmation
+shows the count and message UUIDs
+(`apps/web/src/features/mail-actions/archiveRecovery.ts#L155-L162`). Evaluate
+presenting subject and sender details so the user can recognize the reviewed
+messages. Keep submission bound to the original server-reviewed selection;
+presentation must not replace or rebuild that selection.
 
 ## Retained receipts have no cleanup policy
 

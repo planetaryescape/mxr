@@ -1214,6 +1214,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::undo(mutation_id, dry_run, format).await?;
         }
+        Some(Command::ArchiveOperation {
+            operation_id,
+            submit,
+            format,
+        }) => commands::mutations::archive_operation(operation_id, submit, format).await?,
         Some(Command::Jobs { job_id, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::jobs(job_id, format).await?;

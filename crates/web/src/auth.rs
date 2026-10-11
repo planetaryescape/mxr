@@ -19,6 +19,13 @@ pub(super) enum BridgeError {
     #[error("Global sync requires daemon IPC protocol {required}; running daemon uses {actual}. Update or restart mxr before retrying.")]
     UnsupportedProtocol { required: u32, actual: u32 },
     #[error("{message}")]
+    ArchiveConflict {
+        message: String,
+        code: String,
+        kind: IpcErrorKind,
+        details: Option<serde_json::Value>,
+    },
+    #[error("{message}")]
     DraftConflict {
         message: String,
         details: Option<serde_json::Value>,
@@ -87,7 +94,7 @@ impl BridgeError {
             "error": self.to_string(),
             "code": self.code(),
             "details": match self {
-                Self::DraftConflict { details, .. } => details.clone(),
+                Self::DraftConflict { details, .. } | Self::ArchiveConflict { details, .. } => details.clone(),
                 Self::UnsupportedProtocol { required, actual } => Some(json!({
                     "required_protocol": required,
                     "actual_protocol": actual,
@@ -102,6 +109,13 @@ impl BridgeError {
             Self::ComposeRecovery { source, .. } => source.status(),
             Self::DraftConflict { .. } => StatusCode::CONFLICT,
             Self::UnsupportedProtocol { .. } => StatusCode::UPGRADE_REQUIRED,
+            Self::ArchiveConflict { kind, .. } => {
+                if matches!(kind, IpcErrorKind::Store | IpcErrorKind::Internal) {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                } else {
+                    StatusCode::CONFLICT
+                }
+            }
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -125,9 +139,10 @@ impl BridgeError {
 
     /// Machine-readable companion to `error`: the daemon's `IpcErrorKind`
     /// code for daemon errors, otherwise the bridge failure class.
-    pub(super) fn code(&self) -> &'static str {
+    pub(super) fn code(&self) -> &str {
         match self {
             Self::ComposeRecovery { source, .. } => source.code(),
+            Self::ArchiveConflict { code, .. } => code,
             Self::DraftConflict { .. } => "draft_revision_conflict",
             Self::UnsupportedProtocol { .. } => "protocol_mismatch",
             Self::Daemon { kind, .. } => kind.as_code(),
@@ -245,6 +260,7 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Connect(_) => "connect",
         BridgeError::Ipc(_) => "ipc",
         BridgeError::Timeout(_) => "timeout",
+        BridgeError::ArchiveConflict { .. } => "archive_conflict",
         BridgeError::DraftConflict { .. } => "draft_revision_conflict",
         BridgeError::Daemon { .. } => "daemon",
         BridgeError::UnsupportedProtocol { .. } => "protocol_mismatch",

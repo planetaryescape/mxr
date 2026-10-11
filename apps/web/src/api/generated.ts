@@ -310,6 +310,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/archive-operations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archive_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/archive-operations/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archive_query"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/archive-operations/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archive_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/archive-operations/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["archive_workspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/arrivals": {
         parameters: {
             query?: never;
@@ -4112,11 +4176,61 @@ export interface components {
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
         };
+        ArchiveErrorResponse: {
+            code: string;
+            details?: unknown;
+            error: string;
+        };
+        ArchiveIdentityData: {
+            caller_id: string;
+            operation_id: string;
+            workspace: components["schemas"]["ArchiveWorkspaceData"];
+        };
+        ArchiveItemData: {
+            account_id: components["schemas"]["AccountId"];
+            message_id: components["schemas"]["MessageId"];
+            /** Format: int32 */
+            prior_flags_bits: number;
+            prior_label_provider_ids: string[];
+            provider_id: string;
+            reason?: string | null;
+            state: components["schemas"]["ArchiveItemStateData"];
+            was_inbox: boolean;
+        };
+        /** @enum {string} */
+        ArchiveItemStateData: "pending" | "unknown" | "provider_succeeded" | "completed" | "not_executed";
+        ArchiveOperationData: {
+            accepted: boolean;
+            identity: components["schemas"]["ArchiveIdentityData"];
+            items: components["schemas"]["ArchiveItemData"][];
+            mutation_id: string;
+            review_id: string;
+            running?: boolean;
+            /** Format: int64 */
+            started_at: number;
+            undo_available?: boolean;
+        };
+        ArchivePreviewBody: {
+            identity: components["schemas"]["ArchiveIdentityData"];
+            mutation: components["schemas"]["MutationCommand"];
+        };
+        ArchiveQueryBody: {
+            identity: components["schemas"]["ArchiveIdentityData"];
+        };
         ArchiveRetrievalData: {
             /** Format: int32 */
             candidate_count: number;
             executed_mode: components["schemas"]["ArchiveAskMode"];
             requested_mode: components["schemas"]["ArchiveAskMode"];
+        };
+        ArchiveSubmitBody: {
+            identity: components["schemas"]["ArchiveIdentityData"];
+            mutation: components["schemas"]["MutationCommand"];
+            review_id: string;
+        };
+        ArchiveWorkspaceData: {
+            recovery_generation: string;
+            workspace_id: string;
         };
         /**
          * @description Where an arrival is counted: a mode, or one of the buckets that make
@@ -8251,6 +8365,24 @@ export interface components {
             cmd: "StartMutationJob";
         }) | {
             /** @enum {string} */
+            cmd: "GetArchiveWorkspace";
+        } | {
+            /** @enum {string} */
+            cmd: "PreviewArchive";
+            identity: components["schemas"]["ArchiveIdentityData"];
+            mutation: components["schemas"]["MutationCommand"];
+        } | {
+            /** @enum {string} */
+            cmd: "SubmitArchive";
+            identity: components["schemas"]["ArchiveIdentityData"];
+            mutation: components["schemas"]["MutationCommand"];
+            review_id: string;
+        } | {
+            /** @enum {string} */
+            cmd: "GetArchiveOperation";
+            identity: components["schemas"]["ArchiveIdentityData"];
+        } | {
+            /** @enum {string} */
             cmd: "ListJobs";
         } | {
             /** @enum {string} */
@@ -9526,6 +9658,14 @@ export interface components {
             kind: "MutationResult";
             result: components["schemas"]["MutationResultData"];
         } | {
+            /** @enum {string} */
+            kind: "ArchiveWorkspace";
+            workspace: components["schemas"]["ArchiveWorkspaceData"];
+        } | {
+            /** @enum {string} */
+            kind: "ArchiveOperation";
+            operation: components["schemas"]["ArchiveOperationData"];
+        } | {
             job: components["schemas"]["JobData"];
             /** @enum {string} */
             kind: "JobStarted";
@@ -9687,6 +9827,7 @@ export interface components {
             kind: "RuleHistory";
         } | {
             accounts: string[];
+            archive_recovery_supported?: boolean;
             daemon_build_id?: string | null;
             /** Format: int32 */
             daemon_pid?: number | null;
@@ -12397,6 +12538,269 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    archive_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchivePreviewBody"];
+            };
+        };
+        responses: {
+            /** @description Immutable Archive review */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Bridge authorization required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Identity, workspace or selection conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Unsupported daemon or policy */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Review persistence failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Selected daemon unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_query: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveQueryBody"];
+            };
+        };
+        responses: {
+            /** @description Side-effect-free retained receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Bridge authorization required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Identity or workspace conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Unsupported daemon or policy */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Selected daemon unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveSubmitBody"];
+            };
+        };
+        responses: {
+            /** @description Durable acceptance or retained per-item outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Bridge authorization required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Identity, workspace or review conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Unsupported daemon or policy */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Acceptance persistence failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Reply lost; query retained identity */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Selected daemon unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Reply timed out; query retained identity */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_workspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selected workspace and recovery generation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Bridge authorization required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Unsupported daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
+            };
+            /** @description Selected daemon unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveErrorResponse"];
+                };
             };
         };
     };

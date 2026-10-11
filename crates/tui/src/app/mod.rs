@@ -383,6 +383,7 @@ pub struct App {
     /// queued/in flight so the status bar can render "n/m" progress for
     /// bulk operations; resets to 0 once the batch drains.
     pub mutation_batch_total: usize,
+    pub pending_archive_preview: Option<Vec<MessageId>>,
     pub pending_mutation_queue: Vec<QueuedMutation>,
     pub mutation_snapshots: MutationSnapshotStore,
     pub mutation_id_generator: MutationIdGenerator,
@@ -572,6 +573,7 @@ impl App {
             pending_mutation_count: 0,
             pending_mutation_status: None,
             mutation_batch_total: 0,
+            pending_archive_preview: None,
             pending_mutation_queue: Vec::new(),
             mutation_snapshots: MutationSnapshotStore::default(),
             mutation_id_generator: MutationIdGenerator::default(),

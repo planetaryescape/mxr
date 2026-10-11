@@ -141,6 +141,56 @@ impl App {
                     }
                 }
             }
+            Action::PreviewArchiveSelection => {
+                let ids = self.mutation_target_ids();
+                if ids.is_empty() {
+                    self.push_toast(Toast::info("Select messages to preview Archive"));
+                    return;
+                }
+                self.pending_archive_preview = Some(ids);
+                self.modals
+                    .platform
+                    .open_loading("Archive preview", "Preparing a retained review…");
+            }
+            Action::CheckArchiveOperation(ref id) | Action::SubmitArchiveOperation(ref id) => {
+                let retained =
+                    mxr_client::ArchiveJournal::new(&mxr_config::data_dir()).and_then(|journal| {
+                        let operation = journal.load(id)?;
+                        if matches!(action, Action::SubmitArchiveOperation(_)) {
+                            journal.retain(&operation)?;
+                        }
+                        Ok(operation)
+                    });
+                match retained {
+                    Ok(operation) => {
+                        let request = if matches!(action, Action::SubmitArchiveOperation(_)) {
+                            mxr_protocol::Request::SubmitArchive {
+                                identity: operation.identity,
+                                review_id: operation.review_id,
+                                mutation: mxr_protocol::MutationCommand::Archive {
+                                    message_ids: operation
+                                        .items
+                                        .into_iter()
+                                        .map(|item| item.message_id)
+                                        .collect(),
+                                },
+                            }
+                        } else {
+                            mxr_protocol::Request::GetArchiveOperation {
+                                identity: operation.identity,
+                            }
+                        };
+                        self.queue_platform_request(
+                            request,
+                            "Archive recovery",
+                            "Querying the retained Archive operation...",
+                        );
+                    }
+                    Err(error) => self.push_toast(Toast::error(format!(
+                        "Cannot read Archive recovery: {error}"
+                    ))),
+                }
+            }
             Action::CheckLastSendOutcome => {
                 if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
                     self.queue_platform_request(

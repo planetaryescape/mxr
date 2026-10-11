@@ -1,7 +1,6 @@
 /* The daemon request behind each mail action, for runs below the job threshold. */
 
 import {
-  archiveMessages,
   markReadMessages,
   modifyLabels,
   moveMessagesToLabel,
@@ -12,6 +11,7 @@ import {
   starMessages,
   trashMessages,
 } from "@/features/mailbox/api";
+import { archiveMessagesRecoverably } from "./archiveRecovery";
 import type { MutationResponse } from "@/features/mailbox/types";
 import type { MailMutationOptions } from "./mailMutations";
 import type { MailAction } from "./pendingMailOps";
@@ -24,7 +24,7 @@ export async function runAction(
   const payload = options.payload;
   switch (action) {
     case "archive":
-      return archiveMessages(ids);
+      return archiveMessagesRecoverably(ids);
     case "trash":
       return trashMessages(ids);
     case "spam":

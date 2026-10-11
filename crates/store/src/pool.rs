@@ -1094,6 +1094,7 @@ const MIGRATIONS: &[Migration] = &[
         MigrationStep::AddColumn { table: "drafts", column: "scheduled_send_revision", sql: include_str!("../migrations/074_scheduled_send_revision.sql") },
         MigrationStep::Sql("UPDATE drafts SET scheduled_send_revision = revision WHERE send_at IS NOT NULL AND scheduled_send_revision IS NULL"),
     ]) },
+    Migration { version: 75, name: "archive_workspace", kind: MigrationKind::Sql(include_str!("../migrations/075_archive_workspace.sql")) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "mxr HTTP Bridge",
-    "description": "Local-first email daemon HTTP/WebSocket surface. This document is a route inventory plus the protocol schemas: it lists paths and methods, not per-route parameters or response bodies, and some live bridge routes are not declared here. All routes declared in this document except /api/v1/health require a bearer token, read from the `bridge-token` file in the active profile's config directory (`~/Library/Application Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or `~/.config/mxr` on Linux). `[bridge].token_path` wins over `MXR_BRIDGE_TOKEN_PATH`, which wins over `MXR_CONFIG_DIR`.",
+    "description": "Local-first email daemon HTTP/WebSocket surface. This document is a route inventory plus protocol schemas. Some routes include typed parameters and request and response schemas; others list only path and method metadata. Some live bridge routes are not declared here. All routes declared in this document except /api/v1/health require a bearer token, read from the `bridge-token` file in the active profile's config directory (`~/Library/Application Support/mxr` on macOS, `$XDG_CONFIG_HOME/mxr` or `~/.config/mxr` on Linux). `[bridge].token_path` wins over `MXR_BRIDGE_TOKEN_PATH`, which wins over `MXR_CONFIG_DIR`.",
     "contact": {
       "name": "mxr",
       "url": "https://mxr.sh"
@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.70"
+    "version": "0.6.76"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -4539,8 +4539,38 @@
     "/api/v1/mail/sync": {
       "post": {
         "tags": [],
-        "summary": "Trigger sync",
+        "summary": "Trigger default-account sync",
         "operationId": "mail_sync",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/sync/all": {
+      "post": {
+        "tags": [],
+        "summary": "Trigger global sync",
+        "operationId": "mail_sync_all",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/sync/preview": {
+      "post": {
+        "tags": [],
+        "summary": "Preview accounts selected for global sync",
+        "operationId": "mail_sync_preview",
         "responses": {
           "200": {
             "description": "OK"
@@ -6241,7 +6271,7 @@
           },
           "label": {
             "type": "string",
-            "description": "How the account is named in a warning: \"Gmail\" or \"Outlook\" when it\nis the only account, else the account's own name, so two Gmail\naccounts never read the same."
+            "description": "Actual account identity used in status copy, normally its email\naddress; never a provider-wide label such as \"Gmail\"."
           },
           "last_sync_attempt_at": {
             "type": [
@@ -13157,6 +13187,14 @@
             ]
           }
         }
+      },
+      "MessageTextSourceData": {
+        "type": "string",
+        "description": "Where a conversation's displayed message text came from. This describes\nbody availability, independently of any quote trimming or UI expansion.",
+        "enum": [
+          "stored_body",
+          "provider_snippet"
+        ]
       },
       "MessagesBandData": {
         "type": "string",
@@ -20372,6 +20410,36 @@
           },
           {
             "type": "object",
+            "description": "Preview the accounts an explicit global sync would target. This keeps\nthe old `SyncNow { account_id: None }` default-account meaning intact.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewSyncAll"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Start or join a background sync for every enabled sync-capable account.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SyncAll"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "account_id",
               "cmd"
@@ -25583,6 +25651,50 @@
               },
               "sync": {
                 "$ref": "#/components/schemas/AccountSyncStatus"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Targets selected by `Request::PreviewSyncAll`.",
+            "required": [
+              "targets",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SyncPlan"
+                ]
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SyncTarget"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Per-account result of `Request::SyncAll`.",
+            "required": [
+              "results",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SyncBatch"
+                ]
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SyncAccountResult"
+                }
               }
             }
           },
@@ -31183,6 +31295,40 @@
           }
         }
       },
+      "SyncAccountResult": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "account_name",
+          "result"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/SyncAccountResultKind"
+          }
+        }
+      },
+      "SyncAccountResultKind": {
+        "type": "string",
+        "description": "Whether a global sync started new work, joined work already in progress,\nor could not start for this account.",
+        "enum": [
+          "started",
+          "joined",
+          "failed"
+        ]
+      },
       "SyncErrorData": {
         "type": "object",
         "description": "The last sync failure of one account.",
@@ -31260,6 +31406,27 @@
             ],
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "SyncTarget": {
+        "type": "object",
+        "description": "One enabled, sync-capable account selected by the global sync preview.",
+        "required": [
+          "account_id",
+          "account_name",
+          "provider_available"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "provider_available": {
+            "type": "boolean",
+            "description": "False means the account is configured for sync but the running daemon\nhas no registered sync provider for it."
           }
         }
       },
@@ -33294,6 +33461,10 @@
               }
             ]
           },
+          "latest_message_pinned": {
+            "type": "boolean",
+            "description": "Whether the exact latest email is pinned in the local store. Older\ndigest payloads omit this and are deliberately treated as unpinned."
+          },
           "latest_thread_id": {
             "oneOf": [
               {
@@ -34559,14 +34730,6 @@
             "minimum": 0
           }
         }
-      },
-      "MessageTextSourceData": {
-        "type": "string",
-        "description": "Where a conversation's displayed message text came from. This describes\nbody availability, independently of any quote trimming or UI expansion.",
-        "enum": [
-          "stored_body",
-          "provider_snippet"
-        ]
       }
     },
     "securitySchemes": {

@@ -1162,8 +1162,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     format,
                     override_safety,
                     remind_after,
-                    expected_revision,
-                    operation_id,
+                    commands::mutations::SavedSendReview {
+                        expected_revision,
+                        operation_id,
+                    },
                 )
                 .await?;
             }

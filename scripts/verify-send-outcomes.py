@@ -6,7 +6,9 @@ import json
 import os
 import shutil
 import signal
+import socket
 import sqlite3
+import struct
 import subprocess
 import time
 import uuid
@@ -154,6 +156,29 @@ def wait_outcome(account, operation, state):
             return value
         time.sleep(0.1)
     raise RuntimeError("Durable outcome did not reach " + state)
+
+
+def ipc(request):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(30)
+        connection.connect(sock)
+        data = json.dumps(
+            {"id": 999, "source": "tui", "payload": {"type": "Request", **request}}
+        ).encode()
+        connection.sendall(struct.pack(">I", len(data)) + data)
+
+        def read(length):
+            data = b""
+            while len(data) < length:
+                part = connection.recv(length - len(data))
+                if not part:
+                    raise RuntimeError("Owned daemon closed IPC")
+                data += part
+            return data
+
+        response = json.loads(read(struct.unpack(">I", read(4))[0]))["payload"]
+        records.append({"ipc_request": request, "ipc_response": response})
+        return response
 
 
 try:
@@ -321,6 +346,43 @@ try:
     )
     with sqlite3.connect(r / "data/mxr.db") as db:
         db.execute("DROP TRIGGER s03_fail_local")
+    corrected_id, corrected_account, corrected_identity = draft("TUI rejected review")
+    reviewed = json.loads(
+        cli("send", corrected_id, "--dry-run", "--format", "json").stdout
+    )["draft"]
+    (r / "spool/send-reject").touch()
+    rejected = ipc(
+        {
+            "cmd": "SendDraft",
+            "draft": reviewed,
+            "send_identity": corrected_identity,
+            "override_safety_token": None,
+        }
+    )
+    assert "did not accept" in rejected.get("message", "") and count() == 6
+    (r / "spool/send-reject").unlink()
+    assert (
+        outcome(corrected_account, corrected_identity["operation_id"])["state"]
+        == "not_accepted"
+    )
+    reviewed["subject"] = "TUI corrected review"
+    updated = ipc({"cmd": "UpdateDraft", "draft": reviewed})["data"]["draft"]
+    assert updated["revision"] == 2 and updated["id"] == corrected_id
+    corrected_retry = {
+        "operation_id": corrected_id + ":2:retry:reviewed",
+        "expected_revision": 2,
+    }
+    sent = ipc(
+        {
+            "cmd": "SendDraft",
+            "draft": updated,
+            "send_identity": corrected_retry,
+            "override_safety_token": None,
+        }
+    )
+    assert sent["type"] == "Ok" and count() == 7, sent
+    corrected_outcome = outcome(corrected_account, corrected_retry["operation_id"])
+    assert corrected_outcome["state"] == "accepted"
     result = {
         "immediate_accepted_query": immediate_accepted,
         "accepted_after_response_loss": accepted,
@@ -333,6 +395,7 @@ try:
         "unchanged_reviewed_retry": retry_outcome,
         "reminder_jsonl": lines,
         "accepted_without_local_id": no_local_result,
+        "corrected_tui_request_sequence": corrected_outcome,
         "http_query_after_cleanup": http,
         "actions": records,
     }

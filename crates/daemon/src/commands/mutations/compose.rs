@@ -1204,6 +1204,11 @@ pub async fn send_outcome(
     Ok(())
 }
 
+pub struct SavedSendReview {
+    pub expected_revision: Option<i64>,
+    pub operation_id: Option<String>,
+}
+
 pub async fn send_draft(
     draft_id: String,
     account: Option<String>,
@@ -1211,8 +1216,7 @@ pub async fn send_draft(
     format: Option<OutputFormat>,
     override_safety_token: Option<String>,
     remind_after: Option<String>,
-    expected_revision: Option<i64>,
-    operation_id: Option<String>,
+    review: SavedSendReview,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -1224,9 +1228,11 @@ pub async fn send_draft(
         print_draft_preview(&draft, &effective_from, true, format)?;
         return Ok(());
     }
-    let reviewed_revision = expected_revision.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run, then supply --expected-revision from that preview"))?;
+    let reviewed_revision = review.expected_revision.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run, then supply --expected-revision from that preview"))?;
     let identity = mxr_core::SendIdentity {
-        operation_id: operation_id.unwrap_or_else(|| format!("{draft_id}:{reviewed_revision}")),
+        operation_id: review
+            .operation_id
+            .unwrap_or_else(|| format!("{draft_id}:{reviewed_revision}")),
         expected_revision: reviewed_revision,
     };
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;

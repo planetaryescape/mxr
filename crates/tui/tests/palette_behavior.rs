@@ -226,7 +226,8 @@ fn empty_query_lists_all_commands_in_registration_order() {
         vec![
             "First".to_string(),
             "Second".to_string(),
-            "Third".to_string()
+            "Third".to_string(),
+            "Preview Archive selection".to_string(),
         ],
         "empty query preserves registration order"
     );

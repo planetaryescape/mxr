@@ -23,10 +23,11 @@ use utoipa::{
     info(
         title = "mxr HTTP Bridge",
         description = "Local-first email daemon HTTP/WebSocket surface. \
-                       This document is a route inventory plus the protocol \
-                       schemas: it lists paths and methods, not per-route \
-                       parameters or response bodies, and some live bridge \
-                       routes are not declared here. \
+                       This document is a route inventory plus protocol \
+                       schemas. Some routes include typed parameters and \
+                       request and response schemas; others list only path \
+                       and method metadata. Some live bridge routes are not \
+                       declared here. \
                        All routes declared in this document except \
                        /api/v1/health require a bearer \
                        token, read from the `bridge-token` file in the active \

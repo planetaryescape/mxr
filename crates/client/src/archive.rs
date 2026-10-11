@@ -355,4 +355,81 @@ mod tests {
         ));
         server.await.unwrap();
     }
+    #[tokio::test]
+    async fn v068_status_fixture_still_accepts_existing_draft_and_send_requests() {
+        use futures::{SinkExt, StreamExt};
+        use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Response};
+        use tokio::net::UnixListener;
+        use tokio_util::codec::Framed;
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("v068.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            for expect_send in [false, true] {
+                let status_request = framed.next().await.unwrap().unwrap();
+                assert!(matches!(
+                    status_request.payload,
+                    IpcPayload::Request(Request::GetStatus)
+                ));
+                let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
+                framed
+                    .send(IpcMessage {
+                        id: status_request.id,
+                        source: ClientKind::Daemon,
+                        payload: IpcPayload::Response(Response::Ok { data: status }),
+                    })
+                    .await
+                    .unwrap();
+                let action = framed.next().await.unwrap().unwrap();
+                if expect_send {
+                    assert!(matches!(
+                        action.payload,
+                        IpcPayload::Request(Request::GetSendOutcome { .. })
+                    ));
+                } else {
+                    assert!(matches!(
+                        action.payload,
+                        IpcPayload::Request(Request::DeleteDraft { .. })
+                    ));
+                }
+                framed
+                    .send(IpcMessage {
+                        id: action.id,
+                        source: ClientKind::Daemon,
+                        payload: IpcPayload::Response(Response::Ok {
+                            data: ResponseData::Ack,
+                        }),
+                    })
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut client = IpcConnection::connect(&socket, ClientKind::Cli)
+            .await
+            .unwrap();
+        let draft_id = mxr_core::DraftId::new();
+        assert!(matches!(
+            client
+                .request(Request::DeleteDraft {
+                    draft_id: draft_id.clone(),
+                    expected_revision: Some(1)
+                })
+                .await
+                .unwrap(),
+            ResponseData::Ack
+        ));
+        assert!(matches!(
+            client
+                .request(Request::GetSendOutcome {
+                    account_id: mxr_core::AccountId::new(),
+                    operation_id: "reviewed-send".into()
+                })
+                .await
+                .unwrap(),
+            ResponseData::Ack
+        ));
+        server.await.unwrap();
+    }
 }

@@ -56,6 +56,7 @@ fn mutation(operation: &ArchiveOperationData) -> MutationCommand {
 async fn submit(state: &Arc<AppState>, operation: &ArchiveOperationData) -> HandlerResult {
     super::super::archive_recovery::submit(
         state.clone(),
+        mxr_protocol::ClientKind::Cli,
         &operation.identity,
         &operation.review_id,
         &mutation(operation),
@@ -127,6 +128,7 @@ async fn archive_payload_workspace_generation_and_caller_conflicts_are_refused_w
     assert!(submit(&state, &changed).await.is_err());
     assert!(super::super::archive_recovery::submit(
         state.clone(),
+        mxr_protocol::ClientKind::Cli,
         &operation.identity,
         &operation.review_id,
         &MutationCommand::Trash {
@@ -369,4 +371,28 @@ async fn archive_undo_snapshot_keeps_labels_added_after_preview() {
         .unwrap()
         .prior_label_provider_ids
         .contains(&"intervening-user-label".into()));
+}
+
+#[tokio::test]
+async fn archive_terminal_resubmission_does_not_rearm_consumed_undo() {
+    let (state, provider, operation) = fixture().await;
+    submit(&state, &operation).await.unwrap();
+    let completed = wait(&state, &operation).await;
+    assert!(completed.undo_available);
+    assert_eq!(provider.mutations().len(), 2);
+    state
+        .store
+        .delete_undo_entry(&operation.mutation_id)
+        .await
+        .unwrap();
+    submit(&state, &operation).await.unwrap();
+    let repeated = wait(&state, &operation).await;
+    assert!(!repeated.undo_available);
+    assert!(state
+        .store
+        .read_undo_entry(&operation.mutation_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(provider.mutations().len(), 2);
 }

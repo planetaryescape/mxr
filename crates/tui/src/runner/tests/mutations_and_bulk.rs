@@ -1504,3 +1504,50 @@ fn archive_preview_retains_selection_without_queueing_a_mutation() {
     assert!(app.pending_mutation_queue.is_empty());
     assert!(app.modals.platform.visible && app.modals.platform.loading);
 }
+
+#[test]
+fn partial_archive_error_keeps_undo_for_confirmed_completed_items() {
+    use mxr_protocol::{
+        ArchiveIdentityData, ArchiveItemData, ArchiveItemStateData, ArchiveOperationData,
+        ArchiveWorkspaceData,
+    };
+    let completed = ArchiveItemData {
+        message_id: MessageId::new(),
+        account_id: mxr_core::AccountId::new(),
+        provider_id: "synthetic".into(),
+        prior_flags_bits: 0,
+        prior_label_provider_ids: vec!["INBOX".into()],
+        was_inbox: true,
+        state: ArchiveItemStateData::Completed,
+        reason: None,
+    };
+    let mut unknown = completed.clone();
+    unknown.message_id = MessageId::new();
+    unknown.state = ArchiveItemStateData::Unknown;
+    let operation = ArchiveOperationData {
+        identity: ArchiveIdentityData {
+            operation_id: "op".into(),
+            caller_id: "caller".into(),
+            workspace: ArchiveWorkspaceData {
+                workspace_id: "workspace".into(),
+                recovery_generation: "generation".into(),
+            },
+        },
+        review_id: "review".into(),
+        mutation_id: "retained-undo".into(),
+        accepted: true,
+        undo_available: true,
+        running: false,
+        started_at: 0,
+        items: vec![completed, unknown],
+    };
+    let undo = super::super::archive_partial_undo(
+        Some(serde_json::to_value(operation).unwrap()),
+        "Archived",
+    )
+    .unwrap();
+    assert_eq!(undo.count, 1);
+    assert!(
+        matches!(undo.action, crate::app::UndoAction::Mutations(ids) if ids == vec!["retained-undo".to_string()])
+    );
+}

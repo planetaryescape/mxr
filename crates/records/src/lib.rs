@@ -32,6 +32,7 @@ pub mod export;
 pub mod fields;
 pub mod group;
 pub mod pass;
+pub mod renewal_tasks;
 pub mod rules;
 pub mod schema_org;
 pub mod subscriptions;

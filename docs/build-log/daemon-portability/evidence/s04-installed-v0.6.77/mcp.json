@@ -1,0 +1,41 @@
+{
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "binary": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-release/installer-bin/mxr",
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "elapsed_seconds": 8.837543417001143,
+  "runtime": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-mcp-runtime",
+  "cases": [
+    {
+      "name": "mcp_preview_retained_and_confirmation_required",
+      "passed": true
+    },
+    {
+      "name": "mcp_restart_outcome_and_same_identity_no_repeat",
+      "passed": true,
+      "identity": {
+        "caller_id": "01a12cc2-d962-7181-b422-2d276dfd8038",
+        "operation_id": "01a12cc2-d977-77b2-b454-0f266e2cea8c",
+        "workspace": {
+          "recovery_generation": "01a12cc2-d962-7c23-8c7c-cb3c3767254a",
+          "workspace_id": "01a12cc2-d962-7c23-8c7c-cb2aed7a9fc9"
+        }
+      }
+    },
+    {
+      "name": "mcp_unknown_persists_restart_query_and_submit_no_repeat",
+      "passed": true,
+      "identity": {
+        "caller_id": "01a12cc2-d962-7181-b422-2d276dfd8038",
+        "operation_id": "01a12cc2-ef17-76b3-ad4f-f4c93160adad",
+        "workspace": {
+          "recovery_generation": "01a12cc2-d962-7c23-8c7c-cb3c3767254a",
+          "workspace_id": "01a12cc2-d962-7c23-8c7c-cb2aed7a9fc9"
+        }
+      }
+    }
+  ],
+  "daemon_stopped": true,
+  "mcp_stopped": true,
+  "full_runtime_record_sha256": "sha256:3cc36696a3a5f155ff6f476cc20b49c76893235ebc3318dacb37b491d7383373",
+  "limits": "Synthetic provider; process-crash checks do not establish power-loss durability."
+}

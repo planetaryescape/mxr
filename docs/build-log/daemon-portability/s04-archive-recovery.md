@@ -29,6 +29,20 @@ uses the same route for selections above the old 200-message job threshold.
 MCP exposes `mxr_archive_preview`, `mxr_archive_submit` with explicit confirmation,
 and side-effect-free `mxr_archive_outcome`.
 
+The CLI's Archive request continues to honor `MXR_IPC_TIMEOUT_SECS`. In the
+browser, Archive refreshes mail queries before settling the early Undo claim on
+both success and partial failure, so Undo does not appear ahead of the refreshed
+mailbox.
+
+In the mailbox and Reading readers, `e`, `]` and `[` keep their navigation
+direction through delayed Archive completion and the resulting list update.
+Undo returns to the affected message; successful Archive from All Mail advances
+while retaining Undo, and cancelling review leaves the reader route in place.
+The corrected and original Reading journeys both passed. `PlaceLayout` now
+supplies the live `isListed` and `expectRemoval` context; hook tests cover both
+completion orders. No timing race was reproduced. Partial Archive failures
+preserve their mutation response for the caller.
+
 ## The dispatch receipt commits before the provider effect
 
 Migration 075 stores workspace identity and recovery generation. Reviewed
@@ -57,7 +71,9 @@ rows remain visibly unaccepted. Client journal failure prevents submission.
 Existing Undo links use the internal mutation ID, and browser partial results
 retain that link while naming uncertain effects explicitly. The TUI retains
 partial Undo for confirmed completed items even when other items fail. A terminal
-same-identity submission cannot recreate a consumed or expired Undo entry.
+same-identity submission cannot recreate a consumed or expired Undo entry. A
+runner that starts after completion and finds no pending items returns without
+rearming an Undo entry the user already consumed.
 
 A successful acceptance compare-and-swap records `mail.archive` through the
 existing local activity recorder, with the original client source and
@@ -65,30 +81,29 @@ existing local activity recorder, with the original client source and
 submissions and queries do not record another activity. The recorder remains
 best effort and respects `MXR_ACTIVITY=off`.
 
-## The checks use synthetic provider acceptance witnesses
+## v0.6.77 is published and installed journeys passed
 
-Initial implementation base: `35c4f7232125cd595bc2169abbf951152a7aa06d`, tree
-`ebda2a4070d577e4a690fedf7b21bfd23e1e538c`. The implementation was rebased onto
-`49e40f036ad83d68e09cf3d9de6e016d877d6ccc`; root owns the final integrated source,
-independent review, release and published-artifact acceptance.
+Release `v0.6.77` came from `14de28f1187d150e05a9f96f6eec12db60c7c9ab`,
+tree `48e865128b372f567ec220a682782b5dadeafdea`. Release workflow
+[38172695106](https://github.com/planetaryescape/mxr/actions/runs/38172695106)
+completed successfully. The GitHub Release job published the assets at
+2026-10-11 20:55:52 UTC; the workflow finished at 20:58:23 UTC. The mxr binary extracted from the macOS
+archive matches the installer and Homebrew binaries at
+`sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a`.
 
-Focused daemon tests covered lost replies, concurrent submission, command and
-identity conflicts, stale item binding, acceptance/dispatch/success receipt
-failures, partial rejection, interrupted Pending/Unknown items, retention,
-local reconciliation failure and intervening-label Undo. Client tests consumed
-a lost submission response and recovered the same journal identity. The named
-older-daemon fixture is v0.6.68 Status without Archive capability; it refuses
-new requests while existing draft and send surfaces still proceed. This is not
-a claim about arbitrary version compatibility.
+The [installed acceptance packet](evidence/s04-installed-v0.6.77/README.md)
+records 17 CLI/IPC/HTTP scenarios and 3 actual MCP scenarios against that
+binary, plus installed TUI and browser journeys. The TUI previewed, submitted,
+closed and reopened the app, then queried the same operation identity with
+one provider dispatch and acceptance. The browser confirmed Archive, used Undo,
+queried the receipt and reloaded to the same identity with one provider effect.
+Both flows used synthetic mail. No effect occurred before browser consent.
 
-Root's isolated CLI/IPC/HTTP harness passed twelve recorded checks with persistent
-fake-provider dispatch and acceptance witnesses. It killed only its own daemon
-for the crash probe and stopped owned processes afterwards. The immutable first
-binary's SHA256 was
-`55650c365da08d5189161a61024c8d22d50a474b36a868df07cf33f86de402d7`.
-Runtime evidence is retained under `target/s04-evidence/`, including
-`root-fourth-cli-ipc-http.json`; final TUI/browser evidence and binary provenance
-are added to the handoff after their checks complete.
+The release workflow skipped its live Gmail smoke because test credentials
+were unavailable. Linux artifacts were checksum-verified; installed UI journeys
+ran on macOS. Process-crash checks do not establish recovery after an operating
+system crash or power loss. The [earlier f398 packet](evidence/s04-f3986183-integrated-acceptance.md)
+is historical and does not verify v0.6.77.
 
 The fake spool opt-in uses `mutation-reject`, `mutation-uncertain`, and
 `mutation-pause-after-accept`. Empty controls apply to all messages; otherwise
@@ -103,11 +118,14 @@ uncertain effects. `provider_succeeded` reports incomplete local reconciliation;
 query and resubmission do not repeat its effect. There is no generic repair,
 rollback, scheduling, Send-and-Archive atomicity or provider idempotency claim.
 Reviewed rows have no cleanup policy yet; retention limits and a later explicit
-reconciliation workflow are follow-up candidates.
+reconciliation workflow are tracked in
+[`archive-operation-recovery-followups.md`](../../issues/archive-operation-recovery-followups.md).
+That issue also records the current per-account batch behavior after an unknown
+result, panic cleanup, and the SQLite power-loss durability boundary.
 
-Effort comes from the parent dispatch and tool transcript timestamps. The exact
-wall-clock, agent/wait split and final source/runtime identities belong to the
-completion packet; worker time is a delivery lower bound. Initial exporter build took 28s,
-first binary build 56s, focused incremental daemon verification 17s, and the SPA
-build 4s. Failed checks exposed fixture/API mismatches and lint issues; they did
-not justify broader local workspace runs. CI owns the workspace gate.
+The corrected and original Reading E2E journeys passed (jobs 5706 and 5709),
+along with typecheck (5698), implementation lint (5716) and formatting (5718).
+Hook tests force both completion orders. API-reference regeneration and the
+docs build passed. BK waived independent reviews until Anthropic is available
+again. Release, CLI, MCP, TUI and browser evidence is in the installed
+acceptance packet.

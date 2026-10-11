@@ -1,0 +1,51 @@
+submit retained operation
+ 1 Mailbox  |  2 Search  |  3 Rules  |  4 Accounts  |  5 Diagnostics  |  6 Analy
+ Enter/o:Open   r:Reply   e:Archive                            ● synced 1m ago  
+ /:Search All Mail   Ctrl-p:Commands                                            
+╭ Sidebar ─────╮╭ Now ─ The few things that need you now, from every mode. ────╮
+│  Now       14││  Sunday night. 14 people waiting on you.                     │
+│─────────┌ Archive recovery · Esc close ────────────────────────────┐         │
+│  Message│                                                          │         │
+│  To do  │ Archive operation 01a12cc3-72a2-74a1-a904-c98c3be43a56   │essages  │
+│  Updates│ Accepted: true; running: true                            │below.   │
+│  Reading│ 01a12cc2-ffc1-78a3-b4ea-8c23d1869df8 Pending:            │      1m │
+│  Archive│ Unknown effects require reconciliation. Query again;     │      4h │
+│─────────│ never start a new operation to repeat them.              │s 3      │
+│  Inbox  │                                                          │         │
+│▾ More   │                                                          │     20h │
+│  Screene│                                                          │s 3      │
+│  Reply q│                                                          │         │
+│  Waiting│                                                          │         │
+│  Subscri│                                                          │routine  │
+│  Owed   └──────────────────────────────────────────────────────────┘         │
+│  Calendar inv││    ↵ open  A let go of this digest                           │
+│  All Mail    ││ From Messages: new from Quinn Dev, 1m.                       │
+│  Inbox  29/55││ ↵ open in its mode  e done here  t make it a to-do  r reply… │
+╰──────────────╯╰──────────────────────────────────────────────────────────────╯
+=ALL MAIL [Msgs:55 New:29 Starred:4]= Latest mail 1m ago · synced 1m ago        
+
+query same retained identity after reopen
+ 1 Mailbox  |  2 Search  |  3 Rules  |  4 Accounts  |  5 Diagnostics  |  6 Analy
+ Enter/o:Open   r:Reply   e:Archive                            ● synced 1m ago  
+ /:Search All Mail   Ctrl-p:Commands                                            
+╭ Sidebar ─────╮╭ Now ─ The few things that need you now, from every mode. ────╮
+│  Now       13││  Sunday night. 13 people waiting on you.                     │
+│─────────┌ Archive recovery · Esc close ────────────────────────────┐         │
+│  Message│                                                          │         │
+│  To do  │ Archive operation 01a12cc3-72a2-74a1-a904-c98c3be43a56   │essages  │
+│  Updates│ Accepted: true; running: false                           │below.   │
+│  Reading│ 01a12cc2-ffc1-78a3-b4ea-8c23d1869df8 Completed:          │      4h │
+│  Archive│ Unknown effects require reconciliation. Query again;     │s 3      │
+│─────────│ never start a new operation to repeat them.              │         │
+│  Inbox  │                                                          │     20h │
+│▾ More   │                                                          │s 3      │
+│  Screene│                                                          │         │
+│  Reply q│                                                          │     22h │
+│  Waiting│                                                          │s 3      │
+│  Subscri│                                                          │         │
+│  Owed   └──────────────────────────────────────────────────────────┘         │
+│  Calendar inv││ ── Updates 16:30 digest ──────────────────────── +2 routine  │
+│  All Mail    ││ From Messages: new from CI Bot, 4h.                          │
+│  Inbox  29/54││ ↵ open in its mode  e done here  t make it a to-do  r reply… │
+╰──────────────╯╰──────────────────────────────────────────────────────────────╯
+=ALL MAIL [Msgs:55 New:29 Starred:4]= Latest mail 1m ago · synced 1m ago        

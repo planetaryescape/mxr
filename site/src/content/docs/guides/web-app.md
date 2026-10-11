@@ -215,6 +215,17 @@ conversation, `T` files it in Archive after showing the card. On a phone,
 Archive is under **Find**, and a record's card opens full screen.
 See [Archive](/guides/archive/).
 
+### Recover a mailbox Archive action
+
+The mailbox Archive action removes messages from the provider Inbox. It is
+separate from filing a record in Archive or using **Done** on the desk. If the
+action loses its response, open the **Archive recovery** panel and query the
+retained operation. Before submission, the browser shows a confirmation with
+the reviewed message count and IDs; confirm it explicitly. Submit or resume
+that same operation only to continue `pending` items. An `unknown` item may
+have reached the provider; query again and do not start a second Archive
+action for it.
+
 ## Reading and triage
 
 The web app works like the TUI: a list of conversations, a reader beside it,

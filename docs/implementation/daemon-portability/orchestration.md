@@ -16,9 +16,10 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | S02 | Save and resume a draft without silent concurrent overwrites | Save, restart, reopen, then edit from two clients; preserve the stale editor's text while rejecting its stale revision | Existing compose contract; independent of S01 | P01 + P04 |
 | S03 | Recover the outcome of sending a reviewed draft | Drop a send response; recover its stored receipt. Inject ambiguous provider acceptance; preserve uncertainty without automatic resend | S02 deployed | P01/P02 + P04 |
 | S04 | Retry a previewed mailbox action safely | Lose a batch-action response; retrieve per-item results with the same operation ID and reject changed payload reuse | S03 deployed | P02 + P04 |
-| S05 | Attach and download without shared host paths | From disjoint filesystems, upload, save, restart, preview/send, and download identical bytes on the client | S02/S03 deployed | P03 + P04 |
+| S05a | Download exact attachment bytes and open them on the consuming client | Through the daemon, CLI JSON/JSONL, TUI, web and MCP, download known bytes without daemon paths; verify a CLI `cmd://` transfer larger than one chunk under filesystem denial, TUI client-owned file/open, browser download, bounded MCP content, partial/mismatch/wrong-message failures and old local clients | S04 published-client acceptance | P03 + P04 |
+| S05b | Upload immutable attachment bytes into a saved draft and send those same bytes | Upload bounded bytes, attach a finalized resource to a saved draft, restart, preview and send; witness outbound bytes, verify ownership, reject incomplete/changed/oversize resources and preserve legacy drafts | S05a deployed | P03 + P04 |
 | S06 | Recover mailbox state after an event gap without losing edits | Drop only WebSocket traffic, mutate through CLI, reconnect and refresh; switch workspace/recovery generation without replaying pending commands | Relevant S02-S05 contracts deployed | P05 + P04 |
-| S07 | Use the same selected daemon from CLI and TUI | Read, reply through a local editor, attach, preview and mutate over the existing remote connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
+| S07 | Use the same selected daemon from CLI, TUI and MCP | Read, reply through a local editor, attach, preview and mutate over the selected connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
 | S08a | Stop and restart the daemon under supervision | Send SIGTERM and SIGINT to an isolated daemon; observe orderly teardown, restart and query acknowledged state | Independent; interrupted-action recovery belongs to S08c after S03/S04 | P07a |
 | S08b | Retain a complete disk token cache if replacement is interrupted | Inject interruption before/after atomic replacement with synthetic tokens; reload the complete old or new cache | Independent | P07b |
 | S08c | Run unattended with useful dependency diagnostics | Start isolated Linux service without GUI secrets access, interrupt/restart and remove optional model service; inspect mail readiness | S08a/S08b and S03/S04 deployed | P07c |
@@ -27,6 +28,16 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 Independent S08a/S08b releases may land before S02. S08a reuses existing teardown; it does not claim recovery of ambiguous sends before S03/S04. Build S08a/S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
 
 R01 is conditional on selecting a remote HTTP consumer and network policy. It must precede that consumer's first off-machine HTTP release. This readiness run does not silently turn a loopback bridge into a public service.
+
+Both S05 releases expose their daemon operations through CLI JSON/JSONL, TUI,
+web and MCP. At source `14de28f1187d150e05a9f96f6eec12db60c7c9ab`, the CLI
+already resolves `tcp://` and `cmd://` targets
+(`crates/daemon/src/server.rs#L585-L624`). TUI and MCP still require Unix
+sockets, so their connector selection remains S07
+(`crates/tui/src/account_workflow.rs#L10-L17`,
+`crates/mcp/src/lib.rs#L1160-L1166`). The web bridge may stay beside the daemon
+(`crates/daemon/src/bridge.rs#L1-L6`); off-machine HTTP remains R01. S05
+implementation starts after S04 documentation publication.
 
 ## S01 preserves the local contract while fixing target ownership
 
@@ -42,9 +53,14 @@ Read-only preparation is recorded in the [send outcome audit](../../build-log/da
 
 Every listed implementation stage is Full tier because it changes persistence, credentials/privacy, a public contract or shared mutable state. Each needs worker tests and applicable adversarial self-checks, inline code-simplifier, TypeScript review when relevant, orchestrator adversarial review and independent Claude verification through OpenCode. A changed candidate normally loses previous review status. The documented trivial post-triage exception permits a root-reviewed bounded delta only when it is limited to triaged fixes, adds no new protocol or ownership design, and its resulting checks and CI pass; S02 used that exception from whole-review candidate `010ae951` to `3d338beb`. Findings block only for concrete contradictions, data loss/duplication, failed user journeys/checks or security/privacy leaks.
 
+On 11 October 2026, BK waived independent reviews for the remaining readiness
+sequence until Anthropic is available again. Worker checks, orchestrator review,
+exact-candidate CI, merge verification and published-client acceptance remain
+required. Restore the independent review gate when that condition ends.
+
 Current routing, discovered from the host model catalog: GPT-6-Astra/xhigh orchestrator; GPT-6-Luna/high workers by default; GPT-5.6-Terra is the newest balanced-family model; GPT-6.1-Sol is the current strong workhorse. Escalate effort before tier only after the skill's repeated-failure diagnosis. No worker escalation has occurred. S02 starts on Strong/high for per-draft concurrency, effect ordering and cross-client revision ownership; other workers remain Fast/high. S01 reuses existing diagnostic contracts; no named reasoning demand justifies starting above Fast.
 
-Claude verification uses the installed OpenCode 1.18.35 binary at `~/.opencode/bin/opencode`, with Opus 5.5 and maximum effort. A fresh session successfully read an isolated probe file; its exported metadata confirms the model. The custom reviewer allows only file reading/searching, denies external directories and runs with external plugins disabled. [Routing evidence](../../build-log/daemon-portability/evidence/verifier-routing.json) records the probe. The default OpenCode 2.0.20 returned no routes; no global configuration or saved credentials were changed to work around it.
+Claude verification uses the preserved OpenCode 1.18.35 binary at `/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-tools/opencode-v1.18.35/opencode`. The ledger's `run_verifier.py` export records the fresh read-only session, Opus 5.5 and maximum effort. The custom reviewer allows only file reading/searching, denies external directories and runs with external plugins disabled. [Routing evidence](../../build-log/daemon-portability/evidence/verifier-routing.json) records the verifier setup.
 
 ## Each release proves the consuming-client journey
 
@@ -66,7 +82,28 @@ Five slices are complete: S01 in v0.6.62, S08b in v0.6.63, S08a in v0.6.64, S02 
 
 S03 merged as `d6ba93ba7082a644e027b331e67da44d8e6dd4e8`; CI run 38146965743 and the root-triaged Opus review passed. The v0.6.67 release attempt failed in CLI smoke because the job compiled to `target-cli` but invoked `target/debug/mxr`. Its v1 launch proof and provider smoke passed; its companion proof did not run. The v0.6.67 tag remains unpublished. Workflow fix PR357 merged as `86c95992`, and release metadata PR358 set v0.6.68 at source `621e9e49739eeb80abbccea0916578420941c3fc` (tree `6d391d9d90db51339d9a8d100e50915732a895eb`). Release run 38151840433 published v0.6.68. Its archive checksums and installer/Homebrew binary hashes match. Installed CLI, companion, TUI and browser acceptance passed on that release.
 
-The [S03 release and CLI evidence](../../build-log/daemon-portability/evidence/s03-v0.6.68-release-installed.json), [TUI packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/README.md) and [browser packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/README.md) record the verified results and limits. S03 is done. S04 began on `codex/mxr-portability-archive-recovery` from base `35c4f7232125cd595bc2169abbf951152a7aa06d`.
+The [S03 release and CLI evidence](../../build-log/daemon-portability/evidence/s03-v0.6.68-release-installed.json), [TUI packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/README.md) and [browser packet](../../build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/README.md) record the verified results and limits. S03 is done.
+
+S04 merged in [PR384](https://github.com/planetaryescape/mxr/pull/384) at
+`0153a25a967710c9ea6e86349f7d97d42dc8088e` (tree
+`a754ecb025c4c39d86522979d0552ff314755c8f`) after CI
+[38171005526](https://github.com/planetaryescape/mxr/actions/runs/38171005526)
+passed. Release PR385 merged at `14de28f1187d150e05a9f96f6eec12db60c7c9ab`
+after CI [38172214337](https://github.com/planetaryescape/mxr/actions/runs/38172214337)
+passed. Tag workflow
+[38172695106](https://github.com/planetaryescape/mxr/actions/runs/38172695106)
+published [v0.6.77](https://github.com/planetaryescape/mxr/releases/tag/v0.6.77)
+at 20:55:52 UTC. The mxr binary extracted from the macOS archive matches the installer and
+Homebrew binaries. Published-client acceptance passed 17 CLI/IPC/HTTP scenarios, 3 MCP
+scenarios, and installed TUI and browser recovery journeys on the same binary.
+S04 published-client acceptance is complete. The [acceptance packet](../../build-log/daemon-portability/evidence/s04-installed-v0.6.77/README.md)
+records the results, timing and limits; the [build log](../../build-log/daemon-portability/s04-archive-recovery.md)
+records implementation and check provenance. Live Gmail was skipped because
+test credentials were unavailable; installed UI journeys ran on macOS, while
+Linux artifacts were checksum-verified. BK waived independent reviews for the
+remaining readiness sequence until Anthropic is available again; other gates
+remain in force. S05 is split into download/open (S05a) and immutable upload
+bound to a saved draft (S05b).
 
 ## Unresolved choices affect later stages
 

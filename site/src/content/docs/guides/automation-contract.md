@@ -160,11 +160,13 @@ mxr archive --search 'from:noreply@example.com older_than:30d' --account work --
 
 ## Idempotency
 
-- `mxr archive` / `read-archive` / `trash` / `spam` / `star` / `unstar` / `read` / `unread` / `label` / `unlabel` / `move` / `snooze` / `unsnooze` are **idempotent** — re-running with the same target IDs leaves state unchanged after the first call.
+- `read-archive` / `trash` / `spam` / `star` / `unstar` / `read` / `unread` / `label` / `unlabel` / `move` / `snooze` / `unsnooze` are **idempotent** — re-running with the same target IDs leaves state unchanged after the first call.
+- For a mailbox Archive operation with a lost response, query its retained operation ID before acting again. State idempotence does not prove whether the provider received the earlier dispatch; see the [recovery recipe](/guides/recipes/#recover-a-mailbox-archive-action).
 - A saved-draft send is bound to its reviewed revision and operation ID. Query its retained result with `mxr send-outcome`, including after the draft has been removed. The daemon does not start another send for an existing operation. An `unknown` outcome may have been accepted, so query it and do not resend. A `not_accepted` outcome means that operation was not accepted; review again and use a fresh operation ID for a new attempt.
 - `mxr unsubscribe` may hit a provider URL once; re-running on an already-unsubscribed message is harmless but emits no useful new state.
 - `mxr undo MUTATION_ID` works within a 60-second window; after that it returns an error.
 - An undoable mutation normally returns a `mutation_id`. If that field is absent **and** the result has `"undo_unavailable": true`, the mutation succeeded but its undo entry could not be recorded — it can't be reversed with `mxr undo`. A plain absent `mutation_id` (no `undo_unavailable`) just means nothing was changed that undo could reverse (a dry run, or every message skipped).
+- Archive operation results always include `mutation_id`; run `mxr undo` only when that result also has `undo_available: true`.
 
 For a saved draft, preview first and retain both the reviewed revision and the
 operation ID. The send command prints the ID and an outcome-query command to

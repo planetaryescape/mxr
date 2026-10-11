@@ -1,0 +1,114 @@
+{
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-cli-runtime/mxr",
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "runtime": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s04-evidence/published-cli-runtime",
+  "elapsed_seconds": 10.427669999997306,
+  "cases": [
+    {
+      "name": "json_list_and_explicit_submission_id",
+      "passed": true
+    },
+    {
+      "name": "json_list_continues_after_refused_receipt_without_dispatch",
+      "passed": true
+    },
+    {
+      "name": "completed_archive_history_once_after_concurrent_replay_and_restart",
+      "passed": true
+    },
+    {
+      "name": "lost_ack_concurrent_repeat_changed_payload_restart",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12cc2-d9a4-7af2-8880-93ded0b9219a",
+        "caller_id": "01a12cc2-d986-7dc0-8901-cea17fc97086",
+        "workspace": {
+          "workspace_id": "01a12cc2-d967-72f1-a02f-a2e5586cf05d",
+          "recovery_generation": "01a12cc2-d967-72f1-a02f-a2f4a4b0d6c7"
+        }
+      },
+      "accepted": 2
+    },
+    {
+      "name": "workspace_and_generation_refusal",
+      "passed": true
+    },
+    {
+      "name": "partial_batch_with_proved_nonacceptance",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12cc2-f0d1-7540-9778-0cc22cda5f61",
+        "caller_id": "01a12cc2-d986-7dc0-8901-cea17fc97086",
+        "workspace": {
+          "workspace_id": "01a12cc2-d967-72f1-a02f-a2e5586cf05d",
+          "recovery_generation": "01a12cc2-d967-72f1-a02f-a2f4a4b0d6c7"
+        }
+      }
+    },
+    {
+      "name": "provider_acceptance_response_loss_stays_unknown",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12cc2-f222-7b22-908f-91608e57e2ef",
+        "caller_id": "01a12cc2-d986-7dc0-8901-cea17fc97086",
+        "workspace": {
+          "workspace_id": "01a12cc2-d967-72f1-a02f-a2e5586cf05d",
+          "recovery_generation": "01a12cc2-d967-72f1-a02f-a2f4a4b0d6c7"
+        }
+      }
+    },
+    {
+      "name": "crash_query_is_read_only_and_same_id_resumes_only_pending",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12cc2-f2bc-7350-9c90-611096f5909b",
+        "caller_id": "01a12cc2-d986-7dc0-8901-cea17fc97086",
+        "workspace": {
+          "workspace_id": "01a12cc2-d967-72f1-a02f-a2e5586cf05d",
+          "recovery_generation": "01a12cc2-d967-72f1-a02f-a2f4a4b0d6c7"
+        }
+      }
+    },
+    {
+      "name": "stale_provider_binding_refused_before_dispatch",
+      "passed": true
+    },
+    {
+      "name": "failed_durable_acceptance_prevents_provider_call",
+      "passed": true
+    },
+    {
+      "name": "failed_receipt_after_acceptance_never_repeats_effect",
+      "passed": true
+    },
+    {
+      "name": "provider_success_survives_failed_local_reconciliation_without_repeat",
+      "passed": true
+    },
+    {
+      "name": "client_retention_failure_prevents_effect",
+      "passed": true
+    },
+    {
+      "name": "unsupported_output_refused_before_effect",
+      "passed": true
+    },
+    {
+      "name": "synchronous_known_rejection_fails_with_retained_json_receipt",
+      "passed": true
+    },
+    {
+      "name": "synchronous_unknown_fails_but_read_only_query_succeeds",
+      "passed": true
+    },
+    {
+      "name": "retained_operation_count",
+      "passed": true,
+      "count": 11
+    }
+  ],
+  "owned_daemon_stopped": true,
+  "full_runtime_record_sha256": "sha256:d300bf54acae3b598f5597d5bdf2711a665591a7d9f56f24552e953021875f19",
+  "limits": "Synthetic provider; process-crash checks do not establish power-loss durability."
+}

@@ -29,6 +29,10 @@ provider's inbox; filing a record keeps the facts from it in mxr. Toasts
 keep the two apart: "Filed in Archive." for a record, "Archived in Gmail."
 (or your provider) for the email.
 
+After a lost response from the mailbox Archive action, use the [recovery
+recipe](/guides/recipes/#recover-a-mailbox-archive-action) to query its retained
+operation before acting again.
+
 ## A record is one thing, built from its emails
 
 A record has a kind: receipt, order, booking, invoice, statement, ticket,

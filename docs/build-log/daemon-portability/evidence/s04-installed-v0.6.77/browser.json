@@ -1,0 +1,54 @@
+{
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "operation_after_query_and_reload": {
+    "accepted": true,
+    "identity": {
+      "caller_id": "d8f66159-d316-44a2-b21d-43eaee8ef9b7",
+      "operation_id": "9ac2f284-43a3-486b-9d4d-c5eaee0b0932",
+      "workspace": {
+        "recovery_generation": "01a12cc3-728f-7e43-91cc-1022f58396e6",
+        "workspace_id": "01a12cc3-728f-7e43-91cc-10170a6d3233"
+      }
+    },
+    "items": [
+      {
+        "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "message_id": "01a12cc2-ffc1-78a3-b4ea-8c4b56499bae",
+        "prior_flags_bits": 1,
+        "prior_label_provider_ids": [
+          "INBOX"
+        ],
+        "provider_id": "fake-msg-29",
+        "reason": null,
+        "state": "completed",
+        "was_inbox": true
+      }
+    ],
+    "mutation_id": "01a12cc5-14dc-7033-875f-f6bccc00c581",
+    "review_id": "01a12cc5-14dc-7033-875f-f6a0e4b4ad82",
+    "running": false,
+    "started_at": 1791752475868,
+    "undo_available": false
+  },
+  "provider_witnesses": [
+    {
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "mutation_id": "01a12cc5-14dc-7033-875f-f6bccc00c581",
+      "phase": "dispatched",
+      "provider_message_id": "fake-msg-29"
+    },
+    {
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "mutation_id": "01a12cc5-14dc-7033-875f-f6bccc00c581",
+      "phase": "accepted",
+      "provider_message_id": "fake-msg-29"
+    }
+  ],
+  "new_effects_before_consent": 0,
+  "journey": "Actual embedded SPA: read Inbox message, confirm Archive, keyboard u restores message and reader, query receipt, reload and query retained identity.",
+  "limits": [
+    "Synthetic mail only. Local storage is the last observed receipt; Query refreshes undo availability.",
+    "A wait for hidden Completed text timed out; opening the recovery panel exposes Query. Undo and subsequent query passed."
+  ]
+}

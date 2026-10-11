@@ -98,6 +98,13 @@ key, and `Esc` dismisses it for good. `T` on a conversation files
 it as a record after showing the card. The keys are in the
 [keybindings reference](/reference/keybindings/#archive).
 
+Mailbox Archive is a separate provider action. Open the command palette with
+`Ctrl-p` and choose **Preview Archive selection** for the selected messages.
+The palette also lists query and submit commands for retained operation IDs.
+After a lost response, query the same ID. Submitting that ID can resume only
+`pending` items; an `unknown` effect is not repeated. This does not file a
+record in Archive or invoke the desk's **Done** action.
+
 ## Thread context
 
 When a thread opens, the message pane leads with its context: the gist and

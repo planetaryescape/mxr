@@ -1,0 +1,11 @@
+{
+  "owned_daemon_stopped": true,
+  "pid": 54993,
+  "closed_ports": [
+    18415,
+    18416,
+    18446
+  ],
+  "browser_closed": true,
+  "synthetic_token_removed": true
+}

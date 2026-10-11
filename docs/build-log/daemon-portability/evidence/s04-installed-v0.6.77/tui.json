@@ -1,0 +1,84 @@
+{
+  "source": "14de28f1187d150e05a9f96f6eec12db60c7c9ab",
+  "binary_sha256": "sha256:6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "preview": {
+    "identity": {
+      "operation_id": "01a12cc3-72a2-74a1-a904-c98c3be43a56",
+      "caller_id": "01a12cc3-728f-74c0-ac02-b47d258bfafa",
+      "workspace": {
+        "workspace_id": "01a12cc3-728f-7e43-91cc-10170a6d3233",
+        "recovery_generation": "01a12cc3-728f-7e43-91cc-1022f58396e6"
+      }
+    },
+    "review_id": "01a12cc3-72a4-74c2-876c-88ff78155d0b",
+    "mutation_id": "01a12cc3-72a4-74c2-876c-890416400614",
+    "accepted": false,
+    "undo_available": false,
+    "running": false,
+    "started_at": 1791752368804,
+    "items": [
+      {
+        "message_id": "01a12cc2-ffc1-78a3-b4ea-8c23d1869df8",
+        "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "provider_id": "fake-msg-28",
+        "was_inbox": true,
+        "prior_flags_bits": 1,
+        "prior_label_provider_ids": [
+          "INBOX"
+        ],
+        "state": "pending",
+        "reason": null
+      }
+    ]
+  },
+  "query_after_reopen": {
+    "identity": {
+      "operation_id": "01a12cc3-72a2-74a1-a904-c98c3be43a56",
+      "caller_id": "01a12cc3-728f-74c0-ac02-b47d258bfafa",
+      "workspace": {
+        "workspace_id": "01a12cc3-728f-7e43-91cc-10170a6d3233",
+        "recovery_generation": "01a12cc3-728f-7e43-91cc-1022f58396e6"
+      }
+    },
+    "review_id": "01a12cc3-72a4-74c2-876c-88ff78155d0b",
+    "mutation_id": "01a12cc3-72a4-74c2-876c-890416400614",
+    "accepted": true,
+    "undo_available": true,
+    "running": false,
+    "started_at": 1791752368804,
+    "items": [
+      {
+        "message_id": "01a12cc2-ffc1-78a3-b4ea-8c23d1869df8",
+        "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+        "provider_id": "fake-msg-28",
+        "was_inbox": true,
+        "prior_flags_bits": 1,
+        "prior_label_provider_ids": [
+          "INBOX"
+        ],
+        "state": "completed",
+        "reason": null
+      }
+    ]
+  },
+  "provider_witnesses": [
+    {
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "mutation_id": "01a12cc3-72a4-74c2-876c-890416400614",
+      "phase": "accepted",
+      "provider_message_id": "fake-msg-28"
+    },
+    {
+      "account_id": "8c7ac9c3-c7f2-5fa4-84eb-af8b263b9b1d",
+      "mutation_id": "01a12cc3-72a4-74c2-876c-890416400614",
+      "phase": "dispatched",
+      "provider_message_id": "fake-msg-28"
+    }
+  ],
+  "preview_provider_witnesses": 0,
+  "journey": "Actual TUI palette preview, explicit submit, close before provider completion, reopen and query same retained identity.",
+  "limits": [
+    "TUI acceptance acknowledgement was received. Dropped acknowledgement is covered by the CLI/IPC harness.",
+    "First automation attempt combined Escape and Ctrl-P; no submission occurred. Separate key events succeeded."
+  ]
+}

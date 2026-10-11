@@ -1120,6 +1120,7 @@ async fn cancel_auto_reminder(
 
 #[derive(Debug, Deserialize)]
 struct ScheduleSendBody {
+    expected_revision: Option<i64>,
     draft_id: String,
     send_at: chrono::DateTime<chrono::Utc>,
 }
@@ -1137,6 +1138,7 @@ async fn schedule_send(
         &headers,
         auth.token.as_deref(),
         Request::ScheduleSend {
+            expected_revision: body.expected_revision,
             draft_id: id,
             send_at: body.send_at,
         },
@@ -2087,11 +2089,41 @@ async fn reset_orphaned_draft(
     passthrough(response)
 }
 
+#[derive(Deserialize)]
+struct ReviewedSendQuery {
+    token: Option<String>,
+    operation_id: String,
+    expected_revision: i64,
+}
+#[derive(Deserialize)]
+struct OutcomeQuery {
+    token: Option<String>,
+    account_id: String,
+}
+async fn get_send_outcome(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(operation_id): Path<String>,
+    Query(query): Query<OutcomeQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetSendOutcome {
+            account_id: parse_account_id(&query.account_id)?,
+            operation_id,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 async fn send_stored_draft(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(draft_id): Path<String>,
-    Query(auth): Query<AuthQuery>,
+    Query(auth): Query<ReviewedSendQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&draft_id)
         .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
@@ -2100,6 +2132,10 @@ async fn send_stored_draft(
         &headers,
         auth.token.as_deref(),
         Request::SendStoredDraft {
+            send_identity: Some(mxr_core::SendIdentity {
+                operation_id: auth.operation_id.clone(),
+                expected_revision: auth.expected_revision,
+            }),
             draft_id: id.clone(),
             override_safety_token: None,
         },
@@ -2839,6 +2875,7 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             post(reset_orphaned_draft),
         )
         .route("/drafts/{draft_id}/send-stored", post(send_stored_draft))
+        .route("/send-outcomes/{operation_id}", get(get_send_outcome))
         .route("/drafts/{draft_id}/stored", delete(delete_draft_stored))
         .route("/signatures", get(list_signatures).post(set_signature))
         .route("/signature-defaults", get(list_signature_defaults))

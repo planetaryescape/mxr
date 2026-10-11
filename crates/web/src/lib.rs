@@ -986,17 +986,27 @@ async fn send_compose_session(
     // The sent message id is what `POST /mail/reminders` keys on, so a client
     // can offer "send and remind" without re-finding the message. A bare `Ack`
     // (no receipt) leaves it null.
+    let mut identity = mxr_core::SendIdentity::for_draft(&draft);
+    if let Some(operation_id) = request.operation_id {
+        identity.operation_id = operation_id;
+    }
+    let operation_id = identity.operation_id.clone();
     let message_id = match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
         Request::SendDraft {
+            send_identity: Some(identity),
             draft,
             override_safety_token: request.override_safety_token.clone(),
         },
     )
     .await
     {
-        Ok(response @ (ResponseData::Ack | ResponseData::SendReceipt { .. })) => {
+        Ok(
+            response @ (ResponseData::Ack
+            | ResponseData::SendReceipt { .. }
+            | ResponseData::SendOutcome { .. }),
+        ) => {
             tracing::info!(
                 request_id,
                 endpoint = "compose/send",
@@ -1008,6 +1018,11 @@ async fn send_compose_session(
                 ResponseData::SendReceipt {
                     local_message_id, ..
                 } => Some(local_message_id),
+                ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                } if outcome.state == mxr_core::SendOutcomeState::Accepted => {
+                    outcome.local_message_id
+                }
                 _ => None,
             }
         }
@@ -1036,6 +1051,8 @@ async fn send_compose_session(
     .await;
     Ok(Json(json!({
         "ok": true,
+        "operation_id": operation_id,
+        "state": "accepted",
         "draft_id": draft_id,
         "message_id": message_id,
         "cleanup_warnings": cleanup_warnings,
@@ -1315,6 +1332,7 @@ async fn schedule_compose_session(
             &state.config.socket_path,
             request_id,
             Request::ScheduleSend {
+                expected_revision: draft.revision,
                 draft_id: draft_id.clone(),
                 send_at: request.send_at,
             },

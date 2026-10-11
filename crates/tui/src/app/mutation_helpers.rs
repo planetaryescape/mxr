@@ -374,6 +374,9 @@ impl App {
                 }
                 self.pending_promise_check = sent_message_id.clone();
                 self.advance_focus_run_after_send(draft_path.as_deref());
+                if let Some(path) = draft_path {
+                    self.schedule_draft_cleanup(path);
+                }
                 if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
                     self.queue_mutation(
                         Request::SetAutoReminder {
@@ -627,6 +630,14 @@ impl App {
         }
     }
 
+    pub(crate) fn finish_compose_mutation(&mut self, id: MutationId) {
+        if let Some((pending, sending)) = self.compose.pending_send_mutations.remove(&id) {
+            if !sending {
+                self.schedule_draft_cleanup(pending.draft_path);
+            }
+        }
+    }
+
     pub fn finish_pending_mutation(&mut self) {
         self.pending_mutation_count = self.pending_mutation_count.saturating_sub(1);
         if self.pending_mutation_count == 0 {
@@ -655,11 +666,19 @@ impl App {
         best_effort: bool,
         error: &MxrError,
     ) {
+        let compose = self.compose.pending_send_mutations.remove(&id);
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
         self.reopen_hint_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();
-        if best_effort {
+        if let Some((pending, sending)) = compose {
+            let path = pending.draft_path.display().to_string();
+            self.restore_failed_compose(pending);
+            self.show_error_modal(
+                if sending { "Send outcome needs checking" } else { "Draft save failed" },
+                format!("{error}\n\nYour text is at {path}. Close this message to review or edit the same draft. Check the send outcome before retrying; do not recompose and resend."),
+            );
+        } else if best_effort {
             self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));
         } else {
             self.show_mutation_failure(error);

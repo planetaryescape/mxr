@@ -11,6 +11,12 @@ use mxr_protocol::{
 use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
+    SendIdentityRetained(mxr_core::AccountId, mxr_core::SendIdentity),
+    ScheduledIdentityRetained(
+        mxr_core::AccountId,
+        mxr_core::SendIdentity,
+        mxr_core::DraftId,
+    ),
     Search {
         target: app::SearchTarget,
         append: bool,
@@ -279,6 +285,7 @@ pub(crate) enum AsyncResult {
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
     PlatformModalLoaded {
+        compose: Option<Box<app::PendingSend>>,
         title: String,
         result: Result<String, MxrError>,
     },

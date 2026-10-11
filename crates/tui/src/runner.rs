@@ -290,6 +290,30 @@ fn format_platform_response(data: &ResponseData) -> String {
                 iterations
             )
         }
+        ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        } => {
+            let state = match outcome.state {
+                mxr_core::SendOutcomeState::Accepted => {
+                    "Provider accepted this send. Do not resend."
+                }
+                mxr_core::SendOutcomeState::Unknown => "Acceptance uncertain. Do not resend.",
+                mxr_core::SendOutcomeState::NotAccepted => {
+                    "Provider did not accept this send. Review before a new attempt."
+                }
+            };
+            format!(
+                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nCheck again with:\nmxr send-outcome '{}' --account {}",
+                outcome.identity.operation_id,
+                outcome.account_id,
+                outcome.identity.expected_revision,
+                outcome.identity.operation_id,
+                outcome.account_id
+            )
+        }
+        ResponseData::SendOutcome { outcome: None } => {
+            "No submission outcome recorded for this operation.".into()
+        }
         ResponseData::Ack => "Done.".into(),
         other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
     }
@@ -302,6 +326,15 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    match crate::send_recovery_state::last() {
+        Ok(identity) => {
+            app.compose.last_send_identity = identity;
+            app.compose.last_send_query = crate::send_recovery_state::last_query().ok().flatten();
+        }
+        Err(error) => app.push_toast(crate::app::Toast::error(format!(
+            "Cannot read send recovery; do not resend: {error}"
+        ))),
+    }
     app.command_palette
         .palette
         .restore_recents_from_labels(&local_state.recent_action_labels);
@@ -1422,31 +1455,43 @@ pub async fn run() -> anyhow::Result<()> {
         for pending in platform_dispatch {
             let bg = bg.clone();
             let title = pending.title.clone();
+            let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
-                for request in pending.prelude {
-                    match ipc_call(&bg, request).await {
-                        Ok(Response::Ok { .. }) => {}
-                        Ok(Response::Error { message, .. }) => {
-                            return AsyncResult::PlatformModalLoaded {
-                                title,
-                                result: Err(MxrError::Ipc(message)),
-                            };
-                        }
-                        Err(e) => {
-                            return AsyncResult::PlatformModalLoaded {
-                                title,
-                                result: Err(e),
-                            };
+                let mut pending = pending;
+                let compose = pending.compose.clone();
+                let result = async {
+                    if let Some((account, identity, draft_id)) =
+                        crate::compose_persistence::prepare_compose_schedule(&bg, &mut pending)
+                            .await?
+                    {
+                        let _ = result_tx_inner.send(AsyncResult::ScheduledIdentityRetained(
+                            account, identity, draft_id,
+                        ));
+                    }
+                    for request in pending.prelude.drain(..) {
+                        match ipc_call(&bg, request).await {
+                            Ok(Response::Ok { .. }) => {}
+                            Ok(Response::Error { message, .. }) => {
+                                return Err(MxrError::Ipc(message));
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
                         }
                     }
+                    let resp = ipc_call(&bg, pending.request).await;
+                    match resp {
+                        Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                    }
                 }
-                let resp = ipc_call(&bg, pending.request).await;
-                let result: Result<String, MxrError> = match resp {
-                    Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                };
-                AsyncResult::PlatformModalLoaded { title, result }
+                .await;
+                AsyncResult::PlatformModalLoaded {
+                    compose,
+                    title,
+                    result,
+                }
             });
         }
 
@@ -2370,17 +2415,26 @@ pub async fn run() -> anyhow::Result<()> {
                 attempts,
                 run_after: _,
             } = queued_mutation;
-            let retry =
-                (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES).then(|| app::QueuedMutation {
-                    id: mutation_id,
-                    request: req.clone(),
-                    effect: effect.clone(),
-                    best_effort,
-                    attempts,
-                    run_after: None,
-                });
+            let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES
+                && !matches!(
+                    req,
+                    Request::SendDraft { .. } | Request::SendStoredDraft { .. }
+                ))
+            .then(|| app::QueuedMutation {
+                id: mutation_id,
+                request: req.clone(),
+                effect: effect.clone(),
+                best_effort,
+                attempts,
+                run_after: None,
+            });
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
+            let compose_file = app
+                .compose
+                .pending_send_mutations
+                .get(&mutation_id)
+                .map(|(pending, _)| pending.draft_path.clone());
             let _ = submit_task(&queued, async move {
                 let verb = mutation_verb_past(&req);
                 let move_not_sure = matches!(
@@ -2391,7 +2445,70 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::UndoMutation { mutation_id } => Some(mutation_id.clone()),
                     _ => None,
                 };
-                let resp = ipc_call(&bg, req).await;
+                let resp = async {
+                    let mut req = req;
+                    if let Request::SendDraft {
+                        draft,
+                        send_identity: Some(identity),
+                        ..
+                    } = &mut req
+                    {
+                        let (reviewed_draft, reviewed) =
+                            crate::send_recovery::prepare_reviewed_send(
+                                &bg,
+                                draft.clone(),
+                                identity.clone(),
+                            )
+                            .await?;
+                        *draft = reviewed_draft;
+                        *identity = reviewed;
+                        #[cfg(not(test))]
+                        {
+                            let retained = match compose_file.as_deref() {
+                                Some(file) => crate::send_recovery_state::retain_reviewed_compose(
+                                    &draft.account_id,
+                                    &draft.id,
+                                    identity,
+                                    file,
+                                ),
+                                None => crate::send_recovery_state::retain_reviewed(
+                                    &draft.account_id,
+                                    &draft.id,
+                                    identity,
+                                ),
+                            };
+                            retained.map_err(|error| {
+                                MxrError::Ipc(format!(
+                                    "Cannot retain reviewed send identity: {error}"
+                                ))
+                            })?;
+                        }
+                        {
+                            let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
+                                draft.account_id.clone(),
+                                identity.clone(),
+                            ));
+                        }
+                    }
+                    if let (Some(file), Request::SaveDraftToServer { draft }) =
+                        (compose_file.as_ref(), &mut req)
+                    {
+                        let (canonical, identity) =
+                            crate::compose_persistence::prepare_reviewed_compose(
+                                &bg,
+                                draft.clone(),
+                                file,
+                            )
+                            .await?;
+                        *draft = canonical;
+                        let _ = result_tx_inner.send(AsyncResult::SendIdentityRetained(
+                            draft.account_id.clone(),
+                            identity,
+                        ));
+                    }
+                    ipc_call(&bg, req).await
+                }
+                .await;
                 let outcome = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Ack | ResponseData::Draft { .. },
@@ -2411,6 +2528,32 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         effect
                     }),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::SendOutcome {
+                                outcome: Some(outcome),
+                            },
+                    }) if outcome.state == mxr_core::SendOutcomeState::Accepted
+                        && matches!(effect, app::MutationEffect::SentSuccess { .. }) =>
+                    {
+                        Ok(effect)
+                    }
+                    Ok(Response::Ok {
+                        data: ResponseData::SendOutcome { outcome },
+                    }) => Ok(app::MutationEffect::StatusOnly(match outcome {
+                        Some(outcome) => format!(
+                            "Send {}: {}",
+                            outcome.identity.operation_id,
+                            match outcome.state {
+                                mxr_core::SendOutcomeState::Accepted => "provider accepted",
+                                mxr_core::SendOutcomeState::Unknown =>
+                                    "acceptance uncertain; do not resend",
+                                mxr_core::SendOutcomeState::NotAccepted =>
+                                    "not accepted; review before a new attempt",
+                            }
+                        ),
+                        None => "No send outcome recorded".into(),
+                    })),
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => {
@@ -2909,6 +3052,14 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.search.page.ui_status = app::SearchUiStatus::Error;
                             }
                             app.status_message = Some(format!("Search count failed: {error}"));
+                        }
+                        AsyncResult::ScheduledIdentityRetained(account, identity, draft_id) => {
+                            let alias = format!("draft:{draft_id}");
+                            app.apply_retained_send_identity(account.clone(),identity.clone());
+                            if app.compose.last_send_identity.as_ref()==Some(&(account,identity)) { app.compose.last_send_query=Some(alias); }
+                        }
+                        AsyncResult::SendIdentityRetained(account, identity) => {
+                            app.apply_retained_send_identity(account, identity);
                         }
                         AsyncResult::Rules(Ok(rules)) => {
                             app.replace_rule_list(rules);
@@ -3576,6 +3727,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.finish_pending_mutation();
                             match *outcome {
                                 Ok(effect) => {
+                                    app.finish_compose_mutation(id);
                                     // Daemon ack'd the mutation: discard the rollback
                                     // snapshot — there's no longer anything to revert.
                                     let _ = app.mutation_snapshots.take(id);
@@ -4028,7 +4180,12 @@ pub async fn run() -> anyhow::Result<()> {
                                 format!("The daemon returned: {e}"),
                             );
                         }
-                        AsyncResult::PlatformModalLoaded { title, result } => {
+                        AsyncResult::PlatformModalLoaded { compose, title, mut result } => {
+                            if let Some(pending) = compose {
+                                let pending = *pending;
+                                result = result.map(|body| format!("{body}\n\nQuery scheduled delivery with draft:{} for account {}", pending.draft_id(), pending.account_id));
+                                app.finish_compose_schedule(pending, result.is_ok());
+                            }
                             app.modals.platform.title = title;
                             match result {
                                 Ok(body) => app.modals.platform.set_body(body),

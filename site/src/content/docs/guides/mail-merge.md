@@ -194,17 +194,61 @@ Property values may be opaque access tokens, so they are treated as secrets:
 ## Resuming and retrying
 
 State lives in `.mxr-mailmerge/<campaign-id>.json`, written after every record.
-
 Rerunning `draft` with the same `--campaign-id` skips records that already have
-a draft, so an interrupted run resumes instead of duplicating. Sends and
-schedules are marked per record, so a crash mid-run cannot dispatch anyone
-twice. A scheduled record remains `scheduled` in the campaign manifest because
-mxr's daemon owns its eventual delivery. After a partial failure:
+a draft. For an initial send or schedule, and for an explicitly permitted retry
+after confirmed `not_accepted`, `mxr-mailmerge` previews the saved draft and
+durably records its account, reviewed revision, operation ID and, for a
+schedule, resolved delivery time before invoking `mxr`. A retained command
+reuses its saved identity while it checks the outcome; it does not create a new
+review for the same attempt.
+
+Immediately after an immediate send, the companion queries the exact reviewed
+account and operation ID. If the response was lost, run `status` to see the
+uncertain record, then check the account-scoped draft alias. On a later campaign
+run for an immediate send, reconciliation starts with that alias and checks the retained operation ID
+when needed. The daemon can retain an accepted result after
+deleting the draft, so the campaign can reconcile it without sending again:
+
+```bash
+mxr-mailmerge status <campaign-id>
+mxr send-outcome 'draft:<draft-id>' --account <account-id> --format json
+mxr-mailmerge send <campaign-id> --yes
+```
+
+`unknown` or an outcome-query failure remains visible as uncertain; the
+companion does not automatically retry it. Re-running the campaign send queries
+the draft-scoped outcome first and does not dispatch while it remains
+uncertain. A confirmed `not_accepted` result is a failed record. Retry only
+after review with the explicit command:
 
 ```bash
 mxr-mailmerge send <campaign-id> --retry-failed --yes
+```
+
+That retry takes a fresh preview and stores a new operation ID before it acts.
+The campaign manifest is a local recovery checkpoint, not an end-to-end
+exactly-once delivery guarantee.
+
+Scheduling has a separate acknowledgement boundary. If the schedule command's
+response is lost, the record remains `schedule_uncertain` with its reviewed
+delivery time. Check the draft-scoped outcome under the manifest account and
+inspect `mxr-mailmerge status`; do not treat a missing result as proof that the
+schedule was rejected or automatically schedule it again:
+
+```bash
+mxr send-outcome 'draft:<draft-id>' --account <account-id> --format json
 mxr-mailmerge status <campaign-id>
 ```
+
+After a lost schedule acknowledgement, retry only when the retained schedule
+attempt is confirmed `not_accepted` and an operator explicitly retries; an
+initial schedule does not require a previous rejection. The status command
+keeps a lost schedule acknowledgement separate from a confirmed schedule.
+Existing manifests without the newer optional review fields remain readable,
+but they cannot recreate a historical operation ID that was never checkpointed.
+If such a legacy record has no retained daemon outcome, the companion cannot
+establish whether an earlier attempt was accepted; reconcile it before retrying.
+The manifest checkpoint reduces duplicate effects when its identity is retained.
 
 ## What it does not do
 

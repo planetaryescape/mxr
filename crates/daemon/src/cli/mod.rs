@@ -1315,7 +1315,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// message lands in `mxr drafts` and is sent later with
-        /// `mxr send <draft-id>`. Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`. Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1366,7 +1366,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// reply lands in `mxr drafts` (threaded, ready to send with
-        /// `mxr send <draft-id>`). Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`). Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1416,7 +1416,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// reply lands in `mxr drafts` (threaded, ready to send with
-        /// `mxr send <draft-id>`). Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`). Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1469,7 +1469,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// forward lands in `mxr drafts`, ready to send with
-        /// `mxr send <draft-id>`. Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`. Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1480,7 +1480,7 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
     /// Manage drafts: list (default), show scheduled sends, recover orphaned
-    /// in-flight sends, resume one for retry, edit, delete, or sync drafts
+    /// in-flight sends, check outcomes, edit, delete, or sync drafts
     /// with a provider.
     Drafts {
         #[command(subcommand)]
@@ -1490,8 +1490,22 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Inspect a send operation after disconnect, including after draft cleanup.
+    SendOutcome {
+        operation_id: String,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Send a draft by ID
     Send {
+        /// Revision returned by the reviewed preview. Required for sending now.
+        #[arg(long)]
+        expected_revision: Option<i64>,
+        /// Stable identity retained before submission; defaults to draft ID/revision.
+        #[arg(long)]
+        operation_id: Option<String>,
         /// Draft ID to send
         draft_id: String,
         #[arg(long)]
@@ -2044,16 +2058,15 @@ pub enum DraftsAction {
     /// Show all drafts (default if no subcommand)
     List,
     /// Show drafts scheduled to send later that have not gone out yet,
-    /// soonest first. Schedule with `mxr send <draft-id> --at <TIME>`;
+    /// soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --at <TIME>`;
     /// cancel with `mxr unsend <draft-id>`.
     Scheduled,
     /// Show drafts that look orphaned mid-send (status `'sending'`,
-    /// stale heartbeat). The startup loop already auto-resets these
-    /// after 1h; this surfaces them earlier so you can act now.
+    /// stale heartbeat). Query their send outcomes before taking action;
+    /// uncertain submissions cannot be reset or automatically retried.
     Recover,
-    /// Force-reset an orphaned draft to `'draft'` status so it can be
-    /// re-sent via the normal pipeline. No-op if the draft is already
-    /// in `'draft'`.
+    /// Compatibility check for an orphaned draft. Refuses unresolved
+    /// send outcomes; never resets a potentially accepted send.
     Resume {
         /// Draft ID to resume.
         draft_id: String,

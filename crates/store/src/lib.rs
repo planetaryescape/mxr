@@ -44,6 +44,7 @@ mod draft;
 mod draft_commitments;
 mod draft_recovery;
 mod draft_safety;
+mod draft_send_outcomes;
 mod event_log;
 mod got_it;
 mod history_text;

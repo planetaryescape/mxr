@@ -51,7 +51,8 @@ export async function performMailAction(
   }
   const opId = `op-${Date.now()}-${(opSequence += 1)}`;
   const pending = usePendingMailOps.getState();
-  pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
+  if (action !== "archive")
+    pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
   if (isDestructive(action)) useSelection.getState().clear();
   // The row leaves the list at once, so `u` can come before the daemon
   // answers. Claim the undo slot now; an early `u` waits for the answer.
@@ -60,13 +61,14 @@ export async function performMailAction(
   try {
     const command = jobCommand(action, ids, options.payload);
     const response =
-      command && ids.length >= JOB_THRESHOLD
+      action !== "archive" && command && ids.length >= JOB_THRESHOLD
         ? await runAsJob(action, command, ids.length, options.payload)
         : await requestCoordinator.enqueueMutation(() => runAction(action, ids, options));
     assertCompleted(response, ids.length);
+    if (action === "archive") await invalidateMailQueries().catch(() => undefined);
     if (claim) claim.settle(announceSuccess(action, ids, response, claim.run, options.payload));
     if (!options.silent) playMailActionSound(action);
-    await invalidateMailQueries().catch(() => undefined);
+    if (action !== "archive") await invalidateMailQueries().catch(() => undefined);
     return { ok: true, response };
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
@@ -76,11 +78,12 @@ export async function performMailAction(
     // Part of it may have changed: the daemon's undo for that part stays on
     // `u` and the toast.
     const response = failedResponse(error);
+    if (action === "archive") await invalidateMailQueries().catch(() => undefined);
     const undo = claim && response ? keepPartialUndo(response, claim.run) : null;
     claim?.settle(undo);
     announceFailure(action, error, options.payload, undo);
-    void invalidateMailQueries().catch(() => undefined);
-    return { ok: false, error };
+    if (action !== "archive") void invalidateMailQueries().catch(() => undefined);
+    return { ok: false, error, response: response ?? undefined };
   } finally {
     usePendingMailOps.getState().remove(opId);
   }

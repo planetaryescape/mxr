@@ -20,7 +20,7 @@ fn palette_with(commands: Vec<PaletteCommand>) -> CommandPalette {
         context: UiContext::MailboxList,
         recent_actions: Vec::new(),
     };
-    palette.toggle(UiContext::MailboxList);
+    palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
     palette
 }
 
@@ -123,7 +123,7 @@ fn recently_used_commands_surface_to_top_with_empty_query() {
     let _ = palette.confirm();
 
     // Reopen the palette with no query.
-    palette.toggle(UiContext::MailboxList);
+    palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
 
     let labels: Vec<_> = palette
         .visible_commands()
@@ -166,10 +166,10 @@ fn most_recent_command_ranks_first_when_multiple_are_recent() {
     // Use Star, then Compose. Compose was used most recently.
     type_query(&mut palette, "star");
     let _ = palette.confirm();
-    palette.toggle(UiContext::MailboxList);
+    palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
     type_query(&mut palette, "compose");
     let _ = palette.confirm();
-    palette.toggle(UiContext::MailboxList);
+    palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
 
     let labels: Vec<_> = palette
         .visible_commands()
@@ -226,7 +226,8 @@ fn empty_query_lists_all_commands_in_registration_order() {
         vec![
             "First".to_string(),
             "Second".to_string(),
-            "Third".to_string()
+            "Third".to_string(),
+            "Preview Archive selection".to_string(),
         ],
         "empty query preserves registration order"
     );

@@ -33,6 +33,7 @@ export function assertCompleted(response: MutationResponse, requested: number): 
 }
 
 function describeFailure(response: MutationResponse, requestedFallback: number): string {
+  if (response.error) return response.error;
   const result = response.result;
   if (!result) return "The daemon rejected the change.";
   const requested = result.requested || requestedFallback;

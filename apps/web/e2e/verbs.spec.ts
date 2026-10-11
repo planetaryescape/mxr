@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { VERB_FEEDBACK, type Verb } from "../src/features/mail-actions/verbFeedback";
+import { acceptArchiveReview } from "./helpers/archive";
 import {
   cursorRowId,
   cursorTo,
@@ -93,12 +94,14 @@ function rowVerb(
     await mailList(page).focus();
     const rowId = await cursorTo(page, options.pick ?? (() => true));
     const before = rowStates(await rowLabel(page, rowId));
+    const consent = verb === "archive" ? acceptArchiveReview(page) : undefined;
     for (const key of keys) {
       await page.keyboard.press(key);
       // A dialog verb (snooze) takes its next key once the dialog is up.
       if (key === "Z")
         await expect(page.getByRole("dialog", { name: "Snooze until…" })).toBeVisible();
     }
+    if (consent) await consent;
     await expectToast(page, verb);
     if (options.leaves) await expect(rowById(page, rowId)).toHaveCount(0);
     else await expect.poll(async () => rowStates(await rowLabel(page, rowId))).not.toEqual(before);

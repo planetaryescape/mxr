@@ -9,6 +9,7 @@
 
 import { expect, test, type Page, type Response } from "@playwright/test";
 
+import { acceptArchiveReview, archiveViaBridge, type ArchiveOperation } from "./helpers/archive";
 import { expectCursorOn, mailList, openList, reader } from "./helpers/mail";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
 
@@ -56,15 +57,22 @@ async function waitForPeople(page: Page) {
 interface Tracked {
   /** One per request, in the order the page sent them. */
   pending: Promise<string | null>[];
+  /** Archive identities that may still be running when a test exits early. */
+  archiveIdentities: Map<string, ArchiveOperation["identity"]>;
 }
 
 /** Mode done answers `{ mutation_id }`; mail mutations `{ result: { mutation_id } }`. */
 interface MutationAnswer {
   mutation_id?: string | null;
   result?: { mutation_id?: string | null } | null;
+  operation?: { mutation_id?: string | null; undo_available?: boolean } | null;
 }
 
-const idOf = (answer: MutationAnswer) => answer.mutation_id ?? answer.result?.mutation_id ?? null;
+const idOf = (answer: MutationAnswer) =>
+  answer.mutation_id ??
+  answer.result?.mutation_id ??
+  (answer.operation?.undo_available ? answer.operation.mutation_id : null) ??
+  null;
 
 async function mutationId(response: Response | null): Promise<string | null> {
   if (!response) return null;
@@ -74,11 +82,21 @@ async function mutationId(response: Response | null): Promise<string | null> {
 }
 
 function trackMutations(page: Page): Tracked {
-  const tracked: Tracked = { pending: [] };
+  const tracked: Tracked = { pending: [], archiveIdentities: new Map() };
   // From the request, so one still on its way when the test ends is waited for.
   page.on("request", (request) => {
     if (request.method() !== "POST") return;
-    if (!/\/modes\/[a-z]+\/done$|\/mutations\/(archive|trash)$/.test(request.url())) return;
+    if (
+      !/\/modes\/[a-z]+\/done$|\/mutations\/(archive|trash)$|\/archive-operations\/(submit|query)$/.test(
+        request.url(),
+      )
+    )
+      return;
+    if (request.url().includes("/archive-operations/")) {
+      // SAFETY: this listener only handles the app's typed archive request bodies.
+      const body = request.postDataJSON() as { identity?: ArchiveOperation["identity"] };
+      if (body.identity) tracked.archiveIdentities.set(body.identity.operation_id, body.identity);
+    }
     tracked.pending.push(
       request
         .response()
@@ -93,8 +111,32 @@ async function undoAll(page: Page, tracked: Tracked) {
   // In request order, not the order the answers came back: the daemon takes
   // overlapping requests in any order, and undoing in the wrong order leaves
   // an earlier state behind.
-  const ids = (await Promise.all(tracked.pending)).filter((id): id is string => id !== null);
-  for (const id of ids.toReversed()) {
+  const ids = new Set(
+    (await Promise.all(tracked.pending)).filter((id): id is string => id !== null),
+  );
+  // The first terminal receipt owns the only available Undo ID.
+  // oxlint-disable no-await-in-loop
+  for (const identity of tracked.archiveIdentities.values()) {
+    let operation: ArchiveOperation | undefined;
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      const response = await page.request.post(
+        `${readE2EState().bridgeUrl}/api/v1/mail/archive-operations/query`,
+        { headers: bridgeAuth(), data: { identity } },
+      );
+      if (!response.ok()) break;
+      // SAFETY: the query route returns the generated ArchiveOperation response envelope.
+      const body = (await response.json()) as { operation: ArchiveOperation };
+      operation = body.operation;
+      if (!operation.running) break;
+      // oxlint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (operation?.running)
+      throw new Error(`Archive operation ${identity.operation_id} stayed running for 30 seconds`);
+    if (operation?.undo_available) ids.add(operation.mutation_id);
+  }
+  // oxlint-enable no-await-in-loop
+  for (const id of [...ids].toReversed()) {
     // One already undone from the page answers with an error; that's fine.
     // oxlint-disable-next-line no-await-in-loop
     await page.request
@@ -132,7 +174,10 @@ test.describe("Messages: done here moves on", () => {
     // where they were, so the test that leaves somebody behind is the one
     // that fails.
     await expect
-      .poll(() => bandsByPerson(page), { timeout: 10_000, message: "everyone is back in their band" })
+      .poll(() => bandsByPerson(page), {
+        timeout: 10_000,
+        message: "everyone is back in their band",
+      })
       .toEqual(bandsBefore);
   });
 
@@ -434,7 +479,9 @@ test.describe("Inbox: the reader after archive", () => {
     const openedUrl = page.url();
     const openedTitle = await reader(page).getAttribute("aria-label");
     await page.keyboard.press("h");
+    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
+    await consent;
     await expect(page).not.toHaveURL(openedUrl);
     await expect(reader(page)).not.toHaveAttribute("aria-label", openedTitle!);
     await expect(reader(page)).toBeVisible();
@@ -444,7 +491,25 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
   });
 
-  test("archive in the reader on the last row goes to the one before, and u reopens it", async ({
+  test("canceling archive review in the reader keeps the conversation open", async ({ page }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("G");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const openedUrl = page.url();
+    const openedTitle = await reader(page).getAttribute("aria-label");
+    const dialogPromise = page.waitForEvent("dialog");
+
+    await page.keyboard.press("e");
+    const dialog = await dialogPromise;
+    expect(dialog.type()).toBe("confirm");
+    await dialog.dismiss();
+
+    await expect(page).toHaveURL(openedUrl);
+    await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
+  });
+
+  test("delayed archive in the reader on the last row advances, and u reopens it", async ({
     page,
   }) => {
     await openList(page, "/m/inbox");
@@ -453,13 +518,75 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
     const lastUrl = page.url();
     const lastTitle = await reader(page).getAttribute("aria-label");
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("e");
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(lastUrl);
     await expect(page).not.toHaveURL(lastUrl);
     await expect(reader(page)).toBeVisible();
     await expect(reader(page)).not.toHaveAttribute("aria-label", lastTitle!);
 
     await page.keyboard.press("u");
     await expect(page).toHaveURL(lastUrl);
+  });
+
+  test("delayed archive-previous in the reader keeps its direction through undo", async ({
+    page,
+  }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const previousUrl = page.url();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+    await page.keyboard.press("n");
+    await expect(page).not.toHaveURL(previousUrl);
+    const openedUrl = page.url();
+    expect(openedUrl).not.toBe(previousUrl);
+    const openedTitle = await reader(page).getAttribute("aria-label");
+
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
+    await page.keyboard.press("[");
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(openedUrl);
+    await expect(page).toHaveURL(previousUrl);
+
+    await page.keyboard.press("u");
+    await expect(page).toHaveURL(openedUrl);
+    await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
+  });
+
+  test("archive in All Mail advances even though the row stays in the list", async ({ page }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
+    const threadId = decodeURIComponent(page.url().split("/").at(-1)!);
+    await openList(page, "/m/archive");
+    await page.goto(`/m/archive/${encodeURIComponent(threadId)}`);
+    await expect(page).toHaveURL(/\/m\/archive\/[^/]+$/);
+    const openedUrl = page.url();
+    await reader(page).getByTestId("thread-scroll").focus();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+
+    const consent = acceptArchiveReview(page);
+    await page.keyboard.press("e");
+    await consent;
+    await expect(page).not.toHaveURL(openedUrl);
+    await expect(page).toHaveURL(/\/m\/archive\/[^/]+$/);
+
+    await page.keyboard.press("u");
+    await expect(page).not.toHaveURL(openedUrl);
+    await expect(page.getByText(/^Undone$/)).toBeVisible();
   });
 
   test("a conversation archived elsewhere, seen at the next sync, hands the reader to the next one", async ({
@@ -475,11 +602,11 @@ test.describe("Inbox: the reader after archive", () => {
       `/api/v1/mail/threads/${encodeURIComponent(thread)}`,
     );
     // Another client archives the whole conversation.
-    const result = await bridge<MutationAnswer>(page, "/api/v1/mail/mutations/archive", {
-      message_ids: messages.map((message) => message.id),
-    });
-    const archived = idOf(result);
-    if (archived) mutations.pending.push(Promise.resolve(archived));
+    const result = await archiveViaBridge(
+      page,
+      messages.map((message) => message.id),
+    );
+    if (result.undo_available) mutations.pending.push(Promise.resolve(result.mutation_id));
     // This page hears about it the way it hears about any outside change:
     // a sync finishing refetches the lists.
     await bridge(page, "/api/v1/mail/sync", {});
@@ -544,5 +671,54 @@ test.describe("Now and Updates", () => {
     await page.keyboard.press("u");
     await expect(page.getByText(/^Undone$/)).toBeVisible({ timeout: 15_000 });
     await expect(lines.filter({ hasText: firstSource })).toHaveCount(1, { timeout: 15_000 });
+  });
+});
+
+test.describe("Reading: the email reader after archive", () => {
+  let mutations: Tracked;
+  test.beforeEach(({ page }) => {
+    mutations = trackMutations(page);
+  });
+  test.afterEach(async ({ page }) => {
+    await undoAll(page, mutations);
+  });
+
+  test("delayed archive-previous keeps its direction through undo", async ({ page }) => {
+    await openApp(page, "/reading");
+    const rows = page.getByTestId("reading-item");
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    await rows.first().click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("o");
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+
+    const previous = reader(page).getByRole("button", { name: "Previous conversation (N)" });
+    // This route step must settle before we can know which thread comes before it.
+    // eslint-disable-next-line no-await-in-loop
+    while (!(await previous.isDisabled())) {
+      const before = page.url();
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.press("N");
+      // eslint-disable-next-line no-await-in-loop
+      await expect(page).not.toHaveURL(before);
+    }
+    const previousUrl = page.url();
+    await page.keyboard.press("n");
+    await expect(page).not.toHaveURL(previousUrl);
+    const selectedUrl = page.url();
+    await reader(page).getByTestId("thread-scroll").focus();
+    await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+
+    await page.route("**/archive-operations/submit", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      await route.continue();
+    });
+    const consent = acceptArchiveReview(page);
+    const submitStarted = page.waitForRequest("**/archive-operations/submit");
+    await page.keyboard.press("[");
+    await Promise.all([consent, submitStarted]);
+    await expect(page).toHaveURL(previousUrl);
+
+    await page.keyboard.press("u");
+    await expect(page).toHaveURL(selectedUrl);
   });
 });

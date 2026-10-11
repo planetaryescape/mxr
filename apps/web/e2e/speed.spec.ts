@@ -9,18 +9,27 @@ test.use({ viewport: { width: 1440, height: 900 } });
 const PRESSES = 20;
 const MIN_PRESSES = 10;
 
-/** Keep mutations in flight: the rows change optimistically and the daemon is untouched. */
+interface KeyPaintSamples {
+  j: number[];
+  k: number[];
+  s: number[];
+  e?: number[];
+}
+
+/** Keep requests in flight so the probe measures the client while work is pending. */
 async function holdMutations(page: Page): Promise<void> {
   const hold = () => new Promise<void>(() => {});
-  await page.route("**/api/v1/mail/mutations/archive", hold);
   await page.route("**/api/v1/mail/mutations/star", hold);
   // On the desk, e is Done.
   await page.route("**/api/v1/mail/desk/done", hold);
 }
 
-function report(path: string, samples: Record<string, number[]>): Record<string, number> {
+function report(
+  path: string,
+  samples: KeyPaintSamples | { Enter: number[] },
+): Record<string, number> {
   const result = Object.fromEntries(
-    Object.entries(samples).map(([key, values]) => [key, p95(values)]),
+    Object.entries(samples).flatMap(([key, values]) => (values ? [[key, p95(values)]] : [])),
   );
   test.info().annotations.push({
     type: "key-to-paint p95 ms",
@@ -31,19 +40,23 @@ function report(path: string, samples: Record<string, number[]>): Record<string,
 }
 
 for (const path of ["/desk", "/m/inbox"]) {
-  test(`keydown to paint stays under budget on ${path} for j, k, s and e`, async ({ page }) => {
+  test(`keydown to paint stays under budget on ${path} for j, k, s${path === "/desk" ? ", and e" : ""}`, async ({
+    page,
+  }) => {
     await openList(page, path);
     const presses = Math.min(PRESSES, (await mailRows(page).count()) - 1);
     expect(presses).toBeGreaterThanOrEqual(MIN_PRESSES);
     await installKeyToPaintProbe(page);
     await holdMutations(page);
 
-    const samples = {
+    const samples: KeyPaintSamples = {
       j: await measureKey(page, "j", presses, { change: "cursor-moves" }),
       k: await measureKey(page, "k", presses, { change: "cursor-moves" }),
       s: await measureKey(page, "s", presses, { change: "star-toggles" }),
-      e: await measureKey(page, "e", presses, { change: "row-leaves" }),
     };
+    // Inbox Archive now opens a reviewed native confirmation and waits for the durable outcome.
+    if (path === "/desk")
+      samples.e = await measureKey(page, "e", presses, { change: "row-leaves" });
     const result = report(path, samples);
 
     for (const value of Object.values(result)) expect(value).toBeLessThan(KEY_TO_PAINT_P95_MS);

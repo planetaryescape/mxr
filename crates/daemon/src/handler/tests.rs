@@ -698,6 +698,7 @@ fn rules_form_maps_link_filters_to_link_density() {
 }
 
 mod account_scope;
+mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
 mod body_and_invites;

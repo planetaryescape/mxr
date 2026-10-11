@@ -17,6 +17,7 @@ import { WhyHereLine } from "@/features/places/WhyHereLine";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -131,6 +132,8 @@ export function ThreadReader({
   // per opening: after it fires, or after the user marks read or unread
   // themselves, pane changes never mark the thread read again.
   const autoReadSettled = useRef(false);
+  const archivePending = useRef(false);
+  const routeStillShows = useRouteStillShows();
   useEffect(() => {
     if (autoReadSettled.current) return;
     const unread = messages.filter((message) => message.unread).map((message) => message.id);
@@ -244,10 +247,30 @@ export function ThreadReader({
   const { position, step, leave } = useThreadSiblings(data.thread.id, nav);
 
   const target = () => targetFromThread(data, messages);
+  const archiveAndAdvance = (
+    direction: 1 | -1,
+    run: () => ReturnType<typeof performMailAction> = () =>
+      performMailAction("archive", target().messageIds),
+  ) => {
+    if (archivePending.current) return;
+    archivePending.current = true;
+    const release = nav?.expectRemoval?.(data.thread.id, direction);
+    void run()
+      .then((outcome) => {
+        const changed = outcome.ok || (outcome.response?.result?.succeeded ?? 0) > 0;
+        release?.(changed);
+        const remainsInList = nav?.isListed?.(data.thread.id) ?? true;
+        if (outcome.ok && remainsInList && routeStillShows(data.thread.id)) leave(direction);
+      })
+      .finally(() => {
+        archivePending.current = false;
+      });
+  };
   const verbs = createMailVerbs({
     getTarget: target,
     composeSurface: "inline",
     afterLeave: () => leave(1),
+    afterArchive: (run) => archiveAndAdvance(1, run),
     intercept: nav?.intercept,
   });
 
@@ -312,12 +335,10 @@ export function ThreadReader({
       if (!step(-1)) toast.info("That was the first conversation");
     },
     archiveNext: () => {
-      void performMailAction("archive", target().messageIds);
-      leave(1);
+      archiveAndAdvance(1);
     },
     archivePrev: () => {
-      void performMailAction("archive", target().messageIds);
-      leave(-1);
+      archiveAndAdvance(-1);
     },
     // With the list hidden (narrow screen, full-width reader), going back to
     // it means closing the conversation, not focusing an invisible list.

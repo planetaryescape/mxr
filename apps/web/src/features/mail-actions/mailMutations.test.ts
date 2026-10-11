@@ -35,6 +35,8 @@ vi.mock("@/features/mailbox/api", async (importOriginal) => ({
   ...api,
 }));
 
+vi.mock("./archiveRecovery", () => ({ archiveMessagesRecoverably: api.archiveMessages }));
+
 interface ToastOptions {
   description?: string;
   action?: { label: ReactNode; onClick: () => void };
@@ -153,18 +155,18 @@ afterEach(() => {
 });
 
 describe("performMailAction", () => {
-  test("the row leaves the view before the request resolves", async () => {
+  test("Archive keeps the row visible until the daemon result is known", async () => {
     const request = deferred<MutationResponse>();
     api.archiveMessages.mockReturnValue(request.promise);
 
     const done = performMailAction("archive", ["a-1", "a-2"]);
 
-    expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
+    expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
     request.resolve(ok(2));
     await done;
   });
 
-  test("success toasts with Undo and keeps the op until the refetch lands", async () => {
+  test("Archive success toasts with Undo and waits for the confirmed refetch", async () => {
     api.archiveMessages.mockResolvedValue(ok(2, "mut-1"));
     const serverAnswer = deferred<MailboxResponse>();
     refetch.mockReturnValueOnce(serverAnswer.promise);
@@ -173,18 +175,20 @@ describe("performMailAction", () => {
 
     await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // Archive is a neutral change with an undo: the info (accent) toast.
+    // Do not expose an undo until the cache shows the archived row is gone.
     expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+    expect(useUndo.getState().lastMutationId).toBeNull();
+    // Archive uses the confirmed receipt, so only the server refetch removes the row.
+    expect(usePendingMailOps.getState().ops).toHaveLength(0);
+    expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
+
+    serverAnswer.resolve(page([row("b")]));
+    await expect(done).resolves.toMatchObject({ ok: true });
     const [message, options] = toast.info.mock.calls[0]!;
     expect(message).toBe("Archived 2 messages");
     expect(isUndoLabel(options?.action?.label)).toBe(true);
     expect(useUndo.getState().lastMutationId).toBe("mut-1");
-    // The old cache still has row a; the op keeps it hidden meanwhile.
-    expect(usePendingMailOps.getState().ops).toHaveLength(1);
-    expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
-
-    serverAnswer.resolve(page([row("b")]));
-    await expect(done).resolves.toMatchObject({ ok: true });
     expect(usePendingMailOps.getState().ops).toEqual([]);
     expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
   });
@@ -198,6 +202,7 @@ describe("performMailAction", () => {
     const first = performMailAction("archive", ["a-1", "a-2"]);
     const second = performMailAction("star", ["b-1", "b-2"]);
     expect(renderedInbox().map(({ id, starred }) => ({ id, starred }))).toEqual([
+      { id: "a", starred: false },
       { id: "b", starred: true },
     ]);
 
@@ -243,6 +248,7 @@ describe("performMailAction", () => {
     const outcome = await performMailAction("archive", ["a-1", "a-2", "b-1"]);
 
     expect(outcome.ok).toBe(false);
+    expect(outcome.response?.result?.succeeded).toBe(2);
     expect(toast.success).not.toHaveBeenCalled();
     // Part done is a warning, not an error.
     expect(toast.error).not.toHaveBeenCalled();
@@ -258,6 +264,8 @@ describe("performMailAction", () => {
   });
 
   test("a partial failure keeps the undo of what changed, on `u` and the toast", async () => {
+    const serverAnswer = deferred<MailboxResponse>();
+    refetch.mockReturnValueOnce(serverAnswer.promise);
     api.archiveMessages.mockResolvedValue({
       ok: true,
       result: {
@@ -280,7 +288,17 @@ describe("performMailAction", () => {
     });
     api.undoMutation.mockResolvedValue({ ok: true });
 
-    const outcome = await performMailAction("archive", ["a-1", "a-2", "b-1"]);
+    const done = performMailAction("archive", ["a-1", "a-2", "b-1"]);
+    await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(useUndo.getState().lastMutationId).toBeNull();
+    const early = useUndo.getState().lastUndo;
+    expect(early).toBeTypeOf("function");
+    const undone = early!();
+    expect(api.undoMutation).not.toHaveBeenCalled();
+
+    serverAnswer.resolve(page([row("b")]));
+    const outcome = await done;
 
     expect(outcome.ok).toBe(false);
     const [title, options] = toast.warning.mock.calls[0]!;
@@ -290,7 +308,7 @@ describe("performMailAction", () => {
     );
     expect(isUndoLabel(options?.action?.label)).toBe(true);
 
-    await expect(useUndo.getState().lastUndo?.()).resolves.toBe(true);
+    await expect(undone).resolves.toBe(true);
     expect(api.undoMutation).toHaveBeenCalledWith("mut-part");
     expect(useUndo.getState().lastUndo).toBeNull();
   });
@@ -377,8 +395,10 @@ describe("undo", () => {
 
   test("u pressed before the daemon answers waits for it, then undoes", async () => {
     const answer = deferred<MutationResponse>();
+    const serverAnswer = deferred<MailboxResponse>();
     api.archiveMessages.mockReturnValue(answer.promise);
     api.undoMutation.mockResolvedValue({ ok: true });
+    refetch.mockReturnValueOnce(serverAnswer.promise);
 
     const done = performMailAction("archive", ["a-1"]);
     const early = useUndo.getState().lastUndo;
@@ -386,6 +406,10 @@ describe("undo", () => {
     const undone = early!();
 
     answer.resolve(ok(1, "mut-early"));
+    await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
+    expect(api.undoMutation).not.toHaveBeenCalled();
+
+    serverAnswer.resolve(page([row("b")]));
     await done;
     await expect(undone).resolves.toBe(true);
     expect(api.undoMutation).toHaveBeenCalledWith("mut-early");

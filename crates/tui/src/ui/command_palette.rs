@@ -46,9 +46,23 @@ impl Default for CommandPalette {
 
 impl CommandPalette {
     pub fn toggle(&mut self, context: UiContext) {
+        let operations = if self.visible {
+            Vec::new()
+        } else {
+            archive_operations(&mxr_config::data_dir())
+        };
+        self.toggle_with_archive_operations(context, &operations);
+    }
+
+    pub fn toggle_with_archive_operations(
+        &mut self,
+        context: UiContext,
+        operations: &[mxr_protocol::ArchiveOperationData],
+    ) {
         self.visible = !self.visible;
         if self.visible {
             self.context = context;
+            add_archive_recovery_commands(&mut self.commands, operations);
             // Re-derive shortcuts for the focused view so each row shows
             // the key that actually fires there (e.g. thread-view chords
             // when the palette opens over a message). Mail-list shortcuts
@@ -1075,8 +1089,55 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Diagnostics".into(),
         },
     ];
+    add_archive_recovery_commands(&mut commands, &[]);
     apply_registered_mail_list_shortcuts(&mut commands);
     commands
+}
+
+fn archive_operations(data_dir: &std::path::Path) -> Vec<mxr_protocol::ArchiveOperationData> {
+    mxr_client::ArchiveJournal::open_existing(data_dir)
+        .ok()
+        .flatten()
+        .and_then(|journal| journal.list().ok())
+        .unwrap_or_default()
+}
+
+fn add_archive_recovery_commands(
+    commands: &mut Vec<PaletteCommand>,
+    operations: &[mxr_protocol::ArchiveOperationData],
+) {
+    if !commands
+        .iter()
+        .any(|command| command.action == Action::PreviewArchiveSelection)
+    {
+        commands.push(PaletteCommand {
+            label: "Preview Archive selection".into(),
+            category: "Recovery".into(),
+            shortcut: String::new(),
+            action: Action::PreviewArchiveSelection,
+        });
+    }
+    commands.retain(|command| {
+        !matches!(
+            command.action,
+            Action::CheckArchiveOperation(_) | Action::SubmitArchiveOperation(_)
+        )
+    });
+    for operation in operations {
+        let id = operation.identity.operation_id.clone();
+        commands.push(PaletteCommand {
+            label: format!("Archive recovery: query {id}"),
+            shortcut: String::new(),
+            action: Action::CheckArchiveOperation(id.clone()),
+            category: "Recovery".into(),
+        });
+        commands.push(PaletteCommand {
+            label: format!("Archive recovery: submit reviewed {id}"),
+            shortcut: String::new(),
+            action: Action::SubmitArchiveOperation(id),
+            category: "Recovery".into(),
+        });
+    }
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {
@@ -1289,7 +1350,7 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
 
 #[cfg(test)]
 mod tests {
-    use super::{commands_for_context, CommandPalette};
+    use super::{archive_operations, commands_for_context, CommandPalette};
     use crate::action::UiContext;
 
     #[test]
@@ -1402,5 +1463,14 @@ mod tests {
             .map(|&index| palette.commands[index].label.clone());
 
         assert_eq!(selected.as_deref(), Some("Open Search Page"));
+    }
+
+    #[test]
+    fn archive_recovery_discovery_does_not_create_journal_storage() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let operations = archive_operations(data_dir.path());
+
+        assert!(operations.is_empty());
+        assert!(!data_dir.path().join("archive-operations").exists());
     }
 }

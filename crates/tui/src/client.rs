@@ -34,6 +34,76 @@ impl Client {
     }
 
     pub async fn raw_request(&mut self, req: Request) -> Result<Response, MxrError> {
+        if let Request::Mutation {
+            mutation: MutationCommand::Archive { message_ids },
+            ..
+        } = req
+        {
+            let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())
+                .map_err(|e| MxrError::Ipc(e.to_string()))?;
+            let event_tx = self.event_tx.clone();
+            let mut forward_event = move |event| {
+                if let Some(tx) = &event_tx {
+                    let _ = tx.send(event);
+                }
+            };
+            let operation = self
+                .conn
+                .preview_archive_with_events(
+                    &journal,
+                    MutationCommand::Archive { message_ids },
+                    &mut forward_event,
+                )
+                .await
+                .map_err(map_request_error)?;
+            let id = operation.identity.operation_id.clone();
+            self.conn
+                .submit_archive_with_events(&journal, &operation, &mut forward_event)
+                .await
+                .map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
+            let outcome = self
+                .conn
+                .wait_archive_with_events(operation.identity, &mut forward_event)
+                .await
+                .map_err(|error| MxrError::Ipc(format!("{error}; Archive operation {id} retained. Use Archive recovery or mxr archive-operation {id}")))?;
+            let succeeded = outcome
+                .items
+                .iter()
+                .filter(|item| item.state == ArchiveItemStateData::Completed)
+                .count() as u32;
+            if succeeded != outcome.items.len() as u32 {
+                return Ok(Response::Error {
+                    message: format!(
+                        "Archive operation {id} requires review: {}",
+                        outcome
+                            .items
+                            .iter()
+                            .filter_map(|item| item.reason.as_deref())
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                    kind: IpcErrorKind::Provider,
+                    code: "archive_incomplete".into(),
+                    retryable: false,
+                    details: Some(
+                        serde_json::to_value(outcome).map_err(|e| MxrError::Ipc(e.to_string()))?,
+                    ),
+                });
+            }
+            return Ok(Response::Ok {
+                data: ResponseData::MutationResult {
+                    result: MutationResultData {
+                        requested: succeeded,
+                        succeeded,
+                        skipped: 0,
+                        failed: 0,
+                        accounts: vec![],
+                        mutation_id: outcome.undo_available.then_some(outcome.mutation_id),
+                        undo_unavailable: !outcome.undo_available,
+                    },
+                },
+            });
+        }
         self.request(req).await
     }
 

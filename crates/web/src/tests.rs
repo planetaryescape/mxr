@@ -188,6 +188,7 @@ async fn status_endpoint_proxies_ipc_status() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 17,
@@ -556,6 +557,7 @@ async fn auth_accepts_authorization_bearer_header() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -956,6 +958,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 99,
                     accounts: vec!["work".into()],
                     total_messages: 7,
@@ -1365,6 +1368,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1463,6 +1467,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1585,6 +1590,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                 data: ResponseData::Status {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
+                    archive_recovery_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -4384,6 +4390,7 @@ fn sample_status() -> ResponseData {
     ResponseData::Status {
         draft_revision_supported: true,
         send_outcome_supported: true,
+        archive_recovery_supported: true,
         uptime_secs: 1,
         accounts: vec!["personal".into()],
         total_messages: 10,

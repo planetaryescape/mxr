@@ -1,3 +1,5 @@
+mod archive;
+pub use archive::archive_operation;
 mod attachments;
 mod compose;
 mod compose_html;
@@ -213,6 +215,9 @@ pub async fn archive(
     format: Option<OutputFormat>,
     async_job: bool,
 ) -> anyhow::Result<()> {
+    if matches!(resolve_format(format.clone()), OutputFormat::Csv) {
+        anyhow::bail!("Archive receipts support table, json, jsonl and ids; select a supported format before submission");
+    }
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let address = address_positional(&message_ids, search.as_deref())?;
@@ -228,21 +233,32 @@ pub async fn archive(
     } else {
         resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?
     };
-    run_simple_mutation(
-        &mut client,
-        selection,
-        MutationRunOptions {
-            action: "archive",
-            success_message: "Archived",
-            yes,
-            dry_run,
-            format,
-            destructive: false,
-            async_job,
-        },
-        |ids| Request::mutation(MutationCommand::Archive { message_ids: ids }),
-    )
-    .await
+    let operation = client
+        .preview_archive(MutationCommand::Archive {
+            message_ids: selection.ids.clone(),
+        })
+        .await?;
+    if dry_run {
+        return archive::print_operation(&operation, format);
+    }
+    if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
+        confirm_action("archive", &selection)?;
+    }
+    let operation_id = operation.identity.operation_id.clone();
+    let result = client.submit_archive(&operation, !async_job).await;
+    match result {
+        Ok(operation) => {
+            archive::print_operation(&operation, format)?;
+            if !async_job {
+                archive::require_confirmed_completion(&operation)?;
+            }
+            Ok(())
+        }
+        Err(error) => {
+            archive::print_recovery_error(&operation, &error, format)?;
+            anyhow::bail!("Archive response lost or refused: {error}. Recover with mxr archive-operation {operation_id}; do not create another operation")
+        }
+    }
 }
 
 pub async fn read_archive(

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { ModeHeader, type FrameWidth } from "@/components/ModeFrame";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -58,13 +58,15 @@ export function PlaceLayout({
     setActivePane("mailbox");
     void navigate({ to: basePath });
   }, [basePath, navigate, setActivePane]);
-  const nav = useMemo<ReaderNav>(() => ({ threadIds, open, close }), [close, open, threadIds]);
 
   // The open conversation left the place (done from the list, sync): open
   // its neighbour, keeping the keys where they were.
   const ids = useMemo(() => threadIds(), [threadIds]);
+  const idsRef = useRef(ids);
+  idsRef.current = ids;
+  const isListed = useCallback((id: string) => idsRef.current.includes(id), []);
   const stillShows = useRouteStillShows();
-  useAdvanceOnRemoval({
+  const expectRemoval = useAdvanceOnRemoval({
     ids,
     selectedId: params.threadId ?? null,
     onAdvance: (next, from) => {
@@ -75,6 +77,10 @@ export function PlaceLayout({
       if (stillShows(removed)) close();
     },
   });
+  const nav = useMemo<ReaderNav>(
+    () => ({ threadIds, open, close, expectRemoval, isListed }),
+    [close, expectRemoval, isListed, open, threadIds],
+  );
 
   return (
     <ReaderNavContext.Provider value={nav}>

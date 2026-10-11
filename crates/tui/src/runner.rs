@@ -46,6 +46,37 @@ fn require_sync_all_protocol(protocol_version: u32) -> Result<(), MxrError> {
     Ok(())
 }
 
+fn archive_partial_undo(
+    details: Option<serde_json::Value>,
+    verb: &str,
+) -> Option<app::PendingUndo> {
+    let operation: mxr_protocol::ArchiveOperationData = serde_json::from_value(details?).ok()?;
+    let count = operation
+        .items
+        .iter()
+        .filter(|item| item.state == mxr_protocol::ArchiveItemStateData::Completed)
+        .count() as u32;
+    (operation.undo_available && count > 0).then(|| app::PendingUndo {
+        action: app::UndoAction::Mutations(vec![operation.mutation_id]),
+        verb_past: verb.into(),
+        count,
+        applied_at: std::time::Instant::now(),
+    })
+}
+
+fn mutation_can_auto_retry(request: &Request) -> bool {
+    !matches!(
+        request,
+        Request::SendDraft { .. }
+            | Request::SendStoredDraft { .. }
+            | Request::SubmitArchive { .. }
+            | Request::Mutation {
+                mutation: mxr_protocol::MutationCommand::Archive { .. },
+                ..
+            }
+    )
+}
+
 fn run_with_terminal_suspended_with<
     Terminal,
     Events,
@@ -300,6 +331,28 @@ fn format_platform_response(data: &ResponseData) -> String {
                 report.score,
                 iterations
             )
+        }
+        ResponseData::ArchiveOperation { operation } => {
+            let mut lines = vec![
+                format!("Archive operation {}", operation.identity.operation_id),
+                format!(
+                    "Accepted: {}; running: {}",
+                    operation.accepted, operation.running
+                ),
+            ];
+            for item in &operation.items {
+                lines.push(format!(
+                    "{} {:?}: {}",
+                    item.message_id,
+                    item.state,
+                    item.reason.as_deref().unwrap_or("")
+                ));
+            }
+            if !operation.accepted {
+                lines.push("Review retained. Open the command palette and choose Submit reviewed with this ID to apply this exact selection.".into());
+            }
+            lines.push("Unknown effects require reconciliation. Query again; never start a new operation to repeat them.".into());
+            lines.join("\n")
         }
         ResponseData::SendOutcome {
             outcome: Some(outcome),
@@ -1462,6 +1515,37 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(message_ids) = app.pending_archive_preview.take() {
+            let _ = submit_task(&queued, async move {
+                let result = async {
+                    let path =
+                        daemon_socket_path().map_err(|error| MxrError::Ipc(error.to_string()))?;
+                    let mut connection =
+                        mxr_client::IpcConnection::connect(&path, mxr_protocol::ClientKind::Tui)
+                            .await
+                            .map_err(|error| MxrError::Ipc(error.to_string()))?;
+                    let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())
+                        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+                    let operation = connection
+                        .preview_archive(
+                            &journal,
+                            mxr_protocol::MutationCommand::Archive { message_ids },
+                        )
+                        .await
+                        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+                    Ok(format_platform_response(&ResponseData::ArchiveOperation {
+                        operation,
+                    }))
+                }
+                .await;
+                AsyncResult::PlatformModalLoaded {
+                    compose: None,
+                    title: "Archive preview".into(),
+                    result,
+                }
+            });
+        }
+
         let platform_dispatch = app.take_pending_platform_dispatch();
         for pending in platform_dispatch {
             let bg = bg.clone();
@@ -2427,10 +2511,7 @@ pub async fn run() -> anyhow::Result<()> {
                 run_after: _,
             } = queued_mutation;
             let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES
-                && !matches!(
-                    req,
-                    Request::SendDraft { .. } | Request::SendStoredDraft { .. }
-                ))
+                && mutation_can_auto_retry(&req))
             .then(|| app::QueuedMutation {
                 id: mutation_id,
                 request: req.clone(),
@@ -2885,7 +2966,17 @@ pub async fn run() -> anyhow::Result<()> {
                             Some(error) => Err(MxrError::Ipc(format!("Not set: {error}"))),
                         }
                     }
-                    Ok(Response::Error { message, .. }) => {
+                    Ok(Response::Error {
+                        message,
+                        details,
+                        code,
+                        ..
+                    }) => {
+                        if code == "archive_incomplete" {
+                            if let Some(undo) = archive_partial_undo(details, verb) {
+                                let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                            }
+                        }
                         // A partly failed undo keeps what failed under the
                         // same id: `u` again retries just those.
                         if let (Some(mutation_id), Some(failed)) =

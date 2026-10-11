@@ -469,7 +469,7 @@ export function useComposeSend({
             ),
           (err: Error) => {
             emitSendEvent({ kind: "failed", ...sendEvent });
-            toast.error("Send outcome needs checking", { description: `${err.message} Operation ${sendReference.operationId}; check Send outcomes in Drafts before trying again.` });
+            toast.error("Send outcome needs checking", { description: `${err.message} Operation ${reviewedReference.operationId}; check Send outcomes in Drafts before trying again.` });
           },
         )
         .finally(() => {

@@ -98,8 +98,11 @@ known rejection are covered; uncertainty never creates a fresh attempt.
 The TypeScript review checked JSON narrowing, optional revision refusal, retained
 identity through errors, and the undo lock/dispatch lifetime. The changed web
 tests follow the repository's established API-module mocking convention; the
-anti-slop checker reports that convention once. Replacing that convention across
-the suite is outside this slice.
+anti-slop checker reports that convention once, plus native JSON boundary
+narrowing, generated header dictionaries and the established unknown error boundary.
+No schema library is installed in the web app; adding one solely for the checker
+would change repository conventions. Generated code is regenerated from Rust.
+Replacing these conventions across the suite is outside this slice.
 
 Two failed assumptions were corrected: migration files need explicit registration
 in this store, and a missing provider is a pre-claim failure rather than evidence

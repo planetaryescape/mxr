@@ -50,15 +50,16 @@ export async function fetchOrphanedDrafts(): Promise<OrphanedDraft[]> {
 }
 
 /** Legacy endpoint: uncertain submissions remain blocked. */
-export function resetOrphanedDraft(draftId: string): Promise<unknown> {
-  return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`, {
+export function resetOrphanedDraft(draftId: string): Promise<{ kind: "Ack" }> {
+  return apiFetch<{ kind: "Ack" }>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`, {
     method: "POST",
   });
 }
 
-export function sendStoredDraft(draftId: string, expectedRevision: number, operationId: string): Promise<unknown> {
+export interface StoredDraftSendReceipt { draft_id: string; message_id: string | null }
+export function sendStoredDraft(draftId: string, expectedRevision: number, operationId: string): Promise<StoredDraftSendReceipt> {
   const query = new URLSearchParams({ expected_revision: String(expectedRevision), operation_id: operationId });
-  return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored?${query}`, {
+  return apiFetch<StoredDraftSendReceipt>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored?${query}`, {
     method: "POST",
   });
 }

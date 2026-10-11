@@ -1694,9 +1694,13 @@ mod tests {
         });
         let server = MxrMcpServer::from_requester(requester.clone());
 
-        let error = match server.sync_all().await {
-            Err(error) => error,
-            Ok(_) => panic!("old daemon must be rejected before SyncAll"),
+        let result = server.sync_all().await;
+        assert!(
+            result.is_err(),
+            "old daemon must be rejected before SyncAll"
+        );
+        let Some(error) = result.err() else {
+            return;
         };
 
         assert!(error.message.contains("requires daemon IPC protocol 5"));

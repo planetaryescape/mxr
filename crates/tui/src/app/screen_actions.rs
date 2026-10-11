@@ -126,13 +126,13 @@ impl App {
             }
             Action::CheckLastSendOutcome => {
                 if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
-                    self.queue_mutation(
+                    self.queue_platform_request(
                         mxr_protocol::Request::GetSendOutcome {
                             account_id,
                             operation_id: identity.operation_id,
                         },
-                        super::MutationEffect::StatusOnly(String::new()),
-                        "Checking send outcome...".into(),
+                        "Send outcome",
+                        "Checking send outcome...",
                     );
                 } else {
                     self.push_toast(Toast::info("No send identity retained in this session"));

@@ -2072,3 +2072,66 @@ fn provider_save_and_schedule_keep_scratch_until_acknowledgement() {
     app.finish_compose_schedule(pending, true);
     assert_eq!(app.take_pending_draft_cleanup(), vec![file]);
 }
+
+#[test]
+fn last_send_outcome_uses_a_durable_modal_without_mutation_status() {
+    let mut app = App::new();
+    let account = AccountId::new();
+    let identity = mxr_core::SendIdentity {
+        operation_id: "retained-reviewed-operation".into(),
+        expected_revision: 3,
+    };
+    app.compose.last_send_identity = Some((account.clone(), identity.clone()));
+    app.apply(Action::CheckLastSendOutcome);
+    assert!(app.modals.platform.visible);
+    assert!(app.modals.platform.loading);
+    assert_eq!(app.pending_mutation_count, 0);
+    assert!(app.status_message.is_none());
+    let queued = app.take_pending_platform_dispatch();
+    assert_eq!(queued.len(), 1);
+    assert!(
+        matches!(&queued[0].request, mxr_protocol::Request::GetSendOutcome {
+        account_id, operation_id
+    } if *account_id == account && *operation_id == identity.operation_id)
+    );
+
+    let outcome = mxr_core::DraftSendOutcome {
+        identity,
+        draft_id: DraftId::new(),
+        account_id: account,
+        state: mxr_core::SendOutcomeState::Unknown,
+        local_message_id: None,
+        provider_message_id: None,
+        rfc2822_message_id: None,
+    };
+    let body = super::super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
+        outcome: Some(outcome),
+    });
+    app.modals.platform.set_body(body);
+    assert!(!app.modals.platform.loading);
+    let rendered = mxr_test_support::render_to_string(80, 24, |frame| {
+        crate::ui::platform_modal::draw(
+            frame,
+            ratatui::layout::Rect::new(0, 0, 80, 24),
+            &app.modals.platform,
+            &crate::theme::Theme::default(),
+        );
+    });
+    assert!(
+        rendered.contains("Acceptance uncertain. Do not resend."),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("retained-reviewed-operation"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("Checking send outcome"), "{rendered}");
+}
+
+#[test]
+fn send_outcome_modal_distinguishes_no_claimed_submission() {
+    let body = super::super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
+        outcome: None,
+    });
+    assert_eq!(body, "No submission outcome recorded for this operation.");
+}

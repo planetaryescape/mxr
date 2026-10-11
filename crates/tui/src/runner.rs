@@ -290,6 +290,30 @@ fn format_platform_response(data: &ResponseData) -> String {
                 iterations
             )
         }
+        ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        } => {
+            let state = match outcome.state {
+                mxr_core::SendOutcomeState::Accepted => {
+                    "Provider accepted this send. Do not resend."
+                }
+                mxr_core::SendOutcomeState::Unknown => "Acceptance uncertain. Do not resend.",
+                mxr_core::SendOutcomeState::NotAccepted => {
+                    "Provider did not accept this send. Review before a new attempt."
+                }
+            };
+            format!(
+                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nCheck again with:\nmxr send-outcome '{}' --account {}",
+                outcome.identity.operation_id,
+                outcome.account_id,
+                outcome.identity.expected_revision,
+                outcome.identity.operation_id,
+                outcome.account_id
+            )
+        }
+        ResponseData::SendOutcome { outcome: None } => {
+            "No submission outcome recorded for this operation.".into()
+        }
         ResponseData::Ack => "Done.".into(),
         other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
     }

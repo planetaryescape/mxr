@@ -27,10 +27,20 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docs: ${{ steps.filter.outputs.docs }}
       expensive: ${{ steps.filter.outputs.expensive }}
+      rust_version: ${{ steps.rust-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - id: rust-version
+        name: Read workspace Rust version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+
+          with open("Cargo.toml", "rb") as cargo_toml:
+              print(f"version={tomllib.load(cargo_toml)['workspace']['package']['rust-version']}")
+          PY
       - id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -447,13 +457,15 @@ jobs:
       - run: cargo doc --workspace --no-deps
 
   msrv:
-    name: MSRV (1.94)
+    name: MSRV (${{ needs.changes.outputs.rust_version }})
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.120
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.changes.outputs.rust_version }}
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo check --workspace --locked

@@ -1716,7 +1716,8 @@ mod tests {
 
     #[tokio::test]
     async fn archive_submission_requires_explicit_confirmation_before_any_ipc() {
-        let server = MxrMcpServer::new(FakeRequester::default());
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
         let result = server
             .mxr_archive_submit(Parameters(ArchiveSubmitParams {
                 operation_id: "not-an-identity".into(),
@@ -1724,12 +1725,7 @@ mod tests {
             }))
             .await;
         assert!(result.is_err());
-        assert!(server
-            .requester
-            .requests
-            .lock()
-            .expect("requests lock")
-            .is_empty());
+        assert!(requester.requests.lock().expect("requests lock").is_empty());
     }
 
     fn draft_fixture() -> Draft {

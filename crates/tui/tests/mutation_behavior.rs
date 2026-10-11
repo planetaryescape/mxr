@@ -556,7 +556,7 @@ fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
 }
 
 #[test]
-fn archive_inbox_optimistic_removal_restores_row_on_reconciliation_failure() {
+fn archive_inbox_row_remains_visible_until_confirmed() {
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let eid = envelope.id.clone();
@@ -568,8 +568,8 @@ fn archive_inbox_optimistic_removal_restores_row_on_reconciliation_failure() {
     app.apply(Action::Archive);
 
     assert!(
-        app.mailbox.envelopes.is_empty(),
-        "row removed optimistically while viewing INBOX"
+        app.mailbox.envelopes.len() == 1,
+        "Archive waits for a confirmed outcome while viewing INBOX"
     );
 
     let mutation_id = app.pending_mutation_queue[0].id;

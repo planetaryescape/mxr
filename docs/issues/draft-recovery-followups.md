@@ -1,4 +1,4 @@
-# Draft recovery still has three verified limits
+# Draft recovery has verified limits
 
 Verified against integrated S02 `a631583c8fd8438abc6892fdf10fb49dc09e3748`, tree `3a903ddea1843b4c380cd81adf344882e7d39c42`, after the final five-file correction. These remaining behaviors do not replace the [release acceptance](../build-log/daemon-portability/s02-draft-recovery.md).
 
@@ -43,3 +43,7 @@ Make absence idempotent while preserving revision conflicts for a draft that
 still exists. Verify two tabs where one sends or deletes before the other
 discards. Recovery-only discard must continue to remove only its own files and
 attachment bytes.
+
+## Reconnect notice may imply automatic saving
+
+During the installed v0.6.65 browser journey, the UI said “Your text stays here and saves when it’s back.” The daemon socket reconnected at 11:55:37.856+01; canonical reads at 11:55:38.043879+01 and 11:55:46.106899+01 were unchanged, and the explicit Retry at 11:55:53.087773+01 accepted the draft. The observed journey therefore required Retry before the canonical draft changed. Automatic save after reconnect was not tested. The [installed evidence](../build-log/daemon-portability/evidence/s02-installed-v0.6.65/README.md) records the receipts and timing; clarify the notice or verify its behavior in a focused follow-up before making a product change.

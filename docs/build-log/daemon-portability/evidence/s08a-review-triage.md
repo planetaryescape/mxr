@@ -1,0 +1,5 @@
+# S08a review triage
+
+The Claude Opus 5.5/max review of `539de6dfc774d4878a1614d1f39e469cb90ebf9a` returned NOT GREEN because the required smoke rejected a bounded timeout and cancellation of the rebuildable relationship analytics worker during active sync. It did not find acknowledged mail loss. The root disposition was that the smoke's acceptance expectation was stricter than the stage promise: queued analytics may be dropped at the shutdown deadline, while acknowledged persisted mail remains.
+
+The follow-up `62421fe6d87692e2d2c780713b3bb49c98eb7d09` made a narrow logging, test and documentation correction; it changed no scheduling or state flow. The final candidate `e2b670979a9076dbcd6a971a52da38227492c515` passed CI and merged as `01b5ab5285473fc5af854c68fcd8e214cd056931`. Claude did not review the follow-up or final candidate. The [original report](s08a-claude-539de6df.md) and [metadata](s08a-claude-539de6df-metadata.json) preserve its reviewed head and scope; [CI](s08a-ci-38095310846-e2b67097.json) and [merge gate](s08a-pr338-gate.json) pin final integration.

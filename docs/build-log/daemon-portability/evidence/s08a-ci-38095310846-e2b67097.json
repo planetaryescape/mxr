@@ -1,0 +1,221 @@
+{
+  "runId": 38095310846,
+  "headSha": "e2b670979a9076dbcd6a971a52da38227492c515",
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38095310846",
+  "conclusion": "success",
+  "createdAt": "2026-10-10T23:31:10Z",
+  "completedAt": "2026-10-10T23:36:32Z",
+  "jobCount": 23,
+  "jobs": [
+    {
+      "name": "Secret Scan",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:18Z",
+      "completedAt": "2026-10-10T23:31:52Z",
+      "durationSeconds": 34
+    },
+    {
+      "name": "Release Gate Scripts",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:19Z",
+      "completedAt": "2026-10-10T23:31:27Z",
+      "durationSeconds": 8
+    },
+    {
+      "name": "Detect Changes",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:19Z",
+      "completedAt": "2026-10-10T23:31:25Z",
+      "durationSeconds": 6
+    },
+    {
+      "name": "Format",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:47Z",
+      "durationSeconds": 14
+    },
+    {
+      "name": "cargo deny",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:32:00Z",
+      "durationSeconds": 27
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:54Z",
+      "durationSeconds": 21
+    },
+    {
+      "name": "Check",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:33:20Z",
+      "durationSeconds": 107
+    },
+    {
+      "name": "Architecture Boundaries",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:39Z",
+      "durationSeconds": 6
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:58Z",
+      "durationSeconds": 25
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:54Z",
+      "durationSeconds": 21
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:35:43Z",
+      "jobDurationSeconds": 250
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:31:40Z",
+      "durationSeconds": 7
+    },
+    {
+      "name": "Test (semantic-local)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:36:32Z",
+      "jobDurationSeconds": 299
+    },
+    {
+      "name": "Rustdoc",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:33:03Z",
+      "durationSeconds": 90
+    },
+    {
+      "name": "Clippy",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:33:28Z",
+      "durationSeconds": 115
+    },
+    {
+      "name": "SQLx Offline",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T23:31:33Z",
+      "completedAt": "2026-10-10T23:33:16Z",
+      "durationSeconds": 103
+    },
+    {
+      "name": "Web Unit Tests",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Install Smoke Test",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Docs Build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Web E2E",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "Coverage",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    },
+    {
+      "name": "MSRV (1.94)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T23:31:26Z",
+      "completedAt": "2026-10-10T23:31:26Z",
+      "durationSeconds": 0
+    }
+  ],
+  "workspaceTests": [
+    {
+      "job": "Test (fast / no semantic)",
+      "jobId": 114339919612,
+      "run": 3961,
+      "passed": 3961,
+      "skipped": 9,
+      "failed": 0,
+      "jobDurationSeconds": 250,
+      "testDurationSeconds": 86.461,
+      "foregroundSignalTestSeconds": 5.490
+    },
+    {
+      "job": "Test (semantic-local)",
+      "jobId": 114339919653,
+      "run": 4007,
+      "passed": 4007,
+      "skipped": 10,
+      "failed": 0,
+      "jobDurationSeconds": 299,
+      "testDurationSeconds": 118.114,
+      "foregroundSignalTestSeconds": 5.645
+    }
+  ],
+  "note": "GitHub Actions source run metadata and successful workspace test summaries. CI-only; no local execution.",
+  "headTree": "c2c78899eb47d9d98f38dce1a0561a3b6cdf95ef"
+}

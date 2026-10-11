@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.77](https://github.com/planetaryescape/mxr/compare/v0.6.76...v0.6.77) (2026-10-11)
+
+
+### Features
+
+* recover reviewed Archive outcomes across clients ([#384](https://github.com/planetaryescape/mxr/issues/384)) ([0153a25](https://github.com/planetaryescape/mxr/commit/0153a25a967710c9ea6e86349f7d97d42dc8088e))
+
 ## [0.6.76](https://github.com/planetaryescape/mxr/compare/v0.6.75...v0.6.76) (2026-10-11)
 
 

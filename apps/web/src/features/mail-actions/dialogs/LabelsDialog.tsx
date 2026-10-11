@@ -212,7 +212,11 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
               : "Enter toggles a label"}
           </span>
           <span className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => openMailDialog({ kind: "categories", target })}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openMailDialog({ kind: "categories", target })}
+            >
               <FolderOpen className="size-3.5" /> Categories
             </Button>
             <Button variant="ghost" size="sm" onClick={onClose}>

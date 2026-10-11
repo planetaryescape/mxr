@@ -21,7 +21,7 @@ function account(overrides: Partial<AccountFreshness> = {}): AccountFreshness {
   return {
     account_id: "acct-1",
     account_name: "work",
-    label: "Gmail",
+    label: "work@example.com",
     health: "ok",
     last_sync_ok_at: minutesAgo(1),
     sync_in_progress: false,
@@ -50,7 +50,7 @@ describe("freshness words", () => {
     expect(healthTone(effectiveHealth(ok, 900, later))).toBe("warn");
   });
 
-  test("a rate limit names the provider and when it retries", () => {
+  test("a rate limit names the account and when it retries", () => {
     const paused = account({
       health: "paused",
       last_sync_error: {
@@ -60,9 +60,11 @@ describe("freshness words", () => {
         consecutive_failures: 1,
       },
     });
-    expect(syncLine(paused, 900, now)).toMatch(/^Gmail paused: rate limited, retrying 9:50/);
+    expect(syncLine(paused, 900, now)).toMatch(
+      /^work@example.com paused: rate limited, retrying 9:50/,
+    );
     const due = new Date(now.getTime() + 10 * 60_000);
-    expect(syncLine(paused, 900, due)).toBe("Gmail paused: rate limited, retrying now");
+    expect(syncLine(paused, 900, due)).toBe("work@example.com paused: rate limited, retrying now");
   });
 
   test("auth and offline failures say what is wrong in plain words", () => {
@@ -70,14 +72,14 @@ describe("freshness words", () => {
       health: "failing",
       last_sync_error: { kind: "auth", message: "oauth", consecutive_failures: 2 },
     });
-    expect(syncLine(auth, 900, now)).toBe("Gmail needs you to sign in again");
+    expect(syncLine(auth, 900, now)).toBe("work@example.com needs you to sign in again");
     expect(healthTone("failing")).toBe("bad");
     const offline = account({
       health: "failing",
       last_sync_ok_at: minutesAgo(12),
       last_sync_error: { kind: "offline", message: "dns", consecutive_failures: 1 },
     });
-    expect(syncLine(offline, 900, now)).toBe("Gmail unreachable, last sync 12m ago");
+    expect(syncLine(offline, 900, now)).toBe("Can't reach work@example.com, last sync 12m ago");
     const retrying = {
       ...offline,
       last_sync_error: {
@@ -87,17 +89,32 @@ describe("freshness words", () => {
         retry_at: minutesAhead(1),
       },
     };
-    expect(syncLine(retrying, 900, now)).toMatch(/^Gmail unreachable, retrying 9:43/);
+    expect(syncLine(retrying, 900, now)).toMatch(/^Can't reach work@example.com, retrying 9:43/);
   });
 
   test("a retry that is running says so and stays a warning", () => {
     const running = account({
       health: "failing",
       sync_in_progress: true,
-      last_sync_error: { kind: "offline", message: "dns", consecutive_failures: 2 },
+      last_sync_error: {
+        kind: "offline",
+        message: "dns",
+        consecutive_failures: 2,
+        retry_at: minutesAgo(1),
+      },
     });
-    expect(syncLine(running, 900, now)).toBe("Gmail unreachable, retrying now");
+    expect(syncLine(running, 900, now)).toBe("Can't reach work@example.com, retrying now");
     expect(healthTone(effectiveHealth(running, 900, now))).toBe("bad");
+    expect(
+      syncLine(
+        {
+          ...running,
+          last_sync_error: { kind: "offline", message: "dns", consecutive_failures: 2 },
+        },
+        900,
+        now,
+      ),
+    ).toBe("Can't reach work@example.com, syncing now");
   });
 
   test("all accounts shows the worst sync state", () => {

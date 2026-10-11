@@ -1,9 +1,12 @@
 use crate::state::AppState;
 use mxr_config::{ChimeConfig, ChimeEvent, ChimeSound};
+use mxr_core::AccountId;
 use mxr_protocol::{
     ClientKind, DaemonEvent, IpcMessage, IpcPayload, MutationCommand, Request, Response,
     ResponseData,
 };
+use parking_lot::Mutex;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -11,6 +14,29 @@ use std::process::Command;
 pub(crate) struct ChimePlayback {
     pub sound: ChimeSound,
     pub played: bool,
+}
+
+/// One alert per account failure period. The set contains only accounts with
+/// a current sync failure and is cleared by that account's `SyncCompleted`.
+#[derive(Default)]
+pub(crate) struct SyncErrorChimes(Mutex<HashSet<AccountId>>);
+
+impl SyncErrorChimes {
+    fn should_play(&self, event: &DaemonEvent) -> bool {
+        match event {
+            DaemonEvent::SyncError { account_id, .. } => self.0.lock().insert(account_id.clone()),
+            DaemonEvent::SyncCompleted { account_id, .. } => {
+                self.0.lock().remove(account_id);
+                false
+            }
+            DaemonEvent::OperationFailed {
+                operation,
+                account_id: Some(account_id),
+                ..
+            } if operation == "sync" => self.0.lock().insert(account_id.clone()),
+            _ => true,
+        }
+    }
 }
 
 pub(crate) fn preview(config: &ChimeConfig, event: ChimeEvent) -> ChimePlayback {
@@ -39,6 +65,9 @@ pub(crate) fn play_for_daemon_event(
     state: &AppState,
     event: &DaemonEvent,
 ) -> Option<ChimePlayback> {
+    if !state.sync_error_chimes.should_play(event) {
+        return None;
+    }
     let chime_event = event_for_daemon_event(event)?;
     Some(play_configured(
         &state.config_snapshot().notifications.chimes,
@@ -282,6 +311,65 @@ mod tests {
         };
 
         assert_eq!(event_for_daemon_event(&event), Some(ChimeEvent::NewMail));
+    }
+
+    #[test]
+    fn sync_failure_chime_is_once_until_that_account_recovers() {
+        let notifications = SyncErrorChimes::default();
+        let account = AccountId::new();
+        let error = || DaemonEvent::SyncError {
+            account_id: account.clone(),
+            error: "offline".into(),
+        };
+
+        assert!(notifications.should_play(&error()));
+        assert!(!notifications.should_play(&error()));
+        assert!(!notifications.should_play(&DaemonEvent::OperationFailed {
+            operation_id: "sync-1".into(),
+            operation: "sync".into(),
+            account_id: Some(account.clone()),
+            error: "offline".into(),
+            retryable: true,
+        }));
+        assert!(!notifications.should_play(&DaemonEvent::OperationFailed {
+            operation_id: "sync-2".into(),
+            operation: "sync".into(),
+            account_id: Some(account.clone()),
+            error: "offline".into(),
+            retryable: true,
+        }));
+
+        notifications.should_play(&DaemonEvent::SyncCompleted {
+            account_id: account.clone(),
+            messages_synced: 0,
+        });
+        assert!(notifications.should_play(&error()));
+    }
+
+    #[test]
+    fn sync_chime_state_is_per_account_and_keeps_other_operation_failures() {
+        let notifications = SyncErrorChimes::default();
+        let account = AccountId::new();
+        let other_account = AccountId::new();
+        assert!(notifications.should_play(&DaemonEvent::SyncError {
+            account_id: account.clone(),
+            error: "offline".into(),
+        }));
+        assert!(notifications.should_play(&DaemonEvent::SyncError {
+            account_id: other_account.clone(),
+            error: "offline".into(),
+        }));
+        assert!(notifications.should_play(&DaemonEvent::OperationFailed {
+            operation_id: "action-1".into(),
+            operation: "rebuild_analytics".into(),
+            account_id: Some(account.clone()),
+            error: "failed".into(),
+            retryable: true,
+        }));
+        assert!(!notifications.should_play(&DaemonEvent::SyncError {
+            account_id: account,
+            error: "offline".into(),
+        }));
     }
 
     fn mutation_result(succeeded: u32) -> MutationResultData {

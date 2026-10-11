@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.77"
+    "version": "0.6.79"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -889,6 +889,70 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/attachments/transfer/chunk": {
+      "post": {
+        "tags": [],
+        "summary": "Read a bounded attachment transfer chunk",
+        "operationId": "attachment_transfer_chunk",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentChunkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentChunk"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/attachments/transfer/metadata": {
+      "post": {
+        "tags": [],
+        "summary": "Get attachment transfer metadata",
+        "operationId": "attachment_transfer_metadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentTransferMetadata"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -7883,6 +7947,59 @@
           }
         }
       },
+      "AttachmentChunk": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "attachment_id",
+          "offset",
+          "data_base64"
+        ],
+        "properties": {
+          "attachment_id": {
+            "$ref": "#/components/schemas/AttachmentId"
+          },
+          "data_base64": {
+            "type": "string",
+            "description": "Standard base64 bytes; never a JSON integer array."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "AttachmentChunkRequest": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "attachment_id",
+          "offset",
+          "length"
+        ],
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "length": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "AttachmentDisposition": {
         "type": "string",
         "enum": [
@@ -7965,6 +8082,61 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "AttachmentRequest": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "attachment_id"
+        ],
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AttachmentTransferMetadata": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "attachment_id",
+          "filename",
+          "mime_type",
+          "length_bytes",
+          "sha256",
+          "max_chunk_bytes"
+        ],
+        "properties": {
+          "attachment_id": {
+            "$ref": "#/components/schemas/AttachmentId"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "length_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_chunk_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "Lowercase hexadecimal SHA-256 of the complete attachment."
           }
         }
       },
@@ -18571,6 +18743,64 @@
           },
           {
             "type": "object",
+            "description": "Describe an attachment for a path-free, integrity-checked transfer.",
+            "required": [
+              "message_id",
+              "attachment_id",
+              "cmd"
+            ],
+            "properties": {
+              "attachment_id": {
+                "$ref": "#/components/schemas/AttachmentId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetAttachmentTransferMetadata"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Read one bounded range from a previously described attachment.",
+            "required": [
+              "message_id",
+              "attachment_id",
+              "offset",
+              "length",
+              "cmd"
+            ],
+            "properties": {
+              "attachment_id": {
+                "$ref": "#/components/schemas/AttachmentId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ReadAttachmentChunk"
+                ]
+              },
+              "length": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "attachment_id",
@@ -25470,6 +25700,42 @@
           {
             "type": "object",
             "required": [
+              "metadata",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AttachmentTransferMetadata"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/AttachmentTransferMetadata"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "chunk",
+              "kind"
+            ],
+            "properties": {
+              "chunk": {
+                "$ref": "#/components/schemas/AttachmentChunk"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AttachmentChunk"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "bodies",
               "kind"
             ],
@@ -27376,6 +27642,9 @@
                 }
               },
               "archive_recovery_supported": {
+                "type": "boolean"
+              },
+              "attachment_transfer_supported": {
                 "type": "boolean"
               },
               "daemon_build_id": {

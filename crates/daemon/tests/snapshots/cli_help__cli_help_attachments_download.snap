@@ -13,4 +13,5 @@ Arguments:
 Options:
       --account <ACCOUNT>
       --dir <DIR>          Output directory
+      --format <FORMAT>    Output format for completed local paths [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

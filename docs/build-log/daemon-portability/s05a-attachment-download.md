@@ -28,7 +28,7 @@ Starting base was `f2e522c882599127d6fae9fbe5a0855f542472b4`. Focused results on
 - `scripts/cargo-test -p mxr --lib dispatch_download_attachment_persists_local_path`: 1 passed; concurrent provider calls were gated and counted, and both responses shared the persisted cache path.
 - In `apps/web`, `npm run gen:types`, `npm run typecheck`, and `npx vitest run src/features/mailbox/attachmentTransfer.test.ts` passed; the suite now has 6 browser transfer tests, including a popup closed during transfer. Targeted `oxlint` and `oxfmt --check` passed with four threads.
 - Follow-up review regressions passed: `scripts/cargo-test -p mxr-tui --lib save_modal_carries_only_explicit_overwrite_confirmation` (task 5821), `scripts/cargo-test -p mxr-client --lib no_clobber_preserves_a_destination_created_during_transfer` (task 5822), and `scripts/cargo-test -p mxr --lib transfer_table_keeps_the_selected_attachment_index` (task 5823).
-- The site guide edit passed `site/npm run validate` (225 OpenAPI paths) and `site/npm test` (3 passed).
+- Generated CLI help passed `scripts/cargo-test -p mxr --test cli_help`. The updated site passed its three tests, validation of 227 OpenAPI paths, and an Astro build of 187 pages. Local rendering initially lacked Astro; installing locked dependencies with lifecycle scripts disabled resolved it without changing the workstation script policy.
 - Targeted `oxlint` and `oxfmt --check` passed with four threads. `anti-slop-check` found no issues in the transfer implementation or its tests; it reports four standard generated `headers: { [name: string]: unknown }` entries for the new OpenAPI operations.
 
 Regenerate browser types from the bridge source with:
@@ -48,8 +48,10 @@ Root acceptance used source `b55994bdc352cd95db893ceda95e77a065cc20ee`, built wi
 - MCP assembled the same bytes from 19 chunks. Missing mutation permission, invalid ranges and a wrong account assertion were rejected.
 - The real TUI saved the same bytes under filesystem denial. The first Enter preserved an existing file; the second confirmed replacement. Open copied a separate synthetic text attachment to the client cache and the OS opener returned success. External editor contents were not inspected.
 - The real browser downloaded a 1,280,116-byte synthetic HTML attachment using metadata and five chunks. Its hash matched while the bridge process could not read the daemon cache file. Open downloaded active HTML content without opening another tab. Browser errors and console logs were empty. Raster-image Open was not exercised.
-- A new client against the published v0.6.77 daemon rejected the unsupported capability without a host-path fallback.
+- A new client against the published v0.6.77 daemon rejected the unsupported capability without a host-path fallback. The published v0.6.77 CLI still downloaded through the candidate daemon using the legacy local path contract.
 
 All fixtures used synthetic mail. Their owned daemons, bridge processes and browser session were stopped; fixture tokens were removed. The initial CLI fixture failed because `sync --account` resolves against the client configuration. Omitting the selector on the isolated single-account fixture corrected setup. An initial TUI fixture exited during the attempt; the repeated journey used a detached, explicitly tracked fixture daemon. These initial attempts did not establish a transfer result.
+
+The final scoped pre-PR gate passed in 3m10.5s (task 5840). CLI help, schema generation and validation passed in task 5847; the site render passed in the follow-up locked-dependency job.
 
 The candidate was then rebased onto release metadata at `f56ac1527787ca312bda7b52935947ee94495251`. Product sources are identical; TOML comparison verifies only workspace package versions changed from 0.6.78 to 0.6.79, with the dependency graph unchanged. CI and published-release acceptance remain required before this stage is complete.

@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-11T22:38:28.541749+00:00",
+  "source": "f56ac1527787ca312bda7b52935947ee94495251",
+  "binary_sha256": "9999eb3ce4d3a84785ef8ecaf9f7aa5e41f014f549284d744aade7876b8a376e",
+  "result": "passed",
+  "checks": {
+    "archive_preview_no_change": true,
+    "archive_completed": true,
+    "mailbox_refreshed_after_socket_return": true,
+    "dirty_compose_text_preserved": true,
+    "server_draft_lacked_new_text": true,
+    "http_healthy_during_event_gap": true,
+    "compose_refetch_count": 0,
+    "effectful_mutation_replay_count": 0,
+    "browser_errors": []
+  },
+  "limits": [
+    "Synthetic mail and a loopback fault proxy; no live provider.",
+    "The compose save is deliberately rejected before the event gap to witness unsaved client text.",
+    "POST arrivals/modes is a read-only GetArrivalModes lookup, allowed by the replay check."
+  ]
+}

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.78](https://github.com/planetaryescape/mxr/compare/v0.6.77...v0.6.78) (2026-10-11)
+
+
+### Bug Fixes
+
+* polish contrast and expire idle terminal status ([#388](https://github.com/planetaryescape/mxr/issues/388)) ([4f736ec](https://github.com/planetaryescape/mxr/commit/4f736ec5b28e6ac151ad354dbee32557322b538e))
+
+
+### Documentation
+
+* publish Archive recovery guides and release evidence ([#387](https://github.com/planetaryescape/mxr/issues/387)) ([f2e522c](https://github.com/planetaryescape/mxr/commit/f2e522c882599127d6fae9fbe5a0855f542472b4))
+
 ## [0.6.77](https://github.com/planetaryescape/mxr/compare/v0.6.76...v0.6.77) (2026-10-11)
 
 

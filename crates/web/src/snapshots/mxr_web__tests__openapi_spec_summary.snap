@@ -188,6 +188,7 @@ expression: summary
     "MessageId",
     "MessageLayoutData",
     "MessageMetadata",
+    "MessageTextSourceData",
     "MessagesBandData",
     "MessagesData",
     "MessagesLapsedData",

@@ -7666,6 +7666,10 @@
           "from_me": {
             "type": "boolean"
           },
+          "has_preserved_context": {
+            "type": "boolean",
+            "description": "Preserved question, quote or forwarded source context is part of this\nmessage; clients must keep the whole text visible when excerpting."
+          },
           "layout": {
             "$ref": "#/components/schemas/MessageLayoutData"
           },
@@ -7681,9 +7685,20 @@
             "format": "int32",
             "minimum": 0
           },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageTextSourceData",
+                "description": "Missing in older daemon payloads; clients must treat that as unknown."
+              }
+            ]
+          },
           "text": {
             "type": "string",
-            "description": "What this message says that the thread didn't already: quotes and\nsignature removed, the same text in every client."
+            "description": "The new text in every client: signatures and trailing history removed,\nwith inline questions or forwarded context retained beside answers."
           },
           "trimmed": {
             "$ref": "#/components/schemas/TrimmedData"
@@ -32343,6 +32358,14 @@
             "minimum": 0
           }
         }
+      },
+      "MessageTextSourceData": {
+        "type": "string",
+        "description": "Where a conversation's displayed message text came from. This describes\nbody availability, independently of any quote trimming or UI expansion.",
+        "enum": [
+          "stored_body",
+          "provider_snippet"
+        ]
       }
     },
     "securitySchemes": {

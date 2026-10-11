@@ -172,6 +172,12 @@ everyone you owe in one sitting, use [Focus & reply](/guides/focus-and-reply/).
 To open on the inbox instead, set **Settings > Appearance > Home** to
 **Inbox**. The arrival-order inbox shows everything.
 
+In **Settings > Appearance > Contrast**, **Match the system** follows your
+OS contrast preference and is selected initially. Choose **Default** for
+standard contrast regardless of that preference, or **Increased** for stronger
+text and control borders. mxr remembers this choice in this browser,
+separately from your mail account.
+
 The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
 then Inbox, each with its `g` key. Reading is the [edition](/guides/reading/), with no count on
 the rail. Only Now carries a badge (people whose
@@ -297,7 +303,8 @@ In the formatted view, **Appearance** lets you choose **Auto for this message**,
 **Original for this message**, or **Dark for this message**. Auto follows the
 app’s current light or dark scheme: in light scheme it shows the original,
 while in dark scheme it uses a warm paper canvas for designed mail and a dark
-canvas for simple mail. The app’s **System** theme follows your OS appearance.
+canvas for simple mail. The app’s **Match the system** theme follows your OS
+appearance.
 To keep an Original or Dark choice for a sender, use **Always show Original**
 or **Always use Dark**; **Reset sender preference** removes that saved choice.
 

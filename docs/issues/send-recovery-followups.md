@@ -84,8 +84,8 @@ broader send-outcome coverage claim.
 These findings were verified against merged source `d6ba93ba7082a644e027b331e67da44d8e6dd4e8` (tree `c66ddc36`). They do not weaken the rule that an uncertain operation is never retried with a new identity.
 
 - TUI refinement saves a separate random-ID draft before refining and does not
-  query the original send outcome. It makes no provider call; the copy requires
-  a separate deliberate selection and send. Reconcile the uncertain original
+  query the original send outcome. It does not send mail; the copy requires a
+  separate deliberate selection and send. Reconcile the uncertain original
   before refining or copying it (`crates/tui/src/app/platform_actions.rs`).
 - Scheduling draft B does not promote B's alias over a retained different
   draft A. An account-scoped `draft:B` query still resolves B; the global

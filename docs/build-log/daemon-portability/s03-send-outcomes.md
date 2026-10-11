@@ -190,6 +190,25 @@ The merge and source gates do not establish release or installed acceptance.
 Published artifacts, installer checks and the installed CLI/TUI journey remain
 pending.
 
+## The first release attempt failed at a workflow path
+
+Release source `0d00cb2d644b0b914c45ac9508b12fe4daa0b706` for v0.6.67 was not
+published. [Run 38149908274, Release CLI Smoke job
+114501057493](https://github.com/planetaryescape/mxr/actions/runs/38149908274/job/114501057493)
+compiled with `.cargo/config.toml`'s `target-cli` directory, then called
+`verify-mailmerge-outcomes.py` with `target/debug/mxr`; the script failed with
+`FileNotFoundError` at line 30. The earlier v1 launch proof and provider smoke
+passed. This was a workflow path error, not a send-recovery failure. The v0.6.67
+tag remains failed and unpublished; it was not retagged.
+
+Workflow fix [PR357](https://github.com/planetaryescape/mxr/pull/357) merged as
+`86c95992`. Release metadata [PR358](https://github.com/planetaryescape/mxr/pull/358)
+set v0.6.68 at source `621e9e49739eeb80abbccea0916578420941c3fc` (tree
+`6d391d9d90db51339d9a8d100e50915732a895eb`). [Release run
+38151840433](https://github.com/planetaryescape/mxr/actions/runs/38151840433)
+started building at 15:34:28 UTC. Its published artifacts and installed
+journeys are still pending.
+
 ## Inline review keeps this send-specific
 
 The simplification pass preserves the existing send choke point and provider

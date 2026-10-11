@@ -23,6 +23,8 @@ export interface ListStatus {
   isError: boolean;
   error: Error | null;
   refetch: () => unknown;
+  fetchStatus?: "fetching" | "paused" | "idle";
+  data?: unknown;
 }
 
 interface ListWithReaderProps extends Pick<
@@ -91,6 +93,7 @@ export function ListWithReader({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const threadOpen = Boolean(threadId);
   const phase = useDelayedPending(status.isLoading);
+  const hasData = status.data !== undefined || groups.length > 0;
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
@@ -258,7 +261,18 @@ export function ListWithReader({
             </header>
             {phase !== "ready" ? (
               <ListSkeleton quiet={phase === "quiet"} />
-            ) : status.isError && groups.length === 0 ? (
+            ) : status.fetchStatus === "paused" && !hasData ? (
+              <Centered
+                icon={<RefreshCw className="size-6" />}
+                title="Waiting for mxr"
+                body={`Couldn't load ${title.toLowerCase()} yet. It will appear when mxr reconnects.`}
+                action={
+                  <Button size="sm" onClick={() => void status.refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
+            ) : status.isError && !hasData ? (
               <Centered
                 icon={<RefreshCw className="size-6" />}
                 title={`Couldn't load ${title.toLowerCase()}`}

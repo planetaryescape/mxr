@@ -2339,6 +2339,13 @@ fn format_addresses(addresses: &[Address]) -> String {
         .join(", ")
 }
 
+fn print_send_recovery(account: &mxr_core::AccountId, identity: &mxr_core::SendIdentity) {
+    eprintln!(
+        "Send operation: {} (recover with mxr send-outcome '{}' --account {}). If the response is lost, query this operation; do not rerun compose, reply or forward.",
+        identity.operation_id, identity.operation_id, account
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3059,11 +3066,4 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
             assert!(sent.contains("Local message id: msg-123"), "sent={sent}");
         }
     }
-}
-
-fn print_send_recovery(account: &mxr_core::AccountId, identity: &mxr_core::SendIdentity) {
-    eprintln!(
-        "Send operation: {} (recover with mxr send-outcome '{}' --account {}). If the response is lost, query this operation; do not rerun compose, reply or forward.",
-        identity.operation_id, identity.operation_id, account
-    );
 }

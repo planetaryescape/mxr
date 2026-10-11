@@ -120,6 +120,8 @@ describe("OnboardingRoute auth step", () => {
     // No sync progress has arrived yet, so it must not claim to be ready.
     expect(screen.getByText(/waiting for the first sync to start/i)).toBeVisible();
     expect(screen.queryByText(/^ready$/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /open now/i }));
+    await waitFor(() => expect(router.navigate).toHaveBeenCalledWith({ to: "/now" }));
   });
 
   test("a failed session surfaces the error and Complete stays disabled", async () => {

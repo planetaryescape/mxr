@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
 import {
@@ -52,7 +53,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
     >
       <DialogContent className="flex max-h-[85dvh] max-w-4xl flex-col gap-3">
         <DialogHeader>
-          <DialogTitle>Keyboard</DialogTitle>
+          <DialogTitle>Help and keyboard shortcuts</DialogTitle>
           <DialogDescription>
             Keys follow the mxr TUI. Type to filter; Esc closes.
           </DialogDescription>
@@ -92,6 +93,14 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
             </div>
           )}
         </div>
+        <a
+          href="https://mxr.sh/guides/accounts/"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-6 w-fit items-center gap-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Account setup guide <ExternalLink className="size-3" />
+        </a>
       </DialogContent>
     </Dialog>
   );

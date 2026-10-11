@@ -24,6 +24,7 @@ import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { usePromiseOffers } from "@/features/promises/promiseOffers";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { routeTitleForPath } from "@/lib/routePresentation";
 
 // Everything below only exists while open, so it loads on first use and
 // stays out of the entry chunk (compose alone pulls in editors, the HTML
@@ -94,6 +95,10 @@ export function AppShell() {
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
+  const routeTitle = routeTitleForPath(path);
+  useEffect(() => {
+    document.title = `${routeTitle} · mxr`;
+  }, [routeTitle]);
   useNewMessageNotifier();
   usePreloadPalettes();
   const accounts = useQuery({
@@ -158,6 +163,9 @@ export function AppShell() {
   if (noAccounts || (keepOnboardingFrame && path === "/onboarding")) {
     return (
       <div className="flex h-dvh min-h-0 flex-col bg-background">
+        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {routeTitle}
+        </div>
         <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
           <span className="font-mono text-sm font-semibold">mxr</span>
         </header>
@@ -175,6 +183,9 @@ export function AppShell() {
 
   return (
     <>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {routeTitle}
+      </div>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"

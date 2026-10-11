@@ -5,6 +5,7 @@ import { useAllAccountsFreshness } from "@/features/freshness/api";
 import { effectiveHealth, isCalm, syncLine, worstAccount } from "@/features/freshness/copy";
 import { useClockLabel } from "@/lib/minuteClock";
 import { useConnectionStore } from "@/state/connectionStore";
+import { useDaemonDown } from "@/lib/daemonAvailability";
 import { cn } from "@/lib/utils";
 
 interface ConnectionPillProps {
@@ -16,6 +17,7 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
   const lastErrorAt = useConnectionStore((s) => s.lastErrorAt);
   const errorMessage = useConnectionStore((s) => s.errorMessage);
   const protocolMismatch = useConnectionStore((s) => s.protocolMismatch);
+  const daemonDown = useDaemonDown();
   // Connected to the daemon is not the same as mail arriving: a failing or
   // stale account turns the pill amber and its tooltip says which.
   const { data: freshness } = useAllAccountsFreshness();
@@ -28,33 +30,37 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
   });
   const syncWarning = status === "connected" && !protocolMismatch && syncIssue !== "";
   const Icon =
-    protocolMismatch || syncWarning
+    daemonDown || protocolMismatch || syncWarning
       ? AlertTriangle
       : status === "connected"
         ? Cloud
         : status === "connecting" || status === "reconnecting"
           ? Loader2
           : CloudOff;
-  const tone = protocolMismatch
-    ? "text-destructive"
-    : syncWarning
-      ? "text-warning"
+  const tone = daemonDown
+    ? "text-warning"
+    : protocolMismatch
+      ? "text-destructive"
+      : syncWarning
+        ? "text-warning"
+        : status === "connected"
+          ? "text-success"
+          : status === "connecting" || status === "reconnecting"
+            ? "text-warning"
+            : "text-destructive";
+  const label = daemonDown
+    ? "local app stopped"
+    : protocolMismatch
+      ? "protocol mismatch"
       : status === "connected"
-        ? "text-success"
-        : status === "connecting" || status === "reconnecting"
-          ? "text-warning"
-          : "text-destructive";
-  const label = protocolMismatch
-    ? "protocol mismatch"
-    : status === "connected"
-      ? "connected"
-      : status === "connecting"
-        ? "connecting"
-        : status === "reconnecting"
-          ? "reconnecting"
-          : status === "unauthorized"
-            ? "no token"
-            : "offline";
+        ? "connected"
+        : status === "connecting"
+          ? "connecting"
+          : status === "reconnecting"
+            ? "reconnecting"
+            : status === "unauthorized"
+              ? "needs local access"
+              : "offline";
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -76,15 +82,17 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
         </span>
       </TooltipTrigger>
       <TooltipContent>
-        {protocolMismatch
-          ? `IPC v${protocolMismatch.actualProtocol ?? "missing"}; expected v${protocolMismatch.requiredProtocol}`
-          : errorMessage
-            ? errorMessage
-            : status === "connected"
-              ? syncWarning
-                ? `Connected. ${syncIssue}`
-                : "WebSocket attached"
-              : "Not connected"}
+        {daemonDown
+          ? "mxr's local app is not responding. Run `mxr restart` to start it again."
+          : protocolMismatch
+            ? `IPC v${protocolMismatch.actualProtocol ?? "missing"}; expected v${protocolMismatch.requiredProtocol}`
+            : errorMessage
+              ? errorMessage
+              : status === "connected"
+                ? syncWarning
+                  ? `Connected. ${syncIssue}`
+                  : "Connected to mxr. Mail sync health is shown separately."
+                : "Not connected"}
         {lastErrorAt ? (
           <div className="mt-1 opacity-60">
             last error: {new Date(lastErrorAt).toLocaleTimeString()}

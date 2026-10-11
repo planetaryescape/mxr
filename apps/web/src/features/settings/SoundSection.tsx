@@ -177,11 +177,11 @@ export function SoundSection() {
           </SettingRow>
         );
       })}
-      <SettingRow label="Cleared desk" description="Two soft notes when the desk becomes clear.">
+      <SettingRow label="All done" description="Two soft notes when there is nothing left to do.">
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="Play the cleared desk sound"
+          aria-label="Play the all done sound"
           onClick={() => preview("low_tide")}
         >
           <Play />

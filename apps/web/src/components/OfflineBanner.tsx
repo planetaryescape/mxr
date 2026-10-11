@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Alert } from "@/components/ui/alert";
 import { useDaemonDown } from "@/lib/daemonAvailability";
@@ -48,7 +49,7 @@ export function OfflineBanner() {
   const banner = daemonDown
     ? {
         kind: "daemon",
-        text: "mxr's daemon is stopped. You can keep reading what's loaded; changes can't run until it's back. This clears on its own when it returns.",
+        text: "mxr's local app is not responding. Mail already loaded on this page may still be available, but new pages and changes need the app to be running. Restart it with mxr restart.",
       }
     : offlineSince && now - offlineSince >= STREAM_BANNER_DELAY_MS
       ? {
@@ -66,6 +67,20 @@ export function OfflineBanner() {
       className="rounded-none border-x-0 border-t-0 px-4 py-2 text-xs text-foreground"
     >
       {banner.text}
+      {banner.kind === "daemon" ? (
+        <button
+          type="button"
+          className="ml-2 underline underline-offset-2"
+          onClick={() => {
+            navigator.clipboard
+              ?.writeText("mxr restart")
+              .then(() => toast.success("Restart command copied"))
+              .catch(() => toast.error("Could not copy the command"));
+          }}
+        >
+          Copy command
+        </button>
+      ) : null}
     </Alert>
   );
 }

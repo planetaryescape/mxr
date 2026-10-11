@@ -16,11 +16,18 @@ export function TokenSection() {
   return (
     <div>
       <p className="mb-5 max-w-prose text-[13px] text-muted-foreground">
-        The app authenticates to the local <code>mxr</code> daemon with a bearer token. Local
-        launches fetch it through the same-machine handshake and keep it in{" "}
-        <code>localStorage</code>. If you see 401 errors, paste the token from the active profile's{" "}
-        <code>bridge-token</code> file here.
+        mxr web needs local access to connect to your mail app. Most local launches set this up
+        automatically. If access expires, paste the token from your active mxr profile here.
       </p>
+      <details className="mb-4 text-xs text-muted-foreground">
+        <summary className="w-fit cursor-pointer underline underline-offset-4">
+          Technical details
+        </summary>
+        <p className="mt-2 max-w-prose">
+          Local launches use a same-machine handshake. The token is held in localStorage and in the
+          daemon's active profile config directory (mode 0600).
+        </p>
+      </details>
       <div className="space-y-4">
         {reason === "expired" ? (
           <Alert variant="destructive" className="px-3 py-2 text-xs">
@@ -69,10 +76,6 @@ export function TokenSection() {
             Clear token
           </Button>
         </div>
-        <p className="text-2xs text-muted-foreground">
-          Storage location: <code>localStorage["mxr.bridgeToken"]</code>. The token is also held on
-          disk by the daemon in the active profile config directory (mode 0600).
-        </p>
       </div>
     </div>
   );

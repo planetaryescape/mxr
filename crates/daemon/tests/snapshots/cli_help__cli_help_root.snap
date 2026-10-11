@@ -95,6 +95,7 @@ Commands:
   send                Send a draft by ID
   unsend              Cancel a previously-scheduled send. The draft itself is preserved
   archive             Archive a message (remove from inbox)
+  archive-operation   Query retained Archive outcomes, or submit the exact retained review
   read-archive        Mark message as read and archive it
   route               Route queued messages to a target label, optionally marking read and archiving
   trash               Move message to trash

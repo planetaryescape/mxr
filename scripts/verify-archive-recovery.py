@@ -386,6 +386,40 @@ try:
     assert len(list((r / 'spool').glob('mutation-dispatched-*.json'))) == count_before
     mark('client_retention_failure_prevents_effect')
 
+    count_before = len(list((r / 'spool').glob('mutation-dispatched-*.json')))
+    refused_csv = cli('archive', ids[14], '--yes', '--format', 'csv', check=False)
+    assert refused_csv.returncode != 0
+    assert len(list((r / 'spool').glob('mutation-dispatched-*.json'))) == count_before
+    mark('unsupported_output_refused_before_effect')
+
+    (r / 'spool/mutation-reject').write_text(rows[14][1])
+    try:
+        rejected_cli = cli('archive', ids[14], '--yes', '--format', 'json', check=False)
+        assert rejected_cli.returncode != 0, 'No confirmed Archive must not report command success'
+        rejected_operation = json.loads(rejected_cli.stdout)
+        assert rejected_operation['items'][0]['state'] == 'not_executed'
+        assert query(rejected_operation)['identity'] == rejected_operation['identity']
+        repeat = cli('archive-operation', rejected_operation['identity']['operation_id'],
+                     '--submit', '--format', 'json', check=False)
+        assert repeat.returncode != 0
+        assert json.loads(repeat.stdout)['identity'] == rejected_operation['identity']
+        assert_count(rejected_operation, 0, 1)
+    finally:
+        (r / 'spool/mutation-reject').unlink()
+    mark('synchronous_known_rejection_fails_with_retained_json_receipt')
+
+    (r / 'spool/mutation-uncertain').write_text(rows[15][1])
+    try:
+        unknown_cli = cli('archive', ids[15], '--yes', '--format', 'json', check=False)
+        assert unknown_cli.returncode != 0, 'Unknown Archive must not report confirmed command success'
+        unknown_operation = json.loads(unknown_cli.stdout)
+        assert unknown_operation['items'][0]['state'] == 'unknown'
+        assert query(unknown_operation)['identity'] == unknown_operation['identity']
+        assert_count(unknown_operation, 1, 1)
+    finally:
+        (r / 'spool/mutation-uncertain').unlink()
+    mark('synchronous_unknown_fails_but_read_only_query_succeeds')
+
     receipts = [json.loads(row[0]) for row in sql("SELECT data_json FROM mutation_jobs WHERE kind='recoverable_archive'")]
     mark('retained_operation_count', count=len(receipts))
     health_request = Request(f'http://127.0.0.1:{a.port}/api/v1/health',

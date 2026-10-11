@@ -149,7 +149,7 @@ pub(super) async fn run(
                     Some("Provider completed Archive; local reconciliation remains".into()),
                 )
                 .await?;
-                match super::reconcile_label_mutation(
+                match crate::handler::reconcile_label_mutation(
                     state,
                     provider.as_ref(),
                     &item.message_id,
@@ -168,7 +168,7 @@ pub(super) async fn run(
                             None,
                         )
                         .await?;
-                        if let Err(error) = super::mutations::reindex_messages_in_search(
+                        if let Err(error) = crate::handler::mutations::reindex_messages_in_search(
                             state,
                             std::slice::from_ref(&item.message_id),
                         )
@@ -235,7 +235,7 @@ pub(super) async fn run(
             snapshots,
             desk: None,
             applied_at: now,
-            expires_at: now + super::mutations::UNDO_WINDOW_SECS,
+            expires_at: now + crate::handler::mutations::UNDO_WINDOW_SECS,
         };
         if let Err(error) = state.store.write_undo_entry(&entry).await {
             tracing::warn!(%error, "Archive provider outcomes retained but undo unavailable");

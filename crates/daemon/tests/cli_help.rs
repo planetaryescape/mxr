@@ -232,6 +232,10 @@ fn cli_help_snapshots_cover_all_commands() {
             &["invites", "backfill", "--help"],
         ),
         ("cli_help_archive", &["archive", "--help"]),
+        (
+            "cli_help_archive_operation",
+            &["archive-operation", "--help"],
+        ),
         ("cli_help_read_archive", &["read-archive", "--help"]),
         ("cli_help_route", &["route", "--help"]),
         ("cli_help_undo", &["undo", "--help"]),
@@ -440,7 +444,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 255);
+    assert_eq!(cases.len(), 256);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

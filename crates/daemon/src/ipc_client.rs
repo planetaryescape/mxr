@@ -71,7 +71,8 @@ impl IpcClient {
                 } else {
                     map_connect_error(error)
                 }
-            })?;
+            })?
+            .with_default_timeout(request_timeout());
         Ok(Self { conn })
     }
 
@@ -85,7 +86,8 @@ impl IpcClient {
                     source
                 ),
                 other => anyhow::Error::new(other),
-            })?;
+            })?
+            .with_default_timeout(request_timeout());
         Ok(Self { conn })
     }
 
@@ -214,5 +216,56 @@ fn describe_ipc_failure(message: &str) -> String {
         format!("IPC protocol mismatch: {message}. Restart the daemon after upgrading.")
     } else {
         format!("IPC error: {message}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CHILD_TEST: &str = "ipc_client::tests::archive_request_uses_cli_connect_timeout";
+    const CHILD_MODE: &str = "MXR_IPC_TIMEOUT_SUBPROCESS";
+
+    #[tokio::test]
+    async fn archive_request_uses_cli_connect_timeout() {
+        if std::env::var_os(CHILD_MODE).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args(["--exact", CHILD_TEST, "--nocapture"])
+                .env(CHILD_MODE, "1")
+                .env("MXR_IPC_TIMEOUT_SECS", "1")
+                .output()
+                .expect("run timeout test in an isolated process");
+            assert!(
+                output.status.success(),
+                "isolated timeout test failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let temp = tempfile::tempdir().expect("temporary IPC directory");
+        std::env::set_var("MXR_DATA_DIR", temp.path());
+        let socket = temp.path().join("silent-daemon.sock");
+        std::env::set_var("MXR_DAEMON_ADDR", format!("unix://{}", socket.display()));
+        let listener = tokio::net::UnixListener::bind(&socket).expect("bind silent daemon");
+        let peer = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept CLI connection");
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            drop(stream);
+        });
+
+        let mut client = IpcClient::connect().await.expect("connect CLI client");
+        let error = client
+            .preview_archive(MutationCommand::Archive {
+                message_ids: Vec::new(),
+            })
+            .await
+            .expect_err("silent daemon must hit the CLI request timeout");
+        assert!(
+            error.to_string().contains("timed out after 1 seconds"),
+            "unexpected error: {error:#}"
+        );
+        peer.abort();
     }
 }

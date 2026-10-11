@@ -58,11 +58,10 @@ export function ArchiveRecoveryPanel() {
             <p className="break-all font-mono text-xs">{operation.identity.operation_id}</p>
             <p>
               {operation.accepted
-                ? operation.running
-                  ? "Archive running"
-                  : "Archive accepted"
-                : "Reviewed; not submitted"}
+                ? `Last known: Archive accepted${operation.running ? " and running" : ""}.`
+                : "Last known: review only; submission may have been accepted."}
             </p>
+            <p>Query outcome before deciding whether to submit or retry.</p>
             <ul>
               {operation.items.map((item) => (
                 <li key={item.message_id} className="break-all text-xs">

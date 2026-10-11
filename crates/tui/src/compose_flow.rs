@@ -727,8 +727,8 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             });
     let now = chrono::Utc::now();
     mxr_core::Draft {
-        revision: None,
-        id: mxr_core::id::DraftId::new(),
+        revision: Some(1),
+        id: pending.draft_id(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
         // `pending_send_from_edited_draft` before a PendingSend exists, so a

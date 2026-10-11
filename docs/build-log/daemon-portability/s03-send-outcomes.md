@@ -21,7 +21,10 @@ requires the owning account even when the draft no longer exists.
 
 Web retains operation references before HTTP submission and exposes them in
 Drafts. The TUI retains its latest operation before submission and exposes a
-palette query. MCP requires a caller-retained operation ID and reviewed revision
+palette query. Send, safety preview, provider save and scheduling use the same
+compose-file draft identity; those alternate actions cannot clone an uncertain
+submission into another resource. Provider save and scheduling keep the local
+compose file so an unsuccessful request cannot destroy its recovery text. MCP requires a caller-retained operation ID and reviewed revision
 and provides `mxr_send_outcome`. A deliberate new Send press may create another
 operation only after querying durable `not_accepted` evidence. Unknown acceptance
 cannot be cleared by an orphan reset, startup maintenance, scheduling or a new ID.

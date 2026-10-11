@@ -22,7 +22,7 @@ fn draft_from_pending(
                 thread_id: pending.fm.thread_id.clone(),
             });
     mxr_core::Draft {
-        revision: None,
+        revision: Some(1),
         id: draft_id,
         account_id: pending.account_id.clone(),
         from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
@@ -643,7 +643,7 @@ impl App {
                                     return None;
                                 }
                             };
-                            let draft_id = mxr_core::id::DraftId::new();
+                            let draft_id = pending.draft_id();
                             let draft = draft_from_pending(&pending, draft_id.clone(), now);
                             self.queue_platform_request_after(
                                 vec![Request::SaveDraft { draft }],
@@ -655,7 +655,6 @@ impl App {
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
                             );
-                            self.schedule_draft_cleanup(pending.draft_path);
                         }
                         return None;
                     }
@@ -775,8 +774,8 @@ impl App {
                         });
                         let now = chrono::Utc::now();
                         let draft = mxr_core::Draft {
-                            revision: None,
-                            id: mxr_core::id::DraftId::new(),
+                            revision: Some(1),
+                            id: pending.draft_id(),
                             account_id: pending.account_id.clone(),
                             from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
                                 .ok()
@@ -804,7 +803,6 @@ impl App {
                             MutationEffect::StatusOnly("Draft saved to server".into()),
                             "Saving draft...".into(),
                         );
-                        self.schedule_draft_cleanup(pending.draft_path);
                     }
                     return None;
                 }

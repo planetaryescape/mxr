@@ -43,6 +43,10 @@ pub struct PendingSend {
 }
 
 impl PendingSend {
+    pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
+    }
+
     /// True iff the latest safety check verdict is Blocked. Drives
     /// the `[s] send` gate and the visibility of the `[Ctrl-O]
     /// override` affordance in the modal.

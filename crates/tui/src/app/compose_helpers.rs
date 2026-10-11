@@ -64,10 +64,7 @@ impl App {
         let now = chrono::Utc::now();
         let draft = mxr_core::Draft {
             revision: Some(1),
-            id: mxr_core::id::DraftId::from_provider_id(
-                "compose-file",
-                &pending.draft_path.to_string_lossy(),
-            ),
+            id: pending.draft_id(),
             account_id: pending.account_id.clone(),
             // `fm.from` was validated when the PendingSend was built; a parse
             // error is unreachable here, so fall back to "no override".

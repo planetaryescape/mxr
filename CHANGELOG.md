@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.79](https://github.com/planetaryescape/mxr/compare/v0.6.78...v0.6.79) (2026-10-11)
+
+
+### Features
+
+* create review tasks for upcoming annual renewals ([#392](https://github.com/planetaryescape/mxr/issues/392)) ([5fa69b3](https://github.com/planetaryescape/mxr/commit/5fa69b3290f2a10af9b5c475f0f69568bcc89bdc))
+
+
+### Bug Fixes
+
+* refresh mailbox queries after event reconnection ([#391](https://github.com/planetaryescape/mxr/issues/391)) ([d9ceba7](https://github.com/planetaryescape/mxr/commit/d9ceba71a8aa17de9acc0b50d3067e123bcfdb85))
+
 ## [0.6.78](https://github.com/planetaryescape/mxr/compare/v0.6.77...v0.6.78) (2026-10-11)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.66](https://github.com/planetaryescape/mxr/compare/v0.6.65...v0.6.66) (2026-10-11)
+
+
+### Features
+
+* improve package status in Updates ([#343](https://github.com/planetaryescape/mxr/issues/343)) ([8c8d069](https://github.com/planetaryescape/mxr/commit/8c8d069d81faf4603075c65afc5246dc33bf79fd))
+
 ## [0.6.65](https://github.com/planetaryescape/mxr/compare/v0.6.64...v0.6.65) (2026-10-11)
 
 

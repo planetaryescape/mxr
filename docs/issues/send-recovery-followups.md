@@ -79,7 +79,7 @@ send path (`crates/daemon/src/handler/mutations.rs`,
 `crates/daemon/src/handler/mailbox.rs`). They need separate review before any
 broader send-outcome coverage claim.
 
-## Candidate 7e21504e follow-ups
+## Several recovery diagnostics remain incomplete
 
 These source-checked observations are nonblocking follow-ups from review of
 `7e21504eb4a663543be751efb2ba26c8ba179de4`. Preserve the rule that an

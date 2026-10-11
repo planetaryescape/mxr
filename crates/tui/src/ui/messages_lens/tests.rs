@@ -171,6 +171,8 @@ fn message(
         from_me,
         date: now() - Duration::hours(hours),
         text: text.into(),
+        has_preserved_context: false,
+        source: Some(mxr_protocol::MessageTextSourceData::StoredBody),
         trimmed: TrimmedData {
             quote: !from_me,
             signature: !from_me,
@@ -300,6 +302,60 @@ fn an_expanded_letter_shows_every_paragraph_and_highlights_the_ask() {
     assert!(rendered.contains("\u{bb}Can you take a look"), "{rendered}");
     assert!(!rendered.contains("paragraph]"), "{rendered}");
     assert!(rendered.contains("Two things changed"), "{rendered}");
+}
+
+#[test]
+fn a_provider_preview_is_labeled_as_incomplete_in_the_person_page() {
+    let mut state = page(populated(), true);
+    let message = &mut state
+        .page
+        .as_mut()
+        .expect("person page is seeded")
+        .conversation
+        .as_mut()
+        .expect("conversation is seeded")
+        .messages[1];
+    message.source = Some(mxr_protocol::MessageTextSourceData::ProviderSnippet);
+    message.text =
+        "Preview introduction.\n\nSecond preview paragraph.\n\nFinal preview detail.".into();
+    message.paragraphs = 3;
+    let rendered = render_at(&state, 120, 0);
+    assert!(rendered.contains("provider preview only"), "{rendered}");
+    assert!(rendered.contains("full message unavailable"), "{rendered}");
+    assert!(rendered.contains("o to check"), "{rendered}");
+    assert!(rendered.contains("original)"), "{rendered}");
+    assert!(rendered.contains("Second preview paragraph"), "{rendered}");
+    assert!(rendered.contains("Final preview detail"), "{rendered}");
+}
+
+#[test]
+fn a_long_inline_exchange_is_never_reduced_to_the_cached_ask_paragraph() {
+    let mut state = page(populated(), true);
+    let message = &mut state
+        .page
+        .as_mut()
+        .expect("person page is seeded")
+        .conversation
+        .as_mut()
+        .expect("conversation is seeded")
+        .messages[1];
+    message.text = "> Can you ship Thursday?\n\nYes, but only if QA passes.\n\n> Can we skip the migration?\n\nNo, do not skip it; the revised date is Friday.".into();
+    message.has_preserved_context = true;
+    message.ask_quote = Some("No, do not skip it".into());
+    message.paragraphs = 4;
+    let rendered = render_at(&state, 120, 0);
+    for context in [
+        "Can you ship Thursday?",
+        "only if QA passes",
+        "Can we skip the migration?",
+        "revised date is Friday",
+    ] {
+        assert!(
+            rendered.contains(context),
+            "missing {context:?}\n{rendered}"
+        );
+    }
+    assert!(!rendered.contains("paragraph]"), "{rendered}");
 }
 
 #[test]

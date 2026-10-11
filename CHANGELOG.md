@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.74](https://github.com/planetaryescape/mxr/compare/v0.6.73...v0.6.74) (2026-10-11)
+
+
+### Bug Fixes
+
+* clear completed mutation progress status ([#376](https://github.com/planetaryescape/mxr/issues/376)) ([6f2defc](https://github.com/planetaryescape/mxr/commit/6f2defccbfefb1d90b3645714a16c8d2031110ce))
+
+## [0.6.73](https://github.com/planetaryescape/mxr/compare/v0.6.72...v0.6.73) (2026-10-11)
+
+
+### Bug Fixes
+
+* preserve inline answers and forwarded message context ([#348](https://github.com/planetaryescape/mxr/issues/348)) ([299bed2](https://github.com/planetaryescape/mxr/commit/299bed27b2189032b0efadaca1bf18416f0b387f))
+
 ## [0.6.72](https://github.com/planetaryescape/mxr/compare/v0.6.71...v0.6.72) (2026-10-11)
 
 

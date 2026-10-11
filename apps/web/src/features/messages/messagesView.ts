@@ -157,8 +157,11 @@ export function paragraphBlocks(text: string): { at: number; text: string }[] {
  * What a letter shows before "Read all": the paragraph holding the ask when
  * there is one, else the first. Short notes show whole.
  */
-export function letterLead(message: ConversationMessage): { lead: string; hidden: number } {
+export function letterLead(message: ConversationMessage) {
   const blocks = paragraphs(message.text);
+  if (message.source === "provider_snippet" || message.has_preserved_context) {
+    return { lead: message.text, hidden: 0 };
+  }
   if (message.layout === "compact" || blocks.length <= 1) {
     return { lead: message.text, hidden: 0 };
   }

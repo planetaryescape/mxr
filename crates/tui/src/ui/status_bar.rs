@@ -14,6 +14,8 @@ pub struct StatusBarState {
     pub starred_count: usize,
     pub body_status: Option<String>,
     pub sync_status: Option<String>,
+    /// Short account/action copy used only when the full warning would clip.
+    pub compact_sync_status: Option<String>,
     /// The sync words are a warning (failing, paused or stale sync): drawn
     /// in the warning colour so they stand out from the counts.
     pub sync_warning: bool,
@@ -38,7 +40,7 @@ pub fn draw(
 ) {
     let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
-    let status: Vec<Span<'static>> = if state
+    let mut status: Vec<Span<'static>> = if state
         .status_message
         .as_deref()
         .is_some_and(|message| message.starts_with("Error:"))
@@ -88,6 +90,23 @@ pub fn draw(
         }
         vec![Span::raw(counts), sync, Span::raw(tail)]
     };
+
+    let demo_width = if mxr_config::is_demo_instance() { 6 } else { 0 };
+    let spinner_width = usize::from(state.busy && spinner.is_some()) * 2;
+    let available_width = area.width.saturating_sub(demo_width) as usize;
+    if state.sync_warning
+        && status.len() == 3
+        && Line::from(status.clone()).width() + spinner_width > available_width
+    {
+        if let Some(compact) = state.compact_sync_status.as_deref() {
+            status[1] = Span::styled(
+                format!("! {compact}"),
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            );
+        }
+    }
 
     // Prepend an animated spinner while background work is in flight so
     // the user can tell the daemon is busy even without a pane-local
@@ -174,6 +193,7 @@ mod tests {
             starred_count: 0,
             body_status: None,
             sync_status: None,
+            compact_sync_status: None,
             sync_warning: false,
             feature_health_status: None,
             status_message: None,
@@ -241,5 +261,26 @@ mod tests {
             .unwrap_or_else(|| panic!("warning missing: {line}"));
         let column = u16::try_from(line[..at].chars().count()).unwrap();
         assert_eq!(buffer[(column, 0)].fg, theme.warning);
+    }
+
+    #[test]
+    fn a_narrow_warning_keeps_the_account_and_retry_time_visible() {
+        let mut warning = state(0, 0);
+        warning.busy = false;
+        warning.sync_status =
+            Some("Latest mail 25m ago · Can't reach alex@demo.mxr.local, retrying 14:27".into());
+        warning.compact_sync_status = Some("alex@demo.mxr.local: retrying 14:27".into());
+        warning.sync_warning = true;
+        let theme = crate::theme::Theme::default();
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(80, 1)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), &warning, None, &theme))
+            .unwrap();
+        let line = text(terminal.backend().buffer());
+        assert!(
+            line.contains("! alex@demo.mxr.local: retrying 14:27"),
+            "{line}"
+        );
+        assert!(!line.contains("Latest mail"), "{line}");
     }
 }

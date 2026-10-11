@@ -289,11 +289,11 @@ export async function fetchCategoryMemberships(input: {
   messageIds: string[];
   categoryIds: string[];
 }): Promise<{ category_id: string; selected_messages: number; assigned_messages: number }[]> {
-  const body: { account_id?: string; message_ids: string[]; category_ids: string[] } = {
+  const body = {
     message_ids: input.messageIds,
     category_ids: input.categoryIds,
+    ...(input.accountId ? { account_id: input.accountId } : {}),
   };
-  if (input.accountId) body.account_id = input.accountId;
   const result = await apiFetch<{
     states: { category_id: string; selected_messages: number; assigned_messages: number }[];
   }>("/api/v1/mail/categories/memberships", {
@@ -307,8 +307,7 @@ export async function previewCategoryName(
   name: string,
   categoryId?: string,
 ): Promise<CategoryNamePreview> {
-  const body: { name: string; category_id?: string } = { name };
-  if (categoryId) body.category_id = categoryId;
+  const body = { name, ...(categoryId ? { category_id: categoryId } : {}) };
   return apiFetch<CategoryNamePreview>("/api/v1/mail/categories/name/preview", {
     method: "POST",
     body,
@@ -341,17 +340,12 @@ export function previewCategoryMembership(input: {
   addCategoryIds: string[];
   removeCategoryIds: string[];
 }): Promise<CategoryMembershipPreview> {
-  const body: {
-    account_id?: string;
-    message_ids: string[];
-    add_category_ids: string[];
-    remove_category_ids: string[];
-  } = {
+  const body = {
     message_ids: input.messageIds,
     add_category_ids: input.addCategoryIds,
     remove_category_ids: input.removeCategoryIds,
+    ...(input.accountId ? { account_id: input.accountId } : {}),
   };
-  if (input.accountId) body.account_id = input.accountId;
   return apiFetch("/api/v1/mail/categories/assignment/preview", {
     method: "POST",
     body,

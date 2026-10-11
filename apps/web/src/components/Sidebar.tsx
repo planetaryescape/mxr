@@ -293,7 +293,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         id: "categories",
         title: "Categories",
         foldable: true,
-        entries: categories.map((lens) => ({ key: lens.key, to: lens.path, label: lens.label, Icon: FolderOpen })),
+        entries: categories.map((lens) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: FolderOpen,
+        })),
       });
     }
     result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });

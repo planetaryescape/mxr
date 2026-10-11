@@ -176,7 +176,11 @@ export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | nu
     );
   }
   if (route.kind === "category") {
-    return lenses.find((lens) => lens.section === "categories" && lens.key === `category:${route.categoryId}`) ?? null;
+    return (
+      lenses.find(
+        (lens) => lens.section === "categories" && lens.key === `category:${route.categoryId}`,
+      ) ?? null
+    );
   }
   const slug = decodeURIComponent(route.slug);
   return (

@@ -327,7 +327,9 @@ fn apply_user_sync_outcome(app: &mut App, event: &DaemonEvent) {
         }
         DaemonEvent::SyncError { account_id, error }
             if app.user_sync_targets.remove(account_id)
-                || app.user_sync_batch_accounts.contains(account_id) =>
+                || (app.user_sync_pending
+                    && app.user_sync_batch_accounts.contains(account_id)
+                    && !app.user_sync_batch_failures.contains_key(account_id)) =>
         {
             app.user_sync_batch_accounts.insert(account_id.clone());
             app.user_sync_batch_failures

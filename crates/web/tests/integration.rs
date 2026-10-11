@@ -400,6 +400,9 @@ async fn one_route_per_bucket_dispatches() {
             Request::ListLabels { account_id: None } => Some(Response::Ok {
                 data: ResponseData::Labels { labels: vec![] },
             }),
+            Request::ListCategories { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Categories { categories: vec![] },
+            }),
             Request::ListSavedSearches => Some(Response::Ok {
                 data: ResponseData::SavedSearches { searches: vec![] },
             }),

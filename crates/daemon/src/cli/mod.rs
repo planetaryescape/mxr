@@ -1225,6 +1225,15 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Manage personal categories independently of provider labels
+    Categories {
+        #[command(subcommand)]
+        action: Option<CategoriesAction>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Manage rules
     Rules {
         #[command(subcommand)]

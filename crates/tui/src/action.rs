@@ -381,6 +381,10 @@ pub enum Action {
     CloseExpertModal,
     /// Open the snippet manager modal.
     OpenSnippets,
+    /// Open the local personal-category catalog.
+    OpenPersonalCategories,
+    /// Stage categories on the selected exact message set.
+    AssignPersonalCategory,
     /// Close the snippet manager modal (Esc).
     CloseSnippetsModal,
     /// Move cursor to the next snippet in the modal list.
@@ -638,6 +642,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
+                | OpenPersonalCategories
                 | Help
                 | QuitView
                 | MoveDown
@@ -680,6 +685,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
+                | OpenPersonalCategories
         ),
         SearchResults | SearchPreview => !matches!(
             action,
@@ -742,6 +748,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
+                | OpenPersonalCategories
         ),
         Diagnostics => matches!(
             action,
@@ -768,6 +775,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
+                | OpenPersonalCategories
                 | RefreshDiagnostics
                 | GenerateBugReport
                 | OpenDiagnosticsPaneDetails
@@ -809,6 +817,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
+                | OpenPersonalCategories
                 | SyncNow
                 | EditConfig
                 | OpenLogs

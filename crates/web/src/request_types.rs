@@ -15,6 +15,8 @@ pub(super) struct MailboxQuery {
     #[serde(default)]
     pub(super) label_id: Option<String>,
     #[serde(default)]
+    pub(super) category_id: Option<String>,
+    #[serde(default)]
     pub(super) saved_search: Option<String>,
     #[serde(default)]
     pub(super) sender_email: Option<String>,
@@ -50,6 +52,7 @@ pub(super) enum MailboxLensKind {
     Inbox,
     AllMail,
     Label,
+    Category,
     SavedSearch,
     Subscription,
 }
@@ -58,6 +61,7 @@ pub(super) enum MailboxLensKind {
 pub(super) struct MailboxLensRequest {
     pub(super) kind: MailboxLensKind,
     pub(super) label_id: Option<String>,
+    pub(super) category_id: Option<String>,
     pub(super) saved_search: Option<String>,
     pub(super) sender_email: Option<String>,
 }
@@ -67,6 +71,7 @@ impl MailboxQuery {
         MailboxLensRequest {
             kind: self.lens_kind.clone(),
             label_id: self.label_id.clone(),
+            category_id: self.category_id.clone(),
             saved_search: self.saved_search.clone(),
             sender_email: self.sender_email.clone(),
         }

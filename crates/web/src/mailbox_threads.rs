@@ -78,7 +78,9 @@ fn thread_lens<'a>(
                 lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
             }
         }
-        MailboxLensKind::SavedSearch | MailboxLensKind::Subscription => return Ok(None),
+        MailboxLensKind::Category
+        | MailboxLensKind::SavedSearch
+        | MailboxLensKind::Subscription => return Ok(None),
     }))
 }
 

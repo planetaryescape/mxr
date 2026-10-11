@@ -38,7 +38,7 @@ const ctx: ActionContext = {
 beforeEach(() => {
   useConnectionStore.setState({ syncProgress: undefined });
   useModals.setState({ commandPaletteOpen: false, rightRail: null });
-  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 6 });
+  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 7 });
 });
 
 afterEach(() => {
@@ -64,7 +64,7 @@ describe("syncNow", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  test.each([{ protocol: 4 }, { protocol: 5 }, { protocol: undefined }])(
+  test.each([{ protocol: 4 }, { protocol: 5 }, { protocol: 6 }, { protocol: undefined }])(
     "does not start sync when bridge protocol is $protocol",
     async ({ protocol }) => {
       bridgeHealth.fetch.mockResolvedValue(

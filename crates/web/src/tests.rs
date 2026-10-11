@@ -1187,6 +1187,38 @@ async fn openapi_spec_snapshot() {
         .await
         .unwrap();
 
+    let paths = &json["paths"];
+    let create = &paths["/api/v1/mail/categories"]["post"];
+    let create_schema = create
+        .pointer("/requestBody/content/application~1json/schema")
+        .map(|schema| openapi_schema(&json, schema))
+        .expect("category create request schema");
+    assert_eq!(create_schema["properties"]["name"]["type"], "string");
+    assert!(create_schema["required"]
+        .as_array()
+        .is_some_and(|required| required.iter().any(|field| field == "name")));
+
+    let apply = &paths["/api/v1/mail/categories/assignment/apply"]["post"];
+    let apply_schema = apply
+        .pointer("/requestBody/content/application~1json/schema")
+        .map(|schema| openapi_schema(&json, schema))
+        .expect("category assignment apply request schema");
+    assert_eq!(
+        apply_schema["properties"]["preview_token"]["type"],
+        "string"
+    );
+    assert!(apply_schema["required"]
+        .as_array()
+        .is_some_and(|required| required.iter().any(|field| field == "preview_token")));
+
+    let account_filter = paths["/api/v1/mail/categories"]["get"]["parameters"]
+        .as_array()
+        .expect("category account filter parameters")
+        .iter()
+        .find(|parameter| parameter["name"] == "account_id")
+        .expect("account_id query filter");
+    assert_eq!(account_filter["in"], "query");
+
     // Snapshot a stable subset (top-level metadata + security scheme +
     // schema names). Snapshotting the full spec is too noisy across
     // utoipa version bumps; snapshotting nothing means drift slips by.
@@ -1205,6 +1237,17 @@ async fn openapi_spec_snapshot() {
     });
 
     insta::assert_json_snapshot!("openapi_spec_summary", summary);
+}
+
+fn openapi_schema<'a>(
+    spec: &'a serde_json::Value,
+    schema: &'a serde_json::Value,
+) -> &'a serde_json::Value {
+    schema
+        .get("$ref")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|reference| spec.pointer(reference.strip_prefix('#').unwrap_or(reference)))
+        .unwrap_or(schema)
 }
 
 /// Slice 2 — Swagger UI is served to authenticated local clients so
@@ -1490,6 +1533,11 @@ async fn mailbox_endpoint_lists_envelopes() {
                     labels: labels.clone(),
                 },
             }),
+            Request::ListCategories { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Categories {
+                    categories: Vec::new(),
+                },
+            }),
             Request::ListSavedSearches => Some(Response::Ok {
                 data: ResponseData::SavedSearches {
                     searches: vec![saved_search.clone()],
@@ -1588,6 +1636,11 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
             Request::ListLabels { account_id: None } => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
+                },
+            }),
+            Request::ListCategories { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Categories {
+                    categories: Vec::new(),
                 },
             }),
             Request::ListSavedSearches => Some(Response::Ok {
@@ -1712,6 +1765,11 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
             Request::ListLabels { account_id: None } => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
+                },
+            }),
+            Request::ListCategories { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Categories {
+                    categories: Vec::new(),
                 },
             }),
             Request::ListSavedSearches => Some(Response::Ok {
@@ -4512,7 +4570,7 @@ fn sample_status() -> ResponseData {
 }
 
 /// Answers the shell/sidebar requests every mailbox load makes, and records
-/// the account each label/subscription lookup was scoped to.
+/// the account each label/category/subscription lookup was scoped to.
 fn chrome_fake_response(
     request: &Request,
     labels: &[Label],
@@ -4524,6 +4582,12 @@ fn chrome_fake_response(
             seen_accounts.lock().unwrap().push(account_id.clone());
             ResponseData::Labels {
                 labels: labels.to_vec(),
+            }
+        }
+        Request::ListCategories { account_id } => {
+            seen_accounts.lock().unwrap().push(account_id.clone());
+            ResponseData::Categories {
+                categories: Vec::new(),
             }
         }
         Request::ListSavedSearches => ResponseData::SavedSearches {
@@ -4662,8 +4726,12 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
     }
     assert_eq!(
         *seen_accounts.lock().unwrap(),
-        vec![Some(account.clone()), Some(account.clone())],
-        "mailbox chrome must load the scoped account's labels and subscriptions"
+        vec![
+            Some(account.clone()),
+            Some(account.clone()),
+            Some(account.clone())
+        ],
+        "mailbox chrome must load labels, categories, and subscriptions for the selected account"
     );
 
     let response = client
@@ -5588,8 +5656,8 @@ async fn mailbox_and_search_rows_carry_labels() {
         })
         .collect::<Vec<_>>();
 
-    let label_lookups = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let lookups_for_ipc = label_lookups.clone();
+    let chrome_lookups = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let lookups_for_ipc = chrome_lookups.clone();
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
@@ -5656,10 +5724,14 @@ async fn mailbox_and_search_rows_carry_labels() {
     );
     assert_eq!(rows[0]["labels"][1]["kind"], "user");
     assert_eq!(label_names(&rows[1]), vec!["Inbox".to_string()]);
-    // Chrome's own ListLabels + ListSubscriptions, nothing per row.
-    assert_eq!(label_lookups.lock().unwrap().len(), 2);
+    // Chrome's own ListLabels + ListCategories + ListSubscriptions use the default account.
+    assert_eq!(
+        *chrome_lookups.lock().unwrap(),
+        vec![None, None, None],
+        "mailbox chrome lookups use the daemon's default account when no account is selected"
+    );
 
-    label_lookups.lock().unwrap().clear();
+    chrome_lookups.lock().unwrap().clear();
     let search: serde_json::Value = client
         .get(format!(
             "http://{addr}/api/v1/mail/search?q=mailroom&scope=messages"
@@ -5678,7 +5750,7 @@ async fn mailbox_and_search_rows_carry_labels() {
         vec!["Inbox".to_string(), "Follow Up".to_string()]
     );
     assert_eq!(
-        *label_lookups.lock().unwrap(),
+        *chrome_lookups.lock().unwrap(),
         vec![Some(account.clone())],
         "search resolves labels with one ListLabels per account"
     );

@@ -28,6 +28,12 @@ pub(crate) enum AsyncResult {
         result: Result<u32, MxrError>,
     },
     Rules(Result<Vec<serde_json::Value>, MxrError>),
+    PersonalCategory {
+        generation: u64,
+        report_if_stale: bool,
+        view_category_id: Option<mxr_core::CategoryId>,
+        result: Result<Box<mxr_protocol::ResponseData>, MxrError>,
+    },
     RuleDetail {
         request_id: u64,
         result: Result<serde_json::Value, MxrError>,

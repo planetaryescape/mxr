@@ -316,18 +316,28 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       </PageSection>
 
       <PageSection title="Connection">
-        <FactList
-          facts={[
-            ["Provider", account.provider_kind],
-            ["Sync", account.sync_kind ?? account.provider_kind],
-            ["Send", account.send_kind ?? (account.capabilities?.supports_send ? "yes" : "no")],
-            ["Status", account.enabled ? "enabled" : "disabled"],
-            ...capabilities.map(([name, value]): [string, string] => [
-              name.replace(/_/g, " "),
-              value ? "yes" : "no",
-            ]),
-          ]}
-        />
+        <p className="text-[13px] text-muted-foreground">
+          {account.enabled ? "This mailbox is enabled." : "This mailbox is paused."}
+        </p>
+        <details className="mt-3 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer underline underline-offset-4">
+            Technical connection details
+          </summary>
+          <div className="mt-3">
+            <FactList
+              facts={[
+                ["Provider", account.provider_kind],
+                ["Sync", account.sync_kind ?? account.provider_kind],
+                ["Send", account.send_kind ?? (account.capabilities?.supports_send ? "yes" : "no")],
+                ["Status", account.enabled ? "enabled" : "disabled"],
+                ...capabilities.map(([name, value]): [string, string] => [
+                  name.replace(/_/g, " "),
+                  value ? "yes" : "no",
+                ]),
+              ]}
+            />
+          </div>
+        </details>
         <div className="mt-3 flex gap-2">
           <Button
             variant="ghost"

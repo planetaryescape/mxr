@@ -99,7 +99,7 @@ export const MailboxRow = memo(function MailboxRow({
       data-focused={focused ? "true" : undefined}
       className={cn(
         "mail-row group relative grid cursor-default select-none items-center border-b border-border/60",
-        "grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5",
+        "grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 pl-7 pr-4 py-2.5",
         "@2xl:grid-cols-[28px_minmax(120px,190px)_minmax(0,1fr)_auto]",
         "[[data-density=compact]_&]:py-1.5 [[data-density=comfortable]_&]:py-3.5",
         // No transition: j/k moves the highlight on every keypress, and
@@ -120,7 +120,7 @@ export const MailboxRow = memo(function MailboxRow({
       {row.unread ? (
         <span
           aria-hidden
-          className="absolute left-[5px] top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-unread-marker"
+          className="absolute left-3 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-unread-marker"
         />
       ) : null}
 

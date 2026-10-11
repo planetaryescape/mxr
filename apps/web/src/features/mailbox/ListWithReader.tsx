@@ -196,7 +196,7 @@ export function ListWithReader({
             <header className="shrink-0 border-b border-border">
               <ModeFrame>
                 {heading ?? (
-                  <div className="flex h-11 items-center gap-3 px-4">
+                  <div className="flex h-11 items-center gap-3 pl-7 pr-4">
                     <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
                     {meta ? (
                       <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">

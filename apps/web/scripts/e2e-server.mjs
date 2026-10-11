@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(appDir, "../..");
-const runtimeDir = join(appDir, ".playwright", "mxr-e2e");
+const runtimeDir = resolve(
+  process.env.MXR_E2E_RUNTIME_DIR ?? join(appDir, ".playwright", "mxr-e2e"),
+);
 const statePath = join(appDir, ".playwright", "state.json");
 const bridgePort = Number(process.env.MXR_E2E_BRIDGE_PORT ?? "17777");
 const controlPort = Number(process.env.MXR_E2E_CONTROL_PORT ?? String(bridgePort + 1));

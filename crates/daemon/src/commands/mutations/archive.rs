@@ -22,6 +22,9 @@ pub async fn archive_operation(
         journal.list()?
     };
     let mut client = IpcClient::connect().await?;
+    if list_mode && !submit {
+        return query_archive_operation_list(operations, &mut client, format).await;
+    }
     for retained in operations {
         let result = if submit {
             client.submit_archive(&retained, true).await
@@ -63,6 +66,88 @@ pub async fn archive_operation(
         println!("{}", serde_json::to_string_pretty(&outcomes)?);
     }
     Ok(())
+}
+
+async fn query_archive_operation_list(
+    operations: Vec<ArchiveOperationData>,
+    client: &mut IpcClient,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut outcomes = Vec::with_capacity(operations.len());
+    for retained in operations {
+        let outcome = match client
+            .request(Request::GetArchiveOperation {
+                identity: retained.identity.clone(),
+            })
+            .await
+        {
+            Err(error) => Err(error),
+            Ok(response) => match response {
+                Response::Ok {
+                    data: ResponseData::ArchiveOperation { operation },
+                } => Ok(operation),
+                Response::Error { message, .. } => Err(anyhow::anyhow!(
+                    "Archive query refused: {message}; original identity retained"
+                )),
+                _ => Err(anyhow::anyhow!("Unexpected Archive response")),
+            },
+        };
+        outcomes.push((retained, outcome));
+    }
+
+    let resolved_format = resolve_format(format.clone());
+    let errors = match resolved_format {
+        OutputFormat::Json => {
+            let records = archive_list_records(&outcomes)?;
+            let errors = outcomes
+                .iter()
+                .filter(|(_, outcome)| outcome.is_err())
+                .count();
+            println!("{}", serde_json::to_string_pretty(&records)?);
+            errors
+        }
+        OutputFormat::Jsonl => {
+            let mut errors = 0;
+            for (retained, outcome) in &outcomes {
+                match outcome {
+                    Ok(operation) => print_operation(operation, format.clone())?,
+                    Err(error) => {
+                        errors += 1;
+                        print_recovery_error(retained, error, format.clone())?;
+                    }
+                }
+            }
+            errors
+        }
+        OutputFormat::Table | OutputFormat::Ids | OutputFormat::Csv => {
+            let mut errors = 0;
+            for (_, outcome) in &outcomes {
+                match outcome {
+                    Ok(operation) => print_operation(operation, format.clone())?,
+                    Err(_) => errors += 1,
+                }
+            }
+            errors
+        }
+    };
+    if errors > 0 {
+        anyhow::bail!(
+            "Failed to query {errors} retained Archive operation(s); retry each original identity"
+        );
+    }
+    Ok(())
+}
+
+fn archive_list_records(
+    outcomes: &[(ArchiveOperationData, anyhow::Result<ArchiveOperationData>)],
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    outcomes
+        .iter()
+        .map(|(retained, outcome)| match outcome {
+            Ok(operation) => serde_json::to_value(operation).map_err(Into::into),
+            Err(error) => Ok(recovery_error_value(retained, error)),
+        })
+        .collect()
 }
 
 pub(super) fn print_operation(
@@ -123,12 +208,22 @@ pub(super) fn print_recovery_error(
     ) {
         println!(
             "{}",
-            serde_json::to_string(
-                &serde_json::json!({"identity": operation.identity, "state": "response_unavailable", "error": error.to_string(), "retry_guidance": "Query the retained identity; never create a new identity for an uncertain effect"})
-            )?
+            serde_json::to_string(&recovery_error_value(operation, error))?
         );
     }
     Ok(())
+}
+
+fn recovery_error_value(
+    operation: &ArchiveOperationData,
+    error: &anyhow::Error,
+) -> serde_json::Value {
+    serde_json::json!({
+        "identity": operation.identity,
+        "state": "response_unavailable",
+        "error": error.to_string(),
+        "retry_guidance": "Query the retained identity; never create a new identity for an uncertain effect"
+    })
 }
 
 pub(super) fn require_confirmed_completion(operation: &ArchiveOperationData) -> anyhow::Result<()> {
@@ -146,8 +241,31 @@ fn has_confirmed_completion(
 }
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::unwrap_used, reason = "tests unwrap fixture setup")]
     use super::*;
+    use mxr_protocol::ArchiveIdentityData;
     use mxr_protocol::ArchiveItemStateData::{Completed, NotExecuted, Unknown};
+
+    fn operation(operation_id: &str) -> ArchiveOperationData {
+        ArchiveOperationData {
+            identity: ArchiveIdentityData {
+                operation_id: operation_id.into(),
+                caller_id: "caller".into(),
+                workspace: mxr_protocol::ArchiveWorkspaceData {
+                    workspace_id: "workspace".into(),
+                    recovery_generation: "generation".into(),
+                },
+            },
+            review_id: "review".into(),
+            mutation_id: "mutation".into(),
+            accepted: false,
+            undo_available: false,
+            running: false,
+            started_at: 1,
+            items: Vec::new(),
+        }
+    }
+
     #[test]
     fn archive_synchronous_exit_requires_at_least_one_confirmed_completion() {
         assert!(!has_confirmed_completion(
@@ -155,5 +273,38 @@ mod tests {
         ));
         assert!(!has_confirmed_completion([Unknown, Unknown].into_iter()));
         assert!(has_confirmed_completion([Completed, Unknown].into_iter()));
+    }
+
+    #[test]
+    fn archive_list_records_preserve_successes_after_query_errors() {
+        let unavailable = operation("unavailable");
+        let valid = operation("valid");
+        let records = archive_list_records(&[
+            (
+                unavailable.clone(),
+                Err(anyhow::anyhow!("workspace generation changed")),
+            ),
+            (valid.clone(), Ok(valid.clone())),
+        ])
+        .unwrap();
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[0]["identity"],
+            serde_json::to_value(unavailable.identity).unwrap()
+        );
+        assert_eq!(records[0]["state"], "response_unavailable");
+        assert_eq!(records[0]["error"], "workspace generation changed");
+        assert_eq!(
+            records[0]["retry_guidance"],
+            "Query the retained identity; never create a new identity for an uncertain effect"
+        );
+        assert_eq!(records[1], serde_json::to_value(valid).unwrap());
+    }
+
+    #[test]
+    fn empty_archive_list_is_one_empty_json_array() {
+        let records = archive_list_records(&[]).unwrap();
+        assert_eq!(serde_json::to_string(&records).unwrap(), "[]");
     }
 }

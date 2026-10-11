@@ -103,6 +103,35 @@ impl super::Store {
         Ok(result.rows_affected() == 1)
     }
 
+    /// Completion and its history event share a commit; only the CAS winner logs it.
+    pub async fn compare_exchange_archive_job_with_event(
+        &self,
+        job_id: &str,
+        expected: &str,
+        next: &str,
+        summary: &str,
+        refs: crate::EventLogRefs<'_>,
+        details: Option<&str>,
+    ) -> Result<bool, sqlx::Error> {
+        let mut transaction = self.writer().begin().await?;
+        let result = sqlx::query("UPDATE mutation_jobs SET data_json = ?, status = 'recoverable' WHERE job_id = ? AND kind = 'recoverable_archive' AND data_json = ?")
+            .bind(next).bind(job_id).bind(expected).execute(&mut *transaction).await?;
+        if result.rows_affected() == 0 {
+            return Ok(false);
+        }
+        crate::event_log::insert_event_refs_on(
+            &mut transaction,
+            "info",
+            "mutation",
+            summary,
+            refs,
+            details,
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(true)
+    }
+
     /// Return the `data_json` of the most recent jobs, newest first,
     /// capped at `limit`.
     pub async fn list_mutation_jobs(&self, limit: i64) -> Result<Vec<String>, sqlx::Error> {
@@ -133,6 +162,7 @@ impl super::Store {
             r#"DELETE FROM mutation_jobs
                WHERE kind != 'recoverable_archive' AND status NOT IN ('queued', 'running') AND job_id NOT IN (
                    SELECT job_id FROM mutation_jobs
+                   WHERE kind != 'recoverable_archive'
                    ORDER BY started_at DESC, job_id DESC
                    LIMIT ?1
                )"#,
@@ -147,6 +177,99 @@ impl super::Store {
 #[cfg(test)]
 mod tests {
     use crate::Store;
+
+    #[tokio::test]
+    async fn archive_completion_cas_logs_only_winner_and_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        let store = Store::new(&path).await.unwrap();
+        store
+            .insert_archive_job("archive", 0, "review")
+            .await
+            .unwrap();
+        let (one, two) = tokio::join!(
+            store.compare_exchange_archive_job_with_event(
+                "archive",
+                "review",
+                "completed-1",
+                "Archived message",
+                crate::EventLogRefs::default(),
+                None
+            ),
+            store.compare_exchange_archive_job_with_event(
+                "archive",
+                "review",
+                "completed-2",
+                "Archived message",
+                crate::EventLogRefs::default(),
+                None
+            ),
+        );
+        assert_ne!(one.unwrap(), two.unwrap());
+        assert_eq!(
+            store
+                .list_events(100, None, Some("mutation"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        drop(store);
+        let reopened = Store::new(&path).await.unwrap();
+        assert!(!reopened
+            .compare_exchange_archive_job_with_event(
+                "archive",
+                "review",
+                "completed-3",
+                "Archived message",
+                crate::EventLogRefs::default(),
+                None
+            )
+            .await
+            .unwrap());
+        assert_eq!(
+            reopened
+                .list_events(100, None, Some("mutation"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn protected_archive_receipts_do_not_displace_ordinary_job_history() {
+        let store = Store::in_memory().await.unwrap();
+        for i in 0..3 {
+            store
+                .upsert_mutation_job(
+                    &format!("job-{i}"),
+                    "star",
+                    "completed",
+                    i,
+                    None,
+                    &format!("job-{i}"),
+                )
+                .await
+                .unwrap();
+            store
+                .insert_archive_job(&format!("archive-{i}"), i + 100, "review")
+                .await
+                .unwrap();
+        }
+        store.prune_mutation_jobs(2).await.unwrap();
+        assert_eq!(
+            store.list_mutation_jobs(10).await.unwrap(),
+            ["job-2", "job-1"]
+        );
+        for i in 0..3 {
+            assert!(store
+                .get_mutation_job(&format!("archive-{i}"))
+                .await
+                .unwrap()
+                .is_some());
+        }
+    }
 
     #[tokio::test]
     async fn mutation_jobs_round_trip_and_prune() {

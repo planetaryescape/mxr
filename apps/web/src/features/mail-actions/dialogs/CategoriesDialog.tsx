@@ -34,18 +34,18 @@ import {
   previewDeleteCategory,
   renameCategory,
   shellKey,
-  undoCategoryMembership,
   type CategoryDeletePreview,
   type CategoryMembershipPreview,
   type PersonalCategoryView,
 } from "@/features/mailbox/api";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useUndo } from "@/state/undoStore";
 
 import { describeTarget } from "../mailVerbs";
+import { claimUndo, offerUndo } from "../mailUndo";
+import { undoCategoryChanges } from "../categoryUndo";
 import type { MailTarget } from "../target";
-
-type Presence = "all" | "some" | "none";
 
 export function CategoriesDialog({ target, onClose }: { target: MailTarget; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -144,33 +144,41 @@ export function CategoriesDialog({ target, onClose }: { target: MailTarget; onCl
   };
   const apply = async () => {
     if (!assignmentPreview) return;
+    const previousUndo = useUndo.getState();
+    const claim = claimUndo();
     try {
       const result = await applyCategoryMembership(assignmentPreview.preview_token);
-      setAssignmentPreview(null);
-      setStaged(new Map());
-      await queryClient.invalidateQueries();
-      toast.success(`Updated ${result.added + result.removed} category assignments`, {
-        action: result.mutation_id
-          ? {
-              label: "Undo",
-              onClick: () => {
-                void undoCategoryMembership(result.mutation_id)
-                  .then(async (undo) => {
-                    await queryClient.invalidateQueries();
-                    toast.success(
-                      `Undo restored ${undo.restored}; skipped ${undo.skipped} changed assignments`,
-                    );
-                  })
-                  .catch((error: unknown) =>
-                    toast.error("Couldn't undo category changes", {
-                      description: error instanceof Error ? error.message : String(error),
-                    }),
-                  );
-              },
-            }
-          : undefined,
-      });
+      if (result.added + result.removed === 0 && !result.mutation_id) {
+        // A stale preview can become a no-op; keep the previous action undoable.
+        if (useUndo.getState().lastUndo === claim.run) {
+          useUndo.setState({
+            lastUndo: previousUndo.lastUndo,
+            lastUndoAt: previousUndo.lastUndoAt,
+            lastMutationId: previousUndo.lastMutationId,
+          });
+        }
+        claim.settle(null);
+        toast.info("Categories already match this selection");
+        onClose();
+        void queryClient.invalidateQueries();
+        return;
+      }
+      const reverse = result.mutation_id
+        ? () => undoCategoryChanges(result.mutation_id, queryClient)
+        : null;
+      claim.settle(
+        offerUndo(
+          "categories",
+          `Updated ${plural(result.added + result.removed, "category assignment")}`,
+          `categories-${result.mutation_id}`,
+          reverse,
+          claim.run,
+        ),
+      );
+      onClose();
+      void queryClient.invalidateQueries();
     } catch (error) {
+      claim.settle(null);
       toast.error("Couldn't apply category changes", {
         description: error instanceof Error ? error.message : String(error),
       });
@@ -249,7 +257,11 @@ export function CategoriesDialog({ target, onClose }: { target: MailTarget; onCl
                         type="button"
                         tabIndex={0}
                         aria-label={`Manage ${category.name}`}
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                        className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                        onKeyDown={(event) => {
+                          // cmdk owns Enter on its items; let this button activate itself.
+                          if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+                        }}
                         onClick={(event) => {
                           event.stopPropagation();
                           setManaging(category);

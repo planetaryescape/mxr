@@ -133,6 +133,7 @@ pub enum MutationEffect {
         flag: bool,
         status: String,
     },
+    RefreshUpdates(String),
     RefreshList,
     StatusOnly(String),
     /// A pin or a sender-kind change: refetch the place on screen and the

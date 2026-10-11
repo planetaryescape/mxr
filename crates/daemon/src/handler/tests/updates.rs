@@ -61,6 +61,57 @@ async fn digest(fx: &Fixture, now: DateTime<Utc>) -> UpdatesDigestData {
         .unwrap()
 }
 
+#[tokio::test]
+async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    known_source(&fx, "notifications@example.com").await;
+    let thread = ThreadId::new();
+    let older = update(
+        &fx,
+        &thread,
+        "notifications@example.com",
+        "Monthly report: 10 items",
+        cut - Duration::hours(3),
+    )
+    .await;
+    let latest = update(
+        &fx,
+        &thread,
+        "notifications@example.com",
+        "Monthly report: 12 items",
+        cut - Duration::hours(2),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_pins(std::slice::from_ref(&latest.id), true)
+        .await
+        .unwrap();
+
+    let first = all_lines(&digest(&fx, now).await)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&latest.id))
+        .unwrap()
+        .clone();
+    assert!(first.latest_message_pinned);
+
+    let next = update(
+        &fx,
+        &thread,
+        "notifications@example.com",
+        "Monthly report: 13 items",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let rolled = all_lines(&digest(&fx, now).await)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&next.id))
+        .unwrap();
+    assert!(!rolled.latest_message_pinned);
+    assert_ne!(older.id, latest.id);
+}
+
 async fn let_go(
     fx: &Fixture,
     now: DateTime<Utc>,

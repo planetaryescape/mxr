@@ -159,10 +159,15 @@ impl App {
                     );
                     match undo.action {
                         UndoAction::Mutations(mutation_ids) => {
+                            let effect = if self.mailbox.mailbox_view == MailboxView::Updates {
+                                MutationEffect::RefreshUpdates(String::new())
+                            } else {
+                                MutationEffect::RefreshList
+                            };
                             for mutation_id in mutation_ids {
                                 self.queue_mutation(
                                     Request::UndoMutation { mutation_id },
-                                    MutationEffect::RefreshList,
+                                    effect.clone(),
                                     status.clone(),
                                 );
                             }

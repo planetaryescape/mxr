@@ -220,6 +220,10 @@ pub struct UpdateLineData {
     /// The newest message, for `o`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_message_id: Option<MessageId>,
+    /// Whether the exact latest email is pinned in the local store. Older
+    /// digest payloads omit this and are deliberately treated as unpinned.
+    #[serde(default)]
+    pub latest_message_pinned: bool,
     /// The message `fact` and `todo_title` came from, for `t`. In Changed
     /// it can be older than the newest.
     #[serde(default, skip_serializing_if = "Option::is_none")]

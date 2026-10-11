@@ -1977,6 +1977,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(target) = app.mailbox.pending_sweep_preview.take() {
+            let from_updates = app.mailbox.mailbox_view == crate::app::MailboxView::Updates;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, sweep_request(&target, true, None)).await;
@@ -1988,6 +1989,7 @@ pub async fn run() -> anyhow::Result<()> {
                         preview,
                         shown: 0,
                         sweep_focused: false,
+                        from_updates,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Ok(_) => Err(MxrError::Ipc("unexpected response to SweepPlace".into())),

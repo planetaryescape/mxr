@@ -109,6 +109,7 @@ impl App {
                     .collect(),
                 MutationEffect::ModifyLabels { message_ids, .. } => message_ids.clone(),
                 MutationEffect::RefreshList
+                | MutationEffect::RefreshUpdates(_)
                 | MutationEffect::StatusOnly(_)
                 | MutationEffect::RefreshPlaces(_)
                 | MutationEffect::SenderMoved(_)

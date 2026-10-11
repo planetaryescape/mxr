@@ -112,6 +112,9 @@ impl App {
             | Action::RepairAccount
             | Action::SetDefaultAccount
             | Action::SwitchAccount(_) => self.apply_account_action(action),
+            Action::TogglePin if self.mailbox.mailbox_view == MailboxView::Updates => {
+                self.apply_updates_action(action)
+            }
             Action::OpenPlace(_)
             | Action::TogglePin
             | Action::OpenSenderKindMenu
@@ -199,6 +202,7 @@ impl App {
             | Action::UpdatesLetGoSource
             | Action::UpdatesNeedsMe
             | Action::UpdatesTune
+            | Action::UpdatesSweep
             | Action::UpdatesTuneChoice(_)
             | Action::UpdatesOpenLink
             | Action::UpdatesClose => self.apply_updates_action(action),

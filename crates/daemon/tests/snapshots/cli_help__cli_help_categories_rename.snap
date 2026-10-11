@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr categories rename [OPTIONS] <CATEGORY_ID> <NEW_NAME>
+
+Arguments:
+  <CATEGORY_ID>
+  <NEW_NAME>
+
+Options:
+      --dry-run
+  -h, --help     Print help

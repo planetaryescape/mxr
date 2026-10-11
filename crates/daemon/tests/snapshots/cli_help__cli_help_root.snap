@@ -85,6 +85,7 @@ Commands:
   accounts            Manage accounts
   doctor              Run diagnostics
   labels              Manage labels
+  categories          Manage personal categories independently of provider labels
   rules               Manage rules
   compose             Compose a new email
   reply               Reply to a message

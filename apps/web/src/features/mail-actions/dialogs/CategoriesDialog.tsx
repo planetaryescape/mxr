@@ -317,7 +317,7 @@ export function CategoriesDialog({ target, onClose }: { target: MailTarget; onCl
             <AlertDialogDescription>
               This preview will add {assignmentPreview?.added ?? 0} and remove{" "}
               {assignmentPreview?.removed ?? 0} assignments across{" "}
-              {assignmentPreview?.message_count ?? 0} messages.
+              {plural(assignmentPreview?.message_count ?? 0, "message")}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.81](https://github.com/planetaryescape/mxr/compare/v0.6.80...v0.6.81) (2026-10-11)
+
+
+### Bug Fixes
+
+* restore keyboard Help focus and repair stale CI configuration ([#401](https://github.com/planetaryescape/mxr/issues/401)) ([55ff4fb](https://github.com/planetaryescape/mxr/commit/55ff4fb8eb5fb93911f098b057c7bc87552e53a6))
+
 ## [0.6.80](https://github.com/planetaryescape/mxr/compare/v0.6.79...v0.6.80) (2026-10-11)
 
 

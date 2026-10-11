@@ -61,6 +61,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: plan
     env:
+      CARGO_TARGET_DIR: target
       MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
       MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
       MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}

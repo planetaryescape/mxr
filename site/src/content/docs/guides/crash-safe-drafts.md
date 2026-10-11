@@ -53,6 +53,12 @@ Do not infer non-acceptance from an old `sending` status, a missing local Sent
 message, or a restarted daemon. Only a durable `NotAccepted` result allows a
 new, reviewed operation.
 
+In the TUI, close the send error to return to the same compose review. After
+restarting the TUI, use `Ctrl-p` and **Reopen last send draft** to open the
+retained file in your editor. **Check last send outcome** queries the retained
+operation. Sending again checks that outcome first; an accepted or uncertain
+send stays blocked.
+
 ## Schedule a reviewed draft
 
 Scheduling also requires the revision from a preview. Later edits do not

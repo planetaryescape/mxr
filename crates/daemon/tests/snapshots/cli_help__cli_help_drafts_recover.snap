@@ -1,9 +1,8 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
-Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). The startup loop already auto-resets these after 1h; this surfaces them earlier so you can act now
+Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). Query their send outcomes before taking action; uncertain submissions cannot be reset or automatically retried
 
 Usage: mxr drafts recover
 

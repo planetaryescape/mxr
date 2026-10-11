@@ -2614,3 +2614,42 @@ mod draft_content_tests {
         );
     }
 }
+
+/// Identity retained by a client before submitting a reviewed send.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendIdentity {
+    pub operation_id: String,
+    pub expected_revision: i64,
+}
+impl SendIdentity {
+    pub fn for_draft(draft: &Draft) -> Self {
+        Self::for_revision(&draft.id, draft.revision.unwrap_or(0))
+    }
+    pub fn for_revision(draft_id: &DraftId, revision: i64) -> Self {
+        Self {
+            operation_id: format!("{draft_id}:{revision}"),
+            expected_revision: revision,
+        }
+    }
+}
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendOutcomeState {
+    Unknown,
+    Accepted,
+    NotAccepted,
+}
+/// Durable evidence independent of a live draft or a local Sent message.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftSendOutcome {
+    pub identity: SendIdentity,
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub state: SendOutcomeState,
+    pub local_message_id: Option<MessageId>,
+    pub provider_message_id: Option<String>,
+    pub rfc2822_message_id: Option<String>,
+}

@@ -212,10 +212,15 @@ assert 'agent profile' in v['blocked_destructive']['payload'].get('message', '')
 PY
 emit agent_ipc_policy ok "$(python3 -c 'import json,sys; v=json.loads(sys.argv[1]); print(json.dumps({"source":"agent","allowed_read":v["get_body"]["payload"]["status"]=="Ok","allowed_draft":v["save_draft"]["payload"]["status"]=="Ok","blocked_send":v["blocked_send"]["payload"]["status"]=="Error","blocked_destructive":v["blocked_destructive"]["payload"]["status"]=="Error","daemon_policy_gate": all("agent profile" in v[k]["payload"].get("message", "") for k in ["blocked_send", "blocked_destructive"])}))' "$agent_json")"
 
-mcp_json="$(python3 - "$draft_id" "$message_id" <<'PY'
+mcp_json="$(python3 - "$draft_id" "$message_id" "$send_preview" <<'PY'
 import json, os, subprocess, sys
 
 draft_id, message_id = sys.argv[1:3]
+preview = json.loads(sys.argv[3])
+reviewed = preview['send_identity']
+assert preview['draft']['id'] == draft_id
+assert preview['draft']['revision'] == reviewed['expected_revision'] > 0
+send_arguments = {'draft_id': draft_id, **reviewed}
 cmd = [os.environ.get('MXR_BIN')] if os.environ.get('MXR_BIN') else None
 if cmd:
     cmd += ['mcp', 'serve']
@@ -254,8 +259,9 @@ try:
     send('notifications/initialized', notify=True)
     tools = send('tools/list')
     read_message = send('tools/call', {'name':'mxr_read_message','arguments':{'message_id':message_id,'include_body':False}})
-    blocked = send('tools/call', {'name':'mxr_send_draft','arguments':{'draft_id':draft_id}})
-    approved = send('tools/call', {'name':'mxr_send_draft','arguments':{'draft_id':draft_id,'confirm':True}})
+    blocked = send('tools/call', {'name':'mxr_send_draft','arguments':send_arguments})
+    approved = send('tools/call', {'name':'mxr_send_draft','arguments':{**send_arguments,'confirm':True}})
+    outcome = send('tools/call', {'name':'mxr_send_outcome','arguments':{'account_id':preview['draft']['account_id'],'operation_id':reviewed['operation_id']}})
 finally:
     try:
         proc.stdin.close()
@@ -267,7 +273,7 @@ finally:
     except subprocess.TimeoutExpired:
         proc.kill()
 
-print(json.dumps({'initialize': initialize, 'tools': tools, 'read_message': read_message, 'blocked': blocked, 'approved': approved}))
+print(json.dumps({'initialize': initialize, 'tools': tools, 'read_message': read_message, 'blocked': blocked, 'approved': approved, 'outcome': outcome, 'reviewed': reviewed}))
 PY
 )"
 python3 - "$mcp_json" <<'PY'
@@ -281,9 +287,16 @@ read_payload=json.loads(read_content)
 assert read_payload.get('message_id') or read_payload.get('envelope', {}).get('id'), read_content
 content=v['blocked']['result']['content'][0]['text']
 assert json.loads(content)['blocked'] is True, content
-assert 'result' in v['approved'], v['approved']
+approved=json.loads(v['approved']['result']['content'][0]['text'])
+assert approved['kind'] in ['SendReceipt', 'SendOutcome'], approved
+if approved['kind'] == 'SendOutcome':
+    assert approved['outcome']['state'] == 'accepted', approved
+else:
+    assert approved['provider_message_id'] and approved['rfc2822_message_id'], approved
+outcome=json.loads(v['outcome']['result']['content'][0]['text'])['outcome']
+assert outcome['state'] == 'accepted' and outcome['identity'] == v['reviewed'], outcome
 PY
-emit mcp_tools_and_gated_send ok "$(python3 -c 'import json,sys; v=json.loads(sys.argv[1]); names=[t["name"] for t in v["tools"]["result"]["tools"]]; print(json.dumps({"tool_count":len(names),"required_tools_present": all(n in names for n in ["mxr_send_draft","mxr_read_message"]),"read_message": "result" in v["read_message"],"blocked_without_confirm": True,"approved_send": "result" in v["approved"]}))' "$mcp_json")"
+emit mcp_tools_and_gated_send ok "$(python3 -c 'import json,sys; v=json.loads(sys.argv[1]); names=[t["name"] for t in v["tools"]["result"]["tools"]]; outcome=json.loads(v["outcome"]["result"]["content"][0]["text"])["outcome"]; print(json.dumps({"tool_count":len(names),"required_tools_present": all(n in names for n in ["mxr_send_draft","mxr_read_message","mxr_send_outcome"]),"read_message": "result" in v["read_message"],"blocked_without_confirm": True,"approved_send": outcome["state"]=="accepted","send_identity": outcome["identity"]}))' "$mcp_json")"
 
 preview_json="$(run_mxr archive --dry-run --format json "${message_id}")"
 emit mutation_preview ok "$(python3 -c 'import json,sys; v=json.load(sys.stdin); print(json.dumps({"dry_run": v.get("dry_run"), "action": v.get("action"), "message_count": len(v.get("message_ids", []))}))' <<<"${preview_json}")"

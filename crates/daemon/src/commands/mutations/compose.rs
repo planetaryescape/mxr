@@ -167,9 +167,12 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     if sending {
+        let identity = mxr_core::SendIdentity::for_draft(&draft);
+        print_send_recovery(&draft.account_id, &identity);
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
+                    send_identity: Some(identity),
                     draft: draft.clone(),
                     override_safety_token: None,
                 })
@@ -302,7 +305,7 @@ fn compose_result_output(
                 out
             } else {
                 format!(
-                    "Draft saved: {}\nSend with: mxr send {}\n",
+                    "Draft saved: {}\nReview with: mxr send {} --dry-run\nThen send with --expected-revision and --operation-id from that preview.\n",
                     draft.id, draft.id
                 )
             }
@@ -633,16 +636,19 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     }
 
     if !sending && remind_after.is_some() {
-        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --remind-after <time>`");
+        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --expected-revision <reviewed-revision> --remind-after <time>`");
     }
     // Resolve the reminder before sending: a phrase that doesn't parse must
     // stop the send, not surface after the mail has already gone.
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
     if sending {
+        let identity = mxr_core::SendIdentity::for_draft(&outgoing);
+        print_send_recovery(&outgoing.account_id, &identity);
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
+                    send_identity: Some(identity),
                     draft: outgoing.clone(),
                     override_safety_token: None,
                 })
@@ -862,7 +868,7 @@ pub async fn drafts_recover(
                     println!("  {} — {}", d.id, d.subject);
                 }
                 println!();
-                println!("Check whether it was sent before resuming: mxr drafts resume <draft-id>");
+                println!("Check the durable outcome: mxr send-outcome 'draft:<draft-id>' --account <account-id>. Do not resend an uncertain send.");
                 println!(
                     "After resolving it, preview deletion: mxr drafts delete <draft-id> --dry-run"
                 );
@@ -872,9 +878,7 @@ pub async fn drafts_recover(
     Ok(())
 }
 
-/// CLI surface for `mxr drafts resume <id>`. Force-resets the draft to
-/// `'draft'` status so the user can retry the send via the normal
-/// pipeline. Idempotent — already-`'draft'` drafts are a no-op.
+/// Compatibility surface; unresolved send outcomes cannot be reset for retry.
 pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow::Result<()> {
     let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -889,7 +893,7 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            println!("Draft {parsed} reset to 'draft' — retry with `mxr send {parsed}`");
+            println!("Draft {parsed} has no unresolved send claim. Review with `mxr send {parsed} --dry-run`, then supply that preview's --expected-revision.");
             Ok(())
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
@@ -937,6 +941,8 @@ fn print_draft_delete_result(
         "dry_run": dry_run,
         "deleted": !dry_run,
         "draft_id": draft.id,
+        "revision": draft.revision,
+        "operation_id": mxr_core::SendIdentity::for_draft(draft).operation_id,
         "account_id": draft.account_id,
         "subject": draft.subject,
         "to": draft.to.iter().map(|address| &address.email).collect::<Vec<_>>(),
@@ -1034,6 +1040,8 @@ fn print_draft_push_result(
         "dry_run": dry_run,
         "copied": !dry_run,
         "draft_id": draft.id,
+        "revision": draft.revision,
+        "operation_id": mxr_core::SendIdentity::for_draft(draft).operation_id,
         "account_id": draft.account_id,
         "provider": provider,
         "subject": draft.subject,
@@ -1169,6 +1177,40 @@ async fn resolve_account_email(
         .ok_or_else(|| anyhow::anyhow!("Account {account_id} not found"))
 }
 
+pub async fn send_outcome(
+    operation_id: String,
+    account: String,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, Some(&account))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("An account is required"))?;
+    let response = client
+        .request(Request::GetSendOutcome {
+            account_id,
+            operation_id,
+        })
+        .await?;
+    let data = crate::commands::expect_response(response, |response| match response {
+        Response::Ok {
+            data: ResponseData::SendOutcome { outcome },
+        } => Some(outcome),
+        _ => None,
+    })?;
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&data)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&data)?),
+        _ => println!("{}", serde_json::to_string_pretty(&data)?),
+    }
+    Ok(())
+}
+
+pub struct SavedSendReview {
+    pub expected_revision: Option<i64>,
+    pub operation_id: Option<String>,
+}
+
 pub async fn send_draft(
     draft_id: String,
     account: Option<String>,
@@ -1176,47 +1218,47 @@ pub async fn send_draft(
     format: Option<OutputFormat>,
     override_safety_token: Option<String>,
     remind_after: Option<String>,
+    review: SavedSendReview,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
-
     if dry_run {
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
-
-        let recipients = draft
-            .to
-            .iter()
-            .chain(draft.cc.iter())
-            .chain(draft.bcc.iter())
-            .map(|addr| addr.email.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        if recipients.is_empty() {
-            anyhow::bail!("Draft has no recipients; aborting before send");
-        }
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
         print_draft_preview(&draft, &effective_from, true, format)?;
         return Ok(());
     }
-
-    // Resolve the reminder before sending (see `finalize_compose`).
+    let reviewed_revision = review.expected_revision.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run, then supply --expected-revision from that preview"))?;
+    let identity = mxr_core::SendIdentity {
+        operation_id: review
+            .operation_id
+            .unwrap_or_else(|| format!("{draft_id}:{reviewed_revision}")),
+        expected_revision: reviewed_revision,
+    };
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
-    get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
-    let resp = client
+    let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
+    if draft.revision != Some(reviewed_revision) {
+        anyhow::bail!("Reviewed draft revision is stale; review again before sending");
+    }
+    print_send_recovery(&draft.account_id, &identity);
+    let response = client
         .request(Request::SendStoredDraft {
+            send_identity: Some(identity.clone()),
             draft_id: draft_id.clone(),
             override_safety_token,
         })
         .await?;
-    let receipt = expect_send_receipt(resp)?;
+    let receipt = expect_send_receipt(response)?;
     set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_at).await?;
-    println!("Sent draft {draft_id}");
-    if let Some(info) = receipt.as_ref() {
-        println!("Local message id: {}", info.local_message_id);
+    report_promises_after_send(&mut client, receipt.as_ref(), format.clone()).await;
+    let payload = serde_json::json!({"operation_id": identity.operation_id, "draft_id": draft_id, "state": "accepted", "local_message_id": receipt.as_ref().map(|r| &r.local_message_id)});
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&payload)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&payload)?),
+        _ => println!("Sent draft {draft_id}"),
     }
-    report_promises_after_send(&mut client, receipt.as_ref(), format).await;
     Ok(())
 }
 
@@ -1427,14 +1469,23 @@ pub async fn schedule_send(
     draft_id: String,
     account: Option<String>,
     when: String,
+    expected_revision: Option<i64>,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let send_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
-    get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
+    let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
+    let revision = expected_revision.ok_or_else(|| {
+        anyhow::anyhow!("Scheduling requires --expected-revision from mxr send --dry-run")
+    })?;
+    anyhow::ensure!(
+        draft.revision == Some(revision),
+        "Reviewed draft revision is stale"
+    );
     let resp = client
         .request(Request::ScheduleSend {
+            expected_revision: Some(revision),
             draft_id: draft_id.clone(),
             send_at,
         })
@@ -2076,6 +2127,11 @@ fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>
             rfc2822_message_id,
         })),
         Response::Ok {
+            data: ResponseData::SendOutcome {
+                outcome: Some(outcome),
+            },
+        } if outcome.state == mxr_core::SendOutcomeState::Accepted => Some(None),
+        Response::Ok {
             data: ResponseData::Ack,
         } => Some(None),
         _ => None,
@@ -2133,19 +2189,24 @@ async fn set_auto_reminder_after_send(
     let Some(remind) = remind else {
         return Ok(());
     };
-    match client
-        .request(auto_reminder_request_after_send(receipt, remind.at)?)
-        .await?
-    {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => {
-            println!("Reminder set for {}", remind.description);
-            Ok(())
+    let follow_up = async {
+        match client
+            .request(auto_reminder_request_after_send(receipt, remind.at)?)
+            .await?
+        {
+            Response::Ok {
+                data: ResponseData::Ack,
+            } => Ok(()),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response setting reminder"),
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response setting reminder"),
     }
+    .await;
+    match follow_up {
+        Ok(()) => eprintln!("Reminder set for {}", remind.description),
+        Err(error) => eprintln!("Send accepted; reminder setup failed: {error}. Do not resend."),
+    }
+    Ok(())
 }
 
 /// Resolve (and ownership-validate) the effective From a draft would send
@@ -2176,6 +2237,7 @@ async fn resolve_effective_from(
 struct DraftPreviewOutput<'a> {
     action: &'static str,
     dry_run: bool,
+    send_identity: mxr_core::SendIdentity,
     /// Effective From the send would use (primary or the validated override).
     from: &'a Address,
     draft: &'a Draft,
@@ -2194,6 +2256,7 @@ fn print_draft_preview(
             serde_json::to_string_pretty(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                send_identity: mxr_core::SendIdentity::for_draft(draft),
                 from: effective_from,
                 draft,
             })?
@@ -2203,6 +2266,7 @@ fn print_draft_preview(
             serde_json::to_string(&DraftPreviewOutput {
                 action,
                 dry_run: true,
+                send_identity: mxr_core::SendIdentity::for_draft(draft),
                 from: effective_from,
                 draft,
             })?
@@ -2241,6 +2305,15 @@ fn print_draft_preview(
         OutputFormat::Table => {
             println!("Would {action}:");
             println!("  id: {}", draft.id);
+            let identity = mxr_core::SendIdentity::for_draft(draft);
+            println!("  revision: {}", identity.expected_revision);
+            println!("  operation: {}", identity.operation_id);
+            if sending && draft.revision.is_some() {
+                println!(
+                    "  send: mxr send {} --expected-revision {}",
+                    draft.id, identity.expected_revision
+                );
+            }
             println!(
                 "  from: {}",
                 format_addresses(std::slice::from_ref(effective_from))
@@ -2264,6 +2337,13 @@ fn format_addresses(addresses: &[Address]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn print_send_recovery(account: &mxr_core::AccountId, identity: &mxr_core::SendIdentity) {
+    eprintln!(
+        "Send operation: {} (recover with mxr send-outcome '{}' --account {}). If the response is lost, query this operation; do not rerun compose, reply or forward.",
+        identity.operation_id, identity.operation_id, account
+    );
 }
 
 #[cfg(test)]
@@ -2968,7 +3048,7 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 "saved={saved}"
             );
             assert!(
-                saved.contains(&format!("Send with: mxr send {}", draft.id)),
+                saved.contains(&format!("Review with: mxr send {} --dry-run", draft.id)),
                 "saved={saved}"
             );
 

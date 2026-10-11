@@ -1089,6 +1089,11 @@ const MIGRATIONS: &[Migration] = &[
             sql: include_str!("../migrations/072_draft_revision.sql"),
         }]),
     },
+    Migration { version: 73, name: "draft_send_outcomes", kind: MigrationKind::Sql(include_str!("../migrations/073_draft_send_outcomes.sql")) },
+    Migration { version: 74, name: "scheduled_send_revision", kind: MigrationKind::Composite(&[
+        MigrationStep::AddColumn { table: "drafts", column: "scheduled_send_revision", sql: include_str!("../migrations/074_scheduled_send_revision.sql") },
+        MigrationStep::Sql("UPDATE drafts SET scheduled_send_revision = revision WHERE send_at IS NOT NULL AND scheduled_send_revision IS NULL"),
+    ]) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

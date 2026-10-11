@@ -24,7 +24,10 @@ mxr reply MESSAGE_ID
 mxr reply-all MESSAGE_ID
 mxr forward MESSAGE_ID --to team@example.com
 mxr drafts
-mxr send DRAFT_ID
+mxr send DRAFT_ID --dry-run --format json
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW
+mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
 ```
 
 ## Local and linked provider drafts
@@ -85,8 +88,8 @@ cannot transmit.
 ```bash
 # Save a reply-all as a draft. Threading is preserved; nothing is sent.
 mxr reply-all MESSAGE_ID --body "Thanks all." --draft
-# → Draft saved: draft_abc123
-#   Send with: mxr send draft_abc123
+# Review the saved draft before sending it.
+mxr send DRAFT_ID --dry-run --format json
 
 # Same for a new message, a reply, or a forward.
 mxr compose --to alice@example.com --subject "Friday" --body "Notes below." --draft
@@ -105,8 +108,14 @@ Without `--draft` and without `--yes`, an interactive `mxr reply`
 (no `--body`) opens `$EDITOR` and then saves a draft; adding `--yes` is
 what sends. Reach for `--draft` when you want the save to be explicit and
 unsendable — especially from scripts or agents, where an accidental
-`--yes` would otherwise transmit. Send the saved draft later with
-`mxr send DRAFT_ID` (which runs the [pre-send safety pipeline](#pre-send-safety)).
+`--yes` would otherwise transmit. One-shot `compose`, `reply`, `reply-all`, or
+`forward` with `--yes` prints its operation ID and query command to stderr
+before submission. If its response is lost, query that operation; rerunning
+the one-shot command creates a new draft and can send a second message. For a
+saved draft, first run `mxr send DRAFT_ID --dry-run --format json`, then submit
+the returned revision and operation ID with `--expected-revision` and
+`--operation-id`. See [crash-safe drafts](/guides/crash-safe-drafts/) for the
+outcome query and recovery rules.
 
 ## TUI
 
@@ -285,9 +294,14 @@ mxr send DRAFT_ID --check --format json
 # row created.
 mxr compose --to alice@example.com --body 'see attached' --check
 
-# If --check turned up a Blocker you accept (e.g. you really do mean
-# to email competitor.com), it minted a single-use override token.
-mxr send DRAFT_ID --override-safety OVERRIDE_TOKEN_FROM_CHECK
+# Preview first and retain the reviewed revision and operation ID.
+mxr send DRAFT_ID --dry-run --format json
+
+# If --check turned up a Blocker you accept, use its single-use token
+# with the same reviewed identity.
+mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --operation-id OPERATION_ID_FROM_PREVIEW \
+  --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
 
 ## Account selection
@@ -437,12 +451,14 @@ done
 ## Crash safety
 
 A draft you're editing lives in SQLite. If the daemon dies mid-send,
-the row sits in `'sending'` state — and the next daemon startup auto-
-resets anything older than an hour back to `'draft'`. To act sooner:
+the saved draft and its durable outcome remain available for inspection.
+An `unknown` result is not evidence that sending failed. Do not reset or
+resend it; query the retained operation first. A `not_accepted` result
+allows a fresh review and an explicit new operation.
 
 ```bash
-mxr drafts recover           # show orphans
-mxr drafts resume DRAFT_ID   # back to 'draft'; retry with mxr send
+mxr drafts recover
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
 mxr drafts discard DRAFT_ID  # permanently delete
 ```
 
@@ -452,8 +468,10 @@ full state machine.
 ## In real life
 
 - **You write better at night, send better in the morning:** compose
-  the draft, save it (`mxr drafts`), then send tomorrow with `mxr send
-  DRAFT_ID --at 'tomorrow 9am'`.
+  the draft, save it (`mxr drafts`), preview it with `mxr send DRAFT_ID
+  --dry-run --format json`, then schedule the reviewed revision with
+  `mxr send DRAFT_ID --at 'tomorrow 9am' --expected-revision
+  REVISION_FROM_PREVIEW`.
 - **Repetitive client onboarding emails:** keep a `;welcome` snippet
   with `{first_name}` placeholders.
 - **Composing from a script:** `--body-stdin` lets you pipe rendered

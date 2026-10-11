@@ -1,13 +1,10 @@
 //! Crash-safe-drafts recovery primitives.
 //!
-//! Orphan detection: drafts in `'sending'` status whose
-//! `last_heartbeat_at` (or `status_updated_at` as fallback) is older
-//! than a threshold are presumed crashed mid-send. Resetting them to
-//! `'draft'` lets the user retry through the normal send pipeline.
+//! Orphan detection identifies interrupted sends. Age and heartbeat absence
+//! never prove provider non-acceptance, so recovery preserves Sending.
 
 use chrono::{DateTime, Utc};
 use mxr_core::id::DraftId;
-use mxr_core::types::DraftStatus;
 
 impl super::Store {
     /// Touch the heartbeat on a draft. Called periodically by the live
@@ -66,25 +63,12 @@ impl super::Store {
         rows.into_iter().map(|r| crate::decode_id(&r.id)).collect()
     }
 
-    /// Reset a stuck `'sending'` draft back to `'draft'` so the user
-    /// can retry. Idempotent — already-`'draft'` rows return without
-    /// error; `'sent'` rows refuse.
+    /// Compatibility entry point: uncertain legacy and current sends stay blocked.
     pub async fn reset_orphaned_draft(&self, draft_id: &DraftId) -> Result<bool, sqlx::Error> {
-        let advanced = self
-            .cas_draft_status(draft_id, DraftStatus::Sending, DraftStatus::Draft)
-            .await?;
-        if advanced {
-            // Clear the stale heartbeat so a subsequent recovery won't
-            // pick up the same row again.
-            let id = draft_id.as_str();
-            sqlx::query!(
-                r#"UPDATE drafts SET last_heartbeat_at = NULL WHERE id = ?"#,
-                id,
-            )
-            .execute(self.writer())
-            .await?;
-        }
-        Ok(advanced)
+        let _ = draft_id;
+        // Age cannot prove that a provider rejected the message. Legacy
+        // Sending rows are equally uncertain and stay blocked.
+        Ok(false)
     }
 }
 
@@ -176,7 +160,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reset_orphaned_returns_to_draft_status() {
+    async fn reset_orphaned_preserves_unknown_acceptance() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;
         let _ = store
@@ -185,11 +169,11 @@ mod tests {
             .unwrap();
 
         let reset = store.reset_orphaned_draft(&id).await.unwrap();
-        assert!(reset, "sending drafts can be reset");
+        assert!(!reset, "uncertain acceptance cannot be reset");
 
         assert_eq!(
             store.get_draft_status(&id).await.unwrap(),
-            Some(DraftStatus::Draft)
+            Some(DraftStatus::Sending)
         );
     }
 

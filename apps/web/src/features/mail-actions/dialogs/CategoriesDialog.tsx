@@ -47,7 +47,15 @@ import { claimUndo, offerUndo } from "../mailUndo";
 import { undoCategoryChanges } from "../categoryUndo";
 import type { MailTarget } from "../target";
 
-export function CategoriesDialog({ target, onClose }: { target: MailTarget; onClose: () => void }) {
+export function CategoriesDialog({
+  target,
+  onClose,
+  onDeleted,
+}: {
+  target: MailTarget;
+  onClose: () => void;
+  onDeleted?: (categoryId: string) => void;
+}) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [staged, setStaged] = useState<Map<string, boolean>>(new Map());
@@ -306,7 +314,13 @@ export function CategoriesDialog({ target, onClose }: { target: MailTarget; onCl
           </div>
         </DialogContent>
       </Dialog>
-      {managing ? <ManageCategory category={managing} onClose={() => setManaging(null)} /> : null}
+      {managing ? (
+        <ManageCategory
+          category={managing}
+          onClose={() => setManaging(null)}
+          onDeleted={onDeleted}
+        />
+      ) : null}
       <AlertDialog
         open={Boolean(assignmentPreview)}
         onOpenChange={(open) => !open && setAssignmentPreview(null)}
@@ -333,9 +347,11 @@ export function CategoriesDialog({ target, onClose }: { target: MailTarget; onCl
 function ManageCategory({
   category,
   onClose,
+  onDeleted,
 }: {
   category: PersonalCategoryView;
   onClose: () => void;
+  onDeleted?: (categoryId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(category.name);
@@ -356,8 +372,9 @@ function ManageCategory({
         return;
       }
       await deleteCategory(deletePreview.preview_token);
-      await queryClient.invalidateQueries();
+      onDeleted?.(category.id);
       onClose();
+      void queryClient.invalidateQueries();
       toast.success("Category deleted");
     } catch (error) {
       toast.error("Couldn't delete category", {

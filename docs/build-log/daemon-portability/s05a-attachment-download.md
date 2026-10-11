@@ -55,3 +55,9 @@ All fixtures used synthetic mail. Their owned daemons, bridge processes and brow
 The final scoped pre-PR gate passed in 3m10.5s (task 5840). CLI help, schema generation and validation passed in task 5847; the site render passed in the follow-up locked-dependency job.
 
 The candidate was then rebased onto release metadata at `f56ac1527787ca312bda7b52935947ee94495251`. Product sources are identical; TOML comparison verifies only workspace package versions changed from 0.6.78 to 0.6.79, with the dependency graph unchanged. CI and published-release acceptance remain required before this stage is complete.
+
+## CI exposed two test maintenance gaps
+
+At head `243eb46c`, CI38180914741 reported one failure out of 957 web unit tests: the cold Inbox assertion inspected rendered text immediately after query state paused. Its DOM still showed the loading skeleton, whose existing hook holds a displayed skeleton for at least400ms. Awaiting the visible status removes that race without changing product behavior. The unmodified full suite passed locally; after the assertion fix all957 tests passed again, with targeted lint/format checks clear.
+
+OpenAPI conformance38180914789 passed route integration but found four missing attachment schema names in the stored summary snapshot. Regenerating from the live schema added exactly those names. All128 mxr-web library tests then passed. These two corrections change tests only.

@@ -378,16 +378,18 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      # cmd:// tests kill child transports when their streams close. A child
+      # can be stopped during profile writing; keep valid samples and enforce
+      # the same coverage thresholds instead of failing on that partial file.
       - run: >
           cargo llvm-cov
+          --failure-mode all
           --package mxr
           --features semantic-local
           --ignore-filename-regex 'crates/provider-gmail/src/(auth|client)\.rs|crates/provider-imap/src/session\.rs'
           --summary-only
           --fail-under-lines 90
           --fail-under-regions 75
-        env:
-          MXR_COVERAGE_TRACE_FILE: ${{ runner.temp }}/mxr-coverage-child-trace.log
       - name: Inspect raw coverage profiles after failure
         if: failure()
         run: |
@@ -412,7 +414,6 @@ jobs:
             target-cli/llvm-cov-target/*.profraw
             target-cli/llvm-cov-target/mxr-profraw-list
             target-cli/llvm-cov-target/mxr.profdata
-            ${{ runner.temp }}/mxr-coverage-child-trace.log
           if-no-files-found: warn
           retention-days: 3
 

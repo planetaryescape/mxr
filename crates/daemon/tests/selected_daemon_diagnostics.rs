@@ -7,31 +7,18 @@
     reason = "an unexpected fixture request means the test harness is invalid"
 )]
 
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use futures::{SinkExt, StreamExt};
 use mxr_protocol::{
     ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
     IPC_PROTOCOL_VERSION,
 };
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use tokio::net::UnixListener;
 use tokio_util::codec::Framed;
-
-fn trace_coverage_event(event: &str) {
-    let Some(path) = std::env::var_os("MXR_COVERAGE_TRACE_FILE") else {
-        return;
-    };
-    if let Ok(mut trace) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        use std::io::Write as _;
-        let _ = writeln!(trace, "{event}");
-    }
-}
 
 const MXR_BIN: &str = env!("CARGO_BIN_EXE_mxr");
 
@@ -152,30 +139,14 @@ async fn run_mxr(
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    let child_pid = child.id().unwrap();
-    trace_coverage_event(&format!(
-        "cli-child parent_pid={} child_pid={child_pid} args={:?}",
-        std::process::id(),
-        args
-    ));
-    let output = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait_with_output())
+    tokio::time::timeout(std::time::Duration::from_secs(10), child.wait_with_output())
         .await
         .expect("mxr subprocess exceeded the 10-second smoke-test bound")
-        .unwrap();
-    trace_coverage_event(&format!(
-        "cli-child-exit child_pid={child_pid} success={} code={:?}",
-        output.status.success(),
-        output.status.code()
-    ));
-    output
+        .unwrap()
 }
 
 #[tokio::test]
 async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
-    trace_coverage_event(&format!(
-        "test=cmd_target_diagnostics_report_target_and_separate_local_profile runner_pid={}",
-        std::process::id()
-    ));
     let root = tempfile::tempdir().unwrap();
     let target_socket = root.path().join("selected.sock");
     let (_server, requests) = spawn_fake_daemon(&target_socket);
@@ -274,11 +245,6 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    let watch_pid = watch.id().unwrap();
-    trace_coverage_event(&format!(
-        "watch-child runner_pid={} child_pid={watch_pid}",
-        std::process::id()
-    ));
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         while requests.load(Ordering::Relaxed) - before_watch < 2 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -288,7 +254,6 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
     .expect("status watch did not poll the selected daemon twice");
     watch.kill().await.unwrap();
     watch.wait().await.unwrap();
-    trace_coverage_event(&format!("watch-child-killed child_pid={watch_pid}"));
     assert!(requests.load(Ordering::Relaxed) - before_watch >= 2);
 
     // Explicit Unix targets also keep their socket ownership separate from

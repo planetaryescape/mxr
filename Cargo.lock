@@ -4386,11 +4386,13 @@ dependencies = [
  "mxr-core",
  "mxr-protocol",
  "mxr-transport",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]

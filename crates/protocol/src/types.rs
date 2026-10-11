@@ -1,3 +1,4 @@
+use crate::{ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
@@ -1023,6 +1024,19 @@ pub enum Request {
     },
     /// List recent daemon-side jobs (mutation batches, future long-running
     /// mail operations) with progress and failure/undo state.
+    GetArchiveWorkspace,
+    PreviewArchive {
+        identity: ArchiveIdentityData,
+        mutation: MutationCommand,
+    },
+    SubmitArchive {
+        identity: ArchiveIdentityData,
+        review_id: String,
+        mutation: MutationCommand,
+    },
+    GetArchiveOperation {
+        identity: ArchiveIdentityData,
+    },
     ListJobs,
     /// Inspect one daemon-side job by id.
     GetJob {
@@ -2406,6 +2420,10 @@ impl Request {
             | Self::ListRuleHistory { .. }
             | Self::Mutation { .. }
             | Self::StartMutationJob { .. }
+            | Self::GetArchiveWorkspace
+            | Self::PreviewArchive { .. }
+            | Self::SubmitArchive { .. }
+            | Self::GetArchiveOperation { .. }
             | Self::ListJobs
             | Self::GetJob { .. }
             | Self::UndoMutation { .. }
@@ -3171,6 +3189,12 @@ pub enum ResponseData {
     MutationResult {
         result: MutationResultData,
     },
+    ArchiveWorkspace {
+        workspace: ArchiveWorkspaceData,
+    },
+    ArchiveOperation {
+        operation: ArchiveOperationData,
+    },
     JobStarted {
         job: JobData,
     },
@@ -3299,6 +3323,8 @@ pub enum ResponseData {
         draft_revision_supported: bool,
         #[serde(default)]
         send_outcome_supported: bool,
+        #[serde(default)]
+        archive_recovery_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
@@ -3831,6 +3857,8 @@ impl ResponseData {
             | Self::DraftEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
+            | Self::ArchiveWorkspace { .. }
+            | Self::ArchiveOperation { .. }
             | Self::JobStarted { .. }
             | Self::Jobs { .. }
             | Self::Job { .. }

@@ -2262,6 +2262,18 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             details,
             ..
         } if code == "draft_revision_conflict" => BridgeError::DraftConflict { message, details },
+        ClientError::Daemon {
+            message,
+            kind,
+            code,
+            details,
+            ..
+        } if code.starts_with("archive_") => BridgeError::ArchiveConflict {
+            message,
+            kind,
+            code,
+            details,
+        },
         ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),

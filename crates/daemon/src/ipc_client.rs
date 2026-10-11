@@ -121,6 +121,27 @@ impl IpcClient {
             .map_err(map_request_error)
     }
 
+    pub async fn preview_archive(
+        &mut self,
+        mutation: MutationCommand,
+    ) -> anyhow::Result<ArchiveOperationData> {
+        let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())?;
+        Ok(self.conn.preview_archive(&journal, mutation).await?)
+    }
+    pub async fn submit_archive(
+        &mut self,
+        operation: &ArchiveOperationData,
+        wait: bool,
+    ) -> anyhow::Result<ArchiveOperationData> {
+        let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())?;
+        let accepted = self.conn.submit_archive(&journal, operation).await?;
+        if wait {
+            Ok(self.conn.wait_archive(accepted.identity).await?)
+        } else {
+            Ok(accepted)
+        }
+    }
+
     pub async fn notify(&mut self, req: Request) -> anyhow::Result<()> {
         self.conn.notify(req).await.map_err(map_request_error)
     }

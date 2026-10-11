@@ -13,6 +13,7 @@ mod accounts;
 pub(crate) mod activity;
 mod admin;
 mod archive_ask;
+mod archive_recovery;
 pub(crate) mod arrivals;
 mod auth_sessions;
 mod briefing;
@@ -1051,6 +1052,22 @@ async fn dispatch(
             )
             .await
         }
+        Request::GetArchiveWorkspace => archive_recovery::workspace(state).await,
+        Request::PreviewArchive { identity, mutation } => {
+            archive_recovery::preview(state, identity, mutation)
+                .await
+                .map_err(|error| archive_recovery::with_identity_error(identity, error))
+        }
+        Request::SubmitArchive {
+            identity,
+            review_id,
+            mutation,
+        } => archive_recovery::submit(state.clone(), identity, review_id, mutation)
+            .await
+            .map_err(|error| archive_recovery::with_identity_error(identity, error)),
+        Request::GetArchiveOperation { identity } => archive_recovery::get(state, identity)
+            .await
+            .map_err(|error| archive_recovery::with_identity_error(identity, error)),
         Request::ListJobs => mutations::list_jobs(state).await,
         Request::GetJob { job_id } => mutations::get_job(state, job_id).await,
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
@@ -1921,9 +1938,9 @@ async fn enforce_client_profile(
 /// `allow_destructive` gate still applies via `classify_request`).
 fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
     match req {
-        Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
-            mutation_destructive_action(mutation)
-        }
+        Request::Mutation { mutation, .. }
+        | Request::StartMutationJob { mutation, .. }
+        | Request::SubmitArchive { mutation, .. } => mutation_destructive_action(mutation),
         Request::DeleteLabel { .. } => Some(DestructiveAction::DeleteLabel),
         Request::RemoveAccountConfig { .. } => Some(DestructiveAction::RemoveAccount),
         Request::Unsubscribe { .. }
@@ -2044,6 +2061,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ResolveTime { .. }
         | Request::GetSemanticStatus
         | Request::RunSavedSearch { .. }
+        | Request::GetArchiveWorkspace
+        | Request::GetArchiveOperation { .. }
+        | Request::PreviewArchive { .. }
         | Request::ListJobs
         | Request::GetJob { .. }
         | Request::ListSnoozed
@@ -2151,6 +2171,7 @@ fn classify_request(req: &Request) -> RequestClass {
 
         // --- Destructive: irreversible / provider-destructive ---
         Request::Mutation { .. }
+        | Request::SubmitArchive { .. }
         | Request::StartMutationJob { .. }
         | Request::DeleteLabel { .. }
         | Request::RemoveAccountConfig { .. }
@@ -2397,6 +2418,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::GetArchiveWorkspace => "archive_workspace",
+        Request::PreviewArchive { .. } => "archive_preview",
+        Request::SubmitArchive { .. } => "archive_submit",
+        Request::GetArchiveOperation { .. } => "archive_outcome",
         Request::ListJobs => "list_jobs",
         Request::GetJob { .. } => "get_job",
         Request::UndoMutation { .. } => "undo_mutation",

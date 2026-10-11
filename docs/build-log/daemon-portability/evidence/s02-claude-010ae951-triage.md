@@ -20,8 +20,9 @@ and scope, rather than the reviewer's severity labels.
 | Reopening during transport failure forgets recovery | Adopt a narrow correction. `session/activeDrafts.ts:31-57` catches every error and removes the remembered path. `api/client.ts:55,88-118` already distinguishes `DaemonUnavailableError` from a missing-file response. Rethrow that existing error before forgetting the entry; test reconnect loads the same private text/path. Preserve the existing missing-file fallback. |
 
 Final candidate `3d338bebfa9e6b714b6f9503ed5546c037d5eef1`, tree
-`3a903ddea1843b4c380cd81adf344882e7d39c42`, reuses the shared frontmatter
-helper, CLI wording, existing transport-error guard and focused regression tests.
+`3a903ddea1843b4c380cd81adf344882e7d39c42`, changes the web restore to reuse
+the shared frontmatter helper, corrects CLI wording, adds the existing transport-error
+guard to recovery loading, and adds focused regression tests.
 Root reviewed the five-file delta; its commit range and source hash are in the [reproducible proof](s02-trivial-delta-3d338beb-proof.json).
 A test-only follow-up replaced conditional assertions to satisfy existing lint. The orchestrate skill's
 trivial post-triage exception applies: root inspected the exact delta against

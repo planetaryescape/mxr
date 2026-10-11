@@ -195,7 +195,8 @@ mxr accounts --format json           # Machine-readable account list
 #### Sync
 
 ```bash
-mxr sync                             # Sync all enabled accounts
+mxr sync                             # Sync the default account
+mxr sync --all                       # Sync all enabled sync-capable accounts
 mxr sync --account NAME              # Sync specific account
 mxr sync --status                    # Show sync status per account
 mxr sync --history                   # Recent sync log

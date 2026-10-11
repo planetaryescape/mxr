@@ -44,10 +44,12 @@ no change at all rather than a guess.
 Builds and incidents fold into one line with their current state:
 "Run failed: CI - main" for the latest of three failing runs, with how
 long it has been failing. Parcels from [Deliveries](/guides/deliveries/)
-show as trackers: ordered, shipped, out for delivery, delivered.
+lead with their current state, followed by available item names, tracking
+or order references, and delivery estimates.
 
-Every line says why it is there: "Here because: automated sender (rule).
-In the 08:00 digest."
+Open **Why this update?** in the web app to read the classification evidence.
+Parcel lines keep that evidence under **Details** alongside their tracking
+and order references.
 
 ## The digest is a fixed cut; mail after it waits
 
@@ -106,8 +108,25 @@ The keys:
 | `K` | Tune this source |
 | `L` | Open the line's link (a tracker page, a build). Never a pay link |
 | `o` | Open the email itself |
+| `p` | Pin or unpin the latest email behind this line |
+| `S` | Preview a sweep of this sender in this account; unavailable for parcels |
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
+
+## Pin an email before sweeping its sender
+
+In Updates, `p` pins the selected line's latest email. The pin is local and
+survives reloads; changes made in the CLI, terminal or web app appear when
+the digest refreshes. It protects that email from a sweep, rather than
+pinning every future email from the sender.
+
+Press `S` to preview a sender sweep. It applies to that line's account,
+leaves pinned emails in place and asks before archiving. Cancel to leave
+the mail untouched, or use `u` after applying to undo it. Parcel trackers
+do not offer a sender sweep.
+
+In the TUI, the `Account:` line shows the configured name and address when
+they fit; otherwise, it favors the address.
 
 ## What needs you leads Needs a look as a suggested to-do
 

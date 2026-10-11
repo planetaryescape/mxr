@@ -149,7 +149,8 @@ mxr daemon --foreground     Start daemon in foreground
 mxr daemon --stdio          Serve one connection over stdin/stdout (spawn-as-child)
 mxr daemon dial-stdio       Proxy this process's stdio to the running daemon (SSH/container bridge)
 mxr restart                 Restart daemon with current binary
-mxr sync                    Trigger sync for all accounts
+mxr sync                    Trigger sync for the default account
+mxr sync --all              Trigger sync for all enabled sync-capable accounts
 mxr sync --account work     Trigger sync for one account
 mxr compose                 Open $EDITOR for new message
 mxr reply MESSAGE_ID        Open $EDITOR for reply

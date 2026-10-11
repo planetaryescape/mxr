@@ -16,6 +16,12 @@ use `mxr categories show <category-id> --format jsonl`. Both commands accept
 `--account <account>` to limit results to one account. Scoped agent profiles
 must name the account; their category list includes only categories with
 memberships in that account, and counts are computed within that account.
+Unrestricted users retain the full profile catalog when an account is selected,
+including categories with no mail in that account.
+
+Use `mxr categories create <name> --dry-run` and
+`mxr categories rename <category-id> <new-name> --dry-run` to preview normalized
+name validity and uniqueness before changing the catalog.
 
 Assignment changes require a preview token. For example:
 

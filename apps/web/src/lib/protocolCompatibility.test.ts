@@ -15,10 +15,21 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test("reports missing or mismatched bridge protocols", () => {
-    expect(evaluateProtocolCompatibility({ protocol_version: 1 })).toMatchObject({
-      actualProtocol: 1,
+  test("rejects an older daemon after the category protocol change", () => {
+    expect(
+      evaluateProtocolCompatibility({ protocol_version: EXPECTED_IPC_PROTOCOL_VERSION - 1 }),
+    ).toMatchObject({
+      actualProtocol: EXPECTED_IPC_PROTOCOL_VERSION - 1,
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
+    });
+  });
+
+  test("requires exact compatibility in both client and daemon upgrades", () => {
+    // Old web clients expect 4 and reject the new daemon's 5 health response;
+    // current clients likewise reject an old daemon's 4 response above.
+    expect(evaluateProtocolCompatibility({ protocol_version: 4 })).toMatchObject({
+      actualProtocol: 4,
+      requiredProtocol: 5,
     });
     expect(evaluateProtocolCompatibility({})).toMatchObject({ actualProtocol: null });
   });

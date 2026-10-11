@@ -697,6 +697,7 @@ mod account_scope;
 mod arrivals;
 mod arrivals_report;
 mod body_and_invites;
+mod categories;
 mod deferral;
 mod desk;
 mod desk_done;

@@ -126,6 +126,7 @@ fn mail_router() -> Router<AppState> {
         .route("/labels/rename", post(rename_label))
         .route("/labels/delete", post(delete_label))
         .route("/categories", get(list_categories).post(create_category))
+        .route("/categories/name/preview", post(preview_category_name))
         .route("/categories/messages", get(list_category_messages))
         .route("/categories/memberships", post(get_category_memberships))
         .route("/categories/rename", post(rename_category))

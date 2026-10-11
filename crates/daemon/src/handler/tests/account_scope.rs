@@ -313,6 +313,27 @@ async fn scoped_profiles_only_see_and_use_categories_visible_in_the_named_accoun
             .unwrap();
     }
 
+    let scoped_catalog =
+        s.fx.state
+            .store
+            .list_personal_categories(Some(&s.own.account))
+            .await
+            .unwrap();
+    let profile = s.fx.state.config_snapshot().agent_surfaces.profiles["mcp"].clone();
+    let ResponseData::Categories { categories } = super::super::account_scope::scope_response(
+        &s.fx.state,
+        &profile,
+        ResponseData::Categories {
+            categories: scoped_catalog,
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("expected scoped category catalog")
+    };
+    assert_eq!(categories.len(), 1);
+    assert_eq!(categories[0].name, "Visible");
+
     assert!(check(
         &s,
         &Request::ListCategories {

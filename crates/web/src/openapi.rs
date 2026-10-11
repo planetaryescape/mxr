@@ -49,6 +49,9 @@ use utoipa::{
         mutation_route, mutation_undo, action_snooze_presets, action_snooze,
         action_unsubscribe, action_unsubscribe_purge, action_commit_unsubscribe_preview, action_invite_reply, attachment_open, attachment_download,
         label_create, label_rename, label_delete, mail_unsnooze_one,
+        categories_list, categories_create, categories_messages, categories_memberships, categories_name_preview,
+        categories_rename, categories_assignment_preview, categories_assignment_apply,
+        categories_delete, categories_undo,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
         scheduled_sends_list, scheduled_sends_create, scheduled_sends_cancel, snippets_list,
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
@@ -241,6 +244,7 @@ endpoint!(get categories_list "/api/v1/mail/categories", "List personal categori
 endpoint!(get categories_messages "/api/v1/mail/categories/messages", "List messages in a category");
 endpoint!(post categories_memberships "/api/v1/mail/categories/memberships", "Read category assignments for selected messages");
 endpoint!(post categories_create "/api/v1/mail/categories", "Create a personal category");
+endpoint!(post categories_name_preview "/api/v1/mail/categories/name/preview", "Validate a personal category name");
 endpoint!(post categories_rename "/api/v1/mail/categories/rename", "Rename a personal category");
 endpoint!(post categories_assignment_preview "/api/v1/mail/categories/assignment/preview", "Preview category assignments");
 endpoint!(post categories_assignment_apply "/api/v1/mail/categories/assignment/apply", "Apply previewed category assignments");

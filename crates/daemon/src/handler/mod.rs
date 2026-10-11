@@ -643,6 +643,11 @@ async fn dispatch(
         Request::CreateCategory { name } => {
             categories::create(state, name).await.map_err(Into::into)
         }
+        Request::PreviewCategoryName { category_id, name } => {
+            categories::preview_name(state, category_id.as_ref(), name)
+                .await
+                .map_err(Into::into)
+        }
         Request::RenameCategory {
             category_id,
             new_name,
@@ -2040,6 +2045,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
         | Request::ListCategories { .. }
+        | Request::PreviewCategoryName { .. }
         | Request::ListCategoryMessages { .. }
         | Request::GetCategoryMemberships { .. }
         | Request::PreviewCategoryMembership { .. }
@@ -2370,6 +2376,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListCategoryMessages { .. } => "list_category_messages",
         Request::GetCategoryMemberships { .. } => "get_category_memberships",
         Request::CreateCategory { .. } => "create_category",
+        Request::PreviewCategoryName { .. } => "preview_category_name",
         Request::RenameCategory { .. } => "rename_category",
         Request::PreviewCategoryMembership { .. } => "preview_category_membership",
         Request::ApplyCategoryMembership { .. } => "apply_category_membership",

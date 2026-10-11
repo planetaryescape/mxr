@@ -963,6 +963,7 @@ pub fn map_request(
         | Request::GetCategoryMemberships { .. }
         | Request::CreateCategory { .. }
         | Request::RenameCategory { .. }
+        | Request::PreviewCategoryName { .. }
         | Request::PreviewCategoryMembership { .. }
         | Request::ApplyCategoryMembership { .. }
         | Request::PreviewDeleteCategory { .. }

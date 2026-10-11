@@ -274,52 +274,133 @@ export function deleteLabel(input: { name: string; accountId?: string }): Promis
   });
 }
 
-export interface PersonalCategoryView { id: string; name: string; unread_count: number; total_count: number }
-export interface CategoryMembershipPreview { category_ids: string[]; message_count: number; added: number; removed: number; preview_token: string }
-export interface CategoryDeletePreview { category_id: string; name: string; affected_messages: number; preview_token: string }
+export interface PersonalCategoryView {
+  id: string;
+  name: string;
+  unread_count: number;
+  total_count: number;
+}
+export interface CategoryMembershipPreview {
+  category_ids: string[];
+  message_count: number;
+  added: number;
+  removed: number;
+  preview_token: string;
+}
+export interface CategoryDeletePreview {
+  category_id: string;
+  name: string;
+  affected_messages: number;
+  preview_token: string;
+}
+export interface CategoryNamePreview {
+  normalized_name: string;
+  available: boolean;
+}
 
 export async function fetchCategories(accountId?: string): Promise<PersonalCategoryView[]> {
   const query = new URLSearchParams();
   if (accountId) query.set("account_id", accountId);
-  const result = await apiFetch<{ categories: PersonalCategoryView[] }>(`/api/v1/mail/categories?${query}`);
+  const result = await apiFetch<{ categories: PersonalCategoryView[] }>(
+    `/api/v1/mail/categories?${query}`,
+  );
   return result.categories;
 }
 
-export async function fetchCategoryMemberships(input: { accountId?: string; messageIds: string[]; categoryIds: string[] }): Promise<{ category_id: string; selected_messages: number; assigned_messages: number }[]> {
-  const result = await apiFetch<{ states: { category_id: string; selected_messages: number; assigned_messages: number }[] }>("/api/v1/mail/categories/memberships", {
-    method: "POST", body: { ...(input.accountId ? { account_id: input.accountId } : {}), message_ids: input.messageIds, category_ids: input.categoryIds },
+export async function fetchCategoryMemberships(input: {
+  accountId?: string;
+  messageIds: string[];
+  categoryIds: string[];
+}): Promise<{ category_id: string; selected_messages: number; assigned_messages: number }[]> {
+  const result = await apiFetch<{
+    states: { category_id: string; selected_messages: number; assigned_messages: number }[];
+  }>("/api/v1/mail/categories/memberships", {
+    method: "POST",
+    body: {
+      ...(input.accountId ? { account_id: input.accountId } : {}),
+      message_ids: input.messageIds,
+      category_ids: input.categoryIds,
+    },
   });
   return result.states;
 }
 
-export function createCategory(name: string): Promise<{ categories: PersonalCategoryView[] }> {
+export async function previewCategoryName(
+  name: string,
+  categoryId?: string,
+): Promise<CategoryNamePreview> {
+  return apiFetch<CategoryNamePreview>("/api/v1/mail/categories/name/preview", {
+    method: "POST",
+    body: { name, ...(categoryId ? { category_id: categoryId } : {}) },
+  });
+}
+
+export async function createCategory(
+  name: string,
+): Promise<{ categories: PersonalCategoryView[] }> {
+  const preview = await previewCategoryName(name);
+  if (!preview.available) throw new Error("A category with that name already exists");
   return apiFetch("/api/v1/mail/categories", { method: "POST", body: { name } });
 }
 
-export function renameCategory(categoryId: string, name: string): Promise<{ categories: PersonalCategoryView[] }> {
-  return apiFetch("/api/v1/mail/categories/rename", { method: "POST", body: { category_id: categoryId, name } });
+export async function renameCategory(
+  categoryId: string,
+  name: string,
+): Promise<{ categories: PersonalCategoryView[] }> {
+  const preview = await previewCategoryName(name, categoryId);
+  if (!preview.available) throw new Error("A category with that name already exists");
+  return apiFetch("/api/v1/mail/categories/rename", {
+    method: "POST",
+    body: { category_id: categoryId, name },
+  });
 }
 
-export function previewCategoryMembership(input: { accountId?: string; messageIds: string[]; addCategoryIds: string[]; removeCategoryIds: string[] }): Promise<CategoryMembershipPreview> {
-  return apiFetch("/api/v1/mail/categories/assignment/preview", { method: "POST", body: {
-    ...(input.accountId ? { account_id: input.accountId } : {}), message_ids: input.messageIds,
-    add_category_ids: input.addCategoryIds, remove_category_ids: input.removeCategoryIds,
-  } });
+export function previewCategoryMembership(input: {
+  accountId?: string;
+  messageIds: string[];
+  addCategoryIds: string[];
+  removeCategoryIds: string[];
+}): Promise<CategoryMembershipPreview> {
+  return apiFetch("/api/v1/mail/categories/assignment/preview", {
+    method: "POST",
+    body: {
+      ...(input.accountId ? { account_id: input.accountId } : {}),
+      message_ids: input.messageIds,
+      add_category_ids: input.addCategoryIds,
+      remove_category_ids: input.removeCategoryIds,
+    },
+  });
 }
 
-export function applyCategoryMembership(previewToken: string): Promise<{ mutation_id: string; added: number; removed: number }> {
-  return apiFetch("/api/v1/mail/categories/assignment/apply", { method: "POST", body: { preview_token: previewToken } });
+export function applyCategoryMembership(
+  previewToken: string,
+): Promise<{ mutation_id: string; added: number; removed: number }> {
+  return apiFetch("/api/v1/mail/categories/assignment/apply", {
+    method: "POST",
+    body: { preview_token: previewToken },
+  });
 }
 
-export function previewOrDeleteCategory(input: { categoryId?: string; previewToken?: string }): Promise<CategoryDeletePreview | { category_id: string; name: string }> {
-  return apiFetch("/api/v1/mail/categories/delete", { method: "POST", body: {
-    ...(input.categoryId ? { category_id: input.categoryId } : {}),
-    ...(input.previewToken ? { preview_token: input.previewToken } : {}),
-  } });
+export function previewOrDeleteCategory(input: {
+  categoryId?: string;
+  previewToken?: string;
+}): Promise<CategoryDeletePreview | { category_id: string; name: string }> {
+  return apiFetch("/api/v1/mail/categories/delete", {
+    method: "POST",
+    body: {
+      ...(input.categoryId ? { category_id: input.categoryId } : {}),
+      ...(input.previewToken ? { preview_token: input.previewToken } : {}),
+    },
+  });
 }
 
-export function undoCategoryMembership(mutationId: string): Promise<{ restored: number; skipped: number }> {
-  return apiFetch("/api/v1/mail/categories/undo", { method: "POST", body: { mutation_id: mutationId } });
+export function undoCategoryMembership(
+  mutationId: string,
+): Promise<{ restored: number; skipped: number }> {
+  return apiFetch("/api/v1/mail/categories/undo", {
+    method: "POST",
+    body: { mutation_id: mutationId },
+  });
 }
 
 export function moveMessagesToLabel(

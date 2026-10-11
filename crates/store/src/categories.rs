@@ -39,34 +39,51 @@ pub fn normalize_category_name(input: &str) -> Result<(String, String), String> 
 }
 
 impl super::Store {
+    pub async fn preview_personal_category_name(
+        &self,
+        category_id: Option<&CategoryId>,
+        input: &str,
+    ) -> Result<(String, bool), String> {
+        let (name, key) = normalize_category_name(input)?;
+        if let Some(category_id) = category_id {
+            let exists: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM personal_categories WHERE id = ?)")
+                    .bind(category_id.as_str())
+                    .fetch_one(self.reader())
+                    .await
+                    .map_err(|error| error.to_string())?;
+            if !exists {
+                return Err("category not found".into());
+            }
+        }
+        let duplicate: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM personal_categories WHERE normalized_name = ? AND (? IS NULL OR id <> ?))",
+        )
+        .bind(key)
+        .bind(category_id.map(CategoryId::as_str))
+        .bind(category_id.map(CategoryId::as_str))
+        .fetch_one(self.reader())
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok((name, !duplicate))
+    }
+
     pub async fn list_personal_categories(
         &self,
         account_id: Option<&mxr_core::AccountId>,
     ) -> Result<Vec<PersonalCategory>, String> {
-        let rows = if let Some(account_id) = account_id {
-            sqlx::query(
-                "SELECT c.id, c.name, COUNT(m.id) AS total_count,
-                        SUM(CASE WHEN m.id IS NOT NULL AND (m.flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
-                 FROM personal_categories c
-                 JOIN message_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
-                 JOIN messages m ON m.id = cm.message_id AND m.account_id = ?
-                 GROUP BY c.id, c.name ORDER BY c.normalized_name, c.id",
-            )
-            .bind(account_id.as_str())
-            .fetch_all(self.reader())
-            .await
-        } else {
-            sqlx::query(
-                "SELECT c.id, c.name, COUNT(m.id) AS total_count,
-                        SUM(CASE WHEN (m.flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
-                 FROM personal_categories c
-                 LEFT JOIN message_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
-                 LEFT JOIN messages m ON m.id = cm.message_id
-                 GROUP BY c.id, c.name ORDER BY c.normalized_name, c.id",
-            )
-            .fetch_all(self.reader())
-            .await
-        }
+        let rows = sqlx::query(
+            "SELECT c.id, c.name, COUNT(m.id) AS total_count,
+                    SUM(CASE WHEN m.id IS NOT NULL AND (m.flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
+             FROM personal_categories c
+             LEFT JOIN message_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
+             LEFT JOIN messages m ON m.id = cm.message_id AND (? IS NULL OR m.account_id = ?)
+             GROUP BY c.id, c.name ORDER BY c.normalized_name, c.id",
+        )
+        .bind(account_id.map(|account| account.as_str()))
+        .bind(account_id.map(|account| account.as_str()))
+        .fetch_all(self.reader())
+        .await
         .map_err(|error| error.to_string())?;
         rows.into_iter()
             .map(|row| {
@@ -356,6 +373,7 @@ impl super::Store {
     pub async fn delete_personal_category_if_unchanged(
         &self,
         category_id: &CategoryId,
+        expected_name: &str,
         expected: &[CategoryMembershipVersion],
     ) -> Result<String, String> {
         let mut tx = self.writer().begin().await.map_err(|e| e.to_string())?;
@@ -366,6 +384,9 @@ impl super::Store {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "category not found".to_string())?;
         let name: String = row.get("name");
+        if name != expected_name {
+            return Err("category name changed after preview; preview again".into());
+        }
         let rows = sqlx::query("SELECT message_id, revision, assigned FROM message_category_memberships WHERE category_id = ? AND assigned = 1 ORDER BY message_id")
             .bind(category_id.as_str()).fetch_all(&mut *tx).await.map_err(|e| e.to_string())?;
         let current: Vec<_> = rows
@@ -534,8 +555,8 @@ mod tests {
         let original = store
             .category_membership_versions(
                 Some(&account.id),
-                &[envelope.id.clone()],
-                &[category.id.clone()],
+                std::slice::from_ref(&envelope.id),
+                std::slice::from_ref(&category.id),
             )
             .await
             .unwrap()
@@ -553,8 +574,8 @@ mod tests {
         let after_add = store
             .category_membership_versions(
                 Some(&account.id),
-                &[envelope.id.clone()],
-                &[category.id.clone()],
+                std::slice::from_ref(&envelope.id),
+                std::slice::from_ref(&category.id),
             )
             .await
             .unwrap()
@@ -570,8 +591,8 @@ mod tests {
         let after_remove = store
             .category_membership_versions(
                 Some(&account.id),
-                &[envelope.id.clone()],
-                &[category.id.clone()],
+                std::slice::from_ref(&envelope.id),
+                std::slice::from_ref(&category.id),
             )
             .await
             .unwrap()
@@ -613,7 +634,11 @@ mod tests {
         let hidden = store.create_personal_category("Hidden name").await.unwrap();
         for (message, category) in [(&visible_message, &visible), (&hidden_message, &hidden)] {
             let before = store
-                .category_membership_versions(None, &[message.id.clone()], &[category.id.clone()])
+                .category_membership_versions(
+                    None,
+                    std::slice::from_ref(&message.id),
+                    std::slice::from_ref(&category.id),
+                )
                 .await
                 .unwrap()
                 .remove(0);
@@ -629,15 +654,43 @@ mod tests {
             .list_personal_categories(Some(&visible_account.id))
             .await
             .unwrap();
-        assert_eq!(scoped.len(), 1);
-        assert_eq!(scoped[0].name, "Visible");
-        assert_eq!(scoped[0].total_count, 1);
+        assert_eq!(scoped.len(), 2);
+        let visible_scoped = scoped
+            .iter()
+            .find(|category| category.id == visible.id)
+            .unwrap();
+        let hidden_scoped = scoped
+            .iter()
+            .find(|category| category.id == hidden.id)
+            .unwrap();
+        assert_eq!(visible_scoped.total_count, 1);
+        assert_eq!(hidden_scoped.total_count, 0);
+        assert!(!store
+            .category_exists_in_account(&hidden.id, &visible_account.id)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_preview_stales_after_category_rename() {
+        let store = super::super::pool::Store::in_memory().await.unwrap();
+        let category = store.create_personal_category("Travel").await.unwrap();
+        let expected = store
+            .all_category_membership_versions(&category.id)
+            .await
+            .unwrap();
+        store
+            .rename_personal_category(&category.id, "Trips")
+            .await
+            .unwrap();
+        let error = store
+            .delete_personal_category_if_unchanged(&category.id, "Travel", &expected)
+            .await
+            .unwrap_err();
+        assert!(error.contains("name changed after preview"));
         assert_eq!(
-            store
-                .category_exists_in_account(&hidden.id, &visible_account.id)
-                .await
-                .unwrap(),
-            false
+            store.get_personal_category(&category.id).await.unwrap().0,
+            "Trips"
         );
     }
 }

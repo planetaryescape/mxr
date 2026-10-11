@@ -195,10 +195,14 @@ pub enum LabelsAction {
 pub enum CategoriesAction {
     Create {
         name: String,
+        #[arg(long)]
+        dry_run: bool,
     },
     Rename {
         category_id: String,
         new_name: String,
+        #[arg(long)]
+        dry_run: bool,
     },
     Show {
         category_id: String,

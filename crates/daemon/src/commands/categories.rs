@@ -20,19 +20,34 @@ pub async fn run(
                 .request(Request::ListCategories { account_id })
                 .await?
         }
-        Some(CategoriesAction::Create { name }) => {
-            client.request(Request::CreateCategory { name }).await?
+        Some(CategoriesAction::Create { name, dry_run }) => {
+            let preview = preview_category_name(&mut client, None, &name).await?;
+            if dry_run {
+                preview
+            } else {
+                ensure_category_name_available(preview)?;
+                client.request(Request::CreateCategory { name }).await?
+            }
         }
         Some(CategoriesAction::Rename {
             category_id,
             new_name,
+            dry_run,
         }) => {
-            client
-                .request(Request::RenameCategory {
-                    category_id: parse_category_id(&category_id)?,
-                    new_name,
-                })
-                .await?
+            let category_id = parse_category_id(&category_id)?;
+            let preview =
+                preview_category_name(&mut client, Some(category_id.clone()), &new_name).await?;
+            if dry_run {
+                preview
+            } else {
+                ensure_category_name_available(preview)?;
+                client
+                    .request(Request::RenameCategory {
+                        category_id,
+                        new_name,
+                    })
+                    .await?
+            }
         }
         Some(CategoriesAction::Show {
             category_id,
@@ -121,6 +136,38 @@ pub async fn run(
         Response::Ok { data } => print_response(data, format)?,
     }
     Ok(())
+}
+
+async fn preview_category_name(
+    client: &mut IpcClient,
+    category_id: Option<CategoryId>,
+    name: &str,
+) -> anyhow::Result<Response> {
+    Ok(client
+        .request(Request::PreviewCategoryName {
+            category_id,
+            name: name.to_string(),
+        })
+        .await?)
+}
+
+fn ensure_category_name_available(response: Response) -> anyhow::Result<()> {
+    match response {
+        Response::Ok {
+            data:
+                ResponseData::CategoryNamePreview {
+                    available: true, ..
+                },
+        } => Ok(()),
+        Response::Ok {
+            data:
+                ResponseData::CategoryNamePreview {
+                    available: false, ..
+                },
+        } => anyhow::bail!("a category with that name already exists"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("unexpected response to category name preview"),
+    }
 }
 
 fn parse_category_id(input: &str) -> anyhow::Result<CategoryId> {

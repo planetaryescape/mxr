@@ -96,6 +96,46 @@ impl MxrMcpServer {
         response_to_json(response).map(McpJson)
     }
 
+    async fn ensure_category_name_available(
+        &self,
+        category_id: Option<CategoryId>,
+        name: &str,
+    ) -> Result<(), ErrorData> {
+        match self
+            .requester
+            .request(Request::PreviewCategoryName {
+                category_id,
+                name: name.to_string(),
+            })
+            .await
+            .map_err(mcp_error)?
+        {
+            Response::Ok {
+                data:
+                    ResponseData::CategoryNamePreview {
+                        available: true, ..
+                    },
+            } => Ok(()),
+            Response::Ok {
+                data:
+                    ResponseData::CategoryNamePreview {
+                        available: false, ..
+                    },
+            } => Err(ErrorData::invalid_params(
+                "a category with that name already exists",
+                None,
+            )),
+            Response::Error { message, code, .. } => Err(ErrorData::internal_error(
+                format!("daemon error {code}: {message}"),
+                None,
+            )),
+            _ => Err(ErrorData::internal_error(
+                "daemon returned an unexpected response for category name preview",
+                None,
+            )),
+        }
+    }
+
     async fn stored_draft(&self, draft_id: DraftId) -> Result<Draft, ErrorData> {
         match self
             .requester
@@ -282,6 +322,7 @@ impl MxrMcpServer {
         &self,
         Parameters(p): Parameters<CategoryCreateParams>,
     ) -> Result<McpJson<Value>, ErrorData> {
+        self.ensure_category_name_available(None, &p.name).await?;
         self.daemon_json(Request::CreateCategory { name: p.name })
             .await
     }
@@ -291,8 +332,11 @@ impl MxrMcpServer {
         &self,
         Parameters(p): Parameters<CategoryNameParams>,
     ) -> Result<McpJson<Value>, ErrorData> {
+        let category_id = parse_id::<CategoryId>(&p.category_id)?;
+        self.ensure_category_name_available(Some(category_id.clone()), &p.name)
+            .await?;
         self.daemon_json(Request::RenameCategory {
-            category_id: parse_id::<CategoryId>(&p.category_id)?,
+            category_id,
             new_name: p.name,
         })
         .await

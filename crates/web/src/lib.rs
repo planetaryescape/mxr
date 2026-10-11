@@ -3845,6 +3845,47 @@ struct CategoryNameBody {
     name: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct CategoryNamePreviewBody {
+    #[serde(default)]
+    category_id: Option<String>,
+    name: String,
+}
+
+async fn preview_category_name(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryNamePreviewBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let category_id = body
+        .category_id
+        .as_deref()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))
+        })
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::PreviewCategoryName {
+            category_id,
+            name: body.name,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryNamePreview {
+            normalized_name,
+            available,
+        } => Ok(Json(
+            json!({"normalized_name":normalized_name,"available":available}),
+        )),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn create_category(
     State(state): State<AppState>,
     headers: HeaderMap,

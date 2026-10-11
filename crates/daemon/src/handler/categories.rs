@@ -21,6 +21,7 @@ enum CategoryPreview {
     },
     Delete {
         category_id: CategoryId,
+        name: String,
         versions: Vec<CategoryMembershipVersion>,
     },
 }
@@ -116,17 +117,7 @@ pub(crate) async fn list_messages(
     limit: u32,
     offset: u32,
 ) -> Result<ResponseData, String> {
-    if let Some(account_id) = account_id {
-        if !state
-            .store
-            .category_exists_in_account(category_id, account_id)
-            .await?
-        {
-            return Err("category not found in requested account".into());
-        }
-    } else {
-        state.store.get_personal_category(category_id).await?;
-    }
+    state.store.get_personal_category(category_id).await?;
     let (message_ids, total) = state
         .store
         .list_category_message_ids(category_id, account_id, limit, offset)
@@ -139,7 +130,7 @@ pub(crate) async fn list_messages(
     Ok(ResponseData::CategoryMessages {
         envelopes,
         total,
-        has_more: offset.saturating_add(limit) < total,
+        has_more: offset.saturating_add(limit.min(500)) < total,
     })
 }
 
@@ -174,6 +165,21 @@ pub(crate) async fn create(state: &AppState, name: &str) -> Result<ResponseData,
     let category = state.store.create_personal_category(name).await?;
     Ok(ResponseData::Categories {
         categories: vec![category],
+    })
+}
+
+pub(crate) async fn preview_name(
+    state: &AppState,
+    category_id: Option<&CategoryId>,
+    name: &str,
+) -> Result<ResponseData, String> {
+    let (normalized_name, available) = state
+        .store
+        .preview_personal_category_name(category_id, name)
+        .await?;
+    Ok(ResponseData::CategoryNamePreview {
+        normalized_name,
+        available,
     })
 }
 
@@ -292,7 +298,9 @@ pub(crate) async fn apply_membership(
     else {
         return Err("preview token is for category deletion".into());
     };
-    let category_ids: Vec<_> = versions.iter().map(|v| v.category_id.clone()).collect();
+    let mut category_ids: Vec<_> = versions.iter().map(|v| v.category_id.clone()).collect();
+    category_ids.sort_by_key(ToString::to_string);
+    category_ids.dedup();
     let current = state
         .store
         .category_membership_versions(account_id.as_ref(), &message_ids, &category_ids)
@@ -335,6 +343,7 @@ pub(crate) async fn preview_delete(
         .await?;
     let token = state.category_previews.insert(CategoryPreview::Delete {
         category_id: category_id.clone(),
+        name: name.clone(),
         versions: versions.clone(),
     });
     Ok(ResponseData::CategoryDeletePreview {
@@ -351,6 +360,7 @@ pub(crate) async fn delete(state: &AppState, token: &str) -> Result<ResponseData
     let preview = state.category_previews.take(token)?;
     let CategoryPreview::Delete {
         category_id,
+        name: expected_name,
         versions,
     } = preview
     else {
@@ -358,7 +368,7 @@ pub(crate) async fn delete(state: &AppState, token: &str) -> Result<ResponseData
     };
     let name = state
         .store
-        .delete_personal_category_if_unchanged(&category_id, &versions)
+        .delete_personal_category_if_unchanged(&category_id, &expected_name, &versions)
         .await?;
     Ok(ResponseData::CategoryDeleted { category_id, name })
 }

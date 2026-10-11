@@ -678,6 +678,10 @@ pub enum Request {
     CreateCategory {
         name: String,
     },
+    PreviewCategoryName {
+        category_id: Option<CategoryId>,
+        name: String,
+    },
     RenameCategory {
         category_id: CategoryId,
         new_name: String,
@@ -2427,6 +2431,7 @@ impl Request {
             | Self::ListCategories { .. }
             | Self::ListCategoryMessages { .. }
             | Self::GetCategoryMemberships { .. }
+            | Self::PreviewCategoryName { .. }
             | Self::CreateCategory { .. }
             | Self::RenameCategory { .. }
             | Self::PreviewCategoryMembership { .. }
@@ -3046,6 +3051,10 @@ pub enum ResponseData {
     },
     Categories {
         categories: Vec<PersonalCategory>,
+    },
+    CategoryNamePreview {
+        normalized_name: String,
+        available: bool,
     },
     CategoryMessages {
         envelopes: Vec<Envelope>,
@@ -3875,6 +3884,7 @@ impl ResponseData {
             | Self::Labels { .. }
             | Self::Label { .. }
             | Self::Categories { .. }
+            | Self::CategoryNamePreview { .. }
             | Self::CategoryMessages { .. }
             | Self::CategoryMembershipStates { .. }
             | Self::CategoryMembershipPreview { .. }

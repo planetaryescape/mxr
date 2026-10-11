@@ -435,6 +435,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::CreateCategory { .. }
+        | Request::PreviewCategoryName { .. }
         | Request::RenameCategory { .. }
         | Request::PreviewDeleteCategory { .. }
         | Request::DeleteCategory { .. }
@@ -956,6 +957,10 @@ pub(super) async fn scope_response(
     data: ResponseData,
 ) -> Result<ResponseData, String> {
     match data {
+        ResponseData::Categories { mut categories } => {
+            categories.retain(|category| category.total_count > 0);
+            Ok(ResponseData::Categories { categories })
+        }
         ResponseData::Status {
             draft_revision_supported,
             uptime_secs,

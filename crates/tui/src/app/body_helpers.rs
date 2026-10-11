@@ -79,6 +79,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.sync_status_label(),
+                compact_sync_status: self.compact_sync_status_label(),
                 sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
@@ -109,6 +110,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.sync_status_label(),
+                compact_sync_status: self.compact_sync_status_label(),
                 sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
@@ -130,6 +132,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.sync_status_label(),
+                compact_sync_status: self.compact_sync_status_label(),
                 sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
@@ -156,6 +159,7 @@ impl App {
             starred_count,
             body_status,
             sync_status: self.sync_status_label(),
+            compact_sync_status: self.compact_sync_status_label(),
             sync_warning: self.sync_warning(),
             feature_health_status,
             status_message: self.status_message.clone(),
@@ -187,6 +191,26 @@ impl App {
             ));
         }
         Some(label)
+    }
+
+    fn compact_sync_status_label(&self) -> Option<String> {
+        let data = self.freshness.as_ref()?;
+        let now = chrono::Utc::now();
+        let account = data.worst_account(now)?;
+        let error = account.last_sync_error.as_ref()?;
+        let retry_at = error.retry_at.filter(|at| *at > now);
+        let detail = match (account.sync_in_progress, error.kind, retry_at) {
+            (true, _, _) => "syncing now".to_string(),
+            (_, mxr_protocol::SyncErrorKindData::Auth, _) => "sign in again".to_string(),
+            (_, _, Some(at)) => format!(
+                "retrying {}",
+                at.with_timezone(&chrono::Local).format("%H:%M")
+            ),
+            (_, mxr_protocol::SyncErrorKindData::Offline, None) => "can't reach".to_string(),
+            (_, mxr_protocol::SyncErrorKindData::RateLimited, None) => "rate limited".to_string(),
+            _ => "sync failing".to_string(),
+        };
+        Some(format!("{}: {detail}", account.label))
     }
 
     /// An account's name for a message, never its id.

@@ -142,7 +142,7 @@ test.describe("desktop", () => {
       await syncNow(page);
       const warning = page.getByTestId("freshness-warning");
       await expect(warning).toHaveText(
-        /^Fake Account unreachable, (last sync (just now|\d+m ago)|retrying .+)$/,
+        /^Can't reach alex@demo\.mxr\.local, (last sync (just now|\d+m ago)|retrying .+)$/,
       );
       await expect(warning).toHaveAttribute("href", /^\/accounts\/[^/]+$/);
       await expect(trigger(page).locator("[data-tone]")).toHaveAttribute("data-tone", "bad");
@@ -150,14 +150,14 @@ test.describe("desktop", () => {
 
       await trigger(page).click();
       await expect(page.getByRole("dialog", { name: "Last arrivals" })).toContainText(
-        "Fake Account unreachable",
+        "Can't reach alex@demo.mxr.local",
       );
       await page.keyboard.press("Escape");
       await warning.click();
       await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
       const details = page.getByTestId("account-sync-details");
       await expect(details).toContainText(/Can't sync/);
-      await expect(details).toContainText("Can't reach Fake Account.");
+      await expect(details).toContainText("Can't reach alex@demo.mxr.local.");
       await expect(page.getByRole("status").filter({ hasText: /Can't sync/ })).toBeVisible();
       await shot(page, "desktop-account-sync");
 

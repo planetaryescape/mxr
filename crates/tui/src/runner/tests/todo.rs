@@ -113,6 +113,20 @@ fn x_marks_it_not_a_to_do() {
 }
 
 #[test]
+fn task_undo_toast_uses_grammatical_singular_and_plural_copy() {
+    let now = std::time::Instant::now();
+    for (ids, expected) in [
+        (vec!["todo_a"], "Ticked off 1 to-do"),
+        (vec!["todo_a", "todo_b"], "Ticked off 2 to-dos"),
+    ] {
+        let undo = crate::runner::todo_undo(&catchup_change("done", &ids)).unwrap();
+        let mut app = todo_app(true);
+        app.set_pending_undo(undo);
+        assert_eq!(app.pending_undo_toast(now).unwrap().text, expected);
+    }
+}
+
+#[test]
 fn the_runway_hint_shows_at_the_first_bar_after_a_key_and_esc_dismisses_it_once() {
     let mut app = todo_app(false);
     assert!(app.active_hint().is_none(), "not on arrival");

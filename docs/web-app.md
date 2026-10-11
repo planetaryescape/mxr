@@ -231,6 +231,18 @@ for motion), implement the command in the view's controller, done.
   a `script-src 'none'` CSP. No `allow-scripts`, ever. `allow-same-origin` is
   there to size the frame and forward keystrokes to the app, since the frame
   runs no script of its own.
+- In Settings → Reader, set **HTML mail canvas** to Auto, Dark or Original. In a
+  light scheme, Auto shows the sanitized original. In a dark scheme, it adapts
+  simple mail and uses a paper canvas for designed mail. Dark uses a dark
+  canvas; Original keeps the sanitized sender colors on a light canvas. New or
+  missing preferences use Auto, while saved Dark and Original choices remain
+  unchanged.
+- Use **Appearance** above a formatted message to choose Auto, Dark or Original
+  for that message. **Use sender/default** clears the message choice and returns
+  to the sender preference or global setting. To keep Dark or Original for a
+  sender, choose **Always use Dark** or **Always show Original**. Reset that
+  sender in the same menu or under Settings → Reader → HTML mail preferences by
+  sender. These preferences live in browser UI prefs, not daemon state.
 - Remote images are blocked by default; `M` loads them for the thread and
   "Always from <sender>" remembers the sender in UI prefs.
 - Inline `cid:` images load through `GET /mail/messages/{id}/inline-image?source=`,

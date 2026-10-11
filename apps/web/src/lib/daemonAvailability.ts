@@ -57,7 +57,7 @@ function setDown(daemonDown: boolean): void {
 export function refuseWhileDaemonDown(what: string, kept?: string): boolean {
   if (!isDaemonDown()) return false;
   // One id: a held or repeated key replaces the toast instead of stacking.
-  toast.warning(`Can't ${what} while mxr's daemon is stopped`, {
+  toast.warning(`Can't ${what} while mxr is unavailable`, {
     id: "daemon-down-refusal",
     description: kept ?? "Nothing changed. Try again once it's back.",
   });

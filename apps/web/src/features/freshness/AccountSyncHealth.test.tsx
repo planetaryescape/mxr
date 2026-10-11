@@ -23,7 +23,7 @@ function account(overrides: Partial<AccountFreshness> = {}): AccountFreshness {
   return {
     account_id: "acct-1",
     account_name: "Work",
-    label: "Gmail",
+    label: "work@example.com",
     health: "ok",
     last_sync_ok_at: at(-2),
     sync_in_progress: false,
@@ -70,7 +70,7 @@ describe("account sync health", () => {
     const details = screen.getByTestId("account-sync-details");
     expect(details).toHaveTextContent("Last good sync2m ago");
     expect(details).toHaveTextContent(/Next try9:47/);
-    expect(details).toHaveTextContent(/Can't reach Gmail\. Trying again at 9:47/);
+    expect(details).toHaveTextContent(/Can't reach work@example.com\. Trying again at 9:47/);
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sign in again/i })).toBeNull();
   });
@@ -84,7 +84,7 @@ describe("account sync health", () => {
     );
     const onSignIn = vi.fn<() => void>();
     render(<AccountSyncDetails accountId="acct-1" onSignIn={onSignIn} />);
-    expect(screen.getByText("Gmail signed mxr out. Sign in again to keep syncing.")).toBeVisible();
+    expect(screen.getByText("work@example.com needs you to sign in again.")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /sign in again/i }));
     expect(onSignIn).toHaveBeenCalledOnce();
   });
@@ -98,7 +98,7 @@ describe("account sync health", () => {
     rerender();
     expect(toastMock.warning).toHaveBeenCalledOnce();
     expect(toastMock.warning).toHaveBeenCalledWith(
-      "Work can't sync",
+      "work@example.com can't sync",
       expect.objectContaining({ id: "sync-health-acct-1" }),
     );
 
@@ -112,7 +112,7 @@ describe("account sync health", () => {
 
     query.data = reply(account({ last_sync_ok_at: at(0) }));
     rerender();
-    expect(toastMock.success).toHaveBeenCalledWith("Work is syncing again", {
+    expect(toastMock.success).toHaveBeenCalledWith("work@example.com is syncing again", {
       id: "sync-health-acct-1",
     });
   });

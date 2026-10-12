@@ -1,0 +1,55 @@
+{
+  "source_commit": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "binary_path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target-cli/debug/mxr",
+  "binary_sha256": "sha256:6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "journey": "agent-browser named session s05a-attachment-browser-baa921ef4e55; search Invoice #2847, open Frank Billing message, click Download then Open",
+  "fixture": {
+    "message_id": "01a12d08-cb3a-73c0-8609-792e86089637",
+    "attachment_id": "01a12d08-cb3a-73c0-8609-7934697321e5",
+    "filename": "browser-transfer-fixture.html",
+    "bytes": 1280116,
+    "sha256": "sha256:928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+    "cache_path_mode": "0o600"
+  },
+  "download": {
+    "path": "target/s05-evidence/browser-candidate-b55994bd/downloaded.html",
+    "bytes": 1280116,
+    "sha256": "sha256:928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+    "matches_seeded_file": true
+  },
+  "open_active_content_fallback": {
+    "path": "target/s05-evidence/browser-candidate-b55994bd/open-fallback.html",
+    "bytes": 1280116,
+    "sha256": "sha256:928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+    "matches_seeded_file": true,
+    "page_url_after_action": "\u2192 [t1] Search \u00b7 mxr - http://127.0.0.1:51223/search/01a12d08-cb3a-73c0-8609-791dd22c5c10?q=Invoice+%232847&mode=lexical&sort=relevance",
+    "second_tab_opened": false
+  },
+  "browser_transport_log": "target/s05-evidence/browser-candidate-b55994bd/network.log",
+  "expected_transfer_routes": [
+    "POST /api/v1/mail/attachments/transfer/metadata",
+    "POST /api/v1/mail/attachments/transfer/chunk (5 responses)"
+  ],
+  "browser_errors_log": "target/s05-evidence/browser-candidate-b55994bd/browser-errors.log",
+  "browser_errors_bytes": 0,
+  "browser_console_log": "target/s05-evidence/browser-candidate-b55994bd/browser-console.log",
+  "browser_console_bytes": 0,
+  "web_bridge": {
+    "pid": 54404,
+    "sandbox_profile": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/browser-candidate-b55994bd/deny-cache.sb",
+    "cache_file_direct_read_denied": true,
+    "denial_log": "target/s05-evidence/browser-candidate-b55994bd/cache-read-denied.log"
+  },
+  "fixture_daemon_pid": 54392,
+  "limitations": "One synthetic HTML attachment; browser click-based download observed. No image/raster passive-open case exercised.",
+  "cleanup": {
+    "browser_session": "s05a-attachment-browser-baa921ef4e55 closed; session info active=false",
+    "web_pid_stopped": true,
+    "daemon_pid_stopped": true,
+    "bridge_tokens_removed": [
+      "runtime2/config/bridge-token",
+      "runtime3/config/bridge-token"
+    ],
+    "daemon_socket_removed": true
+  }
+}

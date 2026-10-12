@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-10-12T00:49:36.246246+00:00",
+  "version": "mxr 0.6.82",
+  "path": "/opt/homebrew/bin/mxr",
+  "resolved": "/opt/homebrew/Cellar/mxr/0.6.82/bin/mxr",
+  "sha256": "3bb6d6b178cf97aa3aaeae246667cea001a3523c84d18fac794a8d16879c35a4",
+  "path_entries": [
+    "/opt/homebrew/bin/mxr",
+    "/opt/homebrew/bin/mxr"
+  ],
+  "source": "5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3",
+  "matches_published_installer": true,
+  "personal_daemon_restarted": false
+}

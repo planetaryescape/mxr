@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-10-11T23:58:53.007761+00:00",
+  "source": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "run": "https://github.com/planetaryescape/mxr/actions/runs/38184347088",
+  "job": 114603417282,
+  "native_step": {
+    "start": "2026-10-11T23:28:41Z",
+    "end": "2026-10-11T23:54:08Z",
+    "seconds": 1527
+  },
+  "cargo_reported_seconds": 1525,
+  "rust_target_cache": "No cache found.",
+  "sccache": {
+    "rust_cache_hits": 0,
+    "rust_cache_misses": 770,
+    "cache_write_errors": 573
+  },
+  "raw_log_sha256": "1b7aa948d4f7c60b0aca4188ee4257ca843e13cb1c31b98a32f58da0522e5c1e",
+  "limits": "Cache-write error cause and attainable speedup are not established by this log. Release build succeeded."
+}

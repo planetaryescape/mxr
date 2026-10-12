@@ -1,0 +1,80 @@
+[
+  {
+    "file": "release.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/verification.json",
+    "original_sha256": "bf364ea7d448bd69f088aacda8f30f700ae44aab0d8ea533a79d07dc09e7ccb0",
+    "retained_sha256": "bf364ea7d448bd69f088aacda8f30f700ae44aab0d8ea533a79d07dc09e7ccb0"
+  },
+  {
+    "file": "homebrew.json",
+    "source": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s05a-homebrew-v0.6.80.json",
+    "original_sha256": "471ab8ff7242c86a1293c8fb146428cac895982904d19a6af2a2b59edef3fb1f",
+    "retained_sha256": "471ab8ff7242c86a1293c8fb146428cac895982904d19a6af2a2b59edef3fb1f"
+  },
+  {
+    "file": "cli.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/result.json",
+    "original_sha256": "4a3a0ed8308d104bda2dc16cc9c06f97663d37145237493014f8de1cfaddfadf",
+    "retained_sha256": "c72113b1a1da64cd807ff68e821d66ac485331a0fa91dc27a25d75e8700734e0"
+  },
+  {
+    "file": "mcp.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/mcp-acceptance.json",
+    "original_sha256": "fbd2fca7dd557fd359d99455582e64849d6cb023ccb6bddb6767a56a8dd5300a",
+    "retained_sha256": "f97864f0a6125d97ddbe0cc6f7f33ccbe25fb0a96b57d93cae22189596e235e4"
+  },
+  {
+    "file": "tui-missing-directory.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/tui-missing-directory-regression.json",
+    "original_sha256": "f50b24ebbcb9f53a89f6ad87ce056622b2a2f519f4e907accbbb5d61e4fb1416",
+    "retained_sha256": "f50b24ebbcb9f53a89f6ad87ce056622b2a2f519f4e907accbbb5d61e4fb1416"
+  },
+  {
+    "file": "tui-partial.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/tui-partial-acceptance.json",
+    "original_sha256": "ff729d1f9c81d74a99f07b3915ec1b7360585c1da9a711d5e165b658db1faa39",
+    "retained_sha256": "ff729d1f9c81d74a99f07b3915ec1b7360585c1da9a711d5e165b658db1faa39"
+  },
+  {
+    "file": "tui-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/tui-cleanup.json",
+    "original_sha256": "53c61024dfb74ee0541f171db45aa7e61112903d8025c2fa9556c488baa6383c",
+    "retained_sha256": "53c61024dfb74ee0541f171db45aa7e61112903d8025c2fa9556c488baa6383c"
+  },
+  {
+    "file": "browser-html-result.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/result.json",
+    "original_sha256": "f3a41d8e4b4c45ef79218618eff47562afd332f02fba8b58702a77330e2943fa",
+    "retained_sha256": "f3a41d8e4b4c45ef79218618eff47562afd332f02fba8b58702a77330e2943fa"
+  },
+  {
+    "file": "browser-html-route-statuses.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/route-statuses.json",
+    "original_sha256": "e0e5bef3aee263140d5aac45ac8e3ecc2ae4f78d9f7d2dea1e6a6b5d67ff84e4",
+    "retained_sha256": "e0e5bef3aee263140d5aac45ac8e3ecc2ae4f78d9f7d2dea1e6a6b5d67ff84e4"
+  },
+  {
+    "file": "browser-html-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/cleanup.json",
+    "original_sha256": "b9c4bd333d26f4cec2eb07bc27b1210a5948250e579b446efe743dc28da802ef",
+    "retained_sha256": "b9c4bd333d26f4cec2eb07bc27b1210a5948250e579b446efe743dc28da802ef"
+  },
+  {
+    "file": "browser-text-result.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/result.json",
+    "original_sha256": "0f892512d785deaaf1bdc52523ded247f83bf66b3ba795f8b308dc1f29a145e3",
+    "retained_sha256": "0f892512d785deaaf1bdc52523ded247f83bf66b3ba795f8b308dc1f29a145e3"
+  },
+  {
+    "file": "browser-text-route-statuses.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/route-statuses.json",
+    "original_sha256": "f310e6980fa851400a295d1c00c19bea368f33f23cc597ef32b2f5421572ef8a",
+    "retained_sha256": "f310e6980fa851400a295d1c00c19bea368f33f23cc597ef32b2f5421572ef8a"
+  },
+  {
+    "file": "browser-text-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/cleanup.json",
+    "original_sha256": "d13c989f7c6cd1235a8cc4d2b5af23e6c03f2c4f8813e04c132a7d06adc5ef8a",
+    "retained_sha256": "d13c989f7c6cd1235a8cc4d2b5af23e6c03f2c4f8813e04c132a7d06adc5ef8a"
+  }
+]

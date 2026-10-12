@@ -1,0 +1,33 @@
+{
+  "source": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target-cli/debug/mxr",
+  "binary_sha256": "sha256:6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "daemon_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target-cli/debug/mxr",
+  "daemon_binary_sha256": "6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "legacy": false,
+  "expect_unsupported": false,
+  "cases": {
+    "daemon_file_unreadable": true,
+    "cmd_connector_reaches_owned_daemon": true,
+    "exact_download_without_daemon_file_access": true,
+    "existing_destination_preserved": true,
+    "no_local_fallback_daemon_or_store": true
+  },
+  "owned_pid": 51818,
+  "fixture": {
+    "message_id": "01a12d06-fd04-76f1-8072-82b60db4aba3",
+    "attachment_id": "01a12d06-fd04-76f1-8072-82c080f60d39",
+    "bytes": 1188000,
+    "sha256": "sha256:5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16",
+    "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/candidate-b55994bd-client-bridge-v3/daemon-data/transfer-fixture.bin",
+    "seeding": "Known cached bytes set while daemon stopped; provider fixture remains unchanged."
+  },
+  "denial": {
+    "exit": 1,
+    "stdout_bytes": 0,
+    "stderr": "cat: /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/candidate-b55994bd-client-bridge-v3/daemon-data/transfer-fixture.bin: Operation not permitted\n"
+  },
+  "passed": true,
+  "owned_daemon_stopped": true,
+  "socket_exists_after_shutdown": false
+}

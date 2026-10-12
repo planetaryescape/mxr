@@ -1,0 +1,12 @@
+{
+  "owned_daemon_pid": 42141,
+  "command_verified_before_signal": true,
+  "daemon_exited": true,
+  "prior_daemon_exited": true,
+  "socket_removed": true,
+  "tui_sessions_exited": [
+    94602,
+    97892
+  ],
+  "personal_daemon_touched": false
+}

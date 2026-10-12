@@ -29,7 +29,7 @@ jobs:
       expensive: ${{ steps.filter.outputs.expensive }}
       rust_version: ${{ steps.rust-version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: rust-version
@@ -50,55 +50,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          rust=false
-          web=false
-          docs=false
-          expensive=false
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            rust=true
-            web=true
-            docs=true
-            expensive=true
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            base="${PR_BASE_SHA}"
+            head="HEAD"
           else
-            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-              base="${PR_BASE_SHA}"
-              head="HEAD"
-            else
-              base="${BEFORE}"
-              head="${SHA}"
-            fi
-
-            if [[ -z "${base}" || "${base}" =~ ^0+$ ]]; then
-              rust=true
-              docs=true
-            else
-              while IFS= read -r path; do
-                [[ -z "${path}" ]] && continue
-                case "${path}" in
-                  Cargo.toml|Cargo.lock|rust-toolchain*|build.rs|crates/*|src/*|.sqlx/*)
-                    rust=true
-                    ;;
-                  deny.toml|tests/*|benches/*|examples/*|scripts/test_quality_audit.sh|scripts/test_quality_audit_test.sh|scripts/check_architecture_boundaries.sh|scripts/s08c_headless_smoke.py)
-                    rust=true
-                    ;;
-                  apps/web/*|apps/web/**|crates/web/*|crates/web/**|crates/protocol/*|crates/protocol/**)
-                    web=true
-                    ;;
-                  site/*)
-                    docs=true
-                    ;;
-                esac
-              done < <(git diff --name-only "${base}" "${head}")
-            fi
+            base="${BEFORE}"
+            head="${SHA}"
           fi
 
-          {
-            echo "rust=${rust}"
-            echo "web=${web}"
-            echo "docs=${docs}"
-            echo "expensive=${expensive}"
-          } >> "${GITHUB_OUTPUT}"
+          scripts/ci_change_scope.sh "${EVENT_NAME}" "${base}" "${head}" >> "${GITHUB_OUTPUT}"
 
   deny:
     name: cargo deny
@@ -106,17 +66,17 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
 
   secret-scan:
     name: Secret Scan
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24.x"
       - name: Install gitleaks
@@ -137,7 +97,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
@@ -149,7 +109,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: scripts/check_architecture_boundaries.sh
 
   # examples/adapter-skeleton is excluded from the root workspace so it stays
@@ -165,7 +125,7 @@ jobs:
       run:
         working-directory: examples/adapter-skeleton
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -187,7 +147,7 @@ jobs:
       run:
         working-directory: examples/transport-skeleton
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -201,13 +161,14 @@ jobs:
     name: Release Gate Scripts
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: bash scripts/release_version_gate_test.sh
       - run: bash scripts/pre_pr_rust_gate_test.sh
       - run: bash scripts/release_gmail_oauth_gate_test.sh
       - run: bash scripts/release_workflow_test.sh
       - run: bash scripts/publish_github_release_test.sh
       - run: bash scripts/provider_smoke_workflow_test.sh
+      - run: bash scripts/ci_change_scope_test.sh
       - run: bash scripts/ci_workflow_test.sh
 
   fmt:
@@ -216,7 +177,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -230,7 +191,7 @@ jobs:
     env:
       RUSTFLAGS: ""
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -248,7 +209,7 @@ jobs:
     # end of iteration (mark the PR ready), not on every rebase/fixup push.
     if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
@@ -266,7 +227,7 @@ jobs:
     # See the draft-skip note on the `test` job above.
     if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
@@ -280,7 +241,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: scripts/test_quality_audit_test.sh
       - run: scripts/test_quality_audit.sh
       - uses: actions/upload-artifact@v7
@@ -294,7 +255,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: scripts/test_quality_audit_test.sh
@@ -309,17 +270,27 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npm audit --audit-level=moderate
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Audit dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm audit --audit-level=moderate
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test
 
   web-e2e:
     name: Web E2E
@@ -336,10 +307,10 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -375,7 +346,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -436,7 +407,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
@@ -456,8 +427,8 @@ jobs:
       run:
         working-directory: site
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -475,7 +446,7 @@ jobs:
         os: [blacksmith-4vcpu-ubuntu-2404, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
@@ -493,7 +464,7 @@ jobs:
     env:
       RUSTDOCFLAGS: -Dwarnings
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
@@ -505,7 +476,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ needs.changes.outputs.rust_version }}
@@ -519,7 +490,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config

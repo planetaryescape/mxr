@@ -3,7 +3,10 @@
 //! daemon.
 
 use super::*;
-use mxr_protocol::{ModeKindData, TodoCatchupDecisionData, TodoStateActionData, TodoStateData};
+use mxr_protocol::{
+    ModeKindData, TodoCatchupDecisionData, TodoResolutionActionData, TodoStateActionData,
+    TodoStateData,
+};
 use std::sync::{Arc, Mutex};
 
 async fn serve_recording() -> (TempDir, std::net::SocketAddr, Arc<Mutex<Vec<Request>>>) {
@@ -51,6 +54,15 @@ async fn todo_routes_forward_their_requests() {
                 &serde_json::json!({ "todo_ids": ["3f2a91c4"], "action": "done", "dry_run": true }),
             ),
         client
+            .post(format!(
+                "http://{addr}/api/v1/mail/todos/3f2a91c4/resolution"
+            ))
+            .json(&serde_json::json!({
+                "suggestion_id": "offer-1",
+                "action": "preview",
+                "dry_run": true
+            })),
+        client
             .post(format!("http://{addr}/api/v1/mail/todos/3f2a91c4/schedule"))
             .json(&serde_json::json!({ "when": "mon 9am", "time_zone": "Europe/London" })),
         client
@@ -91,19 +103,28 @@ async fn todo_routes_forward_their_requests() {
     ));
     assert!(matches!(
         &seen[4],
+        Request::ResolveTodoSuggestion {
+            todo_id,
+            suggestion_id,
+            action: TodoResolutionActionData::Preview,
+            dry_run: true,
+        } if todo_id == "3f2a91c4" && suggestion_id == "offer-1"
+    ));
+    assert!(matches!(
+        &seen[5],
         Request::ScheduleTodo { when: Some(when), time_zone: Some(_), dry_run: false, .. } if when == "mon 9am"
     ));
-    assert!(matches!(&seen[5], Request::UpdateTodo { edits, .. } if edits[0].field == "due"));
+    assert!(matches!(&seen[6], Request::UpdateTodo { edits, .. } if edits[0].field == "due"));
     assert!(matches!(
-        &seen[6],
+        &seen[7],
         Request::CreateTodo { message_id, kind: None, due: None, dry_run: false, .. } if *message_id == message
     ));
     assert!(matches!(
-        &seen[7],
+        &seen[8],
         Request::GetTodoCatchup { account_id: None }
     ));
     assert!(matches!(
-        &seen[8],
+        &seen[9],
         Request::SetTodoCatchup {
             decision: TodoCatchupDecisionData::LetGoAll,
             dry_run: true,

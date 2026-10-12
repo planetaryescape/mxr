@@ -1105,6 +1105,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "personal_categories",
         kind: MigrationKind::Sql(include_str!("../migrations/077_personal_categories.sql")),
     },
+    Migration {
+        version: 78,
+        name: "todo_resolution_suggestions",
+        kind: MigrationKind::Sql(include_str!("../migrations/078_todo_resolution_suggestions.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1650,6 +1655,68 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(cycle.0, "kept-cycle-key");
+    }
+
+    #[tokio::test]
+    async fn todo_resolution_migration_upgrades_version_77_without_rewriting_tasks() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-77.db");
+
+        {
+            let store = store_at_version(&db_path, 77).await;
+            sqlx::query(
+                "INSERT INTO accounts (id, name, email, created_at, updated_at)
+                 VALUES ('version-77-account', 'Personal', 'me@example.com', 1, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO todos
+                 (id, account_id, kind, verb, title, origin, reason, rules_version,
+                  dedup_key, created_at, updated_at, scheduled_for, user_edited,
+                  due_words, field_sources)
+                 VALUES ('manual-renewal', 'version-77-account', 'renewal', 'renew',
+                         'Call about renewal', 'manual', 'Created by the user', 1,
+                         'manual-renewal-key', 10, 11, 1800000000, 1,
+                         'before 1 Nov', '{\"due_at\":\"user\"}')",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            let version: (i64,) = sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+            assert_eq!(version.0, 77);
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let version: (i64,) = sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+        assert_eq!(version.0, 78);
+        assert!(test_table_exists(store.writer(), "todo_resolution_suggestions").await);
+        assert!(test_table_exists(store.writer(), "todo_resolution_evidence").await);
+        let preserved: (String, String, String, String, i64, i64) = sqlx::query_as(
+            "SELECT title, origin, reason, due_words, scheduled_for, user_edited
+             FROM todos WHERE id = 'manual-renewal'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            preserved,
+            (
+                "Call about renewal".into(),
+                "manual".into(),
+                "Created by the user".into(),
+                "before 1 Nov".into(),
+                1_800_000_000,
+                1,
+            )
+        );
     }
 
     #[tokio::test]

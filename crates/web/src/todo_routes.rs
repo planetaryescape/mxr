@@ -5,7 +5,10 @@
 use super::place_routes::parse_optional_account;
 use super::routes_v6::{dispatch, passthrough};
 use super::*;
-use mxr_protocol::{TodoCatchupDecisionData, TodoEditData, TodoStateActionData, TodoStateData};
+use mxr_protocol::{
+    TodoCatchupDecisionData, TodoEditData, TodoResolutionActionData, TodoStateActionData,
+    TodoStateData,
+};
 
 // Mirrors the protocol's serde default so an omitted limit behaves the same
 // over HTTP as over IPC.
@@ -135,6 +138,36 @@ async fn set_state(
         None,
         Request::SetTodoState {
             todo_ids: body.todo_ids,
+            action: body.action,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/todos/{todo_id}/resolution`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct TodoResolutionBody {
+    suggestion_id: String,
+    action: TodoResolutionActionData,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn resolve_suggestion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(todo_id): AxumPath<String>,
+    Json(body): Json<TodoResolutionBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::ResolveTodoSuggestion {
+            todo_id,
+            suggestion_id: body.suggestion_id,
             action: body.action,
             dry_run: body.dry_run,
         },
@@ -288,6 +321,7 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/todos", get(runway).post(create))
         .route("/todos/catchup", get(get_catchup).post(set_catchup))
         .route("/todos/state", post(set_state))
+        .route("/todos/{todo_id}/resolution", post(resolve_suggestion))
         .route("/todos/in/{state}", get(list_in_state))
         .route("/todos/{todo_id}", get(get_todo))
         .route("/todos/{todo_id}/schedule", post(schedule))

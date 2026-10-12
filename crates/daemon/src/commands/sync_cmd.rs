@@ -722,8 +722,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn global_sync_requires_current_protocol() {
-        for version in [4, 5, 6] {
+    fn global_sync_requires_the_current_protocol() {
+        for version in 4..IPC_PROTOCOL_VERSION {
             let error =
                 ensure_sync_all_protocol(version).expect_err("an older protocol cannot sync all");
             assert!(error.to_string().contains(&format!(

@@ -234,6 +234,17 @@ function Bands({
     },
     [nav],
   );
+  const openResolutionEmail = useCallback(
+    (todo: Todo, threadId: string, messageId: string) => {
+      setActivePane("reader");
+      void navigate({
+        to: "/todo/$threadId",
+        params: { threadId },
+        search: { mid: messageId, title: todo.title },
+      });
+    },
+    [navigate, setActivePane],
+  );
   const runPrimary = useCallback(
     (todo: Todo) => {
       const action = primaryAction(todo);
@@ -335,6 +346,7 @@ function Bands({
         onRestore={restore}
         onToggleSource={toggleSource}
         onOpenEmail={openEmail}
+        onOpenResolution={openResolutionEmail}
         hint={
           item === firstBar && runwayHint.hint ? (
             <AnchoredHint hint={runwayHint.hint} onDismiss={runwayHint.dismiss} />

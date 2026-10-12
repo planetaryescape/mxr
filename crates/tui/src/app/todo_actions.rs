@@ -24,6 +24,16 @@ impl App {
             Action::TodoSchedule => self.open_todo_prompt(false),
             Action::TodoEdit => self.open_todo_prompt(true),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
+            Action::TodoReviewResolution => self.review_selected_resolution(),
+            Action::TodoConfirmResolution => {
+                self.resolve_selected_suggestion(mxr_protocol::TodoResolutionActionData::Accept);
+            }
+            Action::TodoDismissResolution => {
+                self.resolve_selected_suggestion(mxr_protocol::TodoResolutionActionData::Dismiss);
+            }
+            Action::TodoUndoResolution => {
+                self.resolve_selected_suggestion(mxr_protocol::TodoResolutionActionData::Undo);
+            }
             Action::TodoOpenExpired => self.show_todo_panel(TodoPanel::Expired),
             Action::TodoOpenCatchup => self.show_todo_panel(TodoPanel::Catchup),
             Action::TodoShowRunway => self.show_todo_panel(TodoPanel::Runway),
@@ -154,8 +164,83 @@ impl App {
 
     fn open_selected_todo_email(&mut self) {
         if let Some(todo) = self.selected_todo().cloned() {
-            self.open_todo_email(&todo);
+            if let Some(resolution) = todo.resolution.as_ref() {
+                self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
+                    message_id: resolution.message_id.clone(),
+                    link: None,
+                });
+                self.status_message = Some("Opening the evidence email…".into());
+            } else {
+                self.open_todo_email(&todo);
+            }
         }
+    }
+
+    fn review_selected_resolution(&mut self) {
+        let Some(todo) = self.selected_todo() else {
+            return;
+        };
+        let Some(resolution) = todo.resolution.as_ref().filter(|r| r.status == "pending") else {
+            return;
+        };
+        self.mailbox.todo_page.pending_resolution = Some((
+            todo.id.clone(),
+            resolution.id.clone(),
+            mxr_protocol::TodoResolutionActionData::Preview,
+        ));
+        self.status_message = Some("Checking this exact email and to-do…".into());
+    }
+
+    fn resolve_selected_suggestion(&mut self, action: mxr_protocol::TodoResolutionActionData) {
+        let selected = self
+            .mailbox
+            .todo_page
+            .resolution_preview
+            .take()
+            .map(|(todo_id, suggestion_id, _)| (todo_id, suggestion_id))
+            .or_else(|| {
+                self.selected_todo().and_then(|todo| {
+                    todo.resolution
+                        .as_ref()
+                        .filter(|resolution| match action {
+                            mxr_protocol::TodoResolutionActionData::Undo => {
+                                resolution.status == "accepted"
+                            }
+                            mxr_protocol::TodoResolutionActionData::Dismiss => {
+                                resolution.status == "pending"
+                            }
+                            _ => false,
+                        })
+                        .map(|resolution| (todo.id.clone(), resolution.id.clone()))
+                })
+            });
+        let Some((todo_id, suggestion_id)) = selected else {
+            return;
+        };
+        self.queue_mutation(
+            Request::ResolveTodoSuggestion {
+                todo_id,
+                suggestion_id,
+                action,
+                dry_run: false,
+            },
+            MutationEffect::Todo("Resolution updated".into()),
+            "Updating…".into(),
+        );
+    }
+
+    pub(crate) fn show_resolution_preview(
+        &mut self,
+        todo_id: String,
+        suggestion_id: String,
+        preview: TodoChangeData,
+    ) {
+        if preview.changed.is_empty() {
+            self.status_message = Some(preview.summary);
+            return;
+        }
+        self.mailbox.todo_page.resolution_preview = Some((todo_id, suggestion_id, preview));
+        self.status_message = Some("Preview ready: Enter accept · x dismiss · Esc cancel".into());
     }
 
     fn open_todo_email(&mut self, todo: &TodoData) {
@@ -513,6 +598,18 @@ impl App {
                 _ => None,
             };
         }
+        if page.resolution_preview.is_some() {
+            return match key.code {
+                KeyCode::Enter | KeyCode::Char('y') => Some(Action::TodoConfirmResolution),
+                KeyCode::Char('x') => Some(Action::TodoDismissResolution),
+                KeyCode::Char('o') => Some(Action::TodoOpenEmail),
+                KeyCode::Esc => {
+                    self.mailbox.todo_page.resolution_preview = None;
+                    None
+                }
+                _ => None,
+            };
+        }
         let panel = page.panel;
         let hint = self.active_hint().is_some();
         let plain = key.modifiers == KeyModifiers::NONE;
@@ -527,12 +624,21 @@ impl App {
             (TodoPanel::Expired | TodoPanel::Catchup, KeyCode::Esc) => Some(Action::TodoShowRunway),
             (_, KeyCode::Char('o')) if plain => Some(Action::TodoOpenEmail),
             (TodoPanel::Runway, KeyCode::Enter) => Some(Action::TodoPrimary),
+            (TodoPanel::Runway, KeyCode::Char('v')) if plain => Some(Action::TodoReviewResolution),
             (TodoPanel::Runway, KeyCode::Char('e')) if plain => Some(Action::TodoDone),
             (TodoPanel::Runway, KeyCode::Char('Z')) if shifted => Some(Action::TodoSchedule),
             (TodoPanel::Runway, KeyCode::Char(',')) => Some(Action::TodoEdit),
             (TodoPanel::Runway, KeyCode::Char('X')) if shifted => Some(Action::TodoDismiss),
             (TodoPanel::Runway | TodoPanel::Catchup, KeyCode::Char('u')) if plain => {
-                Some(Action::UndoLastMutation)
+                if self
+                    .selected_todo()
+                    .and_then(|todo| todo.resolution.as_ref())
+                    .is_some_and(|r| r.status == "accepted")
+                {
+                    Some(Action::TodoUndoResolution)
+                } else {
+                    Some(Action::UndoLastMutation)
+                }
             }
             (TodoPanel::Runway, KeyCode::Char('E')) if shifted => Some(Action::TodoOpenExpired),
             (TodoPanel::Runway, KeyCode::Char('C')) if shifted => Some(Action::TodoOpenCatchup),

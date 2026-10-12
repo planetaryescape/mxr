@@ -152,6 +152,80 @@ fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
 }
 
 #[test]
+fn o_uses_the_task_source_when_its_resolution_is_not_visible() {
+    for status in ["dismissed", "undone"] {
+        let mut app = todo_app(true);
+        let task_source = app
+            .selected_todo()
+            .unwrap()
+            .source_message_id
+            .clone()
+            .unwrap();
+        let hidden_offer_source = mxr_core::id::MessageId::new();
+        let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+        row.resolution = Some(mxr_protocol::TodoResolutionData {
+            id: "resolution-1".into(),
+            message_id: hidden_offer_source,
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: chrono::Utc::now(),
+            quote: "Your council tax payment has been received.".into(),
+            quote_location: "body".into(),
+            source_method: "rule".into(),
+            action: "complete".into(),
+            proposed_due_at: None,
+            proposed_due_words: None,
+            status: status.into(),
+        });
+        app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+
+        press(&mut app, KeyCode::Char('o'));
+
+        assert_eq!(
+            app.mailbox.todo_page.pending_open.unwrap().message_id,
+            task_source,
+            "{status} evidence is hidden, so o must open the selected task's own source"
+        );
+    }
+}
+
+#[test]
+fn o_uses_evidence_source_only_while_offer_evidence_is_visible() {
+    for status in ["pending", "accepted"] {
+        let mut app = todo_app(true);
+        let task_source = app
+            .selected_todo()
+            .unwrap()
+            .source_message_id
+            .clone()
+            .unwrap();
+        let offer_source = mxr_core::id::MessageId::new();
+        let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+        row.resolution = Some(mxr_protocol::TodoResolutionData {
+            id: "resolution-1".into(),
+            message_id: offer_source.clone(),
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: chrono::Utc::now(),
+            quote: "Your council tax payment has been received.".into(),
+            quote_location: "body".into(),
+            source_method: "rule".into(),
+            action: "complete".into(),
+            proposed_due_at: None,
+            proposed_due_words: None,
+            status: status.into(),
+        });
+        app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+
+        press(&mut app, KeyCode::Char('o'));
+
+        assert_ne!(task_source, offer_source);
+        assert_eq!(
+            app.mailbox.todo_page.pending_open.unwrap().message_id,
+            offer_source
+        );
+    }
+}
+
+#[test]
 fn resolution_preview_is_discarded_after_selection_moves() {
     let mut app = todo_app(true);
     attach_resolution(&mut app, "pending");

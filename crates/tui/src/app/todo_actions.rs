@@ -164,7 +164,11 @@ impl App {
 
     fn open_selected_todo_email(&mut self) {
         if let Some(todo) = self.selected_todo().cloned() {
-            if let Some(resolution) = todo.resolution.as_ref() {
+            if let Some(resolution) = todo
+                .resolution
+                .as_ref()
+                .filter(|resolution| matches!(resolution.status.as_str(), "pending" | "accepted"))
+            {
                 self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
                     message_id: resolution.message_id.clone(),
                     link: None,

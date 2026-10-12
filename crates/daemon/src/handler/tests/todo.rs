@@ -725,17 +725,31 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     assert!(rows[0].resolution.is_none(), "amount alone is ambiguous");
     assert_eq!(rows[0].state, TodoStateData::Open);
 
+    let mut cancelled_payment = Mail::new(
+        ("Camden Council", "council.tax@camden.gov.uk"),
+        "Direct debit cancelled",
+        "Your council tax direct debit has been cancelled.",
+        now + Duration::hours(3),
+    );
+    cancelled_payment.auth = Some(CAMDEN_AUTH);
+    let cancelled_id = put(&fx, cancelled_payment).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&cancelled_id)).await;
+    let after_cancelled = runway(&fx, now + Duration::hours(3)).await;
+    let rows = coming_up(&after_cancelled);
+    assert_eq!(rows.len(), 1, "a cancelled debit does not resolve the bill");
+    assert!(rows[0].resolution.is_none());
+
     let mut identified_receipt = Mail::new(
         ("Camden Council", "council.tax@camden.gov.uk"),
         "Payment received",
         "Camden Council Tax payment received for £142.00.",
-        now + Duration::hours(3),
+        now + Duration::hours(4),
     );
     identified_receipt.auth = Some(CAMDEN_AUTH);
     let id = put(&fx, identified_receipt).await;
     todos::scan_messages(&fx.state, std::slice::from_ref(&id)).await;
 
-    let after_identified = runway(&fx, now + Duration::hours(3)).await;
+    let after_identified = runway(&fx, now + Duration::hours(4)).await;
     let rows = coming_up(&after_identified);
     assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
     let row = rows[0];
@@ -757,6 +771,66 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
         1,
         "receipts never create or close a task automatically"
     );
+}
+
+#[tokio::test]
+async fn a_cancellation_can_resolve_a_renewal_without_resolving_a_bill() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "permits@camden.gov.uk"),
+            "Parking permit renewal",
+            "Please renew your parking permit before the end of the month.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Renew parking permit".into(),
+            kind: Some("renewal".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+    let cancellation = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "permits@camden.gov.uk"),
+            "Parking permit status",
+            "Your parking permit has been cancelled as requested.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&cancellation)).await;
+
+    let ResponseData::Todo { todo } = request(&fx, Request::GetTodo { todo_id }).await else {
+        panic!()
+    };
+    let resolution = todo
+        .resolution
+        .expect("the cancelled renewal is reviewable");
+    assert_eq!(resolution.message_id, cancellation);
+    assert_eq!(
+        resolution.quote,
+        "Your parking permit has been cancelled as requested."
+    );
+    assert_eq!(resolution.quote_location, "body");
+    assert_eq!(resolution.action, "complete");
+    assert_eq!(resolution.status, "pending");
+    assert_eq!(todo.state, TodoStateData::Open);
 }
 
 #[tokio::test]

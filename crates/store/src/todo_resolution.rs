@@ -536,7 +536,8 @@ impl Store {
                 sqlx::query(
                     "UPDATE todos SET due_at = ?3, due_words = ?4, act_by_at = ?5,
                      surface_at = ?6, relevant_until = ?7, window_source = 'table',
-                     field_sources = ?8, user_edited = 1, updated_at = ?9
+                     field_sources = ?8, user_edited = 1, updated_at = ?9,
+                     surfaced_at = CASE WHEN surface_at IS ?6 THEN surfaced_at ELSE NULL END
                      WHERE id = ?1 AND account_id = ?2 AND state = 'open'",
                 )
                 .bind(todo_id)
@@ -637,8 +638,8 @@ impl Store {
         sqlx::query(
             "UPDATE todos SET state = ?3, done_at = ?4, expired_at = ?5,
              dismissed_at = ?6, due_at = ?7, due_words = ?8, act_by_at = ?9,
-             surface_at = ?10, relevant_until = ?11, window_source = ?12,
-             field_sources = ?13, user_edited = ?14, updated_at = ?15
+             surface_at = ?10, surfaced_at = ?11, relevant_until = ?12, window_source = ?13,
+             field_sources = ?14, user_edited = ?15, updated_at = ?16
              WHERE id = ?1 AND account_id = ?2",
         )
         .bind(todo_id)
@@ -651,6 +652,7 @@ impl Store {
         .bind(snapshot.due_words)
         .bind(snapshot.act_by_at.map(|at| at.timestamp()))
         .bind(snapshot.surface_at.map(|at| at.timestamp()))
+        .bind(snapshot.surfaced_at.map(|at| at.timestamp()))
         .bind(snapshot.relevant_until.map(|at| at.timestamp()))
         .bind(snapshot.window_source)
         .bind(snapshot.field_sources)
@@ -721,6 +723,8 @@ pub struct TodoResolutionSnapshot {
     pub due_words: Option<String>,
     pub act_by_at: Option<DateTime<Utc>>,
     pub surface_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub surfaced_at: Option<DateTime<Utc>>,
     pub relevant_until: Option<DateTime<Utc>>,
     pub window_source: Option<String>,
     pub field_sources: String,
@@ -739,6 +743,7 @@ fn snapshot_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TodoResolutionSnap
         due_words: row.try_get("due_words")?,
         act_by_at: crate::decode_optional_timestamp(row.try_get("act_by_at")?)?,
         surface_at: crate::decode_optional_timestamp(row.try_get("surface_at")?)?,
+        surfaced_at: crate::decode_optional_timestamp(row.try_get("surfaced_at")?)?,
         relevant_until: crate::decode_optional_timestamp(row.try_get("relevant_until")?)?,
         window_source: row.try_get("window_source")?,
         field_sources: row.try_get("field_sources")?,
@@ -883,6 +888,44 @@ mod tests {
                 })
                 .await
                 .unwrap()
+        }
+
+        async fn date_offer(
+            &self,
+            offer_id: &str,
+            surface_at: Option<DateTime<Utc>>,
+        ) -> TodoResolutionDates {
+            let source_date = self.task.updated_at + Duration::days(1);
+            let source = self.source(source_date).await;
+            let dates = TodoResolutionDates {
+                due_at: source_date + Duration::days(20),
+                due_words: "in 20 days".into(),
+                act_by_at: Some(source_date + Duration::days(18)),
+                surface_at,
+                relevant_until: Some(source_date + Duration::days(30)),
+                field_sources: self.task.field_sources.clone(),
+            };
+            self.store
+                .offer_todo_resolution(&NewTodoResolutionSuggestion {
+                    id: offer_id.into(),
+                    todo_id: self.task.id.clone(),
+                    account_id: self.account.clone(),
+                    source_message_id: source,
+                    source_thread_id: self.thread.clone(),
+                    source_date,
+                    source_quote: "Payment received".into(),
+                    quote_location: "subject".into(),
+                    source_method: "model".into(),
+                    action: TodoResolutionAction::ReviseDate,
+                    proposed_due_at: Some(dates.due_at),
+                    proposed_due_words: Some(dates.due_words.clone()),
+                    task_updated_at: self.task.updated_at,
+                    task_fingerprint: self.fingerprint.clone(),
+                    created_at: source_date,
+                })
+                .await
+                .unwrap();
+            dates
         }
     }
 
@@ -1032,6 +1075,123 @@ mod tests {
         assert_eq!(restored.state, TodoState::Open);
         assert_eq!(restored.due_at, fx.task.due_at);
         assert_eq!(restored.title, fx.task.title);
+    }
+
+    #[tokio::test]
+    async fn date_acceptance_preserves_or_resets_surface_claim_and_undo_restores_it() {
+        let unchanged = Fx::new().await;
+        let original_surface = unchanged.task.surface_at.unwrap();
+        let surfaced_at = original_surface + Duration::minutes(1);
+        assert!(unchanged
+            .store
+            .claim_surfaced_todos(surfaced_at)
+            .await
+            .unwrap()
+            .contains(&unchanged.task.id));
+        let seen_date = unchanged
+            .date_offer("offer_same_surface", Some(original_surface))
+            .await;
+        assert!(unchanged
+            .store
+            .accept_todo_resolution(
+                "offer_same_surface",
+                &unchanged.task.id,
+                &unchanged.account,
+                Some(&seen_date),
+                surfaced_at + Duration::minutes(1),
+            )
+            .await
+            .unwrap());
+        let accepted = unchanged
+            .store
+            .get_todo(&unchanged.task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            accepted.surfaced_at.map(|at| at.timestamp()),
+            Some(surfaced_at.timestamp())
+        );
+        assert!(unchanged
+            .store
+            .undo_todo_resolution(
+                "offer_same_surface",
+                &unchanged.task.id,
+                &unchanged.account,
+                surfaced_at + Duration::minutes(2),
+            )
+            .await
+            .unwrap());
+        let restored = unchanged
+            .store
+            .get_todo(&unchanged.task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            restored.surfaced_at.map(|at| at.timestamp()),
+            Some(surfaced_at.timestamp())
+        );
+
+        let changed = Fx::new().await;
+        let original_surface = changed.task.surface_at.unwrap();
+        let surfaced_at = original_surface + Duration::minutes(1);
+        assert!(changed
+            .store
+            .claim_surfaced_todos(surfaced_at)
+            .await
+            .unwrap()
+            .contains(&changed.task.id));
+        let revised_surface = original_surface + Duration::days(2);
+        let revised_date = changed
+            .date_offer("offer_new_surface", Some(revised_surface))
+            .await;
+        assert!(changed
+            .store
+            .accept_todo_resolution(
+                "offer_new_surface",
+                &changed.task.id,
+                &changed.account,
+                Some(&revised_date),
+                surfaced_at + Duration::minutes(1),
+            )
+            .await
+            .unwrap());
+        let accepted = changed
+            .store
+            .get_todo(&changed.task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            accepted.surface_at.map(|at| at.timestamp()),
+            Some(revised_surface.timestamp())
+        );
+        assert_eq!(accepted.surfaced_at, None);
+        assert!(changed
+            .store
+            .undo_todo_resolution(
+                "offer_new_surface",
+                &changed.task.id,
+                &changed.account,
+                surfaced_at + Duration::minutes(2),
+            )
+            .await
+            .unwrap());
+        let restored = changed
+            .store
+            .get_todo(&changed.task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            restored.surface_at.map(|at| at.timestamp()),
+            Some(original_surface.timestamp())
+        );
+        assert_eq!(
+            restored.surfaced_at.map(|at| at.timestamp()),
+            Some(surfaced_at.timestamp())
+        );
     }
 
     #[tokio::test]

@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "wall_seconds": 12.462854500001413,
+  "provider_acceptances": 4,
+  "binaries": {
+    "mxr": "ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624",
+    "mxr-mailmerge": "e2ef5347038f4a9c425d6107fad92194e1574eedcab522ae805d19881f22f509"
+  }
+}

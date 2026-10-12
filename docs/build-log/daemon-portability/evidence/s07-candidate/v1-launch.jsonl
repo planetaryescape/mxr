@@ -1,0 +1,13 @@
+{"network": "none", "provider": "fake", "status": "ok", "step": "configure_fake_account", "ts": "2026-10-12T09:39:04Z"}
+{"status": "ok", "step": "binary_invocation", "ts": "2026-10-12T09:39:07Z", "version": "mxr 0.6.90 (Mixer)"}
+{"daemon_pid": 1972, "status": "ok", "step": "daemon_autostart", "ts": "2026-10-12T09:39:07Z"}
+{"provider": "fake", "status": "ok", "step": "sync", "ts": "2026-10-12T09:39:08Z"}
+{"first_message_id": "01a12f7a-ecd5-7042-8476-0e004d512a45", "query": "deployment", "status": "ok", "step": "search", "ts": "2026-10-12T09:39:08Z"}
+{"message_id": "01a12f7a-ecd5-7042-8476-0e004d512a45", "status": "ok", "step": "read_message", "thread_id": "", "ts": "2026-10-12T09:39:08Z"}
+{"draft_id": "01a12f7a-f027-71cc-88ec-814369fbc77e", "status": "ok", "step": "draft_saved", "subject": "mxr-v1-launch-proof-1791797948426002000", "ts": "2026-10-12T09:39:08Z"}
+{"draft_id": "01a12f7a-f027-71cc-88ec-814369fbc77e", "dry_run": true, "status": "ok", "step": "send_preview", "ts": "2026-10-12T09:39:08Z"}
+{"allowed_draft": true, "allowed_read": true, "blocked_destructive": true, "blocked_send": true, "daemon_policy_gate": true, "source": "agent", "status": "ok", "step": "agent_ipc_policy", "ts": "2026-10-12T09:39:08Z"}
+{"approved_send": true, "blocked_without_confirm": true, "read_message": true, "required_tools_present": true, "send_identity": {"expected_revision": 1, "operation_id": "01a12f7a-f027-71cc-88ec-814369fbc77e:1"}, "status": "ok", "step": "mcp_tools_and_gated_send", "tool_count": 65, "ts": "2026-10-12T09:39:09Z"}
+{"action": null, "dry_run": null, "message_count": 0, "status": "ok", "step": "mutation_preview", "ts": "2026-10-12T09:39:09Z"}
+{"action": "archive", "message_id": "01a12f7a-ecd5-7042-8476-0e004d512a45", "status": "ok", "step": "mutation_approved", "ts": "2026-10-12T09:39:09Z"}
+{"artifact": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/v1-c1.jsonl", "status": "ok", "step": "proof_complete", "ts": "2026-10-12T09:39:09Z"}

@@ -15,6 +15,21 @@ pub async fn run(
     action: Option<AccountsAction>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    if matches!(
+        action,
+        Some(
+            AccountsAction::Add { .. }
+                | AccountsAction::Test { .. }
+                | AccountsAction::Reauth { .. }
+                | AccountsAction::Disable { .. }
+                | AccountsAction::Remove { .. }
+        )
+    ) && !matches!(
+        crate::server::resolve_daemon_addr()?,
+        mxr_transport::TransportAddr::Unix(_)
+    ) {
+        anyhow::bail!("Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host. `accounts repair` remains explicit local maintenance.");
+    }
     match action {
         None => list_accounts(format).await?,
         Some(AccountsAction::Add {

@@ -8,7 +8,7 @@ use mxr_core::MxrError;
 use mxr_protocol::{
     AccountSummaryData, ReplyContext, Request, Response, ResponseData, SignatureContextData,
 };
-use std::path::Path;
+
 use tokio::sync::mpsc;
 
 /// Fetch a reply context via the shared IPC worker. Used by the cold
@@ -34,12 +34,12 @@ pub(crate) async fn fetch_reply_context(
 /// shared IPC worker. Mirrors `ipc_call_dedicated`, which the rest of
 /// the codebase uses for slow LLM work for the same reason.
 pub(crate) async fn fetch_reply_context_dedicated(
-    socket_path: &Path,
+    session: &crate::client::DaemonSession,
     message_id: MessageId,
     reply_all: bool,
 ) -> Result<ReplyContext, MxrError> {
     let resp = ipc_call_dedicated(
-        socket_path,
+        session,
         Request::PrepareReply {
             message_id,
             reply_all,

@@ -29,6 +29,8 @@
 //! # }
 //! ```
 
+mod selected_daemon;
+pub use selected_daemon::SelectedDaemonTarget;
 mod archive;
 pub use archive::ArchiveJournal;
 mod attachment_transfer;
@@ -47,9 +49,8 @@ use mxr_protocol::{
 use mxr_transport::{BoxedIo, Connector, TransportError, UnixConnector};
 use tokio_util::codec::Framed;
 
-// Re-exported so unix-only clients (TUI, web bridge, MCP) — which already depend
-// on this crate — can resolve `MXR_DAEMON_ADDR` through the one shared resolver
-// without taking a direct `mxr-transport` dependency.
+// Re-exported so consumers can select a daemon without taking a direct
+// mxr-transport dependency. The web bridge retains its Unix-only resolver.
 pub use mxr_transport::TransportAddr;
 
 /// Whether a client may start a local daemon when its selected Unix socket is
@@ -212,6 +213,7 @@ pub struct IpcConnection {
     source: ClientKind,
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
+    selected_remote: bool,
 }
 
 impl IpcConnection {
@@ -295,6 +297,7 @@ impl IpcConnection {
             source,
             default_timeout: None,
             attachment_transfer_supported: None,
+            selected_remote: false,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate
         // in-band as the FIRST request on the connection. The byte-stream seam
@@ -392,6 +395,11 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        if self.selected_remote && selected_daemon::requires_local_account_setup(&request) {
+            return Err(ClientError::Io(std::io::Error::other(
+                "Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host",
+            )));
+        }
         if request.requires_workspace_owner() && expected_workspace.is_none() {
             return Err(ClientError::Daemon {
                 message: "This private command has no original workspace owner. Keep the work and explicitly reopen/review it before continuing.".into(),

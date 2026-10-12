@@ -442,10 +442,24 @@ fn run_send(args: SendArgs) -> anyhow::Result<()> {
     let mut failed = 0usize;
 
     for (hash, draft_id, _) in targets {
-        match send::dispatch_record(&client, &mut manifest, &args.state_dir, &hash, resolved_at.as_deref(), args.retry_failed)? {
+        match send::dispatch_record(
+            &client,
+            &mut manifest,
+            &args.state_dir,
+            &hash,
+            resolved_at.as_deref(),
+            args.retry_failed,
+        )? {
             RecordStatus::Sent | RecordStatus::Scheduled => completed += 1,
             RecordStatus::Failed => failed += 1,
-            RecordStatus::Uncertain | RecordStatus::ScheduleUncertain => eprintln!("Outcome needs checking for draft {draft_id}; use mxr send-outcome 'draft:{draft_id}' --account {}. Do not resend or reschedule.",manifest.account),
+            RecordStatus::Uncertain | RecordStatus::ScheduleUncertain => {
+                let review = manifest
+                    .records
+                    .iter()
+                    .find(|record| record.record_hash == hash)
+                    .and_then(|record| record.review.as_ref());
+                eprintln!("{}", outcome_recovery_guidance(&draft_id, review));
+            }
             RecordStatus::Drafted => {}
         }
     }
@@ -471,6 +485,81 @@ fn run_send(args: SendArgs) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn outcome_recovery_guidance(draft_id: &str, review: Option<&manifest::SendReview>) -> String {
+    fn quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+    let complete = review.and_then(|review| {
+        let owner = review.expected_workspace.as_ref()?;
+        (!review.account_id.is_empty()
+            && !review.operation_id.is_empty()
+            && !owner.workspace_id.is_empty()
+            && !owner.recovery_generation.is_empty())
+        .then_some((review, owner))
+    });
+    match complete {
+        Some((review, owner)) => {
+            let owner_json = serde_json::json!({"workspace_id": owner.workspace_id, "recovery_generation": owner.recovery_generation}).to_string();
+            format!("Outcome needs checking for draft {draft_id}. Do not resend or reschedule.\nCheck with:\nmxr send-outcome {} --account {} --expected-workspace {}", quote(&review.operation_id), quote(&review.account_id), quote(&owner_json))
+        }
+        None => format!("Outcome needs checking for draft {draft_id}; inspect mxr-mailmerge status <campaign> --json for the affected record's review.operation_id, review.account_id and original expected_workspace. This legacy record has no complete original reviewed identity; do not infer it from the current daemon, resend or reschedule."),
+    }
+}
+
+#[cfg(test)]
+mod recovery_guidance_tests {
+    use super::*;
+    #[test]
+    fn retained_owner_is_shell_quoted_and_legacy_owner_is_never_inferred() {
+        let owner = manifest::WorkspaceOwner {
+            workspace_id: "workspace'one".into(),
+            recovery_generation: "original".into(),
+        };
+        let mut review = manifest::SendReview {
+            expected_workspace: Some(owner.clone()),
+            account_id: "account'one".into(),
+            expected_revision: 7,
+            operation_id: "draft:original:mailmerge-retry:2".into(),
+            attempt: 2,
+            scheduled_at: None,
+        };
+        let text = outcome_recovery_guidance("draft-one", Some(&review));
+        assert!(text.contains("--account 'account'\"'\"'one'"));
+        assert!(text.contains("'draft:original:mailmerge-retry:2'"));
+        let command = text.lines().last().expect("standalone recovery command");
+        let output = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                &format!("mxr() {{ printf '%s\\n' \"$@\"; }}; {command}"),
+            ])
+            .output()
+            .expect("shell fixture");
+        assert!(output.status.success());
+        let arguments = String::from_utf8(output.stdout).expect("UTF-8 arguments");
+        let arguments: Vec<_> = arguments.lines().collect();
+        assert_eq!(arguments[0], "send-outcome");
+        assert_eq!(arguments[1], review.operation_id);
+        let account_index = arguments
+            .iter()
+            .position(|argument| *argument == "--account")
+            .expect("retained account argument");
+        assert_eq!(arguments[account_index + 1], review.account_id);
+        let owner_index = arguments
+            .iter()
+            .position(|argument| *argument == "--expected-workspace")
+            .expect("original owner argument");
+        let parsed: manifest::WorkspaceOwner = serde_json::from_str(arguments[owner_index + 1])
+            .expect("parseable shell-quoted owner without trailing punctuation");
+        assert_eq!(parsed, owner);
+        review.expected_workspace = None;
+        let legacy = outcome_recovery_guidance("old", Some(&review));
+        assert!(legacy.contains("status <campaign> --json"));
+        assert!(legacy.contains("no complete original reviewed identity"));
+        assert!(!outcome_recovery_guidance("old", None).contains("mxr send-outcome"));
+        assert!(!legacy.contains("mxr send-outcome"));
+    }
 }
 
 fn run_status(args: StatusArgs) -> anyhow::Result<()> {

@@ -589,9 +589,8 @@ pub(crate) fn resolve_daemon_addr() -> anyhow::Result<mxr_transport::TransportAd
 }
 
 /// Resolve the daemon socket for a Unix-only client surface (the standalone
-/// `mxr web` bridge). Like the TUI and MCP, it rejects `tcp://` / `cmd://` with
-/// a clear message rather than silently dialing the default socket — support
-/// for those schemes can follow demand.
+/// `mxr web` bridge). The bridge stays beside its daemon and rejects
+/// `tcp://` / `cmd://` instead of dialing an unrelated default socket.
 pub(crate) fn resolve_daemon_socket_unix_only() -> anyhow::Result<PathBuf> {
     match resolve_daemon_addr()? {
         mxr_transport::TransportAddr::Unix(path) => Ok(path),
@@ -610,16 +609,11 @@ pub(crate) fn resolve_daemon_socket_unix_only() -> anyhow::Result<PathBuf> {
 /// `MXR_DAEMON_TOKEN` > token file); `cmd://` spawns the command and pipes its
 /// stdio (SSH / container bridges). Token/cmd transports do not autostart a
 /// local daemon.
-pub(crate) fn build_cli_connector() -> anyhow::Result<Box<dyn Connector>> {
-    Ok(match resolve_daemon_addr()? {
-        mxr_transport::TransportAddr::Unix(path) => Box::new(UnixConnector::new(path)),
-        mxr_transport::TransportAddr::Tcp(addr) => {
-            let token = mxr_config::resolve_daemon_token(false)
-                .map_err(|error| anyhow::anyhow!("could not read the daemon token: {error}"))?;
-            Box::new(mxr_transport::TcpConnector::new(addr, token))
-        }
-        mxr_transport::TransportAddr::Cmd(argv) => Box::new(mxr_transport::CmdConnector::new(argv)),
+pub(crate) fn selected_daemon_target() -> anyhow::Result<mxr_client::SelectedDaemonTarget> {
+    mxr_client::SelectedDaemonTarget::resolve(AppState::socket_path(), || {
+        mxr_config::resolve_daemon_token(false).map_err(std::io::Error::other)
     })
+    .map_err(anyhow::Error::new)
 }
 
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
@@ -725,6 +719,14 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
+    // Remote negotiation is performed on the TUI's retained target; never probe
+    // the default local socket on behalf of a remote selection.
+    if !matches!(
+        resolve_daemon_addr()?,
+        mxr_transport::TransportAddr::Unix(_)
+    ) {
+        return Ok(());
+    }
     let sock_path = resolve_daemon_socket()?;
     let snapshot =
         match fetch_daemon_status_snapshot_from_path(&sock_path, STATUS_REQUEST_TIMEOUT).await {

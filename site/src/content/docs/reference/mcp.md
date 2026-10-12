@@ -4,7 +4,7 @@ description: Run mxr as a local Model Context Protocol server.
 ---
 
 mxr ships a first-party MCP server for agents that support stdio MCP tools.
-The server does not talk to Gmail or IMAP directly. Every tool calls the local
+The server does not talk to Gmail or IMAP directly. Every tool calls the selected
 mxr daemon over IPC with source `mcp`, so daemon profiles, account allowlists,
 send gates, destructive gates, activity origins, and provider adapters stay in
 one place.
@@ -17,8 +17,17 @@ Configure your MCP client to run:
 mxr mcp serve
 ```
 
-The command speaks MCP over stdin/stdout. It connects to the active mxr daemon
-socket and does not start or replace daemon processes. For a supervised daemon,
+The command speaks MCP over stdin/stdout. It retains the selected daemon for every tool call and does not start or replace daemon processes.
+
+```bash
+MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
+```
+
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 11; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+
+Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
+
+ For a supervised daemon,
 the MCP client and the `mxr` CLI both connect to the service-owned process. If
 the service is unavailable, MCP reports the IPC connection error.
 

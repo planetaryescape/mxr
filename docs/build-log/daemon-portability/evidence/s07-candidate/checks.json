@@ -1,0 +1,549 @@
+{
+  "scoped-tests-final": {
+    "passed_tests": 1164,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "48",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "5.26s"
+      },
+      {
+        "result": "ok",
+        "passed": "102",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "2.56s"
+      },
+      {
+        "result": "ok",
+        "passed": "24",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.03s"
+      },
+      {
+        "result": "ok",
+        "passed": "0",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "910",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "6.05s"
+      },
+      {
+        "result": "ok",
+        "passed": "27",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "12",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.05s"
+      },
+      {
+        "result": "ok",
+        "passed": "7",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.04s"
+      },
+      {
+        "result": "ok",
+        "passed": "5",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.01s"
+      },
+      {
+        "result": "ok",
+        "passed": "3",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.01s"
+      },
+      {
+        "result": "ok",
+        "passed": "21",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.06s"
+      }
+    ],
+    "finished_cargo": [
+      "1m 21s"
+    ]
+  },
+  "pre-pr-gate": {
+    "passed_tests": 0,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [],
+    "finished_cargo": [
+      "37.77s"
+    ]
+  },
+  "root-gate-final-build": {
+    "passed_tests": 48,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "48",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "5.28s"
+      }
+    ],
+    "finished_cargo": [
+      "1m 36s",
+      "23.23s",
+      "20.94s"
+    ]
+  },
+  "daemon-tests": {
+    "passed_tests": 1375,
+    "ignored_tests": 7,
+    "failed_tests": 1,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "1318",
+        "failed": "0",
+        "ignored": "6",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "190.14s"
+      },
+      {
+        "result": "ok",
+        "passed": "0",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "4.96s"
+      },
+      {
+        "result": "ok",
+        "passed": "3",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.25s"
+      },
+      {
+        "result": "ok",
+        "passed": "5",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "12.63s"
+      },
+      {
+        "result": "ok",
+        "passed": "2",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "6.05s"
+      },
+      {
+        "result": "ok",
+        "passed": "8",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "55.96s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "24.44s"
+      },
+      {
+        "result": "ok",
+        "passed": "5",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "25.99s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "11.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "17.56s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "2.23s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "1",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "25.22s"
+      },
+      {
+        "result": "ok",
+        "passed": "6",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "1.04s"
+      },
+      {
+        "result": "ok",
+        "passed": "2",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "12.41s"
+      },
+      {
+        "result": "FAILED",
+        "passed": "3",
+        "failed": "1",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.36s"
+      }
+    ],
+    "finished_cargo": [
+      "4m 17s"
+    ],
+    "note": "First full root daemon run failed only existing redacted command-phrase assertion. The phrase was restored. final-c2-checks reran selected-daemon diagnostics and the remaining stdio/timing targets, all passing; preceding library/integration tests were preserved."
+  },
+  "reconnect-regression": {
+    "passed_tests": 1,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "911",
+        "execution": "0.03s"
+      }
+    ],
+    "finished_cargo": [
+      "2m 24s"
+    ]
+  },
+  "final-c2-checks": {
+    "passed_tests": 1175,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "48",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "5.26s"
+      },
+      {
+        "result": "ok",
+        "passed": "102",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "3.21s"
+      },
+      {
+        "result": "ok",
+        "passed": "24",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.06s"
+      },
+      {
+        "result": "ok",
+        "passed": "0",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "912",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "11.70s"
+      },
+      {
+        "result": "ok",
+        "passed": "27",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "12",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.08s"
+      },
+      {
+        "result": "ok",
+        "passed": "7",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.04s"
+      },
+      {
+        "result": "ok",
+        "passed": "5",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.01s"
+      },
+      {
+        "result": "ok",
+        "passed": "3",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.00s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.01s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.03s"
+      },
+      {
+        "result": "ok",
+        "passed": "21",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.17s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "4.43s"
+      },
+      {
+        "result": "ok",
+        "passed": "1",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "0.36s"
+      },
+      {
+        "result": "ok",
+        "passed": "4",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "9.80s"
+      }
+    ],
+    "finished_cargo": [
+      "39.56s",
+      "46.23s",
+      "9.75s",
+      "27.47s",
+      "50.81s"
+    ]
+  },
+  "mailmerge-final2": {
+    "passed_tests": 102,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "102",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "0",
+        "execution": "2.69s"
+      }
+    ],
+    "finished_cargo": [
+      "2m 54s",
+      "2.21s",
+      "2.02s"
+    ]
+  },
+  "web-owner-tests": {
+    "passed_tests": 3,
+    "ignored_tests": 0,
+    "failed_tests": 0,
+    "test_summaries": [
+      {
+        "result": "ok",
+        "passed": "3",
+        "failed": "0",
+        "ignored": "0",
+        "measured": "0",
+        "filtered": "129",
+        "execution": "1.56s"
+      }
+    ],
+    "finished_cargo": [
+      "3m 34s"
+    ]
+  }
+}

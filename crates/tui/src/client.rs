@@ -7,6 +7,12 @@ use std::path::Path;
 use tokio::sync::mpsc;
 use tracing::warn;
 
+#[derive(Clone)]
+pub(crate) struct DaemonSession {
+    pub(crate) target: mxr_client::SelectedDaemonTarget,
+    pub(crate) owner: Option<mxr_protocol::ArchiveWorkspaceData>,
+}
+
 pub struct Client {
     conn: IpcConnection,
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
@@ -37,13 +43,13 @@ impl Client {
     }
 
     pub async fn connect(socket_path: &Path) -> std::io::Result<Self> {
-        // Surface the raw `io::Error` so the worker's autostart classifier
-        // (`should_autostart_daemon`) can inspect its `ErrorKind`.
-        let connection = if mxr_client::daemon_autostart_enabled() {
-            IpcConnection::connect(socket_path, ClientKind::Tui).await
-        } else {
-            IpcConnection::connect_supervised(socket_path, ClientKind::Tui).await
-        };
+        Self::connect_target(&socket_path.to_path_buf().into()).await
+    }
+
+    pub(crate) async fn connect_target(
+        target: &mxr_client::SelectedDaemonTarget,
+    ) -> std::io::Result<Self> {
+        let connection = target.connect(ClientKind::Tui).await;
         let conn = connection.map_err(|error| match error {
             ClientError::Connect { source, .. } => source,
             other => std::io::Error::other(other.to_string()),

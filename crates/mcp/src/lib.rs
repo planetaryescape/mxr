@@ -63,6 +63,48 @@ impl DaemonRequester for UnixDaemonRequester {
     }
 }
 
+/// One selected target shared by every MCP call and ownership query.
+#[derive(Debug, Clone)]
+pub struct SelectedDaemonRequester {
+    target: mxr_client::SelectedDaemonTarget,
+}
+impl SelectedDaemonRequester {
+    pub fn new(target: mxr_client::SelectedDaemonTarget) -> Self {
+        Self { target }
+    }
+}
+#[async_trait]
+impl DaemonRequester for SelectedDaemonRequester {
+    async fn request(&self, request: Request) -> anyhow::Result<Response> {
+        self.exchange(request, None).await
+    }
+    async fn request_owned(
+        &self,
+        request: Request,
+        owner: mxr_protocol::ArchiveWorkspaceData,
+    ) -> anyhow::Result<Response> {
+        self.exchange(request, Some(owner)).await
+    }
+}
+impl SelectedDaemonRequester {
+    async fn exchange(
+        &self,
+        request: Request,
+        owner: Option<mxr_protocol::ArchiveWorkspaceData>,
+    ) -> anyhow::Result<Response> {
+        let mut connection = self.target.connect(ClientKind::Mcp).await?;
+        connection
+            .request_response_owned(
+                request,
+                owner.as_ref(),
+                |_| {},
+                Some(std::time::Duration::from_secs(60)),
+            )
+            .await
+            .map_err(anyhow::Error::new)
+    }
+}
+
 async fn request_over_ipc(
     socket_path: &Path,
     request: Request,
@@ -1780,19 +1822,13 @@ impl MxrMcpServer {
 }
 
 pub async fn serve_stdio() -> anyhow::Result<()> {
-    let socket = default_socket_path()?;
-    let server = MxrMcpServer::new(UnixDaemonRequester::new(socket));
+    let target = mxr_client::SelectedDaemonTarget::resolve(mxr_config::socket_path(), || {
+        mxr_config::resolve_daemon_token(false).map_err(std::io::Error::other)
+    })?;
+    let server = MxrMcpServer::new(SelectedDaemonRequester::new(target));
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())
-}
-
-fn default_socket_path() -> anyhow::Result<std::path::PathBuf> {
-    // Route through the shared resolver so the MCP server agrees with the CLI on
-    // the socket (honors MXR_DAEMON_ADDR=unix://<path>). tcp:// / cmd:// are
-    // CLI-only today and surface a clear error here.
-    mxr_client::resolve_unix_socket(mxr_config::socket_path())
-        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 fn response_to_json(response: Response) -> Result<Value, ErrorData> {

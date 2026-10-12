@@ -36,3 +36,6 @@ pub mod ui;
 
 pub(crate) use async_result::AsyncResult;
 pub use runner::run;
+
+#[cfg(test)]
+mod selected_daemon_tests;

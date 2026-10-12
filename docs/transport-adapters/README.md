@@ -1,5 +1,7 @@
 # Transport Adapters — Implementation Plan
 
+Current client boundary: CLI, native TUI and stdio MCP support selected `unix://`, authenticated loopback `tcp://` and `cmd://` daemon connections. Remote setup requires exact IPC protocol 11, permits package/build skew, and never uses a local fallback. The web bridge stays beside its daemon on Unix. Account provisioning through remote selections remains unsupported. See [the current transport contract](../blueprint/20-transports.md); dated entries below record the earlier rollout.
+
 Goal: make the daemon's client transport pluggable — Unix socket today, TCP/stdio/community transports tomorrow — without destabilizing the protocol, the daemon, or the clients.
 
 Research and rationale: [00-discovery.md](00-discovery.md). Design in one line: **freeze the protocol, abstract the byte stream, keep HTTP as a gateway, community transports out-of-process.**

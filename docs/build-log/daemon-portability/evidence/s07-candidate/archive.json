@@ -1,0 +1,115 @@
+{
+  "source": "b7637cb6+S07-runtime-78fb1723",
+  "binary": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/archive-c1/mxr",
+  "binary_sha256": "ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624",
+  "runtime": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/archive-c1",
+  "elapsed_seconds": 12.535655667001265,
+  "cases": [
+    {
+      "name": "json_list_and_explicit_submission_id",
+      "passed": true
+    },
+    {
+      "name": "json_list_continues_after_refused_receipt_without_dispatch",
+      "passed": true
+    },
+    {
+      "name": "completed_archive_history_once_after_concurrent_replay_and_restart",
+      "passed": true
+    },
+    {
+      "name": "lost_ack_concurrent_repeat_changed_payload_restart",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12f7b-efcb-743b-9180-ebe3d51a15c2",
+        "caller_id": "01a12f7b-efba-760f-9259-a31f56a2976f",
+        "workspace": {
+          "workspace_id": "01a12f7b-ef92-7057-847d-1b1ad1743986",
+          "recovery_generation": "01a12f7b-ef92-7057-847d-1b1bcde92cac"
+        }
+      },
+      "accepted": 2
+    },
+    {
+      "name": "workspace_and_generation_refusal",
+      "passed": true
+    },
+    {
+      "name": "partial_batch_with_proved_nonacceptance",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12f7c-085e-708b-8fb0-682b37b65e8e",
+        "caller_id": "01a12f7b-efba-760f-9259-a31f56a2976f",
+        "workspace": {
+          "workspace_id": "01a12f7b-ef92-7057-847d-1b1ad1743986",
+          "recovery_generation": "01a12f7b-ef92-7057-847d-1b1bcde92cac"
+        }
+      }
+    },
+    {
+      "name": "provider_acceptance_response_loss_stays_unknown",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12f7c-0964-77e6-9146-84645f32a1ba",
+        "caller_id": "01a12f7b-efba-760f-9259-a31f56a2976f",
+        "workspace": {
+          "workspace_id": "01a12f7b-ef92-7057-847d-1b1ad1743986",
+          "recovery_generation": "01a12f7b-ef92-7057-847d-1b1bcde92cac"
+        }
+      }
+    },
+    {
+      "name": "crash_query_is_read_only_and_same_id_resumes_only_pending",
+      "passed": true,
+      "operation": {
+        "operation_id": "01a12f7c-0a00-77fc-be2b-2b1e98c693eb",
+        "caller_id": "01a12f7b-efba-760f-9259-a31f56a2976f",
+        "workspace": {
+          "workspace_id": "01a12f7b-ef92-7057-847d-1b1ad1743986",
+          "recovery_generation": "01a12f7b-ef92-7057-847d-1b1bcde92cac"
+        }
+      }
+    },
+    {
+      "name": "stale_provider_binding_refused_before_dispatch",
+      "passed": true
+    },
+    {
+      "name": "failed_durable_acceptance_prevents_provider_call",
+      "passed": true
+    },
+    {
+      "name": "failed_receipt_after_acceptance_never_repeats_effect",
+      "passed": true
+    },
+    {
+      "name": "provider_success_survives_failed_local_reconciliation_without_repeat",
+      "passed": true
+    },
+    {
+      "name": "client_retention_failure_prevents_effect",
+      "passed": true
+    },
+    {
+      "name": "unsupported_output_refused_before_effect",
+      "passed": true
+    },
+    {
+      "name": "synchronous_known_rejection_fails_with_retained_json_receipt",
+      "passed": true
+    },
+    {
+      "name": "synchronous_unknown_fails_but_read_only_query_succeeds",
+      "passed": true
+    },
+    {
+      "name": "retained_operation_count",
+      "passed": true,
+      "count": 11
+    }
+  ],
+  "owned_daemon_stopped": true,
+  "request_counts": {
+    "record_count": 111
+  }
+}

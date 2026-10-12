@@ -1,0 +1,61 @@
+{
+  "source": "b7637cb6+frozen runtime78fb1723",
+  "client_sha256": "ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624",
+  "daemon_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "daemon_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "pty_sessions": [
+    46684,
+    21201
+  ],
+  "pty_exits": [
+    0,
+    0
+  ],
+  "client_accounts": 0,
+  "direct_daemon_files_denied": true,
+  "owner_swap": {
+    "B_unchanged": true,
+    "private_editor_exact": true,
+    "returnA_save": true
+  },
+  "saved_draft": {
+    "attachment_bytes": 110336,
+    "attachment_sha256": "7d935aae7b9645077b695b648a5e6b6f059e1e0c899438d9ba55392764e32e78",
+    "original_deleted": true,
+    "restart_retained_exact": true,
+    "native_reopen_managed_token": true,
+    "not_sent": true
+  },
+  "fresh_reply_send": {
+    "acceptances": 1,
+    "accepted_outcomes": 1,
+    "attachment_bytes": 43008,
+    "attachment_sha256": "821dd707102818959e7225d235724f0082d51eaab75777d6961f5644e8564af2",
+    "native_safety_preview": true,
+    "native_outcome_after_client_restart": "accepted"
+  },
+  "native_download": {
+    "bytes": 23,
+    "sha256": "508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d",
+    "equals_daemon_source": true,
+    "client_direct_daemon_files_denied": true
+  },
+  "native_open": {
+    "bytes": 23,
+    "sha256": "508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d",
+    "limitation": "synthetic 23-byte PDF payload; verifies client-local transfer/opener invocation, not PDF rendering"
+  },
+  "native_archive_preview": {
+    "submitted": false
+  },
+  "blockers": [
+    "Native request-path reconnect replaces connection without Connected transition: sticky daemon modal after successful recovery. Worker fixing and adding real I/O + view-refresh regression.",
+    "Native printed outcome recovery command omits --expected-workspace. Worker correcting original-owner guidance."
+  ],
+  "fixture_limits": [
+    "Mailbox seeded before fixture; provider sync disabled thereafter to avoid fake provider in-memory server draft loss on restart; fake sending retained.",
+    "Saved-draft native editor updates only; send proof uses a separate fresh native reply.",
+    "23-byte synthetic PDF tests transfer/opener success, not PDF rendering."
+  ],
+  "all_roles_clean": true
+}

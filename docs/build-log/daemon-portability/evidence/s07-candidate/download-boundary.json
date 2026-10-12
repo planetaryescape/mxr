@@ -1,0 +1,36 @@
+{
+  "source": "b7637cb6+S07-runtime-78fb1723",
+  "binary": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/frozen-c1/mxr",
+  "binary_sha256": "sha256:ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624",
+  "daemon_binary": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/published-v0.6.89-release/installer-bin/mxr",
+  "daemon_binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "legacy": false,
+  "expect_unsupported": false,
+  "cases": {
+    "daemon_file_unreadable": true,
+    "cmd_connector_reaches_owned_daemon": true,
+    "exact_download_without_daemon_file_access": true,
+    "existing_destination_preserved": true,
+    "no_local_fallback_daemon_or_store": true
+  },
+  "owned_pid": 5133,
+  "fixture": {
+    "message_id": "01a12f7e-6fad-7e20-b01b-421a399f76e5",
+    "attachment_id": "01a12f7e-6fad-7e20-b01b-42294f56d6ec",
+    "bytes": 1188000,
+    "sha256": "sha256:5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16",
+    "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/download-boundary-c1/daemon-data/transfer-fixture.bin",
+    "seeding": "Known cached bytes set while daemon stopped; provider fixture remains unchanged."
+  },
+  "denial": {
+    "exit": 1,
+    "stdout_bytes": 0,
+    "stderr": "cat: /Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/download-boundary-c1/daemon-data/transfer-fixture.bin: Operation not permitted\n"
+  },
+  "passed": true,
+  "owned_daemon_stopped": true,
+  "socket_exists_after_shutdown": false,
+  "request_counts": {
+    "record_count": 6
+  }
+}

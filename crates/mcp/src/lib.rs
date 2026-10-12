@@ -1561,7 +1561,7 @@ impl MxrMcpServer {
             ));
         }
         self.daemon_json(Request::SendStoredDraft {
-            managed_attachments_reviewed: true,
+            managed_attachments_reviewed: input.managed_attachments_reviewed,
             send_identity: Some(mxr_core::SendIdentity {
                 operation_id: input.operation_id,
                 expected_revision: input.expected_revision,
@@ -2078,6 +2078,9 @@ pub struct SendOutcomeInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SendDraftInput {
+    /// Set only after reviewing the managed attachment metadata returned by get_draft.
+    #[serde(default)]
+    pub managed_attachments_reviewed: bool,
     pub operation_id: String,
     pub expected_revision: i64,
     pub draft_id: String,
@@ -2575,10 +2578,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn draft_attachment_send_review_marker_is_explicit() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        for reviewed in [None, Some(true)] {
+            let mut input = json!({"operation_id":"review-op", "expected_revision":1,
+                "draft_id":DraftId::new(), "confirm":true});
+            if let Some(reviewed) = reviewed {
+                input["managed_attachments_reviewed"] = json!(reviewed);
+            }
+            server
+                .send_draft(Parameters(serde_json::from_value(input).expect("input")))
+                .await
+                .expect("dispatch");
+        }
+        let requests = requester.requests.lock().expect("requests");
+        assert!(matches!(
+            &requests[0],
+            Request::SendStoredDraft {
+                managed_attachments_reviewed: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &requests[1],
+            Request::SendStoredDraft {
+                managed_attachments_reviewed: true,
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
     async fn send_draft_blocks_without_confirmation() {
         let server = MxrMcpServer::new(FakeRequester::default());
         let result = server
             .send_draft(Parameters(SendDraftInput {
+                managed_attachments_reviewed: false,
                 operation_id: "test-send".into(),
                 expected_revision: 1,
                 draft_id: DraftId::new().as_str(),

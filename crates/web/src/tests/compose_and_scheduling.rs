@@ -1247,3 +1247,75 @@ async fn stale_shared_path_send_cannot_send_another_editors_message() {
     );
     remove_compose_file(Path::new(&path)).await.unwrap();
 }
+
+#[tokio::test]
+async fn draft_attachment_generic_send_routes_preserve_explicit_review_marker() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let recorded = seen.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::SendStoredDraft { .. } | Request::ScheduleSend { .. } => {
+                recorded.lock().unwrap().push(request.clone());
+                ok(ResponseData::Ack)
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let draft_id = DraftId::new();
+    for marker in [None, Some(true)] {
+        let suffix = marker.map_or(String::new(), |value| {
+            format!("&managed_attachments_reviewed={value}")
+        });
+        let response = client.post(format!("http://{addr}/api/v1/mail/drafts/{draft_id}/send-stored?operation_id=review-op&expected_revision=1{suffix}"))
+            .bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let mut body = serde_json::json!({"draft_id":draft_id,"expected_revision":1,"send_at":"2099-01-01T00:00:00Z"});
+        if let Some(value) = marker {
+            body["managed_attachments_reviewed"] = serde_json::json!(value);
+        }
+        let response = client
+            .post(format!("http://{addr}/api/v1/mail/scheduled-sends"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    let requests = seen.lock().unwrap();
+    assert!(matches!(
+        &requests[0],
+        Request::SendStoredDraft {
+            managed_attachments_reviewed: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &requests[1],
+        Request::ScheduleSend {
+            managed_attachments_reviewed: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &requests[2],
+        Request::SendStoredDraft {
+            managed_attachments_reviewed: true,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &requests[3],
+        Request::ScheduleSend {
+            managed_attachments_reviewed: true,
+            ..
+        }
+    ));
+}

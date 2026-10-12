@@ -65,3 +65,57 @@ async fn draft_attachment_resources_pre_upgrade_hash_replay_preserves_unknown_an
         assert!(fake.sent_drafts().is_empty());
     }
 }
+
+#[tokio::test]
+async fn draft_attachment_resources_old_schedule_marker_blocks_managed_but_allows_legacy() {
+    let (state, fake, mut draft) = fixture().await;
+    let send_at = chrono::Utc::now() + chrono::Duration::days(1);
+    let request = Request::ScheduleSend {
+        draft_id: draft.id.clone(),
+        expected_revision: draft.revision,
+        send_at,
+        managed_attachments_reviewed: false,
+    };
+    ok(call(&state, request).await);
+    ok(call(
+        &state,
+        Request::CancelScheduledSend {
+            draft_id: draft.id.clone(),
+        },
+    )
+    .await);
+    // Scheduling advances the owner revision; fetch it before attaching bytes.
+    draft = saved(
+        call(
+            &state,
+            Request::GetDraft {
+                draft_id: draft.id.clone(),
+            },
+        )
+        .await,
+    );
+    let resource = upload(&state, &draft, b"invisible to an old client").await;
+    draft.managed_attachments = Some(vec![resource]);
+    draft = saved(call(&state, Request::UpdateDraft { draft }).await);
+    let mut old = serde_json::to_value(Request::ScheduleSend {
+        draft_id: draft.id.clone(),
+        expected_revision: draft.revision,
+        send_at,
+        managed_attachments_reviewed: true,
+    })
+    .unwrap();
+    old.as_object_mut()
+        .unwrap()
+        .remove("managed_attachments_reviewed");
+    error(
+        call(&state, serde_json::from_value(old).unwrap()).await,
+        "upgrade",
+    );
+    assert!(state
+        .store
+        .list_pending_scheduled_sends(None)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(fake.sent_drafts().is_empty());
+}

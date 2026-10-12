@@ -397,6 +397,15 @@ impl IpcConnection {
         };
         if matches!(
             request,
+            Request::PreviewDraftAttachment { .. }
+                | Request::BeginDraftAttachment { .. }
+                | Request::WriteDraftAttachmentChunk { .. }
+                | Request::FinalizeDraftAttachment { .. }
+        ) {
+            self.require_draft_attachment_upload().await?;
+        }
+        if matches!(
+            request,
             Request::GetAttachmentTransferMetadata { .. } | Request::ReadAttachmentChunk { .. }
         ) && self.attachment_transfer_supported != Some(true)
         {

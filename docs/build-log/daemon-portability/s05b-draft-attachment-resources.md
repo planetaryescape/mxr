@@ -1,11 +1,12 @@
 # Saved drafts retain the bytes the client uploaded
 
-The S05b candidate starts from `origin/main` source
-`5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3` (tree
-`43269888f7c907d6c77043ee65265e33259f8e45`). Root owns the checkpoint commit,
-upstream integration and published-client acceptance. Resource migration 078
-reserves 077 for the incoming categories change. Candidate edits remain
-uncommitted until that checkpoint.
+Final checks use root checkpoint `3a30079e6c008aec6c1e1d2746e39ff5584bb1c7`
+(tree `bd8974940c2c7ad72b32865f319130fedf660167`), rebased onto v0.6.84
+source `98bc13f574da5cfc93fec1dfc1dddab4d6e996b9`. The initial worker base was
+`5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3`. Root owns Git, the next checkpoint,
+CI and published-client acceptance. Migration 077 is personal categories;
+078 adds draft resources. The final worker delta remains uncommitted pending
+root's generation checkpoint.
 
 ## Uploads have a bounded daemon resource contract
 
@@ -161,3 +162,111 @@ that cannot turn an accepted replay into a missing-resource failure. The
 existing provider-byte test now also removes completed resource metadata/files
 and asserts the same `SendDraft` identity returns its receipt without another
 provider invocation. That extension awaits the integrated resource gate.
+
+
+## Integration preserves categories and requires protocol 8
+
+Root rebased the worker checkpoint onto v0.6.84 source
+`98bc13f574da5cfc93fec1dfc1dddab4d6e996b9`. The resumed checkpoint is
+`3a30079e6c008aec6c1e1d2746e39ff5584bb1c7` (tree
+`bd8974940c2c7ad72b32865f319130fedf660167`). Migration 077 remains personal
+categories; 078 adds draft resources. New request/response variants require
+IPC protocol 8 under the integrated protocol policy. The web compatibility
+gate and fixtures follow that version.
+
+Root's review found generic HTTP and MCP stored-send handlers deriving review
+from old request shapes. Their inputs now carry an explicit default-false
+`managed_attachments_reviewed` field. Compose sessions still derive review
+from rendered resource tokens. Raw preview/begin/chunk/finalize requests also
+check upload capability on their connection before sending the new variant,
+so MCP receives upgrade guidance from the shared transport.
+
+The upload endpoint returns schema-backed begin, chunk and finalize response
+shapes. The browser overloads use generated response types. The unused generic
+browser stored-send helper now requires its caller to supply a review marker;
+no current browser journey invokes that helper.
+
+Task 6038 was queued at 02:48:21+01:00 and started at 02:48:28+01:00 (seven
+seconds waiting). It runs the integrated daemon/client/MCP/store/web
+`draft_attachment` filter. The upgrade test preserves legacy paths, draft
+revision, categories and a durable unknown outcome across 077→078, then
+reopens a partial 078 with its column already present and resource table absent.
+Its outcome and remaining gates will be recorded before the next checkpoint.
+
+
+Task 6038 stopped on a test-only digest formatting compile error; Pueue recorded
+02:48:28–02:51:07+01:00 (2m39). Task 6040 corrected the fixture and passed:
+nine daemon resource tests, three shared-client upload tests, two MCP tests,
+one store migration test and one generic HTTP send/schedule marker test.
+Cargo took 2m06; test runtimes were 2.37s, 0.03s, 0.01s, 0.28s and 2.53s.
+Pueue recorded 02:51:44–02:54:11+01:00, with less than a second waiting.
+
+The browser now retains each finalized resource and owner revision immediately.
+A later upload failure in the same batch preserves acknowledged attachments.
+All 66 focused compose/protocol/mailbox JavaScript tests passed under Node
+24.19.0 in 5.97s; the four upload hook tests passed again after their fixture
+contracts were aligned with generated response types.
+
+The code-simplifier and TypeScript review use the scoped diff against integrated
+base `98bc13f5`. They removed anonymous unknown-return/dictionary fixture types
+in favor of generated upload responses and a named request fixture. Three
+anti-slop findings remain by repository convention: two `vi.mock` boundaries
+and the React `SetStateAction` callback check. Adjacent compose tests use these
+patterns; changing production dependency boundaries just to satisfy the generic
+lint would widen this slice. Strict project oxlint reported zero findings.
+Task 6044 owns the remaining focused Rust checks and source-generated snapshot
+artifacts. The scoped hygiene gate and binary build follow that task.
+
+
+Task 6044 passed 212 small-crate tests, 112 TUI compose tests and seven TUI
+send-recovery tests, then the web upload/reload test and OpenAPI summary
+snapshot. Cargo compiles took 4m08, 1m14, 0.35s, 1m23 and 0.67s. Test
+runtimes were 0.33s (client), 0.08s (compose), 0.11s (protocol), 0.04s
+(safety), 0.15s (each TUI filter), 4.18s (web upload) and 4.76s (snapshot).
+The first compile exceeded the three-minute budget by 68 seconds. The CLI
+help test compiled in 1m46 and stopped on its fixed case count: adding
+`drafts attach` changes 263 to 264. That assertion is now reconciled with
+the command vector.
+
+Task 6051 narrowed the retry to CLI help. It compiled in 1m06, then the debug
+binary overflowed its main stack on `--help` at the default macOS shell limit
+8176 KiB. The same binary returns valid help with `ulimit -s 32768`.
+LLDB stops in Clap's generated `augment_subcommands` at
+`crates/daemon/src/cli/triage.rs:53`. Root is comparing the unchanged S08 debug
+build before deciding on a source fix; this is an unresolved check, not a
+settled environmental exception. Evidence is retained in
+`/tmp/mxr-s05b-help-stack-backtrace.log` and
+`/tmp/mxr-s05b-help-stack-probe.txt`. No entry-point edit occurred.
+Task 6056 regenerates help and contracts at the measured 32 MiB shell stack.
+CI and published optimized acceptance must use normal defaults.
+
+
+## Generated contracts are ready for root's stack fix
+
+Task 6056 passed generation at the measured 32 MiB process stack. It queued at
+03:09:44+01:00, started at 03:12:10+01:00 (146 seconds waiting), and ended at
+03:13:48+01:00. CLI help compiled in 39.86s and ran in 8.26s across 264 cases.
+It updated the drafts parent snapshot and added the attach snapshot. The current
+source exporter regenerated `apps/web/src/api/generated.ts` and
+`site/public/openapi.json`; the site generator regenerated 114 command pages.
+The OpenAPI summary snapshot is current. The selected upload API uses generated
+response types; the three exact shapes form a non-overlapping schema union.
+Generic HTTP/MCP review markers default to false and have explicit input fields.
+
+TypeScript checking, targeted strict project oxlint, formatting and `git diff
+--check` passed after generation. Source inputs are stable. There is no active
+worker queue/session, daemon or fixture at this pause.
+
+Root's baseline comparison establishes the debug stack overflow as a regression:
+S08 succeeds at the normal stack and S05 fails there. Root owns the measured
+entry-frame fix. Keep the raised stack confined to artifact preparation; the
+existing CLI help test must pass at the normal stack after the fix.
+
+Exact next actions: root checkpoints this worker delta, applies and verifies the
+entry-frame fix, starts PR CI, then signals the worker to resume the scoped
+pre-PR Rust gate against `98bc13f5` and `cargo build -p mxr`. The expected binary
+is this worktree's `target-cli/debug/mxr`. Those two gates remain pending; no
+final build has been claimed. Root's CLI/MCP acceptance scripts then exercise
+the frozen candidate, and root owns release-please and actual published-client
+acceptance. The MCP send input field is `managed_attachments_reviewed`; capable
+callers set it after reviewing canonical metadata, alongside `confirm=true`.

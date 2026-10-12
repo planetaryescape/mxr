@@ -478,7 +478,9 @@ endpoint!(post reply_later_set "/api/v1/mail/reply-later/{message_id}", "Set or 
 endpoint!(post reminders_set "/api/v1/mail/reminders", "Schedule an auto-reminder");
 endpoint!(delete reminders_cancel "/api/v1/mail/reminders/{message_id}", "Cancel an auto-reminder");
 endpoint!(get scheduled_sends_list "/api/v1/mail/scheduled-sends", "List pending scheduled sends");
-endpoint!(post scheduled_sends_create "/api/v1/mail/scheduled-sends", "Schedule a draft send");
+#[utoipa::path(post, path = "/api/v1/mail/scheduled-sends", request_body = crate::request_types::ScheduleStoredDraftRequest, responses((status = 200, description = "Scheduled draft", body = ResponseData), (status = 422, description = "Managed attachments require explicit review")))]
+#[allow(dead_code)]
+fn scheduled_sends_create() {}
 endpoint!(delete scheduled_sends_cancel "/api/v1/mail/scheduled-sends/{draft_id}", "Cancel a scheduled send");
 endpoint!(get snippets_list "/api/v1/mail/snippets", "List snippets");
 endpoint!(post snippets_set "/api/v1/mail/snippets", "Create or update a snippet");
@@ -1537,7 +1539,7 @@ fn compose_session_save() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session/schedule", request_body = ComposeSessionScheduleRequest, responses((status = 400, description = "Local recovery requires explicit canonical reopen", body = DraftConflictResponse), (status = 200, description = "Saved draft session", body = ScheduledComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid draft or unsupported daemon", body = DraftConflictResponse), (status = 500, description = "Daemon operation failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 502, description = "Bridge IPC failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 503, description = "Daemon connection failed; may carry an accepted draft revision", body = DraftConflictResponse), (status = 504, description = "Daemon request timed out; may carry an accepted draft revision", body = DraftConflictResponse), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn compose_session_schedule() {}
-#[utoipa::path(post, path = "/api/v1/mail/compose/session/attachment", request_body = crate::request_types::ComposeSessionAttachmentRequest, responses((status = 200, description = "Bounded upload declaration, chunk acknowledgement, or finalized owner revision"), (status = 409, description = "Stale owner revision"), (status = 422, description = "Invalid declaration, chunk, integrity or unsupported daemon")))]
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/attachment", request_body = crate::request_types::ComposeSessionAttachmentRequest, responses((status = 200, description = "Bounded upload declaration, chunk acknowledgement, or finalized owner revision", body = crate::request_types::ComposeAttachmentResponse), (status = 409, description = "Stale owner revision"), (status = 422, description = "Invalid declaration, chunk, integrity or unsupported daemon")))]
 #[allow(dead_code)]
 fn compose_session_attachment() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session/discard", request_body = ComposeSessionPathRequest, responses((status = 200, description = "Compose session result", body = DiscardedComposeResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
@@ -1619,7 +1621,7 @@ endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-or
 #[utoipa::path(get, path = "/api/v1/mail/send-outcomes/{operation_id}", params(("operation_id" = String, Path), ("account_id" = String, Query, description = "Owning account ID")), responses((status = 200, description = "Durable send outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_send_outcome() {}
-#[utoipa::path(post, path = "/api/v1/mail/drafts/{draft_id}/send-stored", params(("draft_id" = String, Path), ("operation_id" = String, Query, description = "Retained reviewed send operation"), ("expected_revision" = i64, Query, description = "Reviewed draft revision")), responses((status = 200, description = "Send receipt or outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
+#[utoipa::path(post, path = "/api/v1/mail/drafts/{draft_id}/send-stored", params(("draft_id" = String, Path), ("operation_id" = String, Query, description = "Retained reviewed send operation"), ("expected_revision" = i64, Query, description = "Reviewed draft revision"), ("managed_attachments_reviewed" = Option<bool>, Query, description = "True only after reviewing current managed attachment metadata; defaults false")), responses((status = 200, description = "Send receipt or outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_drafts_send_stored() {}
 #[utoipa::path(delete, path = "/api/v1/mail/drafts/{draft_id}/stored", params(("draft_id" = String, Path), ("expected_revision" = i64, Query, description = "Revision from the deletion preview")), responses((status = 200, description = "Draft deleted", body = ResponseData), (status = 409, description = "Stale revision", body = DraftConflictResponse), (status = 422, description = "Legacy daemon", body = DraftConflictResponse)))]

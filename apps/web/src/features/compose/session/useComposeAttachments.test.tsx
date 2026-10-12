@@ -1,11 +1,18 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { SetStateAction } from "react";
+import type { MutableRefObject, SetStateAction } from "react";
+import type { components } from "@/api/generated";
 import type { ComposeDraftState } from "./composeDraft";
 import { useComposeAttachments } from "./useComposeAttachments";
 
+interface UploadFixtureRequest {
+  operation: "begin" | "chunk" | "finalize";
+  offset?: number;
+}
+type UploadFixtureResponse = components["schemas"]["ComposeAttachmentResponse"];
+
 const api = vi.hoisted(() => ({
-  upload: vi.fn<(input: { operation: string; [key: string]: unknown }) => Promise<unknown>>(),
+  upload: vi.fn<(input: UploadFixtureRequest) => Promise<UploadFixtureResponse>>(),
   supports: vi.fn<() => Promise<boolean>>(),
 }));
 vi.mock("../api", () => ({
@@ -35,7 +42,7 @@ function fixture(): ComposeDraftState {
   };
 }
 function setup() {
-  const draftRef: { current: ComposeDraftState | null } = { current: fixture() };
+  const draftRef: MutableRefObject<ComposeDraftState | null> = { current: fixture() };
   const setDraft = vi.fn<(value: SetStateAction<ComposeDraftState | null>) => void>((value) => {
     draftRef.current = typeof value === "function" ? value(draftRef.current) : value;
   });
@@ -102,7 +109,13 @@ test("an upload completed after switching drafts cannot attach to the new draft"
   api.upload.mockImplementation(async (request) => {
     if (request.operation === "finalize") {
       state.draftRef.current = { ...fixture(), draftId: "draft-2", draftPath: "/compose/two.md" };
-      return { draft_id: "draft-1", revision: 2, path: "mxr-resource:resource-1/notes.bin" };
+      return {
+        draft_id: "draft-1",
+        revision: 2,
+        path: "mxr-resource:resource-1/notes.bin",
+        filename: "notes.bin",
+        size_bytes: 3,
+      };
     }
     return request.operation === "begin" ? { draft_id: "draft-1", revision: 1 } : { ok: true };
   });
@@ -124,4 +137,33 @@ test("an older daemon rejects upload before reading client bytes", async () => {
   });
   expect(input.read).not.toHaveBeenCalled();
   expect(api.upload).not.toHaveBeenCalled();
+});
+
+test("a later batch failure preserves each finalized attachment and revision", async () => {
+  const state = setup();
+  const input = clientFile(3);
+  let begins = 0;
+  api.upload.mockImplementation(async (request) => {
+    if (request.operation === "begin") {
+      begins += 1;
+      if (begins === 2) throw new Error("Second upload failed");
+      return { draft_id: "draft-1", revision: 1 };
+    }
+    return request.operation === "chunk"
+      ? { ok: true }
+      : {
+          draft_id: "draft-1",
+          revision: 2,
+          path: "mxr-resource:resource-1/notes.bin",
+          filename: "notes.bin",
+          size_bytes: 3,
+        };
+  });
+  await act(async () => {
+    await state.result.current.addFiles([input.file, input.file]);
+  });
+  expect(begins).toBe(2);
+  expect(state.draftRef.current?.revision).toBe(2);
+  expect(state.draftRef.current?.frontmatter.attach).toEqual(["mxr-resource:resource-1/notes.bin"]);
+  expect(state.setDirty).toHaveBeenCalledWith(true);
 });

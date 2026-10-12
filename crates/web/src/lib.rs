@@ -1390,7 +1390,7 @@ async fn upload_compose_attachment(
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
     Json(request): Json<ComposeSessionAttachmentRequest>,
-) -> Result<Json<serde_json::Value>, BridgeError> {
+) -> Result<Json<request_types::ComposeAttachmentResponse>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
@@ -1442,9 +1442,12 @@ async fn upload_compose_attachment(
                 Request::BeginDraftAttachment { metadata },
             )
             .await?;
-            Ok(Json(
-                json!({"draft_id": owner.id, "revision": owner.revision}),
-            ))
+            Ok(Json(request_types::ComposeAttachmentResponse::Begin(
+                request_types::ComposeAttachmentOwnerResponse {
+                    draft_id: owner.id,
+                    revision: owner.revision.ok_or(BridgeError::UnexpectedResponse)?,
+                },
+            )))
         }
         "chunk" => {
             ipc_request(
@@ -1464,7 +1467,9 @@ async fn upload_compose_attachment(
                 },
             )
             .await?;
-            Ok(Json(json!({"ok": true})))
+            Ok(Json(request_types::ComposeAttachmentResponse::Chunk(
+                request_types::ComposeAttachmentChunkResponse { ok: true },
+            )))
         }
         "finalize" => {
             let metadata = match ipc_request(
@@ -1519,10 +1524,15 @@ async fn upload_compose_attachment(
             // A token without matching sidecar metadata blocks saves; write it before metadata so a crash cannot silently detach bytes.
             replace_compose_file(Path::new(&request.draft_path), rendered).await?;
             write_draft_session_metadata(Path::new(&request.draft_path), &canonical).await?;
-            Ok(Json(
-                json!({"path": format!("mxr-resource:{}/{}", metadata.id, metadata.filename), "filename": metadata.filename,
-                "size_bytes": metadata.length_bytes, "draft_id": canonical.id, "revision": canonical.revision}),
-            ))
+            Ok(Json(request_types::ComposeAttachmentResponse::Finalize(
+                request_types::ComposeAttachmentUploadResponse {
+                    path: format!("mxr-resource:{}/{}", metadata.id, metadata.filename),
+                    filename: metadata.filename,
+                    size_bytes: metadata.length_bytes,
+                    draft_id: canonical.id,
+                    revision: canonical.revision.ok_or(BridgeError::UnexpectedResponse)?,
+                },
+            )))
         }
         _ => Err(BridgeError::BadRequest(
             "upload operation must be begin, chunk or finalize".into(),

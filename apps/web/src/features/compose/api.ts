@@ -41,13 +41,8 @@ export interface AccountsResponse {
   accounts: RuntimeAccount[];
 }
 
-export interface ComposeAttachmentUploadResponse {
-  draft_id: string;
-  revision: number;
-  path: string;
-  filename: string;
-  size_bytes: number;
-}
+export type ComposeAttachmentUploadResponse =
+  components["schemas"]["ComposeAttachmentUploadResponse"];
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
@@ -326,22 +321,22 @@ type ComposeAttachmentRequest =
   | ComposeAttachmentBeginRequest
   | ComposeAttachmentChunkRequest
   | ComposeAttachmentFinalizeRequest;
-interface ComposeAttachmentOwnerResponse {
-  draft_id: string;
-  revision: number;
-}
+type ComposeAttachmentOwnerResponse = components["schemas"]["ComposeAttachmentOwnerResponse"];
+type ComposeAttachmentChunkResponse = components["schemas"]["ComposeAttachmentChunkResponse"];
 export function uploadComposeAttachment(
   input: ComposeAttachmentBeginRequest,
 ): Promise<ComposeAttachmentOwnerResponse>;
 export function uploadComposeAttachment(
   input: ComposeAttachmentChunkRequest,
-): Promise<{ ok: boolean }>;
+): Promise<ComposeAttachmentChunkResponse>;
 export function uploadComposeAttachment(
   input: ComposeAttachmentFinalizeRequest,
 ): Promise<ComposeAttachmentUploadResponse>;
 export function uploadComposeAttachment(
   input: ComposeAttachmentRequest,
-): Promise<ComposeAttachmentOwnerResponse | { ok: boolean } | ComposeAttachmentUploadResponse> {
+): Promise<
+  ComposeAttachmentOwnerResponse | ComposeAttachmentChunkResponse | ComposeAttachmentUploadResponse
+> {
   const body = {
     draft_path: input.draftPath,
     account_id: input.accountId,

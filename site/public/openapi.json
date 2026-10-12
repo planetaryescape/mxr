@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.82"
+    "version": "0.6.84"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1476,14 +1476,33 @@
     "/api/v1/mail/compose/session/attachment": {
       "post": {
         "tags": [],
-        "summary": "Upload compose attachment",
         "operationId": "compose_session_attachment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionAttachmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Bounded upload declaration, chunk acknowledgement, or finalized owner revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeAttachmentResponse"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "409": {
+            "description": "Stale owner revision"
+          },
+          "422": {
+            "description": "Invalid declaration, chunk, integrity or unsupported daemon"
           }
         }
       }
@@ -2421,6 +2440,15 @@
             "schema": {
               "type": "integer",
               "format": "int64"
+            }
+          },
+          {
+            "name": "managed_attachments_reviewed",
+            "in": "query",
+            "description": "True only after reviewing current managed attachment metadata; defaults false",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -4614,14 +4642,30 @@
       },
       "post": {
         "tags": [],
-        "summary": "Schedule a draft send",
         "operationId": "scheduled_sends_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleStoredDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Scheduled draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid bridge token"
+          "422": {
+            "description": "Managed attachments require explicit review"
           }
         }
       }
@@ -9522,6 +9566,79 @@
           "expired"
         ]
       },
+      "ComposeAttachmentChunkResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ComposeAttachmentOwnerResponse": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ComposeAttachmentResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ComposeAttachmentOwnerResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ComposeAttachmentChunkResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ComposeAttachmentUploadResponse"
+          }
+        ]
+      },
+      "ComposeAttachmentUploadResponse": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision",
+          "path",
+          "filename",
+          "size_bytes"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "ComposeFrontmatter": {
         "type": "object",
         "description": "YAML frontmatter for compose files.",
@@ -9594,6 +9711,66 @@
           },
           "severity": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeSessionAttachmentRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id",
+          "operation"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftAttachment"
+              }
+            ]
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "operation": {
+            "type": "string"
+          },
+          "resource_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftAttachmentId"
+              }
+            ]
           }
         }
       },
@@ -11970,6 +12147,16 @@
               "intent": {
                 "$ref": "#/components/schemas/DraftIntent"
               },
+              "managed_attachments": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DraftAttachment"
+                },
+                "description": "None identifies old clients; Some(empty) explicitly removes managed resources."
+              },
               "reply_headers": {
                 "oneOf": [
                   {
@@ -12004,6 +12191,48 @@
             }
           }
         ]
+      },
+      "DraftAttachment": {
+        "type": "object",
+        "description": "Immutable daemon-owned bytes belonging to one saved draft.",
+        "required": [
+          "id",
+          "draft_id",
+          "account_id",
+          "filename",
+          "mime_type",
+          "length_bytes",
+          "sha256"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/DraftAttachmentId"
+          },
+          "length_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftAttachmentId": {
+        "type": "string",
+        "format": "uuid"
       },
       "DraftCommitmentCandidateData": {
         "type": "object",
@@ -19587,7 +19816,105 @@
           },
           {
             "type": "object",
-            "description": "Describe an attachment for a path-free, integrity-checked transfer.",
+            "description": "Describe an attachment for a path-free, integrity-checked transfer.\nValidate upload declaration without creating a draft, resource or file.",
+            "required": [
+              "metadata",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewDraftAttachment"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/DraftAttachment"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "metadata",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "BeginDraftAttachment"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/DraftAttachment"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "account_id",
+              "resource_id",
+              "offset",
+              "data_base64",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "WriteDraftAttachmentChunk"
+                ]
+              },
+              "data_base64": {
+                "type": "string"
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "resource_id": {
+                "$ref": "#/components/schemas/DraftAttachmentId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "account_id",
+              "resource_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "FinalizeDraftAttachment"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "resource_id": {
+                "$ref": "#/components/schemas/DraftAttachmentId"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "attachment_id",
@@ -22467,6 +22794,9 @@
                 ],
                 "format": "int64"
               },
+              "managed_attachments_reviewed": {
+                "type": "boolean"
+              },
               "send_at": {
                 "type": "string",
                 "format": "date-time"
@@ -23574,6 +23904,9 @@
               },
               "draft_id": {
                 "$ref": "#/components/schemas/DraftId"
+              },
+              "managed_attachments_reviewed": {
+                "type": "boolean"
               },
               "override_safety_token": {
                 "type": [
@@ -26838,6 +27171,24 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "DraftAttachment"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/DraftAttachment"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "metadata",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                   "AttachmentTransferMetadata"
                 ]
               },
@@ -29010,6 +29361,9 @@
               "degraded": {
                 "type": "boolean",
                 "description": "The DB-backed part of this snapshot (`accounts`, `total_messages`,\n`sync_statuses`) timed out and carries no reading: those three\nfields are empty/zero because the daemon could not answer in time,\nnot because the store is empty or idle. Poll again rather than\nconcluding anything from them. The DB-free fields (versions,\n`daemon_pid`, `feature_health`) are always a real reading."
+              },
+              "draft_attachment_upload_supported": {
+                "type": "boolean"
               },
               "draft_revision_supported": {
                 "type": "boolean"
@@ -31400,6 +31754,33 @@
       "SavedSearchId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ScheduleStoredDraftRequest": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "send_at"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "managed_attachments_reviewed": {
+            "type": "boolean",
+            "description": "True only after reviewing the current managed attachment metadata."
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       },
       "ScheduledComposeResponse": {
         "type": "object",

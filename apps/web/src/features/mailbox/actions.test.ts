@@ -38,7 +38,7 @@ const ctx: ActionContext = {
 beforeEach(() => {
   useConnectionStore.setState({ syncProgress: undefined });
   useModals.setState({ commandPaletteOpen: false, rightRail: null });
-  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 7 });
+  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 8 });
 });
 
 afterEach(() => {

@@ -707,7 +707,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload compose attachment */
         post: operations["compose_session_attachment"];
         delete?: never;
         options?: never;
@@ -2351,7 +2350,6 @@ export interface paths {
         /** List pending scheduled sends */
         get: operations["scheduled_sends_list"];
         put?: never;
-        /** Schedule a draft send */
         post: operations["scheduled_sends_create"];
         delete?: never;
         options?: never;
@@ -4859,6 +4857,24 @@ export interface components {
         CommitmentDirectionData: "yours" | "theirs";
         /** @enum {string} */
         CommitmentStatusData: "open" | "resolved" | "expired";
+        ComposeAttachmentChunkResponse: {
+            ok: boolean;
+        };
+        ComposeAttachmentOwnerResponse: {
+            draft_id: components["schemas"]["DraftId"];
+            /** Format: int64 */
+            revision: number;
+        };
+        ComposeAttachmentResponse: components["schemas"]["ComposeAttachmentOwnerResponse"] | components["schemas"]["ComposeAttachmentChunkResponse"] | components["schemas"]["ComposeAttachmentUploadResponse"];
+        ComposeAttachmentUploadResponse: {
+            draft_id: components["schemas"]["DraftId"];
+            filename: string;
+            path: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         /** @description YAML frontmatter for compose files. */
         ComposeFrontmatter: {
             attach?: string[];
@@ -4877,6 +4893,18 @@ export interface components {
         ComposeIssueView: {
             message: string;
             severity: string;
+        };
+        ComposeSessionAttachmentRequest: {
+            account_id: string;
+            content_base64?: string | null;
+            draft_path: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+            metadata?: null | components["schemas"]["DraftAttachment"];
+            /** Format: int64 */
+            offset?: number | null;
+            operation: string;
+            resource_id?: null | components["schemas"]["DraftAttachmentId"];
         };
         ComposeSessionData: {
             accountId?: string | null;
@@ -5653,6 +5681,8 @@ export interface components {
             inline_assets?: components["schemas"]["InlineAsset"][];
             inline_calendar_reply?: null | components["schemas"]["InlineCalendarReply"];
             intent?: components["schemas"]["DraftIntent"];
+            /** @description None identifies old clients; Some(empty) explicitly removes managed resources. */
+            managed_attachments?: components["schemas"]["DraftAttachment"][] | null;
             reply_headers?: null | components["schemas"]["ReplyHeaders"];
             /**
              * Format: int64
@@ -5664,6 +5694,19 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Immutable daemon-owned bytes belonging to one saved draft. */
+        DraftAttachment: {
+            account_id: components["schemas"]["AccountId"];
+            draft_id: components["schemas"]["DraftId"];
+            filename: string;
+            id: components["schemas"]["DraftAttachmentId"];
+            /** Format: int64 */
+            length_bytes: number;
+            mime_type: string;
+            sha256: string;
+        };
+        /** Format: uuid */
+        DraftAttachmentId: string;
         DraftCommitmentCandidateData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -8229,6 +8272,29 @@ export interface components {
             destination?: string | null;
             message_id: components["schemas"]["MessageId"];
         } | {
+            /** @enum {string} */
+            cmd: "PreviewDraftAttachment";
+            metadata: components["schemas"]["DraftAttachment"];
+        } | {
+            /** @enum {string} */
+            cmd: "BeginDraftAttachment";
+            metadata: components["schemas"]["DraftAttachment"];
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "WriteDraftAttachmentChunk";
+            data_base64: string;
+            draft_id: components["schemas"]["DraftId"];
+            /** Format: int64 */
+            offset: number;
+            resource_id: components["schemas"]["DraftAttachmentId"];
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "FinalizeDraftAttachment";
+            draft_id: components["schemas"]["DraftId"];
+            resource_id: components["schemas"]["DraftAttachmentId"];
+        } | {
             attachment_id: components["schemas"]["AttachmentId"];
             /** @enum {string} */
             cmd: "GetAttachmentTransferMetadata";
@@ -8865,6 +8931,7 @@ export interface components {
             draft_id: components["schemas"]["DraftId"];
             /** Format: int64 */
             expected_revision?: number | null;
+            managed_attachments_reviewed?: boolean;
             /** Format: date-time */
             send_at: string;
         } | {
@@ -9097,6 +9164,7 @@ export interface components {
             /** @enum {string} */
             cmd: "SendStoredDraft";
             draft_id: components["schemas"]["DraftId"];
+            managed_attachments_reviewed?: boolean;
             override_safety_token?: string | null;
             send_identity?: null | components["schemas"]["SendIdentity"];
         } | {
@@ -9843,6 +9911,10 @@ export interface components {
             kind: "AttachmentFile";
         } | {
             /** @enum {string} */
+            kind: "DraftAttachment";
+            metadata: components["schemas"]["DraftAttachment"];
+        } | {
+            /** @enum {string} */
             kind: "AttachmentTransferMetadata";
             metadata: components["schemas"]["AttachmentTransferMetadata"];
         } | {
@@ -10304,6 +10376,7 @@ export interface components {
              *     `daemon_pid`, `feature_health`) are always a real reading.
              */
             degraded?: boolean;
+            draft_attachment_upload_supported?: boolean;
             draft_revision_supported?: boolean;
             feature_health?: null | components["schemas"]["FeatureHealthReport"];
             /** @enum {string} */
@@ -10858,6 +10931,15 @@ export interface components {
         };
         /** Format: uuid */
         SavedSearchId: string;
+        ScheduleStoredDraftRequest: {
+            draft_id: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+            /** @description True only after reviewing the current managed attachment metadata. */
+            managed_attachments_reviewed?: boolean;
+            /** Format: date-time */
+            send_at: string;
+        };
         ScheduledComposeResponse: {
             cleanup_warnings: string[];
             draft_id: components["schemas"]["DraftId"];
@@ -14172,17 +14254,30 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionAttachmentRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Bounded upload declaration, chunk acknowledgement, or finalized owner revision */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeAttachmentResponse"];
+                };
+            };
+            /** @description Stale owner revision */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Invalid declaration, chunk, integrity or unsupported daemon */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15192,6 +15287,8 @@ export interface operations {
                 operation_id: string;
                 /** @description Reviewed draft revision */
                 expected_revision: number;
+                /** @description True only after reviewing current managed attachment metadata; defaults false */
+                managed_attachments_reviewed?: boolean;
             };
             header?: never;
             path: {
@@ -17415,17 +17512,23 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleStoredDraftRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Scheduled draft */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Managed attachments require explicit review */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

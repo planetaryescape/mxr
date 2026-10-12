@@ -211,3 +211,70 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
     drop(connection);
     server.await.expect("server");
 }
+
+#[tokio::test]
+async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
+    let transport = MemoryTransport::new();
+    let mut listener = transport.bind().await.expect("listener");
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut framed = Framed::new(stream, IpcCodec::new());
+        let mut count = 0;
+        while let Some(Ok(message)) = framed.next().await {
+            assert!(matches!(
+                message.payload,
+                IpcPayload::Request(Request::GetStatus)
+            ));
+            count += 1;
+            framed
+                .send(IpcMessage {
+                    id: message.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok {
+                        data: status(false),
+                    }),
+                })
+                .await
+                .expect("reply");
+        }
+        count
+    });
+    let owner = draft(std::path::Path::new("/unused"));
+    let metadata = mxr_core::DraftAttachment {
+        id: DraftAttachmentId::new(),
+        draft_id: owner.id.clone(),
+        account_id: owner.account_id.clone(),
+        filename: "a.txt".into(),
+        mime_type: "text/plain".into(),
+        length_bytes: 0,
+        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+    };
+    let mut connection = IpcConnection::connect_with(&transport.connector(), ClientKind::Mcp)
+        .await
+        .expect("connection");
+    for request in [
+        Request::PreviewDraftAttachment {
+            metadata: metadata.clone(),
+        },
+        Request::BeginDraftAttachment {
+            metadata: metadata.clone(),
+        },
+        Request::WriteDraftAttachmentChunk {
+            draft_id: owner.id.clone(),
+            account_id: owner.account_id.clone(),
+            resource_id: metadata.id.clone(),
+            offset: 0,
+            data_base64: "YQ==".into(),
+        },
+        Request::FinalizeDraftAttachment {
+            draft_id: owner.id,
+            account_id: owner.account_id,
+            resource_id: metadata.id,
+        },
+    ] {
+        let error = connection.request(request).await.expect_err("unsupported");
+        assert!(error.to_string().contains("upgrade the daemon"));
+    }
+    drop(connection);
+    assert_eq!(server.await.expect("server"), 4);
+}

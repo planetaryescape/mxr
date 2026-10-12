@@ -49,7 +49,6 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
     try {
       if (!(await supportsDraftAttachmentUpload()))
         throw new Error("Upgrade the daemon before uploading portable draft attachments");
-      const paths: string[] = [];
       let revision = current.revision;
       for (const { id, file } of batch) {
         const bytes = await file.arrayBuffer();
@@ -94,25 +93,24 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
           expectedRevision: revision,
         });
         revision = uploaded.revision;
-        paths.push(uploaded.path);
+        if (draftRef.current?.draftPath !== current.draftPath) return;
+        setDraft((latest) =>
+          latest && latest.draftPath === current.draftPath
+            ? {
+                ...latest,
+                revision: uploaded.revision,
+                frontmatter: {
+                  ...latest.frontmatter,
+                  attach: [...latest.frontmatter.attach, uploaded.path],
+                },
+              }
+            : latest,
+        );
+        setDirty(true);
         setUploadProgress((items) =>
           items.map((item) => (item.id === id ? { ...item, done: true } : item)),
         );
       }
-      if (draftRef.current?.draftPath !== current.draftPath) return;
-      setDraft((latest) =>
-        latest && latest.draftPath === current.draftPath
-          ? {
-              ...latest,
-              revision,
-              frontmatter: {
-                ...latest.frontmatter,
-                attach: [...latest.frontmatter.attach, ...paths],
-              },
-            }
-          : latest,
-      );
-      setDirty(true);
       toast.success(`Attached ${fileList.length} ${fileList.length === 1 ? "file" : "files"}`);
     } catch (error) {
       toast.error("Attachment failed", { description: errorMessage(error) });

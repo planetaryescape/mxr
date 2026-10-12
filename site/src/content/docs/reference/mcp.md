@@ -187,7 +187,11 @@ chunks must contain identical bytes, and finalized resources cannot be changed.
 Attach the returned metadata through `mxr_update_draft`, preserving the fetched
 draft's revision. An explicit empty `managed_attachments` set removes resources;
 omitting the field from a draft containing resources fails with an upgrade
-instruction.
+instruction. Before `mxr_send_draft`, review the fetched managed attachment
+metadata and supply `managed_attachments_reviewed=true` together with
+`confirm=true`, the retained `operation_id` and reviewed `expected_revision`.
+Omitting the review marker blocks managed drafts; drafts without resources
+keep their existing send behavior.
 
 These tools are draft mutations under the existing `draft-only` policy.
 Account allowlists and send gates remain enforced by the daemon. They do not

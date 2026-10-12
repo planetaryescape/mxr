@@ -51,17 +51,35 @@ export async function fetchOrphanedDrafts(): Promise<OrphanedDraft[]> {
 
 /** Legacy endpoint: uncertain submissions remain blocked. */
 export function resetOrphanedDraft(draftId: string): Promise<{ kind: "Ack" }> {
-  return apiFetch<{ kind: "Ack" }>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`, {
-    method: "POST",
-  });
+  return apiFetch<{ kind: "Ack" }>(
+    `/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`,
+    {
+      method: "POST",
+    },
+  );
 }
 
-export interface StoredDraftSendReceipt { draft_id: string; message_id: string | null }
-export function sendStoredDraft(draftId: string, expectedRevision: number, operationId: string): Promise<StoredDraftSendReceipt> {
-  const query = new URLSearchParams({ expected_revision: String(expectedRevision), operation_id: operationId });
-  return apiFetch<StoredDraftSendReceipt>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored?${query}`, {
-    method: "POST",
+export interface StoredDraftSendReceipt {
+  draft_id: string;
+  message_id: string | null;
+}
+export function sendStoredDraft(
+  draftId: string,
+  expectedRevision: number,
+  operationId: string,
+  managedAttachmentsReviewed: boolean,
+): Promise<StoredDraftSendReceipt> {
+  const query = new URLSearchParams({
+    expected_revision: String(expectedRevision),
+    operation_id: operationId,
+    managed_attachments_reviewed: String(managedAttachmentsReviewed),
   });
+  return apiFetch<StoredDraftSendReceipt>(
+    `/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored?${query}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 /** A pending scheduled send (`GET /api/v1/mail/scheduled-sends`), soonest first. */

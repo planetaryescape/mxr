@@ -313,8 +313,22 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
     let mut client = IpcClient::connect().await?;
 
     match action.unwrap_or(RulesAction::List) {
+        RulesAction::Form { rule } => match client.request(Request::GetRuleForm { rule }).await? {
+            Response::Ok {
+                data: ResponseData::RuleFormData { form },
+            } => println!(
+                "{}",
+                if resolve_format(format) == OutputFormat::Jsonl {
+                    jsonl(std::slice::from_ref(&form))?
+                } else {
+                    serde_json::to_string_pretty(&form)?
+                }
+            ),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected rule form response"),
+        },
         RulesAction::CategoryPreview { rule, form, delete } => {
-            run_categories(&mut client, rule, form, None, delete, format).await?
+            run_categories(&mut client, rule, form, None, delete, format).await?;
         }
         RulesAction::CategoryApply {
             rule,

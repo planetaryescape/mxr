@@ -875,10 +875,12 @@ pub(super) async fn enforce_account_allowlist(
     profile: &AgentProfileConfig,
     req: &Request,
 ) -> Result<(), String> {
-    if let Request::RuleCategories { form, .. } = req {
-        if form.account_id.is_none() && profile_covers_all_accounts(state, profile).await? {
-            return Ok(());
-        }
+    if matches!(
+        req,
+        Request::RuleCategories { .. } | Request::GetRule { .. } | Request::GetRuleForm { .. }
+    ) && profile_covers_all_accounts(state, profile).await?
+    {
+        return Ok(());
     }
     let full_category_access =
         if is_global_category_catalog_request(req) || request_references_category(req) {

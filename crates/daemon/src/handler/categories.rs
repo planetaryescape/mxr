@@ -279,13 +279,16 @@ pub(crate) async fn preview_membership(
                     .sources
                     .iter()
                     .min_by_key(|s| (s.priority, &s.rule_id))
-                    .map_or("No category rule source".into(), |s| {
-                        format!(
-                            "{} by {}",
-                            if s.assigned { "Added" } else { "Removed" },
-                            s.rule_name
-                        )
-                    }),
+                    .map_or_else(
+                        || "No category rule source".into(),
+                        |s| {
+                            format!(
+                                "{} by {}",
+                                if s.assigned { "Added" } else { "Removed" },
+                                s.rule_name
+                            )
+                        },
+                    ),
             },
         })
         .collect();

@@ -377,6 +377,20 @@ impl IpcConnection {
     {
         if matches!(
             request,
+            Request::RuleCategories { .. } | Request::ExplainCategoryMembership { .. }
+        ) {
+            let status = self
+                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .await?;
+            match status {
+                Response::Ok {data:ResponseData::Status {protocol_version,..}} if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => {},
+                Response::Ok {data:ResponseData::Status {protocol_version,..}} => return Ok(Response::error_kinded(format!("Category rules require daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",mxr_protocol::IPC_PROTOCOL_VERSION),IpcErrorKind::Unsupported)),
+                error @ Response::Error {..} => return Ok(error),
+                _ => return Err(ClientError::Io(std::io::Error::other("Unexpected GetStatus response while checking category-rule support"))),
+            }
+        }
+        if matches!(
+            request,
             Request::GetAttachmentTransferMetadata { .. } | Request::ReadAttachmentChunk { .. }
         ) && self.attachment_transfer_supported != Some(true)
         {
@@ -1277,6 +1291,48 @@ mod tests {
             Err(other) => panic!("expected Connect error, got {other:?}"),
             Ok(_) => panic!("expected connect to a missing socket to fail"),
         }
+    }
+    #[tokio::test]
+    async fn category_rules_refuse_old_daemon_on_same_connection_without_sending_variant() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("old.sock");
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let writer = seen.clone();
+        let _server = spawn_fake_daemon(&socket, Vec::new(), move |message| {
+            writer
+                .lock()
+                .unwrap()
+                .push(serde_json::to_value(&message.payload).unwrap());
+            Some(status_response(
+                mxr_protocol::IPC_PROTOCOL_VERSION - 1,
+                None,
+                None,
+            ))
+        })
+        .await;
+        let mut connection = IpcConnection::connect(&socket, ClientKind::Cli)
+            .await
+            .unwrap();
+        let response = connection
+            .request_response(
+                Request::ExplainCategoryMembership {
+                    message_id: mxr_core::MessageId::new(),
+                    category_id: mxr_core::CategoryId::new(),
+                },
+                |_| {},
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            response,
+            Response::Error {
+                kind: IpcErrorKind::Unsupported,
+                ..
+            }
+        ));
+        assert_eq!(seen.lock().unwrap().len(), 1);
+        assert!(seen.lock().unwrap()[0].to_string().contains("GetStatus"));
     }
 }
 

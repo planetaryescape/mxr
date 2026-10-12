@@ -1,0 +1,14 @@
+{
+  "source": "4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f",
+  "binary_sha256": "c1f2acd139ec8921d029c2ed6410867be17583aedec7cabf80f6a30a1a51b414",
+  "compatible_search_succeeded": true,
+  "incompatible_replacement_rejected": true,
+  "visible_guidance": "MXR_DAEMON_AUTOSTART=off and no compatible daemon is available; check the service manager",
+  "terminal_columns": 130,
+  "replacement_left_alive_until_owned_cleanup": true,
+  "socket_removed": true,
+  "tui_exit": 0,
+  "limitations": [
+    "Initial setup frame was tool-truncated; subsequent search and reconnect frames retained. Status line clips the remainder of the detailed error at 130 columns."
+  ]
+}

@@ -1,0 +1,3 @@
+Captured terminal: 130 columns. Visible excerpts follow; repeated frames show reconnect retries.
+Frame 2: MXR_DAEMON_AUTOSTART=offandnocompatibledaemonisavailable;checktheservicemanagerandiconnection closed)...                                                              MXR_DAEMON_AUTOSTART=offandnocompatibledaemonisavailab
+Frame 3: MXR_DAEMON_AUTOSTART=offandnocompatibledaemonisavailable;checktheservicemanagerandiconnection closed)...                                                              MXR_DAEMON_AUTOSTART=offandnocompatibledaemonisavailab

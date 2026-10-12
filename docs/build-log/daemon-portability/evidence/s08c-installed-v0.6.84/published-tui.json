@@ -1,0 +1,20 @@
+{
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "tag": "v0.6.84",
+  "binary_sha256": "ee9d794e9411f5d754f6ede069feeb660d351fb2903990958a54214aedeef7c8",
+  "terminal": {
+    "columns": 150,
+    "rows": 36,
+    "native_pty": true
+  },
+  "acceptance": {
+    "compatible_daemon_search": "passed (one synthetic result)",
+    "incompatible_reconnect": "rejected v0.6.82 replacement",
+    "service_manager_guidance": "visible",
+    "replacement_lifecycle": "alive and unchanged until owned cleanup",
+    "tui_exit": 0,
+    "owned_processes_and_socket": "cleaned up"
+  },
+  "frames_sha256": "6f1b9627dbc511b338349eeb85f3d7e2a2e721c63d785c6902fcd1dd38d49e59",
+  "limit": "Long reconnect guidance remains clipped; the existing retry watchdog issue is tracked separately."
+}

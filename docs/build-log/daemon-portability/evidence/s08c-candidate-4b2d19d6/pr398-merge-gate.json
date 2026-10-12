@@ -1,0 +1,14 @@
+{
+  "pr": "https://github.com/planetaryescape/mxr/pull/398",
+  "base": "1b94ea761991e36cc7132a541edc0850ba299218",
+  "head": "4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f",
+  "tree": "764486c7068745e07e263843e31ca0b1d82edb5b",
+  "authoritative_patch_matches": true,
+  "computed_merge_tree": "764486c7068745e07e263843e31ca0b1d82edb5b",
+  "merge_tree_matches": true,
+  "merged_commit": "b6b88deff57e0ab1b6f523844e1708e63d2121a7",
+  "current_main": "b6b88deff57e0ab1b6f523844e1708e63d2121a7",
+  "integrated_tree_matches": true,
+  "unready": [],
+  "superseded_checks": []
+}

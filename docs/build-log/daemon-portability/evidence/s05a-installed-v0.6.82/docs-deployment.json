@@ -1,0 +1,14 @@
+{
+  "deployment_id": "dpl_8326aBwoQ74AaKptU9qYx4VZVbKs",
+  "deployment_url": "mxr-mail-o43bmml0x-planetaryescape.vercel.app",
+  "ready_state": "READY",
+  "source": "12109eac12265b8e1e2567c49cdb7289b44c69ce",
+  "ref": "main",
+  "guide": "https://mxr.sh/guides/mailbox/",
+  "checked_with": "agent-browser named session mxr-s05a-docs-407",
+  "new_download_and_overwrite_instructions_present": true,
+  "browser_errors": [],
+  "browser_console": [],
+  "rendered_text_sha256": "1a44a82dedf25489c1a0a14de80af50a40e83d4f3c13b0af26849a1727bf38f4",
+  "browser_session_closed": true
+}

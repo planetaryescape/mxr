@@ -1,0 +1,7 @@
+{
+  "deployment_source": "12109eac12265b8e1e2567c49cdb7289b44c69ce",
+  "path": "site/src/content/docs/guides/mailbox.md",
+  "source_sha256": "8f24fea06f1633ea116d9c3dcc8f59d5fc20ab6a8eb15500ff596ba29451e1c4",
+  "receipt": "docs-deployment.json",
+  "receipt_sha256": "f7c851adb3be6bc7a47b9d14bf1cf2640f64ac0785fbc552e4a0626ed654e738"
+}

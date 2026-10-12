@@ -711,12 +711,12 @@ fn unique_instance_name(prefix: &str) -> String {
 #[test]
 fn recovery_status_autostarts_the_selected_local_daemon() {
     let _guard = daemon_lifecycle_guard();
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create isolated recovery directory");
     let instance = unique_instance_name("mxr-recovery-autostart");
     let data = temp.path().join("data");
     let config = temp.path().join("config");
-    std::fs::create_dir_all(&config).unwrap();
-    std::fs::write(config.join("config.toml"),"[bridge]\nenabled=false\n[llm]\nenabled=false\n[search.semantic]\nenabled=false\nauto_download_models=false\n").unwrap();
+    std::fs::create_dir_all(&config).expect("create isolated recovery config directory");
+    std::fs::write(config.join("config.toml"),"[bridge]\nenabled=false\n[llm]\nenabled=false\n[search.semantic]\nenabled=false\nauto_download_models=false\n").expect("write isolated recovery configuration");
     // Isolated macOS HOME paths exceed sockaddr_un when combined with an instance name.
     let socket = PathBuf::from(format!(
         "/tmp/mxr-ra-{}.sock",
@@ -724,7 +724,7 @@ fn recovery_status_autostarts_the_selected_local_daemon() {
     ));
     let mut daemon = TestDaemon::new(socket.clone(), data.join("daemon.pid"));
     let output = Command::cargo_bin("mxr")
-        .unwrap()
+        .expect("locate mxr test binary")
         .env("HOME", temp.path())
         .env("MXR_INSTANCE", &instance)
         .env("MXR_DATA_DIR", &data)
@@ -738,15 +738,16 @@ fn recovery_status_autostarts_the_selected_local_daemon() {
         .args(["recovery", "status", "--format", "json"])
         .output();
     if let Ok(pid) = std::fs::read_to_string(data.join("daemon.pid")) {
-        daemon.set_pid(pid.trim().parse().unwrap());
+        daemon.set_pid(pid.trim().parse().expect("parse owned daemon PID"));
     }
-    let output = output.unwrap();
+    let output = output.expect("run recovery status CLI");
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let recovery: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let recovery: Value =
+        serde_json::from_slice(&output.stdout).expect("parse recovery status JSON");
     assert_eq!(recovery["recovery"]["restore_pending"], false);
     assert!(recovery["recovery"]["workspace_id"].as_str().is_some());
     assert!(daemon.pid.is_some());

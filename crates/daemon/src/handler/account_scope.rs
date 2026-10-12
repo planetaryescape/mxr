@@ -409,7 +409,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // ----- Named by another entity -----
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
-        | Request::UpdateTodo { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),
+        | Request::UpdateTodo { todo_id, .. }
+        | Request::ResolveTodoSuggestion { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),
         Request::SetTodoState { todo_ids, .. } => {
             Targets(todo_ids.iter().map(|id| T::Todo(id)).collect())
         }

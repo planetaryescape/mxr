@@ -29,6 +29,12 @@ fn selected_tab(screen: Screen) -> usize {
 const MIN_TERMINAL_WIDTH: u16 = 80;
 const MIN_TERMINAL_HEIGHT: u16 = 20;
 
+struct TodoReaderContent {
+    preview_blocks: Vec<ui::message_view::ThreadMessageBlock>,
+    summary: Option<ui::message_view::ThreadSummaryBlock>,
+    context: Vec<ratatui::text::Line<'static>>,
+}
+
 fn draw_terminal_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
     let lines = vec![
         Line::from(Span::styled(
@@ -56,6 +62,48 @@ fn draw_terminal_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
 }
 
 impl App {
+    fn todo_reader_content(&self) -> Option<TodoReaderContent> {
+        (self.mailbox.layout_mode == LayoutMode::ThreePane
+            && self.mailbox.active_pane == ActivePane::MessageView
+            && self.mailbox.viewing_envelope.is_some())
+        .then(|| TodoReaderContent {
+            preview_blocks: self.thread_message_blocks(),
+            summary: self.thread_summary_block(),
+            context: self.thread_context_lines(),
+        })
+    }
+
+    fn draw_todo_content(
+        frame: &mut Frame,
+        area: Rect,
+        view: ui::todo_lens::TodoView<'_>,
+        reader: Option<TodoReaderContent>,
+        message_scroll_offset: &mut u16,
+        html_image_assets: &mut std::collections::HashMap<
+            mxr_core::id::MessageId,
+            std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
+        >,
+        theme: &Theme,
+    ) {
+        if let Some(reader) = reader {
+            *message_scroll_offset = ui::message_view::draw(
+                frame,
+                area,
+                &reader.preview_blocks,
+                ui::message_view::DrawOptions {
+                    context: reader.context,
+                    summary: reader.summary,
+                    scroll_offset: *message_scroll_offset,
+                    active_pane: view.active_pane,
+                    theme,
+                    html_images: html_image_assets,
+                },
+            );
+        } else {
+            ui::todo_lens::draw(frame, area, &view, theme);
+        }
+    }
+
     /// The open thread's context lines, empty until the daemon answers.
     fn thread_context_lines(&self) -> Vec<ratatui::text::Line<'static>> {
         let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
@@ -268,14 +316,18 @@ impl App {
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
-                            ui::todo_lens::draw(
+                            let reader = self.todo_reader_content();
+                            Self::draw_todo_content(
                                 frame,
                                 chunks[1],
-                                &ui::todo_lens::TodoView {
+                                ui::todo_lens::TodoView {
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },
+                                reader,
+                                &mut self.mailbox.message_scroll_offset,
+                                &mut self.html_image_assets,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
@@ -423,14 +475,18 @@ impl App {
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
-                            ui::todo_lens::draw(
+                            let reader = self.todo_reader_content();
+                            Self::draw_todo_content(
                                 frame,
                                 chunks[1],
-                                &ui::todo_lens::TodoView {
+                                ui::todo_lens::TodoView {
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },
+                                reader,
+                                &mut self.mailbox.message_scroll_offset,
+                                &mut self.html_image_assets,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {

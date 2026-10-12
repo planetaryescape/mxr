@@ -3,7 +3,7 @@
 //! The daemon builds the runway, the labels and the why lines; this prints
 //! them as a table, or passes the JSON through for scripts and agents.
 
-use crate::cli::{OutputFormat, TodoAction, TodoStateArg};
+use crate::cli::{OutputFormat, TodoAction, TodoResolutionActionArg, TodoStateArg};
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -12,7 +12,8 @@ use chrono::Local;
 use mxr_core::id::AccountId;
 use mxr_protocol::{
     todo_copy, Request, Response, ResponseData, TodoCatchupData, TodoCatchupDecisionData,
-    TodoChangeData, TodoData, TodoEditData, TodoRunwayData, TodoStateActionData, TodoStateData,
+    TodoChangeData, TodoData, TodoEditData, TodoResolutionActionData, TodoRunwayData,
+    TodoStateActionData, TodoStateData,
 };
 use std::fmt::Write as _;
 
@@ -67,6 +68,26 @@ pub async fn run(
                 _ => print!("{}", terminal_block(&why_text(&todo))),
             }
             Ok(())
+        }
+        TodoAction::Resolve {
+            todo_id,
+            suggestion_id,
+            action,
+            dry_run,
+        } => {
+            let action = match action {
+                TodoResolutionActionArg::Preview => TodoResolutionActionData::Preview,
+                TodoResolutionActionArg::Accept => TodoResolutionActionData::Accept,
+                TodoResolutionActionArg::Dismiss => TodoResolutionActionData::Dismiss,
+                TodoResolutionActionArg::Undo => TodoResolutionActionData::Undo,
+            };
+            let request = Request::ResolveTodoSuggestion {
+                todo_id,
+                suggestion_id,
+                action,
+                dry_run,
+            };
+            print_change(change(&mut client, request).await?, format)
         }
         TodoAction::Done { todo_ids, dry_run } => {
             set_state(

@@ -1862,6 +1862,14 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    /// Preview or accept one evidence-backed later-mail resolution.
+    ResolveTodoSuggestion {
+        todo_id: String,
+        suggestion_id: String,
+        action: TodoResolutionActionData,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Show the row on your own date ("mon 9am", "in 3d", RFC3339), or
     /// clear it with `when: None`. Resolved in `time_zone`, else the
     /// daemon's. Returns `ResponseData::TodoChange`.
@@ -2621,6 +2629,7 @@ impl Request {
             | Self::ListTodos { .. }
             | Self::GetTodo { .. }
             | Self::SetTodoState { .. }
+            | Self::ResolveTodoSuggestion { .. }
             | Self::ScheduleTodo { .. }
             | Self::UpdateTodo { .. }
             | Self::CreateTodo { .. }

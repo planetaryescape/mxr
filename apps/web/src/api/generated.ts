@@ -2976,6 +2976,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/todos/{todo_id}/resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review, accept, dismiss or undo a later-email resolution offer */
+        post: operations["mail_todo_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/todos/{todo_id}/schedule": {
         parameters: {
             query?: never;
@@ -9410,6 +9427,13 @@ export interface components {
             dry_run?: boolean;
             todo_ids: string[];
         } | {
+            action: components["schemas"]["TodoResolutionActionData"];
+            /** @enum {string} */
+            cmd: "ResolveTodoSuggestion";
+            dry_run?: boolean;
+            suggestion_id: string;
+            todo_id: string;
+        } | {
             /** @enum {string} */
             cmd: "ScheduleTodo";
             dry_run?: boolean;
@@ -11816,6 +11840,7 @@ export interface components {
              * @description When it stops mattering.
              */
             relevant_until?: string | null;
+            resolution?: null | components["schemas"]["TodoResolutionData"];
             /**
              * Format: double
              * @description How far the runway bar is filled, from surfacing (0) to due (1).
@@ -11925,6 +11950,34 @@ export interface components {
             label: string;
             title: string;
             todo_id: string;
+        };
+        /** @enum {string} */
+        TodoResolutionActionData: "preview" | "accept" | "dismiss" | "undo";
+        /** @description Body of `POST /api/v1/mail/todos/{todo_id}/resolution`. */
+        TodoResolutionBody: {
+            action: components["schemas"]["TodoResolutionActionData"];
+            dry_run?: boolean;
+            suggestion_id: string;
+        };
+        /** @description A later message that offers a specific, user-reviewed resolution. */
+        TodoResolutionData: {
+            /** @description complete | revise_date */
+            action: string;
+            id: string;
+            message_id: components["schemas"]["MessageId"];
+            /** Format: date-time */
+            proposed_due_at?: string | null;
+            proposed_due_words?: string | null;
+            /** @description Exact bounded substring of the source subject or cleaned body. */
+            quote: string;
+            quote_location: string;
+            /** Format: date-time */
+            source_date: string;
+            /** @description rule | model */
+            source_method: string;
+            /** @description pending | accepted | dismissed | undone | superseded */
+            status: string;
+            thread_id: components["schemas"]["ThreadId"];
         };
         /** @description Returned by `Request::GetTodoRunway`: the bands, ready to draw. */
         TodoRunwayData: {
@@ -18556,6 +18609,47 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResponseData"];
                 };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todo_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoResolutionBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description The offer is stale or the requested action is unavailable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid bridge token */
             401: {

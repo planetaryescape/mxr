@@ -444,6 +444,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "todo",
+    keys: ["v"],
+    bound: "tui",
+    why: "The TUI reviews a suggested resolution with v; the web uses the Review button",
+  },
+  {
+    context: "todo",
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",

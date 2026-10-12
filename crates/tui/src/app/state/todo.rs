@@ -4,7 +4,10 @@
 //! state only holds what came back and what the user is doing with it.
 
 use mxr_core::id::MessageId;
-use mxr_protocol::{ModeGuideData, TodoCatchupData, TodoChangeData, TodoData, TodoRunwayData};
+use mxr_protocol::{
+    ModeGuideData, TodoCatchupData, TodoChangeData, TodoData, TodoResolutionActionData,
+    TodoRunwayData,
+};
 
 /// Which list the lens shows under its header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -86,6 +89,10 @@ pub struct TodoPageState {
     pub pending_list: Option<TodoListFetch>,
     /// Ask the daemon what "let go of all" would let go of.
     pub pending_catchup_preview: bool,
+    /// A resolution request for the runner to send over daemon IPC.
+    pub pending_resolution: Option<(String, String, TodoResolutionActionData)>,
+    /// The exact previewed suggestion, held until explicit accept/dismiss.
+    pub resolution_preview: Option<(String, String, TodoChangeData)>,
 }
 
 impl TodoPageState {

@@ -107,6 +107,7 @@ where
                 message_id: record.looks_done_message_id.clone(),
                 reason: reason.clone(),
             }),
+        resolution: None,
         fields: fields
             .0
             .iter()

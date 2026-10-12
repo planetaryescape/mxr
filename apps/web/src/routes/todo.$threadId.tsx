@@ -28,6 +28,7 @@ function OpenThread() {
   return (
     <ThreadPane
       threadId={threadId}
+      focusMessageId={mid}
       linkHighlight={link ? { url: link, messageId: mid, title: title ?? "", domain } : undefined}
     />
   );

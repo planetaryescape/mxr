@@ -6121,7 +6121,7 @@ async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identit
 
 #[tokio::test]
 async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
-    for protocol_version in [4, 5] {
+    for protocol_version in [4, 5, 6] {
         let temp = TempDir::new().unwrap();
         let socket_path = temp.path().join("mxr.sock");
         let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
@@ -6165,7 +6165,10 @@ async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
             assert_eq!(response.status(), reqwest::StatusCode::UPGRADE_REQUIRED);
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(body["code"], "protocol_mismatch");
-            assert_eq!(body["details"]["required_protocol"], 6);
+            assert_eq!(
+                body["details"]["required_protocol"],
+                IPC_PROTOCOL_VERSION
+            );
             assert_eq!(body["details"]["actual_protocol"], protocol_version);
             assert!(body["error"]
                 .as_str()
@@ -6189,7 +6192,7 @@ async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
 }
 
 #[tokio::test]
-async fn global_sync_endpoints_dispatch_after_protocol_six_check() {
+async fn global_sync_endpoints_dispatch_after_current_protocol_check() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
     let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
@@ -6199,7 +6202,7 @@ async fn global_sync_endpoints_dispatch_after_protocol_six_check() {
         move |request| {
             recorded_requests.lock().unwrap().push(request.clone());
             let data = match request {
-                Request::GetStatus => status_for_protocol(6),
+                Request::GetStatus => status_for_protocol(IPC_PROTOCOL_VERSION),
                 Request::SyncAll => ResponseData::SyncBatch {
                     results: Vec::new(),
                 },

@@ -674,7 +674,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     }
 
     if !sending && remind_after.is_some() {
-        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --expected-revision <reviewed-revision> --remind-after <time>`");
+        anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>' --remind-after <time>`");
     }
     // Resolve the reminder before sending: a phrase that doesn't parse must
     // stop the send, not surface after the mail has already gone.

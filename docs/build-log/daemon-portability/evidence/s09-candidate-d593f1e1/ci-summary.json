@@ -1,0 +1,14 @@
+{
+  "source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
+  "tree": "0ddafa717c07beb1c2068da41f2a09352ff19212",
+  "merged_source": "8faa88f1c11ec0f66eb4f37c5212189b00f74aa7",
+  "ci_run": 38259491962,
+  "ci_conclusion": "success",
+  "fast_tests": {"passed": 4291, "skipped": 9},
+  "semantic_tests": {"passed": 4337, "skipped": 10},
+  "web_e2e": {"passed": 384, "flaky": 2, "speed_checks_passed": 4, "speed_seconds": 23.2},
+  "openapi_run": 38259491823,
+  "openapi_conclusion": "success",
+  "release_pr": 438,
+  "release_status_at_packet": "v0.6.92 proposed; checks and publication pending"
+}

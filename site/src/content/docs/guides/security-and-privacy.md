@@ -144,41 +144,12 @@ location with `MXR_SECRETS_PATH`. Protect it like any dotfile secret: keep the
 
 ### Backup and restore
 
-mxr does not run a hosted backup service. Your local profile is the
-recovery boundary.
-
-To find the active paths:
-
-```bash
-mxr status --format json | jq -r '.config_path, .data_dir'
-```
-
-For a clean backup, stop mxr processes first, then copy:
-
-- the config directory containing `config.toml` **and `secrets.toml`**
-  (your IMAP/SMTP passwords — keep its `0600` mode and treat it as
-  sensitive)
-- the data directory containing `mxr.db`, `attachments/`, `logs/`,
-  `tokens/`, `search_index/`, and `models/`
-- any OS keychain entries for Gmail if you are moving to a different
-  machine (IMAP/SMTP secrets travel in `secrets.toml`)
-
-`search_index/` and `models/` are rebuildable, so you can omit them from
-space-constrained backups. Keep `mxr.db`, `attachments/`, `tokens/`, and
-`config.toml` together. Do not copy `mxr.db` while the daemon is writing
-unless your filesystem backup tool provides a consistent snapshot.
-
-To restore, install the same or a newer mxr version, stop the daemon,
-put the config/data directories back at the resolved paths (or set
-`MXR_CONFIG_DIR` / `MXR_DATA_DIR`). If you restored `secrets.toml`, your
-IMAP/SMTP passwords are already in place; otherwise run
-`mxr accounts repair NAME` (and restore any Gmail keychain entries), then
-run:
-
-```bash
-mxr doctor
-mxr sync
-```
+mxr does not run a hosted backup service. Use its stopped-profile backup
+workflow instead of copying a live database. Backups preserve cached mail,
+drafts, and managed attachment bytes, but exclude credentials and tokens.
+Restored profiles keep old work paused until you inspect and explicitly
+activate them. See [Back up and restore a workspace](/guides/backup-recovery/)
+for the full procedure and limits.
 
 ### Bridge and local IPC boundary
 

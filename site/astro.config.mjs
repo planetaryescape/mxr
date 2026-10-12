@@ -126,6 +126,7 @@ export default defineConfig({
             { label: 'Email Is Five Apps', slug: 'guides/email-modes' },
             { label: 'Architecture', slug: 'guides/architecture' },
             { label: 'Security & Privacy', slug: 'guides/security-and-privacy' },
+            { label: 'Back up and restore', slug: 'guides/backup-recovery' },
             { label: 'Glossary', slug: 'guides/glossary' },
             { label: 'For Agents', slug: 'guides/for-agents' },
             { label: 'Automation Contract', slug: 'guides/automation-contract' },

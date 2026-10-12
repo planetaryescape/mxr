@@ -1,0 +1,22 @@
+{
+  "source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
+  "binary_sha256": "a1bbb15a494794d3ad4386335ef30fac653ad471c149c82ab0fad3ec4b9eb6c9",
+  "journey_seconds": 65,
+  "surfaces": ["CLI", "MCP"],
+  "case_groups_passed": {
+    "physical_exclusions_and_preview": true,
+    "paused_cached_reads_bytes_no_replay": true,
+    "new_review_idempotent_acceptance": true,
+    "published_11_new_12_both_directions": true
+  },
+  "restored_draft_holds": 2,
+  "draft_send_outcomes": 1,
+  "scheduled_send_attempts": 0,
+  "mutation_jobs": 0,
+  "accepted_attachment": {
+    "filename": "original.bin",
+    "length_bytes": 9309,
+    "sha256": "d9a28f001301a921ad00bc1b9cf106fe2277e5baac49d9848ea13ce2e9a300e4"
+  },
+  "all_owned_processes_stopped": true
+}

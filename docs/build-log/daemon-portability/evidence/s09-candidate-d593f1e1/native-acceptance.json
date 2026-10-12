@@ -1,0 +1,19 @@
+{
+  "source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
+  "binary_sha256": "a1bbb15a494794d3ad4386335ef30fac653ad471c149c82ab0fad3ec4b9eb6c9",
+  "surface": "native TUI in an isolated tool PTY",
+  "cached_messages": 55,
+  "grouped_search_rows": 39,
+  "cached_body_visible": true,
+  "activation": {"singleton": 1, "pending": 0, "source_owner_stopped": 1},
+  "restored_drafts_held": 2,
+  "prepared_draft_is_separate": true,
+  "attachment": {
+    "length_bytes": 9309,
+    "sha256": "d9a28f001301a921ad00bc1b9cf106fe2277e5baac49d9848ea13ce2e9a300e4"
+  },
+  "provider_acceptances": 0,
+  "scheduled_attempts": 0,
+  "runnable_jobs": 0,
+  "daemon_stopped": true
+}

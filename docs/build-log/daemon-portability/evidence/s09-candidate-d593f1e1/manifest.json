@@ -1,0 +1,83 @@
+{
+  "status": "candidate acceptance only; release and published-client acceptance pending",
+  "reviewed_candidate_source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
+  "merged_source": "8faa88f1c11ec0f66eb4f37c5212189b00f74aa7",
+  "source_tree": "0ddafa717c07beb1c2068da41f2a09352ff19212",
+  "candidate_binary_sha256": "a1bbb15a494794d3ad4386335ef30fac653ad471c149c82ab0fad3ec4b9eb6c9",
+  "proposed_release_pr": 438,
+  "proposed_version": "0.6.92",
+  "retained": [
+    {
+      "name": "README.md",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/README.md",
+      "sha256": "a2ce920624f1fefdbc7ba9f1c85401a33523f1db35f119c991cfb2d771215fc9"
+    },
+    {
+      "name": "ci-summary.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/ci-summary.json",
+      "sha256": "391c3c2779fd16bbf111bf816477762776ecd393ec3461ef06ecce58258003b9"
+    },
+    {
+      "name": "client-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/client-acceptance.json",
+      "sha256": "1348d848c3751e9b5c7917a0ec9e190f45a6dbb61334fa896d65c71ccc100052"
+    },
+    {
+      "name": "native-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/native-acceptance.json",
+      "sha256": "4c442701c74e13633ebe4f596587c155f80e5d8b3ecab2bc0b698d037a979864"
+    },
+    {
+      "name": "negative-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/negative-acceptance.json",
+      "sha256": "c35ff138422c0eb3018f24dfa28b5cd2a6aba2491f047d0285ff273e75f6e3e0"
+    },
+    {
+      "name": "browser-baseline.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/browser-baseline.json",
+      "sha256": "6afdd53437194ff6f3b264a4cf68da5e28917865faef0547a6c8a607be2198dc"
+    }
+  ],
+  "sources": [
+    {
+      "name": "PR436 merge and CI gate",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-pr436-merge.json",
+      "sha256": "f49fba1baf074cb7320c2ad058a86a6f4630016d49404a51076324ca191f2dfc"
+    },
+    {
+      "name": "candidate CLI and MCP acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-cli-mcp-d593f1e1.json",
+      "sha256": "184b5c3423d2d423f068b3a01780950479dc518d4d6e1eb40d4df82a78fd5d8e"
+    },
+    {
+      "name": "candidate negative acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-negative-d593f1e1.json",
+      "sha256": "caf98fb6dc098648cd9fc3481c13cc7f08c763c4666c5c5f4803d0be22b01930"
+    },
+    {
+      "name": "candidate native TUI acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-native-d593f1e1.json",
+      "sha256": "eb8cd955acd8fbe4ab4a370b749288b53c64a9923634d5582af8f7831cf72ac6"
+    },
+    {
+      "name": "candidate browser baseline acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-browser-b0b46206.json",
+      "sha256": "92ee8a20cbf0fa6e47dca61abfbb74016dd8c64b7cee819c7c4656811cf1f564"
+    },
+    {
+      "name": "earlier web retry summary",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/ci-web-flakes-28df.json",
+      "sha256": "7690acd49c7fd11d5912f9d4c07f859e6169af5ff742d6c4893e9ce0bc663626"
+    },
+    {
+      "name": "intermediate web CI summary",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-ci-713-summary.json",
+      "sha256": "bc6b423a6972da82eac2a6c4c9bbe8b0e0640676f3ac8122312fcc5678f0255e"
+    }
+  ],
+  "limits": [
+    "Browser receipt is an earlier b0 candidate baseline, not final candidate or published acceptance.",
+    "No cause is inferred for retry-classified web E2E assertions.",
+    "No release artifact, installer, Homebrew or installed-client claim is made."
+  ]
+}

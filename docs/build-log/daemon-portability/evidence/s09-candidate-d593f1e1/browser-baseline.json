@@ -1,0 +1,8 @@
+{
+  "runtime_source": "b0b46206d5954d48c56ce8167987527b06bdd652",
+  "binary_sha256": "a826fa98060da542d381a405947f00b8c0de1f48eaf244480277d95c7bdfdd71",
+  "status": "earlier candidate baseline only; not final d593f1e1 or published-release acceptance",
+  "journey_result_sha256": "cdf49cdab38115800b9293342a353a8e652befe17d6cf5951cb0872c34a1a369",
+  "owned_processes_stopped": true,
+  "published_browser_retest_required": true
+}

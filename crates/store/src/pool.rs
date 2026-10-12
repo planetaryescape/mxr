@@ -1125,6 +1125,7 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::Sql(include_str!("../migrations/079_draft_attachment_resources.sql")),
         ]),
     },
+    Migration { version: 79, name: "rule_category_sources", kind: MigrationKind::Composite(&[MigrationStep::AddColumn {table:"message_category_memberships",column:"manual_decision",sql:include_str!("../migrations/079_category_manual_decision.sql")},MigrationStep::Sql(include_str!("../migrations/079_rule_category_sources.sql"))]) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1634,6 +1635,59 @@ mod tests {
             store.reader().close().await;
             store.writer().close().await;
         }
+    }
+
+    #[tokio::test]
+    async fn category_rule_sources_upgrade_actual_version_77_and_legacy_undo() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("c1-77.db");
+        let account = crate::test_fixtures::test_account();
+        let message = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        let category = mxr_core::CategoryId::new();
+        {
+            let store = store_at_version(&path, 77).await;
+            store.insert_account(&account).await.unwrap();
+            store.upsert_envelope(&message).await.unwrap();
+            sqlx::query("INSERT INTO personal_categories(id,name,normalized_name,created_at,updated_at) VALUES(?,'Travel','travel',1,1)").bind(category.as_str()).execute(store.writer()).await.unwrap();
+            sqlx::query("INSERT INTO message_category_memberships(message_id,category_id,assigned,revision,updated_at) VALUES(?,?,0,2,1)").bind(message.id.as_str()).bind(category.as_str()).execute(store.writer()).await.unwrap();
+            let snapshot = serde_json::json!([{"message_id":message.id,"category_id":category,"prior_assigned":true,"after_revision":2}]);
+            sqlx::query(
+                "INSERT INTO category_membership_undo(id,snapshot,expires_at) VALUES('legacy',?,?)",
+            )
+            .bind(snapshot.to_string())
+            .bind(chrono::Utc::now().timestamp() + 60)
+            .execute(store.writer())
+            .await
+            .unwrap();
+        }
+        let store = Store::new(&path).await.unwrap();
+        let before = store
+            .category_membership_versions(
+                None,
+                std::slice::from_ref(&message.id),
+                std::slice::from_ref(&category),
+            )
+            .await
+            .unwrap();
+        assert_eq!(before[0].manual_decision, Some(false));
+        assert!(!before[0].assigned);
+        assert_eq!(
+            store.undo_category_membership("legacy").await.unwrap(),
+            (1, 0)
+        );
+        let after = store
+            .category_membership_versions(
+                None,
+                std::slice::from_ref(&message.id),
+                std::slice::from_ref(&category),
+            )
+            .await
+            .unwrap();
+        assert_eq!(after[0].manual_decision, Some(true));
+        assert!(after[0].assigned);
+        assert!(store.category_rule_sources().await.unwrap().is_empty());
     }
 
     #[tokio::test]

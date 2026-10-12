@@ -13,6 +13,10 @@ pub struct CategoryMembershipVersion {
     pub category_id: CategoryId,
     pub revision: i64,
     pub assigned: bool,
+    #[serde(default)]
+    pub manual_decision: Option<bool>,
+    #[serde(default)]
+    pub sources: Vec<crate::RuleCategorySource>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +30,16 @@ struct UndoEntry {
     message_id: MessageId,
     category_id: CategoryId,
     prior_assigned: bool,
+    #[serde(default, deserialize_with = "deserialize_prior_manual_decision")]
+    prior_manual_decision: Option<Option<bool>>,
     after_revision: i64,
+}
+
+// Missing means a C1 snapshot; explicit null is a C2 undo of an absent override.
+fn deserialize_prior_manual_decision<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<bool>>, D::Error> {
+    Option::<bool>::deserialize(deserializer).map(Some)
 }
 
 pub fn normalize_category_name(input: &str) -> Result<(String, String), String> {
@@ -76,7 +89,7 @@ impl super::Store {
             "SELECT c.id, c.name, COUNT(m.id) AS total_count,
                     SUM(CASE WHEN m.id IS NOT NULL AND (m.flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count
              FROM personal_categories c
-             LEFT JOIN message_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
+             LEFT JOIN effective_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
              LEFT JOIN messages m ON m.id = cm.message_id AND (? IS NULL OR m.account_id = ?)
              GROUP BY c.id, c.name ORDER BY c.normalized_name, c.id",
         )
@@ -160,7 +173,7 @@ impl super::Store {
     ) -> Result<(String, u32), String> {
         let row = sqlx::query(
             "SELECT c.name, COUNT(cm.message_id) AS total_count FROM personal_categories c
-             LEFT JOIN message_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
+             LEFT JOIN effective_category_memberships cm ON cm.category_id = c.id AND cm.assigned = 1
              WHERE c.id = ? GROUP BY c.id, c.name",
         )
         .bind(category_id.as_str())
@@ -208,13 +221,21 @@ impl super::Store {
                 return Err("category not found".into());
             }
         }
+        let sources = self
+            .category_rule_sources()
+            .await
+            .map_err(|e| e.to_string())?;
         let mut result = Vec::with_capacity(message_ids.len() * category_ids.len());
         for message_id in message_ids {
             for category_id in category_ids {
-                let row = sqlx::query("SELECT assigned, revision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
+                let row = sqlx::query("SELECT assigned, revision, manual_decision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
                     .bind(message_id.as_str()).bind(category_id.as_str())
                     .fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
-                let (assigned, revision) = row.map_or((false, 0), |row| {
+                let manual_decision = row
+                    .as_ref()
+                    .and_then(|r| r.get::<Option<i64>, _>("manual_decision"))
+                    .map(|v| v != 0);
+                let (_, revision) = row.map_or((false, 0), |row| {
                     (
                         row.get::<i64, _>("assigned") != 0,
                         row.get::<i64, _>("revision"),
@@ -224,7 +245,21 @@ impl super::Store {
                     message_id: message_id.clone(),
                     category_id: category_id.clone(),
                     revision,
-                    assigned,
+                    assigned: manual_decision.unwrap_or_else(|| {
+                        sources
+                            .iter()
+                            .filter(|s| {
+                                s.message_id == *message_id && s.category_id == *category_id
+                            })
+                            .min_by_key(|s| (s.priority, &s.rule_id))
+                            .is_some_and(|s| s.assigned)
+                    }),
+                    manual_decision,
+                    sources: sources
+                        .iter()
+                        .filter(|s| s.message_id == *message_id && s.category_id == *category_id)
+                        .cloned()
+                        .collect(),
                 });
             }
         }
@@ -240,8 +275,8 @@ impl super::Store {
         offset: u32,
     ) -> Result<(Vec<MessageId>, u32), String> {
         let account_filter = account_id.map_or("", |_| " AND m.account_id = ?");
-        let sql = format!("SELECT m.id FROM messages m JOIN message_category_memberships cm ON cm.message_id = m.id WHERE cm.category_id = ? AND cm.assigned = 1{account_filter} ORDER BY m.date DESC, m.id LIMIT ? OFFSET ?");
-        let count_sql = format!("SELECT COUNT(*) FROM messages m JOIN message_category_memberships cm ON cm.message_id = m.id WHERE cm.category_id = ? AND cm.assigned = 1{account_filter}");
+        let sql = format!("SELECT m.id FROM messages m JOIN effective_category_memberships cm ON cm.message_id = m.id WHERE cm.category_id = ? AND cm.assigned = 1{account_filter} ORDER BY m.date DESC, m.id LIMIT ? OFFSET ?");
+        let count_sql = format!("SELECT COUNT(*) FROM messages m JOIN effective_category_memberships cm ON cm.message_id = m.id WHERE cm.category_id = ? AND cm.assigned = 1{account_filter}");
         let mut query =
             sqlx::query_scalar::<_, String>(AssertSqlSafe(sql.as_str())).bind(category_id.as_str());
         let mut count_query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(count_sql.as_str()))
@@ -275,35 +310,44 @@ impl super::Store {
         let mut undo = Vec::new();
         let (mut added, mut removed) = (0, 0);
         for change in changes {
-            let row = sqlx::query("SELECT assigned, revision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
+            let row = sqlx::query("SELECT assigned, revision, manual_decision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
                 .bind(change.before.message_id.as_str()).bind(change.before.category_id.as_str())
                 .fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
-            let (assigned, revision) = row.map_or((false, 0), |row| {
+            let prior_manual_decision = row
+                .as_ref()
+                .and_then(|r| r.get::<Option<i64>, _>("manual_decision"))
+                .map(|v| v != 0);
+            let (_, revision) = row.map_or((false, 0), |row| {
                 (
                     row.get::<i64, _>("assigned") != 0,
                     row.get::<i64, _>("revision"),
                 )
             });
-            if revision != change.before.revision || assigned != change.before.assigned {
+            if revision != change.before.revision
+                || prior_manual_decision != change.before.manual_decision
+            {
                 return Err("category membership changed after preview; preview again".into());
             }
-            if assigned == change.assigned {
+            if prior_manual_decision == Some(change.assigned) {
                 continue;
             }
             let after_revision = revision + 1;
-            sqlx::query("INSERT INTO message_category_memberships (message_id, category_id, assigned, revision, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(message_id, category_id) DO UPDATE SET assigned = excluded.assigned, revision = excluded.revision, updated_at = excluded.updated_at")
-                .bind(change.before.message_id.as_str()).bind(change.before.category_id.as_str()).bind(if change.assigned { 1i64 } else { 0 }).bind(after_revision).bind(now)
+            sqlx::query("INSERT INTO message_category_memberships (message_id, category_id, assigned, revision, updated_at, manual_decision) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(message_id, category_id) DO UPDATE SET assigned = excluded.assigned, revision = excluded.revision, updated_at = excluded.updated_at, manual_decision = excluded.manual_decision")
+                .bind(change.before.message_id.as_str()).bind(change.before.category_id.as_str()).bind(if change.assigned { 1i64 } else { 0 }).bind(after_revision).bind(now).bind(change.assigned as i64)
                 .execute(&mut *tx).await.map_err(|e| e.to_string())?;
             undo.push(UndoEntry {
                 message_id: change.before.message_id.clone(),
                 category_id: change.before.category_id.clone(),
-                prior_assigned: assigned,
+                prior_assigned: change.before.assigned,
+                prior_manual_decision: Some(prior_manual_decision),
                 after_revision,
             });
-            if change.assigned {
-                added += 1;
-            } else {
-                removed += 1;
+            if change.assigned != change.before.assigned {
+                if change.assigned {
+                    added += 1;
+                } else {
+                    removed += 1;
+                }
             }
         }
         let mutation_id = Uuid::now_v7().to_string();
@@ -353,7 +397,7 @@ impl super::Store {
         let mut restored = 0;
         let mut skipped = 0;
         for entry in entries {
-            let current = sqlx::query("SELECT assigned, revision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
+            let current = sqlx::query("SELECT assigned, revision, manual_decision FROM message_category_memberships WHERE message_id = ? AND category_id = ?")
                 .bind(entry.message_id.as_str()).bind(entry.category_id.as_str()).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
             let Some(current) = current else {
                 skipped += 1;
@@ -364,8 +408,8 @@ impl super::Store {
                 continue;
             }
             let revision = entry.after_revision + 1;
-            sqlx::query("UPDATE message_category_memberships SET assigned = ?, revision = ?, updated_at = ? WHERE message_id = ? AND category_id = ?")
-                .bind(if entry.prior_assigned { 1i64 } else { 0 }).bind(revision).bind(now).bind(entry.message_id.as_str()).bind(entry.category_id.as_str())
+            sqlx::query("UPDATE message_category_memberships SET assigned = ?, revision = ?, updated_at = ?, manual_decision = ? WHERE message_id = ? AND category_id = ?")
+                .bind(if entry.prior_assigned { 1i64 } else { 0 }).bind(revision).bind(now).bind(entry.prior_manual_decision.unwrap_or(Some(entry.prior_assigned)).map(i64::from)).bind(entry.message_id.as_str()).bind(entry.category_id.as_str())
                 .execute(&mut *tx).await.map_err(|e| e.to_string())?;
             restored += 1;
         }
@@ -408,6 +452,8 @@ impl super::Store {
                         category_id: category_id.clone(),
                         revision: row.get("revision"),
                         assigned: true,
+                        manual_decision: Some(true),
+                        sources: Vec::new(),
                     })
             })
             .collect();
@@ -430,7 +476,7 @@ impl super::Store {
         category_id: &CategoryId,
         account_id: &mxr_core::AccountId,
     ) -> Result<bool, String> {
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM message_category_memberships cm JOIN messages m ON m.id = cm.message_id WHERE cm.category_id = ? AND cm.assigned = 1 AND m.account_id = ?)")
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM effective_category_memberships cm JOIN messages m ON m.id = cm.message_id WHERE cm.category_id = ? AND cm.assigned = 1 AND m.account_id = ?)")
             .bind(category_id.as_str()).bind(account_id.as_str()).fetch_one(self.reader()).await.map_err(|e| e.to_string())
     }
 
@@ -439,7 +485,7 @@ impl super::Store {
         category_id: &CategoryId,
         account_id: &mxr_core::AccountId,
     ) -> Result<Vec<MessageId>, String> {
-        let rows = sqlx::query("SELECT m.id FROM message_category_memberships cm JOIN messages m ON m.id = cm.message_id WHERE cm.category_id = ? AND cm.assigned = 1 AND m.account_id = ?")
+        let rows = sqlx::query("SELECT m.id FROM effective_category_memberships cm JOIN messages m ON m.id = cm.message_id WHERE cm.category_id = ? AND cm.assigned = 1 AND m.account_id = ?")
             .bind(category_id.as_str()).bind(account_id.as_str()).fetch_all(self.reader()).await.map_err(|e| e.to_string())?;
         Ok(rows
             .into_iter()
@@ -463,6 +509,8 @@ impl super::Store {
                     category_id: category_id.clone(),
                     revision: row.get("revision"),
                     assigned: true,
+                    manual_decision: Some(true),
+                    sources: Vec::new(),
                 })
             })
             .collect()

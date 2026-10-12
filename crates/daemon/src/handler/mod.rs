@@ -18,6 +18,7 @@ pub(crate) mod arrivals;
 mod auth_sessions;
 mod briefing;
 pub(crate) mod categories;
+pub(crate) mod category_rules;
 mod commitments;
 mod commitments_extract;
 mod conversation_shape;
@@ -779,6 +780,23 @@ async fn dispatch(
             form,
             preview_token,
         } => Box::pin(rule_treatment::run(state, form, preview_token.as_deref())).await,
+        Request::RuleCategories {
+            form,
+            preview_token,
+            delete,
+        } => {
+            Box::pin(category_rules::run(
+                state,
+                form,
+                preview_token.as_deref(),
+                *delete,
+            ))
+            .await
+        }
+        Request::ExplainCategoryMembership {
+            message_id,
+            category_id,
+        } => category_rules::explain(state, message_id, category_id).await,
         Request::ListRules => rules::list_rules(state).await,
         Request::GetRule { rule } => rules::get_rule(state, rule).await,
         Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
@@ -2190,6 +2208,11 @@ fn classify_request(req: &Request) -> RequestClass {
             preview_token: None,
             ..
         }
+        | Request::RuleCategories {
+            preview_token: None,
+            ..
+        }
+        | Request::ExplainCategoryMembership { .. }
         | Request::ListRules
         | Request::ListAccounts
         | Request::ListAccountsConfig
@@ -2338,7 +2361,12 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::AckMessage { dry_run: false, .. } => Send,
 
         // --- Destructive: irreversible / provider-destructive ---
-        Request::Mutation { .. }
+        Request::RuleCategories {
+            preview_token: Some(_),
+            delete: true,
+            ..
+        }
+        | Request::Mutation { .. }
         | Request::SubmitArchive { .. }
         | Request::StartMutationJob { .. }
         | Request::DeleteLabel { .. }
@@ -2386,6 +2414,11 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RepairAccountConfig { .. }
         | Request::RuleTreatment {
             preview_token: Some(_),
+            ..
+        }
+        | Request::RuleCategories {
+            preview_token: Some(_),
+            delete: false,
             ..
         }
         | Request::UpsertRule { .. }
@@ -2542,6 +2575,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CreateLabel { .. } => "create_label",
         Request::DeleteLabel { .. } => "delete_label",
         Request::RenameLabel { .. } => "rename_label",
+        Request::RuleCategories { .. } => "rule_categories",
+        Request::ExplainCategoryMembership { .. } => "explain_category_membership",
         Request::RuleTreatment { .. } => "rule_treatment",
         Request::ListRules => "list_rules",
         Request::ListAccounts => "list_accounts",
@@ -3343,10 +3378,41 @@ async fn build_rule_from_form(
         enabled: form.enabled,
         priority: form.priority,
         conditions: parse_rule_condition_string(&form.condition)?,
-        actions: parse_rule_actions_string(&form.action)?,
+        actions: parse_rule_actions_string(
+            &resolve_category_action_names(state, &form.action).await?,
+        )?,
         created_at: existing.as_ref().map_or(now, |rule| rule.created_at),
         updated_at: now,
     })
+}
+
+async fn resolve_category_action_names(state: &AppState, action: &str) -> Result<String, String> {
+    let categories = state.store.list_personal_categories(None).await?;
+    action
+        .split([',', ';'])
+        .map(|part| {
+            let part = part.trim();
+            for prefix in ["add-category:", "remove-category:"] {
+                if let Some(value) = part.strip_prefix(prefix) {
+                    let value = value.trim();
+                    if value.parse::<mxr_core::CategoryId>().is_ok() {
+                        return Ok(part.to_string());
+                    }
+                    let (_, key) = mxr_store::normalize_category_name(value)?;
+                    let category = categories
+                        .iter()
+                        .find(|c| {
+                            mxr_store::normalize_category_name(&c.name)
+                                .is_ok_and(|(_, name)| name == key)
+                        })
+                        .ok_or_else(|| format!("Category not found: {value}"))?;
+                    return Ok(format!("{prefix}{}", category.id));
+                }
+            }
+            Ok(part.to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map(|parts| parts.join(","))
 }
 
 fn parse_rule_condition_string(input: &str) -> Result<Conditions, String> {
@@ -3527,6 +3593,22 @@ fn parse_rule_actions_string(value: &str) -> Result<Vec<RuleAction>, String> {
 fn parse_rule_action_string(value: &str) -> Result<RuleAction, String> {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
+    if let Some(id) = value.trim().strip_prefix("add-category:") {
+        return Ok(RuleAction::AddCategory {
+            category_id: id
+                .trim()
+                .parse()
+                .map_err(|_| "category action requires a category ID")?,
+        });
+    }
+    if let Some(id) = value.trim().strip_prefix("remove-category:") {
+        return Ok(RuleAction::RemoveCategory {
+            category_id: id
+                .trim()
+                .parse()
+                .map_err(|_| "category action requires a category ID")?,
+        });
+    }
     if let Some(value) = strip_action_prefix(trimmed, "treatment:") {
         let mode = value;
         let treatment = match mode.to_ascii_lowercase().as_str() {
@@ -3623,6 +3705,8 @@ fn rule_actions_to_string(actions: &[RuleAction]) -> Result<String, String> {
 
 fn rule_action_to_string(action: &RuleAction) -> Result<String, String> {
     match action {
+        RuleAction::AddCategory { category_id } => Ok(format!("add-category:{category_id}")),
+        RuleAction::RemoveCategory { category_id } => Ok(format!("remove-category:{category_id}")),
         RuleAction::SetTreatment { treatment } => Ok(format!("treatment:{}", treatment.as_str())),
         RuleAction::Archive => Ok("archive".to_string()),
         RuleAction::Trash => Ok("trash".to_string()),

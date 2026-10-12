@@ -57,6 +57,15 @@ pub(super) async fn upsert_rule_value(state: &AppState, value: serde_json::Value
     let mut rule = parse_rule_value(value)?;
     rule.updated_at = chrono::Utc::now();
     super::rule_treatment::validate(state, &rule).await?;
+    if super::category_rules::has_categories(&rule) {
+        return Err("Category rules require a category-rule preview and apply".into());
+    }
+    if let Some(row) = state.store.get_rule_by_id_or_name(&rule.id.0).await? {
+        let prior: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))?;
+        if super::category_rules::has_categories(&prior) {
+            return Err("Editing category rules requires a category-rule preview and apply".into());
+        }
+    }
     let value = serde_json::to_value(&rule)?;
     warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;
@@ -71,6 +80,13 @@ pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
+            let prior: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))?;
+            if super::category_rules::has_categories(&prior) {
+                return Err(
+                    "Deleting category rules requires a category-rule deletion preview and apply"
+                        .into(),
+                );
+            }
             state.store.delete_rule(&id).await?;
             Ok(ResponseData::Ack)
         }
@@ -85,6 +101,15 @@ pub(super) async fn upsert_rule_form(
     let _sorting = state.rule_mutation_gate.lock().await;
     let rule = build_rule_from_form(state, form).await?;
     super::rule_treatment::validate(state, &rule).await?;
+    if super::category_rules::has_categories(&rule) {
+        return Err("Category rules require a category-rule preview and apply".into());
+    }
+    if let Some(row) = state.store.get_rule_by_id_or_name(&rule.id.0).await? {
+        let prior: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))?;
+        if super::category_rules::has_categories(&prior) {
+            return Err("Editing category rules requires a category-rule preview and apply".into());
+        }
+    }
     let value = serde_json::to_value(&rule)?;
     warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;

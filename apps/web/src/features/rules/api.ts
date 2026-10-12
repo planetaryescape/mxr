@@ -88,3 +88,22 @@ export function previewTreatment(form: RuleForm, previewToken?: string) {
     body: { form: { ...form, id: form.id ?? null }, preview_token: previewToken ?? null },
   });
 }
+
+export function hasCategoryActions(action: string) {
+  return /(?:^|[,;])\s*(?:add|remove)-category:/i.test(action);
+}
+interface CategoryPreview {
+  applied: boolean; token?: string | null; rule_id: string; delete: boolean;
+  complete: boolean; unavailable: number; notice: string;
+  matches: { message_id: string; account_id: string; category_id: string; from: string; subject: string; before: boolean; after: boolean; reason: string; manual_decision?: boolean | null; winner?: string | null }[];
+}
+export async function previewCategories(form: RuleForm, previewToken?: string, deleteRule = false): Promise<TreatmentPreview> {
+  const result = await apiFetch<CategoryPreview>("/api/v1/platform/rules/categories", {
+    method: "POST", body: { form: { ...form, id: form.id ?? null }, preview_token: previewToken ?? null, delete: deleteRule },
+  });
+  return { applied: result.applied, token: result.token, rule_id: result.rule_id,
+    result: { complete: result.complete, unavailable: result.unavailable, scan_limit: 0, notice: result.notice,
+      matches: result.matches.map((m) => ({ ...m, before: m.before ? "Assigned" : "Unassigned", after: m.after ? "Assigned" : "Unassigned", blocked: m.manual_decision != null, treatment: null })),
+    },
+  };
+}

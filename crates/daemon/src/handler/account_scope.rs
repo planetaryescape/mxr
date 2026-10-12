@@ -435,7 +435,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 
-        Request::RuleTreatment {form,..} => {
+        Request::ExplainCategoryMembership { message_id, .. } => Targets(vec![T::Message(message_id)]),
+        Request::RuleCategories {form,..} | Request::RuleTreatment {form,..} => {
             if let Some(account_id) = &form.account_id {
                 let mut targets = vec![T::Account(account_id)];
                 targets.extend(form.id.as_deref().map(T::Rule));
@@ -876,6 +877,11 @@ pub(super) async fn enforce_account_allowlist(
     profile: &AgentProfileConfig,
     req: &Request,
 ) -> Result<(), String> {
+    if let Request::RuleCategories { form, .. } = req {
+        if form.account_id.is_none() && profile_covers_all_accounts(state, profile).await? {
+            return Ok(());
+        }
+    }
     let full_category_access =
         if is_global_category_catalog_request(req) || request_references_category(req) {
             profile_covers_all_accounts(state, profile).await?

@@ -258,6 +258,7 @@ export interface PersonalCategoryView {
   total_count: number;
 }
 export interface CategoryMembershipPreview {
+  effects?: {message_id:string;category_id:string;before:boolean;after:boolean;reason:string}[];
   category_ids: string[];
   message_count: number;
   added: number;
@@ -552,4 +553,9 @@ export interface SnoozedEntry {
 
 export function fetchSnoozed(): Promise<{ snoozed: SnoozedEntry[] }> {
   return apiFetch<{ snoozed: SnoozedEntry[] }>("/api/v1/mail/snoozed");
+}
+
+export interface CategoryExplanation { assigned: boolean; manual_decision?: boolean | null; winner?: {rule_name:string;assigned:boolean;priority:number} | null; sources:{rule_name:string;assigned:boolean;priority:number}[] }
+export function explainCategory(messageId: string, categoryId: string) {
+  return apiFetch<CategoryExplanation>(`/api/v1/mail/categories/why?${new URLSearchParams({message_id:messageId,category_id:categoryId})}`);
 }

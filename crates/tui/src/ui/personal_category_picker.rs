@@ -24,6 +24,7 @@ pub struct PersonalCategoryPicker {
     pub generation: u64,
     pub loading: bool,
     pub error: Option<String>,
+    pub why: Option<Vec<String>>,
     pub input: String,
     pub filtering: bool,
     pub categories: Vec<PersonalCategory>,
@@ -142,10 +143,10 @@ pub fn draw(
     frame.render_widget(Clear, popup);
     let title = match picker.surface {
         Some(CategorySurface::Catalog) => {
-            " Categories · / filter · n new · r rename · d delete · Enter view · Esc back "
+            " Categories · n new · r rename · d delete · Enter view · Esc back "
         }
-        Some(CategorySurface::View) => " Category mail · Enter opens message · Esc back ",
-        _ => " Assign Category · / filter · Space stage · Enter finish/preview · v view · n new · Esc close ",
+        Some(CategorySurface::View) => " Category mail · Enter open · w Why · Esc back ",
+        _ => " Assign Category · Space stage · Enter preview · w Why · n new · Esc ",
     };
     let block = Block::default()
         .title(title)
@@ -157,6 +158,12 @@ pub fn draw(
         return;
     }
 
+    if let Some(why) = &picker.why {
+        let mut lines = vec![Line::from("Why this category · Esc back")];
+        lines.extend(why.iter().cloned().map(Line::from));
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), inner);
+        return;
+    }
     if let Some(action) = &picker.name_action {
         let verb = match action {
             CategoryNameAction::Create => "New category",
@@ -176,14 +183,23 @@ pub fn draw(
     }
 
     if let Some(preview) = &picker.membership_preview {
-        frame.render_widget(
-            Paragraph::new(format!(
-                "{} message(s) will change: {} added, {} removed.\nEnter applies this preview · Esc cancels",
+        let mut lines = vec![
+            Line::from(format!(
+                "{} message(s): {} added, {} removed",
                 preview.message_count, preview.added, preview.removed
+            )),
+            Line::from("Enter applies this preview · Esc cancels"),
+        ];
+        lines.extend(preview.effects.iter().map(|e| {
+            Line::from(format!(
+                "{}: {} → {} · {}",
+                e.message_id,
+                if e.before { "Assigned" } else { "Unassigned" },
+                if e.after { "Assigned" } else { "Unassigned" },
+                e.reason
             ))
-            .wrap(Wrap { trim: true }),
-            inner,
-        );
+        }));
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), inner);
         return;
     }
     if let Some(preview) = &picker.delete_preview {

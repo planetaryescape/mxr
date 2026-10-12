@@ -34,6 +34,7 @@ async fn dispatch_get_body_synthesizes_readable_summary_for_calendar_only_messag
     state.store.insert_body(&stored).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 17,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -72,6 +73,7 @@ async fn dispatch_respond_invite_dry_run_builds_imip_preview_without_sending() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 18,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -110,6 +112,7 @@ async fn dispatch_respond_invite_sends_reply_and_updates_local_partstat() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 19,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -216,6 +219,7 @@ async fn dispatch_respond_invite_matches_account_alias_attendee() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 20,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -303,6 +307,7 @@ async fn dispatch_respond_invite_blocks_stale_sequence_when_newer_invite_exists(
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 20,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -376,6 +381,7 @@ async fn dispatch_respond_invite_warns_when_same_uid_has_different_organizer() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 22,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -451,6 +457,7 @@ async fn dispatch_respond_invite_blocks_fatal_parser_warning() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 21,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::RespondInvite {
@@ -505,6 +512,7 @@ async fn dispatch_get_body_preserves_exact_sources_and_inline_metadata() {
     state.store.insert_body(&stored).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 18,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -584,6 +592,7 @@ async fn dispatch_get_html_image_assets_resolves_inline_and_blocks_remote() {
     state.store.insert_body(&stored).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 16,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetHtmlImageAssets {
@@ -662,6 +671,7 @@ async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
     state.store.insert_body(&stored).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 17,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetHtmlImageAssets {
@@ -703,6 +713,7 @@ async fn dispatch_download_attachment_persists_local_path() {
         .unwrap();
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -724,6 +735,7 @@ async fn dispatch_download_attachment_persists_local_path() {
     };
 
     let body_msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -739,6 +751,7 @@ async fn dispatch_download_attachment_persists_local_path() {
     };
 
     let download_message = |id| IpcMessage {
+        expected_workspace: None,
         id,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DownloadAttachment {
@@ -801,6 +814,7 @@ async fn dispatch_download_attachment_persists_local_path() {
     assert_eq!(attachment.local_path.as_ref(), Some(&path));
 
     let metadata_msg = IpcMessage {
+        expected_workspace: None,
         id: 17,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetAttachmentTransferMetadata {
@@ -827,6 +841,7 @@ async fn dispatch_download_attachment_persists_local_path() {
         .contains(path.to_str().unwrap()));
 
     let chunk_msg = IpcMessage {
+        expected_workspace: None,
         id: 18,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ReadAttachmentChunk {
@@ -870,6 +885,7 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 200,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListReplyQueue),
@@ -887,6 +903,7 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 201,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetReplyLater {
@@ -907,6 +924,7 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 202,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListReplyQueue),
@@ -937,6 +955,7 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 203,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetReplyLater {
@@ -957,6 +976,7 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 204,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListReplyQueue),
@@ -997,6 +1017,7 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 250,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetReplyLater {
@@ -1023,6 +1044,7 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 251,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetReplyLater {
@@ -1075,6 +1097,7 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 300,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetAutoReminder {
@@ -1109,6 +1132,7 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
     let queue = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 302,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListReplyQueue),
@@ -1147,6 +1171,7 @@ async fn dispatch_cancel_auto_reminder_prevents_firing() {
     let _ = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 310,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetAutoReminder {
@@ -1159,6 +1184,7 @@ async fn dispatch_cancel_auto_reminder_prevents_firing() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 311,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CancelAutoReminder {
@@ -1276,6 +1302,7 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 400,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ScheduleSend {
@@ -1384,6 +1411,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     let _ = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 410,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ScheduleSend {
@@ -1398,6 +1426,7 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 411,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CancelScheduledSend {
@@ -1457,6 +1486,7 @@ async fn list_scheduled_sends(
     let resp = handle_request(
         state,
         &IpcMessage {
+            expected_workspace: None,
             id: 420,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListScheduledSends { account_id }),
@@ -1496,6 +1526,7 @@ async fn dispatch_list_scheduled_sends_lists_pending_across_accounts_and_scopes(
         let resp = handle_request(
             &state,
             &IpcMessage {
+                expected_workspace: None,
                 id: 421,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ScheduleSend {
@@ -1538,6 +1569,7 @@ async fn dispatch_mutation_star() {
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
@@ -1550,6 +1582,7 @@ async fn dispatch_mutation_star() {
 
     // Verify flag is set
     let get_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
@@ -1577,6 +1610,7 @@ async fn modify_labels_on_folder_provider_does_not_leave_one_message_in_two_fold
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
@@ -1714,6 +1748,7 @@ fn invite_reply_draft(
 
 fn send_invite_reply_msg(draft: mxr_core::types::Draft) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {

@@ -36,7 +36,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 10;
+pub const IPC_PROTOCOL_VERSION: u32 = 11;
 
 #[cfg(test)]
 mod tests {
@@ -889,6 +889,7 @@ mod tests {
             ),
             (
                 ResponseData::Status {
+                    workspace_owner_supported: false,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1273,6 +1274,7 @@ mod tests {
 
         for req in variants {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(req),
@@ -1316,6 +1318,7 @@ mod tests {
 
         for resp in [ok, err] {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 2,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Response(resp),
@@ -1344,6 +1347,7 @@ mod tests {
 
         for event in events {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 0,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Event(event),
@@ -1357,6 +1361,7 @@ mod tests {
     fn codec_encode_decode() {
         let mut codec = IpcCodec::new();
         let msg = IpcMessage {
+            expected_workspace: None,
             id: 42,
             source: crate::ClientKind::default(),
             payload: IpcPayload::Request(Request::Ping),
@@ -1376,6 +1381,7 @@ mod tests {
 
         for i in 0..3 {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: i,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),
@@ -1401,6 +1407,7 @@ mod tests {
             (ClientKind::Mcp, "mcp"),
         ] {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 7,
                 source,
                 payload: IpcPayload::Request(Request::Ping),
@@ -1646,6 +1653,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
         let req = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: crate::ClientKind::default(),
             payload: IpcPayload::Request(Request::CheckDraftSafety {
@@ -1690,6 +1698,7 @@ mod tests {
             }])],
         };
         let resp = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: crate::ClientKind::default(),
             payload: IpcPayload::Response(Response::Ok {
@@ -1809,6 +1818,7 @@ mod tests {
             query in "[ -~]{0,64}",
         ) {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Search {

@@ -33,6 +33,7 @@ export interface ComposeController {
   sessionLoading: boolean;
   sessionError: Error | null;
   retrySession: () => void;
+  reopenSavedDraft: (() => void) | null;
 
   draft: ComposeDraftState | null;
   dirty: boolean;

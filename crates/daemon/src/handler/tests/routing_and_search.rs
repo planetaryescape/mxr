@@ -152,6 +152,7 @@ async fn dispatch_ping_returns_pong() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Ping),
@@ -176,6 +177,7 @@ async fn dispatch_draft_compose_rejects_oversized_instruction_as_invalid_request
     let account_id = state.default_account_id();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DraftCompose {
@@ -213,6 +215,7 @@ async fn dispatch_list_envelopes_after_sync() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -246,6 +249,7 @@ async fn dispatch_list_envelopes_by_label() {
 
     // Get labels first
     let labels_msg = IpcMessage {
+        expected_workspace: None,
         id: 10,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
@@ -266,6 +270,7 @@ async fn dispatch_list_envelopes_by_label() {
 
     // Fetch envelopes by Inbox label
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 11,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -298,6 +303,7 @@ async fn dispatch_list_labels_without_accounts_returns_empty() {
     let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
@@ -317,6 +323,7 @@ async fn dispatch_list_envelopes_without_accounts_returns_empty() {
     let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 13,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -400,6 +407,7 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
     state.store.upsert_envelope(&envelope).await.unwrap();
 
     let envelopes_msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -421,6 +429,7 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
     }
 
     let labels_msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
@@ -443,6 +452,7 @@ async fn dispatch_create_label_persists_and_returns_label() {
     let account_id = state.default_account_id();
 
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -463,6 +473,7 @@ async fn dispatch_create_label_persists_and_returns_label() {
     assert_eq!(created.account_id, account_id);
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
@@ -496,6 +507,7 @@ async fn dispatch_upsert_and_list_rules() {
     });
 
     let upsert_msg = IpcMessage {
+        expected_workspace: None,
         id: 20,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UpsertRule { rule: rule.clone() }),
@@ -511,6 +523,7 @@ async fn dispatch_upsert_and_list_rules() {
     }
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 21,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListRules),
@@ -549,6 +562,7 @@ async fn dispatch_dry_run_rules_returns_matching_messages() {
     let _ = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 22,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpsertRule { rule }),
@@ -557,6 +571,7 @@ async fn dispatch_dry_run_rules_returns_matching_messages() {
     .await;
 
     let dry_run_msg = IpcMessage {
+        expected_workspace: None,
         id: 23,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DryRunRules {
@@ -585,6 +600,7 @@ async fn dispatch_upsert_rule_form_and_get_rule_form() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let upsert_msg = IpcMessage {
+        expected_workspace: None,
         id: 231,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UpsertRuleForm {
@@ -609,6 +625,7 @@ async fn dispatch_upsert_rule_form_and_get_rule_form() {
     };
 
     let get_form_msg = IpcMessage {
+        expected_workspace: None,
         id: 232,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetRuleForm { rule: rule_id }),
@@ -634,6 +651,7 @@ async fn dispatch_rename_label_updates_visible_label() {
     let account_id = state.default_account_id();
 
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -645,6 +663,7 @@ async fn dispatch_rename_label_updates_visible_label() {
     let _ = handle_request(&state, &create_msg).await;
 
     let rename_msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::RenameLabel {
@@ -665,6 +684,7 @@ async fn dispatch_rename_label_updates_visible_label() {
     }
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 16,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
@@ -689,6 +709,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
     let account_id = state.default_account_id();
 
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 17,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -700,6 +721,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
     let _ = handle_request(&state, &create_msg).await;
 
     let delete_msg = IpcMessage {
+        expected_workspace: None,
         id: 18,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DeleteLabel {
@@ -716,6 +738,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
     }
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 19,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
@@ -744,6 +767,7 @@ async fn dispatch_count_after_sync() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Count {
@@ -769,6 +793,7 @@ async fn dispatch_list_saved_searches_empty() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 4,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSavedSearches),
@@ -791,6 +816,7 @@ async fn dispatch_create_and_list_saved_searches() {
 
     // Create
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 5,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateSavedSearch {
@@ -814,6 +840,7 @@ async fn dispatch_create_and_list_saved_searches() {
 
     // List
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 6,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSavedSearches),
@@ -835,6 +862,7 @@ async fn dispatch_create_and_list_saved_searches() {
 async fn dispatch_create_saved_search_persists_requested_mode() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 51,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateSavedSearch {
@@ -874,6 +902,7 @@ async fn dispatch_run_saved_search_returns_results() {
         .unwrap();
 
     let create = IpcMessage {
+        expected_workspace: None,
         id: 200,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateSavedSearch {
@@ -886,6 +915,7 @@ async fn dispatch_run_saved_search_returns_results() {
     handle_request(&state, &create).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 201,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::RunSavedSearch {
@@ -930,6 +960,7 @@ async fn dispatch_search_aggregation_groups_query_by_sender() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 202,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SearchAggregation {
@@ -966,6 +997,7 @@ async fn dispatch_status() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 7,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetStatus),
@@ -976,6 +1008,7 @@ async fn dispatch_status() {
         IpcPayload::Response(Response::Ok {
             data:
                 ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1013,6 +1046,7 @@ async fn dispatch_status_reports_degraded_relationship_llm_features_when_llm_dis
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 7,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetStatus),
@@ -1049,6 +1083,7 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 8,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetStatus),
@@ -1149,6 +1184,7 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
     state.abort_search_worker().await;
 
     let status = IpcMessage {
+        expected_workspace: None,
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetStatus),
@@ -1173,6 +1209,7 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
     }
 
     let doctor = IpcMessage {
+        expected_workspace: None,
         id: 13,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetDoctorReport),
@@ -1208,6 +1245,7 @@ async fn a_doctor_report_cannot_disagree_with_itself_about_search() {
     state.abort_search_worker().await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetDoctorReport),
@@ -1242,6 +1280,7 @@ async fn dispatch_shutdown_acknowledges_without_exiting() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 9,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Shutdown),
@@ -1262,6 +1301,7 @@ async fn dispatch_doctor_report() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 81,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetDoctorReport),
@@ -1288,6 +1328,7 @@ async fn dispatch_sync_status() {
     let account_id = state.default_account_id();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 82,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetSyncStatus { account_id }),
@@ -1319,6 +1360,7 @@ async fn dispatch_search_returns_results() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 10,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1358,6 +1400,7 @@ async fn dispatch_search_explain_returns_execution_details() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 11,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1403,6 +1446,7 @@ async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 13,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1440,6 +1484,7 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1489,6 +1534,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1528,6 +1574,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
 async fn dispatch_search_rejects_invalid_structured_query() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1563,6 +1610,7 @@ async fn dispatch_get_body_after_sync() {
 
     // Get first envelope
     let envelopes_msg = IpcMessage {
+        expected_workspace: None,
         id: 11,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -1585,6 +1633,7 @@ async fn dispatch_get_body_after_sync() {
 
     // Get body for that envelope
     let body_msg = IpcMessage {
+        expected_workspace: None,
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1612,6 +1661,7 @@ async fn dispatch_list_bodies_omits_missing_rows() {
     let missing_id = mxr_core::MessageId::new();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 13,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListBodies {
@@ -1646,6 +1696,7 @@ async fn dispatch_get_body_rehydrates_missing_store_row_from_provider() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 14,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1686,6 +1737,7 @@ async fn dispatch_list_bodies_stays_local_when_store_row_is_missing() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListBodies {
@@ -1732,6 +1784,7 @@ async fn dispatch_get_body_rehydrates_legacy_best_effort_body_from_provider() {
     state.store.insert_body(&stale).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 19,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1784,6 +1837,7 @@ async fn dispatch_get_body_rehydrates_best_effort_summary_when_snippet_implies_r
     state.store.insert_body(&stale).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 20,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1837,6 +1891,7 @@ async fn dispatch_list_bodies_preserves_attachments() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 16,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListBodies {

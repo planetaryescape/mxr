@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
-import { beforeEach } from "vitest";
+import { privateStorage } from "./privateStorage";
+import { beforeEach, vi } from "vitest";
 
 // jsdom gives a test *file* one Storage instance, so anything a component
 // persists survives into every later test in that file. Compose remembers its
@@ -15,6 +16,8 @@ beforeEach(() => {
   // the node environment have no such global.
   if (typeof window === "undefined") return;
   try {
+    if (!window.localStorage || typeof window.localStorage.setItem !== "function")
+      vi.stubGlobal("localStorage", privateStorage());
     window.localStorage.clear();
     window.sessionStorage.clear();
   } catch {

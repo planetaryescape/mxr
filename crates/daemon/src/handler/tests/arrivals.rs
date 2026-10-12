@@ -613,6 +613,7 @@ async fn a_dry_run_changes_nothing_and_a_sender_move_needs_a_kind_mode() {
     );
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::MoveMessage {
@@ -831,6 +832,7 @@ async fn each_account_counts_its_own_mail() {
 /// The error text of a request the daemon refuses.
 async fn refused(fx: &Fixture, request: Request) -> String {
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(request),

@@ -1,3 +1,4 @@
+import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -12,6 +13,7 @@ import { useDraftSaveActions } from "./useDraftSaveActions";
 import { useComposeSend } from "./useComposeSend";
 
 const api = vi.hoisted(() => ({
+  rememberComposeBinding: vi.fn<typeof import("../api").rememberComposeBinding>(),
   updateComposeSession: vi.fn<typeof import("../api").updateComposeSession>(),
   saveComposeSession: vi.fn<typeof import("../api").saveComposeSession>(),
   refreshComposeSession: vi.fn<typeof import("../api").refreshComposeSession>(),
@@ -19,9 +21,19 @@ const api = vi.hoisted(() => ({
   scheduleComposeSession: vi.fn<typeof import("../api").scheduleComposeSession>(),
 }));
 vi.mock("../api", () => api);
+function originalBinding() {
+  return {
+    target: window.location.origin,
+    workspace: {
+      workspace_id: "00000000-0000-7000-8000-000000000001",
+      recovery_generation: "00000000-0000-7000-8000-000000000002",
+    },
+  };
+}
 function session(path: string, revision: number, body: string): ComposeSessionResponse {
   return {
     session: {
+      binding: originalBinding(),
       draftPath: path,
       draftId: path,
       revision,
@@ -104,6 +116,8 @@ function setup(path: string) {
   );
 }
 beforeEach(() => {
+  resetWorkspaceOwnerForTest();
+  observeWorkspace(originalBinding());
   window.localStorage.clear();
   for (const mock of Object.values(api)) mock.mockReset();
 });
@@ -400,6 +414,7 @@ test("unmount flushes text typed after an in-flight conflict into the reopening 
     });
     return {
       session: {
+        binding: originalBinding(),
         ...session(request.draftPath, 1, request.body ?? "").session,
         draftId: path,
         recoverySourcePath: path,

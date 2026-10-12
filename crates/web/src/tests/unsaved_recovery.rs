@@ -63,7 +63,7 @@ async fn explicit_unsaved_recovery_retry_preserves_identity_and_never_overwrites
         )
         .await
         .unwrap();
-        let client = reqwest::Client::new();
+        let client = test_http_client();
         let start: serde_json::Value = client
             .post(format!("http://{addr}/api/v1/mail/compose/session"))
             .bearer_auth(TEST_AUTH_TOKEN)

@@ -63,6 +63,34 @@ pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     action: ComposeAction,
 ) -> Result<ComposeReadyData, MxrError> {
+    let original = match &action {
+        ComposeAction::EditDraft { path, .. } => {
+            let id = mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
+            Some(crate::send_recovery_state::owner_for_request(&Request::GetDraft { draft_id: id })
+                .map_err(|error| MxrError::Ipc(error.to_string()))?
+                .ok_or_else(|| MxrError::Ipc("This retained private file has no original workspace owner; keep it and explicitly reopen the saved canonical draft before continuing".into()))?)
+        }
+        _ => None,
+    };
+    let owner = match original {
+        Some(owner) => owner,
+        None => crate::ipc::capture_workspace(bg).await?,
+    };
+    crate::ipc::COMMAND_OWNER
+        .scope(
+            Some(owner.clone()),
+            handle_compose_action_owned(bg, action, owner),
+        )
+        .await
+}
+
+async fn handle_compose_action_owned(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    action: ComposeAction,
+    owner: mxr_protocol::ArchiveWorkspaceData,
+) -> Result<ComposeReadyData, MxrError> {
+    #[cfg(test)]
+    let _ = &owner;
     let mut invite_reply: Option<mxr_core::types::InlineCalendarReply> = None;
     let (account_id, intent, from, kind, signature_kind) = match action {
         ComposeAction::EditDraft { path, account_id } => {
@@ -75,6 +103,9 @@ pub(crate) async fn handle_compose_action(
                 .map_err(|error| MxrError::Ipc(format!("Cannot read send recovery: {error}")))?;
             // Reopening a retained send is an explicit review even without edits.
             // A later Send press still queries acceptance before updating or sending.
+            #[cfg(not(test))]
+            crate::send_recovery_state::retain_owner(&draft_id, &owner)
+                .map_err(|error| MxrError::Ipc(error.to_string()))?;
             return Ok(ComposeReadyData {
                 account_id,
                 intent: mxr_core::DraftIntent::New,
@@ -236,6 +267,11 @@ pub(crate) async fn handle_compose_action(
             return Err(MxrError::Ipc(e.to_string()));
         }
     };
+    #[cfg(not(test))]
+    let id = mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
+    #[cfg(not(test))]
+    crate::send_recovery_state::retain_owner(&id, &owner)
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
     Ok(ComposeReadyData {
         account_id,
         intent,
@@ -263,6 +299,19 @@ pub(crate) async fn prepare_draft_edit(
             mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
         ));
     }
+    let retained_owner = crate::send_recovery_state::owner_for_request(&Request::GetDraft {
+        draft_id: draft.id.clone(),
+    })
+    .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    let owner = match retained_owner {
+        Some(owner) => owner,
+        None => crate::ipc::capture_workspace(bg).await?,
+    };
+    #[cfg(not(test))]
+    crate::send_recovery_state::retain_owner(&draft.id, &owner)
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    #[cfg(test)]
+    let _ = &owner;
     let account = resolve_compose_account(bg, Some(&draft.account_id)).await?;
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &account.email)
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
@@ -867,6 +916,16 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
 
         tokio::spawn(async move {
+            let capture = rx.recv().await.expect("original editor owner");
+            assert!(matches!(capture.request, Request::GetArchiveWorkspace));
+            let _ = capture.reply.send(Ok(Response::Ok {
+                data: ResponseData::ArchiveWorkspace {
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                        recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+                    },
+                },
+            }));
             let request = rx.recv().await.expect("compose account request");
             assert!(matches!(request.request, Request::ListAccounts));
             let _ = request.reply.send(Ok(Response::Ok {
@@ -970,6 +1029,17 @@ mod tests {
         let (bg, mut requests) = mpsc::unbounded_channel::<IpcRequest>();
         tokio::spawn(async move {
             for _ in 0..2 {
+                let capture = requests.recv().await.expect("original editor owner");
+                assert!(matches!(capture.request, Request::GetArchiveWorkspace));
+                let _ = capture.reply.send(Ok(Response::Ok {
+                    data: ResponseData::ArchiveWorkspace {
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                            recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+                        },
+                    },
+                }));
+
                 let request = requests.recv().await.expect("account lookup");
                 assert!(matches!(request.request, Request::ListAccounts));
                 request

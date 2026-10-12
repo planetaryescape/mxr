@@ -440,6 +440,7 @@ async fn a_time_that_has_passed_is_refused_and_unknown_threads_say_why() {
     let fx = Fixture::new().await;
     let (thread, _) = owed(&fx, Duration::hours(3)).await;
     let past = IpcMessage {
+        expected_workspace: None,
         id: 9,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DeferThreads {

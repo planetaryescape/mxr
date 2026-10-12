@@ -64,6 +64,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                     counter.fetch_add(1, Ordering::Relaxed);
                     let data = match message.payload {
                         IpcPayload::Request(Request::GetStatus) => ResponseData::Status {
+                            workspace_owner_supported: false,
                             draft_revision_supported: true,
                             send_outcome_supported: true,
                             archive_recovery_supported: true,
@@ -115,6 +116,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                         other => panic!("unexpected request in fixture: {other:?}"),
                     };
                     let response = IpcMessage {
+                        expected_workspace: None,
                         id: message.id,
                         source: ClientKind::Daemon,
                         payload: IpcPayload::Response(Response::Ok { data }),

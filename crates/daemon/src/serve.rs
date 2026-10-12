@@ -134,6 +134,7 @@ fn token_matches(expected: Option<&str>, presented: &str) -> bool {
 /// Point-to-point "you missed events, resync" signal for one client.
 fn events_lagged_frame(skipped: u64) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id: 0,
         source: ClientKind::default(),
         payload: IpcPayload::Event(DaemonEvent::EventsLagged { skipped }),
@@ -203,6 +204,7 @@ fn describe_unencodable(error: &std::io::Error) -> String {
 
 fn response_frame(id: u64, response: Response) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id,
         source: ClientKind::Daemon,
         payload: IpcPayload::Response(response),
@@ -493,12 +495,14 @@ async fn scope_event_frame(
     event_msg: IpcMessage,
 ) -> Option<IpcMessage> {
     let IpcMessage {
+        expected_workspace,
         id,
         source,
         payload,
     } = event_msg;
     let IpcPayload::Event(event) = payload else {
         return Some(IpcMessage {
+            expected_workspace,
             id,
             source,
             payload,
@@ -513,6 +517,7 @@ async fn scope_event_frame(
         .unwrap_or_default();
     match crate::handler::account_scope::scope_event(state, &profile, event).await {
         Ok(Some(event)) => Some(IpcMessage {
+            expected_workspace: None,
             id,
             source,
             payload: IpcPayload::Event(event),
@@ -570,6 +575,7 @@ where
                 "Daemon handler panicked: {panic_message}"
             );
             IpcMessage {
+                expected_workspace: None,
                 id: msg_id,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Response(Response::error(format!(
@@ -622,6 +628,7 @@ mod tests {
             panic!("boom");
             #[allow(unreachable_code)]
             IpcMessage {
+                expected_workspace: None,
                 id: 7,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Response(Response::Ok {
@@ -666,6 +673,7 @@ mod tests {
         let mut client = Framed::new(client_stream, IpcCodec::new());
         client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 44,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Shutdown),
@@ -715,6 +723,7 @@ mod tests {
         let account_id = AccountId::new();
         for _ in 0..400u32 {
             let _ = state.event_tx.send(IpcMessage {
+                expected_workspace: None,
                 id: 0,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
@@ -798,6 +807,7 @@ mod tests {
         let mut client = Framed::new(client_stream, IpcCodec::new());
         client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 12,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::RebuildAnalytics),
@@ -879,6 +889,7 @@ mod tests {
         let mut client = Framed::new(client_stream, IpcCodec::new());
         client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 55,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::RebuildAnalytics),
@@ -905,6 +916,7 @@ mod tests {
         // Still usable afterwards.
         client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 56,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),
@@ -960,6 +972,7 @@ mod tests {
 
         // Comfortably past the codec's 16 MiB cap, so `encode` refuses it.
         let _ = state_for_cleanup.event_tx.send(IpcMessage {
+            expected_workspace: None,
             id: 0,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Event(DaemonEvent::SyncError {
@@ -971,6 +984,7 @@ mod tests {
         let mut client = Framed::new(client_stream, IpcCodec::new());
         client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 91,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),

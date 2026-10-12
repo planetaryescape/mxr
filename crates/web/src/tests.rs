@@ -30,6 +30,7 @@ mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
 mod unsaved_recovery;
+mod workspace_owner;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 
@@ -93,7 +94,7 @@ async fn attachment_transfer_routes_return_path_free_typed_responses() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let base = format!("http://{addr}/api/v1/mail/attachments/transfer");
     let body = serde_json::json!({
         "message_id": message_id.to_string(),
@@ -151,6 +152,25 @@ fn compose_draft_path(response: &serde_json::Value) -> String {
     path.to_string()
 }
 
+fn test_workspace() -> mxr_protocol::ArchiveWorkspaceData {
+    mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+        recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+    }
+}
+fn test_http_client() -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "x-mxr-workspace",
+        reqwest::header::HeaderValue::from_str(&serde_json::to_string(&test_workspace()).unwrap())
+            .unwrap(),
+    );
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap()
+}
+
 async fn spawn_fake_ipc_server<F>(
     socket_path: &std::path::Path,
     responder: F,
@@ -184,12 +204,12 @@ where
                 if let Some(event) = event {
                     let _ = framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: 0,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Event(event),
                         })
                         .await;
-                    return;
                 }
                 while let Some(message) = framed.next().await {
                     let Ok(message) = message else {
@@ -205,7 +225,9 @@ where
                         let update = matches!(request, Request::UpdateDraft { .. });
                         let status = matches!(request, Request::GetStatus);
                         let fallback_request = request.clone();
-                        let Some(mut response) = responder(request).or_else(|| {
+                        let Some(mut response) = (if matches!(request, Request::GetStatus) && message.expected_workspace.is_none() {
+                            Some(Response::Ok { data: sample_status() })
+                        } else if matches!(request, Request::GetArchiveWorkspace) { Some(Response::Ok { data: ResponseData::ArchiveWorkspace { workspace: test_workspace() } }) } else { responder(request) }).or_else(|| {
                             if status { return Some(Response::Ok { data: sample_status() }); }
                             let mut drafts = fixture_drafts.lock().unwrap();
                             match fallback_request {
@@ -262,6 +284,7 @@ where
                             _ => {}
                         }
                         let response = IpcMessage {
+                            expected_workspace: None,
                             id: message.id,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Response(response),
@@ -295,6 +318,7 @@ async fn status_endpoint_proxies_ipc_status() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -328,7 +352,7 @@ async fn status_endpoint_proxies_ipc_status() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/status"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -437,7 +461,7 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     // admin/ping (Request::Ping → ResponseData::Pong)
     let response = client
@@ -574,7 +598,7 @@ async fn llm_config_endpoint_forwards_update_to_daemon() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/api/v1/platform/llm/config"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -621,7 +645,7 @@ async fn slice6_routes_reject_invalid_query_params() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     // bad mode → BridgeError::Ipc → 5xx; the point is we don't 200
     // for bad inputs.
@@ -666,6 +690,7 @@ async fn auth_accepts_authorization_bearer_header() {
         |_| {
             Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -698,7 +723,7 @@ async fn auth_accepts_authorization_bearer_header() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/admin/status"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -722,7 +747,7 @@ async fn auth_rejects_wrong_bearer_token() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/admin/status"))
         .bearer_auth("wrong-token-not-the-one-we-expect")
         .send()
@@ -768,7 +793,7 @@ async fn auth_rejects_query_string_token_for_http_routes() {
         "query-string token must not satisfy regular HTTP auth"
     );
 
-    let sync_response = reqwest::Client::new()
+    let sync_response = test_http_client()
         .post(format!(
             "http://{addr}/api/v1/mail/sync?token={TEST_AUTH_TOKEN}"
         ))
@@ -878,7 +903,7 @@ async fn host_header_allowlist_rejects_external_hosts() {
     // Send a request with a Host header pointing at an external
     // domain — this is the shape of a DNS rebinding attack from a
     // malicious page.
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/health"))
         .header(HOST, "evil.example.com")
         .send()
@@ -907,7 +932,7 @@ async fn host_header_allowlist_accepts_mxr_localhost() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/health"))
         .header(HOST, "mxr.localhost")
         .send()
@@ -1069,6 +1094,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1102,7 +1128,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/admin/status"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -1134,7 +1160,7 @@ async fn openapi_spec_is_served_at_api_v1_path() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let unauthenticated = client
         .get(format!("http://{addr}/api/v1/openapi.json"))
         .send()
@@ -1191,7 +1217,7 @@ async fn openapi_spec_snapshot() {
     .await
     .unwrap();
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .get(format!("http://{addr}/api/v1/openapi.json"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -1524,6 +1550,7 @@ async fn mailbox_endpoint_lists_envelopes() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1590,7 +1617,7 @@ async fn mailbox_endpoint_lists_envelopes() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/mailbox?view=messages"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -1630,6 +1657,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1696,7 +1724,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!(
             "http://{addr}/mailbox?lens_kind=all_mail&view=messages"
         ))
@@ -1760,6 +1788,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1854,7 +1883,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let threads_response = client
         .get(format!("http://{addr}/mailbox?view=threads"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
@@ -1979,7 +2008,7 @@ async fn thread_endpoint_returns_messages_and_bodies() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/thread/{thread_id}"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -2055,7 +2084,7 @@ async fn thread_endpoint_shapes_reader_mode_and_right_rail_from_raw_ipc_data() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/thread/{thread_id}"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -2110,7 +2139,7 @@ async fn thread_endpoint_rejects_unexpected_body_response() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/thread/{thread_id}"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -2178,7 +2207,7 @@ async fn search_endpoint_proxies_results() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!(
             "http://{addr}/search?q=buildkite&limit=25&offset=50"
         ))
@@ -2388,7 +2417,7 @@ async fn search_endpoint_supports_mode_sort_and_explain() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!(
             "http://{addr}/search?q=deploy&mode=semantic&sort=recent&explain=true"
         ))
@@ -2483,7 +2512,7 @@ async fn search_endpoint_dedupes_threads_by_thread_id() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/search?q=dalumuzi&scope=threads"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -2570,7 +2599,7 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!(
             "http://{addr}/search?q=deploy%20artifacts&scope=attachments"
         ))
@@ -2652,7 +2681,7 @@ async fn compose_session_endpoint_prepares_reply_draft() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/compose/session"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -2699,7 +2728,7 @@ async fn compose_session_update_refresh_and_discard_round_trip_draft() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let started: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
@@ -2801,7 +2830,7 @@ async fn compose_attachment_upload_returns_managed_resource_and_revision() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let started: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -2884,7 +2913,7 @@ async fn compose_session_send_forwards_draft_account_id() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let started: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
@@ -2977,7 +3006,7 @@ async fn compose_session_send_propagates_daemon_error() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let started: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
@@ -3068,7 +3097,7 @@ async fn archive_mutation_endpoint_proxies_message_ids() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let response = client
         .post(format!("http://{addr}/mutations/archive"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
@@ -3132,7 +3161,7 @@ async fn route_mutation_endpoint_proxies_atomic_route_request() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/api/v1/mail/mutations/route"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -3216,7 +3245,7 @@ async fn read_mutation_endpoint_reports_skipped_result_as_not_ok() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/mutations/read"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -3285,7 +3314,7 @@ async fn invite_reply_endpoint_proxies_dry_run_request() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/actions/invite/reply"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -3348,7 +3377,7 @@ async fn star_mutation_endpoint_proxies_message_ids_and_state() {
     .await
     .unwrap();
 
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let response = client
         .post(format!("http://{addr}/mutations/star"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
@@ -3397,7 +3426,7 @@ async fn export_thread_endpoint_proxies_markdown_export() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/thread/{thread_id}/export"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -3439,7 +3468,7 @@ async fn bug_report_endpoint_proxies_daemon_report() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/diagnostics/bug-report"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
@@ -3483,7 +3512,7 @@ async fn read_and_archive_endpoint_proxies_mutation() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/mutations/read-and-archive"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&json!({
@@ -3651,7 +3680,7 @@ async fn restoring_an_html_draft_refuses_with_an_actionable_conflict() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/compose/session/restore"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
@@ -3797,7 +3826,7 @@ async fn refusing_an_html_draft_leaves_no_compose_file_in_the_scratch_directory(
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/compose/session/restore"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
@@ -3862,7 +3891,7 @@ async fn the_html_draft_preview_is_the_stored_document_byte_for_byte() {
     .await
     .unwrap();
 
-    let body: serde_json::Value = reqwest::Client::new()
+    let body: serde_json::Value = test_http_client()
         .post(format!("http://{addr}/compose/session/restore"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .json(&serde_json::json!({ "draft_id": draft_id.to_string() }))
@@ -4059,7 +4088,7 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let draft_path = restore_session_path(&client, addr, &draft_id).await;
     let reopened = load_compose_session(Path::new(&draft_path)).await.unwrap();
@@ -4194,7 +4223,7 @@ async fn saving_a_restored_draft_to_server_updates_local_then_pushes_provider() 
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let draft_path = restore_session_path(&client, addr, &draft_id).await;
     edit_session(
@@ -4257,7 +4286,7 @@ async fn a_compose_session_that_was_not_restored_still_creates_a_stored_draft() 
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let session: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
@@ -4329,7 +4358,7 @@ async fn saving_a_restored_draft_that_no_longer_exists_reports_it_instead_of_rec
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let draft_path = restore_session_path(&client, addr, &draft_id).await;
     edit_session(
@@ -4492,7 +4521,7 @@ async fn daemon_error_kinds_map_to_http_statuses() {
         .await
         .unwrap();
 
-        let response = reqwest::Client::new()
+        let response = test_http_client()
             .get(format!("http://{addr}/api/v1/admin/status"))
             .bearer_auth(TEST_AUTH_TOKEN)
             .send()
@@ -4530,7 +4559,7 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
     .await
     .unwrap();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/mail/threads/not-a-uuid"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -4554,7 +4583,7 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
     )
     .await
     .unwrap();
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .get(format!("http://{addr}/api/v1/admin/status"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -4571,6 +4600,7 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
 
 fn sample_status() -> ResponseData {
     ResponseData::Status {
+        workspace_owner_supported: true,
         draft_revision_supported: true,
         send_outcome_supported: true,
         archive_recovery_supported: true,
@@ -4728,7 +4758,7 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     for path in [
         format!("/api/v1/mail/search?q=invoice&account={account}"),
@@ -4883,7 +4913,7 @@ async fn mailbox_thread_view_pages_whole_threads() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let rows_of = |json: &serde_json::Value| -> Vec<serde_json::Value> {
         json["mailbox"]["groups"]
@@ -5058,7 +5088,7 @@ async fn parity_routes_dispatch_daemon_requests() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let get = |path: String| {
         let client = client.clone();
         async move {
@@ -5248,7 +5278,7 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     for path in [
         "/api/v1/mail/desk".to_string(),
         format!("/api/v1/mail/desk?account={account}&lane_limit=5"),
@@ -5380,7 +5410,7 @@ async fn desk_later_route_forwards_the_instant() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let thread = ThreadId::new();
     let response = client
         .post(format!("http://{addr}/api/v1/mail/desk/later"))
@@ -5427,7 +5457,7 @@ async fn parity_routes_reject_bad_input() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     for path in [
         "/api/v1/mail/owed?account=not-a-uuid",
         "/api/v1/mail/whois?query=%20%20",
@@ -5507,7 +5537,7 @@ async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
     .await
     .unwrap();
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .post(format!(
             "http://{addr}/api/v1/mail/actions/unsubscribe-purge"
         ))
@@ -5567,7 +5597,7 @@ async fn unsubscribe_preview_commit_forwards_choice_and_token_without_legacy_fal
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let url = format!("http://{addr}/api/v1/mail/actions/unsubscribe-preview/commit");
     for archive in [false, true] {
         let response = client.post(&url).bearer_auth(TEST_AUTH_TOKEN)
@@ -5717,7 +5747,7 @@ async fn mailbox_and_search_rows_carry_labels() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let label_names = |row: &serde_json::Value| -> Vec<String> {
         row["labels"]
             .as_array()
@@ -5835,7 +5865,7 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let url = |source: &str| {
         format!(
             "http://{addr}/api/v1/mail/messages/{message_id}/inline-image?source={}",
@@ -5935,7 +5965,7 @@ async fn label_and_saved_search_create_return_what_the_daemon_created() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let post = |path: &str, body: serde_json::Value| {
         client
             .post(format!("http://{addr}{path}"))
@@ -6015,7 +6045,7 @@ async fn draft_revision_conflict_is_409_and_preserves_browser_scratch_text() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let first = restore_session_path(&client, address, &id).await;
     let second = restore_session_path(&client, address, &id).await;
     edit_session(
@@ -6175,7 +6205,7 @@ async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
         )
         .await
         .unwrap();
-        let client = reqwest::Client::new();
+        let client = test_http_client();
 
         for path in ["/api/v1/mail/sync/all", "/api/v1/mail/sync/preview"] {
             let response = client
@@ -6243,7 +6273,7 @@ async fn global_sync_endpoints_dispatch_after_current_protocol_check() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     for path in ["/api/v1/mail/sync/all", "/api/v1/mail/sync/preview"] {
         let response = client

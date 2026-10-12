@@ -1,3 +1,4 @@
+import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,6 +20,7 @@ const router = vi.hoisted(() => ({
 }));
 
 const api = vi.hoisted(() => ({
+  rememberComposeBinding: vi.fn<typeof import("./api").rememberComposeBinding>(),
   setAutoReminder: vi.fn<(sentMessageId: string, remindAt: Date) => Promise<unknown>>(),
   cancelAutoReminder: vi.fn<(sentMessageId: string) => Promise<unknown>>(),
   cancelScheduledSend: vi.fn<(draftId: string) => Promise<unknown>>(),
@@ -117,9 +119,19 @@ function savedSubjects(): string[] {
 
 const cleanReport: DraftSafetyReport = { allowed: true, verdict: "SAFE", issues: [] };
 
+function originalBinding() {
+  return {
+    target: window.location.origin,
+    workspace: {
+      workspace_id: "00000000-0000-7000-8000-000000000001",
+      recovery_generation: "00000000-0000-7000-8000-000000000002",
+    },
+  };
+}
 function session(overrides: Partial<ComposeSessionResponse["session"]> = {}) {
   return {
     session: {
+      binding: originalBinding(),
       draftPath: "/tmp/mxr-compose.md",
       draftId: "draft-1",
       revision: 1,
@@ -158,6 +170,8 @@ function openNewMessage() {
 }
 
 beforeEach(() => {
+  resetWorkspaceOwnerForTest();
+  observeWorkspace(originalBinding());
   rawApi.fetch.mockResolvedValue({ snippets: [] });
   api.fetchContactsAutocomplete.mockResolvedValue([]);
   api.suggestComposeCollaborators.mockResolvedValue({ suggestions: [] });
@@ -223,7 +237,11 @@ describe("ComposeHost send safety", () => {
 
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
     expect(api.sendComposeSession).toHaveBeenCalledWith(
-      "/tmp/mxr-compose.md", "account-1", undefined, 1, "draft-1:1",
+      "/tmp/mxr-compose.md",
+      "account-1",
+      undefined,
+      1,
+      "draft-1:1",
     );
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Message sent"));
     expect(toasts.error).not.toHaveBeenCalled();
@@ -776,7 +794,9 @@ describe("ComposeHost send and remind", () => {
       action: { label: string; onClick: () => void };
     };
     act(() => options.action.onClick());
-    await waitFor(() => expect(api.cancelAutoReminder).toHaveBeenCalledWith("msg-9"));
+    await waitFor(() =>
+      expect(api.cancelAutoReminder).toHaveBeenCalledWith("msg-9", originalBinding()),
+    );
   });
 
   test("says so when the bridge can't identify the sent message", async () => {

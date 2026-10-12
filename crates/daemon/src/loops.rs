@@ -3615,6 +3615,7 @@ mod tests {
         let _ = crate::handler::handle_request(
             &state,
             &IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::UpsertRule { rule }),
@@ -3637,6 +3638,7 @@ mod tests {
         let history = crate::handler::handle_request(
             &state,
             &IpcMessage {
+                expected_workspace: None,
                 id: 2,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::ListRuleHistory {

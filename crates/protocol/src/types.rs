@@ -557,6 +557,9 @@ impl Default for ClientKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IpcMessage {
+    /// Owner captured when the command was reviewed, before queueing or reconnecting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_workspace: Option<ArchiveWorkspaceData>,
     pub id: u64,
     /// Originating client surface. Optional on the wire for backwards
     /// compatibility with pre-Phase-2 clients; the default is `Cli`. New
@@ -2507,6 +2510,31 @@ pub enum Request {
 }
 
 impl Request {
+    /// Retained compose/recovery commands must never follow a new daemon owner.
+    pub fn requires_workspace_owner(&self) -> bool {
+        matches!(
+            self,
+            Self::SaveDraft { .. }
+                | Self::UpdateDraft { .. }
+                | Self::SaveDraftToServer { .. }
+                | Self::DeleteDraft { .. }
+                | Self::GetDraft { .. }
+                | Self::GetSendOutcome { .. }
+                | Self::SuggestCollaborators { .. }
+                | Self::ExtractDraftCommitments { .. }
+                | Self::CheckDraftSafety { .. }
+                | Self::SendDraft { .. }
+                | Self::SendStoredDraft { .. }
+                | Self::ScheduleSend { .. }
+                | Self::CancelScheduledSend { .. }
+                | Self::ResetOrphanedDraft { .. }
+                | Self::PreviewDraftAttachment { .. }
+                | Self::BeginDraftAttachment { .. }
+                | Self::WriteDraftAttachmentChunk { .. }
+                | Self::FinalizeDraftAttachment { .. }
+        )
+    }
+
     /// Convenience constructor — correlation id omitted (clients add when tracking optimism).
     pub fn mutation(command: MutationCommand) -> Self {
         Self::Mutation {
@@ -3533,6 +3561,8 @@ pub enum ResponseData {
         entries: Vec<serde_json::Value>,
     },
     Status {
+        #[serde(default)]
+        workspace_owner_supported: bool,
         #[serde(default)]
         draft_revision_supported: bool,
         #[serde(default)]

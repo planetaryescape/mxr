@@ -154,6 +154,9 @@ pub(super) struct ComposeSessionStartRequest {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionPathRequest {
+    /// Original attachment references whose identity a private recovery refresh must preserve.
+    #[serde(default)]
+    pub(super) expected_attachments: Option<Vec<String>>,
     #[serde(default)]
     pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
@@ -416,6 +419,7 @@ mod unsubscribe_preview_tests {
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {
+    workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     #[serde(rename = "preservedRecoveryPath")]
     preserved_recovery_path: Option<String>,
     /// Private recovery destination; automatic saves preserve it without canonical effects.

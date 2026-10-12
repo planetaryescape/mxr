@@ -2673,6 +2673,7 @@ pub async fn run() -> anyhow::Result<()> {
                 continue;
             }
             let app::QueuedMutation {
+                expected_workspace,
                 id: mutation_id,
                 request: req,
                 effect,
@@ -2683,6 +2684,7 @@ pub async fn run() -> anyhow::Result<()> {
             let retry = (attempts < app::TRANSIENT_MUTATION_MAX_RETRIES
                 && mutation_can_auto_retry(&req))
             .then(|| app::QueuedMutation {
+                expected_workspace: expected_workspace.clone(),
                 id: mutation_id,
                 request: req.clone(),
                 effect: effect.clone(),
@@ -2698,6 +2700,7 @@ pub async fn run() -> anyhow::Result<()> {
                 .get(&mutation_id)
                 .map(|(pending, _)| pending.draft_path.clone());
             let _ = submit_task(&queued, async move {
+                crate::ipc::COMMAND_OWNER.scope(expected_workspace, async move {
                 let is_sync_all_request = matches!(&req, Request::SyncAll);
                 let mut sync_batch_received = false;
                 let verb = mutation_verb_past(&req);
@@ -3172,6 +3175,7 @@ pub async fn run() -> anyhow::Result<()> {
                     sync_request_pending_failure: is_sync_all_request && !sync_batch_received,
                     outcome: Box::new(outcome),
                 }
+                }).await
             });
         }
         app.pending_mutation_queue.extend(deferred_mutations);
@@ -4452,6 +4456,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::CommitmentCounts(counts) => {
                             app.mailbox.open_commitment_counts = counts;
                         }
+                        AsyncResult::WorkspaceOwner(owner) => { if app.compose.workspace_owner.is_none() { app.compose.workspace_owner = Some(owner); } }
                         AsyncResult::ConnectionState(state) => {
                             app.set_connection_state(state);
                         }

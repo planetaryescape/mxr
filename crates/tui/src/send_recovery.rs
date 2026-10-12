@@ -166,6 +166,34 @@ mod tests {
     use super::*;
     use mxr_core::DraftSendOutcome;
 
+    async fn next_owned_request(rx: &mut mpsc::UnboundedReceiver<IpcRequest>) -> IpcRequest {
+        loop {
+            let request = rx.recv().await.unwrap();
+            if matches!(request.request, Request::GetArchiveWorkspace) {
+                request
+                    .reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::ArchiveWorkspace {
+                            workspace: mxr_protocol::ArchiveWorkspaceData {
+                                workspace_id: "fixture-workspace".into(),
+                                recovery_generation: "fixture-generation".into(),
+                            },
+                        },
+                    }))
+                    .unwrap();
+                continue;
+            }
+            assert_eq!(
+                request.expected_workspace,
+                Some(mxr_protocol::ArchiveWorkspaceData {
+                    workspace_id: "fixture-workspace".into(),
+                    recovery_generation: "fixture-generation".into(),
+                })
+            );
+            return request;
+        }
+    }
+
     #[tokio::test]
     async fn send_retry_preserves_review_and_requires_proven_non_acceptance() {
         let account = AccountId::new();
@@ -187,7 +215,7 @@ mod tests {
                 rfc2822_message_id: None,
             };
             let server = tokio::spawn(async move {
-                let request = rx.recv().await.unwrap();
+                let request = next_owned_request(&mut rx).await;
                 assert!(matches!(request.request, Request::GetSendOutcome { .. }));
                 request
                     .reply
@@ -233,7 +261,7 @@ mod tests {
                 rfc2822_message_id: None,
             };
             let server = tokio::spawn(async move {
-                let query = rx.recv().await.unwrap();
+                let query = next_owned_request(&mut rx).await;
                 assert!(matches!(query.request, Request::GetSendOutcome { .. }));
                 query
                     .reply
@@ -243,7 +271,7 @@ mod tests {
                         },
                     }))
                     .unwrap();
-                let get = rx.recv().await.unwrap();
+                let get = next_owned_request(&mut rx).await;
                 assert!(matches!(get.request, Request::GetDraft { .. }));
                 get.reply
                     .send(Ok(Response::Ok {
@@ -251,7 +279,7 @@ mod tests {
                     }))
                     .unwrap();
                 if stored_revision == 1 {
-                    let update = rx.recv().await.unwrap();
+                    let update = next_owned_request(&mut rx).await;
                     let Request::UpdateDraft { mut draft } = update.request else {
                         panic!("expected conditional update")
                     };
@@ -313,7 +341,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let mut stored = stored;
             for attempt in 0..2 {
-                let outcome = rx.recv().await.unwrap();
+                let outcome = next_owned_request(&mut rx).await;
                 assert!(matches!(outcome.request, Request::GetSendOutcome { .. }));
                 outcome
                     .reply
@@ -321,7 +349,7 @@ mod tests {
                         data: ResponseData::SendOutcome { outcome: None },
                     }))
                     .unwrap();
-                let get = rx.recv().await.unwrap();
+                let get = next_owned_request(&mut rx).await;
                 assert!(matches!(get.request, Request::GetDraft { .. }));
                 get.reply
                     .send(Ok(Response::Ok {
@@ -331,7 +359,7 @@ mod tests {
                     }))
                     .unwrap();
                 if attempt == 0 {
-                    let update = rx.recv().await.unwrap();
+                    let update = next_owned_request(&mut rx).await;
                     let Request::UpdateDraft { mut draft } = update.request else {
                         panic!("expected reviewed edit")
                     };

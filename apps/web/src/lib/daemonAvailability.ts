@@ -17,6 +17,8 @@
  * socket reconnects without waiting out its own backoff.
  */
 
+import { onWorkspaceChanged } from "./workspaceOwner";
+import { requestCoordinator } from "./requestCoordinator";
 import { onlineManager, type Query, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -93,7 +95,20 @@ export function probeDaemon(): Promise<void> {
  * Keep lists and open threads on screen through a daemon outage and bring
  * everything back when it returns. Call once, with the app's query client.
  */
+function retainedPrivateQuery(query: Query): boolean {
+  return query.meta?.keepThroughGaps === true;
+}
+
 export function startDaemonAvailability(queryClient: QueryClient): () => void {
+  const offWorkspace = onWorkspaceChanged(() => {
+    requestCoordinator.cancelAll();
+    void queryClient
+      .cancelQueries({ predicate: (query) => !retainedPrivateQuery(query) })
+      .then(() => {
+        queryClient.removeQueries({ predicate: (query) => !retainedPrivateQuery(query) });
+        void refetchAfterGap(queryClient);
+      });
+  });
   const markReachable = () => {
     if (!isDaemonDown()) return;
     clearTimeout(probeTimer);
@@ -144,6 +159,7 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
   window.addEventListener("focus", onFocus);
 
   return () => {
+    offWorkspace();
     offReachability();
     offSocket();
     window.removeEventListener("focus", onFocus);

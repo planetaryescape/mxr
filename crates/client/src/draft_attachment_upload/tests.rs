@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use tokio_util::codec::Framed;
 
 fn status(upload: bool) -> ResponseData {
-    serde_json::from_value(serde_json::json!({"kind": "Status", "draft_revision_supported": true, "send_outcome_supported": true,
+    serde_json::from_value(serde_json::json!({"kind": "Status", "workspace_owner_supported": upload, "draft_revision_supported": true, "send_outcome_supported": true,
         "attachment_transfer_supported": true, "draft_attachment_upload_supported": upload,
         "uptime_secs": 1, "accounts": [], "total_messages": 0})).expect("status fixture")
 }
@@ -60,6 +60,7 @@ async fn portable_upload_rejects_old_daemon_before_opening_client_file() {
                 .remove("draft_attachment_upload_supported");
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -74,12 +75,15 @@ async fn portable_upload_rejects_old_daemon_before_opening_client_file() {
         .await
         .expect("connection");
     let error = connection
-        .request(Request::SaveDraft {
-            draft: draft(std::path::Path::new("/nonexistent/client-only-file")),
-        })
+        .request_owned(
+            Request::SaveDraft {
+                draft: draft(std::path::Path::new("/nonexistent/client-only-file")),
+            },
+            &workspace(),
+        )
         .await
         .expect_err("unsupported");
-    assert!(error.to_string().contains("upgrade the daemon"));
+    assert!(error.to_string().contains("upgrade"));
     drop(connection);
     server.await.expect("server");
     assert_eq!(requests.lock().expect("lock").len(), 1);
@@ -106,6 +110,11 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
             };
             let response = match request {
                 Request::GetStatus => Response::Ok { data: status(true) },
+                Request::GetArchiveWorkspace => Response::Ok {
+                    data: ResponseData::ArchiveWorkspace {
+                        workspace: workspace(),
+                    },
+                },
                 Request::GetDraft { .. } => stored.clone().map_or_else(
                     || {
                         Response::error_kinded(
@@ -180,6 +189,7 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
             };
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(response),
@@ -192,9 +202,12 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
         .await
         .expect("connection");
     let saved = match connection
-        .request(Request::SaveDraft {
-            draft: draft(&path),
-        })
+        .request_owned(
+            Request::SaveDraft {
+                draft: draft(&path),
+            },
+            &workspace(),
+        )
         .await
         .expect("upload")
     {
@@ -206,11 +219,14 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
     let identity = mxr_core::SendIdentity::for_draft(&saved);
     assert_eq!(identity.expected_revision, 2);
     connection
-        .request(Request::SendDraft {
-            draft: saved,
-            send_identity: Some(identity),
-            override_safety_token: None,
-        })
+        .request_owned(
+            Request::SendDraft {
+                draft: saved,
+                send_identity: Some(identity),
+                override_safety_token: None,
+            },
+            &workspace(),
+        )
         .await
         .expect("send");
     drop(connection);
@@ -233,6 +249,7 @@ async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
             count += 1;
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -277,9 +294,19 @@ async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
             resource_id: metadata.id,
         },
     ] {
-        let error = connection.request(request).await.expect_err("unsupported");
-        assert!(error.to_string().contains("upgrade the daemon"));
+        let error = connection
+            .request_owned(request, &workspace())
+            .await
+            .expect_err("unsupported");
+        assert!(error.to_string().contains("upgrade"));
     }
     drop(connection);
     assert_eq!(server.await.expect("server"), 4);
+}
+
+fn workspace() -> mxr_protocol::ArchiveWorkspaceData {
+    mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+        recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+    }
 }

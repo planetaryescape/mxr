@@ -14,6 +14,7 @@ import { acceptedDraftRevision } from "./acceptedDraftRevision";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import {
   refreshComposeSession,
+  rememberComposeBinding,
   restoreComposeSession,
   saveComposeSession,
   updateComposeSession,
@@ -119,9 +120,10 @@ export function useDraftSaveActions({
             "Your edits changed during the retry and remain preserved. Open the saved draft to continue.",
           );
         const next = {
-          ...draftFromSession(saved, current.accountId),
+          ...draftFromSession({ ...saved, binding: current.binding }, current.accountId),
           preservedRecoveryPath: current.draftPath,
         };
+        if (next.binding) rememberComposeBinding(next.draftPath, next.binding);
         draftRef.current = next;
         lastSavedFingerprintRef.current = draftFingerprint(next);
         rememberActiveDraft(intent.key, next);
@@ -202,7 +204,7 @@ export function useDraftSaveActions({
       }
       const response =
         current.recoverySourcePath && current.draftId
-          ? await restoreComposeSession(current.draftId)
+          ? await restoreComposeSession(current.draftId, current.binding)
           : await refreshComposeSession(current.draftPath);
       if (
         draftRef.current?.draftPath !== current.draftPath ||

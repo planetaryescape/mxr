@@ -61,6 +61,7 @@ where
                 for event in events.iter() {
                     let _ = framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: 0,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Event(event.clone()),
@@ -70,9 +71,23 @@ where
                 while let Some(message) = framed.next().await {
                     let Ok(message) = message else { break };
                     if let IpcPayload::Request(request) = message.payload {
-                        if let Some(response) = responder(request) {
+                        let response = if matches!(request, Request::GetArchiveWorkspace) {
+                            Some(Response::Ok {
+                                data: ResponseData::ArchiveWorkspace {
+                                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                                        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                                        recovery_generation: "00000000-0000-7000-8000-000000000002"
+                                            .into(),
+                                    },
+                                },
+                            })
+                        } else {
+                            responder(request)
+                        };
+                        if let Some(response) = response {
                             let _ = framed
                                 .send(IpcMessage {
+                                    expected_workspace: None,
                                     id: message.id,
                                     source: ::mxr_protocol::ClientKind::default(),
                                     payload: IpcPayload::Response(response),
@@ -371,6 +386,7 @@ async fn one_route_per_bucket_dispatches() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: false,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -474,6 +490,7 @@ async fn legacy_path_redirect_round_trip_smoke() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
+                    workspace_owner_supported: false,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,

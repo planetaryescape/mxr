@@ -1330,7 +1330,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// message lands in `mxr drafts` and is sent later with
-        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`. Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>'`. Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1381,7 +1381,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// reply lands in `mxr drafts` (threaded, ready to send with
-        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`). Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>'`). Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1431,7 +1431,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// reply lands in `mxr drafts` (threaded, ready to send with
-        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`). Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>'`). Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1484,7 +1484,7 @@ pub enum Command {
         yes: bool,
         /// Save as a draft instead of sending. Never transmits; the
         /// forward lands in `mxr drafts`, ready to send with
-        /// `mxr send <draft-id> --expected-revision <reviewed-revision>`. Mutually exclusive with `--yes`, so
+        /// `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>'`. Mutually exclusive with `--yes`, so
         /// no added flag can turn a draft into a send.
         #[arg(long, conflicts_with = "yes")]
         draft: bool,
@@ -1507,6 +1507,9 @@ pub enum Command {
     },
     /// Inspect a send operation after disconnect, including after draft cleanup.
     SendOutcome {
+        /// Original workspace JSON retained with the send review.
+        #[arg(long)]
+        expected_workspace: Option<String>,
         operation_id: String,
         #[arg(long)]
         account: String,
@@ -1515,6 +1518,9 @@ pub enum Command {
     },
     /// Send a draft by ID
     Send {
+        /// Workspace JSON returned by the reviewed preview; required for sending.
+        #[arg(long)]
+        expected_workspace: Option<String>,
         /// Revision returned by the reviewed preview. Required for sending now.
         #[arg(long)]
         expected_revision: Option<i64>,
@@ -2101,7 +2107,7 @@ pub enum DraftsAction {
     /// Show all drafts (default if no subcommand)
     List,
     /// Show drafts scheduled to send later that have not gone out yet,
-    /// soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --at <TIME>`;
+    /// soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --expected-workspace '<owner-json>' --at <TIME>`;
     /// cancel with `mxr unsend <draft-id>`.
     Scheduled,
     /// Show drafts that look orphaned mid-send (status `'sending'`,

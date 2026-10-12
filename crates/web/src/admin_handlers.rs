@@ -8,6 +8,7 @@ pub(super) async fn status(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::GetStatus).await? {
         ResponseData::Status {
+            workspace_owner_supported,
             draft_revision_supported,
             send_outcome_supported,
             archive_recovery_supported,
@@ -26,6 +27,7 @@ pub(super) async fn status(
             feature_health,
             degraded,
         } => Ok(Json(serde_json::json!({
+            "workspace_owner_supported": workspace_owner_supported,
             "draft_revision_supported": draft_revision_supported,
             "send_outcome_supported": send_outcome_supported,
             "archive_recovery_supported": archive_recovery_supported,

@@ -129,6 +129,7 @@ pub struct DeferredCompose {
 
 #[derive(Default)]
 pub struct ComposeState {
+    pub workspace_owner: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub failed_send: Option<PendingSend>,
     pub pending_schedule_files: std::collections::HashSet<std::path::PathBuf>,
     pub last_send_query: Option<String>,

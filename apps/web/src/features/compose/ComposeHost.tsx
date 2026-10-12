@@ -115,6 +115,11 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   ) : controller.sessionError ? (
     <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs">
       <span className="text-destructive">{controller.sessionError.message}</span>
+      {controller.reopenSavedDraft && (
+        <Button size="sm" variant="outline" onClick={controller.reopenSavedDraft}>
+          Open saved draft for review
+        </Button>
+      )}
       <Button size="sm" variant="outline" onClick={controller.retrySession}>
         Retry
       </Button>

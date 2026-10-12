@@ -309,6 +309,7 @@ async fn owed_on_a_store_copy() {
         let state = state.clone();
         async move {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 3,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(request),

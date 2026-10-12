@@ -9,7 +9,7 @@ Usage: mxr drafts [OPTIONS] [COMMAND]
 Commands:
   attach     Upload client-local files as immutable resources and attach to a saved draft
   list       Show all drafts (default if no subcommand)
-  scheduled  Show drafts scheduled to send later that have not gone out yet, soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --at <TIME>`; cancel with `mxr unsend <draft-id>`
+  scheduled  Show drafts scheduled to send later that have not gone out yet, soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --expected-workspace '<owner-json>' --at <TIME>`; cancel with `mxr unsend <draft-id>`
   recover    Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). Query their send outcomes before taking action; uncertain submissions cannot be reset or automatically retried
   resume     Compatibility check for an orphaned draft. Refuses unresolved send outcomes; never resets a potentially accepted send
   delete     Permanently delete a draft and its linked provider draft, if present. `discard` remains as an alias for compatibility with earlier releases [alias: discard]

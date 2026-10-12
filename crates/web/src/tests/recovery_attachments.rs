@@ -35,7 +35,7 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let source = restore_session_path(&client, addr, &id).await;
     let other_source = temp.path().join(format!("other-{}.md", Uuid::now_v7()));
     let source_dir = compose_attachment_dir(Path::new(&source)).unwrap();
@@ -117,7 +117,7 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
         let response: serde_json::Value = client
             .post(format!("http://{addr}/api/v1/mail/compose/session/refresh"))
             .bearer_auth(TEST_AUTH_TOKEN)
-            .json(&json!({"draft_path": recovery}))
+            .json(&json!({"draft_path": recovery, "expected_attachments": owned}))
             .send()
             .await
             .unwrap()

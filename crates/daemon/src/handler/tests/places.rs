@@ -104,6 +104,7 @@ impl Fixture {
 
     async fn send(&self, request: Request) -> ResponseData {
         let msg = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(request),
@@ -164,6 +165,7 @@ impl Fixture {
     /// The daemon's refusal, for requests that must fail.
     async fn refused(&self, request: Request) -> String {
         let msg = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(request),
@@ -1078,6 +1080,7 @@ async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
         let ids = vec![mine.id.clone(), theirs.id.clone()];
         let pinning = tokio::spawn(async move {
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::PinMessages {

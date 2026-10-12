@@ -2970,6 +2970,7 @@ mod tests {
         let ping = handle_request(
             &state,
             &IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Ping),
@@ -3020,10 +3021,12 @@ mod tests {
             if let Some(Ok(message)) = framed.next().await {
                 framed
                     .send(IpcMessage {
+                        expected_workspace: None,
                         id: message.id,
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
+                                workspace_owner_supported: false,
                                 draft_revision_supported: true,
                                 send_outcome_supported: true,
                                 archive_recovery_supported: true,
@@ -3069,6 +3072,7 @@ mod tests {
             if let Some(Ok(message)) = framed.next().await {
                 framed
                     .send(IpcMessage {
+                        expected_workspace: None,
                         id: message.id,
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
@@ -3105,6 +3109,7 @@ mod tests {
                     ));
                     framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: message.id,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Response(Response::Ok {

@@ -267,6 +267,10 @@ pub fn app(config: WebServerConfig) -> Router {
     let router = router.merge(spa::router());
 
     router
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::workspace_owner::middleware,
+        ))
         .layer(axum::middleware::from_fn(legacy::redirect_legacy_paths))
         .layer(axum::middleware::from_fn_with_state(
             host_allowlist,

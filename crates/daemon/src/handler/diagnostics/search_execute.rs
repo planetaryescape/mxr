@@ -881,6 +881,7 @@ mod owed_reply_filter_tests {
         }
         let query = "in:trash OR from:alice@example.com".to_string();
         let request = |payload| IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(payload),

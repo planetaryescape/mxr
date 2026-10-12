@@ -1120,6 +1120,7 @@ pub(super) async fn scope_response(
             Ok(ResponseData::Categories { categories })
         }
         ResponseData::Status {
+            workspace_owner_supported,
             draft_revision_supported,
             send_outcome_supported,
             archive_recovery_supported,
@@ -1158,6 +1159,7 @@ pub(super) async fn scope_response(
                     .sum()
             };
             Ok(ResponseData::Status {
+                workspace_owner_supported,
                 draft_revision_supported,
                 send_outcome_supported,
                 archive_recovery_supported,

@@ -14,6 +14,7 @@ async fn archive_helpers_forward_events_in_order_without_resubmitting() {
 
     fn event(name: &str) -> IpcMessage {
         IpcMessage {
+            expected_workspace: None,
             id: 0,
             source: ClientKind::Daemon,
             payload: IpcPayload::Event(DaemonEvent::OperationStarted {
@@ -117,6 +118,7 @@ async fn archive_helpers_forward_events_in_order_without_resubmitting() {
             framed.send(event(event_name)).await.unwrap();
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: frame.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok { data }),

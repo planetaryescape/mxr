@@ -43,7 +43,7 @@ async fn time_resolve_forwards_input_and_now_and_passes_the_payload_through() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let json: serde_json::Value = client
         .get(format!(
@@ -110,7 +110,7 @@ async fn snooze_stores_the_previewed_instant_unchanged() {
 
     // The web sends `choices[n].at` back as `until`; a preview in +01:00 must
     // land on the same instant.
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/api/v1/mail/actions/snooze"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -161,7 +161,7 @@ async fn snooze_presets_come_from_the_daemon_in_the_browser_zone() {
     .await;
     let addr = serve(socket_path).await;
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .get(format!(
             "http://{addr}/api/v1/mail/actions/snooze/presets?time_zone=Asia/Tokyo"
         ))

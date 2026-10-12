@@ -111,7 +111,7 @@ async fn scheduled_sends_route_lists_sends_and_forwards_account_scope() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
 
     let all: serde_json::Value = client
         .get(format!("http://{addr}/api/v1/mail/scheduled-sends"))
@@ -199,7 +199,7 @@ async fn drafts_list_rows_carry_send_at_only_for_scheduled_drafts() {
     .await;
     let addr = serve(socket_path).await;
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .get(format!("http://{addr}/api/v1/mail/drafts"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -239,7 +239,7 @@ async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
@@ -284,7 +284,7 @@ async fn send_stored_adds_message_id_and_draft_id_to_the_receipt() {
     .await;
     let addr = serve(socket_path).await;
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .post(format!(
             "http://{addr}/api/v1/mail/drafts/{draft_id}/send-stored?expected_revision=1&operation_id={draft_id}:1"
         ))
@@ -344,7 +344,7 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
@@ -449,7 +449,7 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let draft_path = restore_session_path(&client, addr, &stored_id).await;
     edit_session(&client, addr, &draft_path, "Hello", "Body text").await;
     let metadata = read_draft_session_metadata(Path::new(&draft_path))
@@ -522,7 +522,7 @@ async fn failed_scheduling_keeps_the_accepted_revision_for_the_next_edit() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let path = restore_session_path(&client, addr, &draft_id).await;
     let response = client
         .post(format!(
@@ -601,7 +601,7 @@ async fn stale_discard_preserves_the_saved_draft_and_compose_file() {
         other => responder(other),
     }, None).await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let path = restore_session_path(&client, addr, &draft_id).await;
     let mut other_editor = store.snapshot()[0].clone();
     other_editor.content = DraftContent::markdown("accepted elsewhere");
@@ -657,7 +657,7 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     // No recipients: a draft error the user has to fix.
     let (draft_path, account_id, expected_revision) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
@@ -747,7 +747,7 @@ async fn thread_reader_resolves_labels_from_the_threads_own_account() {
     .await;
     let addr = serve(socket_path).await;
 
-    let json: serde_json::Value = reqwest::Client::new()
+    let json: serde_json::Value = test_http_client()
         .get(format!("http://{addr}/api/v1/mail/threads/{thread_id}"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -799,7 +799,7 @@ async fn compose_promises_send_the_session_draft_and_the_browser_zone() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let (draft_path, account_id, _expected_revision) = prepared_session(
         &client,
         addr,
@@ -862,7 +862,7 @@ async fn record_promise_forwards_the_chosen_instant_and_dry_run() {
     let addr = serve(socket_path).await;
     let message_id = MessageId::new();
 
-    let response = reqwest::Client::new()
+    let response = test_http_client()
         .post(format!("http://{addr}/api/v1/mail/commitments"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&serde_json::json!({
@@ -925,7 +925,7 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let (draft_path, account_id, expected_revision) = prepared_session(
         &client,
         addr,
@@ -993,7 +993,7 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
     )
     .await;
     let addr = serve(socket).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let path = restore_session_path(&client, addr, &id).await;
     let submit = |body: &'static str| {
         client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
@@ -1169,7 +1169,7 @@ async fn failed_provider_save_reports_its_accepted_revision_even_after_another_w
     )
     .await;
     let addr = serve(socket).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let path = restore_session_path(&client, addr, &id).await;
     let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/save"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -1223,7 +1223,7 @@ async fn stale_shared_path_send_cannot_send_another_editors_message() {
     )
     .await;
     let addr = serve(socket).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let path = restore_session_path(&client, addr, &id).await;
     edit_session(&client, addr, &path, "Reviewed", "another tab's message").await;
     for route in ["send", "safety-check"] {
@@ -1267,7 +1267,7 @@ async fn draft_attachment_generic_send_routes_preserve_explicit_review_marker() 
     )
     .await;
     let addr = serve(socket_path).await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let draft_id = DraftId::new();
     for marker in [None, Some(true)] {
         let suffix = marker.map_or(String::new(), |value| {

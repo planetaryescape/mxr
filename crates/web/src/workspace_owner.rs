@@ -1,0 +1,127 @@
+//! Immutable HTTP command context, retained across connection-per-request IPC.
+use crate::{auth::BridgeError, AppState};
+use axum::{
+    extract::{Request, State},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use mxr_protocol::ArchiveWorkspaceData;
+
+tokio::task_local! {
+    static OWNER: Option<ArchiveWorkspaceData>;
+}
+
+pub(super) fn captured() -> Option<ArchiveWorkspaceData> {
+    OWNER.try_with(Clone::clone).ok().flatten()
+}
+
+pub(super) async fn middleware(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let owner = match request.headers().get("x-mxr-workspace") {
+        Some(header) => match serde_json::from_slice::<ArchiveWorkspaceData>(header.as_bytes()) {
+            Ok(owner) => Some(owner),
+            Err(_) => {
+                return BridgeError::BadRequest("Invalid captured workspace identity".into())
+                    .into_response()
+            }
+        },
+        None => None,
+    };
+    let authenticated = crate::auth::token_matches(
+        crate::auth::extract_token(request.headers()),
+        &state.config.auth_token,
+    );
+    let mut actual = None;
+    let path = request.uri().path();
+    if authenticated && owner.is_none() && path.contains("/compose/session") {
+        return BridgeError::ArchiveConflict { message: "This private compose command has no original workspace owner. Upgrade the client and explicitly reopen/review retained work.".into(), kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: "workspace_owner_required".into(), details: None }.into_response();
+    }
+    let read_observation = request.method() == axum::http::Method::GET
+        && !path.ends_with("openapi.json")
+        && !path.contains("/docs")
+        && !path.ends_with("/health");
+    if authenticated && (owner.is_some() || read_observation) {
+        let mut connection = match mxr_client::IpcConnection::connect(
+            &state.config.socket_path,
+            mxr_protocol::ClientKind::Web,
+        )
+        .await
+        {
+            Ok(connection) => connection,
+            Err(error) => return crate::map_bridge_error(error).into_response(),
+        };
+        match connection
+            .request(mxr_protocol::Request::GetArchiveWorkspace)
+            .await
+        {
+            Ok(mxr_protocol::ResponseData::ArchiveWorkspace { workspace }) => {
+                actual = Some(workspace);
+            }
+            Ok(_) => return BridgeError::UnexpectedResponse.into_response(),
+            Err(error) => return crate::map_bridge_error(error).into_response(),
+        }
+        // The body is still unread. A stale request cannot create files or upload bytes.
+        if let Some(expected) = &owner {
+            if let Err(error) = connection.verify_workspace(expected).await {
+                let mut response = crate::map_bridge_error(error).into_response();
+                if let Some(actual) = &actual {
+                    if let Ok(header) = axum::http::HeaderValue::from_str(
+                        &serde_json::to_string(actual).unwrap_or_default(),
+                    ) {
+                        response.headers_mut().insert("x-mxr-workspace", header);
+                    }
+                }
+                return response;
+            }
+        }
+    } else if owner.is_some()
+        && !request.uri().path().ends_with("/auth/local-token")
+        && !request.uri().path().ends_with("/health")
+    {
+        return BridgeError::Unauthorized.into_response();
+    }
+
+    let mut response = OWNER.scope(owner, next.run(request)).await;
+    if let Some(actual) = actual {
+        if let Ok(header) =
+            axum::http::HeaderValue::from_str(&serde_json::to_string(&actual).unwrap_or_default())
+        {
+            response.headers_mut().insert("x-mxr-workspace", header);
+        }
+    }
+    response
+}
+
+pub(super) async fn sidecar_owner(
+    path: &std::path::Path,
+) -> Result<Option<ArchiveWorkspaceData>, BridgeError> {
+    match tokio::fs::read(crate::draft_session_metadata_path(path)).await {
+        Ok(bytes) => {
+            let value: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+            value
+                .get("compose_workspace")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|error| BridgeError::Ipc(error.to_string()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(BridgeError::Ipc(error.to_string())),
+    }
+}
+
+pub(super) async fn require_sidecar(path: &std::path::Path) -> Result<(), BridgeError> {
+    let original = sidecar_owner(path).await?;
+    if original.is_none() || original != captured() {
+        return Err(BridgeError::ArchiveConflict {
+            message: "This editor belongs to another workspace or has no retained owner. Your edits stay private; reopen or return to the original workspace to recover.".into(),
+            kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+            code: "workspace_conflict".into(), details: None,
+        });
+    }
+    Ok(())
+}

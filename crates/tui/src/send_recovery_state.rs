@@ -6,6 +6,8 @@ static WRITER: Mutex<()> = Mutex::new(());
 #[derive(Default, Serialize, Deserialize)]
 struct Recovery {
     #[serde(default)]
+    owners: HashMap<DraftId, mxr_protocol::ArchiveWorkspaceData>,
+    #[serde(default)]
     compose: Option<(AccountId, std::path::PathBuf)>,
     #[serde(default)]
     compose_files: Vec<(AccountId, std::path::PathBuf)>,
@@ -356,4 +358,64 @@ mod revision_owner_tests {
         assert_eq!(reloaded.last, Some((account.clone(), identity)));
         assert_eq!(reopenable_compose(reloaded), Some((account, b)));
     }
+}
+
+#[cfg(not(test))]
+pub(crate) fn retain_owner(
+    draft: &DraftId,
+    owner: &mxr_protocol::ArchiveWorkspaceData,
+) -> std::io::Result<()> {
+    let _lock = WRITER
+        .lock()
+        .map_err(|_| std::io::Error::other("send recovery lock poisoned"))?;
+    let mut recovery = load_at(&path())?;
+    if recovery
+        .owners
+        .get(draft)
+        .is_some_and(|original| original != owner)
+    {
+        return Err(std::io::Error::other(
+            "This private draft belongs to another workspace; return there to recover",
+        ));
+    }
+    recovery.owners.insert(draft.clone(), owner.clone());
+    write_recovery(&path(), &recovery)
+}
+
+pub(crate) fn owner_for_request(
+    request: &mxr_protocol::Request,
+) -> std::io::Result<Option<mxr_protocol::ArchiveWorkspaceData>> {
+    use mxr_protocol::Request;
+    let draft = match request {
+        Request::GetDraft { draft_id }
+        | Request::DeleteDraft { draft_id, .. }
+        | Request::SendStoredDraft { draft_id, .. }
+        | Request::ScheduleSend { draft_id, .. }
+        | Request::CancelScheduledSend { draft_id } => Some(draft_id.clone()),
+        Request::SaveDraft { draft }
+        | Request::UpdateDraft { draft }
+        | Request::SaveDraftToServer { draft }
+        | Request::SuggestCollaborators { draft, .. }
+        | Request::ExtractDraftCommitments { draft }
+        | Request::SendDraft { draft, .. }
+        | Request::CheckDraftSafety { draft, .. } => Some(draft.id.clone()),
+        Request::GetSendOutcome { operation_id, .. } => operation_id
+            .strip_prefix("draft:")
+            .unwrap_or(operation_id)
+            .split(':')
+            .next()
+            .and_then(|id| id.parse().ok()),
+        _ => None,
+    };
+    let Some(draft) = draft else {
+        return Ok(None);
+    };
+    let recovery = load_at(&path())?;
+    if let Some(owner) = recovery.owners.get(&draft) {
+        return Ok(Some(owner.clone()));
+    }
+    if recovery.operations.contains_key(&draft) {
+        return Err(std::io::Error::other("Retained draft has no workspace owner; its private file remains preserved. Explicitly reopen and review the saved draft."));
+    }
+    Ok(None)
 }

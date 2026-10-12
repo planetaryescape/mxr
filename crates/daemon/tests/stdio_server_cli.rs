@@ -37,6 +37,7 @@ fn encode(message: &IpcMessage) -> Vec<u8> {
 
 fn ping_frame() -> Vec<u8> {
     encode(&IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ClientKind::Cli,
         payload: IpcPayload::Request(Request::Ping),
@@ -45,6 +46,7 @@ fn ping_frame() -> Vec<u8> {
 
 fn expected_pong_frame() -> Vec<u8> {
     encode(&IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ClientKind::Daemon,
         payload: IpcPayload::Response(Response::Ok {

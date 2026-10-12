@@ -1651,6 +1651,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     let refused = handle_request(
         &fx.state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetModeGuide {
@@ -1743,6 +1744,7 @@ async fn an_unknown_hint_is_refused_with_the_known_ids() {
     let refused = handle_request(
         &fx.state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetHintSeen {

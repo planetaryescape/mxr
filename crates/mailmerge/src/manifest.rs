@@ -67,8 +67,16 @@ impl FailureReason {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceOwner {
+    pub workspace_id: String,
+    pub recovery_generation: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendReview {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_workspace: Option<WorkspaceOwner>,
     pub account_id: String,
     pub expected_revision: i64,
     pub operation_id: String,
@@ -80,6 +88,8 @@ pub struct SendReview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_workspace: Option<WorkspaceOwner>,
     /// Hash of the record's properties — the idempotency key.
     pub record_hash: String,
     pub to: String,
@@ -218,6 +228,10 @@ mod tests {
 
     fn entry(hash: &str, status: RecordStatus, draft: Option<&str>) -> RecordEntry {
         RecordEntry {
+            expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-a".into(),
+            }),
             record_hash: hash.to_string(),
             review: None,
             to: format!("{hash}@example.com"),
@@ -295,6 +309,10 @@ mod tests {
         let mut manifest = Manifest::new("c1".into(), "notto@example.com".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
         manifest.upsert(RecordEntry {
+            expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-a".into(),
+            }),
             error: Some(FailureReason::Draft),
             ..entry("h2", RecordStatus::Failed, None)
         });
@@ -339,6 +357,10 @@ mod tests {
         let mut manifest = Manifest::new("c1".into(), "notto".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
         manifest.upsert(RecordEntry {
+            expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-a".into(),
+            }),
             error: Some(FailureReason::Draft),
             ..entry("h2", RecordStatus::Failed, None)
         });
@@ -365,10 +387,15 @@ mod tests {
                 .collect();
             fields.sort_unstable();
             assert!(
-                fields
-                    .iter()
-                    .all(|field| ["draft_id", "error", "record_hash", "status", "to"]
-                        .contains(field)),
+                fields.iter().all(|field| [
+                    "draft_id",
+                    "error",
+                    "expected_workspace",
+                    "record_hash",
+                    "status",
+                    "to"
+                ]
+                .contains(field)),
                 "a field that could hold a property value: {fields:?}"
             );
         }

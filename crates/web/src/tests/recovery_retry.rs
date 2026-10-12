@@ -62,7 +62,7 @@ async fn explicit_saved_recovery_retry_uses_observed_cas_and_owns_its_attachment
         )
         .await
         .unwrap();
-        let client = reqwest::Client::new();
+        let client = test_http_client();
         let source = restore_session_path(&client, addr, &id).await;
         let content = read_compose_file(Path::new(&source)).await.unwrap();
         replace_compose_file(Path::new(&source), format!("{content}\n# --- context (stripped before sending) ---\n# Preserved recovery context\n")).await.unwrap();
@@ -251,7 +251,7 @@ async fn an_unsaved_view_cannot_use_another_tabs_first_saved_snapshot_for_effect
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let started: serde_json::Value = client
         .post(format!("http://{addr}/api/v1/mail/compose/session"))
         .bearer_auth(TEST_AUTH_TOKEN)

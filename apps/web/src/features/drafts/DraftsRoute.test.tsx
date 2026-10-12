@@ -1,3 +1,4 @@
+import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,7 +21,10 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => api);
-vi.mock("./sendOutcomes", () => ({ fetchSendOutcome: vi.fn<typeof fetchSendOutcome>(), readSendReferences: () => [] }));
+vi.mock("./sendOutcomes", () => ({
+  fetchSendOutcome: vi.fn<typeof fetchSendOutcome>(),
+  readSendReferences: () => [],
+}));
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }));
@@ -48,6 +52,14 @@ function renderWithClient(node: ReactNode) {
 
 describe("DraftsRoute", () => {
   beforeEach(() => {
+    resetWorkspaceOwnerForTest();
+    observeWorkspace({
+      target: window.location.origin,
+      workspace: {
+        workspace_id: "00000000-0000-7000-8000-000000000001",
+        recovery_generation: "00000000-0000-7000-8000-000000000002",
+      },
+    });
     vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: null });
     api.deleteDraft.mockReset();
     vi.mocked(fetchSendOutcome).mockReset();
@@ -192,7 +204,11 @@ describe("DraftsRoute", () => {
     test("no claim is distinct from uncertain acceptance", async () => {
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
-      expect(await screen.findByText("No submission was claimed for this operation. Review the saved draft before sending.")).toBeVisible();
+      expect(
+        await screen.findByText(
+          "No submission was claimed for this operation. Review the saved draft before sending.",
+        ),
+      ).toBeVisible();
       expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
     });
 
@@ -209,18 +225,36 @@ describe("DraftsRoute", () => {
       vi.mocked(fetchSendOutcome).mockRejectedValue(new Error("Connection lost"));
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
-      expect(await screen.findByText("Could not check the send outcome. Check again before deciding whether to send.")).toBeVisible();
+      expect(
+        await screen.findByText(
+          "Could not check the send outcome. Check again before deciding whether to send.",
+        ),
+      ).toBeVisible();
       expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Retry|Send now/ })).not.toBeInTheDocument();
     });
 
     test("uncertain sends only expose an outcome query", async () => {
-      vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: { identity: { operation_id: "draft:draft-7", expected_revision: 1 }, state: "unknown", local_message_id: null } });
+      vi.mocked(fetchSendOutcome).mockResolvedValue({
+        outcome: {
+          identity: { operation_id: "draft:draft-7", expected_revision: 1 },
+          state: "unknown",
+          local_message_id: null,
+        },
+      });
       api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
       renderWithClient(<DraftsRoute />);
       expect(await screen.findByText("Send outcomes")).toBeVisible();
       expect(await screen.findByText("Acceptance is uncertain. Do not resend.")).toBeVisible();
-      await waitFor(() => expect(fetchSendOutcome).toHaveBeenCalledWith("account-1", "draft:draft-7"));
+      await waitFor(() =>
+        expect(fetchSendOutcome).toHaveBeenCalledWith("account-1", "draft:draft-7", {
+          target: window.location.origin,
+          workspace: {
+            workspace_id: "00000000-0000-7000-8000-000000000001",
+            recovery_generation: "00000000-0000-7000-8000-000000000002",
+          },
+        }),
+      );
       expect(screen.queryByRole("button", { name: /Reset|Send now/ })).not.toBeInTheDocument();
       expect(api.resetOrphanedDraft).not.toHaveBeenCalled();
       expect(api.sendStoredDraft).not.toHaveBeenCalled();

@@ -40,13 +40,17 @@ impl Env {
         serde_json::from_str(stdout.trim()).expect(&format!("parse JSON: {stdout}"))
     }
 
-    fn reviewed_revision(&self, draft_id: &str) -> String {
+    fn reviewed_send(&self, draft_id: &str) -> (String, String) {
         let preview = self.json(&["send", draft_id, "--dry-run", "--format", "json"]);
         assert_eq!(preview["draft"]["id"], draft_id);
-        preview["send_identity"]["expected_revision"]
+        let revision = preview["send_identity"]["expected_revision"]
             .as_i64()
             .expect("reviewed revision")
-            .to_string()
+            .to_string();
+        let owner = &preview["expected_workspace"];
+        assert!(owner["workspace_id"].is_string());
+        assert!(owner["recovery_generation"].is_string());
+        (revision, owner.to_string())
     }
 }
 
@@ -76,7 +80,7 @@ fn drafts_scheduled_lists_a_scheduled_draft_until_it_is_unsent() {
         "json",
     ]);
     let draft_id = composed["draft_id"].as_str().expect("draft_id").to_string();
-    let reviewed_revision = env.reviewed_revision(&draft_id);
+    let (reviewed_revision, reviewed_workspace) = env.reviewed_send(&draft_id);
 
     assert_eq!(
         env.json(&["drafts", "--format", "json", "scheduled"]),
@@ -89,6 +93,8 @@ fn drafts_scheduled_lists_a_scheduled_draft_until_it_is_unsent() {
         &draft_id,
         "--expected-revision",
         &reviewed_revision,
+        "--expected-workspace",
+        &reviewed_workspace,
         "--at",
         "in 2h",
     ])
@@ -137,7 +143,7 @@ fn an_unreadable_remind_after_sends_nothing() {
         "json",
     ]);
     let draft_id = composed["draft_id"].as_str().expect("draft_id").to_string();
-    let reviewed_revision = env.reviewed_revision(&draft_id);
+    let (reviewed_revision, reviewed_workspace) = env.reviewed_send(&draft_id);
 
     let output = env
         .run(&[
@@ -145,6 +151,8 @@ fn an_unreadable_remind_after_sends_nothing() {
             &draft_id,
             "--expected-revision",
             &reviewed_revision,
+            "--expected-workspace",
+            &reviewed_workspace,
             "--remind-after",
             "frday",
         ])

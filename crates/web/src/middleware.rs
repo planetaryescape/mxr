@@ -95,6 +95,7 @@ pub fn cors_layer(extra_origins: &[String]) -> CorsLayer {
         .allow_origin(AllowOrigin::predicate(allow_predicate))
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any)
+        .expose_headers([header::HeaderName::from_static("x-mxr-workspace")])
 }
 
 pub async fn security_headers(request: Request, next: Next) -> Response {

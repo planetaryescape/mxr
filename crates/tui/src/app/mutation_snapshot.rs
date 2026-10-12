@@ -67,6 +67,7 @@ impl MutationIdGenerator {
 /// failure (snapshot ID, looked up in [`crate::app::App::mutation_snapshots`]).
 #[derive(Debug, Clone)]
 pub struct QueuedMutation {
+    pub expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub id: MutationId,
     pub request: Request,
     pub effect: MutationEffect,

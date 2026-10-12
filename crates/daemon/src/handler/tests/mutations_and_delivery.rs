@@ -11,6 +11,7 @@ async fn assert_request_waits_for_provider_lock(
     let task_state = state.clone();
     let mut task = tokio::spawn(async move {
         let msg = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(request),
@@ -35,6 +36,7 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
     let original_id = sync_and_get_first_id(&state).await;
 
     let snooze = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Snooze {
@@ -74,6 +76,7 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
     );
 
     let unsnooze = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsnooze {
@@ -139,6 +142,7 @@ async fn unsnooze_waits_for_account_provider_lock() {
     let original_id = sync_and_get_first_id(&state).await;
 
     let snooze = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Snooze {
@@ -178,6 +182,7 @@ async fn snooze_on_folder_provider_errors_when_reconciled_copy_is_missing() {
     let original_id = sync_and_get_first_id(&state).await;
 
     let snooze = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Snooze {
@@ -216,6 +221,7 @@ async fn dispatch_mutation_set_read() {
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::SetRead {
@@ -227,6 +233,7 @@ async fn dispatch_mutation_set_read() {
     assert_mutation_succeeded(resp.payload);
 
     let get_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
@@ -252,6 +259,7 @@ async fn dispatch_mutation_archive() {
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -318,6 +326,7 @@ async fn route_adds_target_removes_queue_archives_read_and_uses_single_undo_id()
     upsert_test_label(&state, "Follow Up").await;
 
     let route = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Route {
@@ -362,6 +371,7 @@ async fn route_adds_target_removes_queue_archives_read_and_uses_single_undo_id()
     assert!(routed.flags.contains(mxr_core::MessageFlags::READ));
 
     let undo = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
@@ -397,6 +407,7 @@ async fn route_dry_run_uses_same_selection_but_does_not_mutate() {
     let before = state.store.get_envelope(&id).await.unwrap().unwrap();
 
     let route = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Route {
@@ -438,6 +449,7 @@ async fn undo_archive_restores_inbox_label() {
 
     // Archive — captures snapshot, writes undo entry, returns mutation_id.
     let archive = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -459,6 +471,7 @@ async fn undo_archive_restores_inbox_label() {
 
     // Undo — restores INBOX both locally and via the fake provider.
     let undo = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation {
@@ -483,6 +496,7 @@ async fn undo_archive_restores_inbox_label() {
     // The undo entry is consumed — replaying the same id is now a no-op
     // (regression test for "user mashes u and double-undoes").
     let replay = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
@@ -506,6 +520,7 @@ async fn undo_move_restores_prior_labels() {
     let before = state.store.get_envelope(&id).await.unwrap().unwrap();
 
     let moved = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Move {
@@ -522,6 +537,7 @@ async fn undo_move_restores_prior_labels() {
     assert_ne!(after_move.label_provider_ids, before.label_provider_ids);
 
     let undo = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
@@ -547,6 +563,7 @@ async fn undo_move_restores_prior_labels() {
 async fn undo_unknown_mutation_id_returns_not_found() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation {
@@ -576,6 +593,7 @@ async fn undo_bulk_archive_restores_all_messages() {
 
     // Pull three INBOX-tagged messages by listing envelopes.
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 100,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -595,6 +613,7 @@ async fn undo_bulk_archive_restores_all_messages() {
     assert!(ids.len() >= 2, "fixture must contain >=2 messages");
 
     let archive = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -606,6 +625,7 @@ async fn undo_bulk_archive_restores_all_messages() {
     assert_eq!(result.succeeded, ids.len() as u32);
 
     let undo = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
@@ -655,6 +675,7 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     }
 
     let start = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::StartMutationJob {
@@ -677,6 +698,7 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     let mut completed_job = None;
     for attempt in 0..800 {
         let inspect = IpcMessage {
+            expected_workspace: None,
             id: 2 + attempt,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetJob {
@@ -788,6 +810,7 @@ async fn indexed_inbox_messages(
 
 async fn lexical_hits(state: &Arc<AppState>, query: &str) -> usize {
     let search = IpcMessage {
+        expected_workspace: None,
         id: 9,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -810,6 +833,7 @@ async fn lexical_hits(state: &Arc<AppState>, query: &str) -> usize {
 
 fn archive_request(message_ids: Vec<mxr_core::MessageId>) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive { message_ids })),
@@ -843,6 +867,7 @@ async fn undo_reindexes_every_restored_message_in_search() {
     assert_eq!(lexical_hits(&state, "undoreindex in:inbox").await, 0);
 
     let undo = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
@@ -969,6 +994,7 @@ async fn star_mutation_returns_an_undo_id() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
@@ -991,6 +1017,7 @@ async fn mutation_archives_healthy_account_when_other_account_provider_fails() {
     add_failing_sync_account(&state, failing_calls.clone()).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -1013,6 +1040,7 @@ async fn mixed_account_mutation_returns_partial_success() {
     let (bad_account_id, bad_id) = add_failing_sync_account(&state, failing_calls.clone()).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -1045,6 +1073,7 @@ async fn dispatch_mutation_read_and_archive() {
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::ReadAndArchive {
@@ -1081,6 +1110,7 @@ async fn dispatch_mutation_trash() {
     let id = sync_and_get_first_id(&state).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Trash {
@@ -1105,6 +1135,7 @@ async fn dispatch_prepare_reply() {
 
     // Fetch body first so it's cached
     let body_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1114,6 +1145,7 @@ async fn dispatch_prepare_reply() {
     handle_request(&state, &body_msg).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::PrepareReply {
@@ -1147,6 +1179,7 @@ async fn dispatch_prepare_reply_all() {
 
     // Fetch body first
     let body_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1156,6 +1189,7 @@ async fn dispatch_prepare_reply_all() {
     handle_request(&state, &body_msg).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::PrepareReply {
@@ -1195,6 +1229,7 @@ async fn dispatch_prepare_reply_renders_html_context() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::PrepareReply {
@@ -1241,6 +1276,7 @@ async fn dispatch_prepare_reply_prefers_reply_to_header() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::PrepareReply {
@@ -1275,6 +1311,7 @@ async fn dispatch_prepare_forward() {
 
     // Fetch body first
     let body_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetBody {
@@ -1284,6 +1321,7 @@ async fn dispatch_prepare_forward() {
     handle_request(&state, &body_msg).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::PrepareForward { message_id: id }),
@@ -1309,6 +1347,7 @@ async fn modify_labels_persists_to_store_immediately() {
     let id = sync_and_get_first_id(&state).await;
 
     let create = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -1325,6 +1364,7 @@ async fn modify_labels_persists_to_store_immediately() {
     };
 
     let modify = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::ModifyLabels {
@@ -1346,6 +1386,7 @@ async fn get_thread_includes_message_label_provider_ids() {
     let envelope = state.store.get_envelope(&id).await.unwrap().unwrap();
 
     let create = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -1368,6 +1409,7 @@ async fn get_thread_includes_message_label_provider_ids() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThread {
@@ -1398,6 +1440,7 @@ async fn list_envelopes_includes_message_label_provider_ids() {
     let id = sync_and_get_first_id(&state).await;
 
     let create = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateLabel {
@@ -1420,6 +1463,7 @@ async fn list_envelopes_includes_message_label_provider_ids() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -1452,6 +1496,7 @@ async fn list_accounts_surfaces_runtime_accounts_without_config_entries() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListAccounts),
@@ -1476,6 +1521,7 @@ async fn get_llm_status_reports_noop_provider_by_default() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetLlmStatus),
@@ -1508,6 +1554,7 @@ async fn config_reload_rebuilds_llm_provider_for_status() {
     state.set_config_for_test(config).await;
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetLlmStatus),
@@ -1557,6 +1604,7 @@ fn update_llm_config_persists_and_rebuilds_provider_status() {
                     .expect("save default config");
                 let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
                 let msg = IpcMessage {
+                    expected_workspace: None,
                     id: 1,
                     source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Request(Request::UpdateLlmConfig {
@@ -1592,6 +1640,7 @@ fn update_llm_config_persists_and_rebuilds_provider_status() {
                 assert!(saved.llm.allow_cloud_relationship_data);
 
                 let status_msg = IpcMessage {
+                    expected_workspace: None,
                     id: 2,
                     source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Request(Request::GetLlmStatus),
@@ -1652,6 +1701,7 @@ fn update_notification_chimes_persists_and_updates_daemon_snapshot() {
                     error: mxr_protocol::NotificationChimeSoundData::Alert,
                 };
                 let msg = IpcMessage {
+                    expected_workspace: None,
                     id: 1,
                     source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Request(Request::UpdateNotificationChimes {
@@ -1691,6 +1741,7 @@ fn update_notification_chimes_persists_and_updates_daemon_snapshot() {
 async fn update_llm_config_rejects_blank_model() {
     let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UpdateLlmConfig {
@@ -1748,6 +1799,7 @@ async fn dispatch_send_draft() {
     };
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -1796,6 +1848,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
     };
 
     let send = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -1812,6 +1865,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
     }
 
     let save = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SaveDraft { draft }),
@@ -1832,6 +1886,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
     state.set_config_for_test(config).await;
 
     let mutation = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
@@ -1847,6 +1902,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
     }
 
     let search = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
@@ -1871,6 +1927,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
 async fn agent_source_requires_configured_profile() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::Ping),
@@ -1904,6 +1961,7 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
     state.set_config_for_test(config).await;
 
     let scoped_search = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::Search {
@@ -1924,6 +1982,7 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
     }
 
     let unscoped_search = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::Search {
@@ -1971,6 +2030,7 @@ async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
 
     // Archive is in the allowlist → permitted.
     let archive = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
@@ -1984,6 +2044,7 @@ async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
 
     // Trash is NOT in the allowlist → rejected by the per-action gate.
     let trash = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Trash {
@@ -2044,6 +2105,7 @@ async fn mcp_profile_send_gate_blocks_provider_send() {
     };
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::Mcp,
         payload: IpcPayload::Request(Request::SendDraft {
@@ -2099,6 +2161,7 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
     };
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -2125,6 +2188,7 @@ async fn dispatch_snooze_and_list() {
     // Snooze
     let wake_at = chrono::Utc::now() + chrono::Duration::hours(24);
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Snooze {
@@ -2142,6 +2206,7 @@ async fn dispatch_snooze_and_list() {
 
     // List snoozed - should have 1
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSnoozed),
@@ -2158,6 +2223,7 @@ async fn dispatch_snooze_and_list() {
 
     // Unsnooze
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsnooze { message_id: id }),
@@ -2172,6 +2238,7 @@ async fn dispatch_snooze_and_list() {
 
     // List snoozed - should have 0
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 4,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSnoozed),
@@ -2209,6 +2276,7 @@ async fn snooze_removes_inbox_and_unsnooze_restores_it() {
     assert!(before.iter().any(|label_id| label_id == &inbox.id));
 
     let snooze = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Snooze {
@@ -2227,6 +2295,7 @@ async fn snooze_removes_inbox_and_unsnooze_restores_it() {
     assert!(!snoozed_labels.iter().any(|label_id| label_id == &inbox.id));
 
     let unsnooze = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsnooze {
@@ -2252,6 +2321,7 @@ async fn dispatch_set_flags() {
     use mxr_core::types::MessageFlags;
     let flags = MessageFlags::READ | MessageFlags::STARRED;
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SetFlags {
@@ -2269,6 +2339,7 @@ async fn dispatch_set_flags() {
 
     // Verify flags
     let get_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
@@ -2298,6 +2369,7 @@ async fn unsubscribe_purge_dry_run_reports_method_and_sender_count() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UnsubscribePurge {
@@ -2336,6 +2408,7 @@ async fn unsubscribe_purge_without_method_does_not_archive_unless_allowed() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UnsubscribePurge {
@@ -2374,6 +2447,7 @@ async fn dispatch_unsubscribe_no_method() {
 
     // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsubscribe { message_id: id }),
@@ -2482,6 +2556,7 @@ async fn seed_carrier_shipment(
 
 fn from_request(request: Request) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(request),
@@ -3070,6 +3145,7 @@ async fn purge(
     preview_token: Option<String>,
 ) -> Response {
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UnsubscribePurge {
@@ -3157,6 +3233,7 @@ async fn sender_unsubscribe(
     preview_token: Option<String>,
 ) -> Response {
     let request = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(if dry_run {
@@ -3445,6 +3522,7 @@ async fn unsubscribe_preview_commit_preserves_explicit_archive_only_opt_in() {
         mxr_core::types::UnsubscribeMethod::None
     ));
     let request = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CommitUnsubscribePreview {

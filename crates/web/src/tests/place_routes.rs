@@ -37,7 +37,7 @@ async fn serve_recording() -> (TempDir, std::net::SocketAddr, Arc<Mutex<Vec<Requ
 #[tokio::test]
 async fn place_routes_forward_their_requests() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let account = AccountId::new();
     let message = MessageId::new();
 
@@ -131,7 +131,7 @@ async fn place_routes_forward_their_requests() {
 #[tokio::test]
 async fn place_routes_reject_bad_input_before_the_daemon() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     for request in [
         client.get(format!("http://{addr}/api/v1/mail/places/inbox")),
         client

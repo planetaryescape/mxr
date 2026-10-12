@@ -427,7 +427,11 @@ impl App {
             },
             other => other,
         };
+        let retained_owner = crate::send_recovery_state::owner_for_request(&request)
+            .ok()
+            .flatten();
         self.pending_mutation_queue.push(QueuedMutation {
+            expected_workspace: retained_owner.or_else(|| self.compose.workspace_owner.clone()),
             id,
             request,
             effect,

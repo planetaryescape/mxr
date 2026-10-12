@@ -30,6 +30,7 @@ async fn call(state: &Arc<AppState>, request: Request) -> Response {
     match handle_request(
         state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Cli,
             payload: IpcPayload::Request(request),

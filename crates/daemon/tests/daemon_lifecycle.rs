@@ -562,6 +562,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     );
     active_client
         .send(IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Cli,
             payload: IpcPayload::Request(Request::Ping),
@@ -581,6 +582,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
         assert!(matches!(
             message,
             IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 payload: IpcPayload::Response(Response::Ok {
                     data: ResponseData::Pong

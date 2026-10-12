@@ -12,7 +12,10 @@ import type {
   InviteReplyAction,
 } from "../api";
 
+import type { WorkspaceBinding } from "@/lib/workspaceOwner";
+
 export interface ComposeDraftState {
+  binding?: WorkspaceBinding;
   draftId?: string;
   revision?: number | null;
   draftPath: string;
@@ -51,6 +54,7 @@ export interface ComposeIntent {
 }
 
 export interface ComposeSaveSnapshot {
+  binding?: WorkspaceBinding;
   draftId?: string;
   revision?: number | null;
   draftPath: string;
@@ -98,6 +102,7 @@ export function draftFromSession(
   fallbackAccountId = "",
 ): ComposeDraftState {
   return {
+    binding: session.binding,
     draftId: session.draftId ?? undefined,
     revision: session.revision,
     draftPath: session.draftPath,
@@ -122,6 +127,7 @@ export function draftFromSession(
 
 export function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapshot {
   return {
+    binding: draft.binding,
     draftId: draft.draftId,
     revision: draft.revision,
     draftPath: draft.draftPath,

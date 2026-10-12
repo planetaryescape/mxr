@@ -32,6 +32,7 @@ mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
 mod updates_routes;
+mod workspace_owner;
 
 pub use openapi::ApiDoc;
 
@@ -731,10 +732,22 @@ async fn refresh_compose_session(
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
     let path = Path::new(&request.draft_path);
+    workspace_owner::require_sidecar(path).await?;
+    let content = read_compose_file(path).await?;
+    if let Some(expected) = &request.expected_attachments {
+        let (frontmatter, _) = parse_compose_content(&content)?;
+        if &frontmatter.attach != expected {
+            return Err(BridgeError::ArchiveConflict {
+                message: "The recovery file has different attachments from your retained editor. Your private selection is preserved; review it before reopening another copy.".into(),
+                kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+                code: "compose_attachment_conflict".into(),
+                details: None,
+            });
+        }
+    }
     let session = if let Some(source) = compose_recovery_source(path).await? {
         // An explicit reopen owns a fresh copy: another tab may still edit or
         // discard the remembered recovery file. Autosave never enters this path.
-        let content = read_compose_file(path).await?;
         let draft = read_draft_session_metadata(path)
             .await?
             .ok_or_else(|| BridgeError::BadRequest("recovery metadata is missing".into()))?;
@@ -790,6 +803,7 @@ async fn update_compose_session(
         .await?;
     let request_id = bridge_request_id(&headers);
     let path = Path::new(&request.draft_path);
+    workspace_owner::require_sidecar(path).await?;
     let draft_file = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -1175,6 +1189,7 @@ async fn suggest_compose_collaborators(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
+    workspace_owner::require_sidecar(Path::new(&request.draft_path)).await?;
     let request_id = bridge_request_id(&headers);
     // Read-only suggestion lookup; nothing is stored under this draft's id.
     let draft = compose_draft_from_file(
@@ -1565,6 +1580,7 @@ async fn discard_compose_session(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
+    workspace_owner::require_sidecar(Path::new(&request.draft_path)).await?;
     if let Some(draft) = read_draft_session_metadata(Path::new(&request.draft_path)).await? {
         if draft.revision.is_some()
             && compose_recovery_source(Path::new(&request.draft_path))
@@ -2435,7 +2451,27 @@ async fn ipc_request_with_id(
         .await
         .map_err(map_bridge_error)?
         .with_start_id(request_id);
-    connection.request(request).await.map_err(map_bridge_error)
+    let owner = workspace_owner::captured();
+    connection
+        .request_response_owned(request, owner.as_ref(), |_| {}, None)
+        .await
+        .and_then(|response| match response {
+            mxr_protocol::Response::Ok { data } => Ok(data),
+            mxr_protocol::Response::Error {
+                message,
+                kind,
+                code,
+                retryable,
+                details,
+            } => Err(ClientError::Daemon {
+                message,
+                kind,
+                code,
+                retryable,
+                details,
+            }),
+        })
+        .map_err(map_bridge_error)
 }
 
 /// Map a `mxr-client` failure onto the bridge's HTTP error vocabulary,
@@ -2457,12 +2493,14 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             code,
             details,
             ..
-        } if code.starts_with("archive_") => BridgeError::ArchiveConflict {
-            message,
-            kind,
-            code,
-            details,
-        },
+        } if code.starts_with("archive_") || code.starts_with("workspace_") => {
+            BridgeError::ArchiveConflict {
+                message,
+                kind,
+                code,
+                details,
+            }
+        }
         ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
@@ -2833,10 +2871,12 @@ async fn write_recovery_metadata(
     let mut value =
         serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     value["compose_recovery_source"] = json!(source);
+    value["compose_workspace"] = json!(workspace_owner::captured());
     replace_compose_file(&draft_session_metadata_path(path), value.to_string()).await
 }
 
 async fn require_canonical_compose(path: &Path) -> Result<(), BridgeError> {
+    workspace_owner::require_sidecar(path).await?;
     if compose_recovery_source(path).await?.is_some() {
         return Err(BridgeError::BadRequest("These edits are preserved locally. Open the saved draft before sending, scheduling or saving to the provider.".into()));
     }
@@ -2882,7 +2922,10 @@ fn compose_content_with_accepted_attachments(
 }
 
 async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), BridgeError> {
-    let bytes = serde_json::to_vec(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let mut value =
+        serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    value["compose_workspace"] = json!(workspace_owner::captured());
+    let bytes = serde_json::to_vec(&value).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);
     replace_compose_file(
         &metadata,
@@ -2989,6 +3032,7 @@ async fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeEr
     let metadata = read_draft_session_metadata(path).await?;
     let mut session = compose_session_from_snapshot(path, &raw_content, metadata.as_ref())?;
     session["recoverySourcePath"] = json!(compose_recovery_source(path).await?);
+    session["workspace"] = json!(workspace_owner::sidecar_owner(path).await?);
     Ok(session)
 }
 

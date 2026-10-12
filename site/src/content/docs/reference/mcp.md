@@ -27,7 +27,7 @@ MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 
- For a supervised daemon,
+For a supervised daemon,
 the MCP client and the `mxr` CLI both connect to the service-owned process. If
 the service is unavailable, MCP reports the IPC connection error.
 

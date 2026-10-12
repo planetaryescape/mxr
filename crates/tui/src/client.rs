@@ -39,12 +39,15 @@ impl Client {
     pub async fn connect(socket_path: &Path) -> std::io::Result<Self> {
         // Surface the raw `io::Error` so the worker's autostart classifier
         // (`should_autostart_daemon`) can inspect its `ErrorKind`.
-        let conn = IpcConnection::connect(socket_path, ClientKind::Tui)
-            .await
-            .map_err(|error| match error {
-                ClientError::Connect { source, .. } => source,
-                other => std::io::Error::other(other.to_string()),
-            })?;
+        let connection = if mxr_client::daemon_autostart_enabled() {
+            IpcConnection::connect(socket_path, ClientKind::Tui).await
+        } else {
+            IpcConnection::connect_supervised(socket_path, ClientKind::Tui).await
+        };
+        let conn = connection.map_err(|error| match error {
+            ClientError::Connect { source, .. } => source,
+            other => std::io::Error::other(other.to_string()),
+        })?;
         Ok(Self {
             conn,
             event_tx: None,

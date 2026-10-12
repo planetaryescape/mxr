@@ -68,6 +68,37 @@ pub fn daemon_autostart_disabled_message() -> &'static str {
     "MXR_DAEMON_AUTOSTART=off and no compatible daemon is available; check the service manager and its logs, then restart the supervised service"
 }
 
+/// Build identity used by the daemon and clients that must leave a supervised
+/// daemon untouched. The executable path and file metadata distinguish local
+/// builds that share a package version.
+pub fn current_daemon_build_id() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let Ok(exe) = std::env::current_exe() else {
+        return format!("{version}:unknown");
+    };
+    let path = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return format!("{version}:{}", path.display());
+    };
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |duration| duration.as_secs());
+    format!("{version}:{}:{}:{modified}", path.display(), meta.len())
+}
+
+/// Whether the reported daemon identity exactly matches this running binary.
+pub fn daemon_matches_current_binary(
+    protocol_version: u32,
+    daemon_version: Option<&str>,
+    daemon_build_id: Option<&str>,
+) -> bool {
+    protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION
+        && daemon_version == Some(env!("CARGO_PKG_VERSION"))
+        && daemon_build_id == Some(current_daemon_build_id().as_str())
+}
+
 #[cfg(test)]
 mod daemon_autostart_policy_tests {
     use super::daemon_autostart_enabled_for;
@@ -205,6 +236,47 @@ impl IpcConnection {
                 },
                 other => other,
             })
+    }
+
+    /// Connect to a daemon owned by a service manager and verify its exact
+    /// identity before returning a connection that can issue normal requests.
+    /// A status failure is actionable and never starts, stops, or replaces the
+    /// supervised process.
+    pub async fn connect_supervised(path: &Path, source: ClientKind) -> Result<Self, ClientError> {
+        let mut connection = Self::connect(path, source).await?;
+        let status = tokio::time::timeout(
+            Duration::from_secs(5),
+            connection.request(Request::GetStatus),
+        )
+        .await
+        .map_err(|_| supervised_connection_error(path, "daemon status request timed out"))?
+        .map_err(|error| {
+            supervised_connection_error(path, &format!("daemon status request failed: {error}"))
+        })?;
+
+        match status {
+            ResponseData::Status {
+                protocol_version,
+                daemon_version,
+                daemon_build_id,
+                ..
+            } if daemon_matches_current_binary(
+                protocol_version,
+                daemon_version.as_deref(),
+                daemon_build_id.as_deref(),
+            ) =>
+            {
+                Ok(connection)
+            }
+            ResponseData::Status { .. } => Err(supervised_connection_error(
+                path,
+                "the running daemon is incompatible with this mxr binary",
+            )),
+            _ => Err(supervised_connection_error(
+                path,
+                "the daemon returned an unexpected response to its status request",
+            )),
+        }
     }
 
     /// Connect to the daemon through any [`Connector`], tagging every request
@@ -552,6 +624,14 @@ impl IpcConnection {
     }
 }
 
+fn supervised_connection_error(path: &Path, reason: &str) -> ClientError {
+    ClientError::Io(std::io::Error::other(format!(
+        "{} ({}): {reason}",
+        daemon_autostart_disabled_message(),
+        path.display()
+    )))
+}
+
 fn drop_event(_event: DaemonEvent) {}
 
 fn into_data(response: Response) -> Result<ResponseData, ClientError> {
@@ -632,6 +712,33 @@ mod tests {
         })
     }
 
+    fn status_response(
+        protocol_version: u32,
+        daemon_version: Option<&str>,
+        daemon_build_id: Option<String>,
+    ) -> Response {
+        Response::Ok {
+            data: serde_json::from_value(serde_json::json!({
+                "kind": "Status",
+                "uptime_secs": 0,
+                "accounts": [],
+                "total_messages": 0,
+                "protocol_version": protocol_version,
+                "daemon_version": daemon_version,
+                "daemon_build_id": daemon_build_id,
+            }))
+            .expect("status fixture should deserialize"),
+        }
+    }
+
+    fn status_identity() -> Response {
+        status_response(
+            mxr_protocol::IPC_PROTOCOL_VERSION,
+            Some(env!("CARGO_PKG_VERSION")),
+            Some(current_daemon_build_id()),
+        )
+    }
+
     fn event_frame(event: DaemonEvent) -> IpcMessage {
         IpcMessage {
             id: 0,
@@ -692,6 +799,162 @@ mod tests {
             .unwrap();
         conn.request(Request::Ping).await.unwrap();
         assert_eq!(seen.lock().unwrap().as_slice(), &[ClientKind::Web]);
+    }
+
+    #[tokio::test]
+    async fn supervised_connection_checks_identity_before_normal_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_writer = seen.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |message| match &message.payload {
+            IpcPayload::Request(Request::GetStatus) => {
+                seen_writer.lock().unwrap().push("status");
+                Some(status_identity())
+            }
+            IpcPayload::Request(Request::Ping) => {
+                seen_writer.lock().unwrap().push("ping");
+                Some(Response::Ok {
+                    data: ResponseData::Pong,
+                })
+            }
+            _ => None,
+        })
+        .await;
+
+        let mut connection = IpcConnection::connect_supervised(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        assert_eq!(seen.lock().unwrap().as_slice(), &["status"]);
+        assert!(matches!(
+            connection.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+        assert_eq!(seen.lock().unwrap().as_slice(), &["status", "ping"]);
+    }
+
+    #[tokio::test]
+    async fn supervised_connection_rejects_mismatched_protocol_version_or_build() {
+        let mismatches = [
+            (
+                mxr_protocol::IPC_PROTOCOL_VERSION - 1,
+                Some(env!("CARGO_PKG_VERSION")),
+                Some(current_daemon_build_id()),
+            ),
+            (
+                mxr_protocol::IPC_PROTOCOL_VERSION + 1,
+                Some(env!("CARGO_PKG_VERSION")),
+                Some(current_daemon_build_id()),
+            ),
+            (
+                mxr_protocol::IPC_PROTOCOL_VERSION,
+                Some("0.0.0"),
+                Some(current_daemon_build_id()),
+            ),
+            (
+                mxr_protocol::IPC_PROTOCOL_VERSION,
+                Some(env!("CARGO_PKG_VERSION")),
+                Some("other-build".to_string()),
+            ),
+        ];
+
+        for (index, (protocol, version, build_id)) in mismatches.into_iter().enumerate() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join(format!("mxr-{index}.sock"));
+            let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let seen_writer = seen.clone();
+            let _server =
+                spawn_fake_daemon(&sock, Vec::new(), move |message| match &message.payload {
+                    IpcPayload::Request(Request::GetStatus) => {
+                        seen_writer.lock().unwrap().push("status");
+                        Some(status_response(protocol, version, build_id.clone()))
+                    }
+                    IpcPayload::Request(Request::Ping) => {
+                        seen_writer.lock().unwrap().push("ping");
+                        Some(Response::Ok {
+                            data: ResponseData::Pong,
+                        })
+                    }
+                    _ => None,
+                })
+                .await;
+
+            let error = match IpcConnection::connect_supervised(&sock, ClientKind::Tui).await {
+                Ok(_) => panic!("mismatched supervised daemon identity was accepted"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("incompatible"), "{error}");
+            assert_eq!(seen.lock().unwrap().as_slice(), &["status"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn supervised_status_failure_has_service_manager_remediation() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_writer = seen.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |_message| {
+            seen_writer.lock().unwrap().push("status");
+            Some(Response::error("status unavailable"))
+        })
+        .await;
+
+        let error = match IpcConnection::connect_supervised(&sock, ClientKind::Tui).await {
+            Ok(_) => panic!("status failure should reject supervised connection"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(message.contains("service manager"), "{message}");
+        assert!(message.contains("status request failed"), "{message}");
+        assert!(message.contains("status unavailable"), "{message}");
+        assert_eq!(seen.lock().unwrap().as_slice(), &["status"]);
+    }
+
+    #[tokio::test]
+    async fn every_supervised_reconnect_checks_identity_before_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_writer = seen.clone();
+        let status_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let status_count_writer = status_count.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |message| match &message.payload {
+            IpcPayload::Request(Request::GetStatus) => {
+                seen_writer.lock().unwrap().push("status");
+                if status_count_writer.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Some(status_identity())
+                } else {
+                    Some(status_response(
+                        mxr_protocol::IPC_PROTOCOL_VERSION + 1,
+                        Some(env!("CARGO_PKG_VERSION")),
+                        Some(current_daemon_build_id()),
+                    ))
+                }
+            }
+            IpcPayload::Request(Request::Ping) => {
+                seen_writer.lock().unwrap().push("ping");
+                Some(Response::Ok {
+                    data: ResponseData::Pong,
+                })
+            }
+            _ => None,
+        })
+        .await;
+
+        let mut connection = IpcConnection::connect_supervised(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        connection.request(Request::Ping).await.unwrap();
+        let error = match IpcConnection::connect_supervised(&sock, ClientKind::Tui).await {
+            Ok(_) => panic!("replacement daemon with a different identity was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("incompatible"), "{error}");
+        assert_eq!(
+            seen.lock().unwrap().as_slice(),
+            &["status", "ping", "status"]
+        );
     }
 
     #[tokio::test]

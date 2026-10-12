@@ -141,6 +141,7 @@ export function useComposeAutosave({
                 expectedRevision,
               });
             } catch (error) {
+              assertWorkspaceBinding(binding);
               const accepted = acceptedDraftRevision(error);
               const recovery = recoveredComposeSession(error);
               const latest = draftRef.current;
@@ -206,7 +207,16 @@ export function useComposeAutosave({
                 }
                 if (snapshot.binding) rememberComposeBinding(recovery.draft_path, snapshot.binding);
                 if (belongsToActive || currentIntentKeyRef.current !== intentKey)
-                  rememberActiveDraft(intentKey, recovered);
+                  rememberActiveDraft(
+                    intentKey,
+                    belongsToActive && latest
+                      ? {
+                          ...recovered,
+                          bodyMarkdown: latest.bodyMarkdown,
+                          frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
+                        }
+                      : recovered,
+                  );
                 if (belongsToActive)
                   setSaveError(`${errorMessage(error)} Your edits are preserved locally.`);
                 // The bridge confirmed this exact snapshot was preserved locally.
@@ -246,6 +256,7 @@ export function useComposeAutosave({
               throw error;
             }
           })();
+          assertWorkspaceBinding(binding);
           if (snapshot.draftId != null && response.session.draftId !== snapshot.draftId)
             throw new Error("The saved response belongs to another draft; your text stays here");
           const receivedAttachments = response.session.frontmatter.attach ?? [];
@@ -280,6 +291,12 @@ export function useComposeAutosave({
               draftId: response.session.draftId ?? undefined,
               revision: response.session.revision,
             };
+            rememberActiveDraft(intentKey, {
+              ...draftRef.current,
+              draftPath: response.session.draftPath,
+              recoverySourcePath:
+                response.session.recoverySourcePath ?? draftRef.current.recoverySourcePath,
+            });
             setDraft((active) =>
               active != null &&
               composeQueueKey(active.draftPath, active.recoverySourcePath) === queueKey &&

@@ -1,8 +1,9 @@
+import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useRef, useState, type ReactNode } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { BridgeRequestError } from "@/api/client";
 import type { ComposeSessionResponse } from "../api";
 import { loadInitialComposeSession, rememberActiveDraft } from "./activeDrafts";
@@ -11,6 +12,7 @@ import { useDraftSaveActions } from "./useDraftSaveActions";
 import { useComposeAutosave } from "./useComposeAutosave";
 
 const api = vi.hoisted(() => ({
+  rememberComposeBinding: vi.fn<typeof import("../api").rememberComposeBinding>(),
   updateComposeSession: vi.fn<typeof import("../api").updateComposeSession>(),
   refreshComposeSession: vi.fn<typeof import("../api").refreshComposeSession>(),
   restoreComposeSession: vi.fn<typeof import("../api").restoreComposeSession>(),
@@ -22,9 +24,19 @@ const toasts = vi.hoisted(() => ({
 }));
 vi.mock("sonner", () => ({ toast: toasts }));
 
+function originalBinding() {
+  return {
+    target: window.location.origin,
+    workspace: {
+      workspace_id: "00000000-0000-7000-8000-000000000001",
+      recovery_generation: "00000000-0000-7000-8000-000000000002",
+    },
+  };
+}
 function session(path: string, body: string, attach: string[]): ComposeSessionResponse {
   return {
     session: {
+      binding: originalBinding(),
       draftPath: path,
       draftId: "attachment-draft",
       revision: 1,
@@ -85,6 +97,10 @@ function setup(unsaved = false) {
   );
 }
 
+beforeEach(() => {
+  resetWorkspaceOwnerForTest();
+  observeWorkspace(originalBinding());
+});
 afterEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset());
   Object.values(toasts).forEach((mock) => mock.mockReset());
@@ -155,8 +171,9 @@ for (const unmount of [false, true]) {
       hook.result.current.markSessionFinished();
       hook.unmount();
     }
-    api.refreshComposeSession.mockImplementation(async (path) => {
+    api.refreshComposeSession.mockImplementation(async (path, expectedAttachments) => {
       expect(path).toBe("/tmp/attachments-recovery");
+      expect(expectedAttachments).toEqual(["/uploads/private-a", "/uploads/private-b"]);
       return session("/tmp/attachments-reopened-copy", "last typed text", [
         "/uploads/reopened-a",
         "/uploads/reopened-b",
@@ -222,6 +239,7 @@ for (const conflict of [false, true]) {
         });
       return {
         session: {
+          binding: originalBinding(),
           ...session("/tmp/accepted-retry", input.body, ["/uploads/canonical-a"]).session,
           revision: 2,
           recoverySourcePath: undefined,
@@ -381,6 +399,7 @@ test("typing during an explicit recovery retry keeps the latest private text and
   await act(async () => {
     accept({
       session: {
+        binding: originalBinding(),
         ...session("/tmp/accepted-before-typing", "first text", ["/uploads/canonical-a"]).session,
         revision: 2,
         recoverySourcePath: undefined,
@@ -432,6 +451,7 @@ test("a normal Save does not call newer in-flight typing saved or preserved", as
   await act(async () => {
     accept({
       session: {
+        binding: originalBinding(),
         ...session("/tmp/attachments-shared", "first text", ["/uploads/source-a"]).session,
         revision: 2,
       },

@@ -154,6 +154,9 @@ pub(super) struct ComposeSessionStartRequest {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionPathRequest {
+    /// Original attachment references whose identity a private recovery refresh must preserve.
+    #[serde(default)]
+    pub(super) expected_attachments: Option<Vec<String>>,
     #[serde(default)]
     pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,

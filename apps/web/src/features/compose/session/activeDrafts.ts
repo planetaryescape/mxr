@@ -8,12 +8,21 @@ import {
   restoreComposeSession,
   startComposeSession,
   rememberComposeBinding,
+  refreshComposeSession,
   type ComposeSessionResponse,
 } from "../api";
 
-import { type ComposeDraftState, type ComposeIntent } from "./composeDraft";
+import {
+  composeQueueKey,
+  draftFingerprint,
+  draftFromSession,
+  type ComposeDraftState,
+  type ComposeIntent,
+} from "./composeDraft";
+import { requestCoordinator } from "@/lib/requestCoordinator";
 
 import {
+  assertWorkspaceBinding,
   parseWorkspace,
   sameOwner,
   selectedWorkspace,
@@ -41,9 +50,64 @@ export async function loadInitialComposeSession(
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     if (active.snapshot) {
-      const snapshot = active.snapshot;
+      const original = active.snapshot;
+      const binding = original.binding;
+      const selected = selectedWorkspace();
+      let settled = active;
+      if (
+        binding &&
+        selected &&
+        binding.target === selected.target &&
+        sameOwner(binding.workspace, selected.workspace)
+      ) {
+        await requestCoordinator.settleCompose(
+          composeQueueKey(original.draftPath, original.recoverySourcePath),
+        );
+        const latest = readActiveDraft(intent.key);
+        if (
+          latest?.snapshot?.binding?.target === binding.target &&
+          sameOwner(latest.snapshot.binding.workspace, binding.workspace)
+        )
+          settled = latest;
+        try {
+          assertWorkspaceBinding(binding);
+          const snapshot = settled.snapshot ?? original;
+          rememberComposeBinding(snapshot.draftPath, binding);
+          if (snapshot.recoverySourcePath) {
+            const refreshed = await refreshComposeSession(
+              snapshot.draftPath,
+              snapshot.frontmatter.attach,
+            );
+            assertWorkspaceBinding(binding);
+            const refreshedDraft = draftFromSession(
+              { ...refreshed.session, binding },
+              snapshot.accountId,
+            );
+            // The bridge checked exact source references before relocating the owned copies.
+            const sameText =
+              draftFingerprint({
+                ...refreshedDraft,
+                frontmatter: { ...refreshedDraft.frontmatter, attach: snapshot.frontmatter.attach },
+              }) === draftFingerprint(snapshot);
+            if (
+              sameText &&
+              refreshedDraft.draftId === snapshot.draftId &&
+              refreshedDraft.revision === snapshot.revision &&
+              refreshedDraft.frontmatter.attach.length === snapshot.frontmatter.attach.length
+            ) {
+              return {
+                ...refreshed,
+                preservedRecoveryPath: snapshot.preservedRecoveryPath,
+                session: { ...refreshed.session, binding, accountId: snapshot.accountId },
+              };
+            }
+          }
+        } catch {
+          // The local snapshot remains available if its original owner cannot be reached.
+        }
+      }
+      const snapshot = settled.snapshot ?? original;
       if (snapshot.binding) rememberComposeBinding(snapshot.draftPath, snapshot.binding);
-      // A private snapshot survives a missing original bridge without submission.
       return { retainedSnapshot: true, session: { ...snapshot, previewHtml: "" } };
     }
     throw new UnownedPrivateDraftError(

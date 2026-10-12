@@ -117,7 +117,7 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
         let response: serde_json::Value = client
             .post(format!("http://{addr}/api/v1/mail/compose/session/refresh"))
             .bearer_auth(TEST_AUTH_TOKEN)
-            .json(&json!({"draft_path": recovery}))
+            .json(&json!({"draft_path": recovery, "expected_attachments": owned}))
             .send()
             .await
             .unwrap()

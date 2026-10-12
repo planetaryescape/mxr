@@ -87,10 +87,13 @@ export async function restoreComposeSession(
   );
 }
 
-export function refreshComposeSession(draftPath: string): Promise<ComposeSessionResponse> {
+export function refreshComposeSession(
+  draftPath: string,
+  expectedAttachments?: string[],
+): Promise<ComposeSessionResponse> {
   return ownedSession(
     "/api/v1/mail/compose/session/refresh",
-    { draft_path: draftPath },
+    { draft_path: draftPath, expected_attachments: expectedAttachments },
     requireComposeBinding(draftPath),
   );
 }

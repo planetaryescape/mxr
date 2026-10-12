@@ -733,10 +733,21 @@ async fn refresh_compose_session(
         .await?;
     let path = Path::new(&request.draft_path);
     workspace_owner::require_sidecar(path).await?;
+    let content = read_compose_file(path).await?;
+    if let Some(expected) = &request.expected_attachments {
+        let (frontmatter, _) = parse_compose_content(&content)?;
+        if &frontmatter.attach != expected {
+            return Err(BridgeError::ArchiveConflict {
+                message: "The recovery file has different attachments from your retained editor. Your private selection is preserved; review it before reopening another copy.".into(),
+                kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+                code: "compose_attachment_conflict".into(),
+                details: None,
+            });
+        }
+    }
     let session = if let Some(source) = compose_recovery_source(path).await? {
         // An explicit reopen owns a fresh copy: another tab may still edit or
         // discard the remembered recovery file. Autosave never enters this path.
-        let content = read_compose_file(path).await?;
         let draft = read_draft_session_metadata(path)
             .await?
             .ok_or_else(|| BridgeError::BadRequest("recovery metadata is missing".into()))?;

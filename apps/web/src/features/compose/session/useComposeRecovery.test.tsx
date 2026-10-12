@@ -1,8 +1,9 @@
+import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { useRef, useState, type ReactNode } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { BridgeRequestError, DaemonUnavailableError } from "@/api/client";
 import type { ComposeSessionResponse } from "../api";
 import { draftFromSession, type ComposeDraftState } from "./composeDraft";
@@ -11,11 +12,24 @@ import { useComposeAutosave } from "./useComposeAutosave";
 const availability = vi.hoisted(() => ({ down: false }));
 vi.mock("@/lib/daemonAvailability", () => ({ useDaemonDown: () => availability.down }));
 const update = vi.hoisted(() => vi.fn<typeof import("../api").updateComposeSession>());
-vi.mock("../api", () => ({ updateComposeSession: update }));
+vi.mock("../api", () => ({
+  updateComposeSession: update,
+  rememberComposeBinding: vi.fn<typeof import("../api").rememberComposeBinding>(),
+}));
 
+function originalBinding() {
+  return {
+    target: window.location.origin,
+    workspace: {
+      workspace_id: "00000000-0000-7000-8000-000000000001",
+      recovery_generation: "00000000-0000-7000-8000-000000000002",
+    },
+  };
+}
 function saved(body: string): ComposeSessionResponse {
   return {
     session: {
+      binding: originalBinding(),
       draftPath: "/tmp/timer-recovery",
       draftId: "timer-draft",
       revision: 1,
@@ -68,6 +82,10 @@ function setup() {
   );
 }
 
+beforeEach(() => {
+  resetWorkspaceOwnerForTest();
+  observeWorkspace(originalBinding());
+});
 afterEach(() => {
   availability.down = false;
   vi.useRealTimers();
@@ -169,6 +187,7 @@ test("an observed daemon recovery retries the pending text once", async () => {
   hook.rerender();
   update.mockResolvedValue({
     session: {
+      binding: originalBinding(),
       ...saved("losing text").session,
       draftPath: "/tmp/timer-shared",
       recoverySourcePath: null,

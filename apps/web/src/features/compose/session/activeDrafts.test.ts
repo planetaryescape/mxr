@@ -1,3 +1,4 @@
+import { requestCoordinator } from "@/lib/requestCoordinator";
 import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 import { beforeEach, expect, test, vi } from "vitest";
 import { privateStorage } from "@/test/privateStorage";
@@ -132,4 +133,50 @@ test("deliberate canonical reopen permits review while keeping the unowned priva
   await loadInitialComposeSession(intent, true);
   expect(api.restoreComposeSession).toHaveBeenCalledExactlyOnceWith(intent.draftId);
   expect(localStorage.getItem("mxr.compose.activeDrafts")).toBe(saved);
+});
+
+test("owner transition while an original save settles keeps private text without refreshing", async () => {
+  const a = {
+    ...draft(),
+    recoverySourcePath: "/private/source.md",
+    binding: { ...draft().binding!, target: window.location.origin },
+  };
+  observeWorkspace(a.binding);
+  rememberActiveDraft(intent.key, a);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const saving = requestCoordinator.queueComposeLatest("/private/source.md", () => held);
+  const loading = loadInitialComposeSession(intent);
+  observeWorkspace({
+    target: window.location.origin,
+    workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
+  });
+  release();
+  await saving;
+  expect((await loading).session.bodyMarkdown).toBe(a.bodyMarkdown);
+  expect(api.refreshComposeSession).not.toHaveBeenCalled();
+});
+
+test("same-count different server attachment selection cannot replace retained private references", async () => {
+  const current = {
+    ...draft(),
+    recoverySourcePath: "/private/source.md",
+    binding: { ...draft().binding!, target: window.location.origin },
+    frontmatter: { ...draft().frontmatter, attach: ["mxr-resource:new-resource/new.txt"] },
+  };
+  observeWorkspace(current.binding);
+  rememberActiveDraft(intent.key, current);
+  api.refreshComposeSession.mockImplementationOnce(async (_path, expectedAttachments) => {
+    expect(expectedAttachments).toEqual(current.frontmatter.attach);
+    throw new Error(
+      "compose_attachment_conflict: persisted recovery still references old-resource/old.txt",
+    );
+  });
+  const reopened = await loadInitialComposeSession(intent);
+  expect(reopened.session.frontmatter.attach).toEqual(current.frontmatter.attach);
+  expect(reopened.session.bodyMarkdown).toBe(current.bodyMarkdown);
+  expect(reopened.session.revision).toBe(current.revision);
+  expect(reopened.retainedSnapshot).toBe(true);
 });

@@ -96,3 +96,67 @@ async fn cors_exposes_the_owner_on_authenticated_success_and_conflict() {
         );
     }
 }
+
+#[tokio::test]
+async fn recovery_refresh_refuses_same_count_different_attachment_identity_before_copying() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let effects = Arc::new(Mutex::new(0));
+    let seen = effects.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket,
+        move |_| {
+            *seen.lock().unwrap() += 1;
+            Some(Response::Ok {
+                data: ResponseData::Ack,
+            })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let path = temp.path().join("private-recovery.md");
+    let old_attachment = temp.path().join("old.txt");
+    let new_attachment = temp.path().join("new.txt");
+    tokio::fs::write(&old_attachment, b"old private bytes")
+        .await
+        .unwrap();
+    tokio::fs::write(&new_attachment, b"new private bytes")
+        .await
+        .unwrap();
+    let content = format!("---\nto: alice@example.com\nsubject: Private\nfrom: me@example.com\nattach: [{}]\n---\nSame private body\n", serde_json::to_string(&old_attachment.display().to_string()).unwrap());
+    tokio::fs::write(&path, &content).await.unwrap();
+    let sidecar = draft_session_metadata_path(&path);
+    let draft = markdown_draft(
+        &DraftId::new(),
+        &AccountId::new(),
+        "Private",
+        "Same private body",
+        Utc::now(),
+    );
+    let mut value = serde_json::to_value(draft).unwrap();
+    value["compose_workspace"] = json!(test_workspace());
+    value["compose_recovery_source"] = json!("/private/source.md");
+    let metadata = serde_json::to_vec(&value).unwrap();
+    tokio::fs::write(&sidecar, &metadata).await.unwrap();
+    let response = test_http_client()
+        .post(format!("http://{addr}/api/v1/mail/compose/session/refresh"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({ "draft_path": path, "expected_attachments": [new_attachment] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+    let error: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(error["code"], "compose_attachment_conflict");
+    assert!(error.get("session").is_none());
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), content.as_bytes());
+    assert_eq!(tokio::fs::read(&sidecar).await.unwrap(), metadata);
+    assert_eq!(*effects.lock().unwrap(), 0);
+}

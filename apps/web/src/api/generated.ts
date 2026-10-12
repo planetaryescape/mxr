@@ -4988,6 +4988,8 @@ export interface components {
         ComposeSessionKindRequest: "new" | "reply" | "reply_all" | "forward" | "invite_reply";
         ComposeSessionPathRequest: {
             draft_path: string;
+            /** @description Original attachment references whose identity a private recovery refresh must preserve. */
+            expected_attachments?: string[] | null;
             /** Format: int64 */
             expected_revision?: number | null;
         };

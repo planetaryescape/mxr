@@ -1924,8 +1924,9 @@ async fn dispatch_list_bodies_preserves_attachments() {
 async fn status_recovery_metadata_does_not_escape_starved_reader_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let held_reader = state.store.reader().acquire().await.unwrap();
+    // Both the DB and semantic snapshots can exhaust their two-second budgets.
     let response = tokio::time::timeout(
-        std::time::Duration::from_secs(4),
+        std::time::Duration::from_secs(6),
         crate::handler::diagnostics_impl::get_status(&state),
     )
     .await

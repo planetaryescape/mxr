@@ -2278,7 +2278,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_tool_explains_older_daemons_without_sending_new_request() {
-        for version in [4, 5, 6] {
+        for version in 4..mxr_protocol::IPC_PROTOCOL_VERSION {
             let requester = Arc::new(VersionedSyncRequester {
                 version,
                 requests: Mutex::new(Vec::new()),

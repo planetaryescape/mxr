@@ -117,14 +117,14 @@ interface CategoryPreview {
 export async function previewCategories(
   form: RuleForm,
   previewToken?: string,
-  deleteRule = false,
+  deleteRequested = false,
 ): Promise<TreatmentPreview> {
   const result = await apiFetch<CategoryPreview>("/api/v1/platform/rules/categories", {
     method: "POST",
     body: {
       form: { ...form, id: form.id ?? null },
       preview_token: previewToken ?? null,
-      delete: deleteRule,
+      delete: deleteRequested,
     },
   });
   return {
@@ -137,7 +137,15 @@ export async function previewCategories(
       scan_limit: 0,
       notice: result.notice,
       matches: result.matches.map((m) => ({
-        ...m,
+        message_id: m.message_id,
+        account_id: m.account_id,
+        category_id: m.category_id,
+        category_name: m.category_name,
+        from: m.from,
+        subject: m.subject,
+        reason: m.reason,
+        manual_decision: m.manual_decision,
+        winner: m.winner,
         before: m.before ? "Assigned" : "Unassigned",
         after: m.after ? "Assigned" : "Unassigned",
         blocked: m.manual_decision != null,

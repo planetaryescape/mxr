@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.91](https://github.com/planetaryescape/mxr/compare/v0.6.90...v0.6.91) (2026-10-12)
+
+
+### Features
+
+* use the selected daemon across CLI TUI and MCP ([#433](https://github.com/planetaryescape/mxr/issues/433)) ([9330c48](https://github.com/planetaryescape/mxr/commit/9330c48e878e9f9926d69f066edeef61c4ace144))
+
+
+### Documentation
+
+* document workspace ownership and published recovery checks ([#431](https://github.com/planetaryescape/mxr/issues/431)) ([4f965b7](https://github.com/planetaryescape/mxr/commit/4f965b78f95fe2a21affbc2d2d1cde3e1c8bb481))
+* retain workspace owner in send recovery examples ([#432](https://github.com/planetaryescape/mxr/issues/432)) ([b7637cb](https://github.com/planetaryescape/mxr/commit/b7637cb688539bd58290418fe0c5005e75fe64dc))
+
 ## [0.6.90](https://github.com/planetaryescape/mxr/compare/v0.6.89...v0.6.90) (2026-10-12)
 
 

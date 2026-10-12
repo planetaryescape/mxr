@@ -1,6 +1,38 @@
 use super::*;
 use crate::app::ComposeAction;
 
+async fn next_owned_request(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::ipc::IpcRequest>,
+) -> crate::ipc::IpcRequest {
+    loop {
+        let request = rx.recv().await.unwrap();
+        if matches!(request.request, Request::GetArchiveWorkspace) {
+            request
+                .reply
+                .send(Ok(mxr_protocol::Response::Ok {
+                    data: mxr_protocol::ResponseData::ArchiveWorkspace {
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "fixture-workspace".into(),
+                            recovery_generation: "fixture-generation".into(),
+                        },
+                    },
+                }))
+                .unwrap();
+            continue;
+        }
+        if !matches!(request.request, Request::ResolveSendFrom { .. }) {
+            assert_eq!(
+                request.expected_workspace,
+                Some(mxr_protocol::ArchiveWorkspaceData {
+                    workspace_id: "fixture-workspace".into(),
+                    recovery_generation: "fixture-generation".into(),
+                })
+            );
+        }
+        return request;
+    }
+}
+
 #[test]
 fn input_j_moves_down() {
     let mut h = InputHandler::new();
@@ -182,7 +214,7 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
     let fake_daemon = tokio::spawn(async move {
         // The editor-finished handler first validates the effective From via
         // ResolveSendFrom (preview parity), then runs CheckDraftSafety.
-        let from_req = bg_rx.recv().await.expect("resolve-from IPC fired");
+        let from_req = next_owned_request(&mut bg_rx).await;
         assert!(
             matches!(from_req.request, Request::ResolveSendFrom { .. }),
             "expected ResolveSendFrom first, got: {:?}",
@@ -197,7 +229,7 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
             },
         }));
 
-        let req = bg_rx.recv().await.expect("safety check IPC fired");
+        let req = next_owned_request(&mut bg_rx).await;
         // Verify the wiring sent a CheckDraftSafety, not some other
         // request.
         assert!(
@@ -2148,7 +2180,22 @@ async fn canonical_compose_ipc(
         let mut stored = edited.clone();
         stored.content = mxr_core::DraftContent::markdown("Original text");
         while let Some(request) = rx.recv().await {
+            if !matches!(request.request, Request::GetArchiveWorkspace) {
+                assert_eq!(
+                    request.expected_workspace,
+                    Some(mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "fixture-workspace".into(),
+                        recovery_generation: "fixture-generation".into(),
+                    })
+                );
+            }
             let data = match request.request {
+                Request::GetArchiveWorkspace => mxr_protocol::ResponseData::ArchiveWorkspace {
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "fixture-workspace".into(),
+                        recovery_generation: "fixture-generation".into(),
+                    },
+                },
                 Request::GetSendOutcome { .. } => mxr_protocol::ResponseData::SendOutcome {
                     outcome: blocked.clone().map(|state| mxr_core::DraftSendOutcome {
                         identity: mxr_core::SendIdentity::for_draft(&stored),
@@ -2297,7 +2344,20 @@ async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence(
         let account = draft.account_id.clone();
         let id = draft.id.clone();
         let server = tokio::spawn(async move {
-            let q = rx.recv().await.unwrap();
+            let discovery = rx.recv().await.unwrap();
+            assert!(matches!(discovery.request, Request::GetArchiveWorkspace));
+            discovery
+                .reply
+                .send(Ok(mxr_protocol::Response::Ok {
+                    data: mxr_protocol::ResponseData::ArchiveWorkspace {
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "fixture-workspace".into(),
+                            recovery_generation: "fixture-generation".into(),
+                        },
+                    },
+                }))
+                .unwrap();
+            let q = next_owned_request(&mut rx).await;
             assert!(matches!(q.request, Request::GetSendOutcome { .. }));
             q.reply
                 .send(Ok(mxr_protocol::Response::Ok {
@@ -2399,7 +2459,7 @@ async fn stale_provider_save_keeps_edited_file_and_has_no_provider_effect() {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
     let server = tokio::spawn(async move {
         for _ in 0..2 {
-            let q = rx.recv().await.unwrap();
+            let q = next_owned_request(&mut rx).await;
             assert!(matches!(q.request, Request::GetSendOutcome { .. }));
             q.reply
                 .send(Ok(mxr_protocol::Response::Ok {
@@ -2407,7 +2467,7 @@ async fn stale_provider_save_keeps_edited_file_and_has_no_provider_effect() {
                 }))
                 .unwrap();
         }
-        let q = rx.recv().await.unwrap();
+        let q = next_owned_request(&mut rx).await;
         assert!(matches!(q.request, Request::GetDraft { .. }));
         q.reply
             .send(Ok(mxr_protocol::Response::Ok {

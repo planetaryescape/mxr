@@ -20,6 +20,7 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
     onRestore: vi.fn<(todo: Todo) => void>(),
     onToggleSource: vi.fn<(todo: Todo) => void>(),
     onOpenEmail: vi.fn<(todo: Todo) => void>(),
+    onOpenResolution: vi.fn<(todo: Todo, threadId: string, messageId: string) => void>(),
     ...overrides,
   };
   render(
@@ -59,6 +60,31 @@ describe("TodoRow", () => {
       expanded: true,
     });
     expect(within(row).queryByTestId("todo-arrived")).toBeNull();
+  });
+
+  test("a later-mail resolution shows its evidence and opens that exact source", () => {
+    const onOpenResolution = vi.fn<(todo: Todo, threadId: string, messageId: string) => void>();
+    const todo = todoFixture({
+      resolution: {
+        id: "resolution-1",
+        message_id: "msg_resolution",
+        thread_id: "thread_bill",
+        source_date: "2026-10-04T09:00:00Z",
+        quote: "Your council tax payment has been received.",
+        quote_location: "body",
+        source_method: "rule",
+        action: "complete",
+        proposed_due_at: null,
+        proposed_due_words: null,
+        status: "pending",
+      },
+    });
+    const { row } = renderRow(todo, "now", { onOpenResolution });
+    const card = within(row).getByTestId("todo-resolution");
+    expect(card).toHaveTextContent("Your council tax payment has been received.");
+    expect(card.querySelector("p")).toHaveClass("line-clamp-2");
+    fireEvent.click(within(card).getByRole("button", { name: "Source email" }));
+    expect(onOpenResolution).toHaveBeenCalledWith(todo, "thread_bill", "msg_resolution");
   });
 
   test("expanded details preserve arrival, why, next and source evidence", () => {

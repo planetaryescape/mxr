@@ -5506,6 +5506,52 @@
         }
       }
     },
+    "/api/v1/mail/todos/{todo_id}/resolution": {
+      "post": {
+        "tags": [],
+        "summary": "Review, accept, dismiss or undo a later-email resolution offer",
+        "operationId": "mail_todo_resolve",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoResolutionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The offer is stale or the requested action is unavailable"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/todos/{todo_id}/schedule": {
       "post": {
         "tags": [],
@@ -24874,6 +24920,36 @@
           },
           {
             "type": "object",
+            "description": "Preview or accept one evidence-backed later-mail resolution.",
+            "required": [
+              "todo_id",
+              "suggestion_id",
+              "action",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/TodoResolutionActionData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveTodoSuggestion"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "suggestion_id": {
+                "type": "string"
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Show the row on your own date (\"mon 9am\", \"in 3d\", RFC3339), or\nclear it with `when: None`. Resolved in `time_zone`, else the\ndaemon's. Returns `ResponseData::TodoChange`.",
             "required": [
               "todo_id",
@@ -34153,6 +34229,16 @@
             "format": "date-time",
             "description": "When it stops mattering."
           },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoResolutionData"
+              }
+            ]
+          },
           "runway": {
             "type": [
               "number",
@@ -34409,6 +34495,96 @@
           },
           "todo_id": {
             "type": "string"
+          }
+        }
+      },
+      "TodoResolutionActionData": {
+        "type": "string",
+        "enum": [
+          "preview",
+          "accept",
+          "dismiss",
+          "undo"
+        ]
+      },
+      "TodoResolutionBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos/{todo_id}/resolution`.",
+        "required": [
+          "suggestion_id",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TodoResolutionActionData"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "suggestion_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TodoResolutionData": {
+        "type": "object",
+        "description": "A later message that offers a specific, user-reviewed resolution.",
+        "required": [
+          "id",
+          "message_id",
+          "thread_id",
+          "source_date",
+          "quote",
+          "quote_location",
+          "source_method",
+          "action",
+          "status"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "complete | revise_date"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "proposed_due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "proposed_due_words": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "string",
+            "description": "Exact bounded substring of the source subject or cleaned body."
+          },
+          "quote_location": {
+            "type": "string"
+          },
+          "source_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_method": {
+            "type": "string",
+            "description": "rule | model"
+          },
+          "status": {
+            "type": "string",
+            "description": "pending | accepted | dismissed | undone | superseded"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },

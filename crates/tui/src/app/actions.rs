@@ -130,6 +130,10 @@ impl App {
             | Action::TodoEdit
             | Action::TodoDismiss
             | Action::TodoOpenEmail
+            | Action::TodoReviewResolution
+            | Action::TodoConfirmResolution
+            | Action::TodoDismissResolution
+            | Action::TodoUndoResolution
             | Action::TodoOpenExpired
             | Action::TodoOpenCatchup
             | Action::TodoShowRunway

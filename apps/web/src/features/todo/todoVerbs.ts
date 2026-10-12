@@ -20,6 +20,7 @@ import {
   createTodo,
   editTodo,
   scheduleTodo,
+  resolveTodoSuggestion,
   setCatchup,
   setTodoState,
   TODO_KEY,
@@ -188,6 +189,43 @@ export async function tickOff(todo: Todo): Promise<void> {
     await refreshTodos({ guide: true });
     useTodoHidden.getState().show([todo.id]);
   }
+}
+
+/** Review, accept or dismiss one exact later-mail resolution offer. */
+export function resolveSuggestion(todo: Todo, action: "preview" | "accept" | "dismiss" | "undo") {
+  const offer = todo.resolution;
+  if (!offer || refuseWhileDaemonDown("review the email")) return;
+  if (action === "preview") {
+    return resolveTodoSuggestion(todo.id, offer.id, "preview", true).catch((error) => {
+      toast.error("Couldn't review that email update", { description: errorText(error) });
+      return null;
+    });
+  }
+  if (action === "accept") {
+    const verb: Verb = offer.action === "complete" ? "todo-done" : "todo-edit";
+    return withUndo(verb, () => resolveTodoSuggestion(todo.id, offer.id, "accept"), {
+      message: (change) => change.summary,
+      reverse: () => undoBy(() => resolveTodoSuggestion(todo.id, offer.id, "undo")),
+      failure: "Couldn't apply that email update",
+      ids: [todo.id],
+    });
+  }
+  const run = () => resolveTodoSuggestion(todo.id, offer.id, action);
+  return run()
+    .then((change) => {
+      toast.success(change.summary);
+      return change;
+    })
+    .catch((error) => {
+      toast.error(
+        action === "dismiss" ? "Couldn't dismiss that offer" : "Couldn't undo that offer",
+        {
+          description: errorText(error),
+        },
+      );
+      return null;
+    })
+    .finally(() => refreshTodos());
 }
 
 /** `X`: not a to-do, kept as a correction so that email never comes back. */

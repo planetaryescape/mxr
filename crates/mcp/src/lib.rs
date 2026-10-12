@@ -6,7 +6,7 @@ use mxr_core::{
 };
 use mxr_protocol::{
     ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData, RecordKindData,
-    Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
+    Request, Response, ResponseData, TodoResolutionActionData, IPC_PROTOCOL_VERSION,
 };
 use rmcp::{
     handler::server::{
@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 use std::{path::Path, str::FromStr, sync::Arc};
 
 mod todo;
-use todo::{TodoGetInput, TodoListInput, TodoStateInput};
+use todo::{TodoGetInput, TodoListInput, TodoResolutionInput, TodoStateInput};
 
 #[async_trait]
 pub trait DaemonRequester: Send + Sync + std::fmt::Debug + 'static {
@@ -930,6 +930,28 @@ impl MxrMcpServer {
         self.daemon_json(Request::SetTodoState {
             todo_ids: input.todo_ids,
             action: input.action.into(),
+            dry_run: !input.confirm.unwrap_or(false),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_resolve",
+        description = "Review an evidenced later email for one to-do. Without confirm=true returns a read-only preview; confirm the named accept, dismiss or undo action to apply it."
+    )]
+    pub async fn todo_resolve(
+        &self,
+        Parameters(input): Parameters<TodoResolutionInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let action = match input.action {
+            todo::ResolutionAction::Accept => TodoResolutionActionData::Accept,
+            todo::ResolutionAction::Dismiss => TodoResolutionActionData::Dismiss,
+            todo::ResolutionAction::Undo => TodoResolutionActionData::Undo,
+        };
+        self.daemon_json(Request::ResolveTodoSuggestion {
+            todo_id: input.todo_id,
+            suggestion_id: input.suggestion_id,
+            action,
             dry_run: !input.confirm.unwrap_or(false),
         })
         .await

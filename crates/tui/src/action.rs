@@ -196,6 +196,11 @@ pub enum Action {
     TodoDismiss,
     /// `o`: open the email the to-do came from.
     TodoOpenEmail,
+    /// `v`: inspect a later-mail resolution, then explicitly accept it.
+    TodoReviewResolution,
+    TodoConfirmResolution,
+    TodoDismissResolution,
+    TodoUndoResolution,
     /// Esc while a hint shows in the status line: dismiss it in every
     /// client (`SetHintSeen`).
     DismissHint,

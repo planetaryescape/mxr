@@ -484,6 +484,52 @@ mxr screener allow|deny|feed|paper-trail <addr>
 
 The agent doesn't need a special API. The same flags humans use are the same ones it composes.
 
+## Build an evidence pack from booking mail
+
+Use this to gather an itinerary, expense packet, or audit bundle from messages
+sent by several providers.
+
+Search for the relevant messages and keep their IDs:
+
+```bash
+mxr search 'after:2026-09-01 (flight OR hotel OR rental)' \
+  --account personal --format json > messages.json
+
+jq -r '.results[].message_id' messages.json > message-ids.txt
+```
+
+This example reads one search page. If there are more than 50 matches, pass
+the next `paging.next_offset` value as `--offset`.
+
+Read each message and inspect its attachments. Download only the files you
+need:
+
+```bash
+while IFS= read -r id; do
+  mxr cat "$id" --format json
+  mxr attachments list "$id" --account personal --format json
+done < message-ids.txt
+
+# Set these to a message ID and 1-based attachment index from the list.
+message_id='MESSAGE_ID'
+attachment_index=1
+mxr attachments download "$message_id" "$attachment_index" \
+  --account personal --dir ./evidence --format json
+```
+
+Compare the subject, sent date, booking reference, body, and attachment. A
+confirmation records what was booked at send time. Check the provider for live
+status, availability, final charges, or claim decisions. Keep unresolved
+conflicts and missing evidence beside the summary.
+
+Preview a covering email before sending it:
+
+```bash
+cat summary.md | mxr compose \
+  --to traveller@example.com --subject 'Travel evidence pack' \
+  --body-stdin --attach ./evidence/receipt.pdf --dry-run --format json
+```
+
 ## With AI features — synthesis with citations
 
 ### "What did we decide about X last quarter?"

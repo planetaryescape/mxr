@@ -3691,6 +3691,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::RuleDryRun { request_id, result: Ok(results) } => {
                             if request_id != app.rules.dry_run_request_id { continue; }
                             app.rules.page.dry_run = results;
+                            app.rules.page.dry_run_page = 0;
                         }
                         AsyncResult::RuleDryRun { request_id, result: Err(e) } => {
                             if request_id != app.rules.dry_run_request_id { continue; }

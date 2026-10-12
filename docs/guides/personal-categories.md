@@ -109,7 +109,9 @@ In web Rules, choose a local category in the editor and review the complete
 preview before **Save** or **Apply**. The enabled switch and deletion are
 reviewed in that editor. In TUI Rules, use `add-category:Travel` or
 `remove-category:Travel` in the action field. `Ctrl-S` or `Ctrl-D` opens the
-preview; `A` applies. Toggling or deleting a saved category rule opens its
+preview; `PageUp` and `PageDown` page through every effect, with the current effect and total
+in the title. `A` applies. The account field cycles through enabled accounts and
+**All accounts** for category rules. Toggling or deleting a saved category rule opens its
 reconciliation preview. MCP exposes `mxr_category_rule` for the same
 preview/apply lifecycle and `mxr_category_why` for provenance.
 

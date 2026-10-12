@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.89](https://github.com/planetaryescape/mxr/compare/v0.6.88...v0.6.89) (2026-10-12)
+
+
+### Bug Fixes
+
+* retain reviewed workspace in release smoke proofs ([#425](https://github.com/planetaryescape/mxr/issues/425)) ([17a0df2](https://github.com/planetaryescape/mxr/commit/17a0df2c8e0f61f84810086c4d5a03cf0e0e034e))
+
 ## [0.6.88](https://github.com/planetaryescape/mxr/compare/v0.6.87...v0.6.88) (2026-10-12)
 
 

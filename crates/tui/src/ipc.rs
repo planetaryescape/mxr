@@ -154,6 +154,12 @@ pub(crate) fn spawn_ipc_worker(
                                         result = retry;
                                     }
                                     Err(error) => {
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(
+                                            ConnectionState::Reconnecting {
+                                                since: std::time::Instant::now(),
+                                                reason: error.to_string(),
+                                            },
+                                        ));
                                         result = Err(error);
                                     }
                                 }
@@ -182,7 +188,13 @@ pub(crate) fn spawn_ipc_worker(
                                 let _ = result_tx
                                     .send(AsyncResult::ConnectionState(ConnectionState::Connected));
                             }
-                            Err(_) => {
+                            Err(error) => {
+                                let _ = result_tx.send(AsyncResult::ConnectionState(
+                                    ConnectionState::Reconnecting {
+                                        since: std::time::Instant::now(),
+                                        reason: error.to_string(),
+                                    },
+                                ));
                                 sleep(Duration::from_secs(2)).await;
                             }
                         }

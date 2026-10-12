@@ -1,0 +1,100 @@
+{
+  "status": "release and all four published-client acceptance paths passed",
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "tree": "97ec97a58dabf4a8cee69382253d10e4cafb3b33",
+  "binary_sha256": "067a23b077a2d8f03708f8c371b1b8b642185d422a6ba8d16b027ecea275301b",
+  "retained": [
+    {
+      "name": "README.md",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/README.md",
+      "sha256": "d4a903c2c26797d7c7a36d42715f91d356edf0c3a9350abd4fe6daf0f383cc6c"
+    },
+    {
+      "name": "release-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/release-acceptance.json",
+      "sha256": "344fae32aab64ac309708417210c2d509945d8e3c4d9f67abc48e544d25b0c9a"
+    },
+    {
+      "name": "cli-mcp-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/cli-mcp-acceptance.json",
+      "sha256": "38c11790a9adb08da86c12ac5428b890098f97a9e5a53a195543e19c2ef58f82"
+    },
+    {
+      "name": "native-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/native-acceptance.json",
+      "sha256": "115e425b221f461e5f29a4327dbe3481ed89614bf072f76a6d89f27d55aca671"
+    },
+    {
+      "name": "release-smoke-limits.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/release-smoke-limits.json",
+      "sha256": "a647d168b15d2a974e09f8417727c72d60d0f70d546d3179c51e89f7d6784efa"
+    },
+    {
+      "name": "browser-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s09-installed-v0.6.92/browser-acceptance.json",
+      "sha256": "2c5fab30f774a7e53256b600a6a8f9d9a5b5a2ba4c20ee4b4a752062b5d9785c"
+    }
+  ],
+  "sources": [
+    {
+      "name": "published release verification",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/published-v0.6.92-release/verification.json",
+      "sha256": "98e7ce690dc8247059389d13e4e77cc39558b5434ad1a2885cd38fb06cf5f7d3"
+    },
+    {
+      "name": "release workflow metadata",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/published-v0.6.92-release/workflow.json",
+      "sha256": "add4dff5a2d930b8191f2617d79d7c7ea60818dc962a15b28ff13068a54f02ca"
+    },
+    {
+      "name": "published CLI and MCP result",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/cli-mcp-published-v0.6.92/result.json",
+      "sha256": "bcabc5a54e00b4182ebe285735db953f2e26c3b2c3ab55ff06528fdfb74562ec"
+    },
+    {
+      "name": "published native TUI result",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/native-published-v0.6.92/result.json",
+      "sha256": "d475a0072d892698ce3885f5756c40c46390645481eb2f02e2738f215c9a1f3a"
+    },
+    {
+      "name": "root native acceptance receipt",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-native-v0.6.92.json",
+      "sha256": "d475a0072d892698ce3885f5756c40c46390645481eb2f02e2738f215c9a1f3a"
+    },
+    {
+      "name": "Homebrew verification receipt",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-homebrew-v0.6.92.json",
+      "sha256": "26de7efad73cc36deef14f0d40af9aadad1e67d73392e823585d9cee083dabbe"
+    },
+    {
+      "name": "release smoke limitations receipt",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-release-smoke.json",
+      "sha256": "34a3b0d492b777cc0f99ccaff392b85f55ff039ca6144ad0b8f6ed826e6657d5"
+    },
+    {
+      "name": "root CLI/MCP destination audit",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-cli-mcp-v0.6.92.json",
+      "sha256": "a74a76ce42e2715e41a68d96f36ceea5ce45139090780fd54f107782bfb6b063"
+    },
+    {
+      "name": "published browser result",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/browser-published-v0.6.92/result.json",
+      "sha256": "8d7f893c442ec6d016237d2863cb97edb148c9b7559a61c95675487bb53d243d"
+    },
+    {
+      "name": "published browser quiet-window diagnostic",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/browser-published-v0.6.92/diagnostics-window.json",
+      "sha256": "574c47c76ea753a167fbbfd68eb2642cb914325b6c0f0e8e48d26f95d83d3bed"
+    },
+    {
+      "name": "root browser acceptance audit",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s09-root-browser-v0.6.92.json",
+      "sha256": "6948e852d1be0cda7a48ecebc6cab07a6b1eb28fe06f8351ffcba04a9ab62384"
+    }
+  ],
+  "limits": [
+    "Linux release archive was checksum-verified, but the Linux smoke exercised a debug build.",
+    "Live Gmail, IMAP and SMTP smoke checks were skipped because credentials were unavailable.",
+    "The 14 negative cases in the candidate packet are candidate-only evidence."
+  ]
+}

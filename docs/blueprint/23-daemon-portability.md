@@ -1,6 +1,6 @@
 # Daemon portability preserves one workspace authority
 
-Status: twelve stages are published through S07. S09 source PR436 merged at `8faa88f1c11ec0f66eb4f37c5212189b00f74aa7`; release PR438 merged v0.6.92 metadata at `edf75f83368fc4afc3a9204e2d502773cc2950b2`, and tag workflow 38263455994 is building. Publication and installed acceptance remain pending. The [S09 stage report](../build-log/daemon-portability/s09-backup-recovery.md) and [orchestration ladder](../implementation/daemon-portability/orchestration.md) track current delivery. Earlier stages’ source and acceptance receipts remain in their linked reports and packets. R01 authenticated remote HTTP, an iOS client, VPS provisioning, and Tailscale setup remain deferred.
+Status: all 13 stages are complete. S09 source PR436 is integrated, and v0.6.92 from `edf75f83368fc4afc3a9204e2d502773cc2950b2` is published. CLI, MCP, native TUI and browser acceptance passed. The [S09 stage report](../build-log/daemon-portability/s09-backup-recovery.md), [installed packet](../build-log/daemon-portability/evidence/s09-installed-v0.6.92/README.md), and [orchestration ladder](../implementation/daemon-portability/orchestration.md) track current delivery. Earlier stages’ source and acceptance receipts remain in their linked reports and packets. R01 authenticated remote HTTP, an iOS client, VPS provisioning, and Tailscale setup remain deferred.
 
 The original specification was written on 2026-10-10 against [`origin/main` at `80606f4833b651bf9b07975ddd49083d7cb2568a`](https://github.com/planetaryescape/mxr/tree/80606f4833b651bf9b07975ddd49083d7cb2568a). The [iOS architecture assessment](../research/ios-architecture.md) records the choice of a SwiftUI client with a local cache and one reachable daemon.
 
@@ -24,14 +24,14 @@ The final completion check is the separate-filesystem workflow above, plus the r
 
 | Package | Can start when | First independently useful result | Status |
 | --- | --- | --- | --- |
-| P01: durable drafts | Now | Web edits and sends retain identity and reject stale revisions | Specified |
-| P02: recoverable operations | Now for outcome/provider audit; P01 for send integration | A lost response has a queryable result without blind resend | Specified |
+| P01: durable drafts | Now | Web edits and sends retain identity and reject stale revisions | [S02](../build-log/daemon-portability/s02-draft-recovery.md) and [S03](../build-log/daemon-portability/s03-send-outcomes.md) published |
+| P02: recoverable operations | Now for outcome/provider audit; P01 for send integration | A lost response has a queryable result without blind resend | [S03](../build-log/daemon-portability/s03-send-outcomes.md) and [S04](../build-log/daemon-portability/s04-archive-recovery.md) published |
 | P03: file resources | P01 defines draft ownership | Compose and attachments work without shared paths | S05a/S05b published |
-| P04: contracts and compatibility | Schema work accompanies P01 onward | Selected web workflow uses generated, checked contracts | Specified |
-| P05: reconnection | Event-gap regression can start now; workspace checks use P04 | Event-only outages recover without losing edits | Specified |
+| P04: contracts and compatibility | Schema work accompanies P01 onward | Selected web workflow uses generated, checked contracts | Published with consuming workflows through [S09](../build-log/daemon-portability/s09-backup-recovery.md) |
+| P05: reconnection | Event-gap regression can start now; workspace checks use P04 | Event-only outages recover without losing edits | [S06a](../build-log/daemon-portability/s06a-event-gap-recovery.md) and [S06b](../build-log/daemon-portability/s06b-workspace-owner.md) published |
 | P06: client targeting | Diagnostics and portable client workflows | Status and doctor report the selected daemon truthfully; CLI, TUI and MCP can use the selected daemon | P06a/S06b/S07 published |
 | P07: supervised/headless operation | Signal and token subparts now | Existing shutdown and credentials survive interruption | P07a/P07b released; P07c published acceptance passed |
-| P08: recoverable workspace | Inventory now; integrate changes from P01-P03 | Restore into a new profile without replaying old effects | S09 integrated; release pending |
+| P08: recoverable workspace | Inventory now; integrate changes from P01-P03 | Restore into a new profile without replaying old effects | v0.6.92 published; all four client paths accepted |
 | R01: authenticated remote HTTP | A remote consumer is selected; P01-P04 boundary ready | Remote credentials and exposed routes pass gateway tests | Deferred |
 
 ## Keep authority and machine ownership explicit

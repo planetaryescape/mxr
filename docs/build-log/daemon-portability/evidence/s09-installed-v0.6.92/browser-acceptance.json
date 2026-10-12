@@ -1,0 +1,42 @@
+{
+  "status": "passed on published v0.6.92",
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "tree": "97ec97a58dabf4a8cee69382253d10e4cafb3b33",
+  "binary_sha256": "067a23b077a2d8f03708f8c371b1b8b642185d422a6ba8d16b027ecea275301b",
+  "surface": "Browser UI on the published binary",
+  "activation_preview_and_confirmed": true,
+  "cached_body_visible": true,
+  "new_draft_confirmed": true,
+  "original_drafts_remained_held": 2,
+  "original_attachment_reviewed": {
+    "filename": "original.bin",
+    "length_bytes": 9309,
+    "sha256": "d9a28f001301a921ad00bc1b9cf106fe2277e5baac49d9848ea13ce2e9a300e4"
+  },
+  "no_send_claimed": true,
+  "final_state": {
+    "draft_count": 3,
+    "scheduled_send_attempts": 0,
+    "accepted_spool_files": 0
+  },
+  "quiet_window": {
+    "seconds": 79.837554,
+    "interaction_during_window": false,
+    "transition_page_errors": 0,
+    "transition_console_messages": 0,
+    "end_page_errors": 0,
+    "end_console_messages": 0
+  },
+  "cleanup": {
+    "browser_session_closed": true,
+    "fixture_processes_empty": true,
+    "daemon_exited": true,
+    "web_exited": true,
+    "socket_absent": true,
+    "web_tcp_port_closed": true,
+    "synthetic_bridge_token_removed": true,
+    "fixture_processes_absent": true
+  },
+  "provider_acceptances": 0,
+  "runnable_jobs": 0
+}

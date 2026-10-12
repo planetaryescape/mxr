@@ -49,8 +49,8 @@ Leave the daemon running in that terminal. Run the following client commands
 in another terminal with the same `MXR_DATA_DIR` and `MXR_CONFIG_DIR` values.
 
 The restored profile keeps the workspace ID and receives a new recovery
-generation. Its accounts and external processors are disabled; credential
-references are removed. Reprovision connection settings and credentials
+generation. Its accounts and external processors are disabled; original
+credential references are replaced. Reprovision connection settings and credentials
 separately.
 
 Cached reads and local draft editing remain available. Provider sync, IDLE,

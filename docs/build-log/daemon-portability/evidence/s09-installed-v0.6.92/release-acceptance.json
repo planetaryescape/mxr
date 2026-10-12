@@ -1,0 +1,55 @@
+{
+  "status": "published release artifacts, installer and Homebrew verified",
+  "version": "v0.6.92",
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "tree": "97ec97a58dabf4a8cee69382253d10e4cafb3b33",
+  "published_at": "2026-10-12T14:58:06Z",
+  "workflow": {
+    "id": 38263455994,
+    "url": "https://github.com/planetaryescape/mxr/actions/runs/38263455994",
+    "conclusion": "success",
+    "started_at": "2026-10-12T14:30:45Z",
+    "completed_at": "2026-10-12T15:00:04Z",
+    "wall_seconds": 1759
+  },
+  "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.92",
+  "assets": [
+    {
+      "name": "mxr-v0.6.92-macos-aarch64.tar.gz",
+      "bytes": 62215682,
+      "sha256": "79bcd1c6cae8ea9a322208219f2ca063c630fbfbac401c64c7ae5f6a5398b8dc"
+    },
+    {
+      "name": "mxr-v0.6.92-macos-aarch64.tar.gz.sha256",
+      "bytes": 99,
+      "sha256": "3ff7d4903e09f7e676e91bbe4dc802b7494e1135ceef40ec8d2989e583b62cbd"
+    },
+    {
+      "name": "mxr-v0.6.92-linux-x86_64.tar.gz",
+      "bytes": 68150725,
+      "sha256": "a55691283dde4ed48f072d3736327bcdb20af5e0f3621f3399711246d137d0c8"
+    },
+    {
+      "name": "mxr-v0.6.92-linux-x86_64.tar.gz.sha256",
+      "bytes": 98,
+      "sha256": "4e2906b7afc8bc90f2f88d039071e821f0081516692f299324f79d34a275d7dd"
+    }
+  ],
+  "binaries": {
+    "mxr": {
+      "sha256": "067a23b077a2d8f03708f8c371b1b8b642185d422a6ba8d16b027ecea275301b",
+      "version": "mxr 0.6.92",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/published-v0.6.92-release/installer-bin/mxr"
+    },
+    "mxr-mailmerge": {
+      "sha256": "5a9684dd8f7a0a67cf144743f672f5cab487b5a6ff35c2ba7155a74e455aac7c",
+      "version": "mxr-mailmerge 0.6.92",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-backup-restore-20261012/target/s09-evidence/published-v0.6.92-release/installer-bin/mxr-mailmerge"
+    }
+  },
+  "chime_player_sha256": "13cf4105ee991e0027ed681fd07d78892fbb030dd6cd9e109ebb6d8cd0741c30",
+  "installer_binary_matches_release": true,
+  "homebrew_matches_release": true,
+  "homebrew_no_service_or_postinstall": true,
+  "personal_daemon_restarted": false
+}

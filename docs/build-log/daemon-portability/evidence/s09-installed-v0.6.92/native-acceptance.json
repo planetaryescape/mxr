@@ -1,0 +1,34 @@
+{
+  "status": "passed on the published v0.6.92 binary",
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "binary_sha256": "067a23b077a2d8f03708f8c371b1b8b642185d422a6ba8d16b027ecea275301b",
+  "surface": "Native TUI through an actual PTY",
+  "cached_messages": 55,
+  "grouped_search_rows": 39,
+  "body_visible": true,
+  "activation": {
+    "singleton": 1,
+    "pending": 0,
+    "source_owner_stopped": 1
+  },
+  "original_drafts_remained_held": true,
+  "separate_prepared_draft_created": true,
+  "original_and_prepared_attachment_bytes_match": true,
+  "attachment": {
+    "length_bytes": 9309,
+    "sha256": "d9a28f001301a921ad00bc1b9cf106fe2277e5baac49d9848ea13ce2e9a300e4"
+  },
+  "provider_acceptances": 0,
+  "scheduled_attempts": 0,
+  "runnable_jobs": 0,
+  "daemon_exited": true,
+  "retained_frame_hashes": {
+    "startup.txt": "ef3789a59875ecf69af05ecce0319f7f1efb58492034900adf9e8cddc7a79525",
+    "search.txt": "41fd040e99a20144550042c12d84e004fccea42dcee54bd5506842c5f70230ad",
+    "cached-body.txt": "4a5c9de6d7645ad02b5d19c11d109e29941191dd1978fff916e723aec0e83020",
+    "activation-preview.txt": "5f8af591e5f58ee505fda3fa4010e0ed49eadd198743a46b917565b2a1836827",
+    "activated.txt": "a9121a32bd88fd833a587bee04de4ce0292e122932a3ec023854060e81b0f59a",
+    "draft-preview-details.txt": "77b1b02cd5d97a2e45e0eddbd1c0e39edd48578daaf373c9ec166e172a7e5ac7",
+    "prepared.txt": "7c7d982180918f08e82f6245e1d6f762dad30d92be7179aad36b81a37d86a1f5"
+  }
+}

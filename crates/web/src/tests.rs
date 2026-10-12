@@ -21,6 +21,7 @@ use tokio_util::codec::Framed;
 
 mod arrival_routes;
 mod compose_and_scheduling;
+mod draft_attachment_bytes;
 mod place_routes;
 mod record_routes;
 mod recovery_attachments;

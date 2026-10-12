@@ -898,10 +898,20 @@ async fn update_compose_session(
                 request.expected_revision,
             )
             .await?;
-            write_draft_session_metadata(retry_path, &accepted)
-                .await
-                .map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
-            session = compose_session_from_snapshot(retry_path, &retry_content, Some(&accepted))?;
+            let committed = async {
+                let canonical_content =
+                    compose_content_with_accepted_attachments(&retry_content, &accepted)?;
+                // Tokens without matching sidecar metadata block another save after a partial commit.
+                replace_compose_file(retry_path, canonical_content.clone()).await?;
+                write_draft_session_metadata(retry_path, &accepted).await?;
+                Ok::<_, BridgeError>(canonical_content)
+            }
+            .await;
+            let canonical_content = committed.map_err(|error| {
+                error.with_compose_evidence(Some(&accepted), Some(retry.clone()))
+            })?;
+            session =
+                compose_session_from_snapshot(retry_path, &canonical_content, Some(&accepted))?;
             session["preservedRecoveryPath"] = json!(request.draft_path);
         }
         return Ok(Json(json!({ "session": session })));
@@ -928,22 +938,27 @@ async fn update_compose_session(
         }
     };
     let committed = async {
-        replace_compose_file(path, rendered.clone()).await?;
-        write_draft_session_metadata(path, &accepted).await
+        let canonical_content = compose_content_with_accepted_attachments(&rendered, &accepted)?;
+        replace_compose_file(path, canonical_content.clone()).await?;
+        write_draft_session_metadata(path, &accepted).await?;
+        Ok::<_, BridgeError>(canonical_content)
     }
     .await;
-    if let Err(error) = committed {
-        // The metadata writer is atomic; restore the previous coherent file if
-        // the second replace failed, while preserving the accepted snapshot.
-        if let Err(failure) = replace_compose_file(path, content).await {
-            tracing::warn!(request_id, error = %failure, "could not restore compose file after persistence failure");
+    let rendered = match committed {
+        Ok(content) => content,
+        Err(error) => {
+            // The metadata writer is atomic; restore the previous coherent file if
+            // the second replace failed, while preserving the accepted snapshot.
+            if let Err(failure) = replace_compose_file(path, content).await {
+                tracing::warn!(request_id, error = %failure, "could not restore compose file after persistence failure");
+            }
+            let recovery = preserve_compose_snapshot(path, &rendered, &accepted).await;
+            if let Err(ref failure) = recovery {
+                tracing::warn!(request_id, error = %failure, "could not preserve accepted compose snapshot");
+            }
+            return Err(error.with_compose_evidence(Some(&accepted), recovery.ok()));
         }
-        let recovery = preserve_compose_snapshot(path, &rendered, &accepted).await;
-        if let Err(ref failure) = recovery {
-            tracing::warn!(request_id, error = %failure, "could not preserve accepted compose snapshot");
-        }
-        return Err(error.with_compose_evidence(Some(&accepted), recovery.ok()));
-    }
+    };
     let session = compose_session_from_snapshot(path, &rendered, Some(&accepted))?;
     tracing::debug!(
         request_id,
@@ -2838,6 +2853,34 @@ async fn read_draft_session_metadata(path: &Path) -> Result<Option<Draft>, Bridg
     }
 }
 
+fn compose_content_with_accepted_attachments(
+    content: &str,
+    accepted: &Draft,
+) -> Result<String, BridgeError> {
+    let (mut frontmatter, _) = parse_compose_content(content)?;
+    let attach =
+        mxr_compose::draft_codec::frontmatter_from_draft(accepted, &frontmatter.from).attach;
+    if frontmatter.attach == attach {
+        return Ok(content.to_string());
+    }
+    frontmatter.attach = attach;
+    // Replace only the YAML header so editor whitespace and stripped context remain verbatim.
+    let suffix = content
+        .trim_start()
+        .strip_prefix("---")
+        .and_then(|rest| rest.split_once("\n---"))
+        .map(|(_, suffix)| suffix)
+        .ok_or(BridgeError::UnexpectedResponse)?;
+    let header = render_compose_file(&frontmatter, "", None)
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    Ok(format!(
+        "{}{suffix}",
+        header
+            .strip_suffix("\n\n")
+            .ok_or(BridgeError::UnexpectedResponse)?
+    ))
+}
+
 async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), BridgeError> {
     let bytes = serde_json::to_vec(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);
@@ -2873,9 +2916,16 @@ async fn persist_compose_draft(
         write_draft_session_metadata(path, &draft).await?;
     }
     let accepted = submit_compose_draft(socket_path, draft, expected_revision).await?;
-    write_draft_session_metadata(path, &accepted)
-        .await
-        .map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
+    let committed = async {
+        let content = read_compose_file(path).await?;
+        let canonical_content = compose_content_with_accepted_attachments(&content, &accepted)?;
+        if canonical_content != content {
+            replace_compose_file(path, canonical_content).await?;
+        }
+        write_draft_session_metadata(path, &accepted).await
+    }
+    .await;
+    committed.map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
     Ok(accepted)
 }
 

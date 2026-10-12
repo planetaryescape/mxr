@@ -397,8 +397,8 @@ the client file or restart the daemon. Each managed resource is limited to
 To add files to a saved draft, preview and use its current revision:
 
 ```bash
-mxr drafts attach DRAFT_ID ./another.txt --dry-run --format json
-mxr drafts attach DRAFT_ID ./another.txt --expected-revision REVISION --format json
+mxr drafts --format json attach DRAFT_ID ./another.txt --dry-run
+mxr drafts --format json attach DRAFT_ID ./another.txt --expected-revision REVISION
 mxr send DRAFT_ID --dry-run --format json
 ```
 

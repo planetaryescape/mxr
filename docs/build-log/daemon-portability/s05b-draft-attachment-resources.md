@@ -21,8 +21,8 @@ policy; it does not set provider limits or change legacy path behavior.
 ```sh
 mxr compose --to alice@example.com --subject 'Portable attachment' \
   --body 'Please read the attachment.' --attach ./notes.txt --draft --format json
-mxr drafts attach DRAFT_ID ./another.txt --dry-run --format json
-mxr drafts attach DRAFT_ID ./another.txt --expected-revision REVISION --format json
+mxr drafts --format json attach DRAFT_ID ./another.txt --dry-run
+mxr drafts --format json attach DRAFT_ID ./another.txt --expected-revision REVISION
 mxr send DRAFT_ID --dry-run --format json
 ```
 

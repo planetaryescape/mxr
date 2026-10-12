@@ -6121,7 +6121,7 @@ async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identit
 
 #[tokio::test]
 async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
-    for protocol_version in [4, 5, 6] {
+    for protocol_version in 4..IPC_PROTOCOL_VERSION {
         let temp = TempDir::new().unwrap();
         let socket_path = temp.path().join("mxr.sock");
         let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));

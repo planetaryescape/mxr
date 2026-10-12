@@ -16,7 +16,7 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test.each([4, 5, 6])("requires an update from the protocol %i bridge", (protocolVersion) => {
+  test.each([4, 5, 6, 7])("requires an update from the protocol %i bridge", (protocolVersion) => {
     expect(evaluateProtocolCompatibility({ protocol_version: protocolVersion })).toMatchObject({
       actualProtocol: protocolVersion,
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
@@ -29,8 +29,8 @@ describe("protocol compatibility", () => {
   });
 
   test("an old web client rejects the new daemon through the health gate", () => {
-    expect(evaluateProtocolCompatibilityV4({ protocol_version: 7 })).toMatchObject({
-      actualProtocol: 7,
+    expect(evaluateProtocolCompatibilityV4({ protocol_version: EXPECTED_IPC_PROTOCOL_VERSION })).toMatchObject({
+      actualProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
       requiredProtocol: 4,
     });
   });

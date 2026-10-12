@@ -1764,7 +1764,7 @@ pub async fn run() -> anyhow::Result<()> {
                 AsyncResult::Recovery {
                     owner,
                     request,
-                    result,
+                    result: Box::new(result),
                 }
             });
         }
@@ -3848,7 +3848,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.apply_status_snapshot(snapshot);
                         }
-                        AsyncResult::Recovery { owner, request, result } => match result {
+                        AsyncResult::Recovery { owner, request, result } => match *result {
                             Ok(Response::Ok { data: ResponseData::RecoveryAction { action } }) => {
                                 let is_preview = action.dry_run;
                                 if is_preview {
@@ -3859,7 +3859,7 @@ pub async fn run() -> anyhow::Result<()> {
                                                     owner,
                                                     draft_id,
                                                     revision: expected_revision,
-                                                    prepared_draft,
+                                                    prepared_draft: Box::new(prepared_draft),
                                                 });
                                             } else {
                                                 app.status_message = Some("The daemon did not return the requested draft preview.".into());

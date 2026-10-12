@@ -1693,7 +1693,7 @@ fn diagnostics_refuses_draft_confirmation_after_original_revision_changes() {
         owner,
         draft_id,
         revision: 7,
-        prepared_draft: mxr_core::Draft {
+        prepared_draft: Box::new(mxr_core::Draft {
             revision: Some(1),
             id: DraftId::new(),
             account_id,
@@ -1711,7 +1711,7 @@ fn diagnostics_refuses_draft_confirmation_after_original_revision_changes() {
             created_at: now,
             updated_at: now,
             inline_calendar_reply: None,
-        },
+        }),
     });
 
     app.apply(Action::ConfirmRecoveredDraft);

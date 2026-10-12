@@ -1618,4 +1618,44 @@ mod tests {
             .collect();
         assert_eq!(rendered_accounts, sidebar_accounts);
     }
+
+    #[test]
+    fn mailbox_sidebar_shows_disabled_cached_accounts_only_for_restored_profiles() {
+        let mut app = App::new();
+        app.mailbox.sidebar_accounts_expanded = true;
+        let active = test_account_summary("active@example.com", true, true);
+        let cached = test_account_summary("cached@example.com", false, false);
+        app.accounts.page.accounts = vec![active.clone(), cached.clone()];
+
+        let visible_emails = |app: &App| {
+            app.sidebar_items()
+                .into_iter()
+                .filter_map(|item| match item {
+                    SidebarItem::Account(account) => Some(account.email),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(visible_emails(&app).is_empty());
+
+        let mut recovery = mxr_core::RecoveryStatusData {
+            workspace_id: "restored-workspace".into(),
+            recovery_generation: "restored-generation".into(),
+            restore_pending: true,
+            source_owner_stopped: false,
+            retired_intentions: 0,
+            retained_intentions: vec![],
+            held_drafts: vec![],
+        };
+        app.diagnostics.page.recovery = Some(recovery.clone());
+        assert_eq!(
+            visible_emails(&app),
+            vec![active.email.clone(), cached.email.clone()]
+        );
+
+        recovery.restore_pending = false;
+        recovery.source_owner_stopped = true;
+        app.diagnostics.page.recovery = Some(recovery);
+        assert_eq!(visible_emails(&app), vec![active.email, cached.email]);
+    }
 }

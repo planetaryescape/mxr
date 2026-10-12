@@ -1083,6 +1083,25 @@ pub(super) async fn allowed_accounts(
     Ok(allowed)
 }
 
+/// Scope cached reads without changing the enabled-only SyncAll scope.
+pub(super) async fn allowed_cached_accounts(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+) -> Result<Vec<AccountId>, String> {
+    let mut allowed = Vec::new();
+    for account in state
+        .store
+        .list_cached_mail_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if account_id_allowed(state, profile, &account.id).await? {
+            allowed.push(account.id);
+        }
+    }
+    Ok(allowed)
+}
+
 fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
     profile
         .allowed_accounts

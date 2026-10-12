@@ -339,3 +339,205 @@ async fn paused_shutdown_dispatch_acknowledges_and_stops_runtime() {
         .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
         .await;
 }
+
+#[tokio::test]
+async fn restored_cached_mail_is_visible_while_paused_and_after_activation_without_credentials() {
+    let (state, fake, draft, _) = fixture().await;
+    state.sync_engine.sync_account(fake.as_ref()).await.unwrap();
+    let labels = state
+        .store
+        .list_labels_by_account(&draft.account_id)
+        .await
+        .unwrap();
+    let inbox = labels
+        .iter()
+        .find(|label| label.provider_id == "INBOX")
+        .unwrap()
+        .id
+        .clone();
+    state
+        .store
+        .set_account_enabled(&draft.account_id, false)
+        .await
+        .unwrap();
+    assert!(
+        state.store.list_accounts().await.unwrap().is_empty(),
+        "effect selection stays disabled"
+    );
+    for activated in [false, true] {
+        if activated {
+            state.store.activate_recovery().await.unwrap();
+            state
+                .restore_pending
+                .store(false, std::sync::atomic::Ordering::Release);
+        }
+        let accounts = super::super::account_config::list_runtime_accounts(&state)
+            .await
+            .unwrap();
+        assert!(accounts
+            .iter()
+            .any(|account| account.account_id == draft.account_id
+                && !account.enabled
+                && !account.capabilities.supports_send));
+        let mut message = None;
+        for (account_id, label_id) in [
+            (None, None),
+            (Some(draft.account_id.clone()), None),
+            (None, Some(inbox.clone())),
+        ] {
+            let response = super::super::dispatch(
+                &state,
+                mxr_protocol::ClientKind::Cli,
+                &mxr_transport::PeerInfo::local(),
+                &Request::ListEnvelopes {
+                    account_id,
+                    label_id,
+                    limit: 100,
+                    offset: 0,
+                },
+            )
+            .await;
+            let mxr_protocol::Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            } = response
+            else {
+                panic!("wrong envelopes response")
+            };
+            assert!(
+                !envelopes.is_empty(),
+                "cached envelopes disappeared after activation={activated}"
+            );
+            message = Some(envelopes[0].id.clone());
+        }
+        let response = super::super::dispatch(
+            &state,
+            mxr_protocol::ClientKind::Cli,
+            &mxr_transport::PeerInfo::local(),
+            &Request::GetBody {
+                message_id: message.unwrap(),
+            },
+        )
+        .await;
+        let mxr_protocol::Response::Ok {
+            data: ResponseData::Body { body },
+        } = response
+        else {
+            panic!("cached body unavailable")
+        };
+        assert!(body
+            .text_plain
+            .as_ref()
+            .is_some_and(|text| !text.is_empty()));
+        for account_id in [None, Some(draft.account_id.clone())] {
+            let response = super::super::dispatch(
+                &state,
+                mxr_protocol::ClientKind::Cli,
+                &mxr_transport::PeerInfo::local(),
+                &Request::Search {
+                    query: "label:inbox".into(),
+                    limit: 100,
+                    offset: 0,
+                    account_id,
+                    mode: None,
+                    sort: None,
+                    explain: false,
+                },
+            )
+            .await;
+            let mxr_protocol::Response::Ok {
+                data: ResponseData::SearchResults { results, .. },
+            } = response
+            else {
+                panic!("wrong search response")
+            };
+            assert!(
+                !results.is_empty(),
+                "cached search disappeared after activation={activated}"
+            );
+        }
+        let freshness = super::super::dispatch(
+            &state,
+            mxr_protocol::ClientKind::Cli,
+            &mxr_transport::PeerInfo::local(),
+            &Request::GetFreshness {
+                account_id: None,
+                limit: None,
+            },
+        )
+        .await;
+        assert!(
+            matches!(freshness, mxr_protocol::Response::Ok { .. }),
+            "cached freshness failed: {freshness:?}"
+        );
+        assert!(state.store.list_accounts().await.unwrap().is_empty());
+        assert!(
+            !state
+                .store
+                .get_account(&draft.account_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
+    }
+    assert!(fake.sent_drafts().is_empty());
+    assert!(fake.mutations().is_empty());
+    // An ordinary disabled profile still hides local mail.
+    sqlx::query("DELETE FROM restore_recovery")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    assert!(state
+        .store
+        .list_cached_mail_accounts()
+        .await
+        .unwrap()
+        .is_empty());
+    let response = super::super::dispatch(
+        &state,
+        mxr_protocol::ClientKind::Cli,
+        &mxr_transport::PeerInfo::local(),
+        &Request::ListEnvelopes {
+            account_id: None,
+            label_id: None,
+            limit: 100,
+            offset: 0,
+        },
+    )
+    .await;
+    assert!(
+        matches!(response,mxr_protocol::Response::Ok{data:ResponseData::Envelopes{envelopes}} if envelopes.is_empty())
+    );
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+}
+
+#[test]
+fn restored_default_account_selection_changes_only_local_selection() {
+    let directory = tempfile::tempdir().unwrap();
+    temp_env::with_var("MXR_CONFIG_DIR", Some(directory.path().as_os_str()), || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let (state, fake, draft, _) = fixture().await;
+            state.sync_engine.sync_account(fake.as_ref()).await.unwrap();
+            let mut account = state.store.get_account(&draft.account_id).await.unwrap().unwrap();
+            account.enabled = false;
+            state.store.insert_account(&account).await.unwrap();
+            let key = &account.sync_backend.as_ref().unwrap().config_key;
+            std::fs::write(directory.path().join("config.toml"),format!("[llm]\nenabled=false\n[search.semantic]\nenabled=false\nauto_download_models=false\n[accounts.{key}]\nname=\"Synthetic cached account\"\nemail=\"{}\"\nenabled=false\n[accounts.{key}.sync]\ntype=\"fake\"\n[accounts.{key}.send]\ntype=\"fake\"\n", account.email)).unwrap();
+            let response = super::super::dispatch(&state,mxr_protocol::ClientKind::Cli,&mxr_transport::PeerInfo::local(),&Request::SetDefaultAccount{key:key.clone()}).await;
+            assert!(matches!(response,mxr_protocol::Response::Ok{..}),"default selection failed: {response:?}");
+            assert_eq!(state.config_snapshot().general.default_account.as_deref(),Some(key.as_str()));
+            assert!(state.is_restore_pending());
+            assert!(state.store.list_accounts().await.unwrap().is_empty());
+            assert!(state.runtime_account_ids().is_empty());
+            assert!(state.get_provider(Some(&account.id)).is_err());
+            assert!(state.send_provider_for_account(&account.id).is_err());
+            let response=super::super::dispatch(&state,mxr_protocol::ClientKind::Cli,&mxr_transport::PeerInfo::local(),&Request::ListEnvelopes{account_id:None,label_id:None,limit:100,offset:0}).await;
+            assert!(matches!(response,mxr_protocol::Response::Ok{data:ResponseData::Envelopes{envelopes}} if !envelopes.is_empty()));
+            assert!(fake.sent_drafts().is_empty());
+            assert!(fake.mutations().is_empty());
+            state.shutdown_runtime_tasks(std::time::Duration::from_secs(2)).await;
+        });
+    });
+}

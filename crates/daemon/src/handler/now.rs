@@ -11,7 +11,7 @@ use super::mode_rules::{
     EVENING_HOUR,
 };
 use super::modes::{inbox_modes, place_threads, InboxModes};
-use super::places::{scoped_accounts, Placed};
+use super::places::{scoped_cached_accounts, Placed};
 use super::todo_view::{bands, day_label, start_of_week};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -144,7 +144,7 @@ where
     Tz::Offset: std::fmt::Display,
 {
     let started = std::time::Instant::now();
-    let accounts = scoped_accounts(state, account_id).await?;
+    let accounts = scoped_cached_accounts(state, account_id).await?;
     let snapshot = snapshot(state, account_id, &accounts, now, tz).await?;
     let asks = sender_questions(state, &snapshot, now).await?;
 

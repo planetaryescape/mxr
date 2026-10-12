@@ -336,7 +336,7 @@ pub(super) async fn digest_at<Tz: TimeZone>(
 where
     Tz::Offset: std::fmt::Display,
 {
-    let accounts = scoped_accounts(state, account_id).await?;
+    let accounts = super::places::scoped_cached_accounts(state, account_id).await?;
     let placed = placed_updates(state, &accounts).await?;
     let scope = Scope {
         account_id: account_id.cloned(),

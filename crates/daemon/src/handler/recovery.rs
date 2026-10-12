@@ -226,6 +226,7 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | GetRecoveryStatus
             | ActivateRecovery { .. }
             | GetStatus
+            | SetDefaultAccount { .. }
             | Shutdown
             | Ping
             | GetArchiveWorkspace

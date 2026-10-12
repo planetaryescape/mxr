@@ -11,10 +11,15 @@ pub(super) async fn list_runtime_accounts(
     let config = state.config_snapshot();
     let default_config_key = config.general.default_account.clone();
     let runtime_ids = state.runtime_account_ids();
+    let restored = state
+        .store
+        .is_restored_workspace()
+        .await
+        .map_err(|e| e.to_string())?;
     let default_account_id = state.default_account_id_opt();
     let runtime_accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await
         .map_err(|e| e.to_string())?;
 
@@ -22,7 +27,7 @@ pub(super) async fn list_runtime_accounts(
 
     for account in runtime_accounts
         .into_iter()
-        .filter(|account| runtime_ids.iter().any(|id| id == &account.id))
+        .filter(|account| restored || runtime_ids.iter().any(|id| id == &account.id))
     {
         let key = account
             .sync_backend
@@ -133,6 +138,13 @@ pub(super) async fn list_runtime_accounts(
     }
 
     let mut accounts = accounts.into_values().collect::<Vec<_>>();
+    if restored {
+        for account in &mut accounts {
+            if !account.enabled || state.is_restore_pending() {
+                account.capabilities = AccountCapabilitiesData::default();
+            }
+        }
+    }
     accounts.sort_by(|left, right| {
         right
             .is_default

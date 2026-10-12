@@ -23,7 +23,7 @@ use super::messages_view::{
     turn_ratio, People, RowContext, RowKey, Topic, PINNED_CAP,
 };
 use super::modes::messages_dismissals;
-use super::places::scoped_accounts;
+use super::places::scoped_cached_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
@@ -441,7 +441,7 @@ pub(super) async fn messages_at(
     now: DateTime<Utc>,
 ) -> Result<MessagesData, HandlerError> {
     let started = std::time::Instant::now();
-    let accounts = scoped_accounts(state, account_id).await?;
+    let accounts = scoped_cached_accounts(state, account_id).await?;
     let mut gathered = Vec::new();
     for account in &accounts {
         gathered.push(gather(state, account, Scope::Window, now).await?);
@@ -706,7 +706,7 @@ pub(super) async fn person_at(
     now: DateTime<Utc>,
 ) -> Result<PersonPageData, HandlerError> {
     let arg = parse_person(person)?;
-    for account in scoped_accounts(state, account_id).await? {
+    for account in scoped_cached_accounts(state, account_id).await? {
         let page = match &arg {
             PersonArg::Person(email) => person_page(state, &account, email, topic, now).await?,
             PersonArg::Group(thread) => group_page(state, &account, thread, now).await?,
@@ -1178,7 +1178,7 @@ pub(super) async fn merge_suggestions(
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
     let mut suggestions = Vec::new();
-    for account in scoped_accounts(state, account_id).await? {
+    for account in scoped_cached_accounts(state, account_id).await? {
         suggestions.extend(suggestions_for(state, &account).await?);
     }
     Ok(ResponseData::MergeSuggestions { suggestions })

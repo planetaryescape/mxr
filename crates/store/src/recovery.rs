@@ -2,6 +2,22 @@ use mxr_core::{DraftId, RecoveredDraftData, RecoveryStatusData, RetainedIntentDa
 use sqlx::Row;
 
 impl crate::Store {
+    pub async fn is_restored_workspace(&self) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM restore_recovery WHERE singleton=1)")
+            .fetch_one(self.reader())
+            .await
+    }
+
+    /// Local cached mail remains readable before credentials are reprovisioned.
+    /// Provider/effect selection must continue using `list_accounts`.
+    pub async fn list_cached_mail_accounts(&self) -> Result<Vec<mxr_core::Account>, sqlx::Error> {
+        if self.is_restored_workspace().await? {
+            self.list_all_accounts().await
+        } else {
+            self.list_accounts().await
+        }
+    }
+
     pub async fn restore_pending(&self) -> Result<bool, sqlx::Error> {
         Ok(sqlx::query_scalar::<_, bool>(
             "SELECT pending FROM restore_recovery WHERE singleton = 1",

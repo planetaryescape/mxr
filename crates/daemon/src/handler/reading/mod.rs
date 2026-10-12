@@ -805,10 +805,10 @@ async fn accounts(
     match (account_id, scoped_profile) {
         // A named account already passed the allowlist.
         (Some(account_id), _) => Ok(vec![account_id.clone()]),
-        (None, Some(profile)) => super::account_scope::allowed_accounts(state, profile)
+        (None, Some(profile)) => super::account_scope::allowed_cached_accounts(state, profile)
             .await
             .map_err(HandlerError::from),
-        (None, None) => super::places::scoped_accounts(state, None).await,
+        (None, None) => super::places::scoped_cached_accounts(state, None).await,
     }
 }
 

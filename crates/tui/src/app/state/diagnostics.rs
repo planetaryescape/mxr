@@ -92,7 +92,7 @@ pub enum RecoveryPreview {
         owner: mxr_protocol::ArchiveWorkspaceData,
         draft_id: mxr_core::DraftId,
         revision: i64,
-        prepared_draft: mxr_core::Draft,
+        prepared_draft: Box<mxr_core::Draft>,
     },
 }
 

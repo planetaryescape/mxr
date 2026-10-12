@@ -67,7 +67,7 @@ try:
  for _ in range(100):
   if rpc(se,{'cmd':'GetStatus'})['total_messages']>0:break
   time.sleep(.1)
- account=rpc(se,{'cmd':'ListAccounts'})['accounts'][0]['id'];old_owner=owner(se);original=draft(se,account,'Original managed draft');second=draft(se,account,'Second held draft')
+ account=rpc(se,{'cmd':'ListAccounts'})['accounts'][0]['account_id'];old_owner=owner(se);original=draft(se,account,'Original managed draft');second=draft(se,account,'Second held draft')
  payload=b'synthetic immutable resource\n'*321;meta={'id':str(uuid.uuid4()),'draft_id':original['id'],'account_id':account,'filename':'original.bin','mime_type':'application/octet-stream','length_bytes':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}
  rpc(se,{'cmd':'BeginDraftAttachment','metadata':meta},old_owner)
  rpc(se,{'cmd':'WriteDraftAttachmentChunk','draft_id':original['id'],'account_id':account,'resource_id':meta['id'],'offset':0,'data_base64':base64.b64encode(payload).decode()},old_owner)
@@ -88,8 +88,8 @@ try:
  sp=start(se);result=rpc(se,{'cmd':'SendStoredDraft','draft_id':original['id'],'managed_attachments_reviewed':True,'send_identity':{'operation_id':'s09-source-after-snapshot','expected_revision':original['revision']}},old_owner);stop(sp)
  destination,de=profile('destination');target=destination/'data';cli(se,['backup','restore',str(bundle),'--destination',str(target)]);assert not (target/'mxr.db').exists();cli(se,['backup','restore',str(bundle),'--destination',str(target),'--confirm']);de['MXR_CONFIG_DIR']=str(target);with_profile=(target/'config.toml').read_text()+mcp_profile();(target/'config.toml').write_text(with_profile);dp=start(de)
  status=cli(de,['recovery','status','--format','json']);status=rpc(de,{'cmd':'GetRecoveryStatus'})['recovery'];new_owner=owner(de);assert old_owner['workspace_id']==new_owner['workspace_id'] and old_owner['recovery_generation']!=new_owner['recovery_generation'];assert status['restore_pending'] and len(status['held_drafts'])>=2;assert any(i.get('archive_evidence')==archive_evidence for i in status['retained_intentions'])
- matches=cli(de,['search','label:inbox','--format','json']);assert matches
- message=rpc(de,{'cmd':'ListEnvelopes','label_id':None,'account_id':None,'limit':1,'offset':0})['envelopes'][0]['id'];cli(de,['cat',message,'--format','json'])
+ matches=cli(de,['search','label:inbox','--format','json']);assert matches['results'],matches
+ message=rpc(de,{'cmd':'ListEnvelopes','label_id':None,'account_id':None,'limit':1,'offset':0})['envelopes'][0]['id'];cached=cli(de,['cat',message,'--format','json']);assert cached['text_plain'],cached
  held=rpc(de,{'cmd':'GetDraft','draft_id':original['id']})['draft'];assert held['body_markdown']==original['body_markdown'];assert (target/f"mxr.draft-attachments/{meta['id']}/final/original.bin").read_bytes()==payload
  before=sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0];time.sleep(a.window);assert datetime.now(timezone.utc)>=scheduled_at,'Observation must cross the original schedule';assert sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0]==before;assert not list((destination/'spool').glob('accepted-*.json'))
  rpc(de,{'cmd':'SendStoredDraft','draft_id':original['id'],'managed_attachments_reviewed':True,'send_identity':{'operation_id':'forbidden-old','expected_revision':held['revision']}},new_owner,False)

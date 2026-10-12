@@ -80,14 +80,23 @@ async function fetchRecovery(api: RecoveryApi): Promise<RecoveryStatus | null> {
   return response.kind === "RecoveryStatus" ? response.recovery : null;
 }
 
-export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi } = {}) {
-  const queryClient = useQueryClient();
-  const status = useQuery({
+export function isRestoredProfile(recovery: RecoveryStatus | null | undefined): boolean {
+  return Boolean(recovery && (recovery.restore_pending || recovery.source_owner_stopped));
+}
+
+export function useRecoveryStatus(api: RecoveryApi = bridgeRecoveryApi) {
+  return useQuery({
     queryKey: recoveryKey,
     queryFn: () => fetchRecovery(api),
+    staleTime: 15_000,
     refetchInterval: 15_000,
     retry: false,
   });
+}
+
+export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi } = {}) {
+  const queryClient = useQueryClient();
+  const status = useRecoveryStatus(api);
   const [ownerStoppedFor, setOwnerStoppedFor] = useState<RecoveryOwner | null>(null);
   const [activationPreview, setActivationPreview] = useState<ActivationPreview | null>(null);
   const [draftPreview, setDraftPreview] = useState<DraftPreview | null>(null);

@@ -80,6 +80,8 @@ Commands:
   notify              Unread summary for status bars
   logs                View daemon logs
   reset               Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials by default. Use --including-config to also delete config.toml. Destructive; use --dry-run to preview
+  recovery            Inspect or reconcile a restored profile without replaying old work
+  backup              Create, inspect or restore an offline profile backup
   burn                Destroy local mxr runtime state after stopping the daemon. Alias for `mxr reset --hard`. Preserves config.toml and credentials by default. Use --including-config to also delete config.toml. Destructive; use --dry-run to preview
   bug-report          Generate a sanitized diagnostic bundle
   accounts            Manage accounts

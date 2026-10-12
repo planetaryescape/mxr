@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Create, inspect or restore an offline profile backup
+
+Usage: mxr backup <COMMAND>
+
+Commands:
+  create   Preview or create a stopped-profile backup
+  inspect  Validate and describe a backup without restoring it
+  restore  Preview or restore into a new, empty profile
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

@@ -1,12 +1,13 @@
 # Saved drafts retain the bytes the client uploaded
 
-Final checks use root checkpoint `3a30079e6c008aec6c1e1d2746e39ff5584bb1c7`
-(tree `bd8974940c2c7ad72b32865f319130fedf660167`), rebased onto v0.6.84
-source `98bc13f574da5cfc93fec1dfc1dddab4d6e996b9`. The initial worker base was
-`5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3`. Root owns Git, the next checkpoint,
-CI and published-client acceptance. Migration 077 is personal categories;
-078 adds draft resources. The final worker delta remains uncommitted pending
-root's generation checkpoint.
+Current checks use root checkpoint `a457130dce40687d06c02872b92079437b715a4a`
+(tree `eda8a404b930062401af19e7e6e9f6e4d0f48fc1`), integrated onto fresh main
+`74a151c5c41d2d3f6b780fdbeb92c74db535ab57`. Migration 077 is personal
+categories, 078 is to-do resolution suggestions, and 079 adds draft resources.
+The attachment enum variants require IPC protocol 9; the web compatibility
+gate matches it. Root owns Git, the next generated checkpoint, CI and release.
+The initial worker base was `5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3`;
+earlier checkpoint and verification history remains below.
 
 ## Uploads have a bounded daemon resource contract
 
@@ -292,3 +293,35 @@ The candidate browser check must use a freshly built SPA embedded with
 `cargo build -p mxr --features web-ui`; a default build omits that interface.
 Task 6073 builds the current SPA under Node 24.19.0. Scoped Rust hygiene, the
 embedded binary build, client runtime acceptance and release remain pending.
+
+
+## Recovery saves publish canonical resource references
+
+Root committed the recovery correction at `3e6ba18c`, then integrated upstream
+at `a457130d`. The normal update, explicit recovery retry and shared persistence
+paths now replace copied filesystem entries with the accepted draft's resource
+tokens before writing its sidecar. Only the YAML header changes; editor body
+whitespace, context and other frontmatter remain intact. A failed commit keeps
+the private recovery and reports the accepted draft where applicable.
+
+The shared test byte fixture owns decoded chunks and verifies their exact
+payload, declared owner, length and digest before readiness. Saved and unsaved
+recovery tests compare canonical metadata and tokens with those ready bytes,
+discard the private copy, and verify bytes remain. The saved test adds a normal
+local-file edit, deletes that file, then edits with tokens and checks that no
+new resource is uploaded. The unsaved retry returns canonical revision 2 from
+owner save plus resource CAS; a lost create response still cannot overwrite
+the first saved snapshot. Task 6099 passed all 129 web tests before integration
+with 40.82s total job execution and 3.17s test runtime.
+
+The earlier embedded candidate `0ea54be1` passed root's actual CLI, MCP, TUI
+and browser byte witnesses, but the recovery bug was reproduced against that
+candidate and required this correction. Those receipts are prior evidence;
+the final integrated candidate and published artifact still require acceptance.
+
+Current next actions: regenerate OpenAPI, TypeScript and help on protocol 9;
+verify migrations through 079, normal-stack CLI help/completions, the integrated
+web package, protocol compatibility/typecheck and scoped Rust hygiene. Pause
+before the binary build so root can checkpoint the generated source. Root then
+resumes a current SPA production build and `cargo build -p mxr --features web-ui`
+on the exact checkpoint. No personal daemon or mail participates.

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.93](https://github.com/planetaryescape/mxr/compare/v0.6.92...v0.6.93) (2026-10-12)
+
+
+### Bug Fixes
+
+* bound background to-do resolution checks ([#437](https://github.com/planetaryescape/mxr/issues/437)) ([c716405](https://github.com/planetaryescape/mxr/commit/c716405809a42d36f86773bfd7128dec857fdda6))
+
+
+### Documentation
+
+* publish backup recovery guide and readiness acceptance ([#439](https://github.com/planetaryescape/mxr/issues/439)) ([30d374b](https://github.com/planetaryescape/mxr/commit/30d374b982546ebe112e4bc16d67a7a5894f925c))
+
 ## [0.6.92](https://github.com/planetaryescape/mxr/compare/v0.6.91...v0.6.92) (2026-10-12)
 
 

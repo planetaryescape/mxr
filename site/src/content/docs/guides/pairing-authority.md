@@ -19,7 +19,7 @@ mxr serve clients --format json
 
 Inspect the current computer's pairing authority through its local Unix socket. These commands ignore `MXR_DAEMON_ADDR` and do not start or restart a daemon. Before the first pairing request, `host_id` is `null`; inspecting status or a list does not create authority.
 
-This release provides pairing and revocation foundations. Remote mailbox access, HTTPS hosting, saved client connections and service installation are not yet available. Running `mxr serve` without a subcommand returns an explicit error.
+Version 0.6.94 provides pairing and revocation foundations. Remote mailbox access, HTTPS hosting, saved client connections and service installation are not yet available. Running `mxr serve` without a subcommand returns an explicit error.
 
 ## Approval previews the exact request
 

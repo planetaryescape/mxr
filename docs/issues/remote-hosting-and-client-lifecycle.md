@@ -1,18 +1,20 @@
 # Remote hosting needs saved connections and explicit client lifecycles
 
-Status: F01 independent review passed; final PR checks and release acceptance pending. No remote-hosting release yet. Updated 2026-10-12.
+Status: F01 done in v0.6.94; R1 building. Remote mailbox access remains unshipped. Updated 2026-10-12.
 
 Canonical contract: [remote hosting and clients](../blueprint/24-remote-hosting-and-clients.md). This follows the completed daemon portability preparation and owns its deferred R01 work. The previous 13-stage release sequence remains complete.
 
 Implement `mxr serve` on a Mac or Linux host and `mxr connect` on client installations. One daemon owns SQLite, managed files, indexes and provider work. Clients share a saved target, register with the host, receive lifecycle events, reconnect through an authenticated handshake and deregister when deliberately switching away.
 
-## F01 has passed independent review and needs release acceptance
+## F01 is released and its installed journey passes
 
-Claude Opus 5.5 reviewed the full foundation diff at `ab35c25c`, based on `origin/main` `bf66f451`, and found no blockers. The isolated CLI/IPC fixture passed 32 checks against that candidate binary. [PR 443](https://github.com/planetaryescape/mxr/pull/443) still needs the final ready-PR checks, release-please release, published-binary acceptance and deployed documentation check. The controlled fixture checks approval, revocation, retries and restart; store tests with an injected clock check expiry.
+[v0.6.94](https://github.com/planetaryescape/mxr/releases/tag/v0.6.94) ships the local pairing-authority foundation from `b2855177a0fc65b3e8e872af109ac8de43110dfe`, through [PR 443](https://github.com/planetaryescape/mxr/pull/443) and release [PR 444](https://github.com/planetaryescape/mxr/pull/444). Claude Opus 5.5 found no blockers in the complete foundation at `ab35c25c`; the orchestrator reviewed the subsequent small corrections through `a8b79cf1`.
+
+Both published platform binaries passed all 32 checks in the isolated CLI/IPC fixture: approval, revocation, retries and restart. Store tests with an injected clock cover expiry. Archive checksums, separate installer and Homebrew bytes matched. The [release workflow](https://github.com/planetaryescape/mxr/actions/runs/38306908031) passed, and the public [pairing guide](https://mxr.sh/guides/pairing-authority/), CLI reference and automation contract passed production browser checks. The remaining retry-passing CI observations are tracked in [the browser issue](browser-retry-observations.md).
 
 The subsequent R1 stage must inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control, before exposing a listener. Keep host authority outside forwarded requests and remove host filesystem paths from allowed mail responses. Resolve revocation durability across power loss before promising that an acknowledged revocation survives it; the current store uses WAL with `synchronous=NORMAL` (`crates/store/src/pool.rs`, reviewed at `ab35c25c`).
 
-Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`. The blueprint links exact code evidence and the official Tailscale references. Commands and proposed wire shapes are not installed features.
+Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`. The blueprint links exact code evidence and the official Tailscale references. The local pairing commands described above are released; the remaining proposed commands and wire shapes still require implementation.
 
 ## Acceptance requires two clients and one host
 
@@ -33,6 +35,6 @@ The original specification was documentation-only. The authorized implementation
 
 Specification validation on 2026-10-12: 72 relative links and 10 pinned source references resolved; `git diff --check` passed. The standalone HTML companion rendered at desktop and 390px mobile widths without page overflow; all five lifecycle walkthroughs produced their expected states. The browser reported no page errors, and the accessibility scan reported zero violations with contrast checks still requiring manual review. This was specification validation, not product acceptance.
 
-## Orchestration started
+## R1 must deliver the first remote mailbox
 
-Execution follows [the vertical release ladder](../implementation/remote-hosting.md), starting with the explicitly labelled F01 pairing-authority foundation. The kickoff base was `c0a4b115`; F01 was rebased onto freshly fetched `origin/main` `bf66f451` before review. Durable worktree and ledger paths, model routing, deployed acceptance, website obligations and unresolved fixture choices are in that plan. No implementation stage is complete yet.
+Execution follows [the vertical release ladder](../implementation/remote-hosting.md), starting with the explicitly labelled F01 pairing-authority foundation. The kickoff base was `c0a4b115`; F01 was rebased onto freshly fetched `origin/main` `bf66f451` before review. Durable worktree and ledger paths, model routing, deployed acceptance, website obligations and unresolved fixture choices are in that plan. F01 is complete. R1 starts from released `b2855177`; R2–R5 remain planned. Its next check is two independently paired clients reading one hosted mailbox and switching exactly one client away, including durable offline cleanup.

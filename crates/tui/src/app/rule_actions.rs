@@ -22,6 +22,16 @@ impl App {
             }
             Action::ToggleRuleEnabled => {
                 if let Some(rule) = self.selected_rule().cloned() {
+                    if rule["action"].as_str().is_some_and(category_actions) {
+                        if let Some(mut form) = category_form(&rule) {
+                            form.enabled = !form.enabled;
+                            self.rules.pending_category_preview = Some((form, false));
+                            self.rules.page.panel = RulesPanel::DryRun;
+                            self.rules.page.dry_run.clear();
+                            self.rules.page.dry_run_page = 0;
+                            return;
+                        }
+                    }
                     let mut updated = rule.clone();
                     if let Some(enabled) =
                         updated.get("enabled").and_then(serde_json::Value::as_bool)
@@ -37,6 +47,17 @@ impl App {
                 }
             }
             Action::DeleteRule => {
+                if let Some(rule) = self.selected_rule().cloned() {
+                    if rule["action"].as_str().is_some_and(category_actions) {
+                        if let Some(form) = category_form(&rule) {
+                            self.rules.pending_category_preview = Some((form, true));
+                            self.rules.page.panel = RulesPanel::DryRun;
+                            self.rules.page.dry_run.clear();
+                            self.rules.page.dry_run_page = 0;
+                            return;
+                        }
+                    }
+                }
                 if let Some(rule_id) = self
                     .selected_rule()
                     .and_then(|rule| rule["id"].as_str())
@@ -59,21 +80,32 @@ impl App {
                         ),
                     ) {
                         self.rules.draft_preview_active = false;
-                        self.rules.pending_treatment = Some((form, token.to_string()));
+                        if preview["category"].as_bool() == Some(true) {
+                            self.rules.pending_category_apply = Some((
+                                form,
+                                token.to_string(),
+                                preview["delete"].as_bool().unwrap_or(false),
+                            ));
+                        } else {
+                            self.rules.pending_treatment = Some((form, token.to_string()));
+                        }
                         self.rules.page.dry_run.clear();
+                        self.rules.page.dry_run_page = 0;
                         self.rules.page.status = Some("Applying the sorting preview...".into());
                     }
                 }
             }
             Action::ShowRuleDryRun => {
                 if self.rules.page.form.visible
-                    && self.rules.page.form.action.contains("treatment:")
+                    && (self.rules.page.form.action.contains("treatment:")
+                        || category_actions(&self.rules.page.form.action)
+                        || self.rules.category_edit)
                 {
                     self.rules.draft_preview_active = true;
                     self.rules.pending_dry_run = None;
                     self.sync_rule_form_strings_from_editors();
                     let f = &self.rules.page.form;
-                    self.rules.pending_sorting_preview = Some(mxr_protocol::RuleFormData {
+                    let form = mxr_protocol::RuleFormData {
                         id: f.existing_rule.clone(),
                         account_id: f.account_id.clone(),
                         name: f.name.clone(),
@@ -81,10 +113,16 @@ impl App {
                         action: f.action.clone(),
                         priority: f.priority.parse().unwrap_or(100),
                         enabled: f.enabled,
-                    });
+                    };
+                    if category_actions(&form.action) || self.rules.category_edit {
+                        self.rules.pending_category_preview = Some((form, false));
+                    } else {
+                        self.rules.pending_sorting_preview = Some(form);
+                    }
                     self.rules.page.form.visible = false;
                     self.rules.page.panel = RulesPanel::DryRun;
                     self.rules.page.dry_run.clear();
+                    self.rules.page.dry_run_page = 0;
                     return;
                 }
                 self.rules.page.panel = RulesPanel::DryRun;
@@ -92,6 +130,7 @@ impl App {
             }
             Action::OpenRuleFormNew => {
                 self.rules.draft_preview_active = false;
+                self.rules.category_edit = false;
                 self.rules.page.form = RuleFormState {
                     visible: true,
                     account_id: self.default_account_id().cloned(),
@@ -105,6 +144,10 @@ impl App {
             }
             Action::OpenRuleFormEdit => {
                 self.rules.draft_preview_active = false;
+                self.rules.category_edit = self
+                    .selected_rule()
+                    .and_then(|r| r["action"].as_str())
+                    .is_some_and(category_actions);
                 if let Some(rule_id) = self
                     .selected_rule()
                     .and_then(|rule| rule["id"].as_str())
@@ -117,6 +160,10 @@ impl App {
                 self.sync_rule_form_strings_from_editors();
                 if let Some(error) = rule_form_validation_error(&self.rules.page.form) {
                     self.rules.page.form.validation_error = Some(error);
+                    return;
+                }
+                if category_actions(&self.rules.page.form.action) || self.rules.category_edit {
+                    self.apply_rule_action(Action::ShowRuleDryRun);
                     return;
                 }
                 self.rules.page.form.validation_error = None;
@@ -149,4 +196,21 @@ pub(crate) fn rule_form_validation_error(form: &RuleFormState) -> Option<String>
         }
     }
     None
+}
+
+pub(crate) fn category_actions(value: &str) -> bool {
+    value
+        .split([',', ';'])
+        .any(|v| v.trim().starts_with("add-category:") || v.trim().starts_with("remove-category:"))
+}
+fn category_form(rule: &serde_json::Value) -> Option<mxr_protocol::RuleFormData> {
+    Some(mxr_protocol::RuleFormData {
+        id: Some(rule["id"].as_str()?.to_string()),
+        account_id: rule["account_id"].as_str().and_then(|v| v.parse().ok()),
+        name: rule["name"].as_str()?.to_string(),
+        condition: rule["condition"].as_str()?.to_string(),
+        action: rule["action"].as_str()?.to_string(),
+        priority: rule["priority"].as_i64()? as i32,
+        enabled: rule["enabled"].as_bool()?,
+    })
 }

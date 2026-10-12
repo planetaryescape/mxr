@@ -16,7 +16,7 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test.each([4, 5, 6, 7, 8])(
+  test.each([4, 5, 6, 7, 8, 9])(
     "requires an update from the protocol %i bridge",
     (protocolVersion) => {
       expect(evaluateProtocolCompatibility({ protocol_version: protocolVersion })).toMatchObject({

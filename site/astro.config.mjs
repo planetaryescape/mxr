@@ -94,6 +94,7 @@ export default defineConfig({
             { label: 'Pre-send Safety', slug: 'guides/pre-send-safety' },
             { label: 'Calendar Invites', slug: 'guides/calendar-invites' },
             { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
+            { label: 'Personal Categories', slug: 'guides/personal-categories' },
             { label: 'Sender View', slug: 'guides/sender-view' },
             { label: 'Snippets', slug: 'guides/snippets' },
             { label: 'Web App', slug: 'guides/web-app' },

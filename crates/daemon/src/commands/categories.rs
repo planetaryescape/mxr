@@ -15,6 +15,17 @@ pub async fn run(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let format = resolve_format(format);
     let response = match action {
+        Some(CategoriesAction::Why {
+            message_id,
+            category_id,
+        }) => {
+            client
+                .request(Request::ExplainCategoryMembership {
+                    message_id: parse_message_id(&message_id)?,
+                    category_id: parse_category_id(&category_id)?,
+                })
+                .await?
+        }
         None => {
             client
                 .request(Request::ListCategories { account_id })

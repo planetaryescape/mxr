@@ -193,6 +193,10 @@ pub enum LabelsAction {
 
 #[derive(Subcommand)]
 pub enum CategoriesAction {
+    Why {
+        message_id: String,
+        category_id: String,
+    },
     Create {
         name: String,
         #[arg(long)]
@@ -236,6 +240,28 @@ pub enum CategoriesAction {
 
 #[derive(Subcommand)]
 pub enum RulesAction {
+    /// Export the complete editable RuleFormData JSON for preview/apply.
+    Form {
+        rule: String,
+    },
+    /// Preview the complete category-rule reconciliation, including old contributions.
+    CategoryPreview {
+        rule: Option<String>,
+        #[arg(long, conflicts_with = "rule")]
+        form: Option<PathBuf>,
+        #[arg(long)]
+        delete: bool,
+    },
+    /// Save or delete a category rule and apply its unchanged preview.
+    CategoryApply {
+        rule: Option<String>,
+        #[arg(long, conflicts_with = "rule")]
+        form: Option<PathBuf>,
+        #[arg(long)]
+        preview_token: String,
+        #[arg(long)]
+        delete: bool,
+    },
     /// Preview a saved rule or an unsaved JSON form; returns the token Apply requires.
     TreatmentPreview {
         rule: Option<String>,

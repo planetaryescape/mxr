@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.85"
+    "version": "0.6.86"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1361,6 +1361,21 @@
           },
           "422": {
             "description": "The daemon rejected an invalid, stale, or expired mutation id"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/why": {
+      "get": {
+        "tags": [],
+        "summary": "Explain category membership and rule provenance",
+        "operationId": "category_why",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
           }
         }
       }
@@ -6328,6 +6343,21 @@
         }
       }
     },
+    "/api/v1/platform/rules/categories": {
+      "post": {
+        "tags": [],
+        "summary": "Preview or apply complete category-rule reconciliation",
+        "operationId": "rule_categories",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/rules/delete": {
       "post": {
         "tags": [],
@@ -9126,6 +9156,33 @@
           }
         }
       },
+      "CategoryAssignmentEffect": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "category_id",
+          "before",
+          "after",
+          "reason"
+        ],
+        "properties": {
+          "after": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "boolean"
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "CategoryDeletePreview": {
         "type": "object",
         "required": [
@@ -9251,6 +9308,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CategoryId"
+            }
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryAssignmentEffect"
             }
           },
           "message_count": {
@@ -20816,6 +20879,55 @@
           {
             "type": "object",
             "required": [
+              "form",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RuleCategories"
+                ]
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "form": {
+                "$ref": "#/components/schemas/RuleFormData"
+              },
+              "preview_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "category_id",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExplainCategoryMembership"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "cmd"
             ],
             "properties": {
@@ -28735,6 +28847,40 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "RuleCategoriesResult"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/RuleCategoriesPreviewData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "explanation",
+              "kind"
+            ],
+            "properties": {
+              "explanation": {},
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipExplanation"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                   "RuleTreatmentResult"
                 ]
               },
@@ -31563,6 +31709,114 @@
           "important",
           "starred"
         ]
+      },
+      "RuleCategoriesPreviewData": {
+        "type": "object",
+        "required": [
+          "applied",
+          "rule_id",
+          "delete",
+          "matches",
+          "accounts",
+          "complete",
+          "unavailable",
+          "notice"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountId"
+            }
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "delete": {
+            "type": "boolean"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleCategoryMatchData"
+            }
+          },
+          "notice": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unavailable": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RuleCategoryMatchData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "from",
+          "subject",
+          "category_id",
+          "category_name",
+          "before",
+          "after",
+          "reason"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "after": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "boolean"
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "category_name": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "manual_decision": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "RuleFormData": {
         "type": "object",

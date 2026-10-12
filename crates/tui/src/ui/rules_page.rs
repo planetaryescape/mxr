@@ -55,7 +55,7 @@ pub fn draw(
         draw_footer(
             frame,
             detail_chunks[2],
-            "Tab:next  Ctrl-s:save  Ctrl-d:preview sorting  Space:choose account/toggle  Esc:close",
+            "Tab:next  Ctrl-s:save  Ctrl-d:preview  Space:choose account/toggle  Esc:close",
             theme,
         );
         return;
@@ -64,30 +64,36 @@ pub fn draw(
     let body = match state.panel {
         RulesPanel::Details => overview_lines(state),
         RulesPanel::History => history_lines(&state.history),
-        RulesPanel::DryRun => dry_run_lines(&state.dry_run),
+        RulesPanel::DryRun => dry_run_lines(&state.dry_run, state.dry_run_page),
         RulesPanel::Form => Vec::new(),
     };
-    let paragraph = Paragraph::new(body)
-        .block(
-            Block::default()
-                .title(match state.panel {
-                    RulesPanel::Details => " Overview ",
-                    RulesPanel::History => " History ",
-                    RulesPanel::DryRun => " Dry Run ",
-                    RulesPanel::Form => " Edit ",
-                })
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.warning)),
-        )
-        .wrap(Wrap { trim: false });
+    let paragraph = Paragraph::new(body).wrap(Wrap { trim: false });
+    let title = match state.panel {
+        RulesPanel::DryRun => format!(
+            " Dry Run {}/{} ",
+            state.dry_run_page + 1,
+            state.dry_run_pages()
+        ),
+        RulesPanel::Details => " Overview ".into(),
+        RulesPanel::History => " History ".into(),
+        RulesPanel::Form => " Edit ".into(),
+    };
+    let paragraph = paragraph.block(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.warning)),
+    );
     frame.render_widget(paragraph, detail_chunks[1]);
     draw_footer(
         frame,
         detail_chunks[2],
-        if state.rules.is_empty() {
+        if state.panel == RulesPanel::DryRun {
+            "PgUp/PgDn:effects  A:apply  Esc:back"
+        } else if state.rules.is_empty() {
             "n:new rule  Esc:mailbox"
         } else {
-            "j/k:select  Enter:overview  H:history  D:dry run  A:apply sorting preview  E:edit  n:new  e:toggle"
+            "j/k:select  Enter:overview  H:history  D:dry run  A:apply preview  E:edit  n:new  e:toggle"
         },
         theme,
     );
@@ -385,11 +391,11 @@ fn history_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
+fn dry_run_lines(entries: &[serde_json::Value], page: usize) -> Vec<Line<'static>> {
     if let Some(preview) = entries.first().filter(|p| p["result"].is_object()) {
         let result = &preview["result"];
         let mut lines = vec![
-            Line::from("A applies exactly this sorting preview. Personal choices win."),
+            Line::from("A applies exactly this preview. Manual choices win."),
             Line::from(if result["complete"] == true {
                 "Complete selection"
             } else {
@@ -398,13 +404,36 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
             Line::from(result["notice"].as_str().unwrap_or("").to_string()),
         ];
         if let Some(matches) = result["matches"].as_array() {
-            for item in matches {
+            if let Some(item) = matches.get(page) {
                 lines.push(Line::from(format!(
-                    "{}: {} → {} · {}",
-                    item["subject"].as_str().unwrap_or(""),
-                    item["before"].as_str().unwrap_or(""),
-                    item["after"].as_str().unwrap_or(""),
+                    "{}: {} → {}",
+                    item["category_name"].as_str().unwrap_or(""),
+                    if item["before"].is_boolean() {
+                        if item["before"] == true {
+                            "Assigned"
+                        } else {
+                            "Unassigned"
+                        }
+                    } else {
+                        item["before"].as_str().unwrap_or("")
+                    },
+                    if item["after"].is_boolean() {
+                        if item["after"] == true {
+                            "Assigned"
+                        } else {
+                            "Unassigned"
+                        }
+                    } else {
+                        item["after"].as_str().unwrap_or("")
+                    }
+                )));
+                lines.push(Line::from(format!(
+                    "Reason: {}",
                     item["reason"].as_str().unwrap_or("")
+                )));
+                lines.push(Line::from(format!(
+                    "Subject: {}",
+                    truncate_line(item["subject"].as_str().unwrap_or(""), 64)
                 )));
             }
         }
@@ -419,7 +448,8 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
     }
 
     entries
-        .iter()
+        .get(page)
+        .into_iter()
         .flat_map(|entry| {
             vec![
                 Line::from(format!(

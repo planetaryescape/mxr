@@ -1410,6 +1410,9 @@ pub(crate) async fn apply_rules_to_messages(
         let message_id_str = message_id.as_str();
         {
             let _sorting = state.rule_mutation_gate.lock().await;
+            crate::handler::category_rules::classify_message(state, message_id)
+                .await
+                .map_err(|e| e.to_string())?;
             crate::handler::rule_treatment::classify_pending(
                 state,
                 account_id,
@@ -1419,9 +1422,14 @@ pub(crate) async fn apply_rules_to_messages(
             .map_err(|e| e.to_string())?;
         }
         let mut result = engine.evaluate(&message, &message_id_str);
-        result
-            .actions
-            .retain(|action| !matches!(action, RuleAction::SetTreatment { .. }));
+        result.actions.retain(|action| {
+            !matches!(
+                action,
+                RuleAction::SetTreatment { .. }
+                    | RuleAction::AddCategory { .. }
+                    | RuleAction::RemoveCategory { .. }
+            )
+        });
         if result.actions.is_empty() {
             continue;
         }
@@ -1502,7 +1510,12 @@ async fn execute_rule_action(
     action: &RuleAction,
     labels: &[mxr_core::Label],
 ) -> Result<(), String> {
-    if matches!(action, RuleAction::SetTreatment { .. }) {
+    if matches!(
+        action,
+        RuleAction::SetTreatment { .. }
+            | RuleAction::AddCategory { .. }
+            | RuleAction::RemoveCategory { .. }
+    ) {
         return Ok(());
     }
     let provider_message_id = state
@@ -1547,7 +1560,9 @@ async fn execute_rule_action(
             provider_message_id: provider_message_id.clone(),
             read: false,
         }),
-        RuleAction::SetTreatment { .. }
+        RuleAction::AddCategory { .. }
+        | RuleAction::RemoveCategory { .. }
+        | RuleAction::SetTreatment { .. }
         | RuleAction::Snooze { .. }
         | RuleAction::ShellHook { .. } => None,
     };
@@ -1566,7 +1581,9 @@ async fn execute_rule_action(
         }
     }
     match action {
-        RuleAction::SetTreatment { .. } => {}
+        RuleAction::AddCategory { .. }
+        | RuleAction::RemoveCategory { .. }
+        | RuleAction::SetTreatment { .. } => {}
         RuleAction::AddLabel { label } => {
             if let Some(found) = labels
                 .iter()

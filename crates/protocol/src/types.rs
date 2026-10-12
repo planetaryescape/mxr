@@ -819,6 +819,16 @@ pub enum Request {
         form: RuleFormData,
         preview_token: Option<String>,
     },
+    RuleCategories {
+        form: RuleFormData,
+        preview_token: Option<String>,
+        #[serde(default)]
+        delete: bool,
+    },
+    ExplainCategoryMembership {
+        message_id: MessageId,
+        category_id: CategoryId,
+    },
     ListRules,
     GetRule {
         rule: String,
@@ -2726,6 +2736,8 @@ impl Request {
             | Self::DisableAccountConfig { .. }
             | Self::RemoveAccountConfig { .. }
             | Self::RepairAccountConfig { .. }
+            | Self::RuleCategories { .. }
+            | Self::ExplainCategoryMembership { .. }
             | Self::RuleTreatment { .. }
             | Self::ListRules
             | Self::GetRule { .. }
@@ -3405,6 +3417,12 @@ pub enum ResponseData {
     },
 
     // mxr app/platform responses.
+    RuleCategoriesResult {
+        preview: RuleCategoriesPreviewData,
+    },
+    CategoryMembershipExplanation {
+        explanation: serde_json::Value,
+    },
     RuleTreatmentResult {
         preview: RuleTreatmentPreviewData,
     },
@@ -3984,6 +4002,8 @@ pub enum ResponseData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CategoryMembershipPreview {
+    #[serde(default)]
+    pub effects: Vec<CategoryAssignmentEffect>,
     pub category_ids: Vec<CategoryId>,
     pub message_count: u32,
     pub added: u32,
@@ -4167,7 +4187,9 @@ impl ResponseData {
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }
             | Self::EntityExplanation { .. } => IpcCategory::CoreMail,
-            Self::RuleTreatmentResult { .. }
+            Self::RuleCategoriesResult { .. }
+            | Self::CategoryMembershipExplanation { .. }
+            | Self::RuleTreatmentResult { .. }
             | Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -5279,4 +5301,43 @@ pub struct LabelCount {
     pub label_id: LabelId,
     pub unread_count: u32,
     pub total_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleCategoryMatchData {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub from: String,
+    pub subject: String,
+    pub category_id: CategoryId,
+    pub category_name: String,
+    pub before: bool,
+    pub after: bool,
+    pub manual_decision: Option<bool>,
+    pub winner: Option<String>,
+    pub reason: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleCategoriesPreviewData {
+    pub applied: bool,
+    pub token: Option<String>,
+    pub rule_id: String,
+    pub delete: bool,
+    pub matches: Vec<RuleCategoryMatchData>,
+    pub accounts: Vec<AccountId>,
+    pub complete: bool,
+    pub unavailable: u32,
+    pub notice: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CategoryAssignmentEffect {
+    pub message_id: MessageId,
+    pub category_id: CategoryId,
+    pub before: bool,
+    pub after: bool,
+    pub reason: String,
 }

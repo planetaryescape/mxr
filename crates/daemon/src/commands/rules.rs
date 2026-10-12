@@ -31,6 +31,22 @@ fn parse_actions(value: &str) -> anyhow::Result<Vec<RuleAction>> {
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
+    if let Some(id) = value.trim().strip_prefix("add-category:") {
+        return Ok(RuleAction::AddCategory {
+            category_id: id
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("category action requires a category ID"))?,
+        });
+    }
+    if let Some(id) = value.trim().strip_prefix("remove-category:") {
+        return Ok(RuleAction::RemoveCategory {
+            category_id: id
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("category action requires a category ID"))?,
+        });
+    }
     if let Some(value) = strip_action_prefix(trimmed, "treatment:") {
         let mode = value;
         let treatment = match mode.to_ascii_lowercase().as_str() {
@@ -297,6 +313,29 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
     let mut client = IpcClient::connect().await?;
 
     match action.unwrap_or(RulesAction::List) {
+        RulesAction::Form { rule } => match client.request(Request::GetRuleForm { rule }).await? {
+            Response::Ok {
+                data: ResponseData::RuleFormData { form },
+            } => println!(
+                "{}",
+                if resolve_format(format) == OutputFormat::Jsonl {
+                    jsonl(std::slice::from_ref(&form))?
+                } else {
+                    serde_json::to_string_pretty(&form)?
+                }
+            ),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected rule form response"),
+        },
+        RulesAction::CategoryPreview { rule, form, delete } => {
+            run_categories(&mut client, rule, form, None, delete, format).await?;
+        }
+        RulesAction::CategoryApply {
+            rule,
+            form,
+            preview_token,
+            delete,
+        } => run_categories(&mut client, rule, form, Some(preview_token), delete, format).await?,
         RulesAction::TreatmentPreview { rule, form } => {
             run_treatment(&mut client, rule, form, None, format).await?;
         }
@@ -339,7 +378,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 enabled: true,
                 priority,
                 conditions: query_to_conditions(ast)?,
-                actions: parse_actions(&action)?,
+                actions: parse_actions(&resolve_category_names(&mut client, &action).await?)?,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
@@ -370,7 +409,8 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 current.conditions = query_to_conditions(ast)?;
             }
             if let Some(action) = action {
-                current.actions = parse_actions(&action)?;
+                current.actions =
+                    parse_actions(&resolve_category_names(&mut client, &action).await?)?;
             }
             if let Some(priority) = priority {
                 current.priority = priority;
@@ -394,7 +434,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
         RulesAction::Validate { condition, action } => {
             let ast = parse_query(&condition).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let conditions = query_to_conditions(ast)?;
-            let actions = parse_actions(&action)?;
+            let actions = parse_actions(&resolve_category_names(&mut client, &action).await?)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -459,6 +499,94 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
         },
     }
 
+    Ok(())
+}
+
+async fn resolve_category_names(client: &mut IpcClient, action: &str) -> anyhow::Result<String> {
+    if !action.contains("-category:") {
+        return Ok(action.to_string());
+    }
+    let categories = match client
+        .request(Request::ListCategories { account_id: None })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Categories { categories },
+        } => categories,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected category catalog response"),
+    };
+    action
+        .split([',', ';'])
+        .map(|part| {
+            for prefix in ["add-category:", "remove-category:"] {
+                if let Some(value) = part.trim().strip_prefix(prefix) {
+                    if value.trim().parse::<mxr_core::CategoryId>().is_ok() {
+                        return Ok(part.trim().to_string());
+                    }
+                    let category = categories
+                        .iter()
+                        .find(|c| c.name.eq_ignore_ascii_case(value.trim()))
+                        .ok_or_else(|| anyhow::anyhow!("Category not found: {value}"))?;
+                    return Ok(format!("{prefix}{}", category.id));
+                }
+            }
+            Ok(part.trim().to_string())
+        })
+        .collect::<anyhow::Result<Vec<_>>>()
+        .map(|p| p.join(","))
+}
+
+async fn run_categories(
+    client: &mut IpcClient,
+    rule: Option<String>,
+    form_path: Option<std::path::PathBuf>,
+    preview_token: Option<String>,
+    delete: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let form = if let Some(path) = form_path {
+        let input = if path.as_os_str() == "-" {
+            use std::io::Read;
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input)?;
+            input
+        } else {
+            std::fs::read_to_string(path)?
+        };
+        serde_json::from_str::<RuleFormData>(&input)?
+    } else {
+        let rule = rule
+            .ok_or_else(|| anyhow::anyhow!("Pass a saved rule or --form FILE (- reads stdin)"))?;
+        match client.request(Request::GetRuleForm { rule }).await? {
+            Response::Ok {
+                data: ResponseData::RuleFormData { form },
+            } => form,
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response"),
+        }
+    };
+    match client
+        .request(Request::RuleCategories {
+            delete,
+            form,
+            preview_token,
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::RuleCategoriesResult { preview },
+        } => println!(
+            "{}",
+            if resolve_format(format) == OutputFormat::Jsonl {
+                jsonl(std::slice::from_ref(&preview))?
+            } else {
+                serde_json::to_string_pretty(&preview)?
+            }
+        ),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
     Ok(())
 }
 

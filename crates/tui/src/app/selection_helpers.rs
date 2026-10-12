@@ -229,6 +229,7 @@ impl App {
         self.rules.pending_dry_run = None;
         self.rules.dry_run_request_id = self.rules.dry_run_request_id.wrapping_add(1);
         self.rules.page.dry_run.clear();
+        self.rules.page.dry_run_page = 0;
 
         if let Some(rule_id) = selected_rule_id {
             match self.rules.page.panel {

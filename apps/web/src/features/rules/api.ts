@@ -88,3 +88,85 @@ export function previewTreatment(form: RuleForm, previewToken?: string) {
     body: { form: { ...form, id: form.id ?? null }, preview_token: previewToken ?? null },
   });
 }
+
+export function hasCategoryActions(action: string) {
+  return /(?:^|[,;])\s*(?:add|remove)-category:/i.test(action);
+}
+interface CategoryPreview {
+  applied: boolean;
+  token?: string | null;
+  rule_id: string;
+  delete: boolean;
+  complete: boolean;
+  unavailable: number;
+  notice: string;
+  matches: {
+    message_id: string;
+    account_id: string;
+    category_id: string;
+    category_name: string;
+    from: string;
+    subject: string;
+    before: boolean;
+    after: boolean;
+    reason: string;
+    manual_decision?: boolean | null;
+    winner?: string | null;
+  }[];
+}
+export async function previewCategories(
+  form: RuleForm,
+  previewToken?: string,
+  deleteRequested = false,
+): Promise<TreatmentPreview> {
+  const result = await apiFetch<CategoryPreview>("/api/v1/platform/rules/categories", {
+    method: "POST",
+    body: {
+      form: { ...form, id: form.id ?? null },
+      preview_token: previewToken ?? null,
+      delete: deleteRequested,
+    },
+  });
+  return {
+    applied: result.applied,
+    token: result.token,
+    rule_id: result.rule_id,
+    result: {
+      complete: result.complete,
+      unavailable: result.unavailable,
+      scan_limit: 0,
+      notice: result.notice,
+      matches: result.matches.map((m) => ({
+        message_id: m.message_id,
+        account_id: m.account_id,
+        category_id: m.category_id,
+        category_name: m.category_name,
+        from: m.from,
+        subject: m.subject,
+        reason: m.reason,
+        manual_decision: m.manual_decision,
+        winner: m.winner,
+        before: m.before ? "Assigned" : "Unassigned",
+        after: m.after ? "Assigned" : "Unassigned",
+        blocked: m.manual_decision != null,
+        treatment: null,
+      })),
+    },
+  };
+}
+
+export function chooseCategoryAction(action: string, categoryId: string): string {
+  const selected = `add-category:${categoryId}`;
+  const parts = action
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const index = parts.findIndex(
+    (part) =>
+      /^(?:add|remove)-category:/i.test(part) &&
+      part.slice(part.indexOf(":") + 1).trim() === categoryId,
+  );
+  if (index >= 0) parts[index] = selected;
+  else parts.push(selected);
+  return parts.join(",");
+}

@@ -4,7 +4,14 @@ import { ListFilter, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { deleteRule, fetchRules, upsertRuleForm, type RuleForm, type RuleListItem } from "./api";
+import {
+  hasCategoryActions,
+  deleteRule,
+  fetchRules,
+  upsertRuleForm,
+  type RuleForm,
+  type RuleListItem,
+} from "./api";
 import { Page } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
 import {
@@ -27,8 +34,20 @@ export function RulesListRoute() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const rules = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const remove = useMutation({
-    mutationFn: deleteRule,
+    mutationFn: async (name: string) => {
+      const rule = rules.data?.rules.find((r) => ruleName(r) === name);
+      if (rule && hasCategoryActions(ruleForm(rule).action)) {
+        await navigate({ to: "/rules/$id", params: { id: name } });
+        return;
+      }
+      return deleteRule(name);
+    },
     onSuccess: (_result, name) => {
+      const rule = rules.data?.rules.find((r) => ruleName(r) === name);
+      if (rule && hasCategoryActions(ruleForm(rule).action)) {
+        setConfirmDelete(null);
+        return;
+      }
       toast.success(`Deleted ${name}`);
       setConfirmDelete(null);
       void qc.invalidateQueries({ queryKey: ["rules"] });
@@ -36,9 +55,15 @@ export function RulesListRoute() {
     onError: (error) => toast.error("Delete failed", { description: error.message }),
   });
   const toggle = useMutation({
-    mutationFn: ({ rule, enabled }: { rule: RuleListItem; enabled: boolean }) =>
-      upsertRuleForm({ ...ruleForm(rule), enabled }, ruleName(rule)),
+    mutationFn: async ({ rule, enabled }: { rule: RuleListItem; enabled: boolean }) => {
+      if (hasCategoryActions(ruleForm(rule).action)) {
+        await navigate({ to: "/rules/$id", params: { id: ruleName(rule) } });
+        return;
+      }
+      await upsertRuleForm({ ...ruleForm(rule), enabled }, ruleName(rule));
+    },
     onSuccess: (_result, { rule, enabled }) => {
+      if (hasCategoryActions(ruleForm(rule).action)) return;
       toast.success(`${ruleName(rule)} ${enabled ? "enabled" : "disabled"}`);
       void qc.invalidateQueries({ queryKey: ["rules"] });
     },

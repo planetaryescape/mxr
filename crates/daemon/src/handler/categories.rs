@@ -162,6 +162,7 @@ pub(crate) async fn membership_states(
 }
 
 pub(crate) async fn create(state: &AppState, name: &str) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
     let category = state.store.create_personal_category(name).await?;
     Ok(ResponseData::Categories {
         categories: vec![category],
@@ -188,6 +189,7 @@ pub(crate) async fn rename(
     category_id: &CategoryId,
     new_name: &str,
 ) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
     let category = state
         .store
         .rename_personal_category(category_id, new_name)
@@ -263,6 +265,33 @@ pub(crate) async fn preview_membership(
             _ => {}
         }
     }
+    let effects = versions
+        .iter()
+        .map(|v| mxr_protocol::CategoryAssignmentEffect {
+            message_id: v.message_id.clone(),
+            category_id: v.category_id.clone(),
+            before: v.assigned,
+            after: add_category_ids.contains(&v.category_id),
+            reason: match v.manual_decision {
+                Some(true) => "Manual inclusion".into(),
+                Some(false) => "Manual exclusion".into(),
+                None => v
+                    .sources
+                    .iter()
+                    .min_by_key(|s| (s.priority, &s.rule_id))
+                    .map_or_else(
+                        || "No category rule source".into(),
+                        |s| {
+                            format!(
+                                "{} by {}",
+                                if s.assigned { "Added" } else { "Removed" },
+                                s.rule_name
+                            )
+                        },
+                    ),
+            },
+        })
+        .collect();
     let token = state.category_previews.insert(CategoryPreview::Membership {
         account_id: account_id.cloned(),
         message_ids: message_ids.to_vec(),
@@ -273,6 +302,7 @@ pub(crate) async fn preview_membership(
     });
     Ok(ResponseData::CategoryMembershipPreview {
         preview: CategoryMembershipPreview {
+            effects,
             category_ids,
             message_count: message_ids.len() as u32,
             added,
@@ -286,6 +316,7 @@ pub(crate) async fn apply_membership(
     state: &AppState,
     token: &str,
 ) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
     let preview = state.category_previews.take(token)?;
     let CategoryPreview::Membership {
         account_id,
@@ -336,6 +367,8 @@ pub(crate) async fn preview_delete(
     state: &AppState,
     category_id: &CategoryId,
 ) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
+    super::category_rules::reject_references(state, category_id).await?;
     let (name, _) = state.store.get_personal_category(category_id).await?;
     let versions = state
         .store
@@ -357,6 +390,7 @@ pub(crate) async fn preview_delete(
 }
 
 pub(crate) async fn delete(state: &AppState, token: &str) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
     let preview = state.category_previews.take(token)?;
     let CategoryPreview::Delete {
         category_id,
@@ -366,6 +400,7 @@ pub(crate) async fn delete(state: &AppState, token: &str) -> Result<ResponseData
     else {
         return Err("preview token is for category membership".into());
     };
+    super::category_rules::reject_references(state, &category_id).await?;
     let name = state
         .store
         .delete_personal_category_if_unchanged(&category_id, &expected_name, &versions)
@@ -377,6 +412,7 @@ pub(crate) async fn undo_membership(
     state: &AppState,
     mutation_id: &str,
 ) -> Result<ResponseData, String> {
+    let _gate = state.rule_mutation_gate.lock().await;
     let (restored, skipped) = state.store.undo_category_membership(mutation_id).await?;
     Ok(ResponseData::CategoryMembershipUndone { restored, skipped })
 }

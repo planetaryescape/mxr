@@ -30,6 +30,7 @@ pub struct RulesPageState {
     pub detail: Option<serde_json::Value>,
     pub history: Vec<serde_json::Value>,
     pub dry_run: Vec<serde_json::Value>,
+    pub dry_run_page: usize,
     pub panel: RulesPanel,
     pub status: Option<String>,
     pub refresh_pending: bool,
@@ -44,6 +45,7 @@ impl Default for RulesPageState {
             detail: None,
             history: Vec::new(),
             dry_run: Vec::new(),
+            dry_run_page: 0,
             panel: RulesPanel::Details,
             status: None,
             refresh_pending: false,
@@ -68,6 +70,10 @@ pub struct RulesState {
     pub dry_run_request_id: u64,
     pub pending_sorting_preview: Option<mxr_protocol::RuleFormData>,
     pub pending_treatment: Option<(mxr_protocol::RuleFormData, String)>,
+    pub category_delete: bool,
+    pub category_edit: bool,
+    pub pending_category_preview: Option<(mxr_protocol::RuleFormData, bool)>,
+    pub pending_category_apply: Option<(mxr_protocol::RuleFormData, String, bool)>,
     pub pending_delete: Option<String>,
     pub pending_upsert: Option<serde_json::Value>,
     pub pending_form_load: Option<String>,
@@ -77,3 +83,13 @@ pub struct RulesState {
     pub action_editor: TextArea<'static>,
 }
 use tui_textarea::TextArea;
+
+impl RulesPageState {
+    pub fn dry_run_pages(&self) -> usize {
+        self.dry_run
+            .first()
+            .and_then(|preview| preview["result"]["matches"].as_array())
+            .map_or(self.dry_run.len(), Vec::len)
+            .max(1)
+    }
+}

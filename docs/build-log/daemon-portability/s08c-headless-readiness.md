@@ -1,4 +1,4 @@
-# S08c headless readiness
+# Supervised clients preserve daemon ownership and report dependency failures
 
 S08c adds an explicit client opt-out from daemon autostart, process-local model
 outcomes by provider route, actionable missing-IMAP-sync-credential doctor
@@ -25,13 +25,18 @@ the Linux ownership result.
 ## Code and baseline
 
 The implementation was prepared from `f56ac1527787ca312bda7b52935947ee94495251`
-(`main` at S08c start). Root owns the source checkpoint SHA and integration
-ledger; this entry does not claim a committed implementation SHA.
+(`main` at S08c start). The full candidate `166f308b0dc722e8b6df47bb27af91e8685773ca` passed
+CI38187946732 and OpenAPI38187946716. Its Linux supervised smoke passed
+in 63 seconds; its macOS fixture preserved four search results across restart
+and recorded three controlled model requests.
 
 - `crates/client/src/lib.rs` owns the default-compatible
   `MXR_DAEMON_AUTOSTART=off` policy and shared remediation.
 - `crates/daemon/src/server.rs` applies the policy before stale-socket recovery
-  or daemon replacement; `crates/tui/src/ipc.rs` applies it to reconnects.
+  or daemon replacement. The central TUI client checks the same exact protocol,
+  version and build identity on supervised initial, dedicated and reconnect
+  connections before normal requests; the status handshake is bounded to five
+  seconds.
 - `crates/llm/src/observations.rs` stores typed process-local outcomes and
   provider generations; `crates/llm/src/observation_tests.rs` covers route
   isolation, sanitization, timeout, reset, and stale completion.
@@ -82,12 +87,21 @@ selected a Python interpreter without `tomllib`; the retry used Python 3.14.8.
 Cargo deny reported existing duplicate/yanked dependency warnings but exited
 successfully. The earlier
 Linux smoke stopped when the fixture expected `thread_id` in search JSON; the
-fixture now uses the thread-ID CLI surface. Isolated runtime acceptance is
-pending a build from the corrected committed checkpoint. A macOS run is setup
-validation only; Linux acceptance is established only by Ubuntu CI.
+fixture now uses the thread-ID CLI surface.
+
+Root review found that a supervised TUI could reconnect without checking the
+replacement daemon identity. Commit `c5144ab5` adds a shared identity policy and
+validates the connection before returning it to the TUI. Four focused client
+tests passed, including a compatible connection followed by an incompatible
+replacement and no normal request sent to the rejected peer. The existing
+daemon build-identity test passed. Scoped all-target Clippy for client, TUI and
+daemon passed in 1m19s, as did formatting and diff checks. The smoke script now
+also triggers the Rust CI path when changed alone. This corrected candidate
+still needs its final CI, build and published acceptance.
 
 ## Effort and follow-up
 
 The worker was assigned on 2026-10-11 at 22:27 UTC. Source was checkpointed
-at 23:08 UTC; runtime validation and release remain pending. No follow-up ticket is
-currently required; Linux CI remains the runtime acceptance evidence.
+at 23:08 UTC. Candidate runtime validation passed on macOS and Ubuntu; the
+reconnect correction and release are pending final checks. No follow-up ticket
+is currently required; Linux CI remains the Linux runtime evidence.

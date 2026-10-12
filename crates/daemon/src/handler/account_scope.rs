@@ -111,7 +111,7 @@ fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
 
 fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
-        Request::RemoteAuthority { .. } => Unscoped,
+        Request::RemoteAuthority { .. } => AllAccounts,
         Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
         // ----- Named by account -----
         Request::ListEnvelopes {

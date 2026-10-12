@@ -1963,3 +1963,79 @@ async fn recovery_requires_full_account_coverage_and_commits_keep_safety_permiss
         );
     }
 }
+
+#[tokio::test]
+async fn restricted_profile_cannot_inspect_or_approve_global_pairing_authority() {
+    use mxr_core::{RemoteCapability, RemoteSecret};
+    use mxr_protocol::{RemoteRequest, RemoteResponse};
+
+    let s = scoped().await;
+    let ResponseData::RemoteAuthority {
+        response: RemoteResponse::Pairing { pairing, .. },
+    } = request(
+        &s.fx,
+        Request::RemoteAuthority {
+            request: RemoteRequest::StartPairing {
+                name: "Profile boundary fixture".into(),
+                capabilities: vec![RemoteCapability::MailRead],
+                mail_verifier: RemoteSecret::new("a".repeat(64)),
+                cleanup_verifier: RemoteSecret::new("b".repeat(64)),
+            },
+        },
+    )
+    .await
+    else {
+        panic!("unrestricted local CLI should start pairing")
+    };
+    for action in [
+        RemoteRequest::Status,
+        RemoteRequest::Pairings,
+        RemoteRequest::Clients,
+        RemoteRequest::ApprovePairing {
+            request_id: pairing.request_id.clone(),
+            dry_run: false,
+        },
+    ] {
+        match scoped_dispatch(&s, Request::RemoteAuthority { request: action }).await {
+            Response::Error { message, .. } => {
+                assert!(message.contains("account allowlist"), "{message}");
+            }
+            other => panic!("restricted profile reached global authority: {other:?}"),
+        }
+    }
+    let ResponseData::RemoteAuthority {
+        response: RemoteResponse::Pairings { pairings },
+    } = request(
+        &s.fx,
+        Request::RemoteAuthority {
+            request: RemoteRequest::Pairings,
+        },
+    )
+    .await
+    else {
+        panic!("unrestricted local CLI should inspect pending pairings")
+    };
+    assert_eq!(pairings.len(), 1);
+    assert!(
+        !pairings[0].approved,
+        "denied approval must not mutate authority"
+    );
+    let ResponseData::RemoteAuthority {
+        response: RemoteResponse::Pairing {
+            pairing: approved, ..
+        },
+    } = request(
+        &s.fx,
+        Request::RemoteAuthority {
+            request: RemoteRequest::ApprovePairing {
+                request_id: pairing.request_id,
+                dry_run: false,
+            },
+        },
+    )
+    .await
+    else {
+        panic!("unrestricted local CLI should approve the same pairing")
+    };
+    assert!(approved.approved);
+}

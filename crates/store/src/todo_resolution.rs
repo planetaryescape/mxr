@@ -298,11 +298,40 @@ impl Store {
         &self,
         suggestion: &NewTodoResolutionSuggestion,
     ) -> Result<bool, sqlx::Error> {
+        self.offer_todo_resolution_inner(suggestion, None).await
+    }
+
+    pub async fn offer_queued_todo_resolution(
+        &self,
+        suggestion: &NewTodoResolutionSuggestion,
+        work: &crate::TodoResolutionWork,
+    ) -> Result<bool, sqlx::Error> {
+        if suggestion.todo_id != work.todo_id
+            || suggestion.source_message_id != work.message_id
+            || suggestion.account_id != work.account_id
+        {
+            return Ok(false);
+        }
+        self.offer_todo_resolution_inner(suggestion, Some(work))
+            .await
+    }
+
+    async fn offer_todo_resolution_inner(
+        &self,
+        suggestion: &NewTodoResolutionSuggestion,
+        work: Option<&crate::TodoResolutionWork>,
+    ) -> Result<bool, sqlx::Error> {
         let quote = suggestion.source_quote.trim();
         if quote.is_empty() || quote.chars().count() > 500 {
             return Ok(false);
         }
         let mut tx = self.writer().begin().await?;
+        if let Some(work) = work {
+            if !crate::todo_resolution_queue::input_is_current(&mut tx, work).await? {
+                tx.rollback().await?;
+                return Ok(false);
+            }
+        }
         let current = sqlx::query(
             "SELECT t.*, m.date AS resolution_source_date,
                     m.thread_id AS resolution_source_thread_id FROM todos t

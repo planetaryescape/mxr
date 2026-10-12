@@ -1,5 +1,9 @@
 use super::*;
+use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
+use mxr_core::types::MessageDirection;
 use mxr_core::*;
+
+type QueueSnapshot = (String, String, String, String, String, i64, i64, i64, i64);
 async fn fixture(root: &Path) -> (String, DraftId) {
     let store = Store::fresh_backup(&root.join("mxr.db")).await.unwrap();
     let account = crate::test_fixtures::test_account();
@@ -63,6 +67,91 @@ async fn fixture(root: &Path) -> (String, DraftId) {
     let (owner, _) = store.archive_workspace().await.unwrap();
     store.writer().close().await;
     (owner, id)
+}
+
+fn write_manifest(stage: &Path, mut manifest: BackupManifest) -> BackupManifest {
+    std::fs::write(stage.join("settings.json"), b"{}").unwrap();
+    manifest
+        .files
+        .push(file_metadata(stage, "settings.json").unwrap());
+    std::fs::write(
+        stage.join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    manifest
+}
+
+async fn seed_resolution_queue(store: &Store) -> Vec<QueueSnapshot> {
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let now = chrono::Utc::now();
+    let mut source = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    source.provider_id = "backup-source".into();
+    store
+        .upsert_envelope_with_direction(&source, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO todos (id, account_id, thread_id, source_message_id, source_date,
+        kind, verb, title, origin, reason, rules_version, dedup_key, created_at, updated_at)
+        VALUES ('backup-task', ?1, ?2, ?3, ?4, 'bill', 'pay', 'Pay bill', 'manual', 'test', 1, 'backup-task', ?4, ?4)")
+        .bind(account.id.as_str())
+        .bind(source.thread_id.as_str())
+        .bind(source.id.as_str())
+        .bind(source.date.timestamp())
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+    let cases = [
+        ("pending", 0_i64, 0_i64, 0_i64),
+        ("reserved", 2, 0, 1),
+        ("exhausted", 5, 0, 2),
+        ("completed", 3, 1, 3),
+    ];
+    let mut expected = Vec::new();
+    for (name, attempts, completed, offset) in cases {
+        let mut message = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        message.provider_id = format!("backup-{name}");
+        let message_id = store
+            .upsert_envelope_with_direction(&message, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let revision = format!("revision-{name}");
+        let fingerprint = format!("fingerprint-{name}");
+        let source_date = message.date.timestamp();
+        let next_attempt_at = now.timestamp() + offset * 3600;
+        sqlx::query("INSERT INTO todo_resolution_queue
+            (account_id, todo_id, message_id, revision, input_fingerprint, source_date, attempts, next_attempt_at, completed)
+            VALUES (?1, 'backup-task', ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+            .bind(account.id.as_str())
+            .bind(message_id.as_str())
+            .bind(&revision)
+            .bind(&fingerprint)
+            .bind(source_date)
+            .bind(attempts)
+            .bind(next_attempt_at)
+            .bind(completed)
+            .execute(store.writer())
+            .await
+            .unwrap();
+        expected.push((
+            account.id.to_string(),
+            "backup-task".to_owned(),
+            message_id.to_string(),
+            revision,
+            fingerprint,
+            source_date,
+            attempts,
+            next_attempt_at,
+            completed,
+        ));
+    }
+    expected
 }
 #[tokio::test]
 async fn logical_bundle_omits_physical_activity_and_tokens_and_restores_held_bytes() {
@@ -160,6 +249,126 @@ async fn logical_bundle_omits_physical_activity_and_tokens_and_restores_held_byt
         );
     }
 }
+
+#[tokio::test]
+async fn resolution_queue_round_trips_through_backup_and_restore() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let expected = seed_resolution_queue(&store).await;
+    store.writer().close().await;
+
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 82);
+    inspect(stage.path()).await.unwrap();
+    std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
+    retire_restored(&restored.path().join("mxr.db"))
+        .await
+        .unwrap();
+
+    let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
+    let actual: Vec<QueueSnapshot> = sqlx::query_as(
+        "SELECT account_id, todo_id, message_id, revision, input_fingerprint, source_date, attempts, next_attempt_at, completed
+         FROM todo_resolution_queue ORDER BY revision",
+    )
+    .fetch_all(restored_store.reader())
+    .await
+    .unwrap();
+    let mut expected = expected;
+    expected.sort_by(|a, b| a.3.cmp(&b.3));
+    assert_eq!(actual, expected);
+    restored_store.writer().close().await;
+}
+
+#[tokio::test]
+async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version=82;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+    manifest.schema_version = 81;
+    let database = file_metadata(stage.path(), "mxr.db").unwrap();
+    *manifest
+        .files
+        .iter_mut()
+        .find(|file| file.path == "mxr.db")
+        .unwrap() = database;
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    inspect(stage.path()).await.unwrap();
+
+    manifest.schema_version = 83;
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert!(inspect(stage.path()).await.is_err());
+}
+
+#[tokio::test]
+async fn inspect_rejects_unrecognized_schema_objects_in_supported_bundle() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::query("CREATE TABLE unsupported_future_object (id INTEGER)")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    db.close().await.unwrap();
+    *manifest
+        .files
+        .iter_mut()
+        .find(|file| file.path == "mxr.db")
+        .unwrap() = file_metadata(stage.path(), "mxr.db").unwrap();
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert!(inspect(stage.path()).await.is_err());
+}
+
 #[tokio::test]
 async fn bundle_rejects_missing_corrupt_extra_and_traversal_files() {
     let source = tempfile::tempdir().unwrap();

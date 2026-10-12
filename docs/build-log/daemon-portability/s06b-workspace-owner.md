@@ -1,6 +1,6 @@
 # Private pending work keeps its original workspace
 
-S06b is complete: source merged, v0.6.89 published, and the published CLI/raw IPC/MCP/mailmerge, native held-editor and same-origin browser journeys passed. The installed packet records source, binary hash, acceptance, cleanup and limits. The docs closeout PR and its production deployment remain pending. Independent review remains waived until Anthropic is available again.
+S06b is complete: source merged, v0.6.89 published, and the published CLI/raw IPC/MCP/mailmerge, native held-editor and same-origin browser journeys passed. The installed packet records source, binary hash, acceptance, cleanup and limits. Docs PR431 is deployed at `mxr.sh` (deployment `dpl_7zua4ZbLw8BQfDwGwXH9hjhpxqSf`); this follow-up command-example correction awaits production deployment. Independent review remains waived until Anthropic is available again.
 
 | Release timing | Elapsed |
 | --- | ---: |
@@ -48,7 +48,7 @@ Evidence lives under `target/s06b-evidence` in the assigned worktree. Earlier ca
 - `daemon-outcomes-final.log`: nine send-outcome tests passed; `cli-help-tests3.log`: both normal-stack help/completion tests passed (266 help cases). `tui-ipc-tests5.log`: final three native IPC/event checks passed.
 - `scoped-rust-gate6.log`, `root-rust-clippy3.log`: mapped touched-crate hygiene and explicit root all-target/all-feature Clippy passed.
 
-Root's CLI/stdio MCP/mailmerge, native held-editor and actual browser attachment owner-switch fixtures passed against the frozen binary. The final native test-only correction passed all nine TUI suites (908 library tests and 80 integration tests, 988 total). The two browser runtimes' six owned roles were verified stopped with tokens absent, sockets and ports closed, and owned records removed. No personal mail or live provider participated. Published installer, Homebrew and all four client acceptance paths are verified in the installed packet; S06b is complete. Production documentation deployment remains pending.
+Root's CLI/stdio MCP/mailmerge, native held-editor and actual browser attachment owner-switch fixtures passed against the frozen binary. The final native test-only correction passed all nine TUI suites (908 library tests and 80 integration tests, 988 total). The two browser runtimes' six owned roles were verified stopped with tokens absent, sockets and ports closed, and owned records removed. No personal mail or live provider participated. Published installer, Homebrew and all four client acceptance paths are verified in the installed packet; S06b is complete. Production deployment of this follow-up documentation correction remains pending.
 
 The focused TUI run occupied task 6258 for 7.20 seconds: 0.20 seconds queued and 7.00 seconds executing. Initial CI caught stale native fakes; the 988-test scoped run confirmed their corrections before the final CI rerun. That makes the scoped suite a useful cheaper gate before rerunning whole-repository CI. Earlier worker timing combined another task's queue time and is superseded by this measured split.
 

@@ -88,8 +88,8 @@ mxr compose --account notto --to person@example.com \
 ```
 
 `--draft` cannot send: it conflicts with `--yes` in the parser. Sending stays a
-separate reviewed `mxr send DRAFT_ID` call using the revision and operation ID
-from its preview.
+separate reviewed `mxr send DRAFT_ID` call using the revision, exact
+`expected_workspace` JSON and operation ID from its preview.
 
 This CLI contract is the supported integration path for external tools such as
 [`mxr-mailmerge`](/guides/mail-merge/). The daemon socket exists but is not a
@@ -162,7 +162,7 @@ mxr archive --search 'from:noreply@example.com older_than:30d' --account work --
 
 - `read-archive` / `trash` / `spam` / `star` / `unstar` / `read` / `unread` / `label` / `unlabel` / `move` / `snooze` / `unsnooze` are **idempotent** — re-running with the same target IDs leaves state unchanged after the first call.
 - For a mailbox Archive operation with a lost response, query its retained operation ID before acting again. State idempotence does not prove whether the provider received the earlier dispatch; see the [recovery recipe](/guides/recipes/#recover-a-mailbox-archive-action).
-- A saved-draft send is bound to its reviewed revision and operation ID. Query its retained result with `mxr send-outcome`, including after the draft has been removed. The daemon does not start another send for an existing operation. An `unknown` outcome may have been accepted, so query it and do not resend. A `not_accepted` outcome means that operation was not accepted; review again and use a fresh operation ID for a new attempt.
+- A saved-draft send is bound to its reviewed revision, original `expected_workspace` JSON and operation ID. Keep that exact workspace JSON for `mxr send-outcome`, including after the draft has been removed; do not infer a new owner from the selected daemon. The daemon does not start another send for an existing operation. An `unknown` outcome may have been accepted, so query it and do not resend. A `not_accepted` outcome means that operation was not accepted; review again and use a fresh operation ID for a new attempt.
 - `mxr unsubscribe` may hit a provider URL once; re-running on an already-unsubscribed message is harmless but emits no useful new state.
 - `mxr undo MUTATION_ID` works within a 60-second window; after that it returns an error.
 - An undoable mutation normally returns a `mutation_id`. If that field is absent **and** the result has `"undo_unavailable": true`, the mutation succeeded but its undo entry could not be recorded — it can't be reversed with `mxr undo`. A plain absent `mutation_id` (no `undo_unavailable`) just means nothing was changed that undo could reverse (a dry run, or every message skipped).

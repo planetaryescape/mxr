@@ -48,8 +48,10 @@ packet; candidate `0ea54be1` CLI/MCP/TUI/browser proofs are not current release
 acceptance. The `compose.md` guide already describes chunked client upload,
 resource metadata, browser reload and TUI edit behavior; no guide rewrite was
 needed for this closeout. S05b raises the program tally to ten complete slices;
-S06b is merged and awaits v0.6.89 publication and installed-client acceptance,
-with S07 and S09 planned.
+S06b is merged, and v0.6.89 publication and installed-client acceptance are
+recorded in the [installed packet](evidence/s06b-installed-v0.6.89/README.md).
+Docs PR431 is deployed at `mxr.sh`; this follow-up command-example correction
+awaits production deployment. S07 and S09 remain planned.
 
 | Work | Observed duration |
 | --- | ---: |

@@ -56,7 +56,8 @@ mxr compose --to a@x.com --subject "Hi" --body "Hello"
 mxr reply <id> --body "Thanks!"
 mxr send DRAFT_ID --dry-run --format json    # Review revision and operation
 mxr send DRAFT_ID --at "monday 9am" \
-  --expected-revision REVISION_FROM_PREVIEW
+  --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'
 mxr drafts scheduled                         # What is going out later
 mxr unsend <draft_id>                        # Cancel a scheduled send
 mxr undo <mutation_id>                       # ~60s window on destructive ops
@@ -146,7 +147,8 @@ mxr response-time                            # My reply percentiles
 mxr compose --to a@x.com --subject "..." --body "..."       # Becomes draft
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --at "monday 9am" \
-  --expected-revision REVISION_FROM_PREVIEW
+  --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'
 mxr unsend <draft_id>                                       # Before it fires
 ```
 

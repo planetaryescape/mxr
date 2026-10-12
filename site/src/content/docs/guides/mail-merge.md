@@ -209,9 +209,14 @@ run for an immediate send, reconciliation starts with that alias and checks the 
 when needed. The daemon can retain an accepted result after
 deleting the draft, so the campaign can reconcile it without sending again:
 
+`mxr-mailmerge status CAMPAIGN_ID --json` prints the campaign manifest. Copy the
+affected record's `expected_workspace` unchanged for either manual outcome
+query; do not recapture the owner from the currently selected daemon.
+
 ```bash
-mxr-mailmerge status <campaign-id>
-mxr send-outcome 'draft:<draft-id>' --account <account-id> --format json
+mxr-mailmerge status CAMPAIGN_ID --json
+mxr send-outcome 'draft:<draft-id>' --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_MANIFEST>' --format json
 mxr-mailmerge send <campaign-id> --yes
 ```
 
@@ -238,7 +243,8 @@ inspect `mxr-mailmerge status`; do not treat a missing result as proof that the
 schedule was rejected or automatically schedule it again:
 
 ```bash
-mxr send-outcome 'draft:<draft-id>' --account <account-id> --format json
+mxr send-outcome 'draft:<draft-id>' --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_MANIFEST>' --format json
 mxr-mailmerge status <campaign-id>
 ```
 

@@ -69,15 +69,23 @@ provider exactly as it would have if you'd sent it manually then.
 # Compose a draft (any usual flow), then schedule it:
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --at "tomorrow 9am" \
-  --expected-revision REVISION_FROM_PREVIEW
+  --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'
 
 # Cancel a scheduled send:
 mxr unsend DRAFT_ID
 ```
 
 The scheduler assigns a separate operation identity. If delivery is interrupted,
-query that scheduled draft with
-`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
+query the scheduled draft with the exact `expected_workspace` JSON from its
+schedule preview. Shell-quote that JSON and do not recapture it from the current
+daemon:
+
+```bash
+mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_SCHEDULE_PREVIEW>' --format json
+```
+
 The ordinary send preview's operation ID does not identify a scheduled attempt.
 The global last-send query can still refer to a different draft; use the draft
 alias for this schedule.

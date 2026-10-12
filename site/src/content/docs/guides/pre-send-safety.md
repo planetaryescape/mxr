@@ -52,6 +52,7 @@ mxr send DRAFT_ID --dry-run --format json
 
 # Send a draft that hit a Blocker with the token printed by --check.
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK
 
 # Skip the LLM-backed answer-coverage check (e.g. rate-limited model).
@@ -100,6 +101,7 @@ mxr send DRAFT_ID --check
 
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK
 ```
 
@@ -292,19 +294,23 @@ mxr send DRAFT_ID --check
 # Step 3: send with the preview identity and token. mxr verifies it covers every active
 # blocker before any provider call.
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW \
   --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
 
 ```bash
-# JSON workflow: preview first; retain its revision and operation ID.
+# JSON workflow: preview first; retain its revision, operation ID and owner JSON.
 mxr send "$DRAFT_ID" --dry-run --format json
-# Set these from the preview output before running the send below.
+# Set these values from the preview output before running the send below.
 read -r REVIEWED_REVISION OPERATION_ID
+# Copy expected_workspace from that preview without changing it.
+REVIEWED_WORKSPACE='<OWNER_JSON_FROM_PREVIEW>'
 TOKEN=$(mxr send "$DRAFT_ID" --check --format json | \
   jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
 [ -z "$TOKEN" ] && exit 0  # nothing to override; safe to send
 mxr send "$DRAFT_ID" --expected-revision "$REVIEWED_REVISION" \
+  --expected-workspace "$REVIEWED_WORKSPACE" \
   --operation-id "$OPERATION_ID" --override-safety "$TOKEN"
 ```
 
@@ -327,6 +333,7 @@ mxr drafts --format json | jq -r '.[] | select(.status == "draft") | .id'
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --check       # see the blocker
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW \
   --override-safety TOKEN_FROM_CHECK
 ```
@@ -359,12 +366,13 @@ verdict is BLOCKED and no override is in scope.
 
 ```text
 "Before sending DRAFT_ID, preview it with `mxr send DRAFT_ID --dry-run
---format json` and retain the revision and operation ID. Run
+--format json` and retain the revision, operation ID and exact
+`expected_workspace` JSON. Run
 `mxr send DRAFT_ID --check --format json` and show me any Blocker issues.
-If there are none, send with the retained `--expected-revision` and
-`--operation-id`. If there is a Blocker for missing attachment, stop and ask
-me what file to attach. For other Blockers, show me the token and ask whether
-I want to use it with that same reviewed identity."
+If there are none, send with the retained `--expected-revision`,
+`--expected-workspace` and `--operation-id`. If there is a Blocker for missing
+attachment, stop and ask me what file to attach. For other Blockers, show me
+the token and ask whether I want to use it with that same reviewed identity."
 ```
 
 ```text

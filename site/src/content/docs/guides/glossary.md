@@ -249,7 +249,7 @@ mxr gates every send through a [six-check pipeline](/guides/pre-send-safety/) be
 
 **Issue**: a single finding from one check. Has a code (`WrongRecipient`, `MissingAttachment`, `ReplyAll`, `PiiSecret`, `ToneMismatch`, `AnswerCoverage`, plus structural codes like `NoRecipients`), a severity (`Info`, `Warning`, `Blocker`), a message, optional detail/citations, and an `override_token` for Blockers.
 
-**Override token**: a single-use, draft-scoped token that bypasses Blocker issues for one send. Minted when a safety check finds a Blocker, either during `mxr send --check` or a refused send. Use it with the revision and operation ID from the saved-draft preview: `mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK`. Subsequent attempts with the same token fail. Editing the draft and adding a new Blocker kind invalidates the token.
+**Override token**: a single-use, draft-scoped token that bypasses Blocker issues for one send. Minted when a safety check finds a Blocker, either during `mxr send --check` or a refused send. Use it with the revision, original `expected_workspace` JSON and operation ID from the saved-draft preview: `mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --operation-id OPERATION_ID_FROM_PREVIEW --override-safety TOKEN_FROM_CHECK`. Subsequent attempts with the same token fail. Editing the draft and adding a new Blocker kind invalidates the token.
 
 **Safety audit**: every safety run is persisted to `draft_safety_runs` (verdict + redacted issues). Every override consumption is persisted to `draft_safety_overrides`. PII is never persisted raw, only redacted previews.
 

@@ -63,7 +63,8 @@ What you get: an interactive list keyed by sender + subject; pressing Enter prin
 
 ```bash
 mxr drafts recover
-mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
 
 Use the operation ID printed before the original send. A recovered draft is
@@ -238,8 +239,8 @@ hook before push.
 
 ### Send only if safety is clean, otherwise mint and pause
 
-Preview the saved draft and retain its revision and operation ID before using
-the safety report below:
+Preview the saved draft and retain its revision, operation ID and exact
+`expected_workspace` JSON before using the safety report below:
 
 ```bash
 mxr send "$DRAFT_ID" --dry-run --format json
@@ -250,10 +251,11 @@ verdict=$(echo "$report" | jq -r '.verdict')
 case "$verdict" in
   safe|warn) mxr send "$DRAFT_ID" \
       --expected-revision "$REVIEWED_REVISION" \
+      --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
       --operation-id "$OPERATION_ID" ;;
   blocked)
     token=$(echo "$report" | jq -r '.issues[] | select(.severity == "blocker") | .override_token | select(. != null)' | head -1)
-    echo "BLOCKED. After review, use the retained revision and operation ID: mxr send $DRAFT_ID --expected-revision $REVIEWED_REVISION --operation-id $OPERATION_ID --override-safety $token"
+    echo "BLOCKED. After review, use the retained revision, workspace and operation ID: mxr send $DRAFT_ID --expected-revision $REVIEWED_REVISION --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --operation-id $OPERATION_ID --override-safety $token"
     exit 2
     ;;
 esac
@@ -599,12 +601,12 @@ mxr send-time alice@example.com --at "$PROPOSED_AT" --format json \
            end'
 ```
 
-What you get: a one-liner with the best window if mxr has enough data, or an honest "no recommendation" line when sample count is low. Preview the draft with `mxr send DRAFT_ID --dry-run --format json`, then pair its reviewed revision with `mxr send DRAFT_ID --at "$WHEN" --expected-revision REVISION_FROM_PREVIEW` to schedule.
+What you get: a one-liner with the best window if mxr has enough data, or an honest "no recommendation" line when sample count is low. Preview the draft with `mxr send DRAFT_ID --dry-run --format json`, then pair its reviewed revision and exact `expected_workspace` JSON with `mxr send DRAFT_ID --at "$WHEN" --expected-revision REVISION_FROM_PREVIEW --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'` to schedule.
 
 ```text
 Tell an agent
 "Before scheduling DRAFT_ID, preview it with `mxr send DRAFT_ID --dry-run
---format json` and retain its revision. Then run `mxr send-time <to_address>
+--format json` and retain its revision and exact `expected_workspace` JSON. Then run `mxr send-time <to_address>
 --at <when> --format json`. If the proposed
 slot is at least 2x slower than the best window AND confidence is medium
 or high, propose the better slot. Don't auto-reschedule."

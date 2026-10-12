@@ -6165,10 +6165,7 @@ async fn global_sync_endpoints_reject_old_protocols_after_authorization() {
             assert_eq!(response.status(), reqwest::StatusCode::UPGRADE_REQUIRED);
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(body["code"], "protocol_mismatch");
-            assert_eq!(
-                body["details"]["required_protocol"],
-                IPC_PROTOCOL_VERSION
-            );
+            assert_eq!(body["details"]["required_protocol"], IPC_PROTOCOL_VERSION);
             assert_eq!(body["details"]["actual_protocol"], protocol_version);
             assert!(body["error"]
                 .as_str()

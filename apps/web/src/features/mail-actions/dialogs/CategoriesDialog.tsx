@@ -45,6 +45,7 @@ import { useUndo } from "@/state/undoStore";
 import { describeTarget } from "../mailVerbs";
 import { claimUndo, offerUndo } from "../mailUndo";
 import { undoCategoryChanges } from "../categoryUndo";
+import { VERB_FEEDBACK } from "../verbFeedback";
 import type { MailTarget } from "../target";
 
 export function CategoriesDialog({
@@ -177,7 +178,7 @@ export function CategoriesDialog({
       claim.settle(
         offerUndo(
           "categories",
-          `Updated ${plural(result.added + result.removed, "category assignment")}`,
+          `${VERB_FEEDBACK.categories.pastTense} ${plural(assignmentPreview.message_count, "message")}`,
           `categories-${result.mutation_id}`,
           reverse,
           claim.run,

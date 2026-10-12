@@ -1,0 +1,107 @@
+{
+  "release_tag": "v0.6.91",
+  "source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+  "tree": "fce0c0e497969f291bb61c9c5f515c9cca821d58",
+  "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.91",
+  "observed_at": "2026-10-12T11:03:55.925288+00:00",
+  "workflow": {
+    "id": "38237257978",
+    "url": "https://github.com/planetaryescape/mxr/actions/runs/38237257978",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-10-12T10:35:14Z",
+    "completed_at": "2026-10-12T11:02:55Z",
+    "wall_seconds": 1661,
+    "jobs": [
+      {
+        "name": "Plan Release",
+        "conclusion": "success",
+        "started_at": "2026-10-12T10:35:22Z",
+        "completed_at": "2026-10-12T10:35:30Z",
+        "wall_seconds": 8
+      },
+      {
+        "name": "Release CLI Smoke",
+        "conclusion": "success",
+        "started_at": "2026-10-12T10:35:37Z",
+        "completed_at": "2026-10-12T10:45:43Z",
+        "wall_seconds": 606
+      },
+      {
+        "name": "Build aarch64-apple-darwin",
+        "conclusion": "success",
+        "started_at": "2026-10-12T10:35:38Z",
+        "completed_at": "2026-10-12T11:00:35Z",
+        "wall_seconds": 1497
+      },
+      {
+        "name": "Build x86_64-unknown-linux-gnu",
+        "conclusion": "success",
+        "started_at": "2026-10-12T10:35:33Z",
+        "completed_at": "2026-10-12T10:55:04Z",
+        "wall_seconds": 1171
+      },
+      {
+        "name": "GitHub Release",
+        "conclusion": "success",
+        "started_at": "2026-10-12T11:00:43Z",
+        "completed_at": "2026-10-12T11:01:09Z",
+        "wall_seconds": 26
+      },
+      {
+        "name": "Homebrew Formula",
+        "conclusion": "success",
+        "started_at": "2026-10-12T11:01:18Z",
+        "completed_at": "2026-10-12T11:02:55Z",
+        "wall_seconds": 97
+      }
+    ]
+  },
+  "assets": [
+    {
+      "name": "mxr-v0.6.91-macos-aarch64.tar.gz",
+      "sha256": "efd4be9181225672300e0cd12104c976794e7d99a1afd487b462c690f1c67b86"
+    },
+    {
+      "name": "mxr-v0.6.91-macos-aarch64.tar.gz.sha256",
+      "sha256": "10d90f4cdc99da0f57ac517695557e6ee067acca33e80b3182f13dd440164397"
+    },
+    {
+      "name": "mxr-v0.6.91-linux-x86_64.tar.gz",
+      "sha256": "cc2b5537ff7a11d5ec25422bb8dfc15e21c5dad70fc9f92dc3cb9609c72987e3"
+    },
+    {
+      "name": "mxr-v0.6.91-linux-x86_64.tar.gz.sha256",
+      "sha256": "320c83c7f5b88749ad7f95f1ef8384f8f2dc6ef95050e4bdb1e43f7b11ce8c70"
+    }
+  ],
+  "installer_binaries": {
+    "mxr": {
+      "version": "mxr 0.6.91",
+      "sha256": "be0f15cfe36bd19d5f621f8328fccf5a6c2147e1461160a1352743bb9bd79465"
+    },
+    "mxr-mailmerge": {
+      "version": "mxr-mailmerge 0.6.91",
+      "sha256": "bfcaad55a09c2c67fdf1a8976ade943e38aa6ad7f5876ac19e25055f9dfe4b9c"
+    }
+  },
+  "homebrew": {
+    "receipt_sha256": "c9daca6294947f25da576e28a652c20e08d550ed1c9c843f16a7e5e592222177",
+    "source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+    "published_archive_and_installer_hashes_match": true,
+    "binaries": {
+      "mxr": {
+        "version": "mxr 0.6.91",
+        "sha256": "be0f15cfe36bd19d5f621f8328fccf5a6c2147e1461160a1352743bb9bd79465"
+      },
+      "mxr-mailmerge": {
+        "version": "mxr-mailmerge 0.6.91",
+        "sha256": "bfcaad55a09c2c67fdf1a8976ade943e38aa6ad7f5876ac19e25055f9dfe4b9c"
+      }
+    },
+    "resolved_path": "/opt/homebrew/bin/mxr",
+    "no_service_or_postinstall": true,
+    "personal_daemon_restarted": false
+  },
+  "credentialed_live_provider_checks": "Skipped because test credentials were unavailable; successful release workflow does not establish live Gmail, IMAP, or SMTP acceptance."
+}

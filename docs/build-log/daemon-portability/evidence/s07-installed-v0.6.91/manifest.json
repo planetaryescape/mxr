@@ -1,0 +1,102 @@
+{
+  "published_release_source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+  "published_release_tree": "fce0c0e497969f291bb61c9c5f515c9cca821d58",
+  "binary_sha256": "be0f15cfe36bd19d5f621f8328fccf5a6c2147e1461160a1352743bb9bd79465",
+  "status": "S07 published release and all three client journeys passed; documentation deployment pending",
+  "scope": "Sanitized release and three-client acceptance summaries. Raw logs, binaries, credentials, environment values, network captures, and message content excluded.",
+  "retained": [
+    {
+      "name": "README.md",
+      "path": "docs/build-log/daemon-portability/evidence/s07-installed-v0.6.91/README.md",
+      "sha256": "15dcce09388c6a0277fc61077e754e853908bc140bb6cc352dd62841f334deba"
+    },
+    {
+      "name": "release-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s07-installed-v0.6.91/release-acceptance.json",
+      "sha256": "5498f4816eff7448522fe340a15c5e6ea5eb0486d7137df348aa9c05e359d716"
+    },
+    {
+      "name": "client-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s07-installed-v0.6.91/client-acceptance.json",
+      "sha256": "cb011e54eeebe2fbd7c840678f843487681dc880b79b1601f71638731463e3bd"
+    },
+    {
+      "name": "native-acceptance.json",
+      "path": "docs/build-log/daemon-portability/evidence/s07-installed-v0.6.91/native-acceptance.json",
+      "sha256": "9394dd376e60822ea20c4eba1afd69ddaf40834842452ad77267b1f3ffdd43c2"
+    },
+    {
+      "name": "openapi.json",
+      "path": "site/public/openapi.json",
+      "sha256": "3a36b46a24be83613c622aec8a82ba44b3209075e7b6eab8e00e083bee971cc7"
+    },
+    {
+      "name": "send.md",
+      "path": "site/src/content/docs/reference/cli/send.md",
+      "sha256": "b8dba30a4fb6e8c1850e8a81954283f31cb34604a26aaab34a586196eb6ceadc"
+    },
+    {
+      "name": "send-outcome.md",
+      "path": "site/src/content/docs/reference/cli/send-outcome.md",
+      "sha256": "feb95c95790858b0554ecaba0c73edf0d5e9f417b391358c8ca52a06c8dffcc3"
+    }
+  ],
+  "sources": [
+    {
+      "name": "published-release-verification",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/published-v0.6.91-release/verification.json",
+      "sha256": "a80d57bc3b9e972d3808a637cab64354c121a2476fc0f9799e9986223884fb22"
+    },
+    {
+      "name": "published-release-workflow",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/published-v0.6.91-release/workflow.json",
+      "sha256": "a3744cf4f8e7c4c453bde0d2647a21b97c28901666c67c58ae3e3f55c203bd7f"
+    },
+    {
+      "name": "published-homebrew-verification",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s07-homebrew-v0.6.91.json",
+      "sha256": "c9daca6294947f25da576e28a652c20e08d550ed1c9c843f16a7e5e592222177"
+    },
+    {
+      "name": "published-selected-cli-mcp-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/selected-clients-published-v0.6.91/result.json",
+      "sha256": "3951abec4cb7312dfb5f4d27bb54873c44f99af94d785e8a0d3dcce634131d62"
+    },
+    {
+      "name": "published-native-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/native-published-v0.6.91/result.json",
+      "sha256": "1fed2c3215d4ddef73778ca3fb600bc0fe7f1e25258b06a19ffb3264dfae1039"
+    },
+    {
+      "name": "root-published-native-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s07-root-native-published-v0.6.91.json",
+      "sha256": "a68873c51451dee565dc040e3f7fb9aa58f8e56be7aa743429fda70da570afa4"
+    }
+  ],
+  "docs_generation": {
+    "source_commit": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+    "source_tree": "fce0c0e497969f291bb61c9c5f515c9cca821d58",
+    "openapi_version": "0.6.91",
+    "openapi_paths": 239,
+    "openapi_bytes": 1014959,
+    "generated_cli_pages": 114
+  },
+  "native_acceptance": {
+    "source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+    "daemon_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+    "receipt_sha256": "1fed2c3215d4ddef73778ca3fb600bc0fe7f1e25258b06a19ffb3264dfae1039",
+    "root_receipt_sha256": "a68873c51451dee565dc040e3f7fb9aa58f8e56be7aa743429fda70da570afa4",
+    "passed": true
+  },
+  "site_build": {
+    "command": "agent-work run -- mise exec node@24.21.0 -- npm run build",
+    "task_id": 6344,
+    "source_commit": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+    "source_tree": "fce0c0e497969f291bb61c9c5f515c9cca821d58",
+    "result": "passed; 3 Node tests, 239 OpenAPI paths validated, 191 pages built; CLI reference generation produced 114 pages",
+    "warnings": [
+      "Vite reported a chunk above 500 kB after minification",
+      "Astro reported the configured i18n collection is empty"
+    ]
+  }
+}

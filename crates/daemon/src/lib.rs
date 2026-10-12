@@ -1176,6 +1176,7 @@ async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
             commands::mutations::send_outcome(operation_id, account, format).await?;
         }
         Some(Command::Send {
+            expected_workspace,
             expected_revision,
             operation_id,
             draft_id,
@@ -1192,7 +1193,7 @@ async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
             if check {
                 commands::mutations::check_send(draft_id, account, format, no_llm).await?;
             } else if let Some(when) = at {
-                commands::mutations::schedule_send(draft_id, account, when, expected_revision)
+                commands::mutations::schedule_send(draft_id, account, when, expected_revision, expected_workspace.map(|value| serde_json::from_str(&value)).transpose()?)
                     .await?;
             } else {
                 commands::mutations::send_draft(
@@ -1203,6 +1204,7 @@ async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
                     override_safety,
                     remind_after,
                     commands::mutations::SavedSendReview {
+                        expected_workspace: expected_workspace.map(|value| serde_json::from_str(&value)).transpose()?,
                         expected_revision,
                         operation_id,
                     },

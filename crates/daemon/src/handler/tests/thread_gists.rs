@@ -438,6 +438,7 @@ async fn a_batch_is_capped() {
         .map(|_| ThreadId::new())
         .collect();
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThreadGists {

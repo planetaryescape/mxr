@@ -49,6 +49,7 @@ async fn call(state: &Arc<AppState>, request: Request) -> Response {
     match handle_request(
         state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Cli,
             payload: IpcPayload::Request(request),
@@ -363,4 +364,65 @@ async fn send_outcomes_scheduled_revision_cannot_silently_follow_a_later_edit() 
         .await
         .unwrap();
     assert!(fake.sent_drafts().is_empty());
+}
+
+async fn external_call(state: &Arc<AppState>, request: Request, owner: Option<mxr_protocol::ArchiveWorkspaceData>) -> Response {
+    let response = handle_request_with_peer(state, &IpcMessage {
+        expected_workspace: owner, id: 401, source: ClientKind::Cli,
+        payload: IpcPayload::Request(request),
+    }, mxr_transport::PeerInfo::local()).await;
+    match response.payload { IpcPayload::Response(response) => response, other => panic!("unexpected {other:?}") }
+}
+
+async fn owner(state: &AppState) -> mxr_protocol::ArchiveWorkspaceData {
+    let (workspace_id, recovery_generation) = state.store.archive_workspace().await.unwrap();
+    mxr_protocol::ArchiveWorkspaceData { workspace_id, recovery_generation }
+}
+
+#[tokio::test]
+async fn copied_draft_commands_refuse_stale_or_missing_owner_before_effects() {
+    let (a, _, draft) = fixture().await;
+    let account = crate::test_fixtures::test_account_with_id(draft.account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(draft.account_id.clone()));
+    let b = Arc::new(AppState::in_memory_with_sync_provider(account, fake.clone(), Some(fake.clone())).await.unwrap());
+    b.store.insert_draft(&draft).await.unwrap();
+    let a_owner = owner(&a).await;
+    let b_owner = owner(&b).await;
+    assert_ne!(a_owner, b_owner);
+    let mut edited = draft.clone(); edited.content = mxr_core::DraftContent::markdown("private A edits");
+    let commands = vec![
+        Request::UpdateDraft { draft: edited },
+        send(&draft, SendIdentity::for_draft(&draft)),
+        Request::GetDraft { draft_id: draft.id.clone() },
+        Request::GetSendOutcome { account_id: draft.account_id.clone(), operation_id: SendIdentity::for_draft(&draft).operation_id },
+        Request::ScheduleSend { managed_attachments_reviewed: true, expected_revision: draft.revision, draft_id: draft.id.clone(), send_at: chrono::Utc::now() },
+        Request::CancelScheduledSend { draft_id: draft.id.clone() },
+        Request::DeleteDraft { draft_id: draft.id.clone(), expected_revision: draft.revision },
+    ];
+    for command in commands {
+        for supplied in [None, Some(a_owner.clone())] {
+            let response = external_call(&b, command.clone(), supplied.clone()).await;
+            assert!(matches!(response, Response::Error { ref code, retryable: false, .. } if code == if supplied.is_none() { "workspace_owner_required" } else { "workspace_conflict" }), "{response:?}");
+        }
+    }
+    let unchanged = b.store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(serde_json::to_value(unchanged).unwrap(), serde_json::to_value(&draft).unwrap());
+    assert!(b.store.get_send_outcome(&SendIdentity::for_draft(&draft).operation_id).await.unwrap().is_none());
+    assert!(b.store.list_pending_scheduled_sends(None).await.unwrap().is_empty());
+    assert!(fake.sent_drafts().is_empty());
+    assert!(matches!(external_call(&b, Request::GetDraft { draft_id: draft.id.clone() }, Some(b_owner)).await, Response::Ok { .. }));
+}
+
+#[tokio::test]
+async fn owner_remains_usable_until_controlled_recovery_generation_rotation() {
+    let (state, _, draft) = fixture().await;
+    let retained = owner(&state).await;
+    assert_eq!(owner(&state).await, retained);
+    assert!(matches!(external_call(&state, Request::GetDraft { draft_id: draft.id.clone() }, Some(retained.clone())).await, Response::Ok { .. }));
+    state.store.rotate_archive_generation().await.unwrap();
+    let current = owner(&state).await;
+    assert_eq!(current.workspace_id, retained.workspace_id);
+    assert_ne!(current.recovery_generation, retained.recovery_generation);
+    assert!(matches!(external_call(&state, send(&draft, SendIdentity::for_draft(&draft)), Some(retained)).await, Response::Error { ref code, .. } if code == "workspace_conflict"));
+    assert!(state.store.get_send_outcome(&SendIdentity::for_draft(&draft).operation_id).await.unwrap().is_none());
 }

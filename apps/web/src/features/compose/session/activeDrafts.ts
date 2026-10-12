@@ -8,6 +8,7 @@ import {
   refreshComposeSession,
   restoreComposeSession,
   startComposeSession,
+  rememberComposeBinding,
   type ComposeSessionResponse,
 } from "../api";
 import { DaemonUnavailableError } from "@/api/client";
@@ -15,9 +16,12 @@ import { requestCoordinator } from "@/lib/requestCoordinator";
 
 import { composeQueueKey, type ComposeDraftState, type ComposeIntent } from "./composeDraft";
 
+import { WorkspaceConflictError } from "@/lib/workspaceOwner";
+
 const activeDraftStorageKey = "mxr.compose.activeDrafts";
 
 interface ActiveDraftEntry {
+  snapshot?: ComposeDraftState;
   draftPath: string;
   recoverySourcePath?: string;
   preservedRecoveryPath?: string;
@@ -31,6 +35,15 @@ export async function loadInitialComposeSession(
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     try {
+      if (active.snapshot) {
+        if (active.snapshot.binding) rememberComposeBinding(active.snapshot.draftPath, active.snapshot.binding);
+        // A private snapshot survives a missing original bridge without submission.
+        const snapshot = active.snapshot;
+        return { retainedSnapshot: true, session: {
+          ...snapshot, draftId: snapshot.draftId, accountId: snapshot.accountId,
+          bodyMarkdown: snapshot.bodyMarkdown, previewHtml: "", binding: snapshot.binding,
+        } };
+      }
       // A composer that just closed (focus mode moving on, a reply closed
       // and reopened) may still be saving this file: read it after that.
       await requestCoordinator.settleCompose(
@@ -55,7 +68,7 @@ export async function loadInitialComposeSession(
         },
       };
     } catch (error) {
-      if (error instanceof DaemonUnavailableError) throw error;
+      if (error instanceof DaemonUnavailableError || error instanceof WorkspaceConflictError) throw error;
       forgetActiveDraft(intent.key);
     }
   }
@@ -81,6 +94,7 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState) {
     const raw = window.localStorage.getItem(activeDraftStorageKey);
     const parsed = raw ? (JSON.parse(raw) as Record<string, ActiveDraftEntry>) : {};
     parsed[key] = {
+      snapshot: draft,
       draftPath: draft.draftPath,
       recoverySourcePath: draft.recoverySourcePath,
       preservedRecoveryPath: draft.preservedRecoveryPath,

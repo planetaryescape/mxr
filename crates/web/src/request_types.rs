@@ -416,6 +416,7 @@ mod unsubscribe_preview_tests {
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {
+    workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     #[serde(rename = "preservedRecoveryPath")]
     preserved_recovery_path: Option<String>,
     /// Private recovery destination; automatic saves preserve it without canonical effects.

@@ -1262,6 +1262,7 @@ async fn mcp_category_catalog_requires_full_account_scope_and_preserves_profile_
 async fn dispatch_denies_another_accounts_records_to_a_scoped_mcp_client() {
     let s = scoped().await;
     let ledger = |account: &mxr_core::AccountId| IpcMessage {
+        expected_workspace: None,
         id: 9,
         source: ::mxr_protocol::ClientKind::Mcp,
         payload: IpcPayload::Request(Request::ListRecords {
@@ -1293,6 +1294,7 @@ async fn dispatch_denies_another_accounts_records_to_a_scoped_mcp_client() {
 
 async fn scoped_dispatch(s: &Scoped, req: Request) -> Response {
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 11,
         source: ::mxr_protocol::ClientKind::Mcp,
         payload: IpcPayload::Request(req),

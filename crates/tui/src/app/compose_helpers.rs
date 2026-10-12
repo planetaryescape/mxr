@@ -174,6 +174,12 @@ impl App {
         self.compose.last_send_query = None;
         #[cfg(not(test))]
         {
+            let Some(owner) = self.compose.workspace_owner.as_ref() else {
+                self.push_toast(Toast::error("Workspace owner is unavailable; your private file stays preserved")); return;
+            };
+            if let Err(error) = crate::send_recovery_state::retain_owner(&draft.id, owner) {
+                self.push_toast(Toast::error(error.to_string())); return;
+            }
             if let Err(error) = crate::send_recovery_state::retain_compose(
                 &draft.account_id,
                 &draft.id,

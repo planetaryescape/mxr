@@ -1258,7 +1258,8 @@ pub(crate) async fn get_status_within_budget(
             }
         };
     Ok(ResponseData::Status {
-        draft_revision_supported: true,
+        workspace_owner_supported: true,
+                draft_revision_supported: true,
         send_outcome_supported: true,
         archive_recovery_supported: true,
         attachment_transfer_supported: true,
@@ -1638,6 +1639,7 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
 
 pub(crate) fn emit_operation_event(state: &AppState, event: DaemonEvent) {
     let _ = state.event_tx.send(IpcMessage {
+        expected_workspace: None,
         id: 0,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Event(event),

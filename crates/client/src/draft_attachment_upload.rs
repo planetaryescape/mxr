@@ -12,9 +12,9 @@ fn error(message: impl Into<String>) -> ClientError {
 }
 
 impl IpcConnection {
-    async fn upload_request(&mut self, request: Request) -> Result<ResponseData, ClientError> {
+    async fn upload_request(&mut self, request: Request, workspace: Option<&mxr_protocol::ArchiveWorkspaceData>) -> Result<ResponseData, ClientError> {
         match self
-            .request_response_unchecked(request, &mut |_| {}, None)
+            .request_response_unchecked_owned(request, &mut |_| {}, None, workspace)
             .await?
         {
             Response::Ok { data } => Ok(data),
@@ -36,7 +36,7 @@ impl IpcConnection {
 
     /// Capability check precedes opening any client file. No host-path fallback.
     pub async fn require_draft_attachment_upload(&mut self) -> Result<(), ClientError> {
-        match self.upload_request(Request::GetStatus).await? {
+        match self.upload_request(Request::GetStatus, None).await? {
             ResponseData::Status { draft_attachment_upload_supported: true, .. } => Ok(()),
             _ => Err(error("Daemon does not support portable draft attachments; upgrade the daemon before uploading")),
         }
@@ -49,6 +49,16 @@ impl IpcConnection {
         mime_type: String,
         bytes: &[u8],
     ) -> Result<DraftAttachment, ClientError> {
+        let workspace = self.capture_workspace().await?;
+        self.upload_draft_attachment_bytes_owned(draft, filename, mime_type, bytes, Some(&workspace)).await
+    }
+
+    pub async fn upload_draft_attachment_bytes_owned(
+        &mut self, draft: &Draft, filename: String, mime_type: String, bytes: &[u8],
+        workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
+    ) -> Result<DraftAttachment, ClientError> {
+        if let Some(owner) = workspace { self.verify_workspace(owner).await?; }
+        else { return Err(error("Attachment upload requires its original workspace owner")); }
         self.require_draft_attachment_upload().await?;
         if bytes.len() as u64 > MAX_DRAFT_ATTACHMENT_BYTES {
             return Err(error(
@@ -70,7 +80,7 @@ impl IpcConnection {
         match self
             .upload_request(Request::BeginDraftAttachment {
                 metadata: metadata.clone(),
-            })
+            }, workspace)
             .await?
         {
             ResponseData::DraftAttachment { metadata: accepted } if accepted == metadata => (),
@@ -87,7 +97,7 @@ impl IpcConnection {
                     resource_id: metadata.id.clone(),
                     offset: index as u64 * u64::from(MAX_ATTACHMENT_CHUNK_BYTES),
                     data_base64: STANDARD.encode(chunk),
-                })
+                }, workspace)
                 .await?
             {
                 ResponseData::Ack => (),
@@ -99,7 +109,7 @@ impl IpcConnection {
                 draft_id: draft.id.clone(),
                 account_id: draft.account_id.clone(),
                 resource_id: metadata.id.clone(),
-            })
+            }, workspace)
             .await?
         {
             ResponseData::DraftAttachment { metadata: accepted } if accepted == metadata => {
@@ -113,6 +123,7 @@ impl IpcConnection {
     pub(crate) async fn prepare_draft_attachment_request(
         &mut self,
         mut request: Request,
+        workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Request, ClientError> {
         let preview_only = matches!(request, Request::CheckDraftSafety { .. });
         let sending = matches!(request, Request::SendDraft { .. });
@@ -140,12 +151,13 @@ impl IpcConnection {
         let mut files = Vec::new();
         let mut canonical = if draft.revision.unwrap_or(0) > 0 {
             match self
-                .request_response_unchecked(
+                .request_response_unchecked_owned(
                     Request::GetDraft {
                         draft_id: draft.id.clone(),
                     },
                     &mut |_| {},
                     None,
+                    workspace,
                 )
                 .await?
             {
@@ -189,7 +201,7 @@ impl IpcConnection {
                     canonical = match self
                         .upload_request(Request::GetDraft {
                             draft_id: draft.id.clone(),
-                        })
+                        }, workspace)
                         .await?
                     {
                         ResponseData::Draft { draft } => Some(draft),
@@ -249,7 +261,7 @@ impl IpcConnection {
             let mut owner = draft.clone();
             owner.revision = None;
             *draft = match self
-                .upload_request(Request::SaveDraft { draft: owner })
+                .upload_request(Request::SaveDraft { draft: owner }, workspace)
                 .await?
             {
                 ResponseData::Draft { draft } => draft,
@@ -258,11 +270,12 @@ impl IpcConnection {
         }
         for (filename, bytes) in files {
             let resource = self
-                .upload_draft_attachment_bytes(
+                .upload_draft_attachment_bytes_owned(
                     draft,
                     filename,
                     "application/octet-stream".into(),
                     &bytes,
+                    workspace,
                 )
                 .await?;
             draft
@@ -274,7 +287,7 @@ impl IpcConnection {
         *draft = match self
             .upload_request(Request::UpdateDraft {
                 draft: draft.clone(),
-            })
+            }, workspace)
             .await?
         {
             ResponseData::Draft { draft } => draft,

@@ -502,6 +502,7 @@ async fn a_sender_wide_edit_that_is_not_an_issuer_changes_nothing() {
     let refused = handle_request(
         &fx.state,
         &IpcMessage {
+            expected_workspace: None,
             id: 9,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SetRecordField {

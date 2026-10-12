@@ -38,6 +38,7 @@ fn encode(message: &IpcMessage) -> Vec<u8> {
 
 fn ping_frame() -> Vec<u8> {
     encode(&IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ClientKind::Cli,
         payload: IpcPayload::Request(Request::Ping),
@@ -46,6 +47,7 @@ fn ping_frame() -> Vec<u8> {
 
 fn expected_pong_frame() -> Vec<u8> {
     encode(&IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ClientKind::Daemon,
         payload: IpcPayload::Response(Response::Ok {
@@ -68,6 +70,7 @@ fn spawn_fake_daemon(sock: &Path, close_after_first: bool) -> JoinHandle<()> {
                 let mut framed = Framed::new(stream, IpcCodec::new());
                 while let Some(Ok(msg)) = framed.next().await {
                     let reply = IpcMessage {
+                        expected_workspace: None,
                         id: msg.id,
                         source: ClientKind::Daemon,
                         payload: IpcPayload::Response(Response::Ok {

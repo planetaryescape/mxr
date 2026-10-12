@@ -60,6 +60,7 @@ async fn portable_upload_rejects_old_daemon_before_opening_client_file() {
                 .remove("draft_attachment_upload_supported");
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -180,6 +181,7 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
             };
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(response),
@@ -233,6 +235,7 @@ async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
             count += 1;
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: message.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {

@@ -159,7 +159,7 @@ export function useComposeSession(
     const { draft: loaded, changed } = applyPrefill(baseDraft, intent);
     const next = { ...loaded, preservedRecoveryPath: sessionQuery.data?.preservedRecoveryPath };
     setDraft(next);
-    setDirty(changed);
+    setDirty(changed || Boolean(sessionQuery.data?.retainedSnapshot));
     setSaveError(
       next.recoverySourcePath
         ? "These edits are preserved locally. Use Retry or Open saved draft to continue."
@@ -169,7 +169,7 @@ export function useComposeSession(
     );
     // Loading a session is not a save: nothing is claimed until one lands.
     setLastSavedAt(null);
-    lastSavedFingerprintRef.current = next.recoverySourcePath
+    lastSavedFingerprintRef.current = sessionQuery.data?.retainedSnapshot || next.recoverySourcePath
       ? null
       : changed
         ? draftFingerprint(baseDraft)
@@ -185,6 +185,10 @@ export function useComposeSession(
     setLastSavedAt,
     setSaveError,
   ]);
+
+  useEffect(() => {
+    if (draft) rememberActiveDraft(intent.key, draft);
+  }, [draft, intent.key]);
 
   const hasUnsavedWork = dirty || autosave.saving || send.pendingSends > 0;
   useEffect(() => {

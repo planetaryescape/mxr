@@ -482,6 +482,7 @@ async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 100,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -740,6 +741,7 @@ mod updates_report;
 async fn dispatch_future_stays_well_inside_a_worker_stack() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetStatus),

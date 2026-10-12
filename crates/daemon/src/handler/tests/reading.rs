@@ -786,6 +786,7 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
 /// account.
 async fn as_scoped_agent(fx: &Fixture, req: Request) -> Response {
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 7,
         source: ClientKind::Mcp,
         payload: IpcPayload::Request(req),

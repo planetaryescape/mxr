@@ -122,6 +122,7 @@ pub(crate) mod gate {
         shared.entered_tx.send_modify(|count| *count += 1);
         if shared.oversized {
             return Some(IpcMessage {
+                expected_workspace: None,
                 id: msg.id,
                 source: ClientKind::default(),
                 payload: IpcPayload::Response(Response::error("x".repeat(17 * 1024 * 1024))),
@@ -137,6 +138,7 @@ pub(crate) mod gate {
             }
         }
         Some(IpcMessage {
+            expected_workspace: None,
             id: msg.id,
             source: ClientKind::default(),
             payload: IpcPayload::Response(Response::Ok {
@@ -607,6 +609,7 @@ impl Served {
 
 fn request(id: u64, req: Request) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id,
         source: ClientKind::Cli,
         payload: IpcPayload::Request(req),
@@ -628,6 +631,7 @@ fn emit(state: &Arc<AppState>) {
 /// id); never use this helper to assert on emitter output.
 fn daemon_event(event: DaemonEvent) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id: 0,
         source: ClientKind::default(),
         payload: IpcPayload::Event(event),
@@ -1736,6 +1740,7 @@ mod scoped_events {
         served
             .client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ClientKind::Mcp,
                 payload: IpcPayload::Request(Request::Ping),
@@ -1797,6 +1802,7 @@ mod scoped_events {
         served
             .client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ClientKind::Mcp,
                 payload: IpcPayload::Request(Request::Ping),
@@ -1817,6 +1823,7 @@ mod scoped_events {
         served
             .client
             .send(IpcMessage {
+                expected_workspace: None,
                 id: 2,
                 source: ClientKind::Mcp,
                 payload: IpcPayload::Request(Request::Ping),

@@ -348,6 +348,7 @@ impl IpcConnection {
 
     fn envelope(&self, id: u64, request: Request) -> IpcMessage {
         IpcMessage {
+            expected_workspace: None,
             id,
             source: self.source,
             payload: IpcPayload::Request(request),
@@ -370,13 +371,29 @@ impl IpcConnection {
     pub async fn request_response<F>(
         &mut self,
         request: Request,
+        on_event: F,
+        request_timeout: Option<Duration>,
+    ) -> Result<Response, ClientError>
+    where F: FnMut(DaemonEvent),
+    {
+        self.request_response_owned(request, None, on_event, request_timeout).await
+    }
+
+    /// Ownership belongs to this command, never to mutable connection state.
+    pub async fn request_response_owned<F>(
+        &mut self,
+        request: Request,
+        expected_workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
         mut on_event: F,
         request_timeout: Option<Duration>,
     ) -> Result<Response, ClientError>
     where
         F: FnMut(DaemonEvent),
     {
-        let request = match self.prepare_draft_attachment_request(request).await {
+        if let Some(workspace) = expected_workspace {
+            self.verify_workspace(workspace).await?;
+        }
+        let request = match self.prepare_draft_attachment_request(request, expected_workspace).await {
             Ok(request) => request,
             Err(ClientError::Daemon {
                 message,
@@ -531,7 +548,8 @@ impl IpcConnection {
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
-                        draft_revision_supported: true,
+                        workspace_owner_supported: false,
+                draft_revision_supported: true,
                         send_outcome_supported: true,
                         ..
                     }
@@ -540,21 +558,34 @@ impl IpcConnection {
                 return Ok(Response::error_kinded("Daemon does not support durable draft revisions; upgrade the daemon before saving or deleting drafts", mxr_protocol::IpcErrorKind::Unsupported));
             }
         }
-        self.request_response_unchecked(request, on_event, request_timeout)
+        self.request_response_unchecked_owned(request, on_event, request_timeout, expected_workspace)
             .await
     }
 
     async fn request_response_unchecked<F>(
         &mut self,
         request: Request,
-        mut on_event: F,
+        on_event: F,
         request_timeout: Option<Duration>,
     ) -> Result<Response, ClientError>
     where
         F: FnMut(DaemonEvent),
     {
+        self.request_response_unchecked_owned(request, on_event, request_timeout, None).await
+    }
+
+    async fn request_response_unchecked_owned<F>(
+        &mut self,
+        request: Request,
+        mut on_event: F,
+        request_timeout: Option<Duration>,
+        expected_workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
+    ) -> Result<Response, ClientError>
+    where F: FnMut(DaemonEvent),
+    {
         let id = self.take_id();
-        let message = self.envelope(id, request);
+        let mut message = self.envelope(id, request);
+        message.expected_workspace = expected_workspace.cloned();
         self.framed.send(message).await?;
 
         let wait_for_response = async {
@@ -591,6 +622,28 @@ impl IpcConnection {
             },
             None => wait_for_response.await,
         }
+    }
+
+    pub async fn capture_workspace(&mut self) -> Result<mxr_protocol::ArchiveWorkspaceData, ClientError> {
+        match self.request_response_unchecked(Request::GetStatus, &mut |_| {}, self.default_timeout).await? {
+            Response::Ok { data: ResponseData::Status { workspace_owner_supported: true, .. } } => (),
+            _ => return Err(workspace_error("workspace_owner_unsupported", "Daemon does not support workspace ownership; upgrade before replaying private work")),
+        }
+        match self.request_response_unchecked(Request::GetArchiveWorkspace, &mut |_| {}, self.default_timeout).await? {
+            Response::Ok { data: ResponseData::ArchiveWorkspace { workspace } } => Ok(workspace),
+            response => into_data(response).and_then(|_| Err(workspace_error("workspace_owner_unavailable", "Cannot obtain selected workspace identity"))),
+        }
+    }
+
+    pub async fn verify_workspace(&mut self, expected: &mxr_protocol::ArchiveWorkspaceData) -> Result<(), ClientError> {
+        if self.capture_workspace().await? != *expected {
+            return Err(workspace_error("workspace_conflict", "Selected workspace or recovery generation changed; return to the original workspace to recover retained private work"));
+        }
+        Ok(())
+    }
+
+    pub async fn request_owned(&mut self, request: Request, workspace: &mxr_protocol::ArchiveWorkspaceData) -> Result<ResponseData, ClientError> {
+        into_data(self.request_response_owned(request, Some(workspace), drop_event, self.default_timeout).await?)
     }
 
     /// Send `request` and return its [`ResponseData`] payload, mapping a
@@ -741,6 +794,7 @@ mod tests {
                     while let Some(Ok(message)) = framed.next().await {
                         if let Some(response) = responder(&message) {
                             let reply = IpcMessage {
+                                expected_workspace: None,
                                 id: message.id,
                                 source: ClientKind::Daemon,
                                 payload: IpcPayload::Response(response),
@@ -784,6 +838,7 @@ mod tests {
 
     fn event_frame(event: DaemonEvent) -> IpcMessage {
         IpcMessage {
+            expected_workspace: None,
             id: 0,
             source: ClientKind::Daemon,
             payload: IpcPayload::Event(event),
@@ -1037,6 +1092,7 @@ mod tests {
                 if let Some(Ok(message)) = framed.next().await {
                     let _ = framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: message.id.wrapping_add(100),
                             source: ClientKind::Daemon,
                             payload: IpcPayload::Response(Response::Ok {
@@ -1388,6 +1444,7 @@ mod draft_revision_compatibility_tests {
             assert!(matches!(first.payload, IpcPayload::Request(Request::Ping)));
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: first.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -1408,6 +1465,7 @@ mod draft_revision_compatibility_tests {
             // Missing capability evidence (representative of an older server).
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: negotiation.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -1472,6 +1530,7 @@ mod draft_revision_compatibility_tests {
             ));
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: request.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
@@ -1512,4 +1571,8 @@ mod draft_revision_compatibility_tests {
         ));
         server.await.expect("send compatibility fixture");
     }
+}
+
+fn workspace_error(code: &str, message: &str) -> ClientError {
+    ClientError::Daemon { message: message.into(), kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: code.into(), retryable: false, details: None }
 }

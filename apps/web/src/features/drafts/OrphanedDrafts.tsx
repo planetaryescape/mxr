@@ -1,3 +1,4 @@
+import { selectedWorkspace } from "@/lib/workspaceOwner";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,8 @@ export const orphanedDraftsQueryKey = ["drafts", "orphaned"] as const;
 
 function OutcomeRow({ reference }: { reference: SendReference }) {
   const outcome = useQuery({
-    queryKey: ["send-outcome", reference.accountId, reference.operationId],
-    queryFn: () => fetchSendOutcome(reference.accountId, reference.operationId),
+    queryKey: ["send-outcome", reference.binding, reference.accountId, reference.operationId],
+    queryFn: () => fetchSendOutcome(reference.accountId, reference.operationId, reference.binding),
   });
   const state = outcome.data?.outcome?.state;
   const description = outcome.isPending
@@ -41,7 +42,7 @@ export function OrphanedDrafts() {
   const references = readSendReferences();
   for (const draft of orphans.data ?? []) {
     if (!references.some((reference) => reference.draftId === draft.id)) {
-      references.push({ accountId: draft.account_id, draftId: draft.id, operationId: `draft:${draft.id}` });
+      references.push({ binding: selectedWorkspace(), accountId: draft.account_id, draftId: draft.id, operationId: `draft:${draft.id}` });
     }
   }
   if (references.length === 0) return null;

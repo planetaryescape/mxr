@@ -60,6 +60,7 @@ pub(crate) fn preview(config: &ChimeConfig, event: ChimeEvent) -> ChimePlayback 
 pub(crate) fn emit_daemon_event(state: &AppState, event: DaemonEvent) {
     play_for_daemon_event(state, &event);
     let message = IpcMessage {
+        expected_workspace: None,
         id: 0,
         source: ClientKind::default(),
         payload: IpcPayload::Event(event),

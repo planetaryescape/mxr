@@ -147,6 +147,7 @@ impl Fixture {
 
     pub(super) async fn desk(&self, lane_limit: u32) -> ResponseData {
         let msg = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetDesk {
@@ -360,6 +361,7 @@ async fn archiving_a_conversation_takes_it_off_the_desk() {
 
 pub(super) async fn request(fx: &Fixture, request: Request) -> ResponseData {
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(request),

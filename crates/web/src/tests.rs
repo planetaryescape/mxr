@@ -184,6 +184,7 @@ where
                 if let Some(event) = event {
                     let _ = framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: 0,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Event(event),
@@ -262,6 +263,7 @@ where
                             _ => {}
                         }
                         let response = IpcMessage {
+                            expected_workspace: None,
                             id: message.id,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Response(response),
@@ -295,7 +297,8 @@ async fn status_endpoint_proxies_ipc_status() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -666,7 +669,8 @@ async fn auth_accepts_authorization_bearer_header() {
         |_| {
             Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -1069,7 +1073,8 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -1524,7 +1529,8 @@ async fn mailbox_endpoint_lists_envelopes() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -1630,7 +1636,8 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -1760,7 +1767,8 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -4571,7 +4579,8 @@ async fn bad_input_is_400_and_missing_daemon_is_503() {
 
 fn sample_status() -> ResponseData {
     ResponseData::Status {
-        draft_revision_supported: true,
+        workspace_owner_supported: false,
+                draft_revision_supported: true,
         send_outcome_supported: true,
         archive_recovery_supported: true,
         attachment_transfer_supported: true,

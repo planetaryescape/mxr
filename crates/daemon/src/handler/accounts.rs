@@ -152,6 +152,7 @@ mod tests {
 
                 let state = Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
                 let msg = IpcMessage {
+                    expected_workspace: None,
                     id: 1,
                     source: ::mxr_protocol::ClientKind::default(),
                     payload: IpcPayload::Request(Request::RemoveAccountConfig {
@@ -219,6 +220,7 @@ mod tests {
                     let state =
                         Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
                     let msg = IpcMessage {
+                        expected_workspace: None,
                         id: 1,
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::DisableAccountConfig {
@@ -255,6 +257,7 @@ mod tests {
         runtime.block_on(async {
             let state = Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
             let msg = IpcMessage {
+                expected_workspace: None,
                 id: 1,
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::RepairAccountConfig {
@@ -322,6 +325,7 @@ mod tests {
                     let state =
                         Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
                     let msg = IpcMessage {
+                        expected_workspace: None,
                         id: 1,
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::RepairAccountConfig {

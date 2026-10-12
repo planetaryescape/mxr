@@ -132,6 +132,7 @@ async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
                 };
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: frame.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok { data: response }),
@@ -153,6 +154,7 @@ async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
                 };
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: frame.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok { data: response }),
@@ -213,6 +215,7 @@ async fn v068_status_fixture_refuses_archive_submission_without_capability() {
         let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
         framed
             .send(IpcMessage {
+                expected_workspace: None,
                 id: frame.id,
                 source: ClientKind::Daemon,
                 payload: IpcPayload::Response(Response::Ok { data: status }),
@@ -259,6 +262,7 @@ async fn v068_status_fixture_still_accepts_existing_draft_and_send_requests() {
             let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: status_request.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok { data: status }),
@@ -279,6 +283,7 @@ async fn v068_status_fixture_still_accepts_existing_draft_and_send_requests() {
             }
             framed
                 .send(IpcMessage {
+                    expected_workspace: None,
                     id: action.id,
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {

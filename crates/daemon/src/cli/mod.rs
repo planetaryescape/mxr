@@ -1515,6 +1515,9 @@ pub enum Command {
     },
     /// Send a draft by ID
     Send {
+        /// Workspace JSON returned by the reviewed preview; required for sending.
+        #[arg(long)]
+        expected_workspace: Option<String>,
         /// Revision returned by the reviewed preview. Required for sending now.
         #[arg(long)]
         expected_revision: Option<i64>,

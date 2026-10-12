@@ -1,3 +1,4 @@
+import { assertWorkspaceBinding } from "@/lib/workspaceOwner";
 import { prepareReviewedSend, retainSendReference } from "@/features/drafts/sendOutcomes";
 /*
  * Send pipeline for a compose session: validate → save → safety check →
@@ -406,7 +407,7 @@ export function useComposeSend({
       toast.error("Save and review the draft before sending");
       return;
     }
-    const sendReference = { operationId: `${current.draftId}:${expectedRevision}`, accountId, draftId: current.draftId };
+    const sendReference = { binding: current.binding, operationId: `${current.draftId}:${expectedRevision}`, accountId, draftId: current.draftId };
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
     const archiveSourceId =
       archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
@@ -422,6 +423,8 @@ export function useComposeSend({
     // reach the failure path would put a sent reply back and invite a
     // second send.
     const afterSend = async (response: Awaited<ReturnType<typeof sendComposeSession>>) => {
+      if (!sendReference.binding) throw new Error("Send owner is missing; retain this outcome for explicit recovery");
+      assertWorkspaceBinding(sendReference.binding);
       markSessionFinished();
       forgetActiveDraft(intent.key);
       emitSendEvent({
@@ -450,6 +453,7 @@ export function useComposeSend({
     const fire = async () => {
       let reviewedReference;
       try {
+        if (sendReference.binding) assertWorkspaceBinding(sendReference.binding);
         reviewedReference = await prepareReviewedSend(sendReference);
         retainSendReference(reviewedReference);
       } catch (error) {

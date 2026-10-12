@@ -1,4 +1,5 @@
-import { apiFetch } from "@/api/client";
+import { assertWorkspaceBinding, type WorkspaceBinding } from "@/lib/workspaceOwner";
+import { captureWorkspaceBinding, apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
 
 export interface ComposeFrontmatter {
@@ -15,8 +16,8 @@ export interface ComposeIssue {
   message: string;
 }
 
-export type ComposeSession = components["schemas"]["ComposeSessionData"];
-export type ComposeSessionResponse = components["schemas"]["ComposeSessionResponse"];
+export type ComposeSession = components["schemas"]["ComposeSessionData"] & { workspace?: WorkspaceBinding["workspace"] | null; binding?: WorkspaceBinding };
+export type ComposeSessionResponse = Omit<components["schemas"]["ComposeSessionResponse"], "session"> & { session: ComposeSession; retainedSnapshot?: boolean };
 
 export interface RuntimeAccount {
   account_id: string;
@@ -53,33 +54,20 @@ export type InviteReplyAction = "accept" | "tentative" | "decline";
  * reply with an attached iCal REPLY; it is not a stored-draft intent. */
 export type ComposeSessionKind = ComposeKind | "invite_reply";
 
-export function startComposeSession(
-  kind: ComposeSessionKind,
-  messageId?: string,
-  inviteAction?: InviteReplyAction,
+export async function startComposeSession(
+  kind: ComposeSessionKind, messageId?: string, inviteAction?: InviteReplyAction,
 ): Promise<ComposeSessionResponse> {
-  return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session", {
-    method: "POST",
-    body: {
-      kind,
-      message_id: messageId,
-      ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
-    },
-  });
+  return ownedSession("/api/v1/mail/compose/session", {
+    kind, message_id: messageId, ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
+  }, await captureWorkspaceBinding());
 }
 
-export function restoreComposeSession(draftId: string): Promise<ComposeSessionResponse> {
-  return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/restore", {
-    method: "POST",
-    body: { draft_id: draftId },
-  });
+export async function restoreComposeSession(draftId: string, original?: WorkspaceBinding): Promise<ComposeSessionResponse> {
+  return ownedSession("/api/v1/mail/compose/session/restore", { draft_id: draftId }, original ?? await captureWorkspaceBinding());
 }
 
 export function refreshComposeSession(draftPath: string): Promise<ComposeSessionResponse> {
-  return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/refresh", {
-    method: "POST",
-    body: { draft_path: draftPath },
-  });
+  return ownedSession("/api/v1/mail/compose/session/refresh", { draft_path: draftPath }, requireComposeBinding(draftPath));
 }
 
 export function updateComposeSession(input: {
@@ -90,7 +78,7 @@ export function updateComposeSession(input: {
   body: string;
   expectedRevision?: number | null;
 }): Promise<ComposeSessionResponse> {
-  return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/update", {
+  return composeFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/update", {
     method: "POST",
     body: {
       retry_recovery: input.retryRecovery ?? false,
@@ -118,7 +106,7 @@ export async function fetchContactsAutocomplete(
   limit = 8,
 ): Promise<ContactSuggestion[]> {
   const params = new URLSearchParams({ q, limit: String(limit) });
-  const data = await apiFetch<{ contacts?: ContactSuggestion[] }>(
+  const data = await composeFetch<{ contacts?: ContactSuggestion[] }>(
     `/api/v1/mail/contacts/autocomplete?${params.toString()}`,
   );
   return data.contacts ?? [];
@@ -141,7 +129,7 @@ export function sendComposeSession(
   expectedRevision?: number | null,
   operationId?: string,
 ): Promise<ComposeSendResponse> {
-  return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
+  return composeFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
       operation_id: operationId,
@@ -173,7 +161,7 @@ export function checkComposeSafety(
   accountId: string,
   expectedRevision?: number | null,
 ): Promise<{ report: DraftSafetyReport }> {
-  return apiFetch<{ report: DraftSafetyReport }>("/api/v1/mail/compose/session/safety-check", {
+  return composeFetch<{ report: DraftSafetyReport }>("/api/v1/mail/compose/session/safety-check", {
     method: "POST",
     body: { draft_path: draftPath, account_id: accountId, expected_revision: expectedRevision },
   });
@@ -190,7 +178,7 @@ export function suggestComposeCollaborators(
   draftPath: string,
   accountId: string,
 ): Promise<{ suggestions: SuggestedCollaborator[] }> {
-  return apiFetch<{ suggestions: SuggestedCollaborator[] }>(
+  return composeFetch<{ suggestions: SuggestedCollaborator[] }>(
     "/api/v1/mail/compose/session/collaborators",
     {
       method: "POST",
@@ -211,7 +199,7 @@ export function scheduleComposeSession(input: {
   expectedRevision?: number | null;
   sendAt: Date;
 }): Promise<components["schemas"]["ScheduledComposeResponse"]> {
-  return apiFetch("/api/v1/mail/compose/session/schedule", {
+  return composeFetch("/api/v1/mail/compose/session/schedule", {
     method: "POST",
     body: {
       draft_path: input.draftPath,
@@ -225,21 +213,21 @@ export function scheduleComposeSession(input: {
 
 /** "Remind me if no reply by `remindAt`" for a message already sent. */
 export function setAutoReminder(sentMessageId: string, remindAt: Date): Promise<unknown> {
-  return apiFetch<unknown>("/api/v1/mail/reminders", {
+  return composeFetch<unknown>("/api/v1/mail/reminders", {
     method: "POST",
     body: { sent_message_id: sentMessageId, remind_at: remindAt.toISOString() },
   });
 }
 
 export function cancelAutoReminder(sentMessageId: string): Promise<unknown> {
-  return apiFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
+  return composeFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
     method: "DELETE",
   });
 }
 
 /** Cancel a scheduled send. The stored draft itself is kept. */
 export function cancelScheduledSend(draftId: string): Promise<unknown> {
-  return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
+  return composeFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
     method: "DELETE",
   });
 }
@@ -258,7 +246,7 @@ export function saveComposeSession(
   draftId?: string,
   expectedRevision?: number | null,
 ): Promise<components["schemas"]["SavedDraftResponse"]> {
-  return apiFetch<components["schemas"]["SavedDraftResponse"]>(
+  return composeFetch<components["schemas"]["SavedDraftResponse"]>(
     "/api/v1/mail/compose/session/save",
     {
       method: "POST",
@@ -277,14 +265,14 @@ export function discardComposeSession(
   draftPath: string,
   expectedRevision?: number | null,
 ): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/discard", {
+  return composeFetch<{ ok: boolean }>("/api/v1/mail/compose/session/discard", {
     method: "POST",
     body: { draft_path: draftPath, expected_revision: expectedRevision },
   });
 }
 
 export async function supportsDraftAttachmentUpload(): Promise<boolean> {
-  const status = await apiFetch<{ draft_attachment_upload_supported?: boolean }>(
+  const status = await composeFetch<{ draft_attachment_upload_supported?: boolean }>(
     "/api/v1/admin/status",
   );
   return status.draft_attachment_upload_supported === true;
@@ -352,12 +340,34 @@ export function uploadComposeAttachment(
             content_base64: input.contentBase64,
           }
         : { resource_id: input.resourceId, expected_revision: input.expectedRevision };
-  return apiFetch("/api/v1/mail/compose/session/attachment", {
+  return composeFetch("/api/v1/mail/compose/session/attachment", {
     method: "POST",
     body: { ...body, ...declaration },
   });
 }
 
 export function fetchAccounts(): Promise<AccountsResponse> {
-  return apiFetch<AccountsResponse>("/api/v1/platform/accounts");
+  return composeFetch<AccountsResponse>("/api/v1/platform/accounts");
+}
+
+const composeBindings = new Map<string, WorkspaceBinding>();
+export function rememberComposeBinding(path: string, binding: WorkspaceBinding): void {
+  composeBindings.set(path, binding);
+}
+export function requireComposeBinding(path: string): WorkspaceBinding {
+  const binding = composeBindings.get(path);
+  if (!binding) throw new Error("This retained editor has no workspace identity; its private text is preserved. Explicitly reopen the saved draft before continuing.");
+  assertWorkspaceBinding(binding);
+  return binding;
+}
+function composeFetch<T>(path: string, opts: Parameters<typeof apiFetch>[1] = {}): Promise<T> {
+  const body = opts.body;
+  const draftPath = body && typeof body === "object" && "draft_path" in body && typeof body.draft_path === "string" ? body.draft_path : undefined;
+  return apiFetch<T>(path, { ...opts, binding: draftPath ? requireComposeBinding(draftPath) : opts.binding });
+}
+async function ownedSession(path: string, body: unknown, binding: WorkspaceBinding): Promise<ComposeSessionResponse> {
+  const response = await apiFetch<ComposeSessionResponse>(path, { method: "POST", body, binding });
+  const next = { ...response, session: { ...response.session, binding } };
+  rememberComposeBinding(next.session.draftPath, binding);
+  return next;
 }

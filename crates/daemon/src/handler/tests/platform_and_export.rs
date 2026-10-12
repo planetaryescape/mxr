@@ -21,6 +21,7 @@ async fn dispatch_unsubscribe_mailto_sends_via_provider() {
         .expect("mailto fixture");
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsubscribe {
@@ -93,6 +94,7 @@ async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::ListSavedSearchUnreadCounts),
@@ -147,6 +149,7 @@ async fn dispatch_unsubscribe_is_idempotent_via_event_log() {
         .expect("mailto fixture");
 
     let request = || IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Unsubscribe {
@@ -226,6 +229,7 @@ async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() 
     let resp = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::Unsubscribe {
@@ -258,6 +262,7 @@ async fn dispatch_mutation_nonexistent_message() {
 
     let fake_id = mxr_core::MessageId::new();
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
@@ -282,6 +287,7 @@ async fn dispatch_list_drafts_empty() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListDrafts),
@@ -347,6 +353,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
     state.store.insert_draft(&new_draft).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListDrafts),
@@ -401,6 +408,7 @@ async fn dispatch_save_and_send_stored_draft() {
     };
 
     let save_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SaveDraft {
@@ -416,6 +424,7 @@ async fn dispatch_save_and_send_stored_draft() {
     ));
 
     let send_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -479,6 +488,7 @@ async fn dispatch_send_stored_draft_replay_returns_original_receipt_without_rese
     state.store.insert_draft(&draft).await.unwrap();
 
     let send = || IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -553,6 +563,7 @@ async fn dispatch_send_draft_replay_returns_original_receipt_without_resending()
     };
 
     let send = || IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -657,6 +668,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let save = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft {
@@ -671,6 +683,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let check = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 2,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CheckDraftSafety {
@@ -706,6 +719,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let blocked = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 3,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -735,6 +749,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let ok = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 4,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -790,6 +805,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let save2 = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 5,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft {
@@ -802,6 +818,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let check2 = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 6,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::CheckDraftSafety {
@@ -826,6 +843,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let first = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 7,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -852,6 +870,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let save3 = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 8,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft {
@@ -864,6 +883,7 @@ async fn override_token_unblocks_send_exactly_once() {
     let reuse = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 9,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -937,6 +957,7 @@ async fn blocked_send_error_carries_usable_override_token() {
     handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraft {
@@ -950,6 +971,7 @@ async fn blocked_send_error_carries_usable_override_token() {
     let blocked = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 2,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -982,6 +1004,7 @@ async fn blocked_send_error_carries_usable_override_token() {
     let ok = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 3,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -1051,6 +1074,7 @@ async fn send_stored_draft_without_provider_does_not_claim_submission() {
     );
 
     let send_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -1121,6 +1145,7 @@ async fn send_stored_draft_blocks_empty_recipient_before_sending_state() {
     state.store.insert_draft(&draft).await.unwrap();
 
     let send_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -1186,6 +1211,7 @@ async fn send_draft_blocks_invalid_recipient_before_provider_send() {
     };
 
     let send_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -1273,6 +1299,7 @@ async fn send_stored_reply_all_blocks_missing_original_recipient_before_sending_
     state.store.insert_draft(&draft).await.unwrap();
 
     let send_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendStoredDraft {
@@ -1355,6 +1382,7 @@ async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
     };
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SendDraft {
@@ -1423,6 +1451,7 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
     };
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SaveDraftToServer {
@@ -1445,6 +1474,7 @@ async fn dispatch_saved_search_delete() {
 
     // Create a saved search
     let create_msg = IpcMessage {
+        expected_workspace: None,
         id: 20,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::CreateSavedSearch {
@@ -1466,6 +1496,7 @@ async fn dispatch_saved_search_delete() {
 
     // Verify it's in the list
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 21,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSavedSearches),
@@ -1483,6 +1514,7 @@ async fn dispatch_saved_search_delete() {
 
     // Delete it
     let delete_msg = IpcMessage {
+        expected_workspace: None,
         id: 22,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DeleteSavedSearch {
@@ -1499,6 +1531,7 @@ async fn dispatch_saved_search_delete() {
 
     // Verify it's gone
     let list_msg2 = IpcMessage {
+        expected_workspace: None,
         id: 23,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListSavedSearches),
@@ -1530,6 +1563,7 @@ async fn dispatch_export_thread_markdown() {
 
     // Get an envelope to find its thread_id
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -1549,6 +1583,7 @@ async fn dispatch_export_thread_markdown() {
 
     // Export the thread as markdown
     let export_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportThread {
@@ -1576,6 +1611,7 @@ async fn dispatch_sync_now_acknowledges() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 300,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -1603,6 +1639,7 @@ async fn dispatch_export_thread_json_is_valid() {
         .unwrap();
 
     let list_msg = IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListEnvelopes {
@@ -1621,6 +1658,7 @@ async fn dispatch_export_thread_json_is_valid() {
     };
 
     let export_msg = IpcMessage {
+        expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportThread {
@@ -1654,6 +1692,7 @@ async fn dispatch_get_headers_includes_standards_metadata() {
     state.store.insert_body(&body).await.unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetHeaders {
@@ -1692,6 +1731,7 @@ async fn dispatch_export_search_json_is_valid() {
         .unwrap();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 4,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportSearch {
@@ -1747,6 +1787,7 @@ async fn dispatch_save_draft_to_server() {
     let draft_id = draft.id.clone();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 5,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SaveDraftToServer { draft }),
@@ -1804,6 +1845,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     let first = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 51,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraftToServer {
@@ -1830,6 +1872,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     let second = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 52,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::UpdateDraft {
@@ -1879,6 +1922,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     let save_local_delete = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 53,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::SaveDraftToServer {
@@ -1902,6 +1946,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     let delete_local = handle_request(
         &state,
         &IpcMessage {
+            expected_workspace: None,
             id: 54,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DeleteDraft {
@@ -1954,6 +1999,7 @@ async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
     let notify = state.idle_notify_for_account(&account_id);
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 301,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -1995,6 +2041,7 @@ async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() 
     ));
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 303,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2027,6 +2074,7 @@ async fn dispatch_background_sync_now_acks_with_the_account_already_marked_synci
     ));
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 310,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2068,6 +2116,7 @@ async fn dispatch_background_sync_now_runs_the_full_fan_out() {
     let mut events = state.event_tx.subscribe();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 311,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2194,6 +2243,7 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     }));
 
     let request = |id: u64| IpcMessage {
+        expected_workspace: None,
         id,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2256,6 +2306,7 @@ async fn get_sync_status_reports_live_progress_while_a_sync_runs() {
     ));
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 314,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2266,6 +2317,7 @@ async fn get_sync_status_reports_live_progress_while_a_sync_runs() {
     handle_request(&state, &msg).await;
 
     let status_request = IpcMessage {
+        expected_workspace: None,
         id: 315,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetSyncStatus {
@@ -2301,6 +2353,7 @@ async fn dispatch_sync_now_clears_sync_in_progress_when_the_provider_is_drained(
     let account_id = state.default_provider().account_id().clone();
 
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 302,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SyncNow {
@@ -2326,6 +2379,7 @@ async fn resolve_time_answers_with_choices_or_a_specific_error() {
     // a test machine is likely to run in.
     let now = chrono::Utc.with_ymd_and_hms(2030, 5, 7, 12, 0, 0).unwrap();
     let resolve = |input: &str| IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ResolveTime {
@@ -2383,6 +2437,7 @@ async fn resolve_time_uses_the_callers_zone_when_given() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let now = chrono::Utc.with_ymd_and_hms(2030, 5, 7, 12, 0, 0).unwrap();
     let resolve = |zone: &str| IpcMessage {
+        expected_workspace: None,
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ResolveTime {

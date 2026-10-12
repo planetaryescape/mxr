@@ -1780,6 +1780,7 @@ mod tests {
                                     };
                                     let _ = framed
                                         .send(IpcMessage {
+                                            expected_workspace: None,
                                             id: message.id,
                                             source: ClientKind::default(),
                                             payload: IpcPayload::Response(response),
@@ -1819,7 +1820,8 @@ mod tests {
     /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
     fn degraded_status() -> ResponseData {
         ResponseData::Status {
-            draft_revision_supported: true,
+            workspace_owner_supported: false,
+                draft_revision_supported: true,
             send_outcome_supported: true,
             archive_recovery_supported: true,
             attachment_transfer_supported: true,

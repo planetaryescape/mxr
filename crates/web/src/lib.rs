@@ -17,6 +17,7 @@ mod legacy;
 mod mailbox_threads;
 mod messages_routes;
 mod middleware;
+mod workspace_owner;
 mod mode_routes;
 mod openapi;
 mod place_routes;
@@ -731,6 +732,7 @@ async fn refresh_compose_session(
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
     let path = Path::new(&request.draft_path);
+    workspace_owner::require_sidecar(path).await?;
     let session = if let Some(source) = compose_recovery_source(path).await? {
         // An explicit reopen owns a fresh copy: another tab may still edit or
         // discard the remembered recovery file. Autosave never enters this path.
@@ -790,6 +792,7 @@ async fn update_compose_session(
         .await?;
     let request_id = bridge_request_id(&headers);
     let path = Path::new(&request.draft_path);
+    workspace_owner::require_sidecar(path).await?;
     let draft_file = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -2435,7 +2438,12 @@ async fn ipc_request_with_id(
         .await
         .map_err(map_bridge_error)?
         .with_start_id(request_id);
-    connection.request(request).await.map_err(map_bridge_error)
+    let owner = workspace_owner::captured();
+    connection.request_response_owned(request, owner.as_ref(), |_| {}, None).await
+        .and_then(|response| match response {
+            mxr_protocol::Response::Ok { data } => Ok(data),
+            mxr_protocol::Response::Error { message, kind, code, retryable, details } => Err(ClientError::Daemon { message, kind, code, retryable, details }),
+        }).map_err(map_bridge_error)
 }
 
 /// Map a `mxr-client` failure onto the bridge's HTTP error vocabulary,
@@ -2457,7 +2465,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             code,
             details,
             ..
-        } if code.starts_with("archive_") => BridgeError::ArchiveConflict {
+        } if code.starts_with("archive_") || code.starts_with("workspace_") => BridgeError::ArchiveConflict {
             message,
             kind,
             code,
@@ -2833,10 +2841,12 @@ async fn write_recovery_metadata(
     let mut value =
         serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     value["compose_recovery_source"] = json!(source);
+    value["compose_workspace"] = json!(workspace_owner::captured());
     replace_compose_file(&draft_session_metadata_path(path), value.to_string()).await
 }
 
 async fn require_canonical_compose(path: &Path) -> Result<(), BridgeError> {
+    workspace_owner::require_sidecar(path).await?;
     if compose_recovery_source(path).await?.is_some() {
         return Err(BridgeError::BadRequest("These edits are preserved locally. Open the saved draft before sending, scheduling or saving to the provider.".into()));
     }
@@ -2882,7 +2892,9 @@ fn compose_content_with_accepted_attachments(
 }
 
 async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), BridgeError> {
-    let bytes = serde_json::to_vec(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let mut value = serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    value["compose_workspace"] = json!(workspace_owner::captured());
+    let bytes = serde_json::to_vec(&value).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);
     replace_compose_file(
         &metadata,
@@ -2989,6 +3001,7 @@ async fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeEr
     let metadata = read_draft_session_metadata(path).await?;
     let mut session = compose_session_from_snapshot(path, &raw_content, metadata.as_ref())?;
     session["recoverySourcePath"] = json!(compose_recovery_source(path).await?);
+    session["workspace"] = json!(workspace_owner::sidecar_owner(path).await?);
     Ok(session)
 }
 

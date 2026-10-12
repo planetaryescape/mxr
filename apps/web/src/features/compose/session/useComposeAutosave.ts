@@ -16,6 +16,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { assertWorkspaceBinding } from "@/lib/workspaceOwner";
+import { rememberComposeBinding } from "../api";
 import { DaemonUnavailableError } from "@/api/client";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
@@ -93,7 +95,10 @@ export function useComposeAutosave({
     attemptedFingerprintRef.current = `${snapshot.draftPath}:${snapshot.fingerprint}`;
     pendingSavesRef.current += 1;
     try {
+      rememberActiveDraft(intentKey, current);
       const result = await requestCoordinator.queueComposeLatest(queueKey, async () => {
+        if (snapshot.binding) assertWorkspaceBinding(snapshot.binding);
+        else throw new Error("Retained editor has no workspace owner; your text remains private. Reopen the saved draft explicitly.");
         const activeDraft = draftRef.current;
         const sameSession =
           activeDraft != null &&
@@ -117,6 +122,7 @@ export function useComposeAutosave({
         const submittedAttachments = snapshot.frontmatter.attach.map(
           (path) => recoveryTarget?.attachmentPaths?.get(path) ?? path,
         );
+        rememberComposeBinding(submittedPath, snapshot.binding);
         const response = await (async () => {
           try {
             return await updateSession.mutateAsync({
@@ -190,6 +196,7 @@ export function useComposeAutosave({
                     : value,
                 );
               }
+              if (snapshot.binding) rememberComposeBinding(recovery.draft_path, snapshot.binding);
               if (belongsToActive || currentIntentKeyRef.current !== intentKey)
                 rememberActiveDraft(intentKey, recovered);
               if (belongsToActive)
@@ -300,10 +307,11 @@ export function useComposeAutosave({
       if (recoverySource)
         preservedFingerprintRef.current = `${response.session.draftPath}:${savedFingerprint}`;
       else lastSavedFingerprintRef.current = savedFingerprint;
+      if (snapshot.binding) assertWorkspaceBinding(snapshot.binding);
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === savedFingerprint) {
         const next = {
-          ...draftFromSession(response.session, snapshot.accountId),
+          ...draftFromSession({ ...response.session, binding: snapshot.binding }, snapshot.accountId),
           recoverySourcePath: recoverySource,
           preservedRecoveryPath: latest.preservedRecoveryPath,
         };

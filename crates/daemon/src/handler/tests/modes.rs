@@ -434,6 +434,7 @@ async fn archive_has_no_done_and_unknown_threads_say_so() {
     let fx = Fixture::new().await;
     let (thread, _) = landlord(&fx).await;
     let msg = IpcMessage {
+        expected_workspace: None,
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SetModeDone {

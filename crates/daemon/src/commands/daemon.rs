@@ -242,6 +242,7 @@ mod tests {
             while let Some(Ok(message)) = framed.next().await {
                 if let IpcPayload::Request(Request::Ping) = message.payload {
                     let reply = IpcMessage {
+                        expected_workspace: None,
                         id: message.id,
                         source: ClientKind::Daemon,
                         payload: IpcPayload::Response(Response::Ok {
@@ -266,11 +267,13 @@ mod tests {
         let _server = spawn_ping_responder(sock.clone());
 
         let ping = IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Cli,
             payload: IpcPayload::Request(Request::Ping),
         };
         let expected_pong = encode_frame(&IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Daemon,
             payload: IpcPayload::Response(Response::Ok {

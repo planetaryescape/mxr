@@ -54,6 +54,7 @@ fn html_draft(
 
 fn request(id: u64, payload: Request) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(payload),

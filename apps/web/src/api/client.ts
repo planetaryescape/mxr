@@ -11,6 +11,7 @@
  * showing the paste-token panel.
  */
 
+import { assertTarget, assertWorkspaceBinding, observeWorkspace, parseWorkspace, selectedWorkspace, workspaceGeneration, WorkspaceConflictError, type WorkspaceBinding } from "@/lib/workspaceOwner";
 import createClient, { type Middleware } from "openapi-fetch";
 
 import type { paths } from "./generated";
@@ -76,12 +77,14 @@ function reportReachability(reachable: boolean): void {
   for (const listener of reachabilityListeners) listener(reachable);
 }
 
-async function sendToBridge(path: string, init: RequestInit): Promise<Response> {
+async function sendToBridge(path: string, init: RequestInit, target = getBridgeBaseUrl(), binding?: WorkspaceBinding): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(`${getBridgeBaseUrl()}${path}`, init);
+    assertTarget(target);
+    if (binding) assertWorkspaceBinding(binding);
+    res = await fetch(`${target}${path}`, init);
   } catch (error) {
-    if (init.signal?.aborted) throw error;
+    if (init.signal?.aborted || error instanceof WorkspaceConflictError) throw error;
     // fetch only rejects when no response came back at all.
     reportReachability(false);
     throw new DaemonUnavailableError({ cause: error });
@@ -160,30 +163,49 @@ client.use(authMiddleware);
 export const api = client;
 
 export interface RawFetchOpts {
+  binding?: WorkspaceBinding;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 }
 
 export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promise<T> {
+  const target = opts.binding?.target ?? getBridgeBaseUrl();
+  const commandBinding = opts.binding ?? (opts.method && opts.method !== "GET" ? selectedWorkspace() : undefined);
+  const startedGeneration = workspaceGeneration();
+  assertTarget(target);
+  if (commandBinding) assertWorkspaceBinding(commandBinding);
   let token = getToken();
   if (!token) token = await tryLocalHandshake();
+  assertTarget(target);
+  if (commandBinding) assertWorkspaceBinding(commandBinding);
   const headers = new Headers({ "content-type": "application/json" });
   if (token) headers.set("authorization", `Bearer ${token}`);
+  if (commandBinding) headers.set("x-mxr-workspace", JSON.stringify(commandBinding.workspace));
   const init: RequestInit = {
     method: opts.method ?? "GET",
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     signal: opts.signal,
   };
-  let res = await sendToBridge(path, init);
+  let res = await sendToBridge(path, init, target, commandBinding);
   if (res.status === 401) {
     const recovered = await tryLocalHandshake();
     if (recovered) {
       headers.set("authorization", `Bearer ${recovered}`);
-      res = await sendToBridge(path, init);
+      res = await sendToBridge(path, init, target, commandBinding);
     }
   }
+  assertTarget(target);
+  if (startedGeneration !== workspaceGeneration()) throw new WorkspaceConflictError();
+  const ownerHeader = res.headers.get("x-mxr-workspace");
+  if (ownerHeader) {
+    const owner: unknown = JSON.parse(ownerHeader);
+    const workspace = parseWorkspace(owner);
+    if (workspace) observeWorkspace({ target, workspace });
+  }
+  if (startedGeneration !== workspaceGeneration()) throw new WorkspaceConflictError();
+  if (commandBinding) assertWorkspaceBinding(commandBinding);
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) throw await failureFrom(res);
   if (res.status === 204) return undefined as T;
@@ -208,4 +230,15 @@ export async function apiFetchBlob(
 export function logoutAndReload(): void {
   clearToken();
   if (typeof window !== "undefined") window.location.reload();
+}
+
+export async function captureWorkspaceBinding(): Promise<WorkspaceBinding> {
+  const target = getBridgeBaseUrl();
+  const result = await apiFetch<{ workspace: unknown }>("/api/v1/mail/archive-operations/workspace");
+  assertTarget(target);
+  const workspace = parseWorkspace(result.workspace);
+  if (!workspace) throw new Error("Daemon does not supply a durable workspace identity; upgrade before editing");
+  const binding = { target, workspace };
+  observeWorkspace(binding);
+  return binding;
 }

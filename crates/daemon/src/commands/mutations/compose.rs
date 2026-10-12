@@ -162,7 +162,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     if options.dry_run {
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(&draft, &effective_from, sending, options.format)?;
+        print_draft_preview(Some(&client.capture_workspace().await?), &draft, &effective_from, sending, options.format)?;
         return Ok(());
     }
 
@@ -634,7 +634,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     if dry_run {
         let effective_from =
             resolve_effective_from(client, &outgoing.account_id, outgoing.from.as_ref()).await?;
-        print_draft_preview(&outgoing, &effective_from, sending, format)?;
+        print_draft_preview(Some(&client.capture_workspace().await?), &outgoing, &effective_from, sending, format)?;
         return Ok(());
     }
 
@@ -1217,6 +1217,7 @@ pub async fn send_outcome(
 }
 
 pub struct SavedSendReview {
+    pub expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub expected_revision: Option<i64>,
     pub operation_id: Option<String>,
 }
@@ -1237,9 +1238,11 @@ pub async fn send_draft(
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(&draft, &effective_from, true, format)?;
+        print_draft_preview(Some(&client.capture_workspace().await?), &draft, &effective_from, true, format)?;
         return Ok(());
     }
+    let reviewed_owner = review.expected_workspace.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run --format json, then supply --expected-workspace from that preview; retained work is never rebound automatically"))?;
+    client.expect_workspace(reviewed_owner).await?;
     let reviewed_revision = review.expected_revision.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run, then supply --expected-revision from that preview"))?;
     let identity = mxr_core::SendIdentity {
         operation_id: review
@@ -1481,10 +1484,13 @@ pub async fn schedule_send(
     account: Option<String>,
     when: String,
     expected_revision: Option<i64>,
+    expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let send_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
+    let owner = expected_workspace.ok_or_else(|| anyhow::anyhow!("Scheduling requires --expected-workspace from the original send preview"))?;
+    client.expect_workspace(owner).await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     let revision = expected_revision.ok_or_else(|| {
@@ -2249,6 +2255,7 @@ async fn resolve_effective_from(
 
 #[derive(serde::Serialize)]
 struct DraftPreviewOutput<'a> {
+    expected_workspace: Option<&'a mxr_protocol::ArchiveWorkspaceData>,
     action: &'static str,
     dry_run: bool,
     send_identity: mxr_core::SendIdentity,
@@ -2258,6 +2265,7 @@ struct DraftPreviewOutput<'a> {
 }
 
 fn print_draft_preview(
+    workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     draft: &Draft,
     effective_from: &Address,
     sending: bool,
@@ -2268,6 +2276,7 @@ fn print_draft_preview(
         OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&DraftPreviewOutput {
+                expected_workspace: workspace,
                 action,
                 dry_run: true,
                 send_identity: mxr_core::SendIdentity::for_draft(draft),
@@ -2278,6 +2287,7 @@ fn print_draft_preview(
         OutputFormat::Jsonl => println!(
             "{}",
             serde_json::to_string(&DraftPreviewOutput {
+                expected_workspace: workspace,
                 action,
                 dry_run: true,
                 send_identity: mxr_core::SendIdentity::for_draft(draft),
@@ -2325,8 +2335,8 @@ fn print_draft_preview(
             println!("  operation: {}", identity.operation_id);
             if sending && draft.revision.is_some() {
                 println!(
-                    "  send: mxr send {} --expected-revision {}",
-                    draft.id, identity.expected_revision
+                    "  send: mxr send {} --expected-revision {} --expected-workspace '{}'",
+                    draft.id, identity.expected_revision, serde_json::to_string(&workspace)?
                 );
             }
             println!(

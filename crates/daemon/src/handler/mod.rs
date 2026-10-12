@@ -14,6 +14,7 @@ pub(crate) mod activity;
 mod admin;
 mod archive_ask;
 mod archive_recovery;
+mod workspace_owner;
 pub(crate) mod arrivals;
 mod auth_sessions;
 mod briefing;
@@ -478,9 +479,10 @@ pub async fn handle_request_with_peer(
                 account_id = account_id_str.as_str(),
                 account_key
             );
-            let response = dispatch(state, msg.source, &peer, req)
-                .instrument(span)
-                .await;
+            let response = match workspace_owner::validate(state, req, msg.expected_workspace.as_ref()).await {
+                Ok(()) => dispatch(state, msg.source, &peer, req).instrument(span).await,
+                Err(response) => response,
+            };
 
             // Activity capture seam. Fire-and-forget; never propagates errors.
             // See `docs/activity-log.md`.
@@ -502,6 +504,7 @@ pub async fn handle_request_with_peer(
     };
 
     IpcMessage {
+        expected_workspace: None,
         id: msg.id,
         source: ::mxr_protocol::ClientKind::Daemon,
         payload: IpcPayload::Response(response_data),
@@ -512,7 +515,17 @@ pub async fn handle_request_with_peer(
 /// re-dispatch, tests). Supplies a [`PeerInfo::local`] peer; served connections
 /// call [`handle_request_with_peer`] with the accepted peer instead.
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
-    handle_request_with_peer(state, msg, PeerInfo::local()).await
+    let mut internal = msg.clone();
+    if internal.expected_workspace.is_none() {
+        if let IpcPayload::Request(request) = &internal.payload {
+            if workspace_owner::required(request) {
+                if let Ok((workspace_id, recovery_generation)) = state.store.archive_workspace().await {
+                    internal.expected_workspace = Some(mxr_protocol::ArchiveWorkspaceData { workspace_id, recovery_generation });
+                }
+            }
+        }
+    }
+    handle_request_with_peer(state, &internal, PeerInfo::local()).await
 }
 
 async fn dispatch(

@@ -267,6 +267,7 @@ pub(crate) enum AsyncResult {
     SyncBatch(Vec<mxr_protocol::SyncAccountResult>),
     /// Emitted by the IPC worker when the daemon connection state changes.
     /// Replaces the old "silent return on initial connect failure" behavior.
+    WorkspaceOwner(mxr_protocol::ArchiveWorkspaceData),
     ConnectionState(app::ConnectionState),
     /// A user-visible error/warn raised by a background task. Preferred
     /// over `let _ = ...` silent drops on async paths that affect what

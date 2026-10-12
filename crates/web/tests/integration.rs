@@ -61,6 +61,7 @@ where
                 for event in events.iter() {
                     let _ = framed
                         .send(IpcMessage {
+                            expected_workspace: None,
                             id: 0,
                             source: ::mxr_protocol::ClientKind::default(),
                             payload: IpcPayload::Event(event.clone()),
@@ -73,6 +74,7 @@ where
                         if let Some(response) = responder(request) {
                             let _ = framed
                                 .send(IpcMessage {
+                                    expected_workspace: None,
                                     id: message.id,
                                     source: ::mxr_protocol::ClientKind::default(),
                                     payload: IpcPayload::Response(response),
@@ -371,7 +373,8 @@ async fn one_route_per_bucket_dispatches() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -474,7 +477,8 @@ async fn legacy_path_redirect_round_trip_smoke() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    draft_revision_supported: true,
+                    workspace_owner_supported: false,
+                draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,

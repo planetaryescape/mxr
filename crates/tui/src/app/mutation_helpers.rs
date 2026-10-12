@@ -428,6 +428,7 @@ impl App {
             other => other,
         };
         self.pending_mutation_queue.push(QueuedMutation {
+            expected_workspace: self.compose.workspace_owner.clone(),
             id,
             request,
             effect,

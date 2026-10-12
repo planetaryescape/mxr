@@ -28,14 +28,14 @@ const COMMAND_EXAMPLES = {
   search: {
     use: 'Find messages fast, then pipe IDs or JSON into the next step.',
     examples: [
-      "mxr search 'from:alice is:unread' --format json",
+      "mxr search 'from:alice@example.com is:unread' --format json",
       "mxr search 'has:attachment subject:invoice' --format ids | mxr label receipts --dry-run",
       "mxr search 'is:owed-reply' --format ids   # threads you're the bottleneck on",
     ],
   },
   cat: {
     use: 'Read one message body, or resolve a search to the first matching message.',
-    examples: ["mxr cat MESSAGE_ID --view reader", "mxr cat --search 'from:boss is:unread' --first"],
+    examples: ["mxr cat MESSAGE_ID --view reader", "mxr cat --search 'from:boss@example.com is:unread' --first"],
   },
   thread: {
     use: 'Read the whole conversation around a message or thread.',
@@ -55,7 +55,7 @@ const COMMAND_EXAMPLES = {
   },
   'read-archive': {
     use: 'Mark something done in one step: read it and remove it from the inbox.',
-    examples: ["mxr read-archive MESSAGE_ID", "mxr read-archive --search 'from:no-reply older_than:7d' --dry-run"],
+    examples: ["mxr read-archive MESSAGE_ID", "mxr read-archive --search 'from:no-reply@example.com older_than:7d' --dry-run"],
   },
   trash: {
     use: 'Move mail to trash after previewing the target set.',
@@ -63,24 +63,24 @@ const COMMAND_EXAMPLES = {
   },
   spam: {
     use: 'Report unwanted mail as spam through the provider-backed mutation path.',
-    examples: ["mxr spam MESSAGE_ID --dry-run", "mxr spam --search 'from:bad.example' --yes"],
+    examples: ["mxr spam MESSAGE_ID --dry-run", "mxr spam --search 'from:spam@bad.example' --yes"],
   },
   star: {
     use: 'Mark important messages for follow-up.',
-    examples: ["mxr star MESSAGE_ID", "mxr star --search 'from:manager subject:review' --dry-run"],
+    examples: ["mxr star MESSAGE_ID", "mxr star --search 'from:manager@example.com subject:review' --dry-run"],
   },
   unstar: { use: 'Remove stars from messages.', examples: ["mxr unstar MESSAGE_ID"] },
   read: { use: 'Mark messages read.', examples: ["mxr read --search 'label:alerts older_than:14d' --dry-run"] },
   unread: { use: 'Put messages back into an unread workflow.', examples: ["mxr unread MESSAGE_ID"] },
   label: {
     use: 'Apply a label/folder to messages, including piped IDs from search.',
-    examples: ["mxr label receipts MESSAGE_ID", "mxr search 'from:billing' --format ids | mxr label receipts --yes"],
+    examples: ["mxr label receipts MESSAGE_ID", "mxr search 'from:billing@example.com' --format ids | mxr label receipts --yes"],
   },
   unlabel: { use: 'Remove a label from messages.', examples: ["mxr unlabel receipts MESSAGE_ID"] },
   move: { use: 'Move messages to a folder-like label.', examples: ["mxr move Archive MESSAGE_ID"] },
   snooze: {
     use: 'Hide mail until a useful time instead of leaving it as inbox noise.',
-    examples: ["mxr snooze MESSAGE_ID --until 'monday 9am'", "mxr snooze --search 'from:newsletter is:unread' --until weekend --dry-run"],
+    examples: ["mxr snooze MESSAGE_ID --until 'monday 9am'", "mxr snooze --search 'from:newsletter@example.com is:unread' --until weekend --dry-run"],
   },
   unsnooze: { use: 'Wake snoozed messages early.', examples: ["mxr unsnooze MESSAGE_ID", "mxr unsnooze --all --dry-run"] },
   unsubscribe: {
@@ -186,7 +186,7 @@ const COMMAND_EXAMPLES = {
       "mxr saved run today --format ids",
     ],
   },
-  rules: { use: 'Create deterministic filing/mutation rules and dry-run them before enabling.', examples: ["mxr rules validate --when 'from:billing' --then 'label:receipts'", "mxr rules dry-run --all --after 2026-01-01"] },
+  rules: { use: 'Create deterministic filing/mutation rules and dry-run them before enabling.', examples: ["mxr rules validate --when 'from:billing@example.com' --then 'label:receipts'", "mxr rules dry-run --all --after 2026-01-01"] },
   snippets: {
     use: "Manage stock reply snippets. Bodies may reference built-in tokens: `{first_name}` / `{full_name}` (resolved from the draft's `to:`), `{thread_subject}` (the draft subject with `Re:` / `Fwd:` stripped), and `{today}` / `{date}` / `{year}` (local time at expansion).",
     examples: [
@@ -217,8 +217,8 @@ const COMMAND_EXAMPLES = {
     ],
   },
   screener: { use: 'Decide where first-time senders should go.', examples: ["mxr screener queue", "mxr screener feed newsletter@example.com --label feeds"] },
-  summarize: { use: 'Summarize long threads through the configured LLM.', examples: ["mxr summarize THREAD_ID", "mxr summarize --search 'from:team newer_than:7d' --limit 5"] },
-  'draft-assist': { use: 'Generate a draft body grounded in a thread, then review before sending.', examples: ["mxr draft-assist THREAD_ID 'Polite follow-up with next steps'", "mxr draft-assist --search 'from:sarah newer_than:14d' --first '1:1 agenda'"] },
+  summarize: { use: 'Summarize long threads through the configured LLM.', examples: ["mxr summarize THREAD_ID", "mxr summarize --search 'from:team@example.com newer_than:7d' --limit 5"] },
+  'draft-assist': { use: 'Generate a draft body grounded in a thread, then review before sending.', examples: ["mxr draft-assist THREAD_ID 'Polite follow-up with next steps'", "mxr draft-assist --search 'from:sarah@example.com newer_than:14d' --first '1:1 agenda'"] },
   subscriptions: { use: 'Find noisy mailing lists and candidates for unsubscribe sweeps.', examples: ["mxr subscriptions --rank --format json"] },
   storage: { use: 'Find large senders, MIME types, labels, or individual messages consuming disk.', examples: ["mxr storage --by sender --limit 20", "mxr storage --by message --format ids | mxr archive --dry-run"] },
   contacts: { use: 'Surface relationship asymmetry or decay.', examples: ["mxr contacts asymmetry --limit 20", "mxr contacts decay --threshold-days 45"] },
@@ -369,7 +369,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   wrapped: { use: 'Generate year-to-date or yearly email analytics.', examples: ["mxr wrapped --ytd", "mxr wrapped --year 2025 --format json"] },
-  export: { use: 'Turn threads into Markdown/JSON/LLM context.', examples: ["mxr export THREAD_ID --format markdown", "mxr export --search 'from:legal' --format markdown > legal.md"] },
+  export: { use: 'Turn threads into Markdown/JSON/LLM context.', examples: ["mxr export THREAD_ID --format markdown", "mxr export --search 'from:legal@example.com' --format markdown > legal.md"] },
   attachments: { use: 'List, open, or download message attachments.', examples: ["mxr attachments list MESSAGE_ID", "mxr attachments download MESSAGE_ID 1 --dir ~/Downloads/mxr"] },
   invite: {
     use: 'Inspect one email calendar invite and send an iMIP RSVP only after a dry-run preview. See [calendar invites](/guides/calendar-invites/) for the full flow.',
@@ -399,7 +399,7 @@ const COMMAND_EXAMPLES = {
       "mxr semantic reindex --force   # recover a corrupt or half-migrated index",
     ],
   },
-  open: { use: 'Open message URLs in your browser from CLI selection.', examples: ["mxr open MESSAGE_ID", "mxr open --search 'from:github subject:PR' --first"] },
+  open: { use: 'Open message URLs in your browser from CLI selection.', examples: ["mxr open MESSAGE_ID", "mxr open --search 'from:github@example.com subject:PR' --first"] },
   web: { use: 'Run the HTTP bridge directly for local app/API work.', examples: ["mxr web --print-url", "mxr web --auto-port --print-url"] },
   daemon: { use: 'Start the daemon explicitly for debugging or process managers.', examples: ["mxr daemon --foreground", "mxr daemon --no-bridge"] },
   demo: { use: 'Try mxr with an isolated two-account synthetic inbox and prewarmed demo analytics before connecting real mail.', examples: ["mxr demo", "mxr demo --reset", "mxr demo --no-tui"] },

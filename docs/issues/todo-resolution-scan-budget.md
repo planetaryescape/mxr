@@ -32,3 +32,22 @@ restart, cancellation, edited inputs, disabled accounts, provider/privacy change
 and retry isolation in the corresponding daemon and store tests. Portable backups
 preserve pending checks, attempt counts and completed pairs. Schema 81 backups
 remain readable; restored profiles keep checks paused until recovery activation.
+
+## Preserve these boundaries when changing the worker
+
+The four-check budget belongs to this resolution consumer. It is not a global
+provider-request quota: other model features have their own work, and one
+completion can invoke the empty-reasoning fallback. The shared deadline bounds
+model waiting across the batch, not every database operation in the tick.
+
+Reserve the attempt and retry time before awaiting the provider. Cancellation
+then leaves retryable work with backoff; a revision check prevents the old
+result from completing replacement work. Completed and exhausted rows suppress
+replay of unchanged inputs. This does not promise exactly-once remote execution
+when a provider response is lost.
+
+Keep the queue in the portable backup allowlist alongside the scan progress
+stored in `todo_runs`. Restoring a checkpoint without its deferred work can
+leave candidates behind the scan cursor. Verify both schema-81 compatibility
+and schema-82 queue state using `crates/store/src/backup/tests/mod.rs`; keep the
+recovery pause in `todo_loop` before it invokes the worker.

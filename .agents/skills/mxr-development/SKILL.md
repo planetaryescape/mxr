@@ -27,7 +27,7 @@ For feature work:
 1. Implement in the narrowest crate surface.
 2. Run `scripts/cargo-test -p <crate> --tests`.
 3. Run `cargo build -p mxr`.
-4. Restart stale daemons: `pkill -f 'mxr daemon' 2>/dev/null`, then `cargo run --bin mxr -- daemon --foreground`.
+4. Restart only the daemon owned by this worktree or isolated test profile. Verify its PID and runtime paths before stopping it; never stop all mxr daemons on a shared machine. Build in the shared queue, then launch the built binary with `daemon --foreground` outside the queue.
 5. Drive the feature through the CLI, preferably with `--format json`.
 6. Inspect daemon state with `mxr events`, `mxr logs`, `mxr doctor`, and `mxr activity`.
 7. Query persisted state back through the CLI, such as `mxr search ... --format json`.
@@ -71,7 +71,7 @@ See `docs/blueprint/01-architecture.md` for longer rationale.
 
 ## Local gates vs CI
 
-CI is the workspace gate. Every PR runs Check, Clippy, Rustdoc, Test (nextest, whole workspace), SQLx Offline, cargo deny and the build as required checks on 4-vCPU runners. Do not run `--workspace` clippy, `cargo doc --workspace`, `cargo nextest run --workspace` or `cargo build --workspace --release` on the developer machine: it repeats CI on the laptop, pegs every core for minutes, and proves nothing CI will not prove. Locally run only what is scoped to the change:
+CI is the workspace gate. `scripts/ci_change_scope.sh` selects Rust, web, docs and expensive checks from the changed paths. The workflow runs the applicable workspace checks; a docs-only PR does not run the Rust and web suites. Draft PRs also skip the two workspace test jobs and Web E2E until marked ready. Inspect `.github/workflows/ci.yml` and the final ready-PR checks rather than treating a skipped job as validation. Do not run `--workspace` clippy, `cargo doc --workspace`, `cargo nextest run --workspace` or `cargo build --workspace --release` on the developer machine. Locally run only what is scoped to the change:
 
 - `scripts/pre-pr-rust-gate` (fmt, clippy for touched crates only, boundary script, cargo deny). `--list` shows the crates it will check; `--full` is for reproducing a CI failure you cannot narrow to one crate.
 - `scripts/cargo-test -p <crate> --tests` for the crates you touched.

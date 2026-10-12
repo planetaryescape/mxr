@@ -314,12 +314,12 @@ impl Body {
             }
             self.push(row_line(todo, selected, dim, width, theme));
             if let Some(resolution) = &todo.resolution {
-                let status = if resolution.status == "pending" {
-                    "Looks resolved"
-                } else if resolution.status == "accepted" {
-                    "Resolved"
-                } else {
-                    ""
+                let status = match (resolution.status.as_str(), resolution.action.as_str()) {
+                    ("pending", "revise_date") => "New date proposed",
+                    ("accepted", "revise_date") => "Date changed",
+                    ("pending", _) => "Looks resolved",
+                    ("accepted", _) => "Resolved",
+                    _ => "",
                 };
                 if !status.is_empty() {
                     self.text(
@@ -695,8 +695,8 @@ pub(crate) mod tests {
     use chrono::Utc;
     use mxr_core::id::{AccountId, MessageId};
     use mxr_protocol::{
-        TodoActionData, TodoActionKindData, TodoAmountData, TodoFirstRunData, TodoRunwayData,
-        TodoStateData, TodoWeekData, TODO_GUIDE,
+        TodoActionData, TodoActionKindData, TodoAmountData, TodoFirstRunData, TodoResolutionData,
+        TodoRunwayData, TodoStateData, TodoWeekData, TODO_GUIDE,
     };
     use mxr_test_support::render_to_string;
 
@@ -910,6 +910,42 @@ pub(crate) mod tests {
         let rendered = render(&page(runway(vec![council_tax()], vec![]), true), 0);
         assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
         assert!(rendered.contains("\u{21b5} Open email to pay"));
+    }
+
+    #[test]
+    fn resolution_rows_distinguish_new_dates_from_completion() {
+        let mut proposed = todo("todo_6", "Renew car insurance");
+        proposed.resolution = Some(TodoResolutionData {
+            id: "resolution-pending".into(),
+            message_id: MessageId::new(),
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: Utc::now(),
+            quote: "The new date is 15 March.".into(),
+            quote_location: "body".into(),
+            source_method: "model".into(),
+            action: "revise_date".into(),
+            proposed_due_at: None,
+            proposed_due_words: Some("15 March".into()),
+            status: "pending".into(),
+        });
+        let mut changed = todo("todo_7", "Renew home insurance");
+        changed.resolution = Some(TodoResolutionData {
+            id: "resolution-accepted".into(),
+            message_id: MessageId::new(),
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: Utc::now(),
+            quote: "The new date is 15 March.".into(),
+            quote_location: "body".into(),
+            source_method: "model".into(),
+            action: "revise_date".into(),
+            proposed_due_at: None,
+            proposed_due_words: Some("15 March".into()),
+            status: "accepted".into(),
+        });
+        let rendered = render(&page(runway(vec![proposed, changed], vec![]), true), 0);
+
+        assert!(rendered.contains("New date proposed: The new date is 15 March."));
+        assert!(rendered.contains("Date changed: The new date is 15 March."));
     }
 
     #[test]

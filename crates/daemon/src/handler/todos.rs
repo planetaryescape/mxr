@@ -740,8 +740,6 @@ fn apply_resolution_dates(
     record.updated_at = now;
 }
 
-/// A promise row's state goes back to its commitment, so the desk and
-/// `mxr commitments` agree and the mirror doesn't undo the user's choice.
 async fn resolution_quote_is_current(
     state: &AppState,
     suggestion: &mxr_store::TodoResolutionSuggestion,
@@ -774,6 +772,8 @@ async fn resolution_quote_is_current(
     }
 }
 
+/// A promise row's state goes back to its commitment, so the desk and
+/// `mxr commitments` agree and the mirror doesn't undo the user's choice.
 async fn mirror_promise(
     state: &AppState,
     record: &TodoRecord,

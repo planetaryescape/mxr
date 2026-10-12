@@ -235,6 +235,17 @@ impl App {
         suggestion_id: String,
         preview: TodoChangeData,
     ) {
+        let preview_matches_selection = self.selected_todo().is_some_and(|todo| {
+            todo.id == todo_id
+                && todo.resolution.as_ref().is_some_and(|resolution| {
+                    resolution.id == suggestion_id && resolution.status == "pending"
+                })
+        });
+        if !preview_matches_selection {
+            self.mailbox.todo_page.resolution_preview = None;
+            self.status_message = Some("Selection changed; press v to review this to-do.".into());
+            return;
+        }
         if preview.changed.is_empty() {
             self.status_message = Some(preview.summary);
             return;
@@ -630,10 +641,13 @@ impl App {
             (TodoPanel::Runway, KeyCode::Char(',')) => Some(Action::TodoEdit),
             (TodoPanel::Runway, KeyCode::Char('X')) if shifted => Some(Action::TodoDismiss),
             (TodoPanel::Runway | TodoPanel::Catchup, KeyCode::Char('u')) if plain => {
-                if self
-                    .selected_todo()
-                    .and_then(|todo| todo.resolution.as_ref())
-                    .is_some_and(|r| r.status == "accepted")
+                let has_transient_undo =
+                    self.pending_undo.is_some() || self.pending_invite_send.is_some();
+                if !has_transient_undo
+                    && self
+                        .selected_todo()
+                        .and_then(|todo| todo.resolution.as_ref())
+                        .is_some_and(|r| r.status == "accepted")
                 {
                     Some(Action::TodoUndoResolution)
                 } else {

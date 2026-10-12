@@ -68,6 +68,72 @@ fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
 }
 
 #[test]
+fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
+    let mut app = todo_app(true);
+    let source_id = mxr_core::id::MessageId::new();
+    let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+    row.resolution = Some(mxr_protocol::TodoResolutionData {
+        id: "resolution-1".into(),
+        message_id: source_id.clone(),
+        thread_id: mxr_core::id::ThreadId::new(),
+        source_date: chrono::Utc::now(),
+        quote: "Your council tax payment has been received.".into(),
+        quote_location: "body".into(),
+        source_method: "rule".into(),
+        action: "complete".into(),
+        proposed_due_at: None,
+        proposed_due_words: None,
+        status: "pending".into(),
+    });
+    app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+    press(&mut app, KeyCode::Char('v'));
+    assert!(app.mailbox.todo_page.pending_resolution.is_some());
+    press(&mut app, KeyCode::Char('o'));
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .pending_open
+            .as_ref()
+            .unwrap()
+            .message_id,
+        source_id
+    );
+    app.show_resolution_preview(
+        "todo_1".into(),
+        "resolution-1".into(),
+        TodoChangeData {
+            dry_run: true,
+            action: "resolution_preview".into(),
+            changed: vec![app.selected_todo().unwrap().clone()],
+            unchanged: vec![],
+            summary: "Would complete the to-do. Nothing changed yet.".into(),
+        },
+    );
+    app.mailbox.todo_page.pending_open = None;
+    press(&mut app, KeyCode::Char('o'));
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .pending_open
+            .as_ref()
+            .unwrap()
+            .message_id,
+        source_id,
+        "opening the cited source remains available during preview"
+    );
+    assert!(app.mailbox.todo_page.resolution_preview.is_some());
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::ResolveTodoSuggestion {
+            action: mxr_protocol::TodoResolutionActionData::Accept,
+            dry_run: false,
+            ..
+        }]
+    ));
+}
+
+#[test]
 fn e_ticks_off_at_once_and_u_puts_it_back() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char('e'));

@@ -13,6 +13,7 @@ Usage: mxr todo [OPTIONS] [COMMAND]
 Commands:
   list     The runway (the default), or every row in one state
   why      Where each field of a to-do came from: schema.org, a pattern in the email, the lead-time table, a model, or you
+  resolve  Review a later email's resolution offer. Defaults to a read-only preview
   done     Tick off to-dos
   undo     Reopen to-dos you ticked off, marked not a to-do, or that expired. A reopened row is yours: it never expires again
   dismiss  Not a to-do: kept as a correction and never shown again

@@ -235,6 +235,11 @@ pub enum UndoAction {
     /// To-dos ticked off or dismissed: put them back on the runway
     /// (`SetTodoState` undo).
     Todos(Vec<String>),
+    /// An evidence-backed resolution accepted for one task.
+    TodoResolution {
+        todo_id: String,
+        suggestion_id: String,
+    },
     /// Catch-up rows kept or let go: back in the batch, undecided.
     Catchup(Vec<String>),
     /// An Archive change, reversed as the daemon's `RecordUndoData` says:

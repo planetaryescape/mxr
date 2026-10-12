@@ -109,7 +109,11 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
                     .collect(),
             };
             let rest = rest.join("  ");
-            format!("\u{21b5} {enter}  {rest}  ? keys")
+            let review = selected
+                .and_then(|todo| todo.resolution.as_ref())
+                .filter(|resolution| resolution.status == "pending")
+                .map_or_else(String::new, |_| "  v review resolution".into());
+            format!("\u{21b5} {enter}  {rest}{review}  ? keys")
         }
         TodoPanel::Expired => "\u{21b5} restore  o email  Esc back to the runway".to_string(),
         TodoPanel::Catchup => {
@@ -309,6 +313,36 @@ impl Body {
                 self.selected_line = self.lines.len();
             }
             self.push(row_line(todo, selected, dim, width, theme));
+            if let Some(resolution) = &todo.resolution {
+                let status = if resolution.status == "pending" {
+                    "Looks resolved"
+                } else if resolution.status == "accepted" {
+                    "Resolved"
+                } else {
+                    ""
+                };
+                if !status.is_empty() {
+                    self.text(
+                        format!("{status}: {} · o source email", one_line(&resolution.quote)),
+                        Style::default().fg(theme.text_muted),
+                    );
+                }
+                if selected
+                    && view
+                        .page
+                        .resolution_preview
+                        .as_ref()
+                        .is_some_and(|(id, _, _)| id == &todo.id)
+                {
+                    if let Some((_, _, preview)) = &view.page.resolution_preview {
+                        self.text(preview.summary.clone(), Style::default().fg(theme.accent));
+                        self.text(
+                            "Enter accept · x dismiss · Esc cancel",
+                            Style::default().fg(theme.text_muted),
+                        );
+                    }
+                }
+            }
             *next_index += 1;
         }
     }
@@ -693,6 +727,7 @@ pub(crate) mod tests {
             runway: None,
             action: None,
             looks_done: None,
+            resolution: None,
             fields: Vec::new(),
             user_touched: false,
             thread_id: None,

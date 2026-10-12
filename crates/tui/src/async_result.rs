@@ -161,6 +161,11 @@ pub(crate) enum AsyncResult {
     TodoCatchup(Result<mxr_protocol::TodoCatchupData, MxrError>),
     /// The dry run of letting go of the whole catch-up.
     TodoCatchupPreview(Result<mxr_protocol::TodoChangeData, MxrError>),
+    TodoResolutionPreview(
+        String,
+        String,
+        Result<mxr_protocol::TodoChangeData, MxrError>,
+    ),
     Place(
         crate::app::PlaceFetch,
         Result<crate::app::PlacePageState, MxrError>,

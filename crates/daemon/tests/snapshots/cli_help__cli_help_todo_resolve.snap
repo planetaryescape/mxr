@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Review a later email's resolution offer. Defaults to a read-only preview
+
+Usage: mxr todo resolve [OPTIONS] <TODO_ID> <SUGGESTION_ID> [ACTION]
+
+Arguments:
+  <TODO_ID>
+  <SUGGESTION_ID>
+  [ACTION]         [default: preview] [possible values: preview, accept, dismiss, undo]
+
+Options:
+      --dry-run            Validate the selected action without applying it
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

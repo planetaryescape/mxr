@@ -696,6 +696,34 @@ prints thread ids.
 `thread_ids`, `message_ids`, `selection_token`, one `items` outcome per
 thread (as `mxr modes done`) and `mutation_id` for `mxr undo`.
 
+## To do resolution evidence
+
+A task with a later-message offer includes `resolution` in its `mxr todo --format json` row. The offer identifies the exact source and quote, and includes the proposed action and optional new deadline. A missing `resolution` means there is no current offer.
+
+```bash
+mxr todo --format json
+```
+
+```json
+{
+  "resolution": {
+    "id": "offer_…",
+    "message_id": "019…",
+    "thread_id": "019…",
+    "source_date": "2026-10-10T09:30:00Z",
+    "quote": "Your renewal is now due on 24 October.",
+    "quote_location": "body",
+    "source_method": "rule",
+    "action": "revise_date",
+    "proposed_due_at": "2026-10-24T00:00:00Z",
+    "proposed_due_words": "due on 24 October",
+    "status": "pending"
+  }
+}
+```
+
+`action` is `complete` or `revise_date`; status is `pending`, `accepted`, `dismissed`, `undone` or `superseded`. The row is a suggestion only: `mxr todo resolve TODO_ID SUGGESTION_ID preview` validates and previews it, while `accept` applies it. See [Review later evidence](/guides/todo-resolution/) for the full review and undo flow.
+
 ## Common `jq` patterns
 
 ```bash

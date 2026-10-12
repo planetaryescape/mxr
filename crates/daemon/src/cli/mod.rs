@@ -2231,6 +2231,16 @@ pub enum TodoAction {
     /// Where each field of a to-do came from: schema.org, a pattern in the
     /// email, the lead-time table, a model, or you.
     Why { todo_id: String },
+    /// Review a later email's resolution offer. Defaults to a read-only preview.
+    Resolve {
+        todo_id: String,
+        suggestion_id: String,
+        #[arg(value_enum, default_value_t = TodoResolutionActionArg::Preview)]
+        action: TodoResolutionActionArg,
+        /// Validate the selected action without applying it.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Tick off to-dos.
     Done {
         #[arg(value_name = "TODO_ID", required = true)]
@@ -2312,6 +2322,14 @@ pub enum TodoAction {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum TodoResolutionActionArg {
+    Preview,
+    Accept,
+    Dismiss,
+    Undo,
 }
 
 const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.

@@ -178,6 +178,21 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::TodoResolution {
+                            todo_id,
+                            suggestion_id,
+                        } => {
+                            self.queue_mutation(
+                                Request::ResolveTodoSuggestion {
+                                    todo_id,
+                                    suggestion_id,
+                                    action: mxr_protocol::TodoResolutionActionData::Undo,
+                                    dry_run: false,
+                                },
+                                MutationEffect::Todo("Resolution undone".into()),
+                                status,
+                            );
+                        }
                         UndoAction::Catchup(todo_ids) => {
                             self.queue_mutation(
                                 Request::SetTodoCatchup {

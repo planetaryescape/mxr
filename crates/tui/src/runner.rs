@@ -2125,6 +2125,38 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some((todo_id, suggestion_id, _)) = app.mailbox.todo_page.pending_resolution.take() {
+            let bg = bg.clone();
+            let task_id = todo_id.clone();
+            let source_id = suggestion_id.clone();
+            let _ = submit_task(&queued, async move {
+                let response = ipc_call(
+                    &bg,
+                    Request::ResolveTodoSuggestion {
+                        todo_id,
+                        suggestion_id,
+                        action: mxr_protocol::TodoResolutionActionData::Preview,
+                        dry_run: true,
+                    },
+                )
+                .await;
+                AsyncResult::TodoResolutionPreview(
+                    task_id,
+                    source_id,
+                    match response {
+                        Ok(Response::Ok {
+                            data: ResponseData::TodoChange { change },
+                        }) => Ok(change),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                        _ => Err(MxrError::Ipc(
+                            "unexpected response to resolution preview".into(),
+                        )),
+                    },
+                )
+            });
+        }
+
         let place_fetches = app
             .mailbox
             .pending_place_refresh
@@ -4252,6 +4284,12 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::TodoCatchupPreview(Err(e)) => {
                             app.status_message = Some(format!("Couldn't preview: {e}"));
                         }
+                        AsyncResult::TodoResolutionPreview(todo_id, suggestion_id, Ok(preview)) => {
+                            app.show_resolution_preview(todo_id, suggestion_id, preview);
+                        }
+                        AsyncResult::TodoResolutionPreview(_, _, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't review that resolution: {e}"));
+                        }
                         AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
                         AsyncResult::Desk(Err(e)) => {
                             app.status_message = Some(format!("Desk error: {e}"));
@@ -5275,6 +5313,19 @@ pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::Pe
     let (action, verb_past) = match change.action.as_str() {
         "done" => (app::UndoAction::Todos(ids), "Ticked off"),
         "dismiss" => (app::UndoAction::Todos(ids), "Marked not a to-do"),
+        "resolution_accept" => {
+            let todo = change.changed.first()?;
+            let resolution = todo.resolution.as_ref()?;
+            return Some(app::PendingUndo {
+                action: app::UndoAction::TodoResolution {
+                    todo_id: todo.id.clone(),
+                    suggestion_id: resolution.id.clone(),
+                },
+                verb_past: "Accepted resolution for".into(),
+                count: 1,
+                applied_at: std::time::Instant::now(),
+            });
+        }
         "keep" => (app::UndoAction::Catchup(ids), "Kept"),
         "let_go" => (app::UndoAction::Catchup(ids), "Let go of"),
         _ => return None,

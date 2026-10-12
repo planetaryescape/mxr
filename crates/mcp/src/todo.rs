@@ -25,7 +25,7 @@ impl From<State> for TodoStateData {
     }
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Done,
@@ -66,11 +66,28 @@ pub struct TodoStateInput {
     pub confirm: Option<bool>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolutionAction {
+    Accept,
+    Dismiss,
+    Undo,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TodoResolutionInput {
+    pub todo_id: String,
+    pub suggestion_id: String,
+    pub action: ResolutionAction,
+    #[serde(default)]
+    pub confirm: Option<bool>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{DaemonRequester, MxrMcpServer};
-    use mxr_protocol::{Request, Response, ResponseData};
+    use mxr_protocol::{Request, Response, ResponseData, TodoResolutionActionData};
     use rmcp::handler::server::wrapper::Parameters;
     use std::sync::{Arc, Mutex};
 
@@ -122,5 +139,48 @@ mod tests {
             r#"{"todo_ids":["a"],"action":"dismiss","confirm":"true"}"#
         )
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn resolution_tool_preserves_preview_action_and_confirmation_state() {
+        let requester = Arc::new(Requester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        for action in [
+            ResolutionAction::Accept,
+            ResolutionAction::Dismiss,
+            ResolutionAction::Undo,
+        ] {
+            for confirm in [None, Some(false), Some(true)] {
+                server
+                    .todo_resolve(Parameters(TodoResolutionInput {
+                        todo_id: "todo_cycle".into(),
+                        suggestion_id: "offer_cycle".into(),
+                        action,
+                        confirm,
+                    }))
+                    .await
+                    .expect("tool");
+            }
+        }
+        let requests = requester.0.lock().expect("requests");
+        let actions = [
+            TodoResolutionActionData::Accept,
+            TodoResolutionActionData::Dismiss,
+            TodoResolutionActionData::Undo,
+        ];
+        for (index, expected_action) in actions.into_iter().enumerate() {
+            let offset = index * 3;
+            for (request, dry_run) in [
+                (&requests[offset], true),
+                (&requests[offset + 1], true),
+                (&requests[offset + 2], false),
+            ] {
+                assert!(matches!(
+                    request,
+                    Request::ResolveTodoSuggestion { action, dry_run: actual, .. }
+                        if *action == expected_action && *actual == dry_run
+                ));
+            }
+        }
     }
 }

@@ -1752,7 +1752,7 @@ mod tests {
             .fetch_one(store.writer())
             .await
             .unwrap();
-        assert_eq!(version.0, super::MIGRATIONS.last().unwrap().version);
+        assert_eq!(version.0, i64::from(super::MIGRATIONS.last().unwrap().version));
         let category: (String, String) =
             sqlx::query_as("SELECT id, name FROM personal_categories WHERE id = 'kept-category'")
                 .fetch_one(store.writer())

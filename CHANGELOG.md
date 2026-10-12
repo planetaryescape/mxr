@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.87](https://github.com/planetaryescape/mxr/compare/v0.6.86...v0.6.87) (2026-10-12)
+
+
+### Features
+
+* assign personal categories with reviewed rules ([#418](https://github.com/planetaryescape/mxr/issues/418)) ([7af9e32](https://github.com/planetaryescape/mxr/commit/7af9e325c93d2d11f46d4120cc0b43e7d2ecf3d7))
+
+
+### Documentation
+
+* record published draft attachment acceptance ([#420](https://github.com/planetaryescape/mxr/issues/420)) ([1f7e21b](https://github.com/planetaryescape/mxr/commit/1f7e21b29f0761f77090f9e3928c4e7e7da35a3c))
+
 ## [0.6.86](https://github.com/planetaryescape/mxr/compare/v0.6.85...v0.6.86) (2026-10-12)
 
 

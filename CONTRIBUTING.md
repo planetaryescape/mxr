@@ -216,6 +216,13 @@ The OpenAPI generator uses Cargo when available and otherwise retains
 When changing the HTTP API, build `dump_openapi_spec` and run the built binary
 directly into the output file; queue status text must never enter the JSON.
 
+Check `info.version` against the workspace version in `Cargo.toml` even when
+the routes have not changed. A successful Node-only build can retain an older
+spec. Reference generation also preserves handwritten examples: run those
+against an isolated profile, including their selection semantics. For example,
+`from:alice@example.com` matches that full address; `from:alice` does not search
+sender display names.
+
 Add user guides to `site/astro.config.mjs` and check their rendered links and
 anchors. `npm run validate` checks known content errors and schema invariants;
 it is not a general broken-link checker. After merging, verify the changed

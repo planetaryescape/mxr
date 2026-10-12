@@ -79,6 +79,19 @@ history survive restarts and [backups](/guides/backup-recovery/); a restored
 workspace keeps model work paused until you activate recovery and reconfigure
 its processors. You can always complete or edit the task yourself.
 
+## When a review becomes stale
+
+```bash
+mxr todo --format json
+mxr todo resolve TODO_ID CURRENT_SUGGESTION_ID preview
+```
+
+Refresh the task and use its current `resolution.id`. Preview, acceptance and
+Undo check that the task still matches the saved offer or accepted state. If
+you edited the task in another client, an older offer cannot overwrite that
+edit. The cited email and quote must also remain available. If no current
+offer appears, inspect the source and complete or edit the task yourself.
+
 ## See also
 
 - [Act on To dos](/guides/todo/)

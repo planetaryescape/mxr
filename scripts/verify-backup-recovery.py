@@ -104,8 +104,8 @@ try:
  if a.released_binary:
   bridge=root/'selected-bridge.py';bridge.write_text('import socket,sys,threading\ns=socket.socket(socket.AF_UNIX);s.connect(sys.argv[1])\ndef send():\n while True:\n  b=sys.stdin.buffer.read1(65536)\n  if not b:break\n  s.sendall(b)\n try:s.shutdown(socket.SHUT_WR)\n except OSError:pass\nthreading.Thread(target=send,daemon=True).start()\nwhile True:\n b=s.recv(65536)\n if not b:break\n sys.stdout.buffer.write(b);sys.stdout.buffer.flush()\n')
   def selected(env):return env|{'MXR_DAEMON_ADDR':'cmd://python3 '+str(bridge)+' '+env['MXR_SOCKET_PATH']}
-  rejected=cli(selected(de),['status','--json'],False,a.released_binary.resolve());assert 'protocol' in rejected.lower()
-  legacy,le=profile('legacy');(legacy/'config/config.toml').write_text(config(False));lp=start(le,a.released_binary.resolve());rejected=cli(selected(le),['status','--json'],False);assert 'protocol' in rejected.lower();stop(lp);cases['published_11_new_12_both_directions']=True
+  rejected=cli(selected(de),['status','--format','json'],False,a.released_binary.resolve());assert 'protocol' in rejected.lower(),rejected
+  legacy,le=profile('legacy');(legacy/'config/config.toml').write_text(config(False));lp=start(le,a.released_binary.resolve());rejected=cli(selected(le),['status','--format','json'],False);assert 'protocol' in rejected.lower(),rejected;stop(lp);cases['published_11_new_12_both_directions']=True
  stop(dp)
  result={'source':a.source,'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'cases':cases,'workspace_id':old_owner['workspace_id'],'old_generation':old_owner['recovery_generation'],'new_generation':new_owner['recovery_generation'],'resource_length':len(payload),'resource_sha256':meta['sha256'],'root_acceptance_bundle':'bundle','root_acceptance_destination':'destination/data','all_owned_processes_stopped':True}
  (root/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))

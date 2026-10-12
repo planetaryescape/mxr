@@ -112,6 +112,7 @@ const TABLES: &[&str] = &[
     "restore_recovery",
     "restored_draft_holds",
     "restored_intentions",
+    "todo_resolution_queue",
 ];
 
 pub fn checked_relative(value: &str) -> BackupResult<PathBuf> {
@@ -196,7 +197,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || manifest.schema_version != 81 {
+    if manifest.format_version != 1 || !(81..=82).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -253,6 +254,12 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version == 81 {
+        // Compare legacy bundles against their immutable schema, not today's migrated schema.
+        sqlx::query("DROP TABLE todo_resolution_queue")
+            .execute(expected.writer())
+            .await?;
+    }
     let schema_sql="SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name";
     let actual_schema: Vec<(String, String, String, Option<String>)> =
         sqlx::query_as(schema_sql).fetch_all(&mut db).await?;
@@ -347,7 +354,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=81).contains(&version) {
+    if !(80..=82).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -418,7 +425,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:81, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:82, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into()] })
 }
 

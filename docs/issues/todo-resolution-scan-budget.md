@@ -29,4 +29,6 @@ Implementation: `crates/daemon/src/handler/todo_resolution/worker.rs`,
 `crates/store/src/todo_resolution_queue.rs`, and migration
 `082_todo_resolution_queue.sql`. Regression coverage includes aggregate limits,
 restart, cancellation, edited inputs, disabled accounts, provider/privacy changes
-and retry isolation in the corresponding daemon and store tests.
+and retry isolation in the corresponding daemon and store tests. Portable backups
+preserve pending checks, attempt counts and completed pairs. Schema 81 backups
+remain readable; restored profiles keep checks paused until recovery activation.

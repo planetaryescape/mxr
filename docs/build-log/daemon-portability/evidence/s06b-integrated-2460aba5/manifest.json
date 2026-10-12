@@ -5,16 +5,11 @@
   "retained": [
     {
       "name": "README.md",
-      "sha256": "5e0cf37b48940ae3c83d9c9827d63e7b219f22d4e0a5bbb486e0094c0c1bc556"
+      "sha256": "8f4b262658b4d1133125942da0b43b7a80b1226682feb3bfea07552ec7c865f1"
     },
     {
       "name": "integrated-status.json",
       "sha256": "152c287ff281469d4723b30fb2a5d67cdcbc1ab6a698ab5eab62ee5f48a9543f"
-    },
-    {
-      "name": "generated-openapi-spec",
-      "path": "site/public/openapi.json",
-      "sha256": "931fe9e3ba9a79345f06230dcf99951af882b050b5a9119f7fc91b6a09447fbb"
     }
   ],
   "scope": "Sanitized integration and acceptance summaries; raw logs, binaries, screenshots, network captures, tokens and mail content excluded.",
@@ -80,5 +75,15 @@
       "sha256": "3dd40d54b1092e860e314defbcffc035ad093f15847acf5b80a97494ab20c81b"
     }
   ],
-  "status": "S06b integrated; v0.6.88 smoke failure retained; v0.6.89 publication and installed acceptance pending"
+  "status": "S06b integrated; v0.6.88 smoke failure retained; v0.6.89 publication and installed acceptance pending",
+  "historical_generation_evidence": [
+    {
+      "name": "OpenAPI spec generated during v0.6.89 closeout",
+      "version": "0.6.89",
+      "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+      "sha256": "931fe9e3ba9a79345f06230dcf99951af882b050b5a9119f7fc91b6a09447fbb",
+      "file_retained": false,
+      "note": "Historical digest only; site/public/openapi.json now contains the current v0.6.90 generation recorded in the installed packet."
+    }
+  ]
 }

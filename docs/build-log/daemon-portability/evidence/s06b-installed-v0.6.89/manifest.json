@@ -9,7 +9,7 @@
   "retained": [
     {
       "name": "README.md",
-      "sha256": "9c33f2dfcc00a6f67b2e02d712aaf62f418bac7fd5dae9a258f3084f953ea956"
+      "sha256": "eebd9cdb099ad9a9bccdc6e38f2c508f2c5c6af0734e455bb64c2cfd45658079"
     },
     {
       "name": "release-acceptance.json",
@@ -38,7 +38,8 @@
     {
       "name": "openapi.json",
       "path": "site/public/openapi.json",
-      "sha256": "931fe9e3ba9a79345f06230dcf99951af882b050b5a9119f7fc91b6a09447fbb"
+      "sha256": "a5fc1af02d954013555041ecd6af4a333c97ba8026ca2881ae3120ca443801fa",
+      "version": "0.6.90"
     },
     {
       "name": "send.md",
@@ -116,18 +117,30 @@
       "name": "historical-candidate-manifest",
       "path": "docs/build-log/daemon-portability/evidence/s06b-candidate-bb64d37/manifest.json",
       "sha256": "f95f9e7a142bfb0f5782fe1a886191c75d6da7080fe5d4e282430e802eb72755"
+    },
+    {
+      "name": "historical-integrated-packet-manifest",
+      "path": "docs/build-log/daemon-portability/evidence/s06b-integrated-2460aba5/manifest.json",
+      "sha256": "c415bfc2c4e51d2909c50288d775bcab315e7e67b19512a5b280109306c1bcdc"
     }
   ],
   "local_docs_build": {
-    "status": "Passed on the pre-PR430 docs source; rerun generator and site build after rebase onto current main.",
+    "status": "passed against current rebased docs source",
     "node": "24.21.0",
-    "pueue_task": 6321,
-    "queue_seconds": 0.2,
-    "execution_seconds": 12.48,
-    "generated_cli_pages": 114,
-    "openapi_version": "0.6.89",
+    "pueue_task": 6324,
+    "queue_seconds": 0.156827,
+    "execution_seconds": 99.48631,
+    "command": "cd site && mise exec node@24.21.0 -- npm run build",
+    "docs_generation_source_commit": "e67ef3a29caec9d54756787e3b681fabae1ccf30",
+    "docs_generation_source_tree": "afb7f531abc994149842f58680bd26d5c436b5b1",
+    "base_main": "f9bb982ca48b876c41c6168b7c9205815442c74f",
+    "runtime_acceptance_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+    "openapi_version": "0.6.90",
     "openapi_paths": 239,
+    "openapi_bytes": 1014959,
+    "generated_cli_pages": 114,
     "search_tests": "3/3 passed",
+    "docs_validation": "passed",
     "site_pages": 191,
     "indexed_html_files": 192,
     "llms_pages": 187,
@@ -135,9 +148,17 @@
       "Vite reported a chunk above 500 kB.",
       "The i18n collection was empty."
     ],
-    "output": "ignored site/dist",
-    "base": "17f15c7de77deb033e96033e3553d72a6c7fa9b0 (before PR430 dependency-compatibility merge)"
+    "output": "ignored site/dist"
   },
   "status": "S06b published release and CLI/raw IPC/MCP/mailmerge, native TUI and browser acceptance passed. Docs deployment pending.",
-  "diagnostics_note": "Original acceptance interval is not a reliable no-new-errors measurement because errors --clear had no confirmed clear acknowledgment. Separate fresh-session no-clear window is recorded."
+  "diagnostics_note": "Original acceptance interval is not a reliable no-new-errors measurement because errors --clear had no confirmed clear acknowledgment. Separate fresh-session no-clear window is recorded.",
+  "docs_generation": {
+    "source_commit": "e67ef3a29caec9d54756787e3b681fabae1ccf30",
+    "source_tree": "afb7f531abc994149842f58680bd26d5c436b5b1",
+    "base_main": "f9bb982ca48b876c41c6168b7c9205815442c74f",
+    "release_version_in_generated_openapi": "0.6.90",
+    "generated_openapi_paths": 239,
+    "generated_openapi_bytes": 1014959,
+    "generated_cli_pages": 114
+  }
 }

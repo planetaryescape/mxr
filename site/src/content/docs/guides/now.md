@@ -1,6 +1,6 @@
 ---
 title: Start from Now
-description: The few things that need you now, from every mode, and Messages, built on the desk.
+description: Find people waiting on you and tasks due soon, then open their modes.
 ---
 
 Now is the front page: the few things that need you now, from every mode.
@@ -23,9 +23,12 @@ disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
 
-Archive's records are not built yet, and say "early version"
-where they show. [Email modes](/guides/email-modes/) has
-the status of each mode.
+Open [Archive](/guides/archive/) when you need a filed receipt, booking or
+reference. Records remain available there without adding work to Now.
+
+In the web app, expand the `Since … arrived` line to see where mail went,
+answer sorting questions, and inspect the sorting track record. Those details
+stay collapsed while you work through the main rows.
 
 ## Open Now
 
@@ -230,11 +233,11 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Entry | Key | Opens |
 |---|---|---|
 | Now | `g h` | The front page; its badge counts people whose turn it is and things to act on |
-| Messages | `g m` | People, built on the desk's lanes (early version) |
+| Messages | `g m` | People and groups, with their conversations inside |
 | To do | `g x` | Things email asked you to do, by when to act |
 | Updates | `g u` | Notifications as a briefing by source, twice a day. `g p` opens it too |
 | Reading | `g r` | Newsletters as an [edition](/guides/reading/), with a Later shelf. No count: nothing in it is owed |
-| Archive | `g e` | Records, which are coming; search finds receipts until then |
+| Archive | `g e` | Filed receipts, orders, bookings, bills and documents |
 | Inbox | `g i` | Everything, newest first |
 
 Screener, Reply queue, Waiting on, Snoozed and Subscriptions are under

@@ -1,6 +1,6 @@
 ---
 title: Email is five apps at once
-description: How mxr thinks about email as Messages, To do, Updates, Reading and Archive, what you can use for each today, and what is still planned.
+description: Understand the five workflows, overlapping membership, sorting rules, and personal categories.
 ---
 
 Your inbox mixes five kinds of mail that ask for five different things.
@@ -10,20 +10,16 @@ receipt matters a year from now, when you need its reference number. One
 list of subject lines treats all five the same and offers the same
 actions for each: reply, archive, label.
 
-mxr's plan is to treat email as five apps that share one inbox, called
-modes. Each mode has its own view, its own unit on screen and its own
-verbs. Now, Messages, To do, Reading and Archive are built. Updates runs as
-an early version on Paper trail.
-
-Start with what ships:
+mxr treats email as five modes that share one mailbox. Each has its own view
+and actions. Now brings together the work that needs your attention.
 
 ```bash
-mxr now            # the few things that need you, from every mode
-mxr todo           # what email asked you to do, by when to act
-mxr records        # receipts, orders, bookings and bills, by month
-mxr desk           # people you owe, promises due, threads waiting on others
-mxr reading        # newsletters as an edition, with a Later shelf
-mxr paper-trail    # receipts and notifications, grouped by sender
+mxr now            # people waiting on you and tasks due soon
+mxr messages       # people and groups, with their topics
+mxr todo           # tasks ordered by when to act
+mxr updates        # notifications grouped into a briefing
+mxr reading        # newsletters as an edition
+mxr records        # receipts, orders, bookings and bills
 ```
 
 ## Each mode does one job, with its own verb
@@ -44,69 +40,48 @@ arrival order.
 Messages, To do, [Updates](/guides/updates/), [Reading](/guides/reading/) and
 Archive are built in their own shape.
 
-## One email can live in several modes (planned)
+## A conversation can belong to several modes
 
-A landlord writes "please sign and send it back by 15 Oct. Are you around
-Thursday?" with the lease attached. Under the plan, that one email shows in
-three modes, each showing its own part of it:
+A conversation can contain a reply to write, an open task and a filed record.
+Each mode tracks its own work. Finishing in Messages leaves an open to-do
+alone. Archive keeps filed records without holding their email in the inbox.
 
-- Messages shows the landlord, with "are you around Thursday?" as what they
-  asked.
-- To do shows "Sign lease renewal, act by Mon 13, due Wed 15".
-- Archive files the lease as a contract when you tick the to-do off.
+Inspect membership and preview what finishing in one mode would do:
 
-Each mode keeps its own done state, so replying in Messages doesn't tick
-off the to-do. When you finish with an item in one mode, it moves on to the
-mode that needs it next, and mxr tells you where it went: "Done in
-Messages. Still in To do (due Wed)." The provider archive happens when the
-last mode lets go.
+```bash
+mxr modes why MESSAGE_ID --format json
+mxr modes done THREAD_ID --mode messages --dry-run
+```
 
-Today a message is in one place at a time. The desk, Reading and Paper
-trail are views over your inbox, and mail the rules place as from a person
-goes to the desk, never to Reading or Paper trail.
+When the last active mode lets go, mxr also archives the conversation at the
+provider unless `modes.archive_on_last_done` is disabled. Review the preview
+before applying `mxr modes done THREAD_ID --mode messages`.
 
-## Rules decide first, then your model, and every item says why
+## Sorting rules and categories serve different jobs
 
-Placement today is rule-based. The rules look at the sender's address,
-domain and list headers, and your own choice for a sender always wins. Ask
-mxr why a message is where it is:
+Sorting chooses where you work on mail. Sender signals and rules determine
+placement; your explicit corrections take precedence. Inspect a message's
+placement before correcting it:
 
 ```bash
 mxr why MESSAGE_ID --format json
+mxr reclassify MESSAGE_ID reading --dry-run
+mxr reclassify MESSAGE_ID reading
 ```
 
-The output names the place, the rule that decided it and the reason
-(`account_id` and `message_id` trimmed here):
+Use `--sender` with Messages, Updates or Reading when the choice should apply
+to that sender's mail. [Rules](/guides/rules/) can automate placement with a
+preview of their effect.
 
-```json
-{
-  "kind": "MessageKind",
-  "sender_email": "uptime@alerts.demo.mxr.local",
-  "mail_kind": {
-    "kind": "paper_trail",
-    "rule": "automated_domain",
-    "reason": "automated sending domain",
-    "corrected": false
-  }
-}
-```
-
-Correct a sender once and their mail follows from then on:
+[Personal categories](/guides/personal-categories/) add your own groupings,
+such as Travel or Household, across modes and accounts. They keep provider
+labels and folders unchanged. Category rules add or remove membership;
+manual inclusions and exclusions win over those rules.
 
 ```bash
-mxr sender kind news@example.com reading
+mxr categories --format json
+mxr categories --format json why MESSAGE_ID CATEGORY_ID
 ```
-
-The plan keeps rules as the first layer and adds two more. Message rules
-will spot things a sender rule can't, such as a due date, an invoice in
-schema.org markup or an unanswered invite. Then, only if you have
-configured a language model, your model will decide what rules can't tell.
-Every item will carry its reason ("Here because: asks you to renew, due 14
-Oct (local model)"), and corrections will work per email as well as per
-sender. With no model configured, rules still place everything.
-
-The full placement rules for today are in the
-[desk and places reference](/reference/desk-and-places/#placement-rules).
 
 ## Model work will run in two tiers (planned)
 
@@ -128,8 +103,9 @@ The modes plan splits model work by how hard it is:
   can step up to a stronger model you name, instead of every call paying
   for the strongest one.
 
-Running everything in the cloud with your own key will be supported, so you
-won't need a local model server. Amounts and dates a model pulls out must
+The current LLM configuration already supports a local endpoint or a cloud
+provider with your own key. The proposed tier routing is separate from that
+choice. Amounts and dates a model pulls out must
 appear word for word in the email, and code checks that. Many tasks won't
 use a model at all: where code can do the job, such as quote stripping or
 ranking people, code does it.
@@ -167,7 +143,7 @@ mxr semantic status
 |---|---|---|---|
 | Now | Built | [Now](/guides/now/) (`mxr now`, `g h`): People, Due soon, the Updates card and an evening Reading pick, at most ten things; the rail (`mxr modes rail`), done here per mode (`mxr modes done`) and "Also in" (`mxr modes why`) | The first-run progress card and catch-up across every mode |
 | Messages | Built (`g m`) | [Messages](/guides/messages/) (`mxr messages`): people as rows with their topics inside, Your turn by closeness and pace, Got it (`mxr messages ack`), thread-aware quote stripping, manual merges with a suggestion; [Focus & reply](/guides/focus-and-reply/) | Incoming Gmail reactions as a mark on the message; the Messages index recipe once the retrieval eval favours it |
-| To do | Built (`g x`) | `mxr todo`: bills, renewals, forms and promises as one row each, with act-by dates; [review later email evidence](/guides/todo-resolution/) before accepting a completion or date change; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
+| To do | Built (`g x`) | [To do](/guides/todo/) (`mxr todo`): bills, renewals, forms and promises as one row each, with act-by dates; [review later email evidence](/guides/todo-resolution/) before accepting a completion or date change; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
 | Updates | Built (`g u`) | [Updates](/guides/updates/) (`mxr updates`): one line per source at the 08:00 and 16:30 cuts, code-computed changes, parcels, builds and incidents as trackers, let go in one key (`mxr updates let-go`); a new sign-in, failed payment or delivery problem leads Needs a look as a suggested to-do that `t` adds; [deliveries](/guides/deliveries/) (`mxr deliveries`) | One fact per message in the semantic index, and model-written facts for generic subjects (phase 7) |
 | Reading | Built (`g r`) | [Reading](/guides/reading/) (`mxr reading`): an edition banded since your last visit, earlier and fading, a 66-character reader with the linked article on request, a Later shelf, let go with `e` and `A`, [unsubscribe](/guides/unsubscribe/) with evidence, highlights | Section-aware search chunks and lazy embedding for whole issues |
 | Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as one record each, an answer box (`mxr records ask "lisbon booking ref"`) with [`mxr ask`](/guides/archive-intelligence/) as its fallback, and a CSV export | Record fields read by the smart tier, and learned templates per issuer |

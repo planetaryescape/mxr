@@ -28,10 +28,10 @@ round trip.
 
 On top of that store, mxr treats email as five jobs: conversations with
 people, things to do, updates to glance at, reading you chose, and records
-to keep. Today the desk, Reading and Paper trail split your inbox along
-those lines by rule, and every placement says why. Separate views for each
-of the five modes are planned; [Email is five apps at once](/guides/email-modes/)
-shows what ships for each one now and what is coming.
+to keep. Each job has its own view: Messages, To do, Updates, Reading and Archive.
+Now brings together the work that needs you. Inspect placement with
+`mxr why MESSAGE_ID`; [Email is five apps at once](/guides/email-modes/)
+explains membership, sorting and personal categories.
 
 Choose mxr when you want:
 

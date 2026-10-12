@@ -250,6 +250,38 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
   "$MXR_BASE/api/v1/mail/modes/messages/done"
 ```
 
+### To do
+
+All paths below are relative to `/api/v1`. Responses use the daemon's To do
+data. For each mutation, send `dry_run: true` first and review the returned
+preview before repeating with `dry_run: false`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/mail/todos` | Runway; optional `account` and `mark_seen` |
+| `POST` | `/mail/todos` | Create from `{message_id, title, kind?, due?, time_zone?, dry_run}` |
+| `GET` | `/mail/todos/in/{state}` | List `open`, `done`, `dismissed` or `expired`; optional `account` and `limit` |
+| `GET` | `/mail/todos/{todo_id}` | Task and field provenance |
+| `POST` | `/mail/todos/state` | Change state with `{todo_ids, action, dry_run}` |
+| `POST` | `/mail/todos/{todo_id}/schedule` | Change visibility with `{when?, time_zone?, dry_run}`; omitted `when` clears the override |
+| `POST` | `/mail/todos/{todo_id}/edit` | Correct fields with `{edits, time_zone?, dry_run}` |
+| `GET` | `/mail/todos/catchup` | Older candidates awaiting a decision |
+| `POST` | `/mail/todos/catchup` | Apply a catch-up decision with a preview |
+| `POST` | `/mail/todos/{todo_id}/resolution` | Preview or apply `{suggestion_id, action, dry_run}` |
+
+For resolution offers, `action` is `preview`, `accept`, `dismiss` or `undo`.
+The task ID and suggestion ID must identify the same current offer. Acceptance
+can complete the task or revise its date; the quoted source and proposed fields
+are available in the preview. See [Review later evidence](/guides/todo-resolution/)
+and the generated [API route inventory](/reference/api-explorer/) for schemas.
+
+```bash
+curl -H "Authorization: Bearer $MXR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"suggestion_id":"SUGGESTION_ID","action":"accept","dry_run":true}' \
+  "$MXR_BASE/api/v1/mail/todos/TODO_ID/resolution"
+```
+
 ### Archive
 
 Records: receipts, orders, bookings, bills and documents built from mail.

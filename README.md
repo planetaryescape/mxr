@@ -14,16 +14,18 @@ receipts, orders and bills it files as records, which it fetches ahead of
 time within a 512 MB budget (`records.pdf_prefetch`). Send through Gmail,
 Outlook, or any SMTP server.
 
-mxr sorts what arrives by what you do with it. The desk lists the people
-waiting on a reply and the promises you made that are coming due.
-Newsletters go to Reading, and receipts and notifications go to Paper
-trail. A rule you can read places each message, and `mxr why` prints it.
-The next step is treating email as five apps that share one inbox
-(Messages, To do, Updates, Reading and Archive), each with its own view.
-Now, To do and Archive are built: `mxr records ask "lisbon booking ref"`
-returns the reference from your filed records, with no model. The rest is
-still in early versions:
-[what each mode has today](https://mxr.sh/guides/email-modes/).
+Start on Now for people waiting on you and tasks due soon. Open Messages to
+reply, To do to act on a deadline, Updates to check what changed, Reading for
+newsletters, or Archive to find a receipt or booking reference. Each mode has
+its own view and actions; Inbox keeps the arrival-order list.
+
+[Work through your day](https://mxr.sh/guides/your-day/) or
+[compare the five modes](https://mxr.sh/guides/email-modes/).
+[Personal categories](https://mxr.sh/guides/personal-categories/) let you group
+mail your own way without changing those modes or provider labels. Rules can
+assign categories after you review a preview. When later mail appears to
+finish a task or change its deadline, mxr offers
+[quoted evidence for you to review](https://mxr.sh/guides/todo-resolution/).
 
 Write `mxr`, say “Mixer”.
 

@@ -56,22 +56,20 @@ Behavior:
 - Focused-thread-message targeting for reply and mutations
 - Explicit right-pane dismissal with `Esc`
 - Bulk selection with confirmation modals
-- Sidebar lenses replace the mail list in place: **Desk**, **Updates**, **Reading**,
-  **Paper trail**, **Subscriptions**, **Owed replies**, and **Calendar
-  invites** (every detected invite with inline RSVP; see
-  [keybindings](/reference/keybindings/#calendar-invites-lens))
+- The sidebar opens **Now**, **Messages**, **To do**, **Updates**, **Reading**,
+  **Archive** and **Inbox**. Additional views include Screener, Reply queue,
+  Waiting on, Snoozed and Subscriptions.
 
-## Desk
+## Now and the modes
 
-**Desk** is the first lens in the sidebar, and **Go to the Desk** opens it.
-It shows the same lanes as `mxr desk` ([Clear the desk](/guides/now/)).
-Move across the lanes and open a conversation beside the desk as in any
-list. The archive and mark-read-and-archive keys are **Done** for the row
-under the cursor, from the list or from that conversation, and undo reverses
-it. A held key repeats in the TUI, so press Done once per row. When the desk
-or the owed-replies list clears, the status bar says **Low tide. Nobody's
-waiting on you.** The keys are in the
-[keybindings reference](/reference/keybindings/#go-to).
+Press `gh` for [Now](/guides/now/), the front page of people waiting on you,
+tasks due soon, the Updates digest and an evening Reading pick. Open a row to
+continue in its mode. `gm` opens [Messages](/guides/messages/), `gx` opens
+[To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/).
+
+`mxr desk` remains available from the CLI for the full You owe, Due,
+Waiting on and New from people lanes. See the
+[keyboard reference](/reference/keybindings/#go-to) for navigation keys.
 
 ## Updates
 

@@ -11,6 +11,14 @@ can't go out without it.
 Audited at `2fec6686` on `docs/email-modes`, whose code is v0.6.47
 (`3da0c119`, also `origin/main`).
 
+## This inventory records the pre-modes plan
+
+The tables below are the v0.6.47 planning snapshot, not a current feature or
+page count. All five modes and Now ship. For the current workflow, use
+[Work through your day](https://mxr.sh/guides/your-day/) and
+[Email modes](https://mxr.sh/guides/email-modes/). Keep the historical rows for
+their sequencing rationale; verify present behavior against code.
+
 ## Categories
 
 | Code | Meaning |

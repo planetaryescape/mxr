@@ -188,24 +188,21 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
 
 <div class="modes-coda">
   <div>
-    <p>Open the desk and you see people: who is waiting on a reply, which promises you made are coming due, and where you're waiting on someone else. Newsletters go to Reading. Receipts and notifications go to Paper trail, and one sweep clears them after a preview.</p>
-    <p>Rules you can read do the sorting. A sender's address, domain and list headers decide where their mail goes, <code>{`mxr why`}</code> prints the rule behind any message, and moving a sender once moves their mail from then on.</p>
-    <p>Next, mxr splits email into five modes with their own views: Messages, To do, Updates, Reading and Archive. <a href="/guides/email-modes/">See what each mode has today and what's planned →</a></p>
+    <p>Start on Now for people waiting on you and tasks due soon. Open Messages to reply, To do to act, Updates to check what changed, Reading for newsletters, or Archive to find a receipt or booking reference.</p>
+    <p>Rules you can inspect do the sorting. Preview a correction before moving mail. Add your own <a href="/guides/personal-categories/">personal categories</a> to group messages without changing their workflow or provider labels.</p>
+    <p><a href="/guides/your-day/">Work through your day</a>, or <a href="/guides/email-modes/">compare the five modes</a>.</p>
   </div>
 
 ```bash wrap
-# what needs you, and why each row is there
-mxr desk
+# see what needs you
+mxr now
 
-# why is this message in Paper trail?
-mxr why MESSAGE_ID
+# inspect the modes holding a conversation
+mxr modes why MESSAGE_ID
 
-# this sender's mail belongs in Reading from now on
-mxr sender kind news@example.com reading
-
-# preview, then clear the receipts you've seen
-mxr sweep paper-trail --dry-run
-mxr sweep paper-trail --yes
+# preview a correction, then move this email to Reading
+mxr reclassify MESSAGE_ID reading --dry-run
+mxr reclassify MESSAGE_ID reading
 ```
 
 </div>

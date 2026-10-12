@@ -118,7 +118,7 @@ help modal (`?`).
 | `gx` | To do |
 | `gu` | Updates, the briefing |
 | `gr` | Reading |
-| `ge` | Archive (records are coming) |
+| `ge` | Archive: filed records |
 | `gi` | Go to Inbox |
 | `gs` | Go to Starred |
 | `gt` | Go to Sent |
@@ -253,6 +253,27 @@ People as rows with their topics inside (`gm`). See
 | `p` | The person's page |
 | `o` / `v` | The selected message as sent |
 
+## To do
+
+Open To do with `gx`. See [Act on To dos](/guides/todo/).
+
+| Key | Action |
+|-----|--------|
+| `e` | Tick off the selected task |
+| `Space` (web) | Tick off or reopen the selected task |
+| `Enter` | Use the row's primary action |
+| `Z` (web) | Schedule when the task returns |
+| `,` (web) | Edit extracted fields |
+| `X` (web) | Mark as not a to-do |
+| `o` | Open the source email |
+| `E` (web) | Open Expired |
+| `C` (web) | Open Catch-up |
+
+For `Looks resolved`, use **Review** on the web or `v` in the TUI.
+[Review later evidence](/guides/todo-resolution/) lists the preview's own keys
+and acceptance actions. Ordinary typing in a text input or composer stays in
+that editor.
+
 ## Updates
 
 The briefing lens (`gu`; `gp` opens it too): the latest digest in Needs a
@@ -265,6 +286,8 @@ cut below.
 | `A` | Let go of the digest (previews first) |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
+| `p` | Pin or unpin the latest email from this source |
+| `S` | Preview a sender sweep |
 | `K` | Tune the source: every digest, changes only, muted, breakthrough (always first, with a suggested to-do) |
 | `L` | Open the line's link (never a pay link) |
 | `o` | Open the email |

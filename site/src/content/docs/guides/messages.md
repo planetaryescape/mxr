@@ -11,7 +11,7 @@ is what they asked you.
 
 ```bash
 mxr messages            # the bands
-mxr messages --turn mine
+mxr messages list --turn mine
 mxr messages person samir@launchpad.example
 mxr messages ack THREAD_ID --dry-run
 ```

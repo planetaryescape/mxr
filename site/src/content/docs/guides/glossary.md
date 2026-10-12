@@ -220,7 +220,7 @@ recipes, such as one fact per Updates message, are planned.
 preview listed. Letting go of an Updates digest does the same
 (`mxr updates let-go`).
 
-**Act-by date** (planned): the last day you can act and still meet a due
+**Act-by date**: the last day you can act and still meet a due
 date, such as three working days before a bill paid by bank transfer.
 To do surfaces an item ahead of its act-by date, not its due date.
 

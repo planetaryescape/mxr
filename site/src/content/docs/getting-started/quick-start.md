@@ -146,7 +146,7 @@ Most read/list/status/mutation surfaces accept `--format json`; the generated [C
 
 ## What's next
 
-- [Work through your day](/guides/your-day/): the desk, focus & reply, and sweeping newsletters and receipts.
+- [Work through your day](/guides/your-day/): Now, Messages, To do, Updates, Reading and Archive.
 - [Configure rules](/guides/rules/) for declarative filing.
 - [Write a saved search](/guides/search/) for your daily inbox lens.
 - [Hand mxr to an LLM](/guides/agent-skill/): the same CLI is the agent surface.

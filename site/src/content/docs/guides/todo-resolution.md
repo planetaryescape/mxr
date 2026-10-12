@@ -3,7 +3,7 @@ title: Review later evidence
 description: Review quoted email evidence before completing a task or changing its due date.
 ---
 
-When a later email appears to finish a to-do or change its deadline, mxr shows the exact source and a short quote as an offer. The task stays unchanged until you review and accept it. You can dismiss the offer or undo an accepted change while its saved task snapshot is still current.
+Review the source before accepting a task change. When a later email appears to finish a to-do or change its deadline, mxr shows the exact source and a short quote as an offer. The task stays unchanged until you review and accept it. You can dismiss the offer or undo an accepted change while its saved task snapshot is still current.
 
 Local rules catch clear completion confirmations. A later email that proposes a new date needs the optional Commitments model, which runs only when an LLM is enabled and configured. Neither path completes or retimes a task automatically; each match remains an offer for you to review. Model checks run in small background batches, so offers may appear after sync finishes. Pending checks survive a daemon restart; turning the model off pauses them until it is enabled again.
 
@@ -55,8 +55,32 @@ mxr todo --format json
 
 Call `mxr_todo_resolve` with the task and suggestion IDs. `action` is `accept`, `dismiss` or `undo`; omit `confirm` or set it to `false` to request that action's preview, and set `confirm` to `true` only after reviewing it. The [`MCP reference`](/reference/mcp/#todo-resolution) lists the tool alongside the other To do calls.
 
+## When an offer has not appeared
+
+```bash
+mxr llm status --format json
+mxr todo why TODO_ID --format json
+```
+
+Check that the task is still open and that the later email concerns the same
+task. A quote must support the proposed completion or replacement date;
+receiving another email is not enough.
+
+Clear completion rules can work without a model. Semantic matches and new
+dates need an enabled, configured Commitments model. Model checks share a
+background batch limit of four checks and an eight-second deadline, so a
+finished sync does not mean every candidate has been checked. A provider's
+empty-response fallback may retry within a check; the limit is not four HTTP
+requests across all model features.
+
+Failed checks retry with increasing delays, up to five attempts for unchanged
+input. Turning off the model pauses pending work. Pending checks and attempt
+history survive restarts and [backups](/guides/backup-recovery/); a restored
+workspace keeps model work paused until you activate recovery and reconfigure
+its processors. You can always complete or edit the task yourself.
+
 ## See also
 
-- [To do in the email modes guide](/guides/email-modes/)
+- [Act on To dos](/guides/todo/)
 - [To do commands](/reference/cli/todo/)
 - [MCP reference](/reference/mcp/#todo-resolution)

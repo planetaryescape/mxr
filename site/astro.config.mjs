@@ -67,6 +67,8 @@ export default defineConfig({
             { label: 'Work Through Your Day', slug: 'guides/your-day' },
             { label: 'Start from Now', slug: 'guides/now' },
             { label: 'Messages: People You Talk With', slug: 'guides/messages' },
+            { label: 'Act on To dos', slug: 'guides/todo' },
+            { label: 'Review Later Evidence', slug: 'guides/todo-resolution' },
             { label: 'Updates: a Briefing Twice a Day', slug: 'guides/updates' },
             { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
             { label: 'Read Newsletters as an Edition', slug: 'guides/reading' },

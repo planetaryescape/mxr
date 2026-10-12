@@ -1,133 +1,104 @@
 ---
 title: Work through your day
-description: Clear what needs you, answer who you owe, then sweep what's left.
+description: Start on Now, answer people, act on tasks, and clear the digest.
 ---
 
-Start on the desk, answer everyone you owe, keep your promises, and sweep the
-mail that isn't from people. This page is the order; each step links to the
-page with the detail. It works the same in the web app, the TUI and the CLI,
-because all three read the same daemon.
+Open Now to choose what needs you, then work in the mode that holds it.
+Use the same mailbox from the web app, terminal or CLI.
 
-:::note
-mxr is moving to [five email modes](/guides/email-modes/). Now is the front
-page, and Messages, the mode for people, is the desk's lanes for now
-(`g m`). The steps below use the desk; they change as each mode ships.
-:::
-
-## 1. Open the desk
+## 1. Start on Now
 
 ```bash
-mxr web      # the web app opens on Now; g m opens Messages
-mxr desk     # the same lanes in the terminal
+mxr now
+mxr web
 ```
 
-The desk shows what needs you, not what arrived: **You owe**, **Due**,
-**Waiting on** and **New from people**. Every row says why it is there and how
-long it has been. Newsletters and notifications are not on it.
+In the web app or TUI, press `g h` for Now. Open a person or task to continue
+in its mode. Now caps each section instead of showing the whole inbox.
+On the web, expand the arrivals line only when you want the sorting details.
+[Start from Now](/guides/now/) explains the sections and counts.
 
-[Messages](/guides/messages/) shows the same people as rows with their
-conversations inside.
-[Start from Now](/guides/now/#the-desks-lanes-and-messages) covers every lane.
-
-## 2. Put away what needs nothing
-
-A thank-you, a thread that resolved itself, a reply you no longer need:
-use **Done** on the row. It archives and marks read, and the row stays away
-until someone writes again. Preview it from the command line first:
+## 2. Answer people in Messages
 
 ```bash
-mxr desk done THREAD_ID --dry-run
-mxr desk done THREAD_ID
+mxr messages list --turn mine
 ```
 
-Undo brings it back exactly as it was
-([Done](/guides/now/#put-a-row-away-with-done)).
+Press `g m` and choose a person or group. The web list opens without selecting
+a conversation. Read the visible request; use `Read all N paragraphs` when
+you want the rest of a longer letter. Reply, or mark the topic done here if
+it needs no answer. Preview from the CLI before marking it done:
 
-## 3. Answer everyone you owe
+```bash
+mxr modes done THREAD_ID --mode messages --dry-run
+mxr modes done THREAD_ID --mode messages
+```
 
-Open **Focus & reply** from the command palette, or from the header of the
-You owe lane. It shows one conversation at a time with your reply beside it.
-Send, and the next one comes up; skip, snooze or Done the ones that can wait.
-By default every send waits ten seconds, so you can undo it.
+Other modes can still hold work from the same conversation.
+[Messages](/guides/messages/) covers replies, acknowledgements and retained
+quoted context. [Focus & reply](/guides/focus-and-reply/) works through a reply
+queue one conversation at a time.
 
-When a reply promises something with a date ("I'll send the deck by
-Friday"), mxr offers to remind you then. Say yes, and the promise shows under
-**Due** on the desk from a week before it is due until you mark it done.
-[Reply to everyone you owe](/guides/focus-and-reply/) covers the queue,
-undo send and promises.
+## 3. Act on To dos
 
-## 4. Check what you are waiting on
+```bash
+mxr todo
+```
 
-**Waiting on** lists conversations where you wrote last and nobody has
-answered. Nudge the ones that matter. Use Done on the ones you no longer
-need an answer to. To stop watching one until a time, press `b` and type it
-(`in 3d`): it leaves Waiting on and comes back then if nobody has replied
-([come back to it later](/guides/now/#come-back-to-it-later)). Sending with
-**Send and remind me if no reply in** does the same from the start
-([automated follow-ups](/guides/automated-followups/)).
+Press `g x`. Read the action title, amount and dates, then use the row's
+primary action or open its source email. In the web app, tick the checkbox
+on the left or press `Space` on the selected row when you have finished.
+Schedule work for later without changing its due date, or correct what mxr
+read. [Act on To dos](/guides/todo/) shows those steps.
 
-## 5. Read the Updates digest and let it go
+A `Looks resolved` offer needs a separate review: inspect its quoted email
+and proposed change before accepting. It never completes or retimes a task
+on its own. Follow [Review later evidence](/guides/todo-resolution/).
 
-Twice a day, at 08:00 and 16:30, notifications are gathered into one
-digest: one line per source, what needs a look first. Read it, press `t` on
-anything that needs you, then let go of the whole digest with `A`:
+## 4. Read Updates and let go
 
 ```bash
 mxr updates
 mxr updates let-go --dry-run
+mxr updates let-go
 ```
 
-A new sign-in or a failed payment is already in To do by then.
-[Read Updates as a briefing](/guides/updates/) covers the sections, tuning
-and expiry.
+Press `g u` to read the digest. Check `Needs a look`, then `Changed`; routine
+mail is grouped behind them. Press `t` on an update to create a to-do when
+you want to act on it. A warning in Updates is a suggestion, not proof that
+a task was created.
 
-## 6. Clear Reading and Paper trail
+For a package, read the latest state mxr found in its email and open that
+email for context. Use the carrier's tracking service when you need live
+status. Pin an email you need to retain before sweeping its sender.
+[Updates](/guides/updates/) explains pinning, sweeping and digest expiry.
 
-Read what you want in **Reading**, pin what you want to keep in **Paper
-trail**, then sweep the rest:
+## 5. Read what you chose
 
 ```bash
-mxr sweep paper-trail --dry-run
-mxr sweep paper-trail --yes
+mxr reading edition --peek
 ```
 
-Move a sender who is in the wrong place once, and their mail follows from
-then on. [Clear Reading and Paper trail](/guides/reading-and-paper-trail/)
-covers the rules, pins and sweeps. Sweeping a receipt's email leaves its
-record in [Archive](/guides/archive/).
+Press `g r`. Read an issue, save it to Later, or let go when you are done.
+`--peek` lists the edition without recording a visit. Fetch a linked article
+only when you want to open it; that request contacts its website.
+[Reading](/guides/reading/) covers Later and unsubscribe choices.
 
-## 7. Ask Archive when someone needs a reference
-
-When a call centre wants a booking reference or a shop wants proof of
-purchase, ask Archive instead of searching:
+## 6. Find a record or group related mail
 
 ```bash
 mxr records ask "lisbon booking ref"
+mxr categories --format json
 ```
 
-It answers with the field and where it came from. In the apps, `g e` opens
-Archive with the answer box focused, and `y` copies the reference.
+Press `g e` to search Archive's filed records and inspect a field's source.
+[Archive](/guides/archive/) also shows subscriptions and annual renewal tasks.
+Use [personal categories](/guides/personal-categories/) for your own groups,
+such as Travel, across the modes. Preview category assignments and rules
+before applying them.
 
-## 8. Low tide
+## See also
 
-When the desk is empty, the web app shows low tide: **Low tide. Nobody's
-waiting on you.** with the next promise that is due. The TUI says the same in
-its status bar. See [Sound, key hints and touch](/guides/sound-hints-and-touch/)
-for the optional sounds that go with it.
-
-## Times in words
-
-Anywhere mxr asks for a time (snooze, send later, reminders, promises) you
-can type it in words and see exactly when it resolves before you commit:
-
-```bash
-mxr time fri 3 --now 2026-09-28T09:00:00+01:00
-```
-
-```text
-Friday 2 October, 15:00 (in 4 days)
-  Assumed: am or pm
-  Or: Friday 2 October, 03:00 (in 4 days)
-```
-
-The [time phrases reference](/reference/time-phrases/) lists every phrase.
+- [Compare the modes](/guides/email-modes/)
+- [Keyboard reference](/reference/keybindings/)
+- [Back up and restore your workspace](/guides/backup-recovery/)

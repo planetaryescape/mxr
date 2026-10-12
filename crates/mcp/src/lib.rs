@@ -2230,12 +2230,12 @@ mod tests {
                 confirm: false,
             }))
             .await
-            .unwrap();
+            .expect("attachment declaration preview");
         assert!(matches!(
-            requester.requests.lock().unwrap().as_slice(),
+            requester.requests.lock().expect("requests lock").as_slice(),
             [Request::PreviewDraftAttachment { .. }]
         ));
-        requester.requests.lock().unwrap().clear();
+        requester.requests.lock().expect("requests lock").clear();
         for length in [64 * 1024 + 1, 64 * 1024 + 2, 64 * 1024 + 3] {
             assert!(server
                 .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
@@ -2259,7 +2259,7 @@ mod tests {
                 confirm: false,
             }))
             .await
-            .unwrap();
+            .expect("attachment chunk preview");
         server
             .draft_attachment_finalize(Parameters(DraftAttachmentFinalizeInput {
                 draft_id: draft_id.as_str(),
@@ -2268,8 +2268,8 @@ mod tests {
                 confirm: false,
             }))
             .await
-            .unwrap();
-        assert!(requester.requests.lock().unwrap().is_empty());
+            .expect("attachment finalization preview");
+        assert!(requester.requests.lock().expect("requests lock").is_empty());
         server
             .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
                 draft_id: draft_id.as_str(),
@@ -2280,9 +2280,9 @@ mod tests {
                 confirm: true,
             }))
             .await
-            .unwrap();
+            .expect("confirmed attachment chunk");
         assert!(matches!(
-            requester.requests.lock().unwrap().as_slice(),
+            requester.requests.lock().expect("requests lock").as_slice(),
             [Request::WriteDraftAttachmentChunk { .. }]
         ));
     }

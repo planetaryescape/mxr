@@ -280,19 +280,39 @@ export const TodoRow = memo(function TodoRow({
   const dimmed = band === "coming";
   const done = band === "done";
   const resolution = todo.resolution;
-  useEffect(() => setPreview(null), [todo.id, resolution?.id, resolution?.status]);
+  const resolutionIdentity = `${todo.id}\u0000${resolution?.id ?? ""}\u0000${resolution?.status ?? ""}`;
+  const currentResolutionIdentity = useRef(resolutionIdentity);
+  const mounted = useRef(false);
+  currentResolutionIdentity.current = resolutionIdentity;
+  useEffect(() => {
+    setPreview(null);
+  }, [resolutionIdentity]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const runResolution = async (resolutionAction: "preview" | "accept" | "dismiss" | "undo") => {
     if (!resolution) return;
     if (requestInFlight.current) return;
     requestInFlight.current = true;
     setBusy(true);
+    const requestIdentity = resolutionIdentity;
     try {
       const result = await resolveSuggestion(todo, resolutionAction);
-      if (resolutionAction === "preview" && result) setPreview(result.summary);
+      if (
+        resolutionAction === "preview" &&
+        result &&
+        mounted.current &&
+        currentResolutionIdentity.current === requestIdentity
+      ) {
+        setPreview(result.summary);
+      }
     } finally {
       requestInFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   return (

@@ -403,6 +403,15 @@ fn rule_resolution(
             quote_location,
         });
     }
+    // A cancelled direct debit or failed bill payment does not discharge the
+    // underlying obligation. Cancellation can resolve subscriptions and
+    // other tasks, but payment obligations need affirmative payment evidence.
+    if matches!(
+        kind,
+        mxr_todo::TodoKind::Bill | mxr_todo::TodoKind::PaymentFailed
+    ) {
+        return None;
+    }
     let cancellation = [
         r"(?i)\b(cancelled|canceled|has been cancelled|has been canceled)\b",
         r"(?i)\b(no longer need|not required anymore|not needed anymore)\b",

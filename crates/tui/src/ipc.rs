@@ -54,7 +54,9 @@ pub(crate) fn spawn_ipc_worker(
         let mut client = loop {
             match connect_ipc_client(&socket_path, event_tx.clone()).await {
                 Ok(mut client) => {
-                    if let Ok(owner) = client.capture_workspace().await { let _ = result_tx.send(AsyncResult::WorkspaceOwner(owner)); }
+                    if let Ok(owner) = client.capture_workspace().await {
+                        let _ = result_tx.send(AsyncResult::WorkspaceOwner(owner));
+                    }
                     let _ =
                         result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
                     break client;
@@ -350,23 +352,41 @@ pub(crate) async fn ipc_call(
     tx: &mpsc::UnboundedSender<IpcRequest>,
     request: Request,
 ) -> Result<Response, MxrError> {
-    let retained = crate::send_recovery_state::owner_for_request(&request).map_err(|error| MxrError::Ipc(error.to_string()))?;
+    let retained = crate::send_recovery_state::owner_for_request(&request)
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
     let captured = COMMAND_OWNER.try_with(Clone::clone).ok().flatten();
-    if retained.is_some() && captured.is_some() && retained != captured { return Err(MxrError::Ipc("Queued command belongs to another workspace; retained private work was not applied".into())); }
+    if retained.is_some() && captured.is_some() && retained != captured {
+        return Err(MxrError::Ipc(
+            "Queued command belongs to another workspace; retained private work was not applied"
+                .into(),
+        ));
+    }
     let mut owner = retained.or(captured);
-    if owner.is_none() && request.requires_workspace_owner() { owner = Some(capture_workspace(tx).await?); }
+    if owner.is_none() && request.requires_workspace_owner() {
+        owner = Some(capture_workspace(tx).await?);
+    }
     ipc_call_owned(tx, request, owner).await
 }
 
-pub(crate) async fn capture_workspace(tx: &mpsc::UnboundedSender<IpcRequest>) -> Result<mxr_protocol::ArchiveWorkspaceData, MxrError> {
+pub(crate) async fn capture_workspace(
+    tx: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<mxr_protocol::ArchiveWorkspaceData, MxrError> {
     match ipc_call_owned(tx, Request::GetArchiveWorkspace, None).await? {
-        Response::Ok { data: mxr_protocol::ResponseData::ArchiveWorkspace { workspace } } => Ok(workspace),
+        Response::Ok {
+            data: mxr_protocol::ResponseData::ArchiveWorkspace { workspace },
+        } => Ok(workspace),
         Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-        _ => Err(MxrError::Ipc("Selected daemon does not provide workspace identity".into())),
+        _ => Err(MxrError::Ipc(
+            "Selected daemon does not provide workspace identity".into(),
+        )),
     }
 }
 
-pub(crate) async fn ipc_call_owned(tx: &mpsc::UnboundedSender<IpcRequest>, request: Request, expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>) -> Result<Response, MxrError> {
+pub(crate) async fn ipc_call_owned(
+    tx: &mpsc::UnboundedSender<IpcRequest>,
+    request: Request,
+    expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+) -> Result<Response, MxrError> {
     let (reply_tx, reply_rx) = oneshot::channel();
     tx.send(IpcRequest {
         expected_workspace,

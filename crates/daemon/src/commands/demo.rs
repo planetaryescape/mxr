@@ -1821,7 +1821,7 @@ mod tests {
     fn degraded_status() -> ResponseData {
         ResponseData::Status {
             workspace_owner_supported: false,
-                draft_revision_supported: true,
+            draft_revision_supported: true,
             send_outcome_supported: true,
             archive_recovery_supported: true,
             attachment_transfer_supported: true,

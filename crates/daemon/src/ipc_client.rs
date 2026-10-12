@@ -92,7 +92,10 @@ impl IpcClient {
                 }
             })?
             .with_default_timeout(request_timeout());
-        Ok(Self { conn, workspace: None })
+        Ok(Self {
+            conn,
+            workspace: None,
+        })
     }
 
     pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {
@@ -107,24 +110,45 @@ impl IpcClient {
                 other => anyhow::Error::new(other),
             })?
             .with_default_timeout(request_timeout());
-        Ok(Self { conn, workspace: None })
+        Ok(Self {
+            conn,
+            workspace: None,
+        })
     }
 
-    pub async fn capture_workspace(&mut self) -> anyhow::Result<mxr_protocol::ArchiveWorkspaceData> {
-        if let Some(owner) = &self.workspace { return Ok(owner.clone()); }
-        let owner = self.conn.capture_workspace().await.map_err(map_request_error)?;
+    pub async fn capture_workspace(
+        &mut self,
+    ) -> anyhow::Result<mxr_protocol::ArchiveWorkspaceData> {
+        if let Some(owner) = &self.workspace {
+            return Ok(owner.clone());
+        }
+        let owner = self
+            .conn
+            .capture_workspace()
+            .await
+            .map_err(map_request_error)?;
         self.workspace = Some(owner.clone());
         Ok(owner)
     }
 
-    pub async fn expect_workspace(&mut self, owner: mxr_protocol::ArchiveWorkspaceData) -> anyhow::Result<()> {
-        self.conn.verify_workspace(&owner).await.map_err(map_request_error)?;
+    pub async fn expect_workspace(
+        &mut self,
+        owner: mxr_protocol::ArchiveWorkspaceData,
+    ) -> anyhow::Result<()> {
+        self.conn
+            .verify_workspace(&owner)
+            .await
+            .map_err(map_request_error)?;
         self.workspace = Some(owner);
         Ok(())
     }
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
-        let owner = if req.requires_workspace_owner() { Some(self.capture_workspace().await?) } else { self.workspace.clone() };
+        let owner = if req.requires_workspace_owner() {
+            Some(self.capture_workspace().await?)
+        } else {
+            self.workspace.clone()
+        };
         self.conn
             .request_response_owned(req, owner.as_ref(), |_| {}, request_timeout())
             .await
@@ -149,7 +173,11 @@ impl IpcClient {
     where
         F: FnMut(DaemonEvent),
     {
-        let owner = if req.requires_workspace_owner() { Some(self.capture_workspace().await?) } else { self.workspace.clone() };
+        let owner = if req.requires_workspace_owner() {
+            Some(self.capture_workspace().await?)
+        } else {
+            self.workspace.clone()
+        };
         self.conn
             .request_response_owned(req, owner.as_ref(), on_event, None)
             .await

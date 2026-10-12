@@ -174,11 +174,21 @@ impl App {
         self.compose.last_send_query = None;
         #[cfg(not(test))]
         {
-            let Some(owner) = self.compose.workspace_owner.as_ref() else {
-                self.push_toast(Toast::error("Workspace owner is unavailable; your private file stays preserved")); return;
+            let retained_owner = match crate::send_recovery_state::owner_for_request(
+                &Request::GetDraft {
+                    draft_id: draft.id.clone(),
+                },
+            ) {
+                Ok(Some(owner)) => owner,
+                _ => {
+                    self.push_toast(Toast::error("Private editor has no original workspace owner; its file remains preserved. Reopen explicitly before continuing."));
+                    return;
+                }
             };
-            if let Err(error) = crate::send_recovery_state::retain_owner(&draft.id, owner) {
-                self.push_toast(Toast::error(error.to_string())); return;
+            if let Err(error) = crate::send_recovery_state::retain_owner(&draft.id, &retained_owner)
+            {
+                self.push_toast(Toast::error(error.to_string()));
+                return;
             }
             if let Err(error) = crate::send_recovery_state::retain_compose(
                 &draft.account_id,

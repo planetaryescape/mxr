@@ -187,8 +187,8 @@ export function useComposeSession(
   ]);
 
   useEffect(() => {
-    if (draft) rememberActiveDraft(intent.key, draft);
-  }, [draft, intent.key]);
+    if (draft && !rememberActiveDraft(intent.key, draft)) setSaveError("Browser storage cannot retain private edits across reload. Keep this editor open until they are saved or copied.");
+  }, [draft, intent.key, setSaveError]);
 
   const hasUnsavedWork = dirty || autosave.saving || send.pendingSends > 0;
   useEffect(() => {

@@ -1507,6 +1507,9 @@ pub enum Command {
     },
     /// Inspect a send operation after disconnect, including after draft cleanup.
     SendOutcome {
+        /// Original workspace JSON retained with the send review.
+        #[arg(long)]
+        expected_workspace: Option<String>,
         operation_id: String,
         #[arg(long)]
         account: String,

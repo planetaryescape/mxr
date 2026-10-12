@@ -4982,6 +4982,7 @@ export interface components {
             recoverySourcePath?: string | null;
             /** Format: int64 */
             revision?: number | null;
+            workspace?: null | components["schemas"]["ArchiveWorkspaceData"];
         };
         /** @enum {string} */
         ComposeSessionKindRequest: "new" | "reply" | "reply_all" | "forward" | "invite_reply";
@@ -10476,6 +10477,7 @@ export interface components {
             total_messages: number;
             /** Format: int64 */
             uptime_secs: number;
+            workspace_owner_supported?: boolean;
         } | {
             /** @enum {string} */
             kind: "Pong";

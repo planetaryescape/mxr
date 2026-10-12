@@ -1,10 +1,10 @@
-import { apiFetch } from "@/api/client";
+import { assertWorkspaceBinding, type WorkspaceBinding } from "@/lib/workspaceOwner";
+import { captureWorkspaceBinding, apiFetch } from "@/api/client";
 import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 import type { components } from "@/api/generated";
 import type { MutationResponse } from "@/features/mailbox/types";
 
-export type ArchiveOperation = components["schemas"]["ArchiveOperationData"];
-type Workspace = components["schemas"]["ArchiveWorkspaceData"];
+export type ArchiveOperation = components["schemas"]["ArchiveOperationData"] & { binding?: WorkspaceBinding };
 type Identity = components["schemas"]["ArchiveIdentityData"];
 const PREFIX = "mxr.archive.operation.";
 const CALLER = "mxr.archive.caller";
@@ -45,14 +45,14 @@ function isOperation(value: unknown): value is ArchiveOperation {
     )
   );
 }
-function journalPrefix(): string {
-  return `${PREFIX}${encodeURIComponent(getBridgeBaseUrl())}.`;
+function journalPrefix(target = getBridgeBaseUrl()): string {
+  return `${PREFIX}${encodeURIComponent(target)}.`;
 }
 export function retainedArchives(): ArchiveOperation[] {
   const operations: ArchiveOperation[] = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (!key?.startsWith(journalPrefix())) continue;
+    if (!key?.startsWith(PREFIX)) continue;
     const raw = localStorage.getItem(key);
     const value: unknown = raw ? JSON.parse(raw) : null;
     if (!isOperation(value))
@@ -64,7 +64,7 @@ export function retainedArchives(): ArchiveOperation[] {
   return operations.toSorted((a, b) => a.started_at - b.started_at);
 }
 export function retainArchive(operation: ArchiveOperation): void {
-  const key = `${journalPrefix()}${operation.identity.operation_id}`;
+  const key = `${journalPrefix(operation.binding?.target)}${operation.identity.operation_id}`;
   const prior = localStorage.getItem(key);
   if (prior) {
     const stored: unknown = JSON.parse(prior);
@@ -79,7 +79,7 @@ export function retainArchive(operation: ArchiveOperation): void {
     }
   }
   localStorage.setItem(
-    `${journalPrefix()}${operation.identity.operation_id}`,
+    `${journalPrefix(operation.binding?.target)}${operation.identity.operation_id}`,
     JSON.stringify(operation),
   );
   window.dispatchEvent(new Event(ARCHIVE_JOURNAL_CHANGED));
@@ -91,24 +91,18 @@ function callerId(): string {
   localStorage.setItem(CALLER, id);
   return id;
 }
-async function getWorkspace(): Promise<Workspace> {
-  const response = await apiFetch<{ kind: string; workspace: Workspace }>(
-    "/api/v1/mail/archive-operations/workspace",
-  );
-  if (response.kind !== "ArchiveWorkspace")
-    throw new Error("Daemon does not support recoverable Archive");
-  return response.workspace;
-}
 export async function previewArchive(ids: string[]): Promise<ArchiveOperation> {
+  const binding = await captureWorkspaceBinding();
   const identity: Identity = {
     operation_id: crypto.randomUUID(),
     caller_id: callerId(),
-    workspace: await getWorkspace(),
+    workspace: binding.workspace,
   };
   const response = await apiFetch<{ kind: string; operation: ArchiveOperation }>(
     "/api/v1/mail/archive-operations/preview",
     {
       method: "POST",
+      binding,
       body: {
         identity,
         mutation: { mutation: "Archive", message_ids: [...new Set(ids)].toSorted() },
@@ -117,26 +111,31 @@ export async function previewArchive(ids: string[]): Promise<ArchiveOperation> {
   );
   if (response.kind !== "ArchiveOperation" || !isOperation(response.operation))
     throw new Error("Invalid Archive review response");
-  retainArchive(response.operation);
-  return response.operation;
+  const operation = { ...response.operation, binding };
+  retainArchive(operation);
+  return operation;
 }
 export async function queryArchive(operation: ArchiveOperation): Promise<ArchiveOperation> {
+  const binding = archiveBinding(operation);
   const response = await apiFetch<{ kind: string; operation: ArchiveOperation }>(
     "/api/v1/mail/archive-operations/query",
-    { method: "POST", body: { identity: operation.identity } },
+    { method: "POST", binding, body: { identity: operation.identity } },
   );
   if (response.kind !== "ArchiveOperation" || !isOperation(response.operation))
     throw new Error("Invalid Archive receipt response");
-  retainArchive(response.operation);
-  return response.operation;
+  const updated = { ...response.operation, binding };
+  retainArchive(updated);
+  return updated;
 }
 export async function submitArchive(operation: ArchiveOperation): Promise<ArchiveOperation> {
+  const binding = archiveBinding(operation);
   // Retention is part of submission, including a user-triggered retry from recovery.
   retainArchive(operation);
   const response = await apiFetch<{ kind: string; operation: ArchiveOperation }>(
     "/api/v1/mail/archive-operations/submit",
     {
       method: "POST",
+      binding,
       body: {
         identity: operation.identity,
         review_id: operation.review_id,
@@ -149,8 +148,9 @@ export async function submitArchive(operation: ArchiveOperation): Promise<Archiv
   );
   if (response.kind !== "ArchiveOperation" || !isOperation(response.operation))
     throw new Error("Invalid Archive acceptance response");
-  retainArchive(response.operation);
-  return response.operation;
+  const updated = { ...response.operation, binding };
+  retainArchive(updated);
+  return updated;
 }
 export async function archiveMessagesRecoverably(ids: string[]): Promise<MutationResponse> {
   const operation = await previewArchive(ids);
@@ -198,4 +198,10 @@ export async function archiveMessagesRecoverably(ids: string[]): Promise<Mutatio
       mutation_id: outcome.undo_available ? outcome.mutation_id : undefined,
     },
   };
+}
+
+function archiveBinding(operation: ArchiveOperation): WorkspaceBinding {
+  const binding = operation.binding ?? { target: getBridgeBaseUrl(), workspace: operation.identity.workspace };
+  assertWorkspaceBinding(binding);
+  return binding;
 }

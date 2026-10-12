@@ -17,7 +17,6 @@ mod legacy;
 mod mailbox_threads;
 mod messages_routes;
 mod middleware;
-mod workspace_owner;
 mod mode_routes;
 mod openapi;
 mod place_routes;
@@ -33,6 +32,7 @@ mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
 mod updates_routes;
+mod workspace_owner;
 
 pub use openapi::ApiDoc;
 
@@ -2439,11 +2439,26 @@ async fn ipc_request_with_id(
         .map_err(map_bridge_error)?
         .with_start_id(request_id);
     let owner = workspace_owner::captured();
-    connection.request_response_owned(request, owner.as_ref(), |_| {}, None).await
+    connection
+        .request_response_owned(request, owner.as_ref(), |_| {}, None)
+        .await
         .and_then(|response| match response {
             mxr_protocol::Response::Ok { data } => Ok(data),
-            mxr_protocol::Response::Error { message, kind, code, retryable, details } => Err(ClientError::Daemon { message, kind, code, retryable, details }),
-        }).map_err(map_bridge_error)
+            mxr_protocol::Response::Error {
+                message,
+                kind,
+                code,
+                retryable,
+                details,
+            } => Err(ClientError::Daemon {
+                message,
+                kind,
+                code,
+                retryable,
+                details,
+            }),
+        })
+        .map_err(map_bridge_error)
 }
 
 /// Map a `mxr-client` failure onto the bridge's HTTP error vocabulary,
@@ -2465,12 +2480,14 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             code,
             details,
             ..
-        } if code.starts_with("archive_") || code.starts_with("workspace_") => BridgeError::ArchiveConflict {
-            message,
-            kind,
-            code,
-            details,
-        },
+        } if code.starts_with("archive_") || code.starts_with("workspace_") => {
+            BridgeError::ArchiveConflict {
+                message,
+                kind,
+                code,
+                details,
+            }
+        }
         ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
@@ -2892,7 +2909,8 @@ fn compose_content_with_accepted_attachments(
 }
 
 async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), BridgeError> {
-    let mut value = serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let mut value =
+        serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     value["compose_workspace"] = json!(workspace_owner::captured());
     let bytes = serde_json::to_vec(&value).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);

@@ -34,3 +34,7 @@ export function parseWorkspace(value: unknown): WorkspaceOwner | undefined {
   if (typeof value !== "object" || value === null || !("workspace_id" in value) || !("recovery_generation" in value) || typeof value.workspace_id !== "string" || typeof value.recovery_generation !== "string") return undefined;
   return { workspace_id: value.workspace_id, recovery_generation: value.recovery_generation };
 }
+
+export function resetWorkspaceOwnerForTest(): void {
+  selected = undefined; generation = 0; listeners.clear();
+}

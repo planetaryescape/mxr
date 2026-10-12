@@ -1,3 +1,6 @@
+import { assertTarget, assertWorkspaceBinding, selectedWorkspace, workspaceGeneration, WorkspaceConflictError } from "./workspaceOwner";
+import { getBridgeBaseUrl } from "./tokenStorage";
+
 export type ReplaceableRequestContext = {
   requestId: number;
   signal: AbortSignal;
@@ -52,7 +55,15 @@ export class WebRequestCoordinator {
   }
 
   async enqueueMutation<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.mutationTail.catch(() => undefined).then(task);
+    const target = getBridgeBaseUrl();
+    const owner = selectedWorkspace();
+    const generation = workspaceGeneration();
+    const run = this.mutationTail.catch(() => undefined).then(() => {
+      assertTarget(target);
+      if (generation !== workspaceGeneration()) throw new WorkspaceConflictError();
+      if (owner) assertWorkspaceBinding(owner);
+      return task();
+    });
     this.mutationTail = run.then(
       () => undefined,
       () => undefined,
@@ -63,6 +74,7 @@ export class WebRequestCoordinator {
   async queueComposeLatest<T>(
     key: string,
     task: (requestId: number) => Promise<T>,
+    beforeRun?: () => void,
   ): Promise<ReplaceableResult<T>> {
     const entry = this.compose.get(key) ?? { requestId: 0, tail: Promise.resolve() };
     const requestId = entry.requestId + 1;
@@ -71,6 +83,7 @@ export class WebRequestCoordinator {
     const run = entry.tail
       .catch(() => undefined)
       .then(async () => {
+        beforeRun?.();
         const value = await task(requestId);
         const current = this.compose.get(key);
         if (!current || current.requestId !== requestId) return { status: "stale" } as const;

@@ -374,7 +374,7 @@ async fn one_route_per_bucket_dispatches() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     workspace_owner_supported: false,
-                draft_revision_supported: true,
+                    draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
@@ -478,7 +478,7 @@ async fn legacy_path_redirect_round_trip_smoke() {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     workspace_owner_supported: false,
-                draft_revision_supported: true,
+                    draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,

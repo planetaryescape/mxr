@@ -38,7 +38,7 @@ async fn serve_recording() -> (TempDir, std::net::SocketAddr, Arc<Mutex<Vec<Requ
 #[tokio::test]
 async fn todo_routes_forward_their_requests() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let account = AccountId::new();
     let message = MessageId::new();
 
@@ -136,7 +136,7 @@ async fn todo_routes_forward_their_requests() {
 #[tokio::test]
 async fn todo_routes_reject_bad_input_before_the_daemon() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     for request in [
         client.get(format!("http://{addr}/api/v1/mail/todos/in/archived")),
         client
@@ -155,7 +155,7 @@ async fn todo_routes_reject_bad_input_before_the_daemon() {
 #[tokio::test]
 async fn mode_guide_routes_forward_their_requests() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     for request in [
         client.get(format!("http://{addr}/api/v1/mail/modes/guide?mode=todo")),
         client.get(format!("http://{addr}/api/v1/mail/modes/guide")),
@@ -182,7 +182,7 @@ async fn mode_guide_routes_forward_their_requests() {
 #[tokio::test]
 async fn now_rail_membership_and_done_routes_forward_their_requests() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let account = AccountId::new();
     let thread = ThreadId::new();
     let message = MessageId::new();
@@ -240,7 +240,7 @@ async fn now_rail_membership_and_done_routes_forward_their_requests() {
 #[tokio::test]
 async fn mode_routes_reject_bad_input_before_the_daemon() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let thread = ThreadId::new();
     for request in [
         client.get(format!("http://{addr}/api/v1/mail/modes/membership")),
@@ -264,7 +264,7 @@ async fn mode_routes_reject_bad_input_before_the_daemon() {
 #[tokio::test]
 async fn got_it_with_only_a_thread_id_is_a_preview_and_a_send_carries_its_token() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let thread = ThreadId::new();
     for body in [
         serde_json::json!({ "thread_id": thread.to_string() }),
@@ -303,7 +303,7 @@ async fn got_it_with_only_a_thread_id_is_a_preview_and_a_send_carries_its_token(
 #[tokio::test]
 async fn freshness_route_forwards_its_scope_and_limit() {
     let (_temp, addr, seen) = serve_recording().await;
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let account = AccountId::new();
     for url in [
         format!("http://{addr}/api/v1/mail/freshness"),

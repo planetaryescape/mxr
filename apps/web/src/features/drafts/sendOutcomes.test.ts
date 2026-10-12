@@ -1,8 +1,11 @@
 /* @vitest-environment jsdom */
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { operationAfterReview, readSendReferences, retainSendReference } from "./sendOutcomes";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  const items = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => items.set(key, value), clear: () => items.clear() });
+});
 test("retains the query identity before submission and across reads", () => {
   const reference = { operationId: "draft:1", accountId: "account", draftId: "draft" };
   retainSendReference(reference);

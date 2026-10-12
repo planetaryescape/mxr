@@ -95,10 +95,10 @@ export function useComposeAutosave({
     attemptedFingerprintRef.current = `${snapshot.draftPath}:${snapshot.fingerprint}`;
     pendingSavesRef.current += 1;
     try {
-      rememberActiveDraft(intentKey, current);
+      if (!rememberActiveDraft(intentKey, current)) throw new Error("Browser storage could not retain your private edits. Keep this editor open until they are saved or copied.");
+      const binding = snapshot.binding;
+      if (!binding) throw new Error("Retained editor has no workspace owner; your private text stays preserved. Reopen explicitly.");
       const result = await requestCoordinator.queueComposeLatest(queueKey, async () => {
-        if (snapshot.binding) assertWorkspaceBinding(snapshot.binding);
-        else throw new Error("Retained editor has no workspace owner; your text remains private. Reopen the saved draft explicitly.");
         const activeDraft = draftRef.current;
         const sameSession =
           activeDraft != null &&
@@ -122,7 +122,7 @@ export function useComposeAutosave({
         const submittedAttachments = snapshot.frontmatter.attach.map(
           (path) => recoveryTarget?.attachmentPaths?.get(path) ?? path,
         );
-        rememberComposeBinding(submittedPath, snapshot.binding);
+        rememberComposeBinding(submittedPath, binding);
         const response = await (async () => {
           try {
             return await updateSession.mutateAsync({
@@ -286,6 +286,8 @@ export function useComposeAutosave({
           );
         }
         return response;
+      }, () => {
+        assertWorkspaceBinding(binding);
       });
       if (result.status !== "committed") return undefined;
       const response = result.value;

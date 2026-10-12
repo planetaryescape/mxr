@@ -128,24 +128,45 @@ function jsonObject(body: string): Record<string, unknown> | null {
   }
 }
 
+interface RequestOwnerContext { target: string; generation: number; binding?: WorkspaceBinding }
+const typedContexts = new WeakMap<Request, RequestOwnerContext>();
+function observeResponseOwner(response: Response, context: RequestOwnerContext): void {
+  assertTarget(context.target);
+  if (context.generation !== workspaceGeneration()) throw new WorkspaceConflictError();
+  const header = response.headers.get("x-mxr-workspace");
+  if (header) {
+    const workspace = parseWorkspace(JSON.parse(header));
+    if (workspace) observeWorkspace({ target: context.target, workspace });
+  }
+  if (context.generation !== workspaceGeneration()) throw new WorkspaceConflictError();
+  if (context.binding) assertWorkspaceBinding(context.binding);
+}
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
+    const context: RequestOwnerContext = { target: getBridgeBaseUrl(), generation: workspaceGeneration(), binding: request.method === "GET" ? undefined : selectedWorkspace() };
+    if (new URL(request.url).origin !== new URL(context.target).origin) throw new WorkspaceConflictError();
     let token = getToken();
-    if (!token) {
-      token = await tryLocalHandshake();
-    }
-    if (token) {
-      request.headers.set("Authorization", `Bearer ${token}`);
-    }
+    if (!token) token = await tryLocalHandshake();
+    assertTarget(context.target);
+    if (context.binding) assertWorkspaceBinding(context.binding);
+    if (token) request.headers.set("Authorization", `Bearer ${token}`);
+    if (context.binding) request.headers.set("x-mxr-workspace", JSON.stringify(context.binding.workspace));
+    typedContexts.set(request, context);
     return request;
   },
   async onResponse({ response, request }) {
+    const context = typedContexts.get(request);
+    if (!context) throw new Error("Typed request lost its captured workspace context");
+    observeResponseOwner(response, context);
     if (response.status === 401) {
       const recovered = await tryLocalHandshake();
       if (recovered) {
+        assertTarget(context.target);
+        if (context.binding) assertWorkspaceBinding(context.binding);
         const retry = new Request(request, {});
         retry.headers.set("Authorization", `Bearer ${recovered}`);
         const second = await fetch(retry);
+        observeResponseOwner(second, context);
         if (second.status !== 401) return second;
       }
       throw new UnauthorizedError();
@@ -196,16 +217,7 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
       res = await sendToBridge(path, init, target, commandBinding);
     }
   }
-  assertTarget(target);
-  if (startedGeneration !== workspaceGeneration()) throw new WorkspaceConflictError();
-  const ownerHeader = res.headers.get("x-mxr-workspace");
-  if (ownerHeader) {
-    const owner: unknown = JSON.parse(ownerHeader);
-    const workspace = parseWorkspace(owner);
-    if (workspace) observeWorkspace({ target, workspace });
-  }
-  if (startedGeneration !== workspaceGeneration()) throw new WorkspaceConflictError();
-  if (commandBinding) assertWorkspaceBinding(commandBinding);
+  observeResponseOwner(res, { target, generation: startedGeneration, binding: commandBinding });
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) throw await failureFrom(res);
   if (res.status === 204) return undefined as T;
@@ -217,14 +229,19 @@ export async function apiFetchBlob(
   path: string,
   opts: { signal?: AbortSignal } = {},
 ): Promise<Blob> {
+  const context = { target: getBridgeBaseUrl(), generation: workspaceGeneration() };
   let token = getToken();
   if (!token) token = await tryLocalHandshake();
+  assertTarget(context.target);
   const headers = new Headers();
   if (token) headers.set("authorization", `Bearer ${token}`);
-  const res = await sendToBridge(path, { headers, signal: opts.signal });
+  const res = await sendToBridge(path, { headers, signal: opts.signal }, context.target);
+  observeResponseOwner(res, context);
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) throw await failureFrom(res);
-  return res.blob();
+  const blob = await res.blob();
+  observeResponseOwner(res, context);
+  return blob;
 }
 
 export function logoutAndReload(): void {
@@ -237,7 +254,7 @@ export async function captureWorkspaceBinding(): Promise<WorkspaceBinding> {
   const result = await apiFetch<{ workspace: unknown }>("/api/v1/mail/archive-operations/workspace");
   assertTarget(target);
   const workspace = parseWorkspace(result.workspace);
-  if (!workspace) throw new Error("Daemon does not supply a durable workspace identity; upgrade before editing");
+  if (!workspace) throw new Error("Daemon does not support durable workspace identity; upgrade before editing");
   const binding = { target, workspace };
   observeWorkspace(binding);
   return binding;

@@ -11,12 +11,11 @@ import {
   rememberComposeBinding,
   type ComposeSessionResponse,
 } from "../api";
-import { DaemonUnavailableError } from "@/api/client";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 
 import { composeQueueKey, type ComposeDraftState, type ComposeIntent } from "./composeDraft";
 
-import { WorkspaceConflictError } from "@/lib/workspaceOwner";
+import { parseWorkspace } from "@/lib/workspaceOwner";
 
 const activeDraftStorageKey = "mxr.compose.activeDrafts";
 
@@ -68,8 +67,7 @@ export async function loadInitialComposeSession(
         },
       };
     } catch (error) {
-      if (error instanceof DaemonUnavailableError || error instanceof WorkspaceConflictError) throw error;
-      forgetActiveDraft(intent.key);
+      throw error;
     }
   }
   if (intent.draftId) return restoreComposeSession(intent.draftId);
@@ -81,18 +79,27 @@ function readActiveDraft(key: string): ActiveDraftEntry | undefined {
   try {
     const raw = window.localStorage.getItem(activeDraftStorageKey);
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as Record<string, ActiveDraftEntry>;
-    return parsed[key];
-  } catch {
-    return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (!record(parsed)) throw new Error("Private compose journal is malformed; keep it for recovery");
+    const entry = parsed[key];
+    if (entry === undefined) return undefined;
+    if (!record(entry) || typeof entry.draftPath !== "string") throw new Error("Retained compose identity is malformed");
+    return { draftPath: entry.draftPath, updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : 0,
+      accountId: typeof entry.accountId === "string" ? entry.accountId : undefined,
+      recoverySourcePath: typeof entry.recoverySourcePath === "string" ? entry.recoverySourcePath : undefined,
+      preservedRecoveryPath: typeof entry.preservedRecoveryPath === "string" ? entry.preservedRecoveryPath : undefined,
+      snapshot: entry.snapshot === undefined ? undefined : parseSnapshot(entry.snapshot) };
+  } catch (error) {
+    throw new Error("Cannot read retained private compose work; the journal was preserved", { cause: error });
   }
 }
 
-export function rememberActiveDraft(key: string, draft: ComposeDraftState) {
-  if (typeof window === "undefined") return;
+export function rememberActiveDraft(key: string, draft: ComposeDraftState): boolean {
+  if (typeof window === "undefined") return false;
   try {
     const raw = window.localStorage.getItem(activeDraftStorageKey);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, ActiveDraftEntry>) : {};
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!record(parsed)) return false;
     parsed[key] = {
       snapshot: draft,
       draftPath: draft.draftPath,
@@ -102,26 +109,47 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState) {
       updatedAt: Date.now(),
     };
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
+    return true;
   } catch {
-    // Reload survival is best-effort only.
+    return false;
   }
 }
 
-export function forgetActiveDraft(key: string) {
-  if (typeof window === "undefined") return;
+export function forgetActiveDraft(key: string): boolean {
+  if (typeof window === "undefined") return false;
   try {
     const raw = window.localStorage.getItem(activeDraftStorageKey);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Record<string, ActiveDraftEntry>;
+    if (!raw) return true;
+    const parsed: unknown = JSON.parse(raw);
+    if (!record(parsed)) return false;
     delete parsed[key];
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
+    return true;
   } catch {
-    // Corrupt entry: drop it. Storage itself may be unavailable (private
-    // mode, disabled site data), which must never break a send or schedule.
-    try {
-      window.localStorage.removeItem(activeDraftStorageKey);
-    } catch {
-      // Nothing to clean up without storage.
-    }
+    // Other private drafts remain recoverable even when this entry is unreadable.
+    return false;
   }
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseSnapshot(value: unknown): ComposeDraftState {
+  if (!record(value) || typeof value.draftPath !== "string" || typeof value.bodyMarkdown !== "string" || typeof value.accountId !== "string" || !record(value.frontmatter)) throw new Error("Private draft snapshot is malformed; retain the journal");
+  const fm = value.frontmatter;
+  if (typeof fm.to !== "string" || typeof fm.cc !== "string" || typeof fm.bcc !== "string" || typeof fm.subject !== "string" || typeof fm.from !== "string" || !Array.isArray(fm.attach) || !fm.attach.every((path: unknown) => typeof path === "string")) throw new Error("Private draft fields are malformed; retain the journal");
+  let binding: ComposeDraftState["binding"];
+  if (value.binding !== undefined) {
+    if (!record(value.binding) || typeof value.binding.target !== "string") throw new Error("Retained draft target is malformed");
+    const workspace = parseWorkspace(value.binding.workspace);
+    if (!workspace) throw new Error("Retained draft workspace is malformed");
+    binding = { target: value.binding.target, workspace };
+  }
+  return { binding, draftPath: value.draftPath, accountId: value.accountId, bodyMarkdown: value.bodyMarkdown,
+    rawContent: typeof value.rawContent === "string" ? value.rawContent : "", kind: typeof value.kind === "string" ? value.kind : "recovery", issues: [],
+    draftId: typeof value.draftId === "string" ? value.draftId : undefined,
+    revision: typeof value.revision === "number" && Number.isSafeInteger(value.revision) ? value.revision : null,
+    recoverySourcePath: typeof value.recoverySourcePath === "string" ? value.recoverySourcePath : undefined,
+    preservedRecoveryPath: typeof value.preservedRecoveryPath === "string" ? value.preservedRecoveryPath : undefined,
+    frontmatter: { to: fm.to, cc: fm.cc, bcc: fm.bcc, subject: fm.subject, from: fm.from, attach: fm.attach } };
 }

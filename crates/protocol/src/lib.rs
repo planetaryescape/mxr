@@ -36,7 +36,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 10;
+pub const IPC_PROTOCOL_VERSION: u32 = 11;
 
 #[cfg(test)]
 mod tests {
@@ -890,7 +890,7 @@ mod tests {
             (
                 ResponseData::Status {
                     workspace_owner_supported: false,
-                draft_revision_supported: true,
+                    draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,

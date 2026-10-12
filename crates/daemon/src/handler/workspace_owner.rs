@@ -23,9 +23,17 @@ pub(super) async fn validate(
         return Err(refused("workspace_owner_invalid", "Workspace identity fields must be UUIDs; retain your private work and reopen the original workspace."));
     }
     let current = state.store.archive_workspace().await.map_err(|error| {
-        refused("workspace_owner_unavailable", format!("Cannot verify workspace ownership: {error}"))
+        refused(
+            "workspace_owner_unavailable",
+            format!("Cannot verify workspace ownership: {error}"),
+        )
     })?;
-    if current != (expected.workspace_id.clone(), expected.recovery_generation.clone()) {
+    if current
+        != (
+            expected.workspace_id.clone(),
+            expected.recovery_generation.clone(),
+        )
+    {
         return Err(refused("workspace_conflict", "Selected workspace or recovery generation changed. Your private work and pending outcomes remain retained; return to the original workspace to recover. This command was not applied."));
     }
     Ok(())

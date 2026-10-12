@@ -133,14 +133,33 @@ impl Client {
         self.request(req).await
     }
 
-    pub(crate) async fn capture_workspace(&mut self) -> Result<mxr_protocol::ArchiveWorkspaceData, MxrError> {
-        self.conn.capture_workspace().await.map_err(map_request_error)
+    pub(crate) async fn capture_workspace(
+        &mut self,
+    ) -> Result<mxr_protocol::ArchiveWorkspaceData, MxrError> {
+        self.conn
+            .capture_workspace()
+            .await
+            .map_err(map_request_error)
     }
-    pub(crate) async fn raw_request_owned(&mut self, req: Request, owner: Option<&mxr_protocol::ArchiveWorkspaceData>) -> Result<Response, MxrError> {
+    pub(crate) async fn raw_request_owned(
+        &mut self,
+        req: Request,
+        owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
+    ) -> Result<Response, MxrError> {
         let event_tx = self.event_tx.clone();
-        self.conn.request_response_owned(req, owner, move |event| {
-            if let Some(tx) = &event_tx { let _ = tx.send(event); }
-        }, None).await.map_err(map_request_error)
+        self.conn
+            .request_response_owned(
+                req,
+                owner,
+                move |event| {
+                    if let Some(tx) = &event_tx {
+                        let _ = tx.send(event);
+                    }
+                },
+                None,
+            )
+            .await
+            .map_err(map_request_error)
     }
 
     async fn request(&mut self, req: Request) -> Result<Response, MxrError> {

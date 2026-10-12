@@ -12,7 +12,11 @@ fn error(message: impl Into<String>) -> ClientError {
 }
 
 impl IpcConnection {
-    async fn upload_request(&mut self, request: Request, workspace: Option<&mxr_protocol::ArchiveWorkspaceData>) -> Result<ResponseData, ClientError> {
+    async fn upload_request(
+        &mut self,
+        request: Request,
+        workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
+    ) -> Result<ResponseData, ClientError> {
         match self
             .request_response_unchecked_owned(request, &mut |_| {}, None, workspace)
             .await?
@@ -50,15 +54,31 @@ impl IpcConnection {
         bytes: &[u8],
     ) -> Result<DraftAttachment, ClientError> {
         let workspace = self.capture_workspace().await?;
-        self.upload_draft_attachment_bytes_owned(draft, filename, mime_type, bytes, Some(&workspace)).await
+        self.upload_draft_attachment_bytes_owned(
+            draft,
+            filename,
+            mime_type,
+            bytes,
+            Some(&workspace),
+        )
+        .await
     }
 
     pub async fn upload_draft_attachment_bytes_owned(
-        &mut self, draft: &Draft, filename: String, mime_type: String, bytes: &[u8],
+        &mut self,
+        draft: &Draft,
+        filename: String,
+        mime_type: String,
+        bytes: &[u8],
         workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<DraftAttachment, ClientError> {
-        if let Some(owner) = workspace { self.verify_workspace(owner).await?; }
-        else { return Err(error("Attachment upload requires its original workspace owner")); }
+        if let Some(owner) = workspace {
+            self.verify_workspace(owner).await?;
+        } else {
+            return Err(error(
+                "Attachment upload requires its original workspace owner",
+            ));
+        }
         self.require_draft_attachment_upload().await?;
         if bytes.len() as u64 > MAX_DRAFT_ATTACHMENT_BYTES {
             return Err(error(
@@ -78,9 +98,12 @@ impl IpcConnection {
                 .collect(),
         };
         match self
-            .upload_request(Request::BeginDraftAttachment {
-                metadata: metadata.clone(),
-            }, workspace)
+            .upload_request(
+                Request::BeginDraftAttachment {
+                    metadata: metadata.clone(),
+                },
+                workspace,
+            )
             .await?
         {
             ResponseData::DraftAttachment { metadata: accepted } if accepted == metadata => (),
@@ -91,13 +114,16 @@ impl IpcConnection {
             .enumerate()
         {
             match self
-                .upload_request(Request::WriteDraftAttachmentChunk {
-                    draft_id: draft.id.clone(),
-                    account_id: draft.account_id.clone(),
-                    resource_id: metadata.id.clone(),
-                    offset: index as u64 * u64::from(MAX_ATTACHMENT_CHUNK_BYTES),
-                    data_base64: STANDARD.encode(chunk),
-                }, workspace)
+                .upload_request(
+                    Request::WriteDraftAttachmentChunk {
+                        draft_id: draft.id.clone(),
+                        account_id: draft.account_id.clone(),
+                        resource_id: metadata.id.clone(),
+                        offset: index as u64 * u64::from(MAX_ATTACHMENT_CHUNK_BYTES),
+                        data_base64: STANDARD.encode(chunk),
+                    },
+                    workspace,
+                )
                 .await?
             {
                 ResponseData::Ack => (),
@@ -105,11 +131,14 @@ impl IpcConnection {
             }
         }
         match self
-            .upload_request(Request::FinalizeDraftAttachment {
-                draft_id: draft.id.clone(),
-                account_id: draft.account_id.clone(),
-                resource_id: metadata.id.clone(),
-            }, workspace)
+            .upload_request(
+                Request::FinalizeDraftAttachment {
+                    draft_id: draft.id.clone(),
+                    account_id: draft.account_id.clone(),
+                    resource_id: metadata.id.clone(),
+                },
+                workspace,
+            )
             .await?
         {
             ResponseData::DraftAttachment { metadata: accepted } if accepted == metadata => {
@@ -199,9 +228,12 @@ impl IpcConnection {
                     .map_err(|_| error("Invalid managed attachment reference"))?;
                 if canonical.is_none() {
                     canonical = match self
-                        .upload_request(Request::GetDraft {
-                            draft_id: draft.id.clone(),
-                        }, workspace)
+                        .upload_request(
+                            Request::GetDraft {
+                                draft_id: draft.id.clone(),
+                            },
+                            workspace,
+                        )
                         .await?
                     {
                         ResponseData::Draft { draft } => Some(draft),
@@ -285,9 +317,12 @@ impl IpcConnection {
         }
         // Attach resources with the reviewed owner's revision, before any send/provider effect.
         *draft = match self
-            .upload_request(Request::UpdateDraft {
-                draft: draft.clone(),
-            }, workspace)
+            .upload_request(
+                Request::UpdateDraft {
+                    draft: draft.clone(),
+                },
+                workspace,
+            )
             .await?
         {
             ResponseData::Draft { draft } => draft,

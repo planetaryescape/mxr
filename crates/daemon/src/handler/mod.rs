@@ -14,7 +14,6 @@ pub(crate) mod activity;
 mod admin;
 mod archive_ask;
 mod archive_recovery;
-mod workspace_owner;
 pub(crate) mod arrivals;
 mod auth_sessions;
 mod briefing;
@@ -92,6 +91,7 @@ pub(crate) mod updates;
 mod updates_digest;
 mod user_voice;
 mod whois;
+mod workspace_owner;
 
 use crate::state::AppState;
 use mxr_config::{DestructiveAction, MxrConfig, SafetyPolicy};
@@ -466,42 +466,51 @@ pub async fn handle_request_with_peer(
     msg: &IpcMessage,
     peer: PeerInfo,
 ) -> IpcMessage {
-    let response_data = match &msg.payload {
-        IpcPayload::Request(req) => {
-            let request = request_kind(req);
-            let account_id_str = request_account_id(req)
-                .map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
-            let account_key = request_account_key(req).unwrap_or("-");
-            let span = tracing::info_span!(
-                "ipc_request",
-                request_id = msg.id,
-                request,
-                account_id = account_id_str.as_str(),
-                account_key
-            );
-            let response = match workspace_owner::validate(state, req, msg.expected_workspace.as_ref()).await {
-                Ok(()) => dispatch(state, msg.source, &peer, req).instrument(span).await,
-                Err(response) => response,
-            };
+    let response_data =
+        match &msg.payload {
+            IpcPayload::Request(req) => {
+                let request = request_kind(req);
+                let account_id_str = request_account_id(req)
+                    .map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
+                let account_key = request_account_key(req).unwrap_or("-");
+                let span = tracing::info_span!(
+                    "ipc_request",
+                    request_id = msg.id,
+                    request,
+                    account_id = account_id_str.as_str(),
+                    account_key
+                );
+                let response =
+                    match workspace_owner::validate(state, req, msg.expected_workspace.as_ref())
+                        .await
+                    {
+                        Ok(()) => {
+                            dispatch(state, msg.source, &peer, req)
+                                .instrument(span)
+                                .await
+                        }
+                        Err(response) => response,
+                    };
 
-            // Activity capture seam. Fire-and-forget; never propagates errors.
-            // See `docs/activity-log.md`.
-            let ok = matches!(&response, Response::Ok { .. });
-            let account_id_for_activity = request_account_id(req).map(mxr_core::AccountId::as_str);
-            if let Some(entry) = crate::activity::mapper::map_request(
-                req,
-                msg.source,
-                account_id_for_activity.as_deref(),
-                ok,
-            ) {
-                state.activity.record(entry);
+                // Activity capture seam. Fire-and-forget; never propagates errors.
+                // See `docs/activity-log.md`.
+                let ok = matches!(&response, Response::Ok { .. });
+                let account_id_for_activity =
+                    request_account_id(req).map(mxr_core::AccountId::as_str);
+                if let Some(entry) = crate::activity::mapper::map_request(
+                    req,
+                    msg.source,
+                    account_id_for_activity.as_deref(),
+                    ok,
+                ) {
+                    state.activity.record(entry);
+                }
+                crate::chimes::play_for_request_response(state, msg.source, req, &response);
+
+                response
             }
-            crate::chimes::play_for_request_response(state, msg.source, req, &response);
-
-            response
-        }
-        _ => Response::error("Expected a Request"),
-    };
+            _ => Response::error("Expected a Request"),
+        };
 
     IpcMessage {
         expected_workspace: None,
@@ -519,8 +528,13 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
     if internal.expected_workspace.is_none() {
         if let IpcPayload::Request(request) = &internal.payload {
             if workspace_owner::required(request) {
-                if let Ok((workspace_id, recovery_generation)) = state.store.archive_workspace().await {
-                    internal.expected_workspace = Some(mxr_protocol::ArchiveWorkspaceData { workspace_id, recovery_generation });
+                if let Ok((workspace_id, recovery_generation)) =
+                    state.store.archive_workspace().await
+                {
+                    internal.expected_workspace = Some(mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id,
+                        recovery_generation,
+                    });
                 }
             }
         }

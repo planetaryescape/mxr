@@ -8,11 +8,12 @@ import { draftFromSession, type ComposeDraftState } from "./composeDraft";
 import { useComposeAutosave } from "./useComposeAutosave";
 
 const update = vi.hoisted(() => vi.fn<typeof import("../api").updateComposeSession>());
-vi.mock("../api", () => ({ updateComposeSession: update }));
+vi.mock("../api", () => ({ updateComposeSession: update, rememberComposeBinding: vi.fn() }));
 
 function session(path: string, revision: number, body: string): ComposeSessionResponse {
   return {
     session: {
+      binding: { target: window.location.origin, workspace: { workspace_id: "owner", recovery_generation: "generation" } },
       draftPath: path,
       draftId: path,
       revision,

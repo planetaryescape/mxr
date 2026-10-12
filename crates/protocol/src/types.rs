@@ -2512,13 +2512,27 @@ pub enum Request {
 impl Request {
     /// Retained compose/recovery commands must never follow a new daemon owner.
     pub fn requires_workspace_owner(&self) -> bool {
-        matches!(self,
-            Self::SaveDraft { .. } | Self::UpdateDraft { .. } | Self::SaveDraftToServer { .. }
-            | Self::DeleteDraft { .. } | Self::GetDraft { .. } | Self::GetSendOutcome { .. }
-            | Self::CheckDraftSafety { .. } | Self::SendDraft { .. } | Self::SendStoredDraft { .. } | Self::ScheduleSend { .. }
-            | Self::CancelScheduledSend { .. } | Self::ResetOrphanedDraft { .. }
-            | Self::PreviewDraftAttachment { .. } | Self::BeginDraftAttachment { .. }
-            | Self::WriteDraftAttachmentChunk { .. } | Self::FinalizeDraftAttachment { .. })
+        matches!(
+            self,
+            Self::SaveDraft { .. }
+                | Self::UpdateDraft { .. }
+                | Self::SaveDraftToServer { .. }
+                | Self::DeleteDraft { .. }
+                | Self::GetDraft { .. }
+                | Self::GetSendOutcome { .. }
+                | Self::SuggestCollaborators { .. }
+                | Self::ExtractDraftCommitments { .. }
+                | Self::CheckDraftSafety { .. }
+                | Self::SendDraft { .. }
+                | Self::SendStoredDraft { .. }
+                | Self::ScheduleSend { .. }
+                | Self::CancelScheduledSend { .. }
+                | Self::ResetOrphanedDraft { .. }
+                | Self::PreviewDraftAttachment { .. }
+                | Self::BeginDraftAttachment { .. }
+                | Self::WriteDraftAttachmentChunk { .. }
+                | Self::FinalizeDraftAttachment { .. }
+        )
     }
 
     /// Convenience constructor — correlation id omitted (clients add when tracking optimism).

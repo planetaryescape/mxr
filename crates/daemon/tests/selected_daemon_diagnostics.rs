@@ -65,7 +65,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                     let data = match message.payload {
                         IpcPayload::Request(Request::GetStatus) => ResponseData::Status {
                             workspace_owner_supported: false,
-                draft_revision_supported: true,
+                            draft_revision_supported: true,
                             send_outcome_supported: true,
                             archive_recovery_supported: true,
                             attachment_transfer_supported: true,

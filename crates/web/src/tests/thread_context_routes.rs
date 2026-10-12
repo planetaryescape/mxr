@@ -61,7 +61,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
     )
     .await
     .unwrap();
-    let client = reqwest::Client::new();
+    let client = test_http_client();
     let thread_id = ThreadId::new();
 
     let context: serde_json::Value = client

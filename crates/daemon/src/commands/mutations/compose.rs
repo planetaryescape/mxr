@@ -62,6 +62,7 @@ pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> Str
 
 pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
     let (account, from_override) = resolve_compose_sender(
         &mut client,
         options.from.as_deref(),
@@ -162,7 +163,13 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     if options.dry_run {
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(Some(&client.capture_workspace().await?), &draft, &effective_from, sending, options.format)?;
+        print_draft_preview(
+            Some(&client.capture_workspace().await?),
+            &draft,
+            &effective_from,
+            sending,
+            options.format,
+        )?;
         return Ok(());
     }
 
@@ -171,7 +178,11 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
     if sending {
         let identity = mxr_core::SendIdentity::for_draft(&draft);
-        print_send_recovery(&draft.account_id, &identity);
+        print_send_recovery(
+            &draft.account_id,
+            &identity,
+            &client.capture_workspace().await?,
+        );
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
@@ -358,6 +369,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
     let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     let resp = client
@@ -476,6 +488,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     } = command;
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
     let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
 
     let resp = client
@@ -634,7 +647,13 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     if dry_run {
         let effective_from =
             resolve_effective_from(client, &outgoing.account_id, outgoing.from.as_ref()).await?;
-        print_draft_preview(Some(&client.capture_workspace().await?), &outgoing, &effective_from, sending, format)?;
+        print_draft_preview(
+            Some(&client.capture_workspace().await?),
+            &outgoing,
+            &effective_from,
+            sending,
+            format,
+        )?;
         return Ok(());
     }
 
@@ -654,7 +673,11 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     }
     if sending {
         let identity = mxr_core::SendIdentity::for_draft(&outgoing);
-        print_send_recovery(&outgoing.account_id, &identity);
+        print_send_recovery(
+            &outgoing.account_id,
+            &identity,
+            &client.capture_workspace().await?,
+        );
         let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
@@ -1191,8 +1214,11 @@ pub async fn send_outcome(
     operation_id: String,
     account: String,
     format: Option<OutputFormat>,
+    expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let owner = expected_workspace.ok_or_else(|| anyhow::anyhow!("Send outcome recovery requires --expected-workspace retained from the original review; do not infer it from the selected daemon"))?;
+    client.expect_workspace(owner).await?;
     let account_id = resolve_optional_account(&mut client, Some(&account))
         .await?
         .ok_or_else(|| anyhow::anyhow!("An account is required"))?;
@@ -1238,7 +1264,13 @@ pub async fn send_draft(
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
-        print_draft_preview(Some(&client.capture_workspace().await?), &draft, &effective_from, true, format)?;
+        print_draft_preview(
+            Some(&client.capture_workspace().await?),
+            &draft,
+            &effective_from,
+            true,
+            format,
+        )?;
         return Ok(());
     }
     let reviewed_owner = review.expected_workspace.ok_or_else(|| anyhow::anyhow!("Review with mxr send {draft_id} --dry-run --format json, then supply --expected-workspace from that preview; retained work is never rebound automatically"))?;
@@ -1255,7 +1287,11 @@ pub async fn send_draft(
     if draft.revision != Some(reviewed_revision) {
         anyhow::bail!("Reviewed draft revision is stale; review again before sending");
     }
-    print_send_recovery(&draft.account_id, &identity);
+    print_send_recovery(
+        &draft.account_id,
+        &identity,
+        &client.capture_workspace().await?,
+    );
     let response = client
         .request(Request::SendStoredDraft {
             managed_attachments_reviewed: true,
@@ -1489,7 +1525,9 @@ pub async fn schedule_send(
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let send_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
-    let owner = expected_workspace.ok_or_else(|| anyhow::anyhow!("Scheduling requires --expected-workspace from the original send preview"))?;
+    let owner = expected_workspace.ok_or_else(|| {
+        anyhow::anyhow!("Scheduling requires --expected-workspace from the original send preview")
+    })?;
     client.expect_workspace(owner).await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
@@ -2336,7 +2374,9 @@ fn print_draft_preview(
             if sending && draft.revision.is_some() {
                 println!(
                     "  send: mxr send {} --expected-revision {} --expected-workspace '{}'",
-                    draft.id, identity.expected_revision, serde_json::to_string(&workspace)?
+                    draft.id,
+                    identity.expected_revision,
+                    serde_json::to_string(&workspace)?
                 );
             }
             println!(
@@ -2367,10 +2407,14 @@ fn format_addresses(addresses: &[Address]) -> String {
         .join(", ")
 }
 
-fn print_send_recovery(account: &mxr_core::AccountId, identity: &mxr_core::SendIdentity) {
+fn print_send_recovery(
+    account: &mxr_core::AccountId,
+    identity: &mxr_core::SendIdentity,
+    owner: &mxr_protocol::ArchiveWorkspaceData,
+) {
     eprintln!(
-        "Send operation: {} (recover with mxr send-outcome '{}' --account {}). If the response is lost, query this operation; do not rerun compose, reply or forward.",
-        identity.operation_id, identity.operation_id, account
+        "Send operation: {} (recover with mxr send-outcome '{}' --account {} --expected-workspace '{}'). If the response is lost, query this operation; do not rerun compose, reply or forward.",
+        identity.operation_id, identity.operation_id, account, serde_json::to_string(owner).unwrap_or_default()
     );
 }
 

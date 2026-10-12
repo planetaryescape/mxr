@@ -374,9 +374,11 @@ impl IpcConnection {
         on_event: F,
         request_timeout: Option<Duration>,
     ) -> Result<Response, ClientError>
-    where F: FnMut(DaemonEvent),
+    where
+        F: FnMut(DaemonEvent),
     {
-        self.request_response_owned(request, None, on_event, request_timeout).await
+        self.request_response_owned(request, None, on_event, request_timeout)
+            .await
     }
 
     /// Ownership belongs to this command, never to mutable connection state.
@@ -393,7 +395,10 @@ impl IpcConnection {
         if let Some(workspace) = expected_workspace {
             self.verify_workspace(workspace).await?;
         }
-        let request = match self.prepare_draft_attachment_request(request, expected_workspace).await {
+        let request = match self
+            .prepare_draft_attachment_request(request, expected_workspace)
+            .await
+        {
             Ok(request) => request,
             Err(ClientError::Daemon {
                 message,
@@ -548,8 +553,7 @@ impl IpcConnection {
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
-                        workspace_owner_supported: false,
-                draft_revision_supported: true,
+                        draft_revision_supported: true,
                         send_outcome_supported: true,
                         ..
                     }
@@ -558,8 +562,13 @@ impl IpcConnection {
                 return Ok(Response::error_kinded("Daemon does not support durable draft revisions; upgrade the daemon before saving or deleting drafts", mxr_protocol::IpcErrorKind::Unsupported));
             }
         }
-        self.request_response_unchecked_owned(request, on_event, request_timeout, expected_workspace)
-            .await
+        self.request_response_unchecked_owned(
+            request,
+            on_event,
+            request_timeout,
+            expected_workspace,
+        )
+        .await
     }
 
     async fn request_response_unchecked<F>(
@@ -571,7 +580,8 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
-        self.request_response_unchecked_owned(request, on_event, request_timeout, None).await
+        self.request_response_unchecked_owned(request, on_event, request_timeout, None)
+            .await
     }
 
     async fn request_response_unchecked_owned<F>(
@@ -581,7 +591,8 @@ impl IpcConnection {
         request_timeout: Option<Duration>,
         expected_workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Response, ClientError>
-    where F: FnMut(DaemonEvent),
+    where
+        F: FnMut(DaemonEvent),
     {
         let id = self.take_id();
         let mut message = self.envelope(id, request);
@@ -624,26 +635,52 @@ impl IpcConnection {
         }
     }
 
-    pub async fn capture_workspace(&mut self) -> Result<mxr_protocol::ArchiveWorkspaceData, ClientError> {
+    pub async fn capture_workspace(
+        &mut self,
+    ) -> Result<mxr_protocol::ArchiveWorkspaceData, ClientError> {
         match self.request_response_unchecked(Request::GetStatus, &mut |_| {}, self.default_timeout).await? {
             Response::Ok { data: ResponseData::Status { workspace_owner_supported: true, .. } } => (),
             _ => return Err(workspace_error("workspace_owner_unsupported", "Daemon does not support workspace ownership; upgrade before replaying private work")),
         }
-        match self.request_response_unchecked(Request::GetArchiveWorkspace, &mut |_| {}, self.default_timeout).await? {
-            Response::Ok { data: ResponseData::ArchiveWorkspace { workspace } } => Ok(workspace),
-            response => into_data(response).and_then(|_| Err(workspace_error("workspace_owner_unavailable", "Cannot obtain selected workspace identity"))),
+        match self
+            .request_response_unchecked(
+                Request::GetArchiveWorkspace,
+                &mut |_| {},
+                self.default_timeout,
+            )
+            .await?
+        {
+            Response::Ok {
+                data: ResponseData::ArchiveWorkspace { workspace },
+            } => Ok(workspace),
+            response => into_data(response).and_then(|_| {
+                Err(workspace_error(
+                    "workspace_owner_unavailable",
+                    "Cannot obtain selected workspace identity",
+                ))
+            }),
         }
     }
 
-    pub async fn verify_workspace(&mut self, expected: &mxr_protocol::ArchiveWorkspaceData) -> Result<(), ClientError> {
+    pub async fn verify_workspace(
+        &mut self,
+        expected: &mxr_protocol::ArchiveWorkspaceData,
+    ) -> Result<(), ClientError> {
         if self.capture_workspace().await? != *expected {
             return Err(workspace_error("workspace_conflict", "Selected workspace or recovery generation changed; return to the original workspace to recover retained private work"));
         }
         Ok(())
     }
 
-    pub async fn request_owned(&mut self, request: Request, workspace: &mxr_protocol::ArchiveWorkspaceData) -> Result<ResponseData, ClientError> {
-        into_data(self.request_response_owned(request, Some(workspace), drop_event, self.default_timeout).await?)
+    pub async fn request_owned(
+        &mut self,
+        request: Request,
+        workspace: &mxr_protocol::ArchiveWorkspaceData,
+    ) -> Result<ResponseData, ClientError> {
+        into_data(
+            self.request_response_owned(request, Some(workspace), drop_event, self.default_timeout)
+                .await?,
+        )
     }
 
     /// Send `request` and return its [`ResponseData`] payload, mapping a
@@ -1574,5 +1611,14 @@ mod draft_revision_compatibility_tests {
 }
 
 fn workspace_error(code: &str, message: &str) -> ClientError {
-    ClientError::Daemon { message: message.into(), kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: code.into(), retryable: false, details: None }
+    ClientError::Daemon {
+        message: message.into(),
+        kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+        code: code.into(),
+        retryable: false,
+        details: None,
+    }
 }
+
+#[cfg(test)]
+mod workspace_owner_tests;

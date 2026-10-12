@@ -564,3 +564,147 @@ fn restored_default_account_selection_changes_only_local_selection() {
         });
     });
 }
+
+#[test]
+fn confirmed_activation_retries_after_runtime_reload_failure() {
+    const CHILD: &str = "MXR_RECOVERY_RELOAD_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "handler::recovery::tests::confirmed_activation_retries_after_runtime_reload_failure",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("MXR_CONFIG_DIR", &config)
+            .env("MXR_DATA_DIR", root.path().join("data"))
+            .env("HOME", root.path())
+            .env("MXR_KEYCHAIN", "off")
+            .env("MXR_ACTIVITY", "off")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                let output = child.wait_with_output().unwrap();
+                panic!("activation reload child timed out: {output:?}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "activation reload child failed: {output:?}"
+        );
+        return;
+    }
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(activation_reload_child());
+}
+
+async fn activation_reload_child() {
+    let (state, fake, draft, owner) = fixture().await;
+    state
+        .store
+        .set_account_enabled(&draft.account_id, false)
+        .await
+        .unwrap();
+    let account = state
+        .store
+        .get_account(&draft.account_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let key = &account.sync_backend.as_ref().unwrap().config_key;
+    let path = mxr_config::config_dir().join("config.toml");
+    let valid = |interval| {
+        format!(
+            r#"[general]
+sync_interval={interval}
+[llm]
+enabled=false
+[search.semantic]
+enabled=false
+auto_download_models=false
+[accounts.{key}]
+name="Synthetic recovery"
+email="{}"
+enabled=false
+[accounts.{key}.sync]
+type="fake"
+[accounts.{key}.send]
+type="fake"
+"#,
+            account.email
+        )
+    };
+    std::fs::write(&path, valid(777)).unwrap();
+    state.reload_accounts_from_disk().await.unwrap();
+    assert!(state.runtime_account_ids().is_empty());
+
+    std::fs::write(&path, "[invalid configuration").unwrap();
+    let error = activate(&state, &owner, true, false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("activation is committed") && error.contains("reload failed"),
+        "{error}"
+    );
+    let committed = state.store.recovery_status().await.unwrap();
+    assert!(!committed.restore_pending && committed.source_owner_stopped);
+    assert!(!state.is_restore_pending());
+    assert_eq!(committed.recovery_generation, owner.recovery_generation);
+    assert!(
+        !state
+            .store
+            .get_account(&draft.account_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+
+    std::fs::write(&path, valid(999)).unwrap();
+    activate(&state, &owner, false, true).await.unwrap();
+    assert_eq!(
+        state.config_snapshot().general.sync_interval,
+        777,
+        "preview does not reload"
+    );
+    assert!(activate(&state, &owner, false, false).await.is_err());
+    let wrong = ArchiveWorkspaceData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: uuid::Uuid::now_v7().to_string(),
+    };
+    assert!(activate(&state, &wrong, true, false).await.is_err());
+
+    activate(&state, &owner, true, false).await.unwrap();
+    assert_eq!(
+        state.config_snapshot().general.sync_interval,
+        999,
+        "confirmed retry reloads corrected config"
+    );
+    assert!(state.runtime_account_ids().is_empty());
+    assert!(
+        !state
+            .store
+            .get_account(&draft.account_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert!(fake.sent_drafts().is_empty());
+    assert!(fake.mutations().is_empty());
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+}

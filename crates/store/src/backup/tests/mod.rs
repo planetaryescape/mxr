@@ -206,3 +206,56 @@ async fn bundle_rejects_missing_corrupt_extra_and_traversal_files() {
     .unwrap();
     assert!(inspect(stage.path()).await.is_err());
 }
+
+#[test]
+fn file_metadata_hashes_multiple_chunks_and_the_partial_tail() {
+    let root = tempfile::tempdir().unwrap();
+    let payload = vec![b'a'; 64 * 1024 * 3 + 123];
+    std::fs::write(root.path().join("multi-chunk.bin"), &payload).unwrap();
+    let metadata = file_metadata(root.path(), "multi-chunk.bin").unwrap();
+    assert_eq!(metadata.length, 196731);
+    assert_eq!(
+        metadata.sha256,
+        "b0613e943c8daf84a9091df6d629a481eb71f6089877e7bb60a47942fe1d95c7"
+    );
+    std::fs::write(root.path().join("empty.bin"), []).unwrap();
+    let empty = file_metadata(root.path(), "empty.bin").unwrap();
+    assert_eq!(empty.length, 0);
+    assert_eq!(
+        empty.sha256,
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+}
+
+#[tokio::test]
+async fn portable_legacy_resource_keeps_the_multichunk_content_digest() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let (_, draft) = fixture(source.path()).await;
+    let original = source.path().join("multi-chunk.bin");
+    let payload = vec![b'a'; 64 * 1024 * 3 + 123];
+    std::fs::write(&original, &payload).unwrap();
+    let expected = file_metadata(source.path(), "multi-chunk.bin").unwrap();
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(source.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE drafts SET attachments=? WHERE id=?")
+        .bind(serde_json::to_string(&vec![original]).unwrap())
+        .bind(draft.as_str())
+        .execute(&mut db)
+        .await
+        .unwrap();
+    db.close().await.unwrap();
+    let manifest = populate(source.path(), stage.path()).await.unwrap();
+    let relative = format!("resources/cache/{}/multi-chunk.bin", expected.sha256);
+    let copied = manifest
+        .files
+        .iter()
+        .find(|file| file.path == relative)
+        .unwrap();
+    assert_eq!(copied.length, expected.length);
+    assert_eq!(copied.sha256, expected.sha256);
+    assert_eq!(std::fs::read(stage.path().join(relative)).unwrap(), payload);
+}

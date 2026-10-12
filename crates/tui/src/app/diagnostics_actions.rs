@@ -1,6 +1,72 @@
 use super::*;
 
 impl App {
+    pub(crate) fn apply_recovery_preview_result(
+        &mut self,
+        owner: mxr_protocol::ArchiveWorkspaceData,
+        request: mxr_protocol::Request,
+        action: mxr_core::RecoveryActionData,
+    ) {
+        let action_status_matches_owner = action.status.workspace_id == owner.workspace_id
+            && action.status.recovery_generation == owner.recovery_generation;
+        let preview = if !action_status_matches_owner {
+            Err("Selected workspace changed while previewing recovery. Refresh status and preview again.")
+        } else {
+            match request {
+                mxr_protocol::Request::ActivateRecovery {
+                    expected_workspace, ..
+                } if expected_workspace.workspace_id == owner.workspace_id
+                    && expected_workspace.recovery_generation == owner.recovery_generation
+                    && action.status.restore_pending =>
+                {
+                    Ok(super::RecoveryPreview::Activation {
+                        owner: owner.clone(),
+                    })
+                }
+                mxr_protocol::Request::PrepareRecoveredDraft {
+                    draft_id,
+                    expected_revision,
+                    expected_workspace,
+                    ..
+                } if expected_workspace.workspace_id == owner.workspace_id
+                    && expected_workspace.recovery_generation == owner.recovery_generation =>
+                {
+                    match action.prepared_draft {
+                        Some(prepared_draft)
+                            if action.status.held_drafts.iter().any(|draft| {
+                                draft.draft_id == draft_id
+                                    && draft.revision == expected_revision
+                                    && draft.prepared_draft_id.is_none()
+                            }) =>
+                        {
+                            Ok(super::RecoveryPreview::Draft {
+                                owner: owner.clone(),
+                                draft_id,
+                                revision: expected_revision,
+                                prepared_draft: Box::new(prepared_draft),
+                            })
+                        }
+                        _ => Err("The daemon did not return the requested draft preview."),
+                    }
+                }
+                _ => Err("Unexpected recovery preview request."),
+            }
+        };
+
+        self.diagnostics.page.recovery_preview = None;
+        self.apply_recovery_status_snapshot(Some(action.status));
+        match preview {
+            Ok(preview) => {
+                self.diagnostics.page.recovery_preview = Some(preview);
+                self.status_message = Some(
+                    "Recovery preview ready. Review the diagnostics details before confirming."
+                        .into(),
+                );
+            }
+            Err(message) => self.status_message = Some(message.into()),
+        }
+    }
+
     pub(super) fn apply_diagnostics_action(&mut self, action: Action) {
         match action {
             Action::RefreshDiagnostics => {

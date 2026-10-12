@@ -124,6 +124,45 @@ impl App {
         ));
     }
 
+    /// Keep the last recovery snapshot when status omits this optional field,
+    /// but invalidate previews whose owner can no longer be verified.
+    pub(crate) fn apply_recovery_status_snapshot(
+        &mut self,
+        recovery: Option<mxr_core::RecoveryStatusData>,
+    ) {
+        let Some(recovery) = recovery else {
+            self.diagnostics.page.recovery_preview = None;
+            return;
+        };
+
+        let same_cached_owner = self
+            .diagnostics
+            .page
+            .recovery
+            .as_ref()
+            .is_some_and(|cached| {
+                cached.workspace_id == recovery.workspace_id
+                    && cached.recovery_generation == recovery.recovery_generation
+            });
+        let same_preview_owner =
+            self.diagnostics
+                .page
+                .recovery_preview
+                .as_ref()
+                .is_some_and(|preview| {
+                    let owner = match preview {
+                        crate::app::RecoveryPreview::Activation { owner }
+                        | crate::app::RecoveryPreview::Draft { owner, .. } => owner,
+                    };
+                    owner.workspace_id == recovery.workspace_id
+                        && owner.recovery_generation == recovery.recovery_generation
+                });
+        if !same_cached_owner || !same_preview_owner {
+            self.diagnostics.page.recovery_preview = None;
+        }
+        self.diagnostics.page.recovery = Some(recovery);
+    }
+
     pub fn input_pending(&self) -> bool {
         self.input.is_pending()
     }

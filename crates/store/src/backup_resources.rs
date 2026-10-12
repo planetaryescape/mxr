@@ -1,4 +1,4 @@
-use crate::backup::{checked_relative, file_metadata, BackupFile, BackupResult};
+use crate::backup::{checked_relative, file_digest, file_metadata, BackupFile, BackupResult};
 use crate::Store;
 use mxr_core::DraftAttachment;
 use serde_json::Value;
@@ -44,10 +44,7 @@ fn portable_file(
         .and_then(|n| n.to_str())
         .ok_or("Invalid resource filename")?;
     checked_relative(name)?;
-    let digest = sha2::Sha256::digest(std::fs::read(&canonical)?)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let (_, digest) = file_digest(&canonical)?;
     let relative = format!("resources/cache/{digest}/{name}");
     let target = stage.join(&relative);
     std::fs::create_dir_all(target.parent().ok_or("Resource has no parent")?)?;
@@ -59,7 +56,6 @@ fn portable_file(
     copied.insert(original.to_path_buf(), relative.clone());
     Ok(relative)
 }
-use sha2::Digest;
 
 pub(super) async fn copy_resources(
     store: &Store,

@@ -137,7 +137,10 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
         },
 
-        Some(Command::Recovery { action }) => commands::recovery::run(action).await?,
+        Some(Command::Recovery { action }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::recovery::run(action).await?;
+        }
         Some(Command::Backup { action }) => commands::backup::run(action).await?,
         Some(Command::Version) => {
             commands::version::run();

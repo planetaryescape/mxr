@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use sqlx::AssertSqlSafe;
 use sqlx::{sqlite::SqliteConnectOptions, Connection, Row, SqliteConnection};
 use std::collections::BTreeSet;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 pub type BackupResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -152,17 +153,40 @@ fn plain_file(path: &Path) -> BackupResult<()> {
     Ok(())
 }
 
+pub(crate) fn file_digest(path: &Path) -> BackupResult<(u64, String)> {
+    let mut file = std::fs::File::open(path)?;
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut hash = Sha256::new();
+    let mut length = 0_u64;
+    loop {
+        let read = match file.read(&mut buffer) {
+            Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if read == 0 {
+            break;
+        }
+        hash.update(&buffer[..read]);
+        length += read as u64;
+    }
+    Ok((
+        length,
+        hash.finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    ))
+}
+
 pub fn file_metadata(root: &Path, relative: &str) -> BackupResult<BackupFile> {
     let path = root.canonicalize()?.join(checked_relative(relative)?);
     plain_file(&path)?;
-    let bytes = std::fs::read(&path)?;
+    let (length, sha256) = file_digest(&path)?;
     Ok(BackupFile {
         path: relative.to_owned(),
-        length: bytes.len() as u64,
-        sha256: Sha256::digest(&bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect(),
+        length,
+        sha256,
     })
 }
 

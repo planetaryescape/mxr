@@ -41,10 +41,14 @@ pub(super) async fn activate(
             state
                 .restore_pending
                 .store(false, std::sync::atomic::Ordering::Release);
-            state
-                .reload_accounts_from_disk()
-                .await
-                .map_err(super::HandlerError::Message)?;
+        }
+        // Activation is durable even if runtime reload fails; a confirmed retry repairs it.
+        if status.restore_pending || status.source_owner_stopped {
+            state.reload_accounts_from_disk().await.map_err(|error| {
+                super::HandlerError::Message(format!(
+                    "Recovery activation is committed, but runtime reload failed: {error}. Correct the configuration and repeat the confirmed activation with the same workspace owner."
+                ))
+            })?;
         }
     }
     Ok(ResponseData::RecoveryAction {

@@ -3800,7 +3800,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         degraded,
                                         freshness: None,
                                     });
-                                    app.diagnostics.page.recovery = recovery;
+                                    app.apply_recovery_status_snapshot(recovery);
                                 }
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
@@ -3848,29 +3848,20 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.apply_status_snapshot(snapshot);
                         }
-                        AsyncResult::Recovery { owner, request, result } => match *result {
+                        AsyncResult::Recovery { owner, request, result } => {
+                            let is_preview_request = matches!(
+                                &request,
+                                Request::ActivateRecovery { dry_run: true, .. }
+                                    | Request::PrepareRecoveredDraft { dry_run: true, .. }
+                            );
+                            if is_preview_request {
+                                app.diagnostics.page.recovery_preview = None;
+                            }
+                            match *result {
                             Ok(Response::Ok { data: ResponseData::RecoveryAction { action } }) => {
                                 let is_preview = action.dry_run;
                                 if is_preview {
-                                    match request {
-                                        Request::PrepareRecoveredDraft { draft_id, expected_revision, .. } => {
-                                            if let Some(prepared_draft) = action.prepared_draft {
-                                                app.diagnostics.page.recovery_preview = Some(app::RecoveryPreview::Draft {
-                                                    owner,
-                                                    draft_id,
-                                                    revision: expected_revision,
-                                                    prepared_draft: Box::new(prepared_draft),
-                                                });
-                                            } else {
-                                                app.status_message = Some("The daemon did not return the requested draft preview.".into());
-                                            }
-                                        }
-                                        Request::ActivateRecovery { .. } => {
-                                            app.diagnostics.page.recovery_preview = Some(app::RecoveryPreview::Activation { owner });
-                                        }
-                                        _ => app.status_message = Some("Unexpected recovery preview request.".into()),
-                                    }
-                                    app.status_message = Some("Recovery preview ready. Review the diagnostics details before confirming.".into());
+                                    app.apply_recovery_preview_result(owner, request, action);
                                 } else {
                                     app.diagnostics.page.recovery_preview = None;
                                     app.status_message = Some(if action.prepared_draft.is_some() {
@@ -3878,8 +3869,8 @@ pub async fn run() -> anyhow::Result<()> {
                                     } else {
                                         "Recovery activated. Original drafts and intentions remain held.".into()
                                     });
+                                    app.apply_recovery_status_snapshot(Some(action.status));
                                 }
-                                app.diagnostics.page.recovery = Some(action.status);
                             }
                             Ok(Response::Error { message, .. }) => {
                                 app.status_message = Some(format!("Recovery action failed: {message}"));
@@ -3890,6 +3881,7 @@ pub async fn run() -> anyhow::Result<()> {
                             Err(error) => {
                                 app.status_message = Some(format!("Recovery action failed: {error}"));
                             }
+                        }
                         },
                         AsyncResult::Status {
                             request_id,

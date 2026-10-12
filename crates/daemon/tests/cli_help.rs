@@ -29,6 +29,24 @@ fn normalize_help_output(stdout: &str) -> String {
 }
 
 #[test]
+fn shell_completions_run_with_the_normal_process_stack() {
+    let profile = tempfile::tempdir().expect("isolated completion profile");
+    let output = Command::cargo_bin("mxr")
+        .expect("mxr binary")
+        .env("HOME", profile.path())
+        .env("MXR_CONFIG_DIR", profile.path().join("config"))
+        .env("MXR_DATA_DIR", profile.path().join("data"))
+        .env("MXR_DAEMON_AUTOSTART", "off")
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert!(!output.is_empty(), "completion script must be emitted");
+}
+
+#[test]
 fn cli_help_snapshots_cover_all_commands() {
     let cases: &[(&str, &[&str])] = &[
         ("cli_help_root", &["--help"]),

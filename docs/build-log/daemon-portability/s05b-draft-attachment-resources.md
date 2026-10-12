@@ -231,8 +231,8 @@ the command vector.
 Task 6051 narrowed the retry to CLI help. It compiled in 1m06, then the debug
 binary overflowed its main stack on `--help` at the default macOS shell limit
 8176 KiB. The same binary returns valid help with `ulimit -s 32768`.
-LLDB stops in Clap's generated `augment_subcommands` at
-`crates/daemon/src/cli/triage.rs:53`. Root is comparing the unchanged S08 debug
+LLDB stops in Clap's generated `augment_subcommands`; its debug source mapping
+reports `triage.rs:53`, while the command declaration is in `crates/daemon/src/cli/mod.rs`. Root is comparing the unchanged S08 debug
 build before deciding on a source fix; this is an unresolved check, not a
 settled environmental exception. Evidence is retained in
 `/tmp/mxr-s05b-help-stack-backtrace.log` and
@@ -270,3 +270,25 @@ final build has been claimed. Root's CLI/MCP acceptance scripts then exercise
 the frozen candidate, and root owns release-please and actual published-client
 acceptance. The MCP send input field is `managed_attachments_reviewed`; capable
 callers set it after reviewing canonical metadata, alongside `confirm=true`.
+
+## CLI parsing no longer shares the dispatch frame
+
+The root debugger measured the original `run_cli` poll frame at 4,002,736
+bytes and Clap's outer generated command frame at roughly 4 MiB. The main
+function frame was about 50 KiB, so moving future construction in main would
+not address the dominant allocation. Separate parsing from the large async
+dispatch function. Task 6065 passed all 264 help cases at the inherited
+8,372,224-byte process stack (146.8 seconds queue wait, 107.9 seconds execution;
+1m36 compile, 8.39 seconds tests).
+
+An actual `completions bash` run then reproduced the same nested Clap frame
+inside dispatch. Its synchronous generator now runs on Tokio's existing
+blocking pool, and a process-level regression test exercises that command
+with an isolated profile. The process stack setting remains unchanged. Task
+6072 owns the final normal-stack help and completions check; its outcome is
+pending at this source checkpoint.
+
+The candidate browser check must use a freshly built SPA embedded with
+`cargo build -p mxr --features web-ui`; a default build omits that interface.
+Task 6073 builds the current SPA under Node 24.19.0. Scoped Rust hygiene, the
+embedded binary build, client runtime acceptance and release remain pending.

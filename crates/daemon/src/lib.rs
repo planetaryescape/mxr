@@ -39,7 +39,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         anyhow::bail!(guidance);
     }
     let cli = Cli::parse_from(&args);
+    run_parsed_cli(cli).await
+}
 
+// Keep Clap's command construction outside the large debug dispatch poll frame.
+async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
     // Sticky demo: when `mxr demo` has been started in a prior invocation,
     // it leaves an active-marker behind so every subsequent CLI command
     // operates on the demo profile until `mxr demo stop`. Apply demo env
@@ -134,7 +138,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::config::run(action)?;
         }
         Some(Command::Completions { shell }) => {
-            commands::completions::run(shell)?;
+            // Clap builds the whole command tree; do not nest its debug frame in dispatch.
+            tokio::task::spawn_blocking(move || commands::completions::run(shell)).await??;
         }
         Some(Command::Doctor {
             reindex,

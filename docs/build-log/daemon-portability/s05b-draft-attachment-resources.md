@@ -17,8 +17,8 @@ not restarted. Documentation PR420 merged at
 The published [Compose guide](https://mxr.sh/guides/compose/) was checked in a
 browser, including its rendered attachment commands. The deployment receipt is
 retained in the project ledger.
-The standing independent Claude review waiver remains in effect until Anthropic
-is funded.
+The standing independent review waiver remains in effect until Anthropic is
+available again.
 
 Published CLI, MCP, TUI and browser acceptance passed. CLI verified previews
 and stale revisions make no resource, then saved, reopened and sent the exact
@@ -48,7 +48,7 @@ packet; candidate `0ea54be1` CLI/MCP/TUI/browser proofs are not current release
 acceptance. The `compose.md` guide already describes chunked client upload,
 resource metadata, browser reload and TUI edit behavior; no guide rewrite was
 needed for this closeout. S05b raises the program tally to ten complete slices;
-S06b is merged and awaits v0.6.88 publication and installed-client acceptance,
+S06b is merged and awaits v0.6.89 publication and installed-client acceptance,
 with S07 and S09 planned.
 
 | Work | Observed duration |

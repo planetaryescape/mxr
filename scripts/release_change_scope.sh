@@ -58,6 +58,9 @@ while IFS= read -r path; do
     scripts/render_homebrew_formula.sh|scripts/publish_workspace_crates.sh)
       cli_changed=true
       ;;
+    scripts/v1_launch_proof.sh|scripts/verify-mailmerge-outcomes.py|scripts/s08c_headless_smoke.py|scripts/verify-archive-recovery.py)
+      cli_changed=true
+      ;;
     crates/*|vendor/*|.sqlx/*)
       cli_changed=true
       ;;

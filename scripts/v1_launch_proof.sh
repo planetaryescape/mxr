@@ -122,6 +122,7 @@ emit draft_saved ok "$(python3 -c 'import json,sys; print(json.dumps({"draft_id"
 
 send_preview="$(run_mxr send "${draft_id}" --dry-run --format json)"
 emit send_preview ok "$(python3 -c 'import json,sys; v=json.load(sys.stdin); print(json.dumps({"dry_run": v.get("dry_run"), "draft_id": v.get("draft",{}).get("id") or v.get("draft_id")}))' <<<"${send_preview}")"
+expected_workspace="$(python3 -c 'import json,sys; v=json.loads(sys.stdin.read()); owner=v.get("expected_workspace"); assert owner and owner.get("workspace_id") and owner.get("recovery_generation"), "send preview omitted workspace owner"; print(json.dumps(owner, separators=(",", ":")))' <<<"${send_preview}")"
 
 draft_json_file="${tmp}/agent-draft.json"
 run_mxr drafts --format json >"${tmp}/drafts.json"
@@ -137,10 +138,11 @@ with open(dst, 'w', encoding='utf-8') as f:
     json.dump(draft, f)
 PY
 
-agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" <<'PY'
+agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" <<'PY'
 import json, os, socket, struct, sys, uuid
 
-instance, message_id, draft_id, draft_path = sys.argv[1:5]
+instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
+owner = json.loads(owner_json)
 if sys.platform == 'darwin':
     sock_path = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', instance, 'mxr.sock')
 else:
@@ -163,7 +165,7 @@ def recv_exact(n):
 
 def call(req):
     global next_id
-    msg = {'id': next_id, 'source': 'agent', 'payload': {'type': 'Request', **req}}
+    msg = {'id': next_id, 'source': 'agent', 'expected_workspace': owner, 'payload': {'type': 'Request', **req}}
     next_id += 1
     raw = json.dumps(msg, separators=(',', ':')).encode()
     sock.sendall(struct.pack('>I', len(raw)) + raw)
@@ -220,7 +222,7 @@ preview = json.loads(sys.argv[3])
 reviewed = preview['send_identity']
 assert preview['draft']['id'] == draft_id
 assert preview['draft']['revision'] == reviewed['expected_revision'] > 0
-send_arguments = {'draft_id': draft_id, **reviewed}
+send_arguments = {'draft_id': draft_id, **reviewed, 'expected_workspace': preview['expected_workspace']}
 cmd = [os.environ.get('MXR_BIN')] if os.environ.get('MXR_BIN') else None
 if cmd:
     cmd += ['mcp', 'serve']
@@ -261,7 +263,7 @@ try:
     read_message = send('tools/call', {'name':'mxr_read_message','arguments':{'message_id':message_id,'include_body':False}})
     blocked = send('tools/call', {'name':'mxr_send_draft','arguments':send_arguments})
     approved = send('tools/call', {'name':'mxr_send_draft','arguments':{**send_arguments,'confirm':True}})
-    outcome = send('tools/call', {'name':'mxr_send_outcome','arguments':{'account_id':preview['draft']['account_id'],'operation_id':reviewed['operation_id']}})
+    outcome = send('tools/call', {'name':'mxr_send_outcome','arguments':{'account_id':preview['draft']['account_id'],'operation_id':reviewed['operation_id'],'expected_workspace':preview['expected_workspace']}})
 finally:
     try:
         proc.stdin.close()

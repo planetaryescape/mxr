@@ -1,0 +1,53 @@
+{
+  "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+  "candidate_source": "bb64d37d88c0372a6caf0d4dcd3a5e08e3af787b",
+  "candidate_tree": "0ee4997839757445a5ce08d26b1b5c665ae51bfb",
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "2c03d908059fc157d92d8d8aefa7f9b2ab5342de89fc4a33672289aa0bf31c01"
+    },
+    {
+      "name": "browser-attachment-acceptance.json",
+      "sha256": "9222bed96d5ed17d9ee8a8228d1d84c5b180e7258d21be584ca0c40b13007340"
+    },
+    {
+      "name": "client-acceptance.json",
+      "sha256": "93ec02ad4a8c6ec16a95db6241119a9090dddc29d293288a37be70d0467b724f"
+    },
+    {
+      "name": "native-acceptance.json",
+      "sha256": "06c087b51ee4803dbdf18db6bdae8d3b8cbf2bb11f10e8cce18d4bd337c389c8"
+    },
+    {
+      "name": "remote-browser-csp.json",
+      "sha256": "5feaf41d140eeba8c2bdfe57fc28b657714a51c226a0e3e93d748df4066b6ce0"
+    }
+  ],
+  "scope": "Sanitized candidate evidence summaries; raw logs, network captures, tokens, mail content, local process details, and binaries are excluded.",
+  "sources": [
+    {
+      "name": "root-client-acceptance",
+      "path": "program-ledger:s06b-root-client-0b059188.json",
+      "sha256": "87970f4dfadf5cced5917b32bcea2bd5bb6b304514f0220731029a3a7914df5f"
+    },
+    {
+      "name": "root-native-acceptance",
+      "path": "program-ledger:s06b-root-native-0b059188.json",
+      "sha256": "f003419c6df597dd0ce50ce0a6249ed49adfbbf32e9cee86e78b0a0e784cc906"
+    },
+    {
+      "name": "remote-browser-csp-observation",
+      "path": "target/s06b-browser-acceptance/final-0b059188/ui/evidence/remote-csp-blocker.json",
+      "sha256": "942efd07c262a7679886e741e906508fee86ba82bd954a69b6a1661e5ee2658b"
+    },
+    {
+      "name": "same-origin-browser-attachment-acceptance",
+      "path": "target/s06b-browser-acceptance/final-attach-0b059188/evidence/browser-result.json",
+      "sha256": "87c8412a3f649fb580f46470b2758283558dc0cb9c7e6b381ee9b040203fda6d"
+    }
+  ],
+  "status": "historical candidate packet: four client journeys passed on frozen source 0b059188; later candidate source and CI integrated; published release acceptance pending",
+  "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16",
+  "tested_binary_tree": "753f713905cdeb338dbbe4d05554e469aff282a5"
+}

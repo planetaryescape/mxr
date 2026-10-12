@@ -1,0 +1,89 @@
+{
+  "merged_commit": "45f917b53e26cef3b9fdde8ff3fad025084d15e7",
+  "reviewed_candidate_source": "2460aba5f459dc15d9e9861be17043dd215650ce",
+  "merged_tree": "32b104d5eeeb8373dfd5ac7a813cddf29965747c",
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "8f4b262658b4d1133125942da0b43b7a80b1226682feb3bfea07552ec7c865f1"
+    },
+    {
+      "name": "integrated-status.json",
+      "sha256": "152c287ff281469d4723b30fb2a5d67cdcbc1ab6a698ab5eab62ee5f48a9543f"
+    }
+  ],
+  "scope": "Sanitized integration and acceptance summaries; raw logs, binaries, screenshots, network captures, tokens and mail content excluded.",
+  "sources": [
+    {
+      "name": "merged-pr-receipt",
+      "path": "program-ledger:s06b-pr422-merge-2460aba5.json",
+      "sha256": "7b795568c48fbfd123cb544bb1b2a526fd8b687e3e001a1f5dc77c59191df94c"
+    },
+    {
+      "name": "91ca-trivial-review",
+      "path": "program-ledger:s06b-trivial-review-91ca120d.json",
+      "sha256": "5766314775f76feced4442618b059abf31d753c93175b17fe115700af021e08e"
+    },
+    {
+      "name": "2460-trivial-review",
+      "path": "program-ledger:s06b-trivial-review-2460aba5.json",
+      "sha256": "ca07866229945dba07edd272eb63d9a32a21b99c874fd69b48eb6817c155b1cb"
+    },
+    {
+      "name": "browser-cleanup-verification",
+      "path": "program-ledger:s06b-browser-cleanup-root-check.json",
+      "sha256": "4081d1aea77c9a54e618c153487950867963429204b6de563e7f5e068b2a76b8"
+    },
+    {
+      "name": "root-cli-mcp-mailmerge-acceptance",
+      "path": "program-ledger:s06b-root-client-0b059188.json",
+      "sha256": "87970f4dfadf5cced5917b32bcea2bd5bb6b304514f0220731029a3a7914df5f"
+    },
+    {
+      "name": "root-native-acceptance",
+      "path": "program-ledger:s06b-root-native-0b059188.json",
+      "sha256": "f003419c6df597dd0ce50ce0a6249ed49adfbbf32e9cee86e78b0a0e784cc906"
+    },
+    {
+      "name": "actual-same-origin-browser-acceptance",
+      "path": "target/s06b-browser-acceptance/final-attach-0b059188/evidence/browser-result.json",
+      "sha256": "87c8412a3f649fb580f46470b2758283558dc0cb9c7e6b381ee9b040203fda6d"
+    },
+    {
+      "name": "historical-candidate-packet-manifest",
+      "path": "../s06b-candidate-bb64d37/manifest.json",
+      "sha256": "f95f9e7a142bfb0f5782fe1a886191c75d6da7080fe5d4e282430e802eb72755"
+    },
+    {
+      "name": "v0.6.88-release-failure",
+      "path": "program-ledger:s06b-release-088-failure.json",
+      "sha256": "b143a758249bb04f3a31d8340d4dd491ebb96b35fc6b36eba7b62ea9a74b0136"
+    },
+    {
+      "name": "v0.6.88-smoke-fix-review",
+      "path": "program-ledger:s06b-release-smoke-review-5b9e0893.json",
+      "sha256": "63bb6b93cacb87de7a39e3b7db2ce137fa8fa5d891f1c8d029aa062bc292e3f8"
+    },
+    {
+      "name": "PR425-smoke-fix-merge",
+      "path": "program-ledger:s06b-pr425-merge.json",
+      "sha256": "6092b6f8734b2d1bb41aa7c8a83c652c6706e26a888eee406d0f89cc24627d1d"
+    },
+    {
+      "name": "PR426-release-metadata-merge",
+      "path": "program-ledger:s06b-pr426-release-merge.json",
+      "sha256": "3dd40d54b1092e860e314defbcffc035ad093f15847acf5b80a97494ab20c81b"
+    }
+  ],
+  "status": "S06b integrated; v0.6.88 smoke failure retained; v0.6.89 publication and installed acceptance pending",
+  "historical_generation_evidence": [
+    {
+      "name": "OpenAPI spec generated during v0.6.89 closeout",
+      "version": "0.6.89",
+      "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+      "sha256": "931fe9e3ba9a79345f06230dcf99951af882b050b5a9119f7fc91b6a09447fbb",
+      "file_retained": false,
+      "note": "Historical digest only; site/public/openapi.json now contains the current v0.6.90 generation recorded in the installed packet."
+    }
+  ]
+}

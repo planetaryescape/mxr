@@ -1,0 +1,37 @@
+{
+  "after_b_reload": {
+    "attachment_chip_retained": true,
+    "body_marker_retained": true,
+    "provider_accepted_count": 0,
+    "send_outcome_rows": 0
+  },
+  "after_return_to_a": {
+    "accepted_filename": "s06b-attachment-1495000.bin",
+    "accepted_length_bytes": 1495000,
+    "accepted_sha256": "cc361e56f161fbca43f069d671a3a33c6016d92ea3b9c3a7917b524061b2ea80",
+    "provider_accepted_count": 1,
+    "sent_body_marker_present": true,
+    "sent_draft_receipts": 1
+  },
+  "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+  "journey": "Actual same-origin browser UI attachment owner switch, same socket A\u2192B\u2192A",
+  "limits": {
+    "exact_blocked_request_boundary": "not proven",
+    "zero_console_error_count": "not proven; raw diagnostic output was not retained"
+  },
+  "original_attachment": {
+    "filename": "s06b-attachment-1495000.bin",
+    "length_bytes": 1495000,
+    "sha256": "cc361e56f161fbca43f069d671a3a33c6016d92ea3b9c3a7917b524061b2ea80",
+    "source_modified_then_deleted": true
+  },
+  "owners": {
+    "data_files_copied": true,
+    "distinct_workspace_and_recovery_generations": true
+  },
+  "passed": true,
+  "screenshot_retention": "No screenshots retained; browser frames were visually inspected and contain only synthetic fixture content. The reloaded-draft screenshot displays an unsaved-changes indicator, so the receipt assertions are the authoritative state evidence.",
+  "synthetic_fixture": true,
+  "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16",
+  "tested_binary_tree": "753f713905cdeb338dbbe4d05554e469aff282a5"
+}

@@ -1,0 +1,54 @@
+{
+  "version": "v0.6.89",
+  "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "tree": "002a3967334458f69892e5a86c7bdea0e431f960",
+  "binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "runtime": "published-1894c8b6",
+  "passed": true,
+  "attachment": {
+    "filename": "s06b-attachment-1495000.bin",
+    "bytes": 1495000,
+    "sha256": "cc361e56f161fbca43f069d671a3a33c6016d92ea3b9c3a7917b524061b2ea80",
+    "client_file_modified_then_deleted": true,
+    "provider_accepted_once": true
+  },
+  "owner_b": {
+    "stable_digest_before": "5d14be3905f3b22c24e582bda0966c50eb3db177275815745dd84acc29bc9de7",
+    "stable_digest_after": "5d14be3905f3b22c24e582bda0966c50eb3db177275815745dd84acc29bc9de7",
+    "draft_rows": 1,
+    "resource_rows": 1,
+    "send_outcome_rows": 0,
+    "provider_accept_count": 0
+  },
+  "owner_a_send": {
+    "provider_accept_count": 1,
+    "accepted_outcome_rows": 1,
+    "sent_receipts": 1,
+    "persisted_body_characters": 243,
+    "persisted_body_sha256": "0c7d166ed45d278daf3794d239b3918f8dd7bed14090a6e97044ab9a21053912",
+    "body_contains_original_and_queued_edit": true
+  },
+  "diagnostics": {
+    "original_acceptance_capture": {
+      "phase": "immediately after A send; exact UTC timestamp was not captured",
+      "page_errors": 1,
+      "console_messages": 0,
+      "cause": "unknown",
+      "clear_command_between_reads": true,
+      "clear_acknowledgment_observed": false,
+      "interpretation": "Two captures of one cumulative PageError with an intervening errors --clear call do not establish whether new errors occurred during that interval."
+    },
+    "no_clear_followup": "See browser-diagnostics-followup.json for the separate fresh-session 90.475-second no-clear observation and the bounded CLI response-shape probe.",
+    "network_boundary": "No claim about zero HTTP request bytes or pre-dispatch attribution."
+  },
+  "cleanup": {
+    "all_owned_roles_stopped": true,
+    "role_tokens_removed": true,
+    "a_socket_closed": true,
+    "a_web_port_closed": true,
+    "b_and_ui_sockets_closed": true,
+    "browser_session_closed": true
+  },
+  "screenshot": "browser-blocked-retention.png",
+  "scope": "Actual published same-origin browser attachment journey. B retained its original private draft/resource and accepted no send; the A attachment remained available after the client file was modified and deleted, then sent once after returning to A. The retained A body includes the B-side queued edit."
+}

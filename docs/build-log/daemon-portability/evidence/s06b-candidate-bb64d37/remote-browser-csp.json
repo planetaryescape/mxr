@@ -1,0 +1,12 @@
+{
+  "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+  "cross_origin_health": "blocked with TypeError: Failed to fetch",
+  "cross_origin_no_cors_health": "blocked with TypeError: Failed to fetch",
+  "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "page_errors": [],
+  "result": "The browser CSP blocked both cross-origin health fetches; a separate CORS preflight to the selected bridge returned 200.",
+  "same_origin_health_status": 200,
+  "screenshot": "remote-csp-blocker.png",
+  "target_preflight_status": 200,
+  "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16"
+}

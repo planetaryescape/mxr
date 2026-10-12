@@ -1,0 +1,151 @@
+{
+  "base": "cab8c4c65feef2489fecaa0172783f7476ee0d90",
+  "browser_cleanup": {
+    "owned_records_absent": true,
+    "port_closed": true,
+    "roles_verified": 6,
+    "socket_absent": true,
+    "token_absent": true
+  },
+  "reviewed_candidate_source": "2460aba5f459dc15d9e9861be17043dd215650ce",
+  "reviewed_candidate_tree": "32b104d5eeeb8373dfd5ac7a813cddf29965747c",
+  "ci": {
+    "docs_build": "skipped in CI; checked locally in this closeout",
+    "fast_tests_passed": 4249,
+    "result": "success",
+    "semantic_tests_passed": 4295,
+    "web_e2e": "passed",
+    "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38214298080"
+  },
+  "frozen_runtime": {
+    "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+    "client_acceptance": "See the historical candidate packet; CLI, MCP, native TUI and same-origin browser journeys passed on this binary.",
+    "source": "0b0591884de84695d5cd494433a19e9489716a16",
+    "tree": "753f713905cdeb338dbbe4d05554e469aff282a5"
+  },
+  "independent_review": "Waived until Anthropic is available again.",
+  "limits": [
+    "Runtime client evidence used frozen source 0b059188, not the release binary.",
+    "The actual browser fixture does not prove the exact blocked-request boundary or a zero-console-error count.",
+    "Production backup/restore generation rotation is outside this slice."
+  ],
+  "local_docs_build": {
+    "status": "success",
+    "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+    "node": "24.21.0",
+    "command": "cd site && mise exec node@24.21.0 -- npm run build",
+    "generation": {
+      "pueue_task": 6301,
+      "queue_seconds": 37.09,
+      "execution_seconds": 65.77,
+      "result": "success",
+      "cli_pages_generated": 114,
+      "openapi_version": "0.6.89",
+      "openapi_paths": 239,
+      "openapi_bytes": 1014825
+    },
+    "site_build": {
+      "pueue_task": 6308,
+      "queue_seconds": 0.28,
+      "execution_seconds": 8.25,
+      "result": "success",
+      "pages": 191,
+      "pagefind_html_files": 192,
+      "llms_pages": 187,
+      "output": "site/dist",
+      "started_at": "2026-10-12T08:49:09.916550+01:00",
+      "ended_at": "2026-10-12T08:49:18.170375+01:00",
+      "description": "Local pre-publication site build; 191 pages."
+    },
+    "validation": "Site validation passed; search-envelope tests 3/3 passed; Astro, Pagefind, sitemap and llms outputs completed.",
+    "warnings": [
+      "Vite reported a chunk over 500 kB after minification.",
+      "The i18n content collection was empty."
+    ]
+  },
+  "merged_commit": "45f917b53e26cef3b9fdde8ff3fad025084d15e7",
+  "merged_tree_matches_candidate": true,
+  "native_tui_tests": {
+    "execution_seconds": 7.0,
+    "failed": 0,
+    "integration_tests": 80,
+    "learning": "Initial CI caught stale native fakes; the 988-test scoped suite confirmed their corrections before the final CI rerun.",
+    "library_tests": 908,
+    "passed": 988,
+    "pueue_task": 6258,
+    "queue_seconds": 0.2,
+    "suites": 9
+  },
+  "openapi": {
+    "result": "success",
+    "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38214298085"
+  },
+  "pull_request": "https://github.com/planetaryescape/mxr/pull/422",
+  "release": {
+    "release_version": "0.6.89",
+    "release_metadata_pr": "https://github.com/planetaryescape/mxr/pull/426",
+    "release_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+    "release_tree": "002a3967334458f69892e5a86c7bdea0e431f960",
+    "release_metadata_pr_state": "merged",
+    "release_please_result": "success",
+    "release_please_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38219297920",
+    "release_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38219348976",
+    "release_workflow_state_at_verification": "in_progress",
+    "release_workflow_verified_at": "2026-10-12T07:56:14Z",
+    "latest_published_tag_at_verification": "v0.6.87",
+    "published_release": false,
+    "installed_acceptance": "pending",
+    "prior_attempts": [
+      {
+        "version": "0.6.88",
+        "source": "95b3aab3bb5d6f91e6f68428279c95f419ef198c",
+        "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38216652216",
+        "workflow_interval_utc": "2026-10-12T07:14:45Z/2026-10-12T07:37:26Z",
+        "result": "both platform builds passed; CLI smoke failed; Homebrew and GitHub Release jobs skipped",
+        "platform_jobs": {
+          "macos": "22m23s passed",
+          "linux": "13m47s passed"
+        },
+        "failure": "The v1 launch proof omitted expected_workspace on raw save-draft; the daemon returned workspace_owner_required. MCP send/outcome calls also omitted the owner.",
+        "fix_pr": "https://github.com/planetaryescape/mxr/pull/425",
+        "retagged": false
+      }
+    ],
+    "release_workflow_jobs_at_verification": {
+      "cli_smoke": "success at 2026-10-12T07:53:57Z",
+      "macos": "in_progress",
+      "linux": "in_progress"
+    }
+  },
+  "source_followups": [
+    {
+      "scope": "tests and user-facing CLI help/error strings only; no runtime control-flow or wire-format changes",
+      "source": "91ca120ddfeb725f972f62c816454fc4a6de6a75",
+      "tree": "3167eb5793eb11c7cfe2d93483024c26da899ec9"
+    },
+    {
+      "scope": "two TUI test modules only; runtime control flow and wire contract unchanged",
+      "source": "2460aba5f459dc15d9e9861be17043dd215650ce"
+    }
+  ],
+  "release_smoke_fix": {
+    "pr": "https://github.com/planetaryescape/mxr/pull/425",
+    "merged_source": "17a0df2c8e0f61f84810086c4d5a03cf0e0e034e",
+    "merged_tree": "9d44bd1e23aecaf923da5893d58d0321c3413831",
+    "scope": "release scripts and tests only; no product code changes",
+    "frozen_runtime_source": "91ca120ddfeb725f972f62c816454fc4a6de6a75",
+    "root_review": "passed",
+    "checks": {
+      "v1_launch_proof_steps": 13,
+      "mailmerge_acceptances": 4,
+      "mailmerge_elapsed_seconds": 12,
+      "archive_cases": 17,
+      "archive_elapsed_seconds": 11.7,
+      "supervised_worker_results": 4,
+      "supervised_worker_model_requests": 3
+    },
+    "limits": [
+      "These checks used earlier frozen business code and do not establish published-release acceptance."
+    ]
+  }
+}

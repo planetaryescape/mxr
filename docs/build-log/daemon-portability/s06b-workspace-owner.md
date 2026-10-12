@@ -1,6 +1,19 @@
 # Private pending work keeps its original workspace
 
-S06b is a candidate pending root checkpoint, runtime acceptance, CI and publication. The last pinned source checkpoint is `653ac81d1304e73869cdfae95b1d530e20cb67a1`, rebased on `cab8c4c65feef2489fecaa0172783f7476ee0d90` (v0.6.87). Changes after that checkpoint are the worker-owned delta; this entry does not claim they are shipped.
+S06b is complete: source merged, v0.6.89 published, and the published CLI/raw IPC/MCP/mailmerge, native held-editor and same-origin browser journeys passed. The installed packet records source, binary hash, acceptance, cleanup and limits. The docs closeout PR and its production deployment remain pending. Independent review remains waived until Anthropic is available again.
+
+| Release timing | Elapsed |
+| --- | ---: |
+| Full v0.6.89 workflow, 07:43:32–08:06:16 UTC | 22m44s |
+| macOS build | 20m12s |
+| Linux build | 14m32s |
+| Release CLI smoke | 10m02s |
+
+Build and smoke jobs overlapped; these workflow durations do not represent exclusive agent effort. See the [published release receipt](evidence/s06b-installed-v0.6.89/release-acceptance.json).
+
+S06b merged through [PR422](https://github.com/planetaryescape/mxr/pull/422) at `45f917b53e26cef3b9fdde8ff3fad025084d15e7`; reviewed candidate `2460aba5f459dc15d9e9861be17043dd215650ce` (tree `32b104d5eeeb8373dfd5ac7a813cddf29965747c`) exactly matches the merged tree. CI [38214298080](https://github.com/planetaryescape/mxr/actions/runs/38214298080) and OpenAPI [38214298085](https://github.com/planetaryescape/mxr/actions/runs/38214298085) passed. The v0.6.88 release attempt built macOS in 22m23s and Linux in 13m47s, but its CLI smoke failed independently at raw `save-draft`: `v1_launch_proof.sh` omitted `expected_workspace`, so the daemon returned `workspace_owner_required`; MCP send/outcome calls also omitted the owner. Homebrew and GitHub Release jobs were skipped. PR425 fixed release fixtures without product-code changes. Release metadata PR426 merged as source `1894c8b67dff7789f675a3bfe80023db4c98bba3` (tree `002a3967334458f69892e5a86c7bdea0e431f960`); Release Please [38219297920](https://github.com/planetaryescape/mxr/actions/runs/38219297920) passed. At the 2026-10-12 07:56:14 UTC snapshot, v0.6.89 was still a draft and release workflow [38219348976](https://github.com/planetaryescape/mxr/actions/runs/38219348976) was in progress; its CLI smoke had passed at 07:53:57 UTC while both platform builds remained active, and the latest published tag was v0.6.87. Publication and installed-client acceptance were pending at that snapshot. The later published-release and client receipts are in the [installed packet](evidence/s06b-installed-v0.6.89/README.md).
+
+The [integrated evidence packet](evidence/s06b-integrated-2460aba5/README.md) links merge, review, CI, OpenAPI and cleanup receipts. Runtime client proofs used frozen source `0b0591884de84695d5cd494433a19e9489716a16` (tree `753f713905cdeb338dbbe4d05554e469aff282a5`, binary SHA-256 `8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d`). The 91ca follow-up changed tests and user-facing help/error strings; the final 2460 follow-up changed only two TUI test modules. These follow-ups left runtime control flow and the wire contract unchanged. Do not attribute those proofs to a published binary.
 
 The completion check uses isolated synthetic A and B workspaces with the same account, draft ID, revision, content and finalized resource bytes. Queue private work under A, replace the target with B or rotate its recovery generation, and confirm no replay or provider effect. The text, attachment references and pending outcomes must survive reload. Return to A, explicitly recover, and observe one send. An ordinary A restart must keep the same durable owner usable.
 
@@ -35,7 +48,9 @@ Evidence lives under `target/s06b-evidence` in the assigned worktree. Earlier ca
 - `daemon-outcomes-final.log`: nine send-outcome tests passed; `cli-help-tests3.log`: both normal-stack help/completion tests passed (266 help cases). `tui-ipc-tests5.log`: final three native IPC/event checks passed.
 - `scoped-rust-gate6.log`, `root-rust-clippy3.log`: mapped touched-crate hygiene and explicit root all-target/all-feature Clippy passed.
 
-Root's actual CLI, stdio MCP, native held-editor/cached-draft and browser two-daemon acceptance fixtures still require the final pinned binaries. CI and installed publication checks remain required. No personal mail or live provider participates.
+Root's CLI/stdio MCP/mailmerge, native held-editor and actual browser attachment owner-switch fixtures passed against the frozen binary. The final native test-only correction passed all nine TUI suites (908 library tests and 80 integration tests, 988 total). The two browser runtimes' six owned roles were verified stopped with tokens absent, sockets and ports closed, and owned records removed. No personal mail or live provider participated. Published installer, Homebrew and all four client acceptance paths are verified in the installed packet; S06b is complete. Production documentation deployment remains pending.
+
+The focused TUI run occupied task 6258 for 7.20 seconds: 0.20 seconds queued and 7.00 seconds executing. Initial CI caught stale native fakes; the 988-test scoped run confirmed their corrections before the final CI rerun. That makes the scoped suite a useful cheaper gate before rerunning whole-repository CI. Earlier worker timing combined another task's queue time and is superseded by this measured split.
 
 ## Fixture failures were corrected at the transport boundary
 
@@ -67,4 +82,4 @@ The bridge's existing independent recovery copies can relocate local attachment 
 
 Root's `target/s06b-evidence/clients-653ac81d/result.json` reports all ten raw IPC/CLI/stdio MCP/mailmerge cases passed against binary SHA `be4be7b730cdeaea2b84c5e2c80351fdb6a700435e3be16cc800c33ae46624cc`, with both owned daemons stopped and sockets removed. These receipts precede the browser recovery correction and its DTO guard; the final embedded build and runtime acceptance must use the next frozen source. The recovery correction began after source returned at 05:43 UTC, followed by the attachment assertion round from 05:53 UTC. The worker releases source ownership at approximately 06:02 UTC; all owned checks have completed and no daemon or build remains active. Root owns the exact next checkpoint and release receipts.
 
-Next action: root checkpoints the complete source delta, reviews the remaining correction diff, builds `mxr`/`mxr-mailmerge` and the embedded web runtime, and executes the final acceptance fixtures beside CI. Root owns Git, the orchestration ledger and release closeout. Preserve the S05b evidence and current fixture helpers.
+Next action: wait for the v0.6.89 release workflow and assets, then rerun installed CLI, MCP, native TUI and browser acceptance. Add installed receipts only after those checks pass. Root owns Git, the orchestration ledger and release closeout. Preserve the failed v0.6.88 attempt in the integrated packet and keep it separate from the historical `bb64d37` candidate packet.

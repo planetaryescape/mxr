@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.86"
+    "version": "0.6.90"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -913,7 +913,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Base64-encoded attachment bytes at the requested offset",
             "content": {
               "application/json": {
                 "schema": {
@@ -945,7 +945,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Attachment identifiers, size, checksum, and maximum chunk size for the transfer",
             "content": {
               "application/json": {
                 "schema": {
@@ -6812,20 +6812,20 @@
           "send": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountSendConfigData"
               },
               {
-                "$ref": "#/components/schemas/AccountSendConfigData"
+                "type": "null"
               }
             ]
           },
           "sync": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountSyncConfigData"
               },
               {
-                "$ref": "#/components/schemas/AccountSyncConfigData"
+                "type": "null"
               }
             ]
           }
@@ -6872,10 +6872,10 @@
           "last_sync_error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SyncErrorData"
               },
               {
-                "$ref": "#/components/schemas/SyncErrorData"
+                "type": "null"
               }
             ]
           },
@@ -6952,10 +6952,10 @@
           "auth": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountOperationStep"
               },
               {
-                "$ref": "#/components/schemas/AccountOperationStep"
+                "type": "null"
               }
             ]
           },
@@ -6977,20 +6977,20 @@
           "save": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountOperationStep"
               },
               {
-                "$ref": "#/components/schemas/AccountOperationStep"
+                "type": "null"
               }
             ]
           },
           "send": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountOperationStep"
               },
               {
-                "$ref": "#/components/schemas/AccountOperationStep"
+                "type": "null"
               }
             ]
           },
@@ -7000,10 +7000,10 @@
           "sync": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountOperationStep"
               },
               {
-                "$ref": "#/components/schemas/AccountOperationStep"
+                "type": "null"
               }
             ]
           }
@@ -7204,10 +7204,10 @@
           "send": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountSendConfigData"
               },
               {
-                "$ref": "#/components/schemas/AccountSendConfigData"
+                "type": "null"
               }
             ]
           },
@@ -7223,10 +7223,10 @@
           "sync": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountSyncConfigData"
               },
               {
-                "$ref": "#/components/schemas/AccountSyncConfigData"
+                "type": "null"
               }
             ]
           },
@@ -7454,11 +7454,11 @@
           "progress": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SyncProgressData",
                 "description": "Live progress of the pass currently running, when one is. Held in\ndaemon memory rather than the status row: it changes far too often to\nbe worth a write per step, and it means nothing once the daemon that\nreported it is gone."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -7559,11 +7559,11 @@
           "sent_message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "Set once sent."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -7859,10 +7859,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -8324,10 +8324,10 @@
           "bucket": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ArrivalBucketData"
               },
               {
-                "$ref": "#/components/schemas/ArrivalBucketData"
+                "type": "null"
               }
             ]
           },
@@ -9023,10 +9023,10 @@
           "organizer": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/CalendarPerson"
               },
               {
-                "$ref": "#/components/schemas/CalendarPerson"
+                "type": "null"
               }
             ]
           },
@@ -9092,11 +9092,11 @@
           "viewer_partstat": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CalendarPartstat",
                 "description": "Derived: the PARTSTAT of the attendee whose address matches one of the\nviewing account's addresses. `None` if no attendee matched or if\nmultiple matched ambiguously (the strict send path errors instead)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -9853,10 +9853,10 @@
           "metadata": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DraftAttachment"
               },
               {
-                "$ref": "#/components/schemas/DraftAttachment"
+                "type": "null"
               }
             ]
           },
@@ -9874,10 +9874,10 @@
           "resource_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DraftAttachmentId"
               },
               {
-                "$ref": "#/components/schemas/DraftAttachmentId"
+                "type": "null"
               }
             ]
           }
@@ -9965,6 +9965,16 @@
               "null"
             ],
             "format": "int64"
+          },
+          "workspace": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -9986,6 +9996,16 @@
         "properties": {
           "draft_path": {
             "type": "string"
+          },
+          "expected_attachments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Original attachment references whose identity a private recovery refresh must preserve."
           },
           "expected_revision": {
             "type": [
@@ -10499,11 +10519,11 @@
           "source": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageTextSourceData",
                 "description": "Missing in older daemon payloads; clients must treat that as unknown."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -10554,10 +10574,10 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -10735,10 +10755,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -10772,10 +10792,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -10821,10 +10841,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -10858,10 +10878,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -10897,10 +10917,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -11013,10 +11033,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -11111,11 +11131,11 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountId",
                 "description": "Absent when the conversation was not found."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -11129,22 +11149,22 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DeferKindData",
                 "description": "Absent when the conversation could not be deferred (see `error`)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The message the time is set on: their latest message for reply\nlater, yours for waiting."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -11279,11 +11299,11 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ThreadId",
                 "description": "Latest contributing thread, for \"open in mailbox\"."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -11408,11 +11428,11 @@
           "lane": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DeskLaneKind",
                 "description": "The lane the row is in. Omitted: `waiting` when you wrote last,\notherwise `owed`, by the desk's own rule."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -11435,11 +11455,11 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountId",
                 "description": "Absent when the conversation was not found."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -11537,11 +11557,11 @@
           "screener_account": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountId",
                 "description": "The first account (in account order) with senders waiting on a\nscreener decision, so a link from an all-accounts desk opens a queue\nthat has them."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -11757,11 +11777,11 @@
           "due": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TimeResolution",
                 "description": "`due_phrase` resolved by the natural-time parser in the caller's\nzone. None when the phrase names no date the parser understands."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -12054,10 +12074,10 @@
           "feature_health": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/FeatureHealthReport"
               },
               {
-                "$ref": "#/components/schemas/FeatureHealthReport"
+                "type": "null"
               }
             ]
           },
@@ -12224,11 +12244,11 @@
               "from": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/Address",
                     "description": "Per-message From override. `None` sends from the account's primary\naddress (default). `Some(addr)` sends from a specific owned address\n(the primary or a registered alias); the daemon validates ownership at\nsend time and rejects a `from` the account does not own. The name falls\nback to the account's display name when the override carries none."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -12245,11 +12265,11 @@
               "inline_calendar_reply": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/InlineCalendarReply",
                     "description": "Set when this draft is the user-comment compose path for an iCal\ninvite REPLY. The outbound builder emits the special\n`multipart/alternative` (text/plain + text/calendar;method=REPLY)\nlayout when this is `Some`. The daemon's send-completion hook reads\n`source_message_id`+`partstat` to update the local store's PARTSTAT\nafter the email lands in Sent."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -12269,10 +12289,10 @@
               "reply_headers": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ReplyHeaders"
                   },
                   {
-                    "$ref": "#/components/schemas/ReplyHeaders"
+                    "type": "null"
                   }
                 ]
               },
@@ -12419,10 +12439,10 @@
           "accepted_draft": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AcceptedComposeDraft"
               },
               {
-                "$ref": "#/components/schemas/AcceptedComposeDraft"
+                "type": "null"
               }
             ]
           },
@@ -12432,10 +12452,10 @@
           "details": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DraftConflictDetails"
               },
               {
-                "$ref": "#/components/schemas/DraftConflictDetails"
+                "type": "null"
               }
             ]
           },
@@ -12445,10 +12465,10 @@
           "recovery_session": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecoveredComposeSession"
               },
               {
-                "$ref": "#/components/schemas/RecoveredComposeSession"
+                "type": "null"
               }
             ]
           }
@@ -12644,11 +12664,11 @@
           "rewrite": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DraftRewriteProvenanceData",
                 "description": "The humanizer's second model pass (to read less machine-made): who\nran it and whether its text was used. Absent when no pass was due."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -12736,10 +12756,10 @@
           "original_message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -12757,10 +12777,10 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ThreadId"
               },
               {
-                "$ref": "#/components/schemas/ThreadId"
+                "type": "null"
               }
             ]
           }
@@ -12893,10 +12913,10 @@
           "local_message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -13175,10 +13195,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -13415,11 +13435,11 @@
           "worst_account_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountId",
                 "description": "The account in the worst sync state: the one the scope's line is\nabout."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -13699,10 +13719,10 @@
           "result": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MutationResultData"
               },
               {
-                "$ref": "#/components/schemas/MutationResultData"
+                "type": "null"
               }
             ]
           },
@@ -13829,11 +13849,11 @@
           "role": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Role",
                 "description": "Well-known semantic role this label/folder plays in the provider's\nmailbox model (Inbox, Sent, Drafts, …). Derived from IMAP SPECIAL-USE\nattributes (RFC 6154) or Gmail system labels at mapping time, and\nsurfaced to clients so they can render the right icon/affordance\nwithout re-parsing names. `None` for user-defined labels/folders.\nMatches MSP §2.3 Folder.role."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -13949,10 +13969,10 @@
           "overrides": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverridesData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverridesData"
+                "type": "null"
               }
             ]
           },
@@ -13984,10 +14004,10 @@
           "failure": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmFailureKindData"
               },
               {
-                "$ref": "#/components/schemas/LlmFailureKindData"
+                "type": "null"
               }
             ]
           },
@@ -14064,10 +14084,10 @@
           "answer_coverage": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14075,10 +14095,10 @@
           "archive_ask": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14086,10 +14106,10 @@
           "briefing": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14097,10 +14117,10 @@
           "commitments": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14108,10 +14128,10 @@
           "decision_log": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14119,10 +14139,10 @@
           "delivery_extraction": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14130,10 +14150,10 @@
           "draft_assist": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14141,10 +14161,10 @@
           "draft_new": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14152,10 +14172,10 @@
           "draft_refine": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14163,10 +14183,10 @@
           "expert": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14174,10 +14194,10 @@
           "humanize_rewrite": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14185,10 +14205,10 @@
           "relationship_summary": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14196,10 +14216,10 @@
           "summarize": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14207,10 +14227,10 @@
           "voice_match": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LlmOverrideData"
               },
               {
-                "$ref": "#/components/schemas/LlmOverrideData"
+                "type": "null"
               }
             ],
             "default": null
@@ -14435,10 +14455,10 @@
           "calendar": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/CalendarMetadata"
               },
               {
-                "$ref": "#/components/schemas/CalendarMetadata"
+                "type": "null"
               }
             ]
           },
@@ -14470,30 +14490,30 @@
           "text_html_source": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/BodyPartSource"
               },
               {
-                "$ref": "#/components/schemas/BodyPartSource"
+                "type": "null"
               }
             ]
           },
           "text_plain_format": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TextPlainFormat"
               },
               {
-                "$ref": "#/components/schemas/TextPlainFormat"
+                "type": "null"
               }
             ]
           },
           "text_plain_source": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/BodyPartSource"
               },
               {
-                "$ref": "#/components/schemas/BodyPartSource"
+                "type": "null"
               }
             ]
           }
@@ -14646,10 +14666,10 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -14734,11 +14754,11 @@
           "person": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PersonRefData",
                 "description": "The person, for a person row."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -14748,10 +14768,10 @@
           "preview": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessagesPreviewData"
               },
               {
-                "$ref": "#/components/schemas/MessagesPreviewData"
+                "type": "null"
               }
             ]
           },
@@ -14881,11 +14901,11 @@
           "sender": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModeDoneSenderData",
                 "description": "Updates or Reading: every thread of this sender's there."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -14917,11 +14937,11 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AccountId",
                 "description": "Absent when the thread was not found."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -15706,10 +15726,10 @@
           "archived": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15724,10 +15744,10 @@
           "error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15735,10 +15755,10 @@
           "new_mail": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15746,10 +15766,10 @@
           "reminder": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15757,10 +15777,10 @@
           "sent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15768,10 +15788,10 @@
           "snoozed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15779,10 +15799,10 @@
           "spam": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15790,10 +15810,10 @@
           "trashed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15801,10 +15821,10 @@
           "unsnoozed": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
               },
               {
-                "$ref": "#/components/schemas/NotificationChimeSoundData"
+                "type": "null"
               }
             ],
             "default": null
@@ -15893,21 +15913,21 @@
           "reading": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NowReadingPickData",
                 "description": "From 17:00 local time only."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "updates": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/NowUpdatesCardData"
               },
               {
-                "$ref": "#/components/schemas/NowUpdatesCardData"
+                "type": "null"
               }
             ]
           }
@@ -15988,11 +16008,11 @@
           "new_sender": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ScreenerQuestionData",
                 "description": "A first-time sender: the one question, on the row (D117)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -16306,10 +16326,10 @@
           "conversation": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ConversationData"
               },
               {
-                "$ref": "#/components/schemas/ConversationData"
+                "type": "null"
               }
             ]
           },
@@ -16544,11 +16564,11 @@
           "provenance": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AiProvenanceData",
                 "description": "Set when a model was asked."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -16891,10 +16911,10 @@
           "empty": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ReadingEmptyData"
               },
               {
-                "$ref": "#/components/schemas/ReadingEmptyData"
+                "type": "null"
               }
             ]
           },
@@ -17008,10 +17028,10 @@
           "article": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ReadingArticleData"
               },
               {
-                "$ref": "#/components/schemas/ReadingArticleData"
+                "type": "null"
               }
             ]
           },
@@ -17305,11 +17325,11 @@
           "article": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReadingArticleData",
                 "description": "The saved article, when there is one."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17705,10 +17725,10 @@
           "provenance": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordFieldData"
               },
               {
-                "$ref": "#/components/schemas/RecordFieldData"
+                "type": "null"
               }
             ]
           },
@@ -17739,11 +17759,11 @@
           "answer": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RecordAnswerCardData",
                 "description": "The best match's card. In list mode it is the record the list\nhighlights."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17754,21 +17774,21 @@
           "fallback": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordFallbackData"
               },
               {
-                "$ref": "#/components/schemas/RecordFallbackData"
+                "type": "null"
               }
             ]
           },
           "list": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RecordAnswerListData",
                 "description": "Every match, in list mode. Boxed so the answer stays small next to\nthe other `ResponseData` variants."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17902,10 +17922,10 @@
           "undo": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordUndoData"
               },
               {
-                "$ref": "#/components/schemas/RecordUndoData"
+                "type": "null"
               }
             ]
           }
@@ -17933,10 +17953,10 @@
           "amount": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordAmountData"
               },
               {
-                "$ref": "#/components/schemas/RecordAmountData"
+                "type": "null"
               }
             ]
           },
@@ -17991,10 +18011,10 @@
           "group": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordGroupData"
               },
               {
-                "$ref": "#/components/schemas/RecordGroupData"
+                "type": "null"
               }
             ]
           },
@@ -18026,11 +18046,11 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The newest source email."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18041,11 +18061,11 @@
           "pdf": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RecordDocumentData",
                 "description": "The record's best document, a PDF first."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18107,11 +18127,11 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ThreadId",
                 "description": "The newest source email's thread, for \"open the email\"."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18476,11 +18496,11 @@
           "answer": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ArchiveAnswerData",
                 "description": "`mxr ask`'s citation-checked answer, or the retrieved emails when no\nmodel is set up."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18555,11 +18575,11 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The email it was read from."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18590,10 +18610,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordKindData"
               },
               {
-                "$ref": "#/components/schemas/RecordKindData"
+                "type": "null"
               }
             ]
           },
@@ -18825,10 +18845,10 @@
           "first_run": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordFirstRunData"
               },
               {
-                "$ref": "#/components/schemas/RecordFirstRunData"
+                "type": "null"
               }
             ]
           },
@@ -18838,10 +18858,10 @@
           "issuer": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordIssuerData"
               },
               {
-                "$ref": "#/components/schemas/RecordIssuerData"
+                "type": "null"
               }
             ]
           },
@@ -19008,10 +19028,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordKindData"
               },
               {
-                "$ref": "#/components/schemas/RecordKindData"
+                "type": "null"
               }
             ]
           },
@@ -19059,10 +19079,10 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ThreadId"
               },
               {
-                "$ref": "#/components/schemas/ThreadId"
+                "type": "null"
               }
             ]
           }
@@ -19080,10 +19100,10 @@
           "amount": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RecordAmountData"
               },
               {
-                "$ref": "#/components/schemas/RecordAmountData"
+                "type": "null"
               }
             ]
           },
@@ -19132,11 +19152,11 @@
           "amount": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RecordAmountData",
                 "description": "The newest charge's amount."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19185,11 +19205,11 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The newest charge's newest email."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19240,11 +19260,11 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ThreadId",
                 "description": "The newest charge's thread, for \"open the email\"."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -19259,11 +19279,11 @@
           "yearly_cost": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RecordAmountData",
                 "description": "The amount times the charges in a year."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -19459,10 +19479,10 @@
           "drift": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RelationshipDriftData"
               },
               {
-                "$ref": "#/components/schemas/RelationshipDriftData"
+                "type": "null"
               }
             ]
           },
@@ -19478,20 +19498,20 @@
           "style": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ContactStyleData"
               },
               {
-                "$ref": "#/components/schemas/ContactStyleData"
+                "type": "null"
               }
             ]
           },
           "summary": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ContactRelationshipSummaryData"
               },
               {
-                "$ref": "#/components/schemas/ContactRelationshipSummaryData"
+                "type": "null"
               }
             ]
           }
@@ -19632,10 +19652,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -19648,10 +19668,10 @@
               "label_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LabelId"
                   },
                   {
-                    "$ref": "#/components/schemas/LabelId"
+                    "type": "null"
                   }
                 ]
               },
@@ -19752,10 +19772,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -19781,10 +19801,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20152,10 +20172,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20168,10 +20188,10 @@
               "label_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/LabelId"
                   },
                   {
-                    "$ref": "#/components/schemas/LabelId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20188,10 +20208,10 @@
               "sort": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SortOrder"
                   },
                   {
-                    "$ref": "#/components/schemas/SortOrder"
+                    "type": "null"
                   }
                 ]
               }
@@ -20206,10 +20226,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20231,10 +20251,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20265,10 +20285,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20294,10 +20314,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20324,10 +20344,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20351,10 +20371,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20390,10 +20410,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20445,10 +20465,10 @@
               "category_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/CategoryId"
                   },
                   {
-                    "$ref": "#/components/schemas/CategoryId"
+                    "type": "null"
                   }
                 ]
               },
@@ -20497,10 +20517,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21005,10 +21025,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21129,10 +21149,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21160,10 +21180,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21193,10 +21213,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21233,10 +21253,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21272,10 +21292,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21316,10 +21336,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21353,10 +21373,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21436,10 +21456,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21576,10 +21596,10 @@
               "from": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/Address"
                   },
                   {
-                    "$ref": "#/components/schemas/Address"
+                    "type": "null"
                   }
                 ]
               }
@@ -21812,10 +21832,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -21899,20 +21919,20 @@
               "search_mode": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchMode"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchMode"
+                    "type": "null"
                   }
                 ]
               },
               "sort": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SortOrder"
                   },
                   {
-                    "$ref": "#/components/schemas/SortOrder"
+                    "type": "null"
                   }
                 ]
               }
@@ -21929,10 +21949,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22175,10 +22195,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22199,10 +22219,10 @@
               "mode": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchMode"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchMode"
+                    "type": "null"
                   }
                 ]
               },
@@ -22217,10 +22237,10 @@
               "sort": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SortOrder"
                   },
                   {
-                    "$ref": "#/components/schemas/SortOrder"
+                    "type": "null"
                   }
                 ]
               }
@@ -22235,10 +22255,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22312,10 +22332,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22370,10 +22390,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22386,10 +22406,10 @@
               "mode": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchMode"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchMode"
+                    "type": "null"
                   }
                 ]
               },
@@ -22409,10 +22429,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22436,10 +22456,10 @@
               "mode": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchMode"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchMode"
+                    "type": "null"
                   }
                 ]
               },
@@ -22719,10 +22739,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22764,10 +22784,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -22990,10 +23010,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23079,10 +23099,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23167,10 +23187,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23277,10 +23297,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23315,10 +23335,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23350,10 +23370,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23412,10 +23432,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23509,10 +23529,10 @@
               "status": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/CommitmentStatusData"
                   },
                   {
-                    "$ref": "#/components/schemas/CommitmentStatusData"
+                    "type": "null"
                   }
                 ]
               }
@@ -23745,10 +23765,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23766,10 +23786,10 @@
               "mode": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchMode"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchMode"
+                    "type": "null"
                   }
                 ]
               },
@@ -23784,10 +23804,10 @@
               "sort": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SortOrder"
                   },
                   {
-                    "$ref": "#/components/schemas/SortOrder"
+                    "type": "null"
                   }
                 ]
               }
@@ -23804,10 +23824,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23824,50 +23844,50 @@
               "length_hint": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DraftLengthHintData"
                   },
                   {
-                    "$ref": "#/components/schemas/DraftLengthHintData"
+                    "type": "null"
                   }
                 ]
               },
               "register": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/VoiceRegisterData"
                   },
                   {
-                    "$ref": "#/components/schemas/VoiceRegisterData"
+                    "type": "null"
                   }
                 ]
               },
               "source_message_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/MessageId"
                   },
                   {
-                    "$ref": "#/components/schemas/MessageId"
+                    "type": "null"
                   }
                 ]
               },
               "thread_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ThreadId"
                   },
                   {
-                    "$ref": "#/components/schemas/ThreadId"
+                    "type": "null"
                   }
                 ]
               },
               "to": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/Address"
                   },
                   {
-                    "$ref": "#/components/schemas/Address"
+                    "type": "null"
                   }
                 ]
               }
@@ -23913,10 +23933,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -23998,10 +24018,10 @@
               "send_identity": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SendIdentity"
                   },
                   {
-                    "$ref": "#/components/schemas/SendIdentity"
+                    "type": "null"
                   }
                 ]
               }
@@ -24075,10 +24095,10 @@
               "send_identity": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SendIdentity"
                   },
                   {
-                    "$ref": "#/components/schemas/SendIdentity"
+                    "type": "null"
                   }
                 ]
               }
@@ -24703,10 +24723,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -24804,10 +24824,10 @@
               "cursor": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ActivityCursor"
                   },
                   {
-                    "$ref": "#/components/schemas/ActivityCursor"
+                    "type": "null"
                   }
                 ]
               },
@@ -24919,10 +24939,10 @@
               "filter": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ActivityFilter"
                   },
                   {
-                    "$ref": "#/components/schemas/ActivityFilter"
+                    "type": "null"
                   }
                 ]
               },
@@ -24960,10 +24980,10 @@
               "tier": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ActivityTier"
                   },
                   {
-                    "$ref": "#/components/schemas/ActivityTier"
+                    "type": "null"
                   }
                 ]
               }
@@ -25171,10 +25191,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25314,10 +25334,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25343,10 +25363,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25567,10 +25587,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25593,10 +25613,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25667,10 +25687,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25692,10 +25712,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25723,20 +25743,20 @@
               "message_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/MessageId"
                   },
                   {
-                    "$ref": "#/components/schemas/MessageId"
+                    "type": "null"
                   }
                 ]
               },
               "thread_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ThreadId"
                   },
                   {
-                    "$ref": "#/components/schemas/ThreadId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25758,10 +25778,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25793,20 +25813,20 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
               "bucket": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ArrivalBucketData"
                   },
                   {
-                    "$ref": "#/components/schemas/ArrivalBucketData"
+                    "type": "null"
                   }
                 ]
               },
@@ -25924,10 +25944,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -25967,10 +25987,10 @@
               "sender": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ModeDoneSenderData"
                   },
                   {
-                    "$ref": "#/components/schemas/ModeDoneSenderData"
+                    "type": "null"
                   }
                 ]
               },
@@ -25998,10 +26018,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26019,10 +26039,10 @@
               "turn": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/MessagesTurnData"
                   },
                   {
-                    "$ref": "#/components/schemas/MessagesTurnData"
+                    "type": "null"
                   }
                 ]
               }
@@ -26039,10 +26059,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26058,10 +26078,10 @@
               "topic": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ThreadId"
                   },
                   {
-                    "$ref": "#/components/schemas/ThreadId"
+                    "type": "null"
                   }
                 ]
               }
@@ -26170,10 +26190,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26195,10 +26215,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26233,10 +26253,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26278,10 +26298,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26397,10 +26417,10 @@
               "kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/RecordKindData"
                   },
                   {
-                    "$ref": "#/components/schemas/RecordKindData"
+                    "type": "null"
                   }
                 ]
               },
@@ -26429,10 +26449,10 @@
               "kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/RecordKindData"
                   },
                   {
-                    "$ref": "#/components/schemas/RecordKindData"
+                    "type": "null"
                   }
                 ]
               },
@@ -26458,10 +26478,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26495,10 +26515,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26661,10 +26681,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26718,10 +26738,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26756,10 +26776,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26805,10 +26825,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26840,10 +26860,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -26928,10 +26948,10 @@
               "kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SenderKindData"
                   },
                   {
-                    "$ref": "#/components/schemas/SenderKindData"
+                    "type": "null"
                   }
                 ]
               },
@@ -26977,10 +26997,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -27453,10 +27473,10 @@
               "summary": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ThreadSummaryData"
                   },
                   {
-                    "$ref": "#/components/schemas/ThreadSummaryData"
+                    "type": "null"
                   }
                 ]
               },
@@ -27744,10 +27764,10 @@
               "explain": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SearchExplain"
                   },
                   {
-                    "$ref": "#/components/schemas/SearchExplain"
+                    "type": "null"
                   }
                 ]
               },
@@ -28259,10 +28279,10 @@
               "signature": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SignatureData"
                   },
                   {
-                    "$ref": "#/components/schemas/SignatureData"
+                    "type": "null"
                   }
                 ]
               }
@@ -28283,10 +28303,10 @@
               "profile": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SenderProfileData"
                   },
                   {
-                    "$ref": "#/components/schemas/SenderProfileData"
+                    "type": "null"
                   }
                 ]
               }
@@ -28356,10 +28376,10 @@
               "profile": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/RelationshipProfileData"
                   },
                   {
-                    "$ref": "#/components/schemas/RelationshipProfileData"
+                    "type": "null"
                   }
                 ]
               }
@@ -28401,10 +28421,10 @@
               "profile": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/UserVoiceProfileData"
                   },
                   {
-                    "$ref": "#/components/schemas/UserVoiceProfileData"
+                    "type": "null"
                   }
                 ]
               }
@@ -28454,11 +28474,11 @@
               "rewrite": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DraftRewriteProvenanceData",
                     "description": "The model that rewrote the text, when one did."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -28600,31 +28620,31 @@
               "humanizer": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/HumanizerReportSummaryData"
                   },
                   {
-                    "$ref": "#/components/schemas/HumanizerReportSummaryData"
+                    "type": "null"
                   }
                 ]
               },
               "inferred_length": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DraftLengthHintData"
                   },
                   {
-                    "$ref": "#/components/schemas/DraftLengthHintData"
+                    "type": "null"
                   }
                 ]
               },
               "inferred_register": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/VoiceRegisterData",
                     "description": "Tone/length the daemon inferred from the relationship (the\neffective values used, even when the caller overrode them) so\nthe UI can show \"Matched to {sender}\" without re-deriving."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -28640,11 +28660,11 @@
               "provenance": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/DraftProvenanceData",
                     "description": "What the draft was written from, for the \"which model, whose\nhistory, which emails\" line."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -28656,10 +28676,10 @@
               "voice_match": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/VoiceMatchData"
                   },
                   {
-                    "$ref": "#/components/schemas/VoiceMatchData"
+                    "type": "null"
                   }
                 ]
               }
@@ -29593,10 +29613,10 @@
               "feature_health": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/FeatureHealthReport"
                   },
                   {
-                    "$ref": "#/components/schemas/FeatureHealthReport"
+                    "type": "null"
                   }
                 ]
               },
@@ -29617,10 +29637,10 @@
               "semantic_runtime": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SemanticRuntimeMetrics"
                   },
                   {
-                    "$ref": "#/components/schemas/SemanticRuntimeMetrics"
+                    "type": "null"
                   }
                 ]
               },
@@ -29642,6 +29662,9 @@
                 "type": "integer",
                 "format": "int64",
                 "minimum": 0
+              },
+              "workspace_owner_supported": {
+                "type": "boolean"
               }
             }
           },
@@ -29733,10 +29756,10 @@
               "outcome": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DraftSendOutcome"
                   },
                   {
-                    "$ref": "#/components/schemas/DraftSendOutcome"
+                    "type": "null"
                   }
                 ]
               }
@@ -29837,10 +29860,10 @@
               "decision": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DecisionLogEntryData"
                   },
                   {
-                    "$ref": "#/components/schemas/DecisionLogEntryData"
+                    "type": "null"
                   }
                 ]
               },
@@ -30090,10 +30113,10 @@
               "next_cursor": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/ActivityCursor"
                   },
                   {
-                    "$ref": "#/components/schemas/ActivityCursor"
+                    "type": "null"
                   }
                 ]
               }
@@ -30252,10 +30275,10 @@
               "entry": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SavedActivityFilterEntry"
                   },
                   {
-                    "$ref": "#/components/schemas/SavedActivityFilterEntry"
+                    "type": "null"
                   }
                 ]
               },
@@ -30320,10 +30343,10 @@
               "error": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/TimeResolveError"
                   },
                   {
-                    "$ref": "#/components/schemas/TimeResolveError"
+                    "type": "null"
                   }
                 ]
               },
@@ -30339,10 +30362,10 @@
               "resolution": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/TimeResolution"
                   },
                   {
-                    "$ref": "#/components/schemas/TimeResolution"
+                    "type": "null"
                   }
                 ]
               }
@@ -30402,10 +30425,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -31345,10 +31368,10 @@
               "account_id": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/AccountId"
                   },
                   {
-                    "$ref": "#/components/schemas/AccountId"
+                    "type": "null"
                   }
                 ]
               },
@@ -31437,10 +31460,10 @@
               "previous": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SenderKindData"
                   },
                   {
-                    "$ref": "#/components/schemas/SenderKindData"
+                    "type": "null"
                   }
                 ]
               },
@@ -31450,10 +31473,10 @@
               "sender_kind": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SenderKindData"
                   },
                   {
-                    "$ref": "#/components/schemas/SenderKindData"
+                    "type": "null"
                   }
                 ]
               }
@@ -31499,10 +31522,10 @@
               "job": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/JobData"
                   },
                   {
-                    "$ref": "#/components/schemas/JobData"
+                    "type": "null"
                   }
                 ]
               },
@@ -31831,10 +31854,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -32043,10 +32066,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -32868,11 +32891,11 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SenderKindData",
                 "description": "`null` or omitted: back to automatic."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32989,10 +33012,10 @@
           "relationship": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RelationshipProfileData"
               },
               {
-                "$ref": "#/components/schemas/RelationshipProfileData"
+                "type": "null"
               }
             ]
           },
@@ -33020,10 +33043,10 @@
           "unanswered_question": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SenderUnansweredQuestionData"
               },
               {
-                "$ref": "#/components/schemas/SenderUnansweredQuestionData"
+                "type": "null"
               }
             ]
           },
@@ -33179,10 +33202,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -33842,11 +33865,11 @@
           "quote": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/VerifiedQuoteData",
                 "description": "The sentence that makes the ask, verified by the daemon to appear in\nthat message's text (whitespace-insensitive), so clients can\nhighlight it. Dropped when it can't be found."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -33902,22 +33925,22 @@
           "counterparty": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ThreadCounterpartyData",
                 "description": "The person this conversation is mainly with: the latest sender who\nisn't you, or the first recipient of your latest message."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "owed_reply": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/OwedReplyHereData",
                 "description": "Set when the newest message is from someone else, it isn't bulk\nmail, and you haven't written in the thread since."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -34061,11 +34084,11 @@
           "ask": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ThreadAskData",
                 "description": "What the conversation asks of you. `None` with `status: ready` means\nthe model found no ask."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -34089,21 +34112,21 @@
           "newest_message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The conversation's newest message when the gist was written. A client\nthat has seen a newer message in the conversation ignores the gist."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "provenance": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AiProvenanceData"
               },
               {
-                "$ref": "#/components/schemas/AiProvenanceData"
+                "type": "null"
               }
             ]
           },
@@ -34225,10 +34248,10 @@
           "new_sender": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ScreenerQuestionData"
               },
               {
-                "$ref": "#/components/schemas/ScreenerQuestionData"
+                "type": "null"
               }
             ]
           },
@@ -34467,11 +34490,11 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The email to open."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -34791,20 +34814,20 @@
           "action": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TodoActionData"
               },
               {
-                "$ref": "#/components/schemas/TodoActionData"
+                "type": "null"
               }
             ]
           },
           "amount": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TodoAmountData"
               },
               {
-                "$ref": "#/components/schemas/TodoAmountData"
+                "type": "null"
               }
             ]
           },
@@ -34878,10 +34901,10 @@
           "looks_done": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TodoLooksDoneData"
               },
               {
-                "$ref": "#/components/schemas/TodoLooksDoneData"
+                "type": "null"
               }
             ]
           },
@@ -34918,10 +34941,10 @@
           "resolution": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TodoResolutionData"
               },
               {
-                "$ref": "#/components/schemas/TodoResolutionData"
+                "type": "null"
               }
             ]
           },
@@ -34951,10 +34974,10 @@
           "source_message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -34979,10 +35002,10 @@
           "thread_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ThreadId"
               },
               {
-                "$ref": "#/components/schemas/ThreadId"
+                "type": "null"
               }
             ]
           },
@@ -35145,10 +35168,10 @@
           "message_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MessageId"
               },
               {
-                "$ref": "#/components/schemas/MessageId"
+                "type": "null"
               }
             ]
           },
@@ -35348,10 +35371,10 @@
           "next_surface": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TodoNextData"
               },
               {
-                "$ref": "#/components/schemas/TodoNextData"
+                "type": "null"
               }
             ]
           },
@@ -35659,10 +35682,10 @@
           "account_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AccountId"
               },
               {
-                "$ref": "#/components/schemas/AccountId"
+                "type": "null"
               }
             ]
           },
@@ -35829,10 +35852,10 @@
           "delta": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UpdateDeltaData"
               },
               {
-                "$ref": "#/components/schemas/UpdateDeltaData"
+                "type": "null"
               }
             ]
           },
@@ -35843,11 +35866,11 @@
           "fact_message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The message `fact` and `todo_title` came from, for `t`. In Changed\nit can be older than the newest."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -35873,11 +35896,11 @@
           "latest_message_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MessageId",
                 "description": "The newest message, for `o`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -35888,20 +35911,20 @@
           "latest_thread_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ThreadId"
               },
               {
-                "$ref": "#/components/schemas/ThreadId"
+                "type": "null"
               }
             ]
           },
           "link": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UpdateLinkData"
               },
               {
-                "$ref": "#/components/schemas/UpdateLinkData"
+                "type": "null"
               }
             ]
           },
@@ -35983,10 +36006,10 @@
           "tracker": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UpdateTrackerData"
               },
               {
-                "$ref": "#/components/schemas/UpdateTrackerData"
+                "type": "null"
               }
             ]
           },
@@ -36769,10 +36792,10 @@
           "top_list": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WrappedTopList"
               },
               {
-                "$ref": "#/components/schemas/WrappedTopList"
+                "type": "null"
               }
             ]
           },
@@ -36820,11 +36843,11 @@
           "fastest": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/WrappedReplyExtreme",
                 "description": "Single fastest reply pair in the window."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36836,11 +36859,11 @@
           "slowest": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/WrappedReplyExtreme",
                 "description": "Single slowest reply pair in the window. Capped at 30 days to\nexclude the pathological \"I replied 8 years later\" cases."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -36877,20 +36900,20 @@
           "heaviest_message": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LargestMessageRow"
               },
               {
-                "$ref": "#/components/schemas/LargestMessageRow"
+                "type": "null"
               }
             ]
           },
           "top_mimetype": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WrappedStorageBucket"
               },
               {
-                "$ref": "#/components/schemas/WrappedStorageBucket"
+                "type": "null"
               }
             ]
           },
@@ -36948,10 +36971,10 @@
           "reply_discipline": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WrappedReplyDiscipline"
               },
               {
-                "$ref": "#/components/schemas/WrappedReplyDiscipline"
+                "type": "null"
               }
             ]
           },
@@ -36986,20 +37009,20 @@
           "longest_thread": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WrappedLongestThread"
               },
               {
-                "$ref": "#/components/schemas/WrappedLongestThread"
+                "type": "null"
               }
             ]
           },
           "most_ghosted": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WrappedMostGhosted"
               },
               {
-                "$ref": "#/components/schemas/WrappedMostGhosted"
+                "type": "null"
               }
             ]
           }

@@ -10,9 +10,15 @@ four GitHub asset digests and both archive checksum files
 matched; the installer and Homebrew binary SHA-256 matched
 `619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06`.
 Homebrew was present only at `/opt/homebrew/bin/mxr`; the personal daemon was
-not restarted. The final documentation closeout deployment remains pending.
-The standing independent Claude review waiver remains in effect until Anthropic
-is funded.
+not restarted. Documentation PR420 merged at
+`1f7e21b29f0761f77090f9e3928c4e7e7da35a3c` (tree
+`c89335e5845908db4c0fbf136a0409994b79602c`); deployment
+`dpl_EeHGUL4ertAHW57pwDszBgmkhzHU` reached READY on `https://mxr.sh`.
+The published [Compose guide](https://mxr.sh/guides/compose/) was checked in a
+browser, including its rendered attachment commands. The deployment receipt is
+retained in the project ledger.
+The standing independent review waiver remains in effect until Anthropic is
+available again.
 
 Published CLI, MCP, TUI and browser acceptance passed. CLI verified previews
 and stale revisions make no resource, then saved, reopened and sent the exact
@@ -42,7 +48,8 @@ packet; candidate `0ea54be1` CLI/MCP/TUI/browser proofs are not current release
 acceptance. The `compose.md` guide already describes chunked client upload,
 resource metadata, browser reload and TUI edit behavior; no guide rewrite was
 needed for this closeout. S05b raises the program tally to ten complete slices;
-S06b is active, with S07 and S09 planned.
+S06b is merged and awaits v0.6.89 publication and installed-client acceptance,
+with S07 and S09 planned.
 
 | Work | Observed duration |
 | --- | ---: |

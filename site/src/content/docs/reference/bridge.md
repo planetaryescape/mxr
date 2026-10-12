@@ -462,6 +462,20 @@ resource. Begin returns `draft_id` and the owner `revision`; chunk returns
 Resources are capped at 25 MiB by local policy. A changed compose owner or stale
 revision fails instead of attaching to another draft.
 
+#### Bind private compose requests to their workspace
+
+Before opening private compose work, read `/mail/archive-operations/workspace`
+and retain its `workspace` object (workspace ID plus recovery generation) with
+the local draft snapshot. Send that exact JSON in the `X-Mxr-Workspace` header
+on requests for the snapshot. The bridge checks the owner before consuming the
+request body and checks compose sidecar ownership before reading or removing
+private files. A request without an owner fails with
+`workspace_owner_required`; a mismatched workspace or recovery generation
+returns `workspace_conflict` without applying the request. The response echoes
+the observed owner in `X-Mxr-Workspace`, including on conflicts. Keep the
+original owner with the private draft; a reconnect does not make the currently
+selected workspace its new owner.
+
 
 Generic stored-draft send (`/mail/drafts/{draft_id}/send-stored`) and schedule
 (`/mail/scheduled-sends`) requests require `managed_attachments_reviewed=true`

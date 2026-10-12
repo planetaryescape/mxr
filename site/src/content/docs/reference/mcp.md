@@ -48,6 +48,7 @@ where the human approval loop is explicit.
 The server exposes stable mxr tools for common agent workflows:
 
 - `mxr_status`
+- `mxr_workspace`
 - `mxr_list_messages`
 - `mxr_search`
 - `mxr_read_message`
@@ -97,6 +98,22 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_reading_item`
 - `mxr_reading_later`
 - `mxr_reading_highlights`
+
+## Keep private drafts with their original workspace
+
+Call `mxr_workspace` before creating or reviewing private draft work. It returns
+the selected workspace ID and recovery generation. Keep that object as
+`expected_workspace` with the draft or send operation; draft reads and
+previews return the owner to carry forward. A reconnect does not authorize
+replacing it with the identity of the newly selected daemon.
+
+If the selected workspace or its recovery generation changes, an owner-bound
+request fails with `workspace_conflict`. Preserve the private draft and pending
+operation, return to the original workspace, and reopen or review the work
+explicitly before continuing. Do not submit it to the new workspace. The
+daemon's `workspace_owner_supported` capability must be true before an agent
+starts private compose work; upgrade an older daemon instead of dropping the
+owner check.
 
 ## Todo resolution
 

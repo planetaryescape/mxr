@@ -1868,3 +1868,98 @@ async fn recovery_status_filters_held_subjects_and_retired_evidence_to_the_allow
         "full inventory requires all accounts"
     );
 }
+
+#[tokio::test]
+async fn recovery_requires_full_account_coverage_and_commits_keep_safety_permissions() {
+    let s = scoped().await;
+    let partial = scoped_profile(&s);
+    let mut full = partial.clone();
+    full.allowed_accounts.extend(
+        s.fx.state
+            .store
+            .list_all_accounts()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|account| account.id.as_str()),
+    );
+    full.allowed_accounts
+        .extend(s.fx.state.config_snapshot().accounts.into_keys());
+    let owner = mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "synthetic-workspace".into(),
+        recovery_generation: "synthetic-generation".into(),
+    };
+    let previews = [
+        Request::GetRecoveryStatus,
+        Request::ActivateRecovery {
+            expected_workspace: owner.clone(),
+            source_owner_stopped: false,
+            dry_run: true,
+        },
+        Request::PrepareRecoveredDraft {
+            draft_id: s.own.draft.id.clone(),
+            expected_revision: 1,
+            expected_workspace: owner.clone(),
+            dry_run: true,
+        },
+    ];
+    for request in &previews {
+        assert!(super::super::account_scope::enforce_account_allowlist(
+            &s.fx.state,
+            "mcp",
+            &partial,
+            request
+        )
+        .await
+        .is_err());
+        assert!(super::super::account_scope::enforce_account_allowlist(
+            &s.fx.state,
+            "mcp",
+            &full,
+            request
+        )
+        .await
+        .is_ok());
+        assert!(
+            super::super::enforce_safety_policy(mxr_config::SafetyPolicy::ReadOnly, request)
+                .is_ok()
+        );
+    }
+    for request in [
+        Request::ActivateRecovery {
+            expected_workspace: owner.clone(),
+            source_owner_stopped: true,
+            dry_run: false,
+        },
+        Request::PrepareRecoveredDraft {
+            draft_id: s.own.draft.id.clone(),
+            expected_revision: 1,
+            expected_workspace: owner,
+            dry_run: false,
+        },
+    ] {
+        assert!(super::super::account_scope::enforce_account_allowlist(
+            &s.fx.state,
+            "mcp",
+            &partial,
+            &request
+        )
+        .await
+        .is_err());
+        assert!(super::super::account_scope::enforce_account_allowlist(
+            &s.fx.state,
+            "mcp",
+            &full,
+            &request
+        )
+        .await
+        .is_ok());
+        assert!(
+            super::super::enforce_safety_policy(mxr_config::SafetyPolicy::ReadOnly, &request)
+                .is_err()
+        );
+        assert!(
+            super::super::enforce_safety_policy(mxr_config::SafetyPolicy::Full, &request).is_ok()
+        );
+    }
+}

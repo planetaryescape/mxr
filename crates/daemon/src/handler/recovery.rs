@@ -243,6 +243,8 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | ListLabels { .. }
             | ListAccounts
             | ListAccountsConfig
+            | Count { .. }
+            | ListSubscriptions { .. }
             | Search { .. }
             | SearchAggregation { .. }
             | ListCategories { .. }

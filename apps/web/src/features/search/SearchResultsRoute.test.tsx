@@ -129,7 +129,7 @@ describe("SearchResultsRoute", () => {
   beforeEach(() => {
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
-      value: vi.fn(),
+      value: vi.fn<() => void>(),
     });
     accountApi.accounts = [];
     recoveryState.restored = false;

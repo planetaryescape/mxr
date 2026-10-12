@@ -880,7 +880,12 @@ pub(super) async fn enforce_account_allowlist(
 ) -> Result<(), String> {
     if matches!(
         req,
-        Request::RuleCategories { .. } | Request::GetRule { .. } | Request::GetRuleForm { .. }
+        Request::RuleCategories { .. }
+            | Request::GetRule { .. }
+            | Request::GetRuleForm { .. }
+            | Request::GetRecoveryStatus
+            | Request::ActivateRecovery { .. }
+            | Request::PrepareRecoveredDraft { .. }
     ) && profile_covers_all_accounts(state, profile).await?
     {
         return Ok(());

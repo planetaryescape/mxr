@@ -58,7 +58,7 @@ pub async fn run(action: RecoveryAction) -> anyhow::Result<()> {
     };
     match response {
         Response::Ok { data } => {
-            crate::output::print_json(&data, format.unwrap_or(crate::cli::OutputFormat::Json))?
+            crate::output::print_json(&data, format.unwrap_or(crate::cli::OutputFormat::Json))?;
         }
         Response::Error { message, code, .. } => bail!("recovery failed ({code}): {message}"),
     }

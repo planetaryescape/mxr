@@ -455,6 +455,29 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
                 "cached search disappeared after activation={activated}"
             );
         }
+        for request in [
+            Request::Count {
+                query: "label:inbox".into(),
+                account_id: None,
+                mode: None,
+            },
+            Request::ListSubscriptions {
+                account_id: None,
+                limit: 100,
+            },
+        ] {
+            let response = super::super::dispatch(
+                &state,
+                mxr_protocol::ClientKind::Cli,
+                &mxr_transport::PeerInfo::local(),
+                &request,
+            )
+            .await;
+            assert!(
+                matches!(response, mxr_protocol::Response::Ok { .. }),
+                "cached read failed: {response:?}"
+            );
+        }
         let freshness = super::super::dispatch(
             &state,
             mxr_protocol::ClientKind::Cli,

@@ -30,6 +30,8 @@ async fn server_with_bytes(
             let data = match request {
                 Request::GetStatus => ResponseData::Status {
                     workspace_owner_supported: false,
+                    recovery_supported: false,
+                    recovery: None,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -280,6 +282,8 @@ async fn no_clobber_preserves_a_destination_created_during_transfer() {
             let data = match request {
                 Request::GetStatus => ResponseData::Status {
                     workspace_owner_supported: false,
+                    recovery_supported: false,
+                    recovery: None,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -414,6 +418,8 @@ async fn dropping_a_transfer_removes_its_partial_file() {
             let data = if matches!(request, Request::GetStatus) {
                 ResponseData::Status {
                     workspace_owner_supported: false,
+                    recovery_supported: false,
+                    recovery: None,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,

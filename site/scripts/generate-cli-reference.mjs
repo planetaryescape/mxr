@@ -22,6 +22,7 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const SNAPSHOT_DIR = join(REPO_ROOT, 'crates', 'daemon', 'tests', 'snapshots');
 const OUT_DIR = join(REPO_ROOT, 'site', 'src', 'content', 'docs', 'reference', 'cli');
 const PREFIX = 'cli_help__cli_help_';
+const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW`, `--operation-id OPERATION_ID_FROM_PREVIEW` and `--expected-workspace \'<OWNER_JSON_FROM_PREVIEW>\'`. Use that same quoted owner for `mxr send-outcome` and for scheduling with `--at TIME`.';
 
 const COMMAND_EXAMPLES = {
   search: {
@@ -92,7 +93,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   compose: {
-    use: 'Write a new message in $EDITOR or from stdin in scripts. `--yes` sends; before submission it prints the operation ID and recovery query to stderr. Rerunning a one-shot command creates a new draft, so query that ID after an uncertain response. `--draft` saves to `mxr drafts` without sending (the two are mutually exclusive, so no added flag can turn a draft into a send). Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags, useful in CI or pre-commit hooks.',
+    use: 'Write a new message in $EDITOR or from stdin in scripts. `--yes` sends; before submission it prints the operation ID and recovery query to stderr. Rerunning a one-shot command creates a new draft, so query that ID after an uncertain response. `--draft` saves to `mxr drafts` without sending (the two are mutually exclusive, so no added flag can turn a draft into a send). Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags, useful in CI or pre-commit hooks. ' + SAVED_DRAFT_OWNER_GUIDANCE,
     examples: [
       "mxr compose --to alice@example.com --subject 'Friday'",
       "printf 'Approved' | mxr compose --to alice@example.com --subject 'Re: plan' --body-stdin --dry-run",
@@ -100,9 +101,18 @@ const COMMAND_EXAMPLES = {
       "mxr compose --to alice@example.com --body 'see attached' --check --format json   # warns: missing attachment",
     ],
   },
-  reply: { use: 'Reply to one message, interactively or from an agent-approved body. `--yes` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. `--draft` saves a threaded draft. Preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW` and `--operation-id OPERATION_ID_FROM_PREVIEW`; to schedule it, use `--at TIME --expected-revision REVISION_FROM_PREVIEW`.', examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes", "mxr reply MESSAGE_ID --body 'Draft it.' --draft   # saves, never sends"] },
-  'reply-all': { use: 'Reply to everyone on a thread. `--yes` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. `--draft` saves a threaded draft. Preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW` and `--operation-id OPERATION_ID_FROM_PREVIEW`; to schedule it, use `--at TIME --expected-revision REVISION_FROM_PREVIEW`.', examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run", "mxr reply-all MESSAGE_ID --body 'Thanks all.' --draft   # saves, never sends"] },
-  forward: { use: 'Forward a message with optional context. `--yes` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. `--draft` saves the forward as a draft. Preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW` and `--operation-id OPERATION_ID_FROM_PREVIEW`; to schedule it, use `--at TIME --expected-revision REVISION_FROM_PREVIEW`.', examples: ["mxr forward MESSAGE_ID --to teammate@example.com", "mxr forward MESSAGE_ID --to teammate@example.com --body 'FYI' --draft   # saves, never sends"] },
+  reply: {
+    use: `Reply to one message, interactively or from an agent-approved body. \`--yes\` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. \`--draft\` saves a threaded draft. ${SAVED_DRAFT_OWNER_GUIDANCE}`,
+    examples: ["mxr reply MESSAGE_ID", "mxr reply MESSAGE_ID --body 'On it.' --yes", "mxr reply MESSAGE_ID --body 'Draft it.' --draft   # saves, never sends"],
+  },
+  'reply-all': {
+    use: `Reply to everyone on a thread. \`--yes\` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. \`--draft\` saves a threaded draft. ${SAVED_DRAFT_OWNER_GUIDANCE}`,
+    examples: ["mxr reply-all MESSAGE_ID --body-stdin --dry-run", "mxr reply-all MESSAGE_ID --body 'Thanks all.' --draft   # saves, never sends"],
+  },
+  forward: {
+    use: `Forward a message with optional context. \`--yes\` prints the operation ID and recovery query to stderr before sending; query it after an uncertain response instead of rerunning, which creates a new draft. \`--draft\` saves the forward as a draft. ${SAVED_DRAFT_OWNER_GUIDANCE}`,
+    examples: ["mxr forward MESSAGE_ID --to teammate@example.com", "mxr forward MESSAGE_ID --to teammate@example.com --body 'FYI' --draft   # saves, never sends"],
+  },
   drafts: {
     use: 'List and edit drafts, preview linked deletion, or create/update one linked provider draft.',
     examples: [
@@ -112,13 +122,20 @@ const COMMAND_EXAMPLES = {
     ],
   },
   send: {
-    use: 'Preview a saved draft, then send or schedule the reviewed revision. For an immediate send, keep the preview operation ID and query it with `mxr send-outcome` after a lost response; `unknown` is not permission to retry. The scheduler assigns a separate identity: query its latest outcome with `mxr send-outcome "draft:DRAFT_ID" --account ACCOUNT_ID`. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` with the reviewed revision and operation ID to bypass a Blocker the previous `--check` minted.',
+    use: 'Preview a saved draft, then send or schedule the reviewed revision. Keep the `expected_workspace` JSON from that original preview and pass it unchanged, shell-quoted, with `--expected-workspace` on send, schedule and outcome queries. For an immediate send, keep the preview operation ID and query it with `mxr send-outcome` after a lost response; `unknown` is not permission to retry. The scheduler assigns a separate identity: query its latest outcome with `mxr send-outcome "draft:DRAFT_ID" --account ACCOUNT_ID --expected-workspace \'<OWNER_JSON_FROM_SCHEDULE_PREVIEW>\'`. Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) without sending; exit 2 on Blocker. Use `--override-safety <TOKEN>` with the reviewed revision, original workspace and operation ID to bypass a Blocker the previous `--check` minted.',
     examples: [
-      "mxr send DRAFT_ID --dry-run --format json   # retain the reviewed revision and operation ID",
-      "mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --operation-id OPERATION_ID_FROM_PREVIEW",
-      "mxr send DRAFT_ID --at 'tomorrow 9am' --expected-revision REVISION_FROM_PREVIEW",
+      "mxr send DRAFT_ID --dry-run --format json   # retain the revision, operation ID and expected_workspace JSON",
+      "mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --operation-id OPERATION_ID_FROM_PREVIEW",
+      "mxr send DRAFT_ID --at 'tomorrow 9am' --expected-revision REVISION_FROM_PREVIEW --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'",
       "mxr send DRAFT_ID --check --format json   # safety report, no send",
-      "mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --operation-id OPERATION_ID_FROM_PREVIEW --override-safety OVERRIDE_TOKEN_FROM_CHECK   # after preview and --check",
+      "mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --operation-id OPERATION_ID_FROM_PREVIEW --override-safety OVERRIDE_TOKEN_FROM_CHECK   # after preview and --check",
+    ],
+  },
+  'send-outcome': {
+    use: 'Query the durable outcome with the workspace JSON retained from the original send preview. Do not infer a new owner after reconnect; `unknown` is not permission to retry.',
+    examples: [
+      "mxr send-outcome OPERATION_ID --account ACCOUNT_ID --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json",
+      "mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --expected-workspace '<OWNER_JSON_FROM_SCHEDULE_PREVIEW>' --format json",
     ],
   },
   unsend: { use: 'Cancel a scheduled send while keeping the draft.', examples: ["mxr unsend DRAFT_ID"] },

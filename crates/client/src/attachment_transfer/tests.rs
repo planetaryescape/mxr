@@ -108,7 +108,7 @@ async fn transfer_writes_and_verifies_a_multichunk_attachment() {
     let message_id = MessageId::new();
     let attachment_id = AttachmentId::new();
     let directory = TempDir::new().expect("test operation succeeds");
-    let destination = directory.path().join("attachment.bin");
+    let destination = directory.path().join("nested/downloads/attachment.bin");
 
     let result = download_attachment_to(
         &mut connection,
@@ -126,6 +126,12 @@ async fn transfer_writes_and_verifies_a_multichunk_attachment() {
     );
     assert_eq!(result.length_bytes, bytes.len() as u64);
     assert_eq!(result.sha256, hex_digest(&bytes));
+    assert_eq!(
+        std::fs::read_dir(destination.parent().expect("destination has a parent"))
+            .expect("created destination directory is readable")
+            .count(),
+        1
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -138,6 +144,43 @@ async fn transfer_writes_and_verifies_a_multichunk_attachment() {
             0o600
         );
     }
+    server.abort();
+}
+
+#[tokio::test]
+async fn failed_multichunk_verification_does_not_expose_a_file_in_a_created_directory() {
+    let transport = MemoryTransport::new();
+    let bytes = (0..MAX_ATTACHMENT_CHUNK_BYTES as usize + 31)
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    let server = server_with_bytes(&transport, bytes, true).await;
+    let mut connection = IpcConnection::connect_with(&transport.connector(), ClientKind::Cli)
+        .await
+        .expect("test operation succeeds");
+    let message_id = MessageId::new();
+    let attachment_id = AttachmentId::new();
+    let directory = TempDir::new().expect("test operation succeeds");
+    let destination = directory.path().join("nested/downloads/attachment.bin");
+    let parent = destination.parent().expect("destination has a parent");
+
+    assert!(download_attachment_to(
+        &mut connection,
+        &message_id,
+        &attachment_id,
+        &destination,
+        false,
+    )
+    .await
+    .is_err());
+
+    assert!(!destination.exists());
+    assert_eq!(
+        std::fs::read_dir(parent)
+            .expect("created destination directory is readable")
+            .count(),
+        0,
+        "failed transfer removes its partial file"
+    );
     server.abort();
 }
 

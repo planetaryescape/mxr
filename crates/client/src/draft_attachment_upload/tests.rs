@@ -1,3 +1,8 @@
+#![expect(
+    clippy::panic,
+    reason = "tests fail directly on unexpected upload protocol variants"
+)]
+
 use super::*;
 use futures::{SinkExt, StreamExt};
 use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload};

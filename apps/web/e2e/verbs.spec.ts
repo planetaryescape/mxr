@@ -417,6 +417,60 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   "label-remove": labelChange("label-remove", ["Hiring"]),
   labels: labelChange("labels", ["Hiring", "Travel"]),
 
+  categories: async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    const name = `Verb journey ${Date.now()}`;
+
+    await page.keyboard.press("l");
+    await page
+      .getByRole("dialog", { name: "Labels" })
+      .getByRole("button", { name: "Categories" })
+      .click();
+    let dialog = page.getByRole("dialog", { name: "Categories" });
+    const input = dialog.getByPlaceholder("Find or create a category…");
+    await input.fill(name);
+    await dialog.getByRole("option", { name: `Create “${name}”` }).click();
+    await expect(page.getByText(`Created ${name}`)).toBeVisible();
+    await expect(dialog.getByRole("option", { name: `${name}: not applied` })).toBeVisible();
+    await dialog.getByRole("option", { name: `${name}: not applied` }).click();
+    await dialog.getByRole("button", { name: "Preview" }).click();
+    await page
+      .getByRole("alertdialog", { name: "Apply category changes?" })
+      .getByRole("button", { name: "Apply changes" })
+      .click();
+    await expectToast(page, "categories");
+
+    await mailList(page).focus();
+    await page.keyboard.press("l");
+    await page
+      .getByRole("dialog", { name: "Labels" })
+      .getByRole("button", { name: "Categories" })
+      .click();
+    dialog = page.getByRole("dialog", { name: "Categories" });
+    await expect(dialog.getByRole("option", { name: `${name}: applied` })).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+
+    await mailList(page).focus();
+    await page.keyboard.press("u");
+    await expect(page.getByText("Category changes undone", { exact: true })).toBeVisible();
+
+    await page.keyboard.press("l");
+    await page
+      .getByRole("dialog", { name: "Labels" })
+      .getByRole("button", { name: "Categories" })
+      .click();
+    dialog = page.getByRole("dialog", { name: "Categories" });
+    await expect(dialog.getByRole("option", { name: `${name}: not applied` })).toBeVisible();
+    await dialog.getByRole("button", { name: `Manage ${name}` }).click();
+    const manage = page.getByRole("dialog", { name: "Manage category" });
+    await manage.getByRole("button", { name: "Preview delete" }).click();
+    await expect(manage.getByRole("status")).toContainText(`Deleting “${name}”`);
+    await manage.getByRole("button", { name: "Confirm delete" }).click();
+    await expect(page.getByText("Category deleted", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+  },
+
   "reply-later": async (page) => {
     await openList(page, "/m/inbox");
     await mailList(page).focus();

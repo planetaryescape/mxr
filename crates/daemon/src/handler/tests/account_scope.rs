@@ -345,7 +345,7 @@ async fn scoped_profiles_only_see_and_use_categories_visible_in_the_named_accoun
     assert!(check(&s, &Request::ListCategories { account_id: None })
         .await
         .unwrap_err()
-        .contains("every account"));
+        .contains("every stored and configured account"));
     assert!(check(
         &s,
         &Request::ListCategoryMessages {

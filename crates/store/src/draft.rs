@@ -67,7 +67,7 @@ fn decode_content(row: &sqlx::sqlite::SqliteRow) -> DraftContent {
 fn draft_insert(
     draft: &Draft,
     ignore: bool,
-) -> Result<sqlx::query::Query<'_, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'_>>, sqlx::Error> {
+) -> Result<sqlx::query::Query<'_, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>, sqlx::Error> {
     let id = draft.id.as_str();
     let account_id = draft.account_id.as_str();
     let to_addrs = encode_json(&draft.to)?;

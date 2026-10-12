@@ -1,0 +1,28 @@
+{
+  "status": "passed on the published v0.6.92 binary",
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "binary_sha256": "067a23b077a2d8f03708f8c371b1b8b642185d422a6ba8d16b027ecea275301b",
+  "surfaces": [
+    "CLI",
+    "MCP"
+  ],
+  "case_groups_passed": {
+    "physical_exclusions_and_preview": true,
+    "paused_cached_reads_bytes_no_replay": true,
+    "new_review_idempotent_acceptance": true,
+    "published_11_new_12_both_directions": true
+  },
+  "paused_observation_window_seconds": 65,
+  "protocol_11_to_12_rejected": true,
+  "protocol_12_to_11_rejected": true,
+  "fake_provider_acceptances": 1,
+  "accepted_attachment": {
+    "length_bytes": 9309,
+    "sha256": "d9a28f001301a921ad00bc1b9cf106fe2277e5baac49d9848ea13ce2e9a300e4"
+  },
+  "all_owned_processes_stopped": true,
+  "restored_draft_holds": 2,
+  "draft_send_outcomes": 1,
+  "scheduled_send_attempts": 0,
+  "mutation_jobs": 0
+}

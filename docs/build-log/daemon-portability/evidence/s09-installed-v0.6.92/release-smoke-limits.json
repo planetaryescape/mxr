@@ -1,0 +1,19 @@
+{
+  "source": "edf75f83368fc4afc3a9204e2d502773cc2950b2",
+  "workflow": 38263455994,
+  "job": 114859684671,
+  "conclusion": "success",
+  "linux_debug_cli_tests": 21,
+  "offline_fake_provider_checks": [
+    3,
+    3,
+    1
+  ],
+  "mailmerge_acceptances": 4,
+  "archive_cases": 17,
+  "live_gmail_imap_smtp": "skipped_missing_creds",
+  "limits": [
+    "This smoke used a Linux debug build; it is not execution of the published Linux archive.",
+    "Live provider acceptance was not established because test credentials were unavailable."
+  ]
+}

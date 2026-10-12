@@ -1,0 +1,8 @@
+{
+  "source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
+  "binary_sha256": "a1bbb15a494794d3ad4386335ef30fac653ad471c149c82ab0fad3ec4b9eb6c9",
+  "cases_passed": 14,
+  "bundle_unchanged": true,
+  "all_owned_processes_stopped": true,
+  "raw_fixture_content_included": false
+}

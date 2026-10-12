@@ -329,6 +329,9 @@ impl App {
             | Action::OpenMessageView
             | Action::CloseMessageView
             | Action::ToggleMailListMode => self.apply_mailbox_action(action),
+            Action::OpenPersonalCategories | Action::AssignPersonalCategory => {
+                self.apply_personal_category_action(action);
+            }
             Action::OpenMailboxFilter
             | Action::SubmitSearch
             | Action::CycleSearchMode

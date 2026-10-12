@@ -10,6 +10,7 @@ import {
   ChevronsRight,
   Clock,
   FileText,
+  FolderOpen,
   History,
   Hourglass,
   Inbox,
@@ -165,7 +166,7 @@ export function screenerEntry(desk: Desk): NavEntry | null {
 }
 
 /** Sections whose entries open a mail list, so the keyboard follows. */
-const LIST_SECTIONS = new Set(["places", "saved", "more", "labels"]);
+const LIST_SECTIONS = new Set(["places", "saved", "more", "labels", "categories"]);
 
 function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
   const base = entry.to;
@@ -209,6 +210,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const sections = useMemo<NavSection[]>(() => {
     const lenses = lensesFromShell(shell.data);
     const labels = lenses.filter((lens) => lens.section === "labels");
+    const categories = lenses.filter((lens) => lens.section === "categories");
     const saved = lenses.filter((lens) => lens.section === "saved");
     // The rail, in the daemon's order: Now, the five modes, then Inbox.
     const places: NavEntry[] = railNavEntries(rail.data).map((entry) => ({
@@ -283,6 +285,19 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           to: lens.path,
           label: lens.label,
           Icon: Tag,
+        })),
+      });
+    }
+    if (categories.length > 0) {
+      result.push({
+        id: "categories",
+        title: "Categories",
+        foldable: true,
+        entries: categories.map((lens) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: FolderOpen,
         })),
       });
     }

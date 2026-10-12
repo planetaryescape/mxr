@@ -1100,6 +1100,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "record_renewal_cycles",
         kind: MigrationKind::Sql(include_str!("../migrations/076_record_renewal_cycles.sql")),
     },
+    Migration {
+        version: 77,
+        name: "personal_categories",
+        kind: MigrationKind::Sql(include_str!("../migrations/077_personal_categories.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1294,6 +1299,48 @@ mod tests {
             .unwrap()
     }
 
+    async fn store_at_version(db_path: &Path, version: u32) -> Store {
+        let url = format!("sqlite:{}", db_path.display());
+        let opts = SqliteConnectOptions::from_str(&url)
+            .unwrap()
+            .create_if_missing(true)
+            .pragma("foreign_keys", "ON");
+        let writer = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        let store = Store {
+            writer: writer.clone(),
+            reader: writer,
+            message_cleanup: tokio::sync::Mutex::new(()),
+        };
+        sqlx::raw_sql(
+            "CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at INTEGER NOT NULL
+            )",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        for migration in super::MIGRATIONS
+            .iter()
+            .filter(|migration| migration.version <= version)
+        {
+            store.apply_migration(migration).await.unwrap();
+        }
+
+        let latest: (i64,) = sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+        assert_eq!(latest.0, version as i64);
+        store
+    }
+
     async fn test_table_exists(pool: &sqlx::SqlitePool, table: &str) -> bool {
         let row: Option<(String,)> =
             sqlx::query_as("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?")
@@ -1377,15 +1424,7 @@ mod tests {
         let db_path = temp.path().join("version-75.db");
 
         {
-            let store = Store::new(&db_path).await.unwrap();
-            sqlx::query("DROP TABLE record_renewal_cycles")
-                .execute(store.writer())
-                .await
-                .unwrap();
-            sqlx::query("DELETE FROM schema_migrations WHERE version = 76")
-                .execute(store.writer())
-                .await
-                .unwrap();
+            let store = store_at_version(&db_path, 75).await;
             sqlx::query(
                 "INSERT INTO archive_workspace (singleton, workspace_id, recovery_generation)
                  VALUES (1, 'existing-workspace', 'generation-before-renewals')",
@@ -1511,6 +1550,106 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(cycle_key.0, "record-renewal|record-1");
+    }
+
+    #[tokio::test]
+    async fn categories_migration_upgrades_version_76_without_losing_user_state() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-76.db");
+
+        {
+            let store = store_at_version(&db_path, 76).await;
+
+            sqlx::query(
+                "INSERT INTO archive_workspace (singleton, workspace_id, recovery_generation)
+                 VALUES (1, 'kept-workspace', 'kept-generation')",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO accounts (id, name, email, created_at, updated_at)
+                 VALUES ('version-76-account', 'Personal', 'me@example.com', 1, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO draft_send_outcomes
+                 (operation_id, draft_id, account_id, reviewed_revision, command_hash,
+                  state, provider_message_id, updated_at)
+                 VALUES ('kept-op', 'kept-draft', 'version-76-account', 3, 'kept-hash',
+                         'accepted', 'provider-message-keep', 42)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO todos
+                 (id, account_id, kind, verb, title, origin, reason, rules_version,
+                  dedup_key, created_at, updated_at, scheduled_for, user_edited)
+                 VALUES ('kept-task', 'version-76-account', 'renewal', 'renew',
+                         'Keep this task', 'manual', 'User-created task', 1,
+                         'kept-task-key', 10, 11, 1800000000, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO record_renewal_cycles (account_id, record_id, dedup_key)
+                 VALUES ('version-76-account', 'kept-record', 'kept-cycle-key')",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+            let latest_version: (i64,) =
+                sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+                    .fetch_one(store.writer())
+                    .await
+                    .unwrap();
+            assert_eq!(latest_version.0, 76);
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let applied: (String,) =
+            sqlx::query_as("SELECT name FROM schema_migrations WHERE version = 77")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(applied.0, "personal_categories");
+        assert!(test_table_exists(store.writer(), "personal_categories").await);
+        assert!(test_table_exists(store.writer(), "message_category_memberships").await);
+        assert!(test_table_exists(store.writer(), "category_membership_undo").await);
+
+        let archive: (String, String) = sqlx::query_as(
+            "SELECT workspace_id, recovery_generation FROM archive_workspace WHERE singleton = 1",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(archive, ("kept-workspace".into(), "kept-generation".into()));
+        let outcome: (String, String) = sqlx::query_as(
+            "SELECT operation_id, provider_message_id FROM draft_send_outcomes WHERE operation_id = 'kept-op'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(outcome, ("kept-op".into(), "provider-message-keep".into()));
+        let task: (String, String) =
+            sqlx::query_as("SELECT title, dedup_key FROM todos WHERE id = 'kept-task'")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(task, ("Keep this task".into(), "kept-task-key".into()));
+        let cycle: (String,) = sqlx::query_as(
+            "SELECT dedup_key FROM record_renewal_cycles
+             WHERE account_id = 'version-76-account' AND record_id = 'kept-record'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(cycle.0, "kept-cycle-key");
     }
 
     #[tokio::test]

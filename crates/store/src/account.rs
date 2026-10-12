@@ -225,6 +225,40 @@ impl super::Store {
         .transpose()
     }
 
+    pub async fn list_all_accounts(&self) -> Result<Vec<Account>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        let rows =
+            sqlx::query("SELECT id, name, email, sync_config, send_config, enabled FROM accounts")
+                .fetch_all(self.reader())
+                .await?;
+        trace_query("account.list_all_accounts", started_at, rows.len());
+
+        rows.into_iter()
+            .map(|row| {
+                use sqlx::Row;
+
+                let id: String = row.try_get("id")?;
+                let name: String = row.try_get("name")?;
+                let email: String = row.try_get("email")?;
+                let sync_config: Option<String> = row.try_get("sync_config")?;
+                let send_config: Option<String> = row.try_get("send_config")?;
+                let enabled: bool = row.try_get("enabled")?;
+                Ok(Account {
+                    id: decode_id(&id)?,
+                    name,
+                    email,
+                    sync_backend: sync_config
+                        .map(|value| decode_json::<BackendRef>(&value))
+                        .transpose()?,
+                    send_backend: send_config
+                        .map(|value| decode_json::<BackendRef>(&value))
+                        .transpose()?,
+                    enabled,
+                })
+            })
+            .collect()
+    }
+
     pub async fn list_accounts(&self) -> Result<Vec<Account>, sqlx::Error> {
         let started_at = std::time::Instant::now();
         let rows = sqlx::query!(

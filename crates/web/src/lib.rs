@@ -250,7 +250,10 @@ async fn mailbox(
     // Thread pages count threads, envelope pages count envelopes.
     let supports_pagination = matches!(
         lens.kind,
-        MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
+        MailboxLensKind::Inbox
+            | MailboxLensKind::AllMail
+            | MailboxLensKind::Label
+            | MailboxLensKind::Category
     ) || (lens.kind == MailboxLensKind::Subscription
         && lens.sender_email.is_some());
     let has_more = supports_pagination && page_size == query.limit;
@@ -3784,6 +3787,387 @@ async fn delete_label(
         },
     )
     .await
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryQuery {
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    category_id: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+    #[serde(default)]
+    offset: Option<u32>,
+}
+
+async fn list_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Query(query): Query<CategoryQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let account_id = query
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let data = ipc_request(
+        &state.config.socket_path,
+        Request::ListCategories { account_id },
+    )
+    .await?;
+    match data {
+        ResponseData::Categories { categories } => Ok(Json(json!({"categories": categories}))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn list_category_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Query(query): Query<CategoryQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let category_id = query
+        .category_id
+        .as_deref()
+        .ok_or_else(|| BridgeError::BadRequest("category_id is required".into()))?
+        .parse()
+        .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))?;
+    let account_id = query
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ListCategoryMessages {
+            category_id,
+            account_id,
+            limit: query.limit.unwrap_or(50),
+            offset: query.offset.unwrap_or(0),
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryMessages {
+            envelopes,
+            total,
+            has_more,
+        } => Ok(Json(
+            json!({"envelopes":envelopes,"total":total,"has_more":has_more}),
+        )),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryMembershipStateBody {
+    account_id: Option<String>,
+    message_ids: Vec<String>,
+    category_ids: Vec<String>,
+}
+
+async fn get_category_memberships(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryMembershipStateBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let message_ids = body
+        .message_ids
+        .iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid message_id".into()))
+        })
+        .collect::<Result<_, _>>()?;
+    let category_ids = body
+        .category_ids
+        .iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))
+        })
+        .collect::<Result<_, _>>()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetCategoryMemberships {
+            account_id,
+            message_ids,
+            category_ids,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryMembershipStates { states } => Ok(Json(json!({"states":states}))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryNameBody {
+    name: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryNamePreviewBody {
+    #[serde(default)]
+    category_id: Option<String>,
+    name: String,
+}
+
+async fn preview_category_name(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryNamePreviewBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let category_id = body
+        .category_id
+        .as_deref()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))
+        })
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::PreviewCategoryName {
+            category_id,
+            name: body.name,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryNamePreview {
+            normalized_name,
+            available,
+        } => Ok(Json(
+            json!({"normalized_name":normalized_name,"available":available}),
+        )),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn create_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryNameBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::CreateCategory { name: body.name },
+    )
+    .await?
+    {
+        ResponseData::Categories { categories } => Ok(Json(json!({"categories":categories}))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct RenameCategoryBody {
+    category_id: String,
+    name: String,
+}
+
+async fn rename_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<RenameCategoryBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let category_id = body
+        .category_id
+        .parse()
+        .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::RenameCategory {
+            category_id,
+            new_name: body.name,
+        },
+    )
+    .await?
+    {
+        ResponseData::Categories { categories } => Ok(Json(json!({"categories":categories}))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryMembershipBody {
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    message_ids: Vec<String>,
+    #[serde(default)]
+    add_category_ids: Vec<String>,
+    #[serde(default)]
+    remove_category_ids: Vec<String>,
+}
+
+async fn preview_category_membership(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryMembershipBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let message_ids = body
+        .message_ids
+        .iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid message_id".into()))
+        })
+        .collect::<Result<_, _>>()?;
+    let add_category_ids = body
+        .add_category_ids
+        .iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))
+        })
+        .collect::<Result<_, _>>()?;
+    let remove_category_ids = body
+        .remove_category_ids
+        .iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))
+        })
+        .collect::<Result<_, _>>()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::PreviewCategoryMembership {
+            account_id,
+            message_ids,
+            add_category_ids,
+            remove_category_ids,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryMembershipPreview { preview } => Ok(Json(
+            serde_json::to_value(preview).map_err(|e| BridgeError::Ipc(e.to_string()))?,
+        )),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryTokenBody {
+    preview_token: String,
+}
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct CategoryUndoBody {
+    mutation_id: String,
+}
+
+async fn apply_category_membership(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryTokenBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ApplyCategoryMembership {
+            preview_token: body.preview_token,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryMembershipApplied {
+            mutation_id,
+            added,
+            removed,
+        } => Ok(Json(
+            json!({"mutation_id":mutation_id,"added":added,"removed":removed}),
+        )),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct DeleteCategoryBody {
+    #[serde(default)]
+    category_id: Option<String>,
+    #[serde(default)]
+    preview_token: Option<String>,
+}
+
+async fn delete_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<DeleteCategoryBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request = if let Some(preview_token) = body.preview_token {
+        Request::DeleteCategory { preview_token }
+    } else {
+        Request::PreviewDeleteCategory {
+            category_id: body
+                .category_id
+                .ok_or_else(|| {
+                    BridgeError::BadRequest("category_id is required for preview".into())
+                })?
+                .parse()
+                .map_err(|_| BridgeError::BadRequest("invalid category_id".into()))?,
+        }
+    };
+    match ipc_request(&state.config.socket_path, request).await? {
+        ResponseData::CategoryDeletePreview { preview } => Ok(Json(
+            serde_json::to_value(preview).map_err(|e| BridgeError::Ipc(e.to_string()))?,
+        )),
+        ResponseData::CategoryDeleted { category_id, name } => {
+            Ok(Json(json!({"category_id":category_id,"name":name})))
+        }
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn undo_category_membership(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<CategoryUndoBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let mutation_id = body.mutation_id;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::UndoCategoryMembership { mutation_id },
+    )
+    .await?
+    {
+        ResponseData::CategoryMembershipUndone { restored, skipped } => {
+            Ok(Json(json!({"restored":restored,"skipped":skipped})))
+        }
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 /// Label create and rename answer with the stored label.

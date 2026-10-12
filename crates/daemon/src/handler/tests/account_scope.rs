@@ -273,6 +273,135 @@ async fn assert_scoped(s: &Scoped, build: impl Fn(&Owned) -> Request) {
     }
 }
 
+#[tokio::test]
+async fn scoped_profiles_only_see_and_use_categories_visible_in_the_named_account() {
+    let s = scoped().await;
+    let visible =
+        s.fx.state
+            .store
+            .create_personal_category("Visible")
+            .await
+            .unwrap();
+    let hidden =
+        s.fx.state
+            .store
+            .create_personal_category("Hidden")
+            .await
+            .unwrap();
+    for (message_id, category_id) in [
+        (&s.own.message, &visible.id),
+        (&s.other.message, &hidden.id),
+    ] {
+        let before =
+            s.fx.state
+                .store
+                .category_membership_versions(
+                    None,
+                    std::slice::from_ref(message_id),
+                    std::slice::from_ref(category_id),
+                )
+                .await
+                .unwrap()
+                .remove(0);
+        s.fx.state
+            .store
+            .apply_category_membership_changes(&[mxr_store::CategoryMembershipChange {
+                before,
+                assigned: true,
+            }])
+            .await
+            .unwrap();
+    }
+
+    let scoped_catalog =
+        s.fx.state
+            .store
+            .list_personal_categories(Some(&s.own.account))
+            .await
+            .unwrap();
+    let profile = s.fx.state.config_snapshot().agent_surfaces.profiles["mcp"].clone();
+    let ResponseData::Categories { categories } = super::super::account_scope::scope_response(
+        &s.fx.state,
+        &profile,
+        ResponseData::Categories {
+            categories: scoped_catalog,
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("expected scoped category catalog")
+    };
+    assert_eq!(categories.len(), 1);
+    assert_eq!(categories[0].name, "Visible");
+
+    assert!(check(
+        &s,
+        &Request::ListCategories {
+            account_id: Some(s.own.account.clone())
+        }
+    )
+    .await
+    .is_ok());
+    assert!(check(&s, &Request::ListCategories { account_id: None })
+        .await
+        .unwrap_err()
+        .contains("every stored and configured account"));
+    assert!(check(
+        &s,
+        &Request::ListCategoryMessages {
+            category_id: hidden.id.clone(),
+            account_id: Some(s.own.account.clone()),
+            limit: 10,
+            offset: 0,
+        }
+    )
+    .await
+    .is_err());
+    assert!(check(
+        &s,
+        &Request::GetCategoryMemberships {
+            account_id: None,
+            message_ids: vec![s.own.message.clone()],
+            category_ids: vec![visible.id.clone()],
+        }
+    )
+    .await
+    .unwrap_err()
+    .contains("must name an account"));
+    assert!(check(
+        &s,
+        &Request::GetCategoryMemberships {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            category_ids: vec![hidden.id.clone()],
+        }
+    )
+    .await
+    .is_err());
+    assert!(check(
+        &s,
+        &Request::PreviewCategoryMembership {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            add_category_ids: vec![visible.id.clone()],
+            remove_category_ids: vec![],
+        }
+    )
+    .await
+    .is_ok());
+    assert!(check(
+        &s,
+        &Request::PreviewCategoryMembership {
+            account_id: Some(s.own.account.clone()),
+            message_ids: vec![s.own.message.clone()],
+            add_category_ids: vec![hidden.id],
+            remove_category_ids: vec![],
+        }
+    )
+    .await
+    .is_err());
+}
+
 async fn assert_denied(s: &Scoped, req: &Request) {
     match check(s, req).await {
         Ok(()) => panic!("`{}` was allowed", request_kind(req)),
@@ -808,6 +937,323 @@ async fn requests_spanning_every_account_are_denied_and_unscoped_ones_allowed() 
             .await
             .unwrap_or_else(|error| panic!("`{}` was denied: {error}", request_kind(&req)));
     }
+}
+
+#[tokio::test]
+async fn mcp_category_catalog_requires_full_account_scope_and_preserves_profile_gates() {
+    let s = scoped().await;
+    let mut config = s.fx.state.config_snapshot();
+    config.accounts.insert(
+        "configured-only".into(),
+        mxr_config::AccountConfig {
+            name: "Configured only".into(),
+            email: "configured-only@example.com".into(),
+            enabled: false,
+            sync: None,
+            send: None,
+        },
+    );
+    s.fx.state.set_config_for_test(config).await;
+
+    let denied = scoped_dispatch(
+        &s,
+        Request::CreateCategory {
+            name: "Restricted catalog".into(),
+        },
+    )
+    .await;
+    match denied {
+        Response::Error { message, .. } => {
+            assert!(message.contains("category catalog access"), "{message}");
+        }
+        other => panic!("partial account profile unexpectedly created a category: {other:?}"),
+    }
+
+    s.fx.state
+        .store
+        .set_account_enabled(&s.other.account, false)
+        .await
+        .unwrap();
+    let mut config = s.fx.state.config_snapshot();
+    config
+        .agent_surfaces
+        .profiles
+        .get_mut("mcp")
+        .unwrap()
+        .allowed_accounts = vec![s.own.account.to_string(), "configured-only".into()];
+    s.fx.state.set_config_for_test(config).await;
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::CreateCategory {
+                name: "Disabled account omitted".into(),
+            },
+        )
+        .await,
+        Response::Error { message, .. } if message.contains("category catalog access")
+    ));
+
+    let mut config = s.fx.state.config_snapshot();
+    let mcp = config.agent_surfaces.profiles.get_mut("mcp").unwrap();
+    mcp.allowed_accounts = vec![
+        s.own.account.to_string(),
+        s.other.account.to_string(),
+        "configured-only".into(),
+    ];
+    s.fx.state.set_config_for_test(config).await;
+
+    let Response::Ok {
+        data:
+            ResponseData::CategoryNamePreview {
+                normalized_name,
+                available,
+            },
+    } = scoped_dispatch(
+        &s,
+        Request::PreviewCategoryName {
+            category_id: None,
+            name: "  Travel  ".into(),
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should be able to preview category creation")
+    };
+    assert_eq!(normalized_name, "Travel");
+    assert!(available);
+    assert!(s
+        .fx
+        .state
+        .store
+        .list_personal_categories(None)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let mut config = s.fx.state.config_snapshot();
+    config
+        .agent_surfaces
+        .profiles
+        .get_mut("mcp")
+        .unwrap()
+        .safety_policy = mxr_config::SafetyPolicy::ReadOnly;
+    s.fx.state.set_config_for_test(config).await;
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::CreateCategory {
+                name: "Blocked by read only".into(),
+            },
+        )
+        .await,
+        Response::Error { message, .. } if message.contains("safety policy")
+    ));
+
+    let mut config = s.fx.state.config_snapshot();
+    let mcp = config.agent_surfaces.profiles.get_mut("mcp").unwrap();
+    mcp.safety_policy = mxr_config::SafetyPolicy::Full;
+    mcp.allow_destructive = false;
+    s.fx.state.set_config_for_test(config).await;
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::CreateCategory {
+                name: "Blocked by destructive gate".into(),
+            },
+        )
+        .await,
+        Response::Error { message, .. } if message.contains("destructive gate")
+    ));
+
+    let mut config = s.fx.state.config_snapshot();
+    config
+        .agent_surfaces
+        .profiles
+        .get_mut("mcp")
+        .unwrap()
+        .allow_destructive = true;
+    s.fx.state.set_config_for_test(config).await;
+
+    let Response::Ok {
+        data: ResponseData::Categories { categories },
+    } = scoped_dispatch(&s, Request::ListCategories { account_id: None }).await
+    else {
+        panic!("full account profile should list the global category catalog")
+    };
+    assert!(categories.is_empty());
+
+    let created = scoped_dispatch(
+        &s,
+        Request::CreateCategory {
+            name: "Travel".into(),
+        },
+    )
+    .await;
+    let categories = match created {
+        Response::Ok {
+            data: ResponseData::Categories { categories },
+        } => categories,
+        other => panic!("full account profile should create a category: {other:?}"),
+    };
+    let category = categories.into_iter().next().unwrap();
+
+    let Response::Ok {
+        data: ResponseData::Categories { categories },
+    } = scoped_dispatch(&s, Request::ListCategories { account_id: None }).await
+    else {
+        panic!("full account profile should see an unassigned category")
+    };
+    assert_eq!(categories.len(), 1);
+    assert_eq!(categories[0].total_count, 0);
+
+    let Response::Ok {
+        data: ResponseData::CategoryMembershipPreview { preview },
+    } = scoped_dispatch(
+        &s,
+        Request::PreviewCategoryMembership {
+            account_id: None,
+            message_ids: vec![s.own.message.clone()],
+            add_category_ids: vec![category.id.clone()],
+            remove_category_ids: vec![],
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should preview a cross-account assignment")
+    };
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::ApplyCategoryMembership {
+                preview_token: preview.preview_token,
+            },
+        )
+        .await,
+        Response::Ok {
+            data: ResponseData::CategoryMembershipApplied {
+                added: 1,
+                removed: 0,
+                ..
+            }
+        }
+    ));
+
+    let Response::Ok {
+        data: ResponseData::CategoryMessages { total, .. },
+    } = scoped_dispatch(
+        &s,
+        Request::ListCategoryMessages {
+            category_id: category.id.clone(),
+            account_id: None,
+            limit: 50,
+            offset: 0,
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should read category messages across accounts")
+    };
+    assert_eq!(total, 1);
+
+    let Response::Ok {
+        data: ResponseData::CategoryNamePreview { available, .. },
+    } = scoped_dispatch(
+        &s,
+        Request::PreviewCategoryName {
+            category_id: Some(category.id.clone()),
+            name: "Trips".into(),
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should preview category rename")
+    };
+    assert!(available);
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::RenameCategory {
+                category_id: category.id.clone(),
+                new_name: "Trips".into(),
+            },
+        )
+        .await,
+        Response::Ok {
+            data: ResponseData::Categories { .. }
+        }
+    ));
+
+    let Response::Ok {
+        data: ResponseData::CategoryDeletePreview { preview },
+    } = scoped_dispatch(
+        &s,
+        Request::PreviewDeleteCategory {
+            category_id: category.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should preview category deletion")
+    };
+    assert_eq!(preview.affected_messages, 1);
+    let mut config = s.fx.state.config_snapshot();
+    config
+        .agent_surfaces
+        .profiles
+        .get_mut("mcp")
+        .unwrap()
+        .allow_destructive = false;
+    s.fx.state.set_config_for_test(config).await;
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::DeleteCategory {
+                preview_token: preview.preview_token,
+            },
+        )
+        .await,
+        Response::Error { message, .. } if message.contains("destructive gate")
+    ));
+
+    let mut config = s.fx.state.config_snapshot();
+    config
+        .agent_surfaces
+        .profiles
+        .get_mut("mcp")
+        .unwrap()
+        .allow_destructive = true;
+    s.fx.state.set_config_for_test(config).await;
+    let Response::Ok {
+        data: ResponseData::CategoryDeletePreview { preview },
+    } = scoped_dispatch(
+        &s,
+        Request::PreviewDeleteCategory {
+            category_id: category.id,
+        },
+    )
+    .await
+    else {
+        panic!("full account profile should be able to obtain a fresh delete preview")
+    };
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::DeleteCategory {
+                preview_token: preview.preview_token,
+            },
+        )
+        .await,
+        Response::Ok {
+            data: ResponseData::CategoryDeleted { .. }
+        }
+    ));
+    let Response::Ok {
+        data: ResponseData::Categories { categories },
+    } = scoped_dispatch(&s, Request::ListCategories { account_id: None }).await
+    else {
+        panic!("full account profile should see the deleted category removed")
+    };
+    assert!(categories.is_empty());
 }
 
 /// The allowlist is applied in dispatch, not only in the helper.

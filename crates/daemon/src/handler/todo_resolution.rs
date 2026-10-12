@@ -429,19 +429,10 @@ fn find_safe_quote(
         let regex = Regex::new(pattern).ok()?;
         for found in regex.find_iter(text) {
             let prefix = &text[..found.start()];
-            let sentence_start = prefix
-                .rfind(['.', '!', '?', '\n'])
-                .map_or(0, |index| index + 1);
+            let sentence_start = previous_quote_boundary(text, found.start()).unwrap_or(0);
             let context = prefix[sentence_start..].to_ascii_lowercase();
-            let suffix = text[found.end()..]
-                .split(['.', '!', '?', '\n'])
-                .next()
-                .unwrap_or_default()
-                .to_ascii_lowercase();
-            let sentence_end = found.end()
-                + text[found.end()..]
-                    .find(['.', '!', '?', '\n'])
-                    .map_or_else(|| text.len() - found.end(), |offset| offset + 1);
+            let sentence_end = next_quote_boundary(text, found.end()).unwrap_or(text.len());
+            let suffix = text[found.end()..sentence_end].to_ascii_lowercase();
             let quote = text[sentence_start..sentence_end].trim();
             if [
                 "not ",
@@ -478,6 +469,38 @@ fn find_safe_quote(
         }
     }
     None
+}
+
+fn previous_quote_boundary(text: &str, before: usize) -> Option<usize> {
+    text[..before]
+        .char_indices()
+        .rfind(|(index, character)| is_quote_boundary(text, *index, *character))
+        .map(|(index, character)| index + character.len_utf8())
+}
+
+fn next_quote_boundary(text: &str, from: usize) -> Option<usize> {
+    text[from..]
+        .char_indices()
+        .find(|(offset, character)| is_quote_boundary(text, from + *offset, *character))
+        .map(|(offset, character)| from + offset + character.len_utf8())
+}
+
+fn is_quote_boundary(text: &str, index: usize, character: char) -> bool {
+    match character {
+        '.' => {
+            let previous_is_digit = text[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|neighbor| neighbor.is_ascii_digit());
+            let next_is_digit = text[index + character.len_utf8()..]
+                .chars()
+                .next()
+                .is_some_and(|neighbor| neighbor.is_ascii_digit());
+            !(previous_is_digit && next_is_digit)
+        }
+        '!' | '?' | '\n' => true,
+        _ => false,
+    }
 }
 
 fn object_matches(task: &TodoRecord, subject: &str, body: &str) -> bool {
@@ -661,6 +684,28 @@ mod tests {
         assert!(find_safe_quote(
             &renewed,
             "JetBrains All Products hasn't been renewed.",
+            "body",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn decimal_amounts_do_not_split_the_quote_or_hide_negation() {
+        let payment_received = [r"(?i)\bpayment received\b"];
+        let text = "Camden Council Tax payment received for £142.00.";
+        let (quote, _) = find_safe_quote(&payment_received, text, "body")
+            .expect("affirmative quote with decimal amount");
+        assert_eq!(quote, text);
+
+        assert!(find_safe_quote(
+            &payment_received,
+            "Do not mark £142.00 complete: payment received.",
+            "body",
+        )
+        .is_none());
+        assert!(find_safe_quote(
+            &payment_received,
+            "Payment received for £142.00, but the transfer failed.",
             "body",
         )
         .is_none());

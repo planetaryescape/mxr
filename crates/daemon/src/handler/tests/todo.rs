@@ -702,30 +702,60 @@ async fn a_lookalike_domain_gets_open_email_to_pay_and_its_raw_domain() {
 }
 
 #[tokio::test]
-async fn the_receipt_offers_looks_done_and_never_closes_the_row() {
+async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     camden_bill(&fx, now).await;
     finish_first_run(&fx, now).await;
-    let mut receipt = Mail::new(
+
+    // Amount and sender alone cannot distinguish this bill from another
+    // payment to the same council.
+    let mut generic_receipt = Mail::new(
         ("Camden Council", "council.tax@camden.gov.uk"),
         "Payment received",
         "Thank you for your payment of £142.00.",
         now + Duration::hours(2),
     );
-    receipt.auth = Some(CAMDEN_AUTH);
-    let id = put(&fx, receipt).await;
-    let summary = scan(&fx, std::slice::from_ref(&id), now + Duration::hours(2)).await;
-    assert_eq!(summary.looks_done, 1);
-    assert_eq!(summary.created, 0, "a receipt is not a to-do");
-    let row = coming_up(&runway(&fx, now + Duration::hours(2)).await)[0].clone();
+    generic_receipt.auth = Some(CAMDEN_AUTH);
+    let generic_id = put(&fx, generic_receipt).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&generic_id)).await;
+    let after_generic = runway(&fx, now + Duration::hours(2)).await;
+    let rows = coming_up(&after_generic);
+    assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
+    assert!(rows[0].resolution.is_none(), "amount alone is ambiguous");
+    assert_eq!(rows[0].state, TodoStateData::Open);
+
+    let mut identified_receipt = Mail::new(
+        ("Camden Council", "council.tax@camden.gov.uk"),
+        "Payment received",
+        "Camden Council Tax payment received for £142.00.",
+        now + Duration::hours(3),
+    );
+    identified_receipt.auth = Some(CAMDEN_AUTH);
+    let id = put(&fx, identified_receipt).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&id)).await;
+
+    let after_identified = runway(&fx, now + Duration::hours(3)).await;
+    let rows = coming_up(&after_identified);
+    assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
+    let row = rows[0];
     assert_eq!(row.state, TodoStateData::Open);
-    let looks = row.looks_done.expect("looks done");
-    assert_eq!(looks.message_id.as_ref(), Some(&id));
-    assert!(
-        looks.reason.starts_with("payment received"),
-        "{}",
-        looks.reason
+    let resolution = row.resolution.as_ref().expect("reviewable resolution");
+    assert_eq!(resolution.message_id, id);
+    assert_eq!(
+        resolution.quote,
+        "Camden Council Tax payment received for £142.00."
+    );
+    assert_eq!(resolution.action, "complete");
+    assert_eq!(resolution.status, "pending");
+    assert_eq!(
+        fx.state
+            .store
+            .count_todos_in_state(None, mxr_store::TodoState::Open)
+            .await
+            .unwrap(),
+        1,
+        "receipts never create or close a task automatically"
     );
 }
 

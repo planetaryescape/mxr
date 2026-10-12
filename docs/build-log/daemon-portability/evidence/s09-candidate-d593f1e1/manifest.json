@@ -10,7 +10,7 @@
     {
       "name": "README.md",
       "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/README.md",
-      "sha256": "a2ce920624f1fefdbc7ba9f1c85401a33523f1db35f119c991cfb2d771215fc9"
+      "sha256": "fa55c6b8fe680edb4dc342e8604f25e8a5a616a8f0738839e99bf55196af0f4f"
     },
     {
       "name": "ci-summary.json",
@@ -20,7 +20,7 @@
     {
       "name": "client-acceptance.json",
       "path": "docs/build-log/daemon-portability/evidence/s09-candidate-d593f1e1/client-acceptance.json",
-      "sha256": "1348d848c3751e9b5c7917a0ec9e190f45a6dbb61334fa896d65c71ccc100052"
+      "sha256": "6377d77a31fb4e4f95b293cb49c531cdbe6c21c7be9911036cb68f2bd2180d8e"
     },
     {
       "name": "native-acceptance.json",

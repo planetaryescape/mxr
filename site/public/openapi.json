@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.91"
+    "version": "0.6.92"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -4547,6 +4547,140 @@
           },
           "401": {
             "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/recovery/activate": {
+      "post": {
+        "tags": [],
+        "operationId": "recovery_activate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryActivateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Activation preview or result; old intentions are never replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workspace or generation changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/recovery/prepare-draft": {
+      "post": {
+        "tags": [],
+        "operationId": "recovery_prepare",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryPrepareBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Preview or creation of a new draft while the original remains held",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workspace, generation, or draft revision changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/recovery/status": {
+      "get": {
+        "tags": [],
+        "operationId": "recovery_status",
+        "responses": {
+          "200": {
+            "description": "Persistent restored-profile pause, held drafts and retired intentions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bridge authorization required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Daemon does not support protocol 12 recovery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -19450,6 +19584,151 @@
           }
         }
       },
+      "RecoveredDraftData": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "account_id",
+          "revision",
+          "subject"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "prepared_draft_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "subject": {
+            "type": "string"
+          }
+        }
+      },
+      "RecoveryActionData": {
+        "type": "object",
+        "required": [
+          "status",
+          "dry_run"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "prepared_draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecoveryStatusData"
+          }
+        }
+      },
+      "RecoveryActivateBody": {
+        "type": "object",
+        "required": [
+          "expected_workspace",
+          "source_owner_stopped",
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "expected_workspace": {
+            "$ref": "#/components/schemas/ArchiveWorkspaceData"
+          },
+          "source_owner_stopped": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RecoveryPrepareBody": {
+        "type": "object",
+        "required": [
+          "expected_workspace",
+          "draft_id",
+          "expected_revision",
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_workspace": {
+            "$ref": "#/components/schemas/ArchiveWorkspaceData"
+          }
+        }
+      },
+      "RecoveryStatusData": {
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "recovery_generation",
+          "restore_pending",
+          "source_owner_stopped",
+          "retired_intentions",
+          "retained_intentions",
+          "held_drafts"
+        ],
+        "properties": {
+          "held_drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveredDraftData"
+            }
+          },
+          "recovery_generation": {
+            "type": "string"
+          },
+          "restore_pending": {
+            "type": "boolean"
+          },
+          "retained_intentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetainedIntentData"
+            }
+          },
+          "retired_intentions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "source_owner_stopped": {
+            "type": "boolean"
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -22590,6 +22869,77 @@
                 "enum": [
                   "GetArchiveWorkspace"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRecoveryStatus"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_workspace",
+              "source_owner_stopped",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ActivateRecovery"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_workspace": {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              },
+              "source_owner_stopped": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "expected_revision",
+              "expected_workspace",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PrepareRecoveredDraft"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_workspace": {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
               }
             }
           },
@@ -28767,6 +29117,42 @@
           {
             "type": "object",
             "required": [
+              "recovery",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecoveryStatus"
+                ]
+              },
+              "recovery": {
+                "$ref": "#/components/schemas/RecoveryStatusData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "action",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/RecoveryActionData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecoveryAction"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "operation",
               "kind"
             ],
@@ -29630,6 +30016,19 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "recovery": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RecoveryStatusData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "recovery_supported": {
+                "type": "boolean"
               },
               "repair_required": {
                 "type": "boolean"
@@ -31715,6 +32114,42 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "RetainedIntentData": {
+        "type": "object",
+        "required": [
+          "original_id",
+          "kind",
+          "original_state"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "archive_evidence": {},
+          "kind": {
+            "type": "string"
+          },
+          "original_id": {
+            "type": "string"
+          },
+          "original_state": {
+            "type": "string"
+          },
+          "outcome_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

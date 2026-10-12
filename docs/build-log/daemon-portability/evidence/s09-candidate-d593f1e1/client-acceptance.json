@@ -1,7 +1,7 @@
 {
   "source": "d593f1e11bb19c4786e8c80df4e871566e04f25a",
   "binary_sha256": "a1bbb15a494794d3ad4386335ef30fac653ad471c149c82ab0fad3ec4b9eb6c9",
-  "journey_seconds": 65,
+  "paused_observation_window_seconds": 65,
   "surfaces": ["CLI", "MCP"],
   "case_groups_passed": {
     "physical_exclusions_and_preview": true,

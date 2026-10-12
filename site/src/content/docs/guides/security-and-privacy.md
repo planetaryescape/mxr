@@ -147,9 +147,10 @@ location with `MXR_SECRETS_PATH`. Protect it like any dotfile secret: keep the
 mxr does not run a hosted backup service. Use its stopped-profile backup
 workflow instead of copying a live database. Backups preserve cached mail,
 drafts, and managed attachment bytes, but exclude credentials and tokens.
-Restored profiles keep old work paused until you inspect and explicitly
-activate them. See [Back up and restore a workspace](/guides/backup-recovery/)
-for the full procedure and limits.
+Restored drafts remain held; activation permits new work after review but does
+not release original draft IDs or resume old schedules. See [Back up and
+restore a workspace](/guides/backup-recovery/) for the full procedure and
+limits.
 
 ### Bridge and local IPC boundary
 

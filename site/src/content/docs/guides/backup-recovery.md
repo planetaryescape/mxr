@@ -10,6 +10,10 @@ during backup or restore.
 
 ## Preview and create a backup
 
+Set `SOURCE_DATA` to the stopped profile's data directory and `SOURCE_CONFIG`
+to its config directory. Choose a new bundle path for `BUNDLE` and an absent
+or empty destination for `RESTORED_DATA`.
+
 ```bash
 mxr backup create --source-data "$SOURCE_DATA" \
   --source-config "$SOURCE_CONFIG/config.toml" --output "$BUNDLE"
@@ -40,6 +44,9 @@ export MXR_DATA_DIR="$RESTORED_DATA"
 export MXR_CONFIG_DIR="$RESTORED_DATA"
 mxr daemon --foreground
 ```
+
+Leave the daemon running in that terminal. Run the following client commands
+in another terminal with the same `MXR_DATA_DIR` and `MXR_CONFIG_DIR` values.
 
 The restored profile keeps the workspace ID and receives a new recovery
 generation. Its accounts and external processors are disabled; credential
@@ -75,7 +82,8 @@ mxr recovery activate --expected-workspace "$OWNER" \
 
 Activation permits new work but never releases an original draft ID for
 sending. To continue a held draft, preview a separate local draft and confirm
-the same source revision and owner:
+the same source revision and owner. Set `ORIGINAL_DRAFT_ID` and
+`ORIGINAL_REVISION` from the held draft shown by `mxr recovery status`:
 
 ```bash
 mxr recovery prepare-draft "$ORIGINAL_DRAFT_ID" \
@@ -86,10 +94,11 @@ mxr recovery prepare-draft "$ORIGINAL_DRAFT_ID" \
   --expected-workspace "$OWNER" --confirm --format json
 ```
 
-The new draft keeps the original evidence and attachment bytes, but it has no
-old schedule, provider link, send outcome, or Message-ID. Review it through the
-ordinary send preview before sending. TUI, web, and MCP expose the same recovery
-previews and explicit confirmations.
+The original held draft retains its evidence and attachment bytes. The
+prepared draft is separate and has no old schedule, provider link, send
+outcome, or Message-ID. Review it through the ordinary send preview before
+sending. TUI, web, and MCP expose the same recovery previews and explicit
+confirmations.
 
 Upgrade the daemon, CLI, TUI, and MCP client together. Recovery uses IPC
 protocol 12; protocol-11 peers are rejected explicitly. The web bridge stays

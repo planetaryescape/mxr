@@ -64,31 +64,34 @@ fn decode_content(row: &sqlx::sqlite::SqliteRow) -> DraftContent {
     }
 }
 
-impl super::Store {
-    pub async fn insert_draft(&self, draft: &Draft) -> Result<(), sqlx::Error> {
-        let id = draft.id.as_str();
-        let account_id = draft.account_id.as_str();
-        let to_addrs = encode_json(&draft.to)?;
-        let cc_addrs = encode_json(&draft.cc)?;
-        let bcc_addrs = encode_json(&draft.bcc)?;
-        let attachments = encode_json(&draft.attachments)?;
-        let managed_attachments = encode_json(&draft.managed_attachments)?;
-        let inline_assets = encode_json(&draft.inline_assets)?;
-        let content = encode_content(&draft.content);
-        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
-        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
-        let intent = draft.intent.as_db_str();
-        let inline_calendar_reply_json = draft
-            .inline_calendar_reply
-            .as_ref()
-            .map(encode_json)
-            .transpose()?;
-        let created_at = draft.created_at.timestamp();
-        let updated_at = draft.updated_at.timestamp();
+fn draft_insert(
+    draft: &Draft,
+    ignore: bool,
+) -> Result<sqlx::query::Query<'_, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>, sqlx::Error> {
+    let id = draft.id.as_str();
+    let account_id = draft.account_id.as_str();
+    let to_addrs = encode_json(&draft.to)?;
+    let cc_addrs = encode_json(&draft.cc)?;
+    let bcc_addrs = encode_json(&draft.bcc)?;
+    let attachments = encode_json(&draft.attachments)?;
+    let managed_attachments = encode_json(&draft.managed_attachments)?;
+    let inline_assets = encode_json(&draft.inline_assets)?;
+    let content = encode_content(&draft.content);
+    let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
+    let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
+    let intent = draft.intent.as_db_str();
+    let inline_calendar_reply_json = draft
+        .inline_calendar_reply
+        .as_ref()
+        .map(encode_json)
+        .transpose()?;
+    let created_at = draft.created_at.timestamp();
+    let updated_at = draft.updated_at.timestamp();
 
-        sqlx::query(
-            "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, managed_attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    Ok(sqlx::query(
+            if ignore { "INSERT OR IGNORE INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, managed_attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" } else { "INSERT INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, managed_attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" },
         )
         .bind(id)
         .bind(account_id)
@@ -99,70 +102,47 @@ impl super::Store {
         .bind(cc_addrs)
         .bind(bcc_addrs)
         .bind(&draft.subject)
-        .bind(&content.body_markdown)
-        .bind(&content.body_html)
-        .bind(&content.body_text)
+        .bind(content.body_markdown)
+        .bind(content.body_html)
+        .bind(content.body_text)
         .bind(content.kind)
         .bind(attachments)
         .bind(managed_attachments)
         .bind(inline_assets)
         .bind(inline_calendar_reply_json)
         .bind(created_at)
-        .bind(updated_at)
-        .execute(self.writer())
-        .await?;
+        .bind(updated_at))
+}
 
+impl super::Store {
+    pub async fn insert_draft(&self, draft: &Draft) -> Result<(), sqlx::Error> {
+        draft_insert(draft, false)?.execute(self.writer()).await?;
+        Ok(())
+    }
+    pub async fn insert_draft_if_absent(&self, draft: &Draft) -> Result<(), sqlx::Error> {
+        draft_insert(draft, true)?.execute(self.writer()).await?;
         Ok(())
     }
 
-    pub async fn insert_draft_if_absent(&self, draft: &Draft) -> Result<(), sqlx::Error> {
-        let id = draft.id.as_str();
-        let account_id = draft.account_id.as_str();
-        let to_addrs = encode_json(&draft.to)?;
-        let cc_addrs = encode_json(&draft.cc)?;
-        let bcc_addrs = encode_json(&draft.bcc)?;
-        let attachments = encode_json(&draft.attachments)?;
-        let managed_attachments = encode_json(&draft.managed_attachments)?;
-        let inline_assets = encode_json(&draft.inline_assets)?;
-        let content = encode_content(&draft.content);
-        let from_addr = draft.from.as_ref().map(encode_json).transpose()?;
-        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
-        let intent = draft.intent.as_db_str();
-        let inline_calendar_reply_json = draft
-            .inline_calendar_reply
-            .as_ref()
-            .map(encode_json)
-            .transpose()?;
-        let created_at = draft.created_at.timestamp();
-        let updated_at = draft.updated_at.timestamp();
-
-        sqlx::query(
-            "INSERT OR IGNORE INTO drafts (id, account_id, from_addr, in_reply_to, intent, to_addrs, cc_addrs, bcc_addrs, subject, body_markdown, body_html, body_text, content_kind, attachments, managed_attachments, inline_assets, inline_calendar_reply_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(account_id)
-        .bind(from_addr)
-        .bind(in_reply_to)
-        .bind(intent)
-        .bind(to_addrs)
-        .bind(cc_addrs)
-        .bind(bcc_addrs)
-        .bind(&draft.subject)
-        .bind(&content.body_markdown)
-        .bind(&content.body_html)
-        .bind(&content.body_text)
-        .bind(content.kind)
-        .bind(attachments)
-        .bind(managed_attachments)
-        .bind(inline_assets)
-        .bind(inline_calendar_reply_json)
-        .bind(created_at)
-        .bind(updated_at)
-        .execute(self.writer())
-        .await?;
-
-        Ok(())
+    /// Publish newly reviewed content and its original-owner linkage together.
+    pub async fn publish_recovered_draft(
+        &self,
+        original: &DraftId,
+        draft: &Draft,
+    ) -> Result<Draft, sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        draft_insert(draft, false)?.execute(&mut *tx).await?;
+        let linked = sqlx::query("UPDATE restored_draft_holds SET prepared_draft_id=? WHERE draft_id=? AND prepared_draft_id IS NULL")
+            .bind(draft.id.as_str()).bind(original.as_str()).execute(&mut *tx).await?;
+        if linked.rows_affected() != 1 {
+            return Err(sqlx::Error::Protocol(
+                "Recovered draft publication lost its original hold".into(),
+            ));
+        }
+        tx.commit().await?;
+        self.get_draft(&draft.id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
     }
 
     pub async fn get_draft(&self, id: &DraftId) -> Result<Option<Draft>, sqlx::Error> {

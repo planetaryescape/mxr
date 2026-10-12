@@ -111,6 +111,7 @@ fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
 
 fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
+        Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
         // ----- Named by account -----
         Request::ListEnvelopes {
             account_id,
@@ -879,7 +880,12 @@ pub(super) async fn enforce_account_allowlist(
 ) -> Result<(), String> {
     if matches!(
         req,
-        Request::RuleCategories { .. } | Request::GetRule { .. } | Request::GetRuleForm { .. }
+        Request::RuleCategories { .. }
+            | Request::GetRule { .. }
+            | Request::GetRuleForm { .. }
+            | Request::GetRecoveryStatus
+            | Request::ActivateRecovery { .. }
+            | Request::PrepareRecoveredDraft { .. }
     ) && profile_covers_all_accounts(state, profile).await?
     {
         return Ok(());
@@ -1082,6 +1088,25 @@ pub(super) async fn allowed_accounts(
     Ok(allowed)
 }
 
+/// Scope cached reads without changing the enabled-only SyncAll scope.
+pub(super) async fn allowed_cached_accounts(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+) -> Result<Vec<AccountId>, String> {
+    let mut allowed = Vec::new();
+    for account in state
+        .store
+        .list_cached_mail_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if account_id_allowed(state, profile, &account.id).await? {
+            allowed.push(account.id);
+        }
+    }
+    Ok(allowed)
+}
+
 fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
     profile
         .allowed_accounts
@@ -1120,6 +1145,8 @@ pub(super) async fn scope_response(
             Ok(ResponseData::Categories { categories })
         }
         ResponseData::Status {
+            recovery_supported,
+            mut recovery,
             workspace_owner_supported,
             draft_revision_supported,
             send_outcome_supported,
@@ -1158,7 +1185,33 @@ pub(super) async fn scope_response(
                     .map(|status| counts.get(&status.account_id).copied().unwrap_or(0))
                     .sum()
             };
+            if let Some(status) = &mut recovery {
+                let mut held = Vec::new();
+                for draft in std::mem::take(&mut status.held_drafts) {
+                    if account_id_allowed(state, profile, &draft.account_id).await? {
+                        held.push(draft);
+                    }
+                }
+                status.held_drafts = held;
+                let all = profile_covers_all_accounts(state, profile).await?;
+                let mut intentions = Vec::new();
+                for intent in std::mem::take(&mut status.retained_intentions) {
+                    if all
+                        || if let Some(account) = &intent.account_id {
+                            account_id_allowed(state, profile, account).await?
+                        } else {
+                            false
+                        }
+                    {
+                        intentions.push(intent);
+                    }
+                }
+                status.retained_intentions = intentions;
+                status.retired_intentions = status.retained_intentions.len() as u64;
+            }
             Ok(ResponseData::Status {
+                recovery_supported,
+                recovery,
                 workspace_owner_supported,
                 draft_revision_supported,
                 send_outcome_supported,

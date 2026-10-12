@@ -411,8 +411,89 @@ pub struct CategoryUndoParams {
     pub mutation_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecoveryActivateInput {
+    pub workspace_id: String,
+    pub recovery_generation: String,
+    pub source_owner_stopped: bool,
+    /// Set true only after reviewing the preview and stopping the prior owner.
+    pub confirm: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecoveryPrepareInput {
+    pub draft_id: String,
+    pub expected_revision: i64,
+    pub workspace_id: String,
+    pub recovery_generation: String,
+    /// Set true only after reviewing the preview and the snapshot uncertainty warning.
+    pub confirm: bool,
+}
+
 #[tool_router(router = tool_router)]
 impl MxrMcpServer {
+    #[tool(
+        name = "mxr_recovery_status",
+        description = "Read restored-profile recovery state, including permanently held original drafts and retired intentions. The snapshot may predate a send; absence of an outcome does not prove the provider did not accept it."
+    )]
+    pub async fn recovery_status(&self) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetRecoveryStatus).await
+    }
+
+    #[tool(
+        name = "mxr_recovery_activate",
+        description = "Preview activation of a restored profile, then confirm only after the prior daemon owner is stopped. Activation enables new work only and never replays retained intentions."
+    )]
+    pub async fn recovery_activate(
+        &self,
+        Parameters(input): Parameters<RecoveryActivateInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        if input.confirm && !input.source_owner_stopped {
+            return Err(ErrorData::invalid_params(
+                "confirmation requires source_owner_stopped=true after the prior owner is stopped",
+                None,
+            ));
+        }
+        let owner = mxr_protocol::ArchiveWorkspaceData {
+            workspace_id: input.workspace_id,
+            recovery_generation: input.recovery_generation,
+        };
+        self.daemon_json_owned(
+            Request::ActivateRecovery {
+                expected_workspace: owner.clone(),
+                source_owner_stopped: input.source_owner_stopped,
+                dry_run: !input.confirm,
+            },
+            owner,
+        )
+        .await
+    }
+
+    #[tool(
+        name = "mxr_recovery_prepare_draft",
+        description = "Preview and explicitly confirm preparing a new local draft from a held restored draft after activation. The original draft ID remains held and unchanged; review the new draft normally before any send."
+    )]
+    pub async fn recovery_prepare_draft(
+        &self,
+        Parameters(input): Parameters<RecoveryPrepareInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let draft_id = DraftId::from_str(&input.draft_id).map_err(mcp_error)?;
+        let owner = mxr_protocol::ArchiveWorkspaceData {
+            workspace_id: input.workspace_id,
+            recovery_generation: input.recovery_generation,
+        };
+        self.daemon_json_owned(
+            Request::PrepareRecoveredDraft {
+                draft_id,
+                expected_revision: input.expected_revision,
+                expected_workspace: owner.clone(),
+                dry_run: !input.confirm,
+            },
+            owner,
+        )
+        .await
+    }
+
     #[tool(
         description = "Preview and retain exactly an Archive message selection. Does not dispatch mail. Returns a durable operation identity and per-message review. Only preview mail the user asked to archive."
     )]
@@ -2377,6 +2458,35 @@ mod tests {
         requests: Mutex<Vec<Request>>,
     }
 
+    #[derive(Debug, Default)]
+    struct CapturedRecoveryRequester {
+        calls: Mutex<Vec<(Request, Option<mxr_protocol::ArchiveWorkspaceData>)>>,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for CapturedRecoveryRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            self.calls.lock().expect("calls lock").push((request, None));
+            Ok(Response::Ok {
+                data: ResponseData::Pong,
+            })
+        }
+
+        async fn request_owned(
+            &self,
+            request: Request,
+            owner: mxr_protocol::ArchiveWorkspaceData,
+        ) -> anyhow::Result<Response> {
+            self.calls
+                .lock()
+                .expect("calls lock")
+                .push((request, Some(owner)));
+            Ok(Response::Ok {
+                data: ResponseData::Pong,
+            })
+        }
+    }
+
     #[async_trait]
     impl DaemonRequester for VersionedSyncRequester {
         async fn request(&self, request: Request) -> anyhow::Result<Response> {
@@ -2390,6 +2500,8 @@ mod tests {
                     draft_revision_supported: false,
                     send_outcome_supported: true,
                     archive_recovery_supported: false,
+                    recovery_supported: false,
+                    recovery: None,
                     attachment_transfer_supported: false,
                     draft_attachment_upload_supported: false,
                     uptime_secs: 1,
@@ -2687,6 +2799,9 @@ mod tests {
         assert!(names.contains(&"mxr_get_draft"));
         assert!(names.contains(&"mxr_update_draft"));
         assert!(names.contains(&"mxr_delete_draft"));
+        assert!(names.contains(&"mxr_recovery_status"));
+        assert!(names.contains(&"mxr_recovery_activate"));
+        assert!(names.contains(&"mxr_recovery_prepare_draft"));
         assert!(names.contains(&"mxr_copy_draft_to_provider"));
         assert!(names.contains(&"mxr_sync_draft_to_provider"));
         assert!(names.contains(&"mxr_messages"));
@@ -2749,6 +2864,86 @@ mod tests {
             assert_eq!(requests.len(), 1);
             assert!(matches!(requests[0], Request::GetStatus));
         }
+    }
+
+    #[tokio::test]
+    async fn recovery_tools_forward_preview_owner_revision_and_confirmation() {
+        let requester = Arc::new(CapturedRecoveryRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let owner = test_workspace();
+        let draft_id = DraftId::new();
+
+        server.recovery_status().await.expect("recovery status");
+        assert!(
+            server
+                .recovery_activate(Parameters(RecoveryActivateInput {
+                    workspace_id: owner.workspace_id.clone(),
+                    recovery_generation: owner.recovery_generation.clone(),
+                    source_owner_stopped: false,
+                    confirm: true,
+                }))
+                .await
+                .is_err(),
+            "confirmation must explicitly acknowledge the stopped source"
+        );
+        server
+            .recovery_activate(Parameters(RecoveryActivateInput {
+                workspace_id: owner.workspace_id.clone(),
+                recovery_generation: owner.recovery_generation.clone(),
+                source_owner_stopped: false,
+                confirm: false,
+            }))
+            .await
+            .expect("activation preview");
+        server
+            .recovery_activate(Parameters(RecoveryActivateInput {
+                workspace_id: owner.workspace_id.clone(),
+                recovery_generation: owner.recovery_generation.clone(),
+                source_owner_stopped: true,
+                confirm: true,
+            }))
+            .await
+            .expect("activation confirmation");
+        server
+            .recovery_prepare_draft(Parameters(RecoveryPrepareInput {
+                draft_id: draft_id.to_string(),
+                expected_revision: 9,
+                workspace_id: owner.workspace_id.clone(),
+                recovery_generation: owner.recovery_generation.clone(),
+                confirm: false,
+            }))
+            .await
+            .expect("draft preview");
+        server
+            .recovery_prepare_draft(Parameters(RecoveryPrepareInput {
+                draft_id: draft_id.to_string(),
+                expected_revision: 9,
+                workspace_id: owner.workspace_id.clone(),
+                recovery_generation: owner.recovery_generation.clone(),
+                confirm: true,
+            }))
+            .await
+            .expect("draft confirmation");
+
+        let calls = requester.calls.lock().expect("calls lock");
+        assert_eq!(
+            calls.len(),
+            5,
+            "invalid activation confirmation must not dispatch"
+        );
+        assert!(matches!(&calls[0], (Request::GetRecoveryStatus, None)));
+        assert!(
+            matches!(&calls[1], (Request::ActivateRecovery { expected_workspace, source_owner_stopped: false, dry_run: true }, Some(captured)) if expected_workspace == &owner && captured == &owner)
+        );
+        assert!(
+            matches!(&calls[2], (Request::ActivateRecovery { expected_workspace, source_owner_stopped: true, dry_run: false }, Some(captured)) if expected_workspace == &owner && captured == &owner)
+        );
+        assert!(
+            matches!(&calls[3], (Request::PrepareRecoveredDraft { draft_id: captured_id, expected_revision: 9, expected_workspace, dry_run: true }, Some(captured_owner)) if captured_id == &draft_id && expected_workspace == &owner && captured_owner == &owner)
+        );
+        assert!(
+            matches!(&calls[4], (Request::PrepareRecoveredDraft { draft_id: captured_id, expected_revision: 9, expected_workspace, dry_run: false }, Some(captured_owner)) if captured_id == &draft_id && expected_workspace == &owner && captured_owner == &owner)
+        );
     }
 
     #[tokio::test]

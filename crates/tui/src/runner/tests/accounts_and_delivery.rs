@@ -1609,6 +1609,350 @@ fn diagnostics_d_opens_selected_pane_details() {
 }
 
 #[test]
+fn diagnostics_recovery_keys_preview_and_confirm_the_same_workspace_owner() {
+    let mut app = App::new();
+    app.screen = Screen::Diagnostics;
+    let paused_status = mxr_core::RecoveryStatusData {
+        workspace_id: "workspace-a".into(),
+        recovery_generation: "generation-2".into(),
+        restore_pending: true,
+        source_owner_stopped: false,
+        retired_intentions: 1,
+        retained_intentions: vec![],
+        held_drafts: vec![],
+    };
+    app.diagnostics.page.recovery = Some(paused_status.clone());
+
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+        Some(Action::PreviewRecoveryActivation)
+    );
+    app.apply(Action::PreviewRecoveryActivation);
+    let Some((
+        Request::ActivateRecovery {
+            expected_workspace,
+            dry_run: true,
+            ..
+        },
+        owner,
+    )) = app.diagnostics.pending_recovery_request.take()
+    else {
+        panic!("activation preview must use the owner shown by status");
+    };
+    assert_eq!(expected_workspace, owner);
+    app.apply_recovery_preview_result(
+        owner.clone(),
+        Request::ActivateRecovery {
+            expected_workspace: owner.clone(),
+            source_owner_stopped: true,
+            dry_run: true,
+        },
+        mxr_core::RecoveryActionData {
+            status: paused_status,
+            prepared_draft: None,
+            dry_run: true,
+        },
+    );
+    assert!(matches!(
+        app.diagnostics.page.recovery_preview.as_ref(),
+        Some(crate::app::RecoveryPreview::Activation { owner: preview_owner })
+            if preview_owner.workspace_id == owner.workspace_id
+                && preview_owner.recovery_generation == owner.recovery_generation
+    ));
+
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::NONE)),
+        Some(Action::ConfirmRecoveryActivation)
+    );
+    app.apply(Action::ConfirmRecoveryActivation);
+    let Some((
+        Request::ActivateRecovery {
+            expected_workspace,
+            source_owner_stopped: true,
+            dry_run: false,
+        },
+        confirm_owner,
+    )) = app.diagnostics.pending_recovery_request.take()
+    else {
+        panic!("activation confirmation must explicitly acknowledge the stopped source owner");
+    };
+    assert_eq!(expected_workspace, owner);
+    assert_eq!(confirm_owner, owner);
+
+    let draft_id = DraftId::new();
+    let account_id = AccountId::new();
+    let activated_status = mxr_core::RecoveryStatusData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: owner.recovery_generation.clone(),
+        restore_pending: false,
+        source_owner_stopped: true,
+        retired_intentions: 1,
+        retained_intentions: vec![],
+        held_drafts: vec![mxr_core::RecoveredDraftData {
+            draft_id: draft_id.clone(),
+            account_id: account_id.clone(),
+            revision: 7,
+            subject: "Reviewed subject".into(),
+            prepared_draft_id: None,
+        }],
+    };
+    app.diagnostics.page.recovery_preview = None;
+    app.apply_recovery_status_snapshot(Some(activated_status.clone()));
+    let now = chrono::Utc::now();
+    let prepared_draft = mxr_core::Draft {
+        revision: Some(1),
+        id: DraftId::new(),
+        account_id,
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Reviewed subject".into(),
+        content: mxr_core::DraftContent::markdown("Reviewed body"),
+        attachments: vec![],
+        managed_attachments: None,
+        inline_assets: vec![],
+        created_at: now,
+        updated_at: now,
+        inline_calendar_reply: None,
+    };
+    app.apply_recovery_preview_result(
+        owner.clone(),
+        Request::PrepareRecoveredDraft {
+            draft_id: draft_id.clone(),
+            expected_revision: 7,
+            expected_workspace: owner.clone(),
+            dry_run: true,
+        },
+        mxr_core::RecoveryActionData {
+            status: activated_status,
+            prepared_draft: Some(prepared_draft),
+            dry_run: true,
+        },
+    );
+    let Some(crate::app::RecoveryPreview::Draft {
+        owner: preview_owner,
+        draft_id: preview_draft_id,
+        revision,
+        prepared_draft,
+    }) = app.diagnostics.page.recovery_preview.as_ref()
+    else {
+        panic!("valid draft preview should remain available for confirmation");
+    };
+    assert_eq!(preview_owner.workspace_id, owner.workspace_id);
+    assert_eq!(preview_owner.recovery_generation, owner.recovery_generation);
+    assert_eq!(preview_draft_id, &draft_id);
+    assert_eq!(*revision, 7);
+    assert_eq!(prepared_draft.subject, "Reviewed subject");
+    assert_eq!(
+        prepared_draft.content.markdown_source(),
+        Some("Reviewed body")
+    );
+
+    app.apply(Action::ConfirmRecoveredDraft);
+    let Some((
+        Request::PrepareRecoveredDraft {
+            draft_id: confirmed_draft_id,
+            expected_revision,
+            expected_workspace,
+            dry_run: false,
+        },
+        confirmed_owner,
+    )) = app.diagnostics.pending_recovery_request.take()
+    else {
+        panic!("valid prepared-draft preview should confirm through the action path");
+    };
+    assert_eq!(confirmed_draft_id, draft_id);
+    assert_eq!(expected_revision, 7);
+    assert_eq!(expected_workspace.workspace_id, owner.workspace_id);
+    assert_eq!(
+        expected_workspace.recovery_generation,
+        owner.recovery_generation
+    );
+    assert_eq!(confirmed_owner.workspace_id, owner.workspace_id);
+    assert_eq!(
+        confirmed_owner.recovery_generation,
+        owner.recovery_generation
+    );
+}
+
+#[test]
+fn diagnostics_missing_recovery_status_keeps_last_snapshot_but_invalidates_preview() {
+    let mut app = App::new();
+    let owner = mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "workspace-a".into(),
+        recovery_generation: "generation-a".into(),
+    };
+    app.diagnostics.page.recovery = Some(mxr_core::RecoveryStatusData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: owner.recovery_generation.clone(),
+        restore_pending: true,
+        source_owner_stopped: false,
+        retired_intentions: 1,
+        retained_intentions: vec![],
+        held_drafts: vec![],
+    });
+    app.diagnostics.page.recovery_preview = Some(crate::app::RecoveryPreview::Activation {
+        owner: owner.clone(),
+    });
+
+    app.apply_recovery_status_snapshot(None);
+
+    let recovery = app
+        .diagnostics
+        .page
+        .recovery
+        .as_ref()
+        .expect("missing optional status must retain the last recovery snapshot");
+    assert_eq!(recovery.workspace_id, owner.workspace_id);
+    assert_eq!(recovery.recovery_generation, owner.recovery_generation);
+    assert!(recovery.restore_pending);
+    assert!(app.diagnostics.page.recovery_preview.is_none());
+
+    app.diagnostics.page.recovery_preview = Some(crate::app::RecoveryPreview::Activation { owner });
+    app.apply_recovery_status_snapshot(Some(mxr_core::RecoveryStatusData {
+        workspace_id: "workspace-b".into(),
+        recovery_generation: "generation-b".into(),
+        restore_pending: true,
+        source_owner_stopped: false,
+        retired_intentions: 1,
+        retained_intentions: vec![],
+        held_drafts: vec![],
+    }));
+    assert!(app.diagnostics.page.recovery_preview.is_none());
+    let recovery = app.diagnostics.page.recovery.as_ref().unwrap();
+    assert_eq!(recovery.workspace_id, "workspace-b");
+    assert_eq!(recovery.recovery_generation, "generation-b");
+}
+
+#[test]
+fn diagnostics_invalid_draft_preview_preserves_error_and_clears_previous_preview() {
+    let mut app = App::new();
+    let owner = mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "workspace-a".into(),
+        recovery_generation: "generation-a".into(),
+    };
+    let draft_id = DraftId::new();
+    let account_id = AccountId::new();
+    let recovery = mxr_core::RecoveryStatusData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: owner.recovery_generation.clone(),
+        restore_pending: false,
+        source_owner_stopped: true,
+        retired_intentions: 0,
+        retained_intentions: vec![],
+        held_drafts: vec![mxr_core::RecoveredDraftData {
+            draft_id: draft_id.clone(),
+            account_id,
+            revision: 4,
+            subject: "Held draft".into(),
+            prepared_draft_id: None,
+        }],
+    };
+    app.diagnostics.page.recovery = Some(mxr_core::RecoveryStatusData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: owner.recovery_generation.clone(),
+        restore_pending: true,
+        source_owner_stopped: false,
+        retired_intentions: 0,
+        retained_intentions: vec![],
+        held_drafts: vec![],
+    });
+    app.diagnostics.page.recovery_preview = Some(crate::app::RecoveryPreview::Activation {
+        owner: owner.clone(),
+    });
+
+    app.apply_recovery_preview_result(
+        owner.clone(),
+        Request::PrepareRecoveredDraft {
+            draft_id,
+            expected_revision: 4,
+            expected_workspace: owner,
+            dry_run: true,
+        },
+        mxr_core::RecoveryActionData {
+            status: recovery,
+            prepared_draft: None,
+            dry_run: true,
+        },
+    );
+
+    assert!(app.diagnostics.page.recovery_preview.is_none());
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("The daemon did not return the requested draft preview.")
+    );
+    assert!(!app
+        .status_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Recovery preview ready"));
+}
+
+#[test]
+fn diagnostics_refuses_draft_confirmation_after_original_revision_changes() {
+    let mut app = App::new();
+    app.screen = Screen::Diagnostics;
+    let owner = mxr_protocol::ArchiveWorkspaceData {
+        workspace_id: "workspace-a".into(),
+        recovery_generation: "generation-2".into(),
+    };
+    let draft_id = DraftId::new();
+    let account_id = AccountId::new();
+    app.diagnostics.page.recovery = Some(mxr_core::RecoveryStatusData {
+        workspace_id: owner.workspace_id.clone(),
+        recovery_generation: owner.recovery_generation.clone(),
+        restore_pending: false,
+        source_owner_stopped: true,
+        retired_intentions: 1,
+        retained_intentions: vec![],
+        held_drafts: vec![mxr_core::RecoveredDraftData {
+            draft_id: draft_id.clone(),
+            account_id: account_id.clone(),
+            revision: 8,
+            subject: "Reviewed subject".into(),
+            prepared_draft_id: None,
+        }],
+    });
+    let now = chrono::Utc::now();
+    app.diagnostics.page.recovery_preview = Some(crate::app::RecoveryPreview::Draft {
+        owner,
+        draft_id,
+        revision: 7,
+        prepared_draft: Box::new(mxr_core::Draft {
+            revision: Some(1),
+            id: DraftId::new(),
+            account_id,
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::DraftIntent::New,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Reviewed subject".into(),
+            content: mxr_core::DraftContent::markdown("Reviewed body"),
+            attachments: vec![],
+            managed_attachments: None,
+            inline_assets: vec![],
+            created_at: now,
+            updated_at: now,
+            inline_calendar_reply: None,
+        }),
+    });
+
+    app.apply(Action::ConfirmRecoveredDraft);
+
+    assert!(app.diagnostics.pending_recovery_request.is_none());
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("revision changed"));
+}
+
+#[test]
 fn back_clears_selection_before_other_mail_list_back_behavior() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(2);

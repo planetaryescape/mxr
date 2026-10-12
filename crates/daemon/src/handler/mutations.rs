@@ -2526,59 +2526,62 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
 
     let mut draft = Cow::Borrowed(draft);
     let mut updated_provider_revision = None;
-    if let Some((provider_draft_id, _)) = state.store.get_provider_draft_link(&draft.id).await? {
-        let sender = state.send_provider_for_account(&draft.account_id)?;
-        let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
-        let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
-        // Not persisted here: the trailing `store.update_draft` writes the
-        // whole draft on success, and an early return on provider failure
-        // leaves the stored row untouched.
-        if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
-            draft = Cow::Owned(threaded);
-        }
-        match sender
-            .update_draft(
-                &provider_draft_id,
-                &super::draft_attachments::resolve(state, &draft).await?,
-                &from,
-            )
-            .await
+    if !state.store.is_restored_draft(&draft.id).await? {
+        if let Some((provider_draft_id, _)) = state.store.get_provider_draft_link(&draft.id).await?
         {
-            Ok(()) => {
-                updated_provider_revision = sender
-                    .fetch_draft(&provider_draft_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|snapshot| snapshot.revision);
+            let sender = state.send_provider_for_account(&draft.account_id)?;
+            let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
+            let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
+            // Not persisted here: the trailing `store.update_draft` writes the
+            // whole draft on success, and an early return on provider failure
+            // leaves the stored row untouched.
+            if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
+                draft = Cow::Owned(threaded);
             }
-            Err(MxrError::NotFound(_)) => {
-                let replacement_id = sender
-                    .save_draft(
-                        &super::draft_attachments::resolve(state, &draft).await?,
-                        &from,
-                    )
-                    .await?
-                    .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
-                // Point at the replacement before touching the local content.
-                // If the local UPDATE then fails, the next sync can still pull
-                // the replacement rather than deleting the canonical row.
-                state
-                    .store
-                    .set_provider_draft_link(&draft.id, &replacement_id, None)
-                    .await?;
-                updated_provider_revision = sender
-                    .fetch_draft(&replacement_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|snapshot| snapshot.revision);
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Failed to update linked provider draft; local draft preserved: {error}"
+            match sender
+                .update_draft(
+                    &provider_draft_id,
+                    &super::draft_attachments::resolve(state, &draft).await?,
+                    &from,
                 )
-                .into())
+                .await
+            {
+                Ok(()) => {
+                    updated_provider_revision = sender
+                        .fetch_draft(&provider_draft_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|snapshot| snapshot.revision);
+                }
+                Err(MxrError::NotFound(_)) => {
+                    let replacement_id = sender
+                        .save_draft(
+                            &super::draft_attachments::resolve(state, &draft).await?,
+                            &from,
+                        )
+                        .await?
+                        .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
+                    // Point at the replacement before touching the local content.
+                    // If the local UPDATE then fails, the next sync can still pull
+                    // the replacement rather than deleting the canonical row.
+                    state
+                        .store
+                        .set_provider_draft_link(&draft.id, &replacement_id, None)
+                        .await?;
+                    updated_provider_revision = sender
+                        .fetch_draft(&replacement_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|snapshot| snapshot.revision);
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "Failed to update linked provider draft; local draft preserved: {error}"
+                    )
+                    .into())
+                }
             }
         }
     }
@@ -2667,6 +2670,14 @@ pub(crate) async fn reconcile_provider_drafts(
     let sender = state.send_provider_for_account(account_id)?;
     let mut removed = 0;
     for (local_draft_id, _, _) in links {
+        if state
+            .store
+            .is_restored_draft(&local_draft_id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            continue;
+        }
         let _draft_guard = state.acquire_draft_operation(&local_draft_id).await;
         let Some(local) = state
             .store
@@ -3562,6 +3573,12 @@ async fn send_stored_draft_locked(
     identity: &mxr_core::SendIdentity,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
+    state
+        .ensure_effects_allowed()
+        .map_err(HandlerError::Message)?;
+    if state.store.is_restored_draft(draft_id).await? {
+        return Err("Original restored draft remains held; explicitly prepare a new draft after activation and review it before sending".into());
+    }
     if identity.operation_id.is_empty()
         || identity.operation_id.len() > 200
         || identity.operation_id.starts_with("draft:")

@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fetchAccounts } from "@/features/accounts/api";
+import { isRestoredProfile, useRecoveryStatus } from "@/features/recovery/RecoveryNotice";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
@@ -92,6 +93,7 @@ export function SearchResultsRoute() {
     staleTime: 60_000,
   });
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
+  const recoveryStatus = useRecoveryStatus();
 
   const update = useCallback(
     (next: SearchUpdate) => {
@@ -137,7 +139,9 @@ export function SearchResultsRoute() {
     onError: (error) => toast.error("Couldn't save the search", { description: error.message }),
   });
 
-  const realAccounts = (accounts.data?.accounts ?? []).filter((row) => row.enabled !== false);
+  const realAccounts = (accounts.data?.accounts ?? []).filter(
+    (row) => row.enabled !== false || isRestoredProfile(recoveryStatus.data),
+  );
 
   const toolbar = (
     <SearchToolbar

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.92](https://github.com/planetaryescape/mxr/compare/v0.6.91...v0.6.92) (2026-10-12)
+
+
+### Features
+
+* restore portable backups with old work held ([#436](https://github.com/planetaryescape/mxr/issues/436)) ([8faa88f](https://github.com/planetaryescape/mxr/commit/8faa88f1c11ec0f66eb4f37c5212189b00f74aa7))
+
+
+### Documentation
+
+* record published selected-client acceptance ([#435](https://github.com/planetaryescape/mxr/issues/435)) ([0ac274f](https://github.com/planetaryescape/mxr/commit/0ac274f627ba0fc5e833916112c9a065bb402d49))
+
 ## [0.6.91](https://github.com/planetaryescape/mxr/compare/v0.6.90...v0.6.91) (2026-10-12)
 
 

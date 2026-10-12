@@ -54,22 +54,23 @@ async fn resolve_local_account_id(
 
     let accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await
         .map_err(|e| e.to_string())?;
     let config = state.config_snapshot();
     if let Some(default_key) = config.general.default_account.as_deref() {
-        if let Some(account) = accounts.iter().find(|account| {
-            account.enabled && sync_account_matches_config_key(account, default_key)
-        }) {
+        if let Some(account) = accounts
+            .iter()
+            .find(|account| sync_account_matches_config_key(account, default_key))
+        {
             return Ok(Some(account.id.clone()));
         }
     }
 
     Ok(accounts
         .iter()
-        .find(|account| account.enabled && account.sync_backend.is_some())
-        .or_else(|| accounts.iter().find(|account| account.enabled))
+        .find(|account| account.sync_backend.is_some())
+        .or_else(|| accounts.first())
         .map(|account| account.id.clone()))
 }
 
@@ -99,14 +100,14 @@ pub(super) async fn list_envelopes(
     };
 
     let mut envelopes = result?;
-    let enabled_accounts = state
+    let visible_accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await?
         .into_iter()
         .map(|account| account.id)
         .collect::<HashSet<_>>();
-    envelopes.retain(|envelope| enabled_accounts.contains(&envelope.account_id));
+    envelopes.retain(|envelope| visible_accounts.contains(&envelope.account_id));
     for envelope in &mut envelopes {
         if let Ok(labels) = state
             .store

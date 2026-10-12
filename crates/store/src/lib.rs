@@ -27,6 +27,8 @@ mod analytics;
 mod arrival_ledger;
 mod arrivals;
 mod auto_reminders;
+pub mod backup;
+mod backup_resources;
 mod body;
 mod calendar;
 mod categories;
@@ -69,6 +71,7 @@ mod reading;
 mod record_renewal_cycles;
 mod record_subscriptions;
 mod records;
+mod recovery;
 mod relationship_watchlist;
 mod reply_pairs;
 mod rules;
@@ -102,6 +105,7 @@ mod updates;
 mod user_activity;
 mod user_voice_profile;
 mod voice_samples;
+pub mod workspace_lease;
 mod wrapped;
 
 pub use arrival_ledger::{

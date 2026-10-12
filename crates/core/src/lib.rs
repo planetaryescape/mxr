@@ -40,12 +40,14 @@ pub mod i18n;
 pub mod id;
 pub mod natural_time;
 pub mod provider;
+pub mod recovery;
 pub mod text;
 pub mod types;
 
 pub use error::MxrError;
 pub use id::*;
 pub use provider::*;
+pub use recovery::*;
 pub use types::*;
 
 #[cfg(test)]

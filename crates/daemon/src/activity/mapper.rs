@@ -63,6 +63,12 @@ pub fn map_request(
         Option<String>,
         Option<serde_json::Value>,
     ) = match req {
+        Request::GetRecoveryStatus
+        | Request::ActivateRecovery { .. }
+        | Request::PrepareRecoveredDraft { .. } => skip_activity!(
+            "recovery",
+            "restore maintenance retains its own durable evidence"
+        ),
         // ----- mail mutations via Mutation envelope -----
         Request::Mutation { mutation, .. } => match mutation {
             MutationCommand::Archive { message_ids } => (

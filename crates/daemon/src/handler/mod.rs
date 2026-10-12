@@ -65,6 +65,7 @@ mod promises;
 pub(crate) mod reading;
 pub(crate) mod record_subscriptions;
 pub(crate) mod records;
+mod recovery;
 mod relationship_profile;
 pub(crate) mod reply_later;
 pub(crate) mod rule_treatment;
@@ -548,6 +549,9 @@ async fn dispatch(
     peer: &PeerInfo,
     req: &Request,
 ) -> Response {
+    if state.is_restore_pending() && !recovery::allowed_while_paused(req) {
+        return Response::error("Restored workspace is paused; inspect mxr recovery status and explicitly activate after stopping the source owner");
+    }
     let started_at = std::time::Instant::now();
     let request = request_kind(req);
     let account_id =
@@ -572,6 +576,27 @@ async fn dispatch(
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
+        Request::GetRecoveryStatus => recovery::status(state).await,
+        Request::ActivateRecovery {
+            expected_workspace,
+            source_owner_stopped,
+            dry_run,
+        } => recovery::activate(state, expected_workspace, *source_owner_stopped, *dry_run).await,
+        Request::PrepareRecoveredDraft {
+            draft_id,
+            expected_revision,
+            expected_workspace,
+            dry_run,
+        } => {
+            recovery::prepare(
+                state,
+                draft_id,
+                *expected_revision,
+                expected_workspace,
+                *dry_run,
+            )
+            .await
+        }
         Request::ListEnvelopes {
             label_id,
             account_id,
@@ -2210,6 +2235,10 @@ enum RequestClass {
 fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
+        Request::GetRecoveryStatus
+        | Request::ActivateRecovery { dry_run: true, .. }
+        | Request::PrepareRecoveredDraft { dry_run: true, .. } => Read,
+        Request::ActivateRecovery { .. } | Request::PrepareRecoveredDraft { .. } => Admin,
         Request::ResolveTodoSuggestion {
             action, dry_run, ..
         } if *dry_run || matches!(action, mxr_protocol::TodoResolutionActionData::Preview) => Read,
@@ -2676,6 +2705,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::GetRecoveryStatus => "recovery_status",
+        Request::ActivateRecovery { .. } => "recovery_activate",
+        Request::PrepareRecoveredDraft { .. } => "recovery_prepare_draft",
         Request::GetArchiveWorkspace => "archive_workspace",
         Request::PreviewArchive { .. } => "archive_preview",
         Request::SubmitArchive { .. } => "archive_submit",

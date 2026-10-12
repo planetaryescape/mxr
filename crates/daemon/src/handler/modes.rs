@@ -26,7 +26,7 @@ use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
     mark_covers, membership, merge_marks, messages_membership, quiet_membership, screener_question,
 };
-use super::places::{placed_inbox, scoped_accounts, Placed};
+use super::places::{placed_inbox, scoped_cached_accounts, Placed};
 use super::todo_view::{now_order, to_data};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -714,7 +714,7 @@ pub(super) async fn quiet_count(
 
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
-    let accounts = scoped_accounts(state, account_id).await?;
+    let accounts = scoped_cached_accounts(state, account_id).await?;
     let snapshot = super::now::snapshot(state, account_id, &accounts, now, &Local).await?;
     let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its

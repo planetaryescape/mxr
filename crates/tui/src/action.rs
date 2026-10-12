@@ -457,6 +457,12 @@ pub enum Action {
     EditConfig,
     OpenLogs,
     OpenDiagnosticsPaneDetails,
+    PreviewRecoveryActivation,
+    ConfirmRecoveryActivation,
+    PreviewRecoveredDraft,
+    ConfirmRecoveredDraft,
+    NextRecoveredDraft,
+    PreviousRecoveredDraft,
 
     // --- Phase 2: Email actions (Gmail-native A005) ---
     Compose,
@@ -706,6 +712,12 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | RefreshDiagnostics
                 | GenerateBugReport
                 | OpenDiagnosticsPaneDetails
+                | PreviewRecoveryActivation
+                | ConfirmRecoveryActivation
+                | PreviewRecoveredDraft
+                | ConfirmRecoveredDraft
+                | NextRecoveredDraft
+                | PreviousRecoveredDraft
                 | RefreshAccounts
                 | OpenAccountFormNew
                 | SaveAccountForm
@@ -784,6 +796,12 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | RefreshDiagnostics
                 | GenerateBugReport
                 | OpenDiagnosticsPaneDetails
+                | PreviewRecoveryActivation
+                | ConfirmRecoveryActivation
+                | PreviewRecoveredDraft
+                | ConfirmRecoveredDraft
+                | NextRecoveredDraft
+                | PreviousRecoveredDraft
                 | SyncNow
                 | EditConfig
                 | OpenLogs

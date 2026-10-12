@@ -28,8 +28,8 @@ use crate::daemon_events::{
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{
-    ipc_call, ipc_call_dedicated, ipc_transfer_attachment, spawn_ipc_worker_for_session,
-    AttachmentTransferRequest, IpcRequest,
+    ipc_call, ipc_call_dedicated, ipc_call_owned, ipc_transfer_attachment,
+    spawn_ipc_worker_for_session, AttachmentTransferRequest, IpcRequest,
 };
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
 use crate::runtime::{
@@ -1754,6 +1754,18 @@ pub async fn run() -> anyhow::Result<()> {
             let _ = replaceable.send(ReplaceableRequest::Status {
                 request_id: app.diagnostics.status_request_id,
                 enqueued_at: Instant::now(),
+            });
+        }
+
+        if let Some((request, owner)) = app.diagnostics.pending_recovery_request.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let result = ipc_call_owned(&bg, request.clone(), Some(owner.clone())).await;
+                AsyncResult::Recovery {
+                    owner,
+                    request,
+                    result: Box::new(result),
+                }
             });
         }
 
@@ -3775,6 +3787,7 @@ pub async fn run() -> anyhow::Result<()> {
                                             total_messages,
                                             sync_statuses,
                                             degraded,
+                                            recovery,
                                             ..
                                         },
                                 } => {
@@ -3787,6 +3800,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         degraded,
                                         freshness: None,
                                     });
+                                    app.apply_recovery_status_snapshot(recovery);
                                 }
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
@@ -3834,6 +3848,41 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.apply_status_snapshot(snapshot);
                         }
+                        AsyncResult::Recovery { owner, request, result } => {
+                            let is_preview_request = matches!(
+                                &request,
+                                Request::ActivateRecovery { dry_run: true, .. }
+                                    | Request::PrepareRecoveredDraft { dry_run: true, .. }
+                            );
+                            if is_preview_request {
+                                app.diagnostics.page.recovery_preview = None;
+                            }
+                            match *result {
+                            Ok(Response::Ok { data: ResponseData::RecoveryAction { action } }) => {
+                                let is_preview = action.dry_run;
+                                if is_preview {
+                                    app.apply_recovery_preview_result(owner, request, action);
+                                } else {
+                                    app.diagnostics.page.recovery_preview = None;
+                                    app.status_message = Some(if action.prepared_draft.is_some() {
+                                        "New draft prepared. Review it normally before sending.".into()
+                                    } else {
+                                        "Recovery activated. Original drafts and intentions remain held.".into()
+                                    });
+                                    app.apply_recovery_status_snapshot(Some(action.status));
+                                }
+                            }
+                            Ok(Response::Error { message, .. }) => {
+                                app.status_message = Some(format!("Recovery action failed: {message}"));
+                            }
+                            Ok(_) => {
+                                app.status_message = Some("Recovery action returned an unexpected response.".into());
+                            }
+                            Err(error) => {
+                                app.status_message = Some(format!("Recovery action failed: {error}"));
+                            }
+                        }
+                        },
                         AsyncResult::Status {
                             request_id,
                             result: Err(e),

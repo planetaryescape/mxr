@@ -50,6 +50,9 @@ impl super::Store {
         draft_id: &DraftId,
         send_at: DateTime<Utc>,
     ) -> Result<(), sqlx::Error> {
+        if self.is_restored_draft(draft_id).await? {
+            return Err(sqlx::Error::Protocol("Original restored draft remains held; prepare a new draft and review it before scheduling".into()));
+        }
         let id = draft_id.as_str();
         let send_at_ts = send_at.timestamp();
         sqlx::query("UPDATE drafts SET send_at = ?, scheduled_send_revision = revision WHERE id = ? AND status = 'draft'")

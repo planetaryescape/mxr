@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 747
+assertion_line: 757
 expression: snapshot
 ---
 "┌ Diagnostics ───────────┐┌ Summary / Status / Doctor ─────────────────────────────────────────────┐"
@@ -25,5 +25,5 @@ expression: snapshot
 "│                        ││                                                                        │"
 "│                        │└────────────────────────────────────────────────────────────────────────┘"
 "│                        │┌────────────────────────────────────────────────────────────────────────┐"
-"│                        ││j/k:section  Ctrl-d/u:scroll  Enter/o:full  /:search  r:refresh  c:confi│"
+"│                        ││j/k:section  Ctrl-d/u:scroll  Enter/o:full  r:refresh  /:search  d:detai│"
 "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"

@@ -80,6 +80,9 @@ jobs:
         with:
           go-version: "1.24.x"
       - name: Install gitleaks
+        env:
+          # Avoid observed HTTP/2 stream resets during checksum downloads.
+          GODEBUG: http2client=0
         run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
       - name: Scan checked-in files
         run: |

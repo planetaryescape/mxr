@@ -45,6 +45,7 @@ use utoipa::{
         admin_logs, admin_ping, admin_shutdown,
         mail_mailbox, mail_search, mail_search_groups, mail_thread, mail_thread_export,
         archive_workspace, archive_preview, archive_submit, archive_query,
+        recovery_status, recovery_activate, recovery_prepare,
         mail_drafts, mail_snoozed, mail_count, mail_jobs, mail_job_detail, mail_sync_status, mail_sync, mail_sync_all, mail_sync_preview,
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
@@ -1716,6 +1717,15 @@ struct ArchiveErrorResponse {
 #[utoipa::path(get, path = "/api/v1/mail/archive-operations/workspace", responses((status = 200, description = "Selected workspace and recovery generation", body = ResponseData), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 500, description = "Receipt persistence unavailable", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
 #[allow(dead_code)]
 fn archive_workspace() {}
+#[utoipa::path(get, path = "/api/v1/mail/recovery/status", responses((status = 200, description = "Persistent restored-profile pause, held drafts and retired intentions", body = ResponseData), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Daemon does not support protocol 12 recovery", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn recovery_status() {}
+#[utoipa::path(post, path = "/api/v1/mail/recovery/activate", request_body = crate::routes_v6::RecoveryActivateBody, responses((status = 200, description = "Activation preview or result; old intentions are never replayed", body = ResponseData), (status = 409, description = "Workspace or generation changed", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn recovery_activate() {}
+#[utoipa::path(post, path = "/api/v1/mail/recovery/prepare-draft", request_body = crate::routes_v6::RecoveryPrepareBody, responses((status = 200, description = "Preview or creation of a new draft while the original remains held", body = ResponseData), (status = 409, description = "Workspace, generation, or draft revision changed", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse)))]
+#[allow(dead_code)]
+fn recovery_prepare() {}
 #[utoipa::path(post, path = "/api/v1/mail/archive-operations/preview", request_body = crate::routes_v6::ArchivePreviewBody, responses((status = 200, description = "Immutable Archive review", body = ResponseData), (status = 409, description = "Identity, workspace or selection conflict", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon or policy", body = ArchiveErrorResponse), (status = 500, description = "Review persistence failed", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
 #[allow(dead_code)]
 fn archive_preview() {}

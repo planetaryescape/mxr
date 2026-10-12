@@ -105,6 +105,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     init_tracing(is_foreground)?;
 
     match cli.command {
+        Some(Command::Serve { action, format }) => commands::serve::run(action, format).await?,
         Some(Command::Daemon {
             action: Some(DaemonAction::DialStdio),
             ..

@@ -41,6 +41,7 @@ pub mod id;
 pub mod natural_time;
 pub mod provider;
 pub mod recovery;
+pub mod remote;
 pub mod text;
 pub mod types;
 
@@ -48,6 +49,7 @@ pub use error::MxrError;
 pub use id::*;
 pub use provider::*;
 pub use recovery::*;
+pub use remote::*;
 pub use types::*;
 
 #[cfg(test)]

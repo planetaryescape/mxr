@@ -7,6 +7,7 @@ Terminal email client (pronounced "Mixer")
 Usage: mxr [COMMAND]
 
 Commands:
+  serve               Local pairing authority foundation; remote hosting is not yet available
   daemon              Start the daemon explicitly
   restart             Restart the daemon with the current binary
   mcp                 Model Context Protocol server commands

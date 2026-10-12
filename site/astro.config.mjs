@@ -88,6 +88,7 @@ export default defineConfig({
           label: 'Daily Use',
           items: [
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
+            { label: 'Local Pairing Authority', slug: 'guides/pairing-authority' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },
             { label: 'Compose', slug: 'guides/compose' },

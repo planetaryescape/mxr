@@ -449,3 +449,45 @@ async fn recovery_unreachable_cmd_target_never_falls_back_to_local_daemon() {
     assert!(!Path::new(&envs[2].1).join("mxr.db").exists());
     server.abort();
 }
+
+#[tokio::test]
+async fn serve_old_local_daemon_reports_upgrade_before_new_request_or_remote_override() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let socket = Path::new(&envs[3].1);
+    std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
+    let listener = UnixListener::bind(socket).unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut frames = Framed::new(stream, IpcCodec::new());
+        let request = frames.next().await.unwrap().unwrap();
+        assert!(matches!(
+            request.payload,
+            IpcPayload::Request(Request::GetStatus)
+        ));
+        let data:ResponseData=serde_json::from_value(serde_json::json!({"kind":"Status","uptime_secs":0,"accounts":[],"total_messages":0,"protocol_version":12})).unwrap();
+        frames
+            .send(IpcMessage {
+                id: request.id,
+                expected_workspace: None,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Response(Response::Ok { data }),
+            })
+            .await
+            .unwrap();
+        // An old host must never receive a new authority variant or a shutdown/restart.
+        assert!(frames.next().await.is_none());
+    });
+    let output = run_mxr(
+        &envs,
+        &["serve", "status", "--format", "json"],
+        "cmd://missing-remote-fixture",
+    )
+    .await;
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(error.contains("requires IPC protocol 13"), "{error}");
+    assert!(error.contains("local daemon uses 12"), "{error}");
+    server.await.unwrap();
+    assert!(!Path::new(&envs[2].1).join("mxr.db").exists());
+}

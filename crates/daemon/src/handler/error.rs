@@ -30,6 +30,8 @@ pub(crate) enum HandlerError {
         kind: IpcErrorKind,
         state: &'static str,
     },
+    #[error("{0}")]
+    RemoteAuthorityDenied(String),
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -47,6 +49,9 @@ impl HandlerError {
     /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
+            Self::RemoteAuthorityDenied(message) => Response::Error {
+                message, kind: IpcErrorKind::Auth, code: "remote_authority_denied".into(), retryable: false, details: None,
+            },
             Self::DraftConflict { expected, current } => Response::Error {
                 message: format!("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved"),
                 kind: IpcErrorKind::InvalidRequest,

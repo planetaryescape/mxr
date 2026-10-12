@@ -4994,6 +4994,7 @@ dependencies = [
  "base16ct",
  "caseless",
  "chrono",
+ "constant_time_eq 0.6.1",
  "mxr-core",
  "serde",
  "serde_json",

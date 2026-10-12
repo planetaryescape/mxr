@@ -67,6 +67,7 @@ pub(crate) mod record_subscriptions;
 pub(crate) mod records;
 mod recovery;
 mod relationship_profile;
+mod remote;
 pub(crate) mod reply_later;
 pub(crate) mod rule_treatment;
 mod rules;
@@ -576,6 +577,7 @@ async fn dispatch(
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
+        Request::RemoteAuthority { request } => remote::handle(state, peer, request).await,
         Request::GetRecoveryStatus => recovery::status(state).await,
         Request::ActivateRecovery {
             expected_workspace,
@@ -2235,6 +2237,8 @@ enum RequestClass {
 fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
+        Request::RemoteAuthority { request } if request.is_read_only() => Read,
+        Request::RemoteAuthority { .. } => Admin,
         Request::GetRecoveryStatus
         | Request::ActivateRecovery { dry_run: true, .. }
         | Request::PrepareRecoveredDraft { dry_run: true, .. } => Read,
@@ -2862,6 +2866,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetStatus => "get_status",
         Request::Ping => "ping",
         Request::Shutdown => "shutdown",
+        Request::RemoteAuthority { .. } => "remote_authority",
         Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",
         Request::CountEvents { .. } => "count_events",

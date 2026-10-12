@@ -49,6 +49,6 @@ impl Encoder<IpcMessage> for IpcCodec {
     fn encode(&mut self, item: IpcMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let json = serde_json::to_vec(&item)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        self.inner.encode(json.into(), dst)
+        self.inner.encode(bytes::Bytes::from(json), dst)
     }
 }

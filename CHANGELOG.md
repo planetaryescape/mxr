@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.84](https://github.com/planetaryescape/mxr/compare/v0.6.83...v0.6.84) (2026-10-12)
+
+
+### Features
+
+* expose supervised daemon and model readiness ([#398](https://github.com/planetaryescape/mxr/issues/398)) ([b6b88de](https://github.com/planetaryescape/mxr/commit/b6b88deff57e0ab1b6f523844e1708e63d2121a7))
+
 ## [0.6.83](https://github.com/planetaryescape/mxr/compare/v0.6.82...v0.6.83) (2026-10-12)
 
 

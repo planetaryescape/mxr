@@ -1,0 +1,40 @@
+{
+  "head": "4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f",
+  "tree": "764486c7068745e07e263843e31ca0b1d82edb5b",
+  "source_review": "green",
+  "independent_review": "waived until Anthropic returns",
+  "binary_sha256": "c1f2acd139ec8921d029c2ed6410867be17583aedec7cabf80f6a30a1a51b414",
+  "reviewed_delta": [
+    "Shared supervised TUI compatibility handshake plus focused tests (c5144ab5)",
+    "Two reconnect branches retain actionable errors (520b3fa3)",
+    "PR407 documentation and evidence",
+    "PR406 categories integration, protocol7 status contract independently inspected",
+    "PR408 workspace version metadata only"
+  ],
+  "pending": [
+    "final Web E2E check",
+    "merge proof",
+    "release and published acceptance"
+  ],
+  "limitations": [
+    "130-column TUI status line clips the remainder of the error after service-manager guidance; repeated reconnect timestamps prevent watchdog modal escalation. Record as follow-up."
+  ],
+  "evidence": [
+    {
+      "name": "build-4b2d19d6.log",
+      "sha256": "e2d06c525f20925dcf6856a6014cf2ed729f0858b32a6a19cca5051e5a370fd8"
+    },
+    {
+      "name": "macos-smoke-4b2d19d6.txt",
+      "sha256": "2f36b36e27371ef9b3786650cc8a1a7a55c093a5d5957e1b68af4509d2daefaf"
+    },
+    {
+      "name": "acceptance.json",
+      "sha256": "433d89dfd372a376a2d69b808c25c6f54a0f24bf65071d9cc6667a278dba5c60"
+    },
+    {
+      "name": "frames.json",
+      "sha256": "7dfd516434df5d96fe845a7079a28f0adb958aa63173d926aada53f0907717b5"
+    }
+  ]
+}

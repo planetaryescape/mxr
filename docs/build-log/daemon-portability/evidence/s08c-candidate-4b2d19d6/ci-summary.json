@@ -1,0 +1,127 @@
+{
+  "run_id": 38190844230,
+  "head_sha": "4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "Release Gate Scripts",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623129307"
+    },
+    {
+      "name": "Secret Scan",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623129397"
+    },
+    {
+      "name": "Detect Changes",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623129413"
+    },
+    {
+      "name": "Check",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183252"
+    },
+    {
+      "name": "Format",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183259"
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183266"
+    },
+    {
+      "name": "cargo deny",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183270"
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183291"
+    },
+    {
+      "name": "Architecture Boundaries",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183349"
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183380"
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183402"
+    },
+    {
+      "name": "Docs Build",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183452"
+    },
+    {
+      "name": "Web Unit Tests",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183462"
+    },
+    {
+      "name": "Web E2E",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183494"
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183497"
+    },
+    {
+      "name": "Clippy",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183505"
+    },
+    {
+      "name": "SQLx Offline",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183524"
+    },
+    {
+      "name": "Test (semantic-local)",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183531"
+    },
+    {
+      "name": "Rustdoc",
+      "conclusion": "success",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623183693"
+    },
+    {
+      "name": "MSRV (${{ needs.changes.outputs.rust_version }})",
+      "conclusion": "skipped",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623184239"
+    },
+    {
+      "name": "Coverage",
+      "conclusion": "skipped",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623184242"
+    },
+    {
+      "name": "Install Smoke Test",
+      "conclusion": "skipped",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623184268"
+    },
+    {
+      "name": "Build",
+      "conclusion": "skipped",
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38190844230/job/114623184274"
+    }
+  ],
+  "linux_smoke_step": {
+    "job": "Test (fast / no semantic)",
+    "step": "Verify supervised Linux ownership and optional model diagnostics",
+    "conclusion": "success"
+  }
+}

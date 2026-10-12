@@ -1,0 +1,116 @@
+{
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "tree": "b4814c3c3631a1d83ee85369b47a81760843d132",
+  "tag": "v0.6.84",
+  "release_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38192614021",
+  "release_workflow_conclusion": "success",
+  "acceptance": {
+    "release_assets": "passed (4/4 GitHub digests match downloaded bytes)",
+    "archive_checksum_files": "passed (2/2)",
+    "installer": "passed",
+    "homebrew": "passed and binary hash matches installer",
+    "published_macos_supervised_smoke": "passed",
+    "published_linux_supervised_smoke": "passed in isolated network-disabled Docker container",
+    "published_tui_reconnect": "passed in native 150x36 PTY; incompatible v0.6.82 replacement rejected; owned cleanup passed"
+  },
+  "source_receipts": [
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-release/verification.json",
+      "sha256": "1478219c8ec26cad97bfe7d2d41620d9cfb6eb9f0f37af88efb68bebc4d5470c"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-release/workflow.json",
+      "sha256": "fe02f13e719038af9650f02325fb4692f2270085806d3b11d1aa80189f0d7062"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-release/release.json",
+      "sha256": "3052da6c5257dbeba7baa775db94f17a55e8fcffd442391bdf1b2dbefc118445"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-release/installer.log",
+      "sha256": "fdb83332d401bab065d66ef67eca28c78100926998aa97d31ccad5601f005202"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-macos/acceptance.json",
+      "sha256": "e78877cc3c05cf92fc486a8477c738635108074b50cedf10ae24516c93a8efba"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-macos/smoke.log",
+      "sha256": "f202293fdbea7a7e84b20d45cc573de6ebb3668f516748e5f9c5388d565387da"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-linux/acceptance.json",
+      "sha256": "c06cd91990156a722793c603b28c0a33144408c73f04e63f798ee2907aecc356"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-linux/smoke.log",
+      "sha256": "927b8dd540f315493ff2c6fff0a836b557c789f1ac3bb1fb465673ce2bee8431"
+    },
+    {
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s08c-homebrew-v0.6.84.json",
+      "sha256": "e75e91709ceeab9fd13b39d407198b63a2784384cf4d1240b80267659125d776"
+    },
+    {
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s08c-docs-deployment-98bc13f5.json",
+      "sha256": "0d375feba0e2761b3f8fac08a234f88f9a49b310702907559c4347ab331ded50"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/production-headless-rendered-code.json",
+      "sha256": "35e090032d14830d4c808bbc618f0333a104e0aa5a5feb85bf2a0ded15246a41"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/production-headless-codeblocks.json",
+      "sha256": "87d68593abf5fc201bb41a3431b80c98917bf8d5572e2eb53d8bd1b0e6ebd657"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/production-headless-guide.png",
+      "sha256": "582c7acf84a9d254c6d5817ab52b5c323566296adca098328c88d917f209a1ca"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-tui/acceptance.json",
+      "sha256": "7348a5f6111ea5ff475bd659f3c4dac2ef00ac04f55b59a200c9b262321f9820"
+    },
+    {
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-release-smoke/mxr/target/s08c-evidence/published-v0.6.84-tui/frames.json",
+      "sha256": "6f1b9627dbc511b338349eeb85f3d7e2a2e721c63d785c6902fcd1dd38d49e59"
+    }
+  ],
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "3b3b6afde9e4287b3a69a044d3c93d5799ef597592852312b43df540db521aa6"
+    },
+    {
+      "name": "homebrew.json",
+      "sha256": "4c56a7603c17da2c40c35f51a38dc10f049d02c65cadf2aa4d64de4fae6adf57"
+    },
+    {
+      "name": "production-docs.json",
+      "sha256": "4ab4755f6b91959acf0a298882b56fd6bf54d799543a9c82058954bc87402b21"
+    },
+    {
+      "name": "production-headless-guide.png",
+      "sha256": "582c7acf84a9d254c6d5817ab52b5c323566296adca098328c88d917f209a1ca"
+    },
+    {
+      "name": "published-linux.json",
+      "sha256": "62a53fa59222af207cbef85b28570574a7d47482a3538f823346eff33d627ea7"
+    },
+    {
+      "name": "published-macos.json",
+      "sha256": "fdc4bbfe8d48517537a9f08ec9a57995983f851e24f731662bc6d499edb8c9c8"
+    },
+    {
+      "name": "published-tui.json",
+      "sha256": "915d9cf89da45e00129556bee3789504bd6ae03afd75ee542ae513773b9e05d6"
+    },
+    {
+      "name": "release.json",
+      "sha256": "498462a6b89f500cb78657fbc5dda53a5a84e350cc5b3aed1a46d9f70111fdf0"
+    },
+    {
+      "name": "workflow-summary.json",
+      "sha256": "1a360f6ba3be7f3bcee9158c828f1577d897a832a3ec60d5b8b70e6b6fa68a0b"
+    }
+  ]
+}

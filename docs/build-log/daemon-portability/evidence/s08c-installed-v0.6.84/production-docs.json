@@ -1,0 +1,15 @@
+{
+  "deployment_id": "dpl_CKyAA3Gcdm3M9yt82j24mvuyvVKF",
+  "state": "READY",
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "target": "production",
+  "url": "https://mxr.sh/guides/headless-linux/",
+  "page_source": "site/src/content/docs/guides/headless-linux.md",
+  "page_source_sha256": "597110816ecabf984337c52cf8ad52b7a3ce97b38b7461a43c3ebb9fa56453ca",
+  "production_code_tokens_match_source": true,
+  "javascript_errors": 0,
+  "screenshot": "production-headless-guide.png",
+  "screenshot_sha256": "582c7acf84a9d254c6d5817ab52b5c323566296adca098328c88d917f209a1ca",
+  "rendered_code_receipt_sha256": "35e090032d14830d4c808bbc618f0333a104e0aa5a5feb85bf2a0ded15246a41",
+  "release_acceptance_note": "The production guide is deployed; deployment of the final S08c documentation closeout PR remains pending."
+}

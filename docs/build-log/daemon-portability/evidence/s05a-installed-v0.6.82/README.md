@@ -9,3 +9,4 @@ The browser downloaded 1,280,116 bytes of synthetic HTML. Open used the download
 Only synthetic mail was used. All owned fixture processes and browser sessions were stopped; sockets, listeners and fixture bridge tokens were removed. External editor contents and raster-image Open were not inspected. Linux artifacts were checksum-verified; these consuming-client journeys ran on macOS. Raw CLI/MCP command records are omitted; the manifest binds originals to retained receipts.
 
 S05a is done. The v0.6.80 missing-directory regression remains in its historical packet; v0.6.82 is the corrected accepted release.
+The production mailbox guide deployment is recorded in [`docs-deployment.json`](docs-deployment.json). Its source was `site/src/content/docs/guides/mailbox.md` at `12109eac12265b8e1e2567c49cdb7289b44c69ce`; [`docs-deployment-source.json`](docs-deployment-source.json) records the verified source-content hash and deployment receipt hash.

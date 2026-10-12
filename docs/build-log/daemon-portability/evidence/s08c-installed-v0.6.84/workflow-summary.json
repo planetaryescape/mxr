@@ -1,0 +1,53 @@
+{
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38192614021",
+  "head_branch": "v0.6.84",
+  "head_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "conclusion": "success",
+  "created_at": "2026-10-12T01:37:38Z",
+  "completed_at": "2026-10-12T02:03:18Z",
+  "elapsed_seconds": 1540,
+  "jobs": [
+    {
+      "name": "Plan Release",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:37:46Z",
+      "completed_at": "2026-10-12T01:37:54Z",
+      "elapsed_seconds": 8
+    },
+    {
+      "name": "Build aarch64-apple-darwin",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:38:04Z",
+      "completed_at": "2026-10-12T02:00:55Z",
+      "elapsed_seconds": 1371
+    },
+    {
+      "name": "Release CLI Smoke",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:38:02Z",
+      "completed_at": "2026-10-12T01:47:20Z",
+      "elapsed_seconds": 558
+    },
+    {
+      "name": "Build x86_64-unknown-linux-gnu",
+      "conclusion": "success",
+      "started_at": "2026-10-12T01:37:57Z",
+      "completed_at": "2026-10-12T01:56:35Z",
+      "elapsed_seconds": 1118
+    },
+    {
+      "name": "GitHub Release",
+      "conclusion": "success",
+      "started_at": "2026-10-12T02:01:03Z",
+      "completed_at": "2026-10-12T02:01:26Z",
+      "elapsed_seconds": 23
+    },
+    {
+      "name": "Homebrew Formula",
+      "conclusion": "success",
+      "started_at": "2026-10-12T02:01:34Z",
+      "completed_at": "2026-10-12T02:03:16Z",
+      "elapsed_seconds": 102
+    }
+  ]
+}

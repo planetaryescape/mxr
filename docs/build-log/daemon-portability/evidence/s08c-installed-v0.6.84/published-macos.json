@@ -1,0 +1,10 @@
+{
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "tag": "v0.6.84",
+  "returncode": 0,
+  "elapsed_seconds": 8.59,
+  "installer_binary_sha256": "ee9d794e9411f5d754f6ede069feeb660d351fb2903990958a54214aedeef7c8",
+  "persisted_search_results": 4,
+  "controlled_model_requests": 3,
+  "log_sha256": "f202293fdbea7a7e84b20d45cc573de6ebb3668f516748e5f9c5388d565387da"
+}

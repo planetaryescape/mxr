@@ -1,0 +1,62 @@
+{
+  "tag": "v0.6.84",
+  "version": "mxr 0.6.84",
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "tree": "b4814c3c3631a1d83ee85369b47a81760843d132",
+  "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.84",
+  "workflow_url": "https://github.com/planetaryescape/mxr/actions/runs/38192614021",
+  "published_at": "2026-10-12T02:01:23Z",
+  "draft": false,
+  "assets": [
+    {
+      "name": "mxr-v0.6.84-linux-x86_64.tar.gz",
+      "bytes": 65909137,
+      "github_digest": "sha256:bcef8ecf659519e294c6c5d856959742995c14b8cc0be732af7e8ac0cbad193e",
+      "downloaded_sha256": "bcef8ecf659519e294c6c5d856959742995c14b8cc0be732af7e8ac0cbad193e",
+      "matches": true
+    },
+    {
+      "name": "mxr-v0.6.84-linux-x86_64.tar.gz.sha256",
+      "bytes": 98,
+      "github_digest": "sha256:933a64d20603f2eb23f2376790254cdc7032a192368d4713ff7ae8533c3b003a",
+      "downloaded_sha256": "933a64d20603f2eb23f2376790254cdc7032a192368d4713ff7ae8533c3b003a",
+      "matches": true
+    },
+    {
+      "name": "mxr-v0.6.84-macos-aarch64.tar.gz",
+      "bytes": 60841172,
+      "github_digest": "sha256:1cd36ff45950f37647e14fa786f076b434a25043f5b58d4056a33533f94621e1",
+      "downloaded_sha256": "1cd36ff45950f37647e14fa786f076b434a25043f5b58d4056a33533f94621e1",
+      "matches": true
+    },
+    {
+      "name": "mxr-v0.6.84-macos-aarch64.tar.gz.sha256",
+      "bytes": 99,
+      "github_digest": "sha256:48e1dd8a6f7241b1fa37ee4e1be2f7f507a8f4df9bfbb75ae03fc99f1ab9b1e7",
+      "downloaded_sha256": "48e1dd8a6f7241b1fa37ee4e1be2f7f507a8f4df9bfbb75ae03fc99f1ab9b1e7",
+      "matches": true
+    }
+  ],
+  "archive_checksums": [
+    {
+      "archive": "mxr-v0.6.84-macos-aarch64.tar.gz",
+      "checksum_asset": "mxr-v0.6.84-macos-aarch64.tar.gz.sha256",
+      "sha256": "1cd36ff45950f37647e14fa786f076b434a25043f5b58d4056a33533f94621e1",
+      "matches": true
+    },
+    {
+      "archive": "mxr-v0.6.84-linux-x86_64.tar.gz",
+      "checksum_asset": "mxr-v0.6.84-linux-x86_64.tar.gz.sha256",
+      "sha256": "bcef8ecf659519e294c6c5d856959742995c14b8cc0be732af7e8ac0cbad193e",
+      "matches": true
+    }
+  ],
+  "installer": {
+    "exit": "success",
+    "mxr_version": "mxr 0.6.84",
+    "mxr_sha256": "ee9d794e9411f5d754f6ede069feeb660d351fb2903990958a54214aedeef7c8",
+    "mailmerge_version": "mxr-mailmerge 0.6.84",
+    "mailmerge_sha256": "47370c2d7a52f27894ba11d1b81e92c1e09faedc654a39e9ce3cc726d837b6b6",
+    "chime_player_sha256": "a41bab895ecaeb650f23a501a86b7feaf4efc6d33e23e6e5e4d61c9dbee89e8c"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "candidate": {
+    "source_sha": "4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f",
+    "tree": "764486c7068745e07e263843e31ca0b1d82edb5b",
+    "binary_sha256": "c1f2acd139ec8921d029c2ed6410867be17583aedec7cabf80f6a30a1a51b414"
+  },
+  "integrated": {
+    "pr398_commit": "b6b88deff57e0ab1b6f523844e1708e63d2121a7",
+    "tree": "764486c7068745e07e263843e31ca0b1d82edb5b",
+    "pr410_commit": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+    "tree_after_metadata": "b4814c3c3631a1d83ee85369b47a81760843d132",
+    "release": "v0.6.84",
+    "acceptance": "pending"
+  },
+  "sources": [
+    {
+      "name": "s08c-root-review-4b2d19d6.json",
+      "sha256": "c7207cbe378645071aa96a36a09b9a977b228d1bb612fa05bce162fe62b0e2d4"
+    },
+    {
+      "name": "s08c-ci-4b2d19d6.json",
+      "sha256": "6f4b13313a970886f0dc307796ece8790268505971fbdabbc03935e6dc9ef10c"
+    },
+    {
+      "name": "s08c-pr398-gate-4b2d19d6.json",
+      "sha256": "2d700d9f42658344bf4600f314c0c8047f71b99525a7271bb9adf0209b04649d"
+    },
+    {
+      "name": "s08c-release410-gate.json",
+      "sha256": "70569a575db166520ae1aa7b8c2da53d7a79fe96f5d6e604691159560e7ba8a6"
+    },
+    {
+      "name": "macos-smoke-4b2d19d6.txt",
+      "sha256": "2f36b36e27371ef9b3786650cc8a1a7a55c093a5d5957e1b68af4509d2daefaf"
+    },
+    {
+      "name": "acceptance.json",
+      "sha256": "433d89dfd372a376a2d69b808c25c6f54a0f24bf65071d9cc6667a278dba5c60"
+    },
+    {
+      "name": "frames.json",
+      "sha256": "7dfd516434df5d96fe845a7079a28f0adb958aa63173d926aada53f0907717b5"
+    }
+  ],
+  "retained": [
+    {
+      "name": "ci-summary.json",
+      "sha256": "ed7658f276bd4261e7e8deb6748931e1fe254d399dc41a0ed08f0fdbf79d3085"
+    },
+    {
+      "name": "macos-smoke.json",
+      "sha256": "3ee14b3be8a8afb2ee66483a48bea53c0aa34d30ab0c18f8e99101af13a612ef"
+    },
+    {
+      "name": "pr398-merge-gate.json",
+      "sha256": "7faf63bbe0e84abadbfaf7c12ca2f833053db60a4154d03b8ff90178030c8450"
+    },
+    {
+      "name": "pr410-release-gate.json",
+      "sha256": "3c3f68ccfcbc991f727333384d55f1432b629e826cba96d379ee59fc5b8eb20a"
+    },
+    {
+      "name": "reconnect-frames.txt",
+      "sha256": "a8208454ab4f900ee7340716f01be6ce363dbef896ab4da76cb794816ceebc31"
+    },
+    {
+      "name": "root-review.json",
+      "sha256": "9081dfac84b0c0d4bb8cd62ee4028a0f497f98dbb18c28603573b732bb651fe2"
+    },
+    {
+      "name": "supervised-tui-acceptance.json",
+      "sha256": "4246820125e5219a0e61a803811bc50d015f54bd0d1fa4652129644d34ffe0cf"
+    },
+    {
+      "name": "README.md",
+      "sha256": "29f6e7542865683f14132adeb8befc9551be043717e3f2326bf7da677a4e6994"
+    }
+  ]
+}

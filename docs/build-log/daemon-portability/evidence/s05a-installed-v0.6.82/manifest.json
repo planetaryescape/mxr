@@ -118,5 +118,11 @@
     "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/text-open-tab.png",
     "original_sha256": "f1aa6ef5b9a5d8f0e871b160554d93b14505d3d4ad3c6645aea2d3ef4f47e8ad",
     "retained_sha256": "f1aa6ef5b9a5d8f0e871b160554d93b14505d3d4ad3c6645aea2d3ef4f47e8ad"
+  },
+  {
+    "file": "docs-deployment.json",
+    "source": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s05a-docs-deployment-12109eac.json",
+    "original_sha256": "f7c851adb3be6bc7a47b9d14bf1cf2640f64ac0785fbc552e4a0626ed654e738",
+    "retained_sha256": "f7c851adb3be6bc7a47b9d14bf1cf2640f64ac0785fbc552e4a0626ed654e738"
   }
 ]

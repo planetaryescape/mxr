@@ -1,5 +1,7 @@
 # Supervised clients preserve daemon ownership and report dependency failures
 
+Status on 2026-10-12: S08c source merged in PR398 as `b6b88deff57e0ab1b6f523844e1708e63d2121a7` (tree `764486c7068745e07e263843e31ca0b1d82edb5b`). Release metadata PR410 merged as `98bc13f574da5cfc93fec1dfc1dddab4d6e996b9` (tree `b4814c3c3631a1d83ee85369b47a81760843d132`), producing v0.6.84. Release workflow 38192614021 passed, all four GitHub asset digests and both archive checksums matched, and the installer and Homebrew binaries matched. Published supervised acceptance passed on macOS, Linux and the native TUI. S08c acceptance is complete; publication of this final documentation closeout remains pending.
+
 S08c adds an explicit client opt-out from daemon autostart, process-local model
 outcomes by provider route, actionable missing-IMAP-sync-credential doctor
 findings, and a Linux supervised-daemon acceptance fixture. The fixture keeps
@@ -49,6 +51,16 @@ and recorded three controlled model requests.
 - `site/src/content/docs/guides/headless-linux.md` contains a user-service
   recipe; reference docs describe autostart, diagnostics, and credential setup.
 
+The final reviewed candidate was `4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f`
+(tree `764486c7068745e07e263843e31ca0b1d82edb5b`). The reviewed PR patch
+matched the merge tree; PR398 merged as `b6b88deff57e0ab1b6f523844e1708e63d2121a7`.
+The release-only metadata update is `98bc13f574da5cfc93fec1dfc1dddab4d6e996b9`.
+The candidate's root review, CI summary, merge proof, release metadata gate,
+and sanitized runtime receipts are indexed in
+[`evidence/s08c-candidate-4b2d19d6/`](evidence/s08c-candidate-4b2d19d6/).
+Published v0.6.84 release and supervised Mac/Linux acceptance are recorded in
+[`evidence/s08c-installed-v0.6.84/`](evidence/s08c-installed-v0.6.84/).
+
 ## Decisions and limits
 
 Autostart stays enabled by default for existing installations. Explicit `off`
@@ -89,6 +101,57 @@ successfully. The earlier
 Linux smoke stopped when the fixture expected `thread_id` in search JSON; the
 fixture now uses the thread-ID CLI surface.
 
+For the final candidate, PR398 CI run 38190844230 completed successfully,
+including the Linux supervised-daemon smoke, Docs Build, workspace tests,
+Clippy, SQLx Offline, and Rustdoc. The merge gate confirms the reviewed patch
+and integration tree match. The captured macOS setup smoke returned four
+persisted search results and three controlled model requests. The supervised
+TUI fixture accepted a compatible daemon, rejected an incompatible replacement,
+and left the replacement alive until owned cleanup. It also exposed a
+nonblocking TUI issue: repeated reconnect attempts reset the outage timestamp,
+so the watchdog does not open its error modal during that loop, and the
+130-column status line clips the longer guidance. The frame receipt and current
+source path are recorded in the packet; the issue is tracked in
+[`docs/issues/tui-reconnect-watchdog-guidance.md`](../../issues/tui-reconnect-watchdog-guidance.md).
+
+Published release acceptance passed for distribution, the supervised CLI
+smokes, and the native TUI reconnect journey. Timing evidence is summarized
+below; workflow jobs overlap, so their durations do not sum to the total.
+
+| Work | Observed duration |
+| --- | ---: |
+| Release workflow, created to completed | 25m40s |
+| Plan Release job | 8s |
+| Build macOS job | 22m51s |
+| Build Linux job | 18m38s |
+| Release CLI Smoke job | 9m18s |
+| GitHub Release job | 23s |
+| Homebrew Formula job | 1m42s |
+| Published supervised macOS smoke | 8.590s |
+| Published supervised Linux/amd64 smoke | 14.478s |
+| Prior docs build, queued job 6032 | about 1s queue wait; about 2m total |
+| S08c worker assignment to source checkpoint | 41m wall clock; no separate agent-time total captured |
+
+Homebrew v0.6.84 resolved to
+`/opt/homebrew/Cellar/mxr/0.6.84/bin/mxr`; its binary SHA-256 matched the
+installer binary. The production headless guide is live at
+[`mxr.sh/guides/headless-linux`](https://mxr.sh/guides/headless-linux/) from
+source `98bc13f5`; the browser check found no JavaScript errors and the
+rendered command tokens match the source guide. The screenshot and compact
+deployment receipt are in the installed evidence packet. The native TUI ran
+under a 150×36 PTY: search against the compatible daemon returned one result;
+after reconnecting to a frozen v0.6.82 replacement on the same socket, v0.6.84
+rejected it, showed service-manager guidance and left it alive and unchanged
+until owned cleanup. The TUI exited successfully, and its owned processes and
+socket were cleaned up. The compact receipt records the frame hash.
+
+Linux ran in a network-disabled Docker container with the fixed Debian image,
+two CPUs and 2 GiB memory. It proves the published Linux binary under the
+supervised fixture, not operation under an installed systemd service; systemd
+was not installed. Analytics queue recovery and SMTP failure aggregation remain
+outside this acceptance. The final S08c documentation closeout PR has not yet
+been deployed.
+
 Root review found that a supervised TUI could reconnect without checking the
 replacement daemon identity. Commit `c5144ab5` adds a shared identity policy and
 validates the connection before returning it to the TUI. Four focused client
@@ -96,12 +159,14 @@ tests passed, including a compatible connection followed by an incompatible
 replacement and no normal request sent to the rejected peer. The existing
 daemon build-identity test passed. Scoped all-target Clippy for client, TUI and
 daemon passed in 1m19s, as did formatting and diff checks. The smoke script now
-also triggers the Rust CI path when changed alone. This corrected candidate
-still needs its final CI, build and published acceptance.
+also triggers the Rust CI path when changed alone. The final CI and merge gate
+results are recorded above; published release acceptance is recorded in the installed evidence packet.
 
 ## Effort and follow-up
 
 The worker was assigned on 2026-10-11 at 22:27 UTC. Source was checkpointed
-at 23:08 UTC. Candidate runtime validation passed on macOS and Ubuntu; the
-reconnect correction and release are pending final checks. No follow-up ticket
-is currently required; Linux CI remains the Linux runtime evidence.
+at 23:08 UTC, a 41-minute wall-clock interval. This is the recorded worker
+window, not a separate estimate of agent execution time. The timing table above
+separates observed work and queue waiting. No aggregate agent-time estimate is
+available. One nonblocking
+TUI follow-up is tracked above; all S08c published consumer acceptance passed.

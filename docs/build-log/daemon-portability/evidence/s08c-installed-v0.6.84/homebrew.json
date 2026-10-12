@@ -1,0 +1,9 @@
+{
+  "version": "mxr 0.6.84",
+  "path": "/opt/homebrew/bin/mxr",
+  "resolved": "/opt/homebrew/Cellar/mxr/0.6.84/bin/mxr",
+  "sha256": "ee9d794e9411f5d754f6ede069feeb660d351fb2903990958a54214aedeef7c8",
+  "source": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "matches_published_installer": true,
+  "personal_daemon_restarted": false
+}

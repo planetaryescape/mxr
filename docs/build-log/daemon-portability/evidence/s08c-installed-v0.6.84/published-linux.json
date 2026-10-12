@@ -1,0 +1,18 @@
+{
+  "source_sha": "98bc13f574da5cfc93fec1dfc1dddab4d6e996b9",
+  "tag": "v0.6.84",
+  "returncode": 0,
+  "elapsed_seconds": 14.478,
+  "archive": "mxr-v0.6.84-linux-x86_64.tar.gz",
+  "archive_sha256": "bcef8ecf659519e294c6c5d856959742995c14b8cc0be732af7e8ac0cbad193e",
+  "container_binary_sha256": "dcc8210dbc070909a88f98fdbc1715b0c36dbd9b22a4fc4654565b2905dc36b4",
+  "container_image_id": "sha256:d5f806ab590cfec88b4adab8920638b787c4e26ac24015d159ec139ab106a737",
+  "platform": "linux/amd64",
+  "network": "none",
+  "cpus": 2,
+  "memory": "2g",
+  "systemd_installed": false,
+  "persisted_search_results": 4,
+  "controlled_model_requests": 3,
+  "log_sha256": "927b8dd540f315493ff2c6fff0a836b557c789f1ac3bb1fb465673ce2bee8431"
+}

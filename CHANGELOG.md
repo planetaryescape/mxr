@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.86](https://github.com/planetaryescape/mxr/compare/v0.6.85...v0.6.86) (2026-10-12)
+
+
+### Features
+
+* retain immutable draft attachments across clients ([#413](https://github.com/planetaryescape/mxr/issues/413)) ([6d6fe2d](https://github.com/planetaryescape/mxr/commit/6d6fe2da39178681de396f8f807d4d7bc3020961))
+
 ## [0.6.85](https://github.com/planetaryescape/mxr/compare/v0.6.84...v0.6.85) (2026-10-12)
 
 

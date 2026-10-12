@@ -1819,3 +1819,52 @@ async fn category_rules_global_scope_requires_full_coverage_and_can_be_narrowed(
     assert!(sources.iter().any(|r| r.message_id == s.own.message));
     assert!(!sources.iter().any(|r| r.message_id == s.other.message));
 }
+
+#[tokio::test]
+async fn recovery_status_filters_held_subjects_and_retired_evidence_to_the_allowed_account() {
+    let s = scoped().await;
+    for owned in [&s.own, &s.other] {
+        sqlx::query("INSERT INTO restored_draft_holds VALUES(?,?,?,?,NULL)")
+            .bind(owned.draft.id.as_str())
+            .bind(owned.account.as_str())
+            .bind(1)
+            .bind(&owned.draft.subject)
+            .execute(s.fx.state.store.writer())
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO restored_intentions VALUES(?,?,?,?,?,?)")
+            .bind(owned.draft.id.as_str())
+            .bind("scheduled-send")
+            .bind(owned.account.as_str())
+            .bind("retired")
+            .bind("original-operation")
+            .bind("{}")
+            .execute(s.fx.state.store.writer())
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO restored_intentions VALUES('mixed-archive','mutation-job',NULL,'unknown',NULL,'{}')").execute(s.fx.state.store.writer()).await.unwrap();
+    let status = super::super::admin::get_status(&s.fx.state).await.unwrap();
+    let status =
+        super::super::account_scope::scope_response(&s.fx.state, &scoped_profile(&s), status)
+            .await
+            .unwrap();
+    let ResponseData::Status {
+        recovery: Some(recovery),
+        ..
+    } = status
+    else {
+        panic!("missing recovery status")
+    };
+    assert_eq!(recovery.held_drafts.len(), 1);
+    assert_eq!(recovery.held_drafts[0].account_id, s.own.account);
+    assert_eq!(recovery.retained_intentions.len(), 1);
+    assert_eq!(
+        recovery.retained_intentions[0].account_id,
+        Some(s.own.account.clone())
+    );
+    assert!(
+        check(&s, &Request::GetRecoveryStatus).await.is_err(),
+        "full inventory requires all accounts"
+    );
+}

@@ -372,7 +372,13 @@ impl App {
             | Action::GenerateBugReport
             | Action::EditConfig
             | Action::OpenLogs
-            | Action::OpenDiagnosticsPaneDetails => self.apply_diagnostics_action(action),
+            | Action::OpenDiagnosticsPaneDetails
+            | Action::PreviewRecoveryActivation
+            | Action::ConfirmRecoveryActivation
+            | Action::PreviewRecoveredDraft
+            | Action::ConfirmRecoveredDraft
+            | Action::NextRecoveredDraft
+            | Action::PreviousRecoveredDraft => self.apply_diagnostics_action(action),
             Action::Compose | Action::Reply | Action::ReplyAll | Action::Forward => {
                 self.apply_compose_action(action);
             }

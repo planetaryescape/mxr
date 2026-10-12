@@ -8,6 +8,7 @@
 
 #[doc(hidden)]
 pub mod activity;
+pub mod backup;
 pub(crate) mod bridge;
 pub(crate) mod chimes;
 pub mod cli;
@@ -43,7 +44,12 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
 }
 
 // Keep Clap's command construction outside the large debug dispatch poll frame.
-async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
+async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
+    // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
+    match cli.command.take() {
+        Some(Command::Backup { action }) => return commands::backup::run(action).await,
+        command => cli.command = command,
+    }
     // Sticky demo: when `mxr demo` has been started in a prior invocation,
     // it leaves an active-marker behind so every subsequent CLI command
     // operates on the demo profile until `mxr demo stop`. Apply demo env
@@ -131,6 +137,8 @@ async fn run_parsed_cli(cli: Cli) -> anyhow::Result<()> {
             cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
         },
 
+        Some(Command::Recovery { action }) => commands::recovery::run(action).await?,
+        Some(Command::Backup { action }) => commands::backup::run(action).await?,
         Some(Command::Version) => {
             commands::version::run();
         }

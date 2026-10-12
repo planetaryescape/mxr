@@ -31,6 +31,8 @@ struct StatusRender<'a> {
     restart_required: bool,
     health_class: DaemonHealthClass,
     degraded: bool,
+    recovery_supported: bool,
+    recovery: Option<&'a mxr_core::RecoveryStatusData>,
     selected_target: serde_json::Value,
     client_local: serde_json::Value,
     remote_target: bool,
@@ -52,6 +54,8 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
         "restart_required": view.restart_required,
         "health_class": view.health_class,
         "degraded": view.degraded,
+        "recovery_supported": view.recovery_supported,
+        "recovery": view.recovery,
     });
     if view.remote_target {
         data["daemon_target"] = view.selected_target.clone();
@@ -169,6 +173,14 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                     ));
                 }
             }
+            if view
+                .recovery
+                .as_ref()
+                .is_some_and(|recovery| recovery.restore_pending)
+            {
+                lines.push("RESTORE PAUSED: old intentions will not replay; inspect with `mxr recovery status` and activate only after stopping the prior owner.".to_string());
+                lines.push("A backup may predate a send; missing evidence does not prove the provider did not accept it.".to_string());
+            }
             if view.degraded {
                 lines.push(
                     "Note: the daemon could not read the database within its status budget. Rerun once the current sync or reindex settles."
@@ -222,6 +234,8 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         draft_revision_supported: _,
                         send_outcome_supported: _,
                         archive_recovery_supported: _,
+                        recovery_supported,
+                        recovery,
                         attachment_transfer_supported: _,
                         draft_attachment_upload_supported: _,
                         uptime_secs,
@@ -271,6 +285,8 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                             restart_required,
                             health_class,
                             degraded,
+                            recovery_supported,
+                            recovery: recovery.as_ref(),
                             selected_target: selected_target.clone(),
                             client_local: client_local_metadata()?,
                             remote_target,
@@ -340,6 +356,8 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::Healthy,
                 degraded: false,
+                recovery_supported: true,
+                recovery: None,
                 selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
                 client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
                 remote_target: false,
@@ -384,6 +402,8 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::Degraded,
                 degraded: true,
+                recovery_supported: false,
+                recovery: None,
                 selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
                 client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
                 remote_target: false,
@@ -426,6 +446,8 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
                 degraded: false,
+                recovery_supported: false,
+                recovery: None,
                 selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
                 client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
                 remote_target: false,
@@ -455,6 +477,8 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
                 degraded: false,
+                recovery_supported: false,
+                recovery: None,
                 selected_target: serde_json::json!({"display":"cmd://<command hidden>"}),
                 client_local: serde_json::json!({"socket_path":"/client/mxr.sock"}),
                 remote_target: true,

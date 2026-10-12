@@ -113,6 +113,9 @@ pub(in crate::handler) async fn run(
     state: &AppState,
     identity: &ArchiveIdentityData,
 ) -> Result<u32, HandlerError> {
+    state
+        .ensure_effects_allowed()
+        .map_err(HandlerError::Message)?;
     let (_, operation) = load(state, identity).await?;
     // A runner started after completion must not restore an Undo entry the
     // user has already consumed.

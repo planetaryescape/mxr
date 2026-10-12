@@ -48,6 +48,9 @@ pub struct DiagnosticsPageState {
     /// was too busy to answer inside its own budget. The counts above are then
     /// whatever was last actually read, not what the daemon just said.
     pub status_degraded: bool,
+    pub recovery: Option<mxr_core::RecoveryStatusData>,
+    pub recovery_preview: Option<RecoveryPreview>,
+    pub selected_recovery_draft: usize,
     pub doctor: Option<mxr_protocol::DoctorReport>,
     pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
@@ -80,6 +83,19 @@ pub struct DiagnosticsPageState {
     pub activity_scroll_offset: u16,
 }
 
+#[derive(Debug, Clone)]
+pub enum RecoveryPreview {
+    Activation {
+        owner: mxr_protocol::ArchiveWorkspaceData,
+    },
+    Draft {
+        owner: mxr_protocol::ArchiveWorkspaceData,
+        draft_id: mxr_core::DraftId,
+        revision: i64,
+        prepared_draft: mxr_core::Draft,
+    },
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DiagnosticsState {
     pub page: DiagnosticsPageState,
@@ -90,6 +106,8 @@ pub struct DiagnosticsState {
     pub pending_status_refresh: bool,
     pub status_request_id: u64,
     pub request_id: u64,
+    pub pending_recovery_request:
+        Option<(mxr_protocol::Request, mxr_protocol::ArchiveWorkspaceData)>,
 }
 
 impl DiagnosticsPageState {

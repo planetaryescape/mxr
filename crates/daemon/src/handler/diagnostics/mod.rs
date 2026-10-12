@@ -1258,6 +1258,8 @@ pub(crate) async fn get_status_within_budget(
             }
         };
     Ok(ResponseData::Status {
+        recovery_supported: true,
+        recovery: Some(state.store.recovery_status().await?),
         workspace_owner_supported: true,
         draft_revision_supported: true,
         send_outcome_supported: true,

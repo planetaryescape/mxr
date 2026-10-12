@@ -2252,6 +2252,12 @@ impl App {
             }
             (KeyCode::Char('d'), _) => Some(Action::OpenDiagnosticsPaneDetails),
             (KeyCode::Char('r'), _) => Some(Action::RefreshDiagnostics),
+            (KeyCode::Char('a'), _) => Some(Action::PreviewRecoveryActivation),
+            (KeyCode::Char('A'), _) => Some(Action::ConfirmRecoveryActivation),
+            (KeyCode::Char('p'), _) => Some(Action::PreviewRecoveredDraft),
+            (KeyCode::Char('P'), _) => Some(Action::ConfirmRecoveredDraft),
+            (KeyCode::Char(']'), _) => Some(Action::NextRecoveredDraft),
+            (KeyCode::Char('['), _) => Some(Action::PreviousRecoveredDraft),
             (KeyCode::Char('b'), _) => Some(Action::GenerateBugReport),
             (KeyCode::Char('c'), _) => Some(Action::EditConfig),
             (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLogs),

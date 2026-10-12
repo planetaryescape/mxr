@@ -35,6 +35,16 @@ impl Store {
         &self.resource_dir
     }
     pub async fn new(db_path: &Path) -> Result<Self, sqlx::Error> {
+        if db_path
+            .symlink_metadata()
+            .is_ok_and(|m| m.file_type().is_symlink())
+        {
+            return Err(sqlx::Error::Protocol(
+                "Database path must not be a symlink".into(),
+            ));
+        }
+        crate::workspace_lease::retain_shared(db_path)
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
         let db_url = format!("sqlite:{}", db_path.display());
 
         let write_opts = SqliteConnectOptions::from_str(&db_url)?
@@ -78,6 +88,33 @@ impl Store {
         Ok(store)
     }
 
+    // Only private staging databases use this constructor; the offline caller owns the workspace lease.
+    pub(crate) async fn fresh_backup(db_path: &Path) -> Result<Self, sqlx::Error> {
+        if db_path.exists() {
+            return Err(sqlx::Error::Protocol(
+                "Backup staging database already exists".into(),
+            ));
+        }
+        let options = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Delete)
+            .synchronous(SqliteSynchronous::Full)
+            .pragma("foreign_keys", "ON");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+        let store = Self {
+            writer: pool.clone(),
+            reader: pool,
+            resource_dir: db_path.with_extension("draft-attachments"),
+            message_cleanup: tokio::sync::Mutex::new(()),
+        };
+        store.run_migrations().await?;
+        Ok(store)
+    }
+
     pub async fn in_memory() -> Result<Self, sqlx::Error> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:")?
             .journal_mode(SqliteJournalMode::Wal)
@@ -99,7 +136,7 @@ impl Store {
         Ok(store)
     }
 
-    async fn run_migrations(&self) -> Result<(), sqlx::Error> {
+    pub(crate) async fn run_migrations(&self) -> Result<(), sqlx::Error> {
         // Bootstrap the version-tracking table itself. Done outside the
         // version-tracked path so existing DBs (which may have all migrations
         // applied but no version stamps) get a clean target to backfill into.
@@ -1126,6 +1163,7 @@ const MIGRATIONS: &[Migration] = &[
         ]),
     },
     Migration { version: 80, name: "rule_category_sources", kind: MigrationKind::Composite(&[MigrationStep::AddColumn {table:"message_category_memberships",column:"manual_decision",sql:include_str!("../migrations/080_category_manual_decision.sql")},MigrationStep::Sql(include_str!("../migrations/080_rule_category_sources.sql"))]) },
+    Migration { version: 81, name: "restore_recovery", kind: MigrationKind::Sql(include_str!("../migrations/081_restore_recovery.sql")) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

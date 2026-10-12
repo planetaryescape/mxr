@@ -36,7 +36,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 11;
+pub const IPC_PROTOCOL_VERSION: u32 = 12;
 
 #[cfg(test)]
 mod tests {
@@ -197,6 +197,36 @@ mod tests {
             send: None,
             is_default: true,
         }
+    }
+
+    #[test]
+    fn restored_profile_actions_are_versioned_and_owner_bound() {
+        let workspace = ArchiveWorkspaceData {
+            workspace_id: "workspace".into(),
+            recovery_generation: "generation".into(),
+        };
+        let activate = Request::ActivateRecovery {
+            expected_workspace: workspace.clone(),
+            source_owner_stopped: true,
+            dry_run: false,
+        };
+        assert_eq!(IPC_PROTOCOL_VERSION, 12);
+        assert!(activate.requires_workspace_owner());
+        let encoded = serde_json::to_value(&activate).unwrap();
+        assert_eq!(encoded["cmd"], "ActivateRecovery");
+        assert_eq!(
+            encoded["expected_workspace"]["recovery_generation"],
+            "generation"
+        );
+
+        let preview = Request::PrepareRecoveredDraft {
+            draft_id: DraftId::new(),
+            expected_revision: 7,
+            expected_workspace: workspace,
+            dry_run: true,
+        };
+        assert!(preview.requires_workspace_owner());
+        assert_eq!(preview.category(), IpcCategory::CoreMail);
     }
 
     fn sample_draft() -> Draft {
@@ -893,6 +923,8 @@ mod tests {
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
+                    recovery_supported: true,
+                    recovery: None,
                     attachment_transfer_supported: true,
                     draft_attachment_upload_supported: true,
                     uptime_secs: 0,

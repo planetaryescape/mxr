@@ -57,6 +57,11 @@ pub(crate) enum AsyncResult {
         request_id: u64,
         result: Box<Result<Response, MxrError>>,
     },
+    Recovery {
+        owner: mxr_protocol::ArchiveWorkspaceData,
+        request: mxr_protocol::Request,
+        result: Result<Response, MxrError>,
+    },
     Status {
         request_id: u64,
         result: Result<StatusSnapshot, MxrError>,

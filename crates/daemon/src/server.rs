@@ -1898,19 +1898,20 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         Err(error) => tracing::warn!("startup: decision cleanup failed: {error}"),
     }
 
-    // Lost scheduled sends: a scheduled-send attempt whose outcome was
-    // never recorded means the daemon died between clearing `send_at` and
-    // the send resolving — the message may or may not have gone out.
-    // Surface each so the user can query its outcome, then mark it resolved
-    // (`interrupted`) so it isn't reported again on the next startup.
-    if let Ok(lost) = state.store.list_lost_scheduled_sends().await {
-        for entry in &lost {
-            tracing::warn!(
-                draft_id = %entry.draft_id,
-                "startup: scheduled send may not have completed before a daemon restart; \
-                 query the send outcome; do not resend blindly"
-            );
-            let _ = state
+    if !state.is_restore_pending() {
+        // Lost scheduled sends: a scheduled-send attempt whose outcome was
+        // never recorded means the daemon died between clearing `send_at` and
+        // the send resolving — the message may or may not have gone out.
+        // Surface each so the user can query its outcome, then mark it resolved
+        // (`interrupted`) so it isn't reported again on the next startup.
+        if let Ok(lost) = state.store.list_lost_scheduled_sends().await {
+            for entry in &lost {
+                tracing::warn!(
+                    draft_id = %entry.draft_id,
+                    "startup: scheduled send may not have completed before a daemon restart; \
+                     query the send outcome; do not resend blindly"
+                );
+                let _ = state
                 .store
                 .insert_event(
                     "warn",
@@ -1923,19 +1924,23 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
                     Some(&format!("draft_id={}", entry.draft_id)),
                 )
                 .await;
-            let _ = state
-                .store
-                .record_scheduled_send_outcome(&entry.draft_id, entry.attempted_at, "interrupted")
-                .await;
-        }
-        if !lost.is_empty() {
-            tracing::warn!(
+                let _ = state
+                    .store
+                    .record_scheduled_send_outcome(
+                        &entry.draft_id,
+                        entry.attempted_at,
+                        "interrupted",
+                    )
+                    .await;
+            }
+            if !lost.is_empty() {
+                tracing::warn!(
                 count = lost.len(),
                 "startup: surfaced scheduled sends that may not have completed before a restart"
             );
+            }
         }
     }
-
     let total_messages = state.store.count_all_messages().await.unwrap_or_default();
     if total_messages == 0 {
         return Ok(());
@@ -3028,6 +3033,7 @@ mod tests {
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
+recovery_supported: false, recovery: None,
                                 workspace_owner_supported: false,
                                 draft_revision_supported: true,
                                 send_outcome_supported: true,

@@ -3033,7 +3033,8 @@ mod tests {
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
-recovery_supported: false, recovery: None,
+                                recovery_supported: false,
+                                recovery: None,
                                 workspace_owner_supported: false,
                                 draft_revision_supported: true,
                                 send_outcome_supported: true,

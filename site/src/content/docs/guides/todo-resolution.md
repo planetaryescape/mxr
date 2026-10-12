@@ -5,7 +5,7 @@ description: Review quoted email evidence before completing a task or changing i
 
 When a later email appears to finish a to-do or change its deadline, mxr shows the exact source and a short quote as an offer. The task stays unchanged until you review and accept it. You can dismiss the offer or undo an accepted change while its saved task snapshot is still current.
 
-Local rules catch clear completion confirmations. A later email that proposes a new date needs the optional Commitments model, which runs only when an LLM is enabled and configured. Neither path completes or retimes a task automatically; each match remains an offer for you to review.
+Local rules catch clear completion confirmations. A later email that proposes a new date needs the optional Commitments model, which runs only when an LLM is enabled and configured. Neither path completes or retimes a task automatically; each match remains an offer for you to review. Model checks run in small background batches, so offers may appear after sync finishes. Pending checks survive a daemon restart; turning the model off pauses them until it is enabled again.
 
 ## Review a quoted message
 

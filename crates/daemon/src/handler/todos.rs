@@ -155,6 +155,7 @@ pub(crate) async fn tick(
             "to-do sweep"
         );
     }
+    running |= super::todo_resolution::drain(state, now).await?;
     Ok(running)
 }
 

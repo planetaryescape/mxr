@@ -94,6 +94,7 @@ mod thread_context;
 mod thread_summary;
 mod todo_first_run;
 mod todo_resolution;
+mod todo_resolution_queue;
 mod todos;
 mod triage;
 mod undo;
@@ -167,6 +168,7 @@ pub use todo_resolution::{
     todo_resolution_fingerprint, NewTodoResolutionSuggestion, TodoResolutionAction,
     TodoResolutionDates, TodoResolutionSnapshot, TodoResolutionStatus, TodoResolutionSuggestion,
 };
+pub use todo_resolution_queue::{TodoResolutionInput, TodoResolutionWork};
 pub use todos::{TodoCatchup, TodoRecord, TodoState, TodoUpsert};
 pub use updates::{SourceLetGo, UpdateFactRow, UpdateSourceRow};
 pub use voice_samples::{MyReplySample, MySentSample};

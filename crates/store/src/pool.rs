@@ -1126,6 +1126,7 @@ const MIGRATIONS: &[Migration] = &[
         ]),
     },
     Migration { version: 80, name: "rule_category_sources", kind: MigrationKind::Composite(&[MigrationStep::AddColumn {table:"message_category_memberships",column:"manual_decision",sql:include_str!("../migrations/080_category_manual_decision.sql")},MigrationStep::Sql(include_str!("../migrations/080_rule_category_sources.sql"))]) },
+    Migration { version: 82, name: "todo_resolution_queue", kind: MigrationKind::Sql(include_str!("../migrations/082_todo_resolution_queue.sql")) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

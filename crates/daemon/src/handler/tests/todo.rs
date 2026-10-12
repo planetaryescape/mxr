@@ -21,6 +21,8 @@ use mxr_store::{
 use mxr_todo::pass;
 use std::collections::HashMap;
 
+mod resolution_budget;
+
 const CAMDEN_AUTH: &str =
     "mx.google.com; dkim=pass header.i=@camden.gov.uk; spf=pass; dmarc=pass (p=REJECT) header.from=camden.gov.uk";
 const LOOKALIKE_AUTH: &str =
@@ -467,6 +469,21 @@ async fn resolution_model_offer_quotes_later_mail_without_mutating_the_task() {
     fx.state.set_config_for_test(config).await;
 
     todos::scan_messages(&fx.state, std::slice::from_ref(&later)).await;
+    assert!(matches!(
+        request_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert_eq!(
+        fx.state
+            .store
+            .todo_resolution_queue_counts(Utc::now())
+            .await
+            .unwrap(),
+        (1, 1)
+    );
+    todos::tick(&fx.state, Utc::now(), &mut HashMap::new())
+        .await
+        .unwrap();
     let payload = tokio::time::timeout(Duration::seconds(2).to_std().unwrap(), request_rx.recv())
         .await
         .expect("loopback model request")

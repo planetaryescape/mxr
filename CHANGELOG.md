@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.94](https://github.com/planetaryescape/mxr/compare/v0.6.93...v0.6.94) (2026-10-12)
+
+
+### Features
+
+* establish revocable local pairing authority ([#443](https://github.com/planetaryescape/mxr/issues/443)) ([974ec3d](https://github.com/planetaryescape/mxr/commit/974ec3d54312e283504fd138e014392b60be6082))
+
+
+### Documentation
+
+* align guides with shipped modes and task workflows ([c0a4b11](https://github.com/planetaryescape/mxr/commit/c0a4b11553088e3c95326b2cb69d10fb8c1979fd))
+* verify examples and preserve background-work contracts ([bf66f45](https://github.com/planetaryescape/mxr/commit/bf66f451ac1d6ac9463290844926c9626a942cea))
+
 ## [0.6.93](https://github.com/planetaryescape/mxr/compare/v0.6.92...v0.6.93) (2026-10-12)
 
 

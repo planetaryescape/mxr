@@ -1259,6 +1259,54 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some((form, delete)) = app.rules.pending_category_preview.take() {
+            let bg = bg.clone();
+            app.rules.dry_run_request_id = app.rules.dry_run_request_id.wrapping_add(1);
+            let request_id = app.rules.dry_run_request_id;
+            let _ = submit_task(&queued, async move {
+                let result = match ipc_call(
+                    &bg,
+                    Request::RuleCategories {
+                        form: form.clone(),
+                        preview_token: None,
+                        delete,
+                    },
+                )
+                .await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleCategoriesResult { preview },
+                    }) => category_preview_json(preview, form).map(|p| vec![p]),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("Unexpected category preview response".into())),
+                };
+                AsyncResult::RuleDryRun { request_id, result }
+            });
+        }
+        if let Some((form, token, delete)) = app.rules.pending_category_apply.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let result = match ipc_call(
+                    &bg,
+                    Request::RuleCategories {
+                        form: form.clone(),
+                        preview_token: Some(token),
+                        delete,
+                    },
+                )
+                .await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleCategoriesResult { preview },
+                    }) => category_preview_json(preview, form),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("Unexpected category apply response".into())),
+                };
+                AsyncResult::RuleTreatment(result)
+            });
+        }
         if let Some(form) = app.rules.pending_sorting_preview.take() {
             let bg = bg.clone();
             app.rules.dry_run_request_id = app.rules.dry_run_request_id.wrapping_add(1);
@@ -1304,6 +1352,29 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::RuleFormData { form },
                     } = form_response
                     {
+                        if form.action.split([',', ';']).any(|v| {
+                            v.trim().starts_with("add-category:")
+                                || v.trim().starts_with("remove-category:")
+                        }) {
+                            return match ipc_call(
+                                &bg,
+                                Request::RuleCategories {
+                                    form: form.clone(),
+                                    preview_token: None,
+                                    delete: false,
+                                },
+                            )
+                            .await?
+                            {
+                                Response::Ok {
+                                    data: ResponseData::RuleCategoriesResult { preview },
+                                } => category_preview_json(preview, form).map(|p| vec![p]),
+                                Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+                                _ => Err(MxrError::Ipc(
+                                    "Unexpected category preview response".into(),
+                                )),
+                            };
+                        }
                         if form.action.contains("treatment:") {
                             return match ipc_call(
                                 &bg,
@@ -3627,6 +3698,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::RuleTreatment(result) => {
                             app.rules.page.status = Some(match result {
+                                Ok(value) if value["category"] == true => "Category preview applied; manual choices preserved".into(),
                                 Ok(_) => "Sorting preview applied; personal corrections preserved".into(),
                                 Err(e) => format!("Sorting failed: {e}"),
                             });
@@ -5553,4 +5625,16 @@ mod sync_all_protocol_tests {
         }
         assert!(require_sync_all_protocol(mxr_protocol::IPC_PROTOCOL_VERSION).is_ok());
     }
+}
+
+fn category_preview_json(
+    preview: mxr_protocol::RuleCategoriesPreviewData,
+    form: mxr_protocol::RuleFormData,
+) -> Result<serde_json::Value, MxrError> {
+    let mut value = serde_json::to_value(&preview).map_err(|e| MxrError::Ipc(e.to_string()))?;
+    value["category"] = serde_json::json!(true);
+    value["form"] = serde_json::to_value(form).map_err(|e| MxrError::Ipc(e.to_string()))?;
+    value["result"] =
+        serde_json::json!({"matches":preview.matches,"complete":true,"notice":preview.notice});
+    Ok(value)
 }

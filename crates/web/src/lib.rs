@@ -4556,3 +4556,57 @@ async fn rule_treatment(
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
+
+#[derive(Deserialize)]
+struct RuleCategoriesRequest {
+    form: mxr_protocol::RuleFormData,
+    preview_token: Option<String>,
+    #[serde(default)]
+    delete: bool,
+}
+async fn rule_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<RuleCategoriesRequest>,
+) -> Result<Json<mxr_protocol::RuleCategoriesPreviewData>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::RuleCategories {
+            form: request.form,
+            preview_token: request.preview_token,
+            delete: request.delete,
+        },
+    )
+    .await?
+    {
+        ResponseData::RuleCategoriesResult { preview } => Ok(Json(preview)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+#[derive(Deserialize)]
+struct CategoryWhyQuery {
+    message_id: mxr_core::MessageId,
+    category_id: mxr_core::CategoryId,
+}
+async fn category_why(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Query(query): Query<CategoryWhyQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::ExplainCategoryMembership {
+            message_id: query.message_id,
+            category_id: query.category_id,
+        },
+    )
+    .await?
+    {
+        ResponseData::CategoryMembershipExplanation { explanation } => Ok(Json(explanation)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}

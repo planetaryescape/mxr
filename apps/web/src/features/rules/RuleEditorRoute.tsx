@@ -11,6 +11,8 @@ import {
   fetchRuleHistory,
   upsertRuleForm,
   previewTreatment,
+  previewCategories,
+  hasCategoryActions,
   type RuleForm,
 } from "./api";
 import { mailActions, runMailActions } from "./ruleActions";
@@ -38,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { shellKey, undoMutation } from "@/features/mailbox/api";
+import { fetchCategories, shellKey, undoMutation } from "@/features/mailbox/api";
 import { fetchAccounts } from "@/features/accounts/api";
 import { fetchSearch } from "@/features/search/api";
 import { formatRelative, plural } from "@/lib/format";
@@ -111,18 +113,21 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
   const [form, setForm] = useState<RuleForm>(saved ?? emptyRule);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
   const condition = useDebounced(form.condition.trim(), 350);
-  const isSorting = form.action
+  const isCategory = hasCategoryActions(form.action) || hasCategoryActions(saved?.action ?? "");
+  const [deletePreview, setDeletePreview] = useState(false);
+  const isSorting = isCategory || form.action
     .split(/[;,]/)
     .some((action) => action.trim().toLowerCase().startsWith("treatment:"));
   const sortingForm = useDebounced(form, 350);
   const sortingDraftPending = sortingForm !== form;
+  const categories = useQuery({ queryKey: ["rule-categories"], queryFn: () => fetchCategories() });
   const accounts = useQuery({ queryKey: ["rule-accounts"], queryFn: fetchAccounts });
   const sortingPreview = useQuery({
-    queryKey: ["rule-treatment-preview", sortingForm],
-    queryFn: () => previewTreatment(sortingForm),
+    queryKey: ["rule-treatment-preview", sortingForm, deletePreview],
+    queryFn: () => isCategory ? previewCategories(sortingForm, undefined, deletePreview) : previewTreatment(sortingForm),
     enabled:
       isSorting &&
-      Boolean(sortingForm.account_id && sortingForm.name.trim() && sortingForm.condition.trim()),
+      Boolean((isCategory || sortingForm.account_id) && sortingForm.name.trim() && sortingForm.condition.trim()),
     retry: false,
   });
   // The daemon's dry run evaluates the saved rule. While the condition is
@@ -181,15 +186,16 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
       const token = sortingPreview.data?.token;
       if (sortingDraftPending) throw new Error("Wait for the current draft preview");
       if (!token) throw new Error("Preview this sorting rule first");
-      return previewTreatment(form, token);
+      return isCategory ? previewCategories(form, token, deletePreview) : previewTreatment(form, token);
     },
     onSuccess: async (response) => {
       setApplyConfirmOpen(false);
-      toast.success(`Sorted ${plural(response.result.matches.length, "message")}`);
+      toast.success(isCategory ? (deletePreview ? "Deleted rule and reconciled categories" : "Saved rule and reconciled categories") : `Sorted ${plural(response.result.matches.length, "message")}`);
       void qc.invalidateQueries({ queryKey: ["rules"] });
       void qc.invalidateQueries({ queryKey: ["rule-form"] });
       void qc.invalidateQueries({ queryKey: ["rule-treatment-preview"] });
       void qc.invalidateQueries({ queryKey: shellKey });
+      if (deletePreview) { await navigate({ to: "/rules" }); return; }
       if (response.rule_id) await navigate({ to: "/rules/$id", params: { id: response.rule_id } });
     },
     onError: (error) => toast.error("Sorting failed", { description: error.message }),
@@ -238,7 +244,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
     form.name.trim() &&
     form.condition.trim() &&
     form.action.trim() &&
-    (!isSorting || form.account_id),
+    (!isSorting || isCategory || form.account_id),
   );
 
   return (
@@ -260,12 +266,12 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete {saved.name}?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    The rule stops running. Mail it already changed stays as it is.
+                    {isCategory ? "Preview removal of this rule’s category sources. Manual choices and other rules remain." : "The rule stops running. Mail it already changed stays as it is."}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={() => remove.mutate()}>
+                  <AlertDialogAction variant="destructive" onClick={() => { if (isCategory) { setDeletePreview(true); setApplyConfirmOpen(true); } else remove.mutate(); }}>
                     Delete rule
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -274,7 +280,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
           ) : null}
           <Button
             size="sm"
-            onClick={() => save.mutate(form)}
+            onClick={() => { if (isCategory) { setDeletePreview(false); setApplyConfirmOpen(true); } else save.mutate(form); }}
             disabled={!canSave || save.isPending || applySorting.isPending || applyNow.isPending}
           >
             <Check className="size-3" />
@@ -299,7 +305,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 value={form.account_id ?? ""}
                 onChange={(event) => setForm({ ...form, account_id: event.target.value || null })}
               >
-                <option value="" disabled={Boolean(saved?.account_id)}>
+                <option value="" disabled={!isCategory && Boolean(saved?.account_id)}>
                   All accounts
                 </option>
                 {accounts.data?.accounts.map((account) => (
@@ -335,7 +341,15 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 className="h-8 font-mono text-xs"
               />
             </Field>
-            <Field label="Do" htmlFor="rule-action" hint="Comma-separated steps, run in order.">
+            <Field label="Local category" htmlFor="rule-category">
+              <select id="rule-category" value="" onChange={(event) => {
+                if (event.target.value) setForm({ ...form, action: `add-category:${event.target.value}` });
+              }}>
+                <option value="">Choose a category action</option>
+                {categories.data?.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Do" htmlFor="rule-action" hint="Use add-category:ID or remove-category:ID for local categories. Lower priority numbers win category conflicts.">
               <Input
                 id="rule-action"
                 value={form.action}
@@ -401,10 +415,11 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 disabled={
                   (isSorting
                     ? !sortingPreview.data?.token ||
-                      sortingPreview.isFetching ||
+                      !sortingPreview.data?.token ||
+                sortingPreview.isFetching ||
                       sortingDraftPending
                     : !parsedActions) ||
-                  matches.length === 0 ||
+                  (!isCategory && matches.length === 0) ||
                   applyNow.isPending ||
                   applySorting.isPending ||
                   save.isPending
@@ -453,7 +468,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 <RuledList label="Dry run matches">
                   {(isSorting ? matches : matches.slice(0, 50)).map((match) => (
                     <RuledRow
-                      key={match.message_id}
+                      key={`${match.message_id}-${match.reason}`}
                       title={match.subject.trim() || "(no subject)"}
                       meta={`${match.from}${match.after ? ` · ${match.before} → ${match.after} · ${match.reason}${match.blocked ? " · personal choice preserved" : ""}` : ""}`}
                     />
@@ -500,7 +515,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
             <AlertDialogTitle>Apply to {plural(matches.length, "message")}?</AlertDialogTitle>
             <AlertDialogDescription>
               {isSorting ? (
-                "Saves this rule and applies only its sorting treatment to the unchanged preview. Personal choices are preserved."
+                isCategory ? (deletePreview ? "Deletes the rule and removes only its category sources from the unchanged preview." : "Saves the rule and reconciles its category sources for the unchanged complete selection. Manual choices win.") : "Saves this rule and applies only its sorting treatment to the unchanged preview. Personal choices are preserved."
               ) : (
                 <>
                   Runs <span className="font-mono">{form.action}</span> on exactly the messages in
@@ -515,6 +530,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
               disabled={
                 applyNow.isPending ||
                 applySorting.isPending ||
+                !sortingPreview.data?.token ||
                 sortingPreview.isFetching ||
                 sortingDraftPending
               }
@@ -525,6 +541,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
               disabled={
                 applyNow.isPending ||
                 applySorting.isPending ||
+                !sortingPreview.data?.token ||
                 sortingPreview.isFetching ||
                 sortingDraftPending
               }

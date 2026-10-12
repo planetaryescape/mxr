@@ -673,6 +673,8 @@ pub fn map_request(
         | Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListRules
+        | Request::RuleCategories { .. }
+        | Request::ExplainCategoryMembership { .. }
         | Request::RuleTreatment { .. }
         | Request::GetRule { .. }
         | Request::GetRuleForm { .. }

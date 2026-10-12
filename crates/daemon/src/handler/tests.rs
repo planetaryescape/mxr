@@ -703,6 +703,7 @@ mod arrivals;
 mod arrivals_report;
 mod body_and_invites;
 mod categories;
+mod category_rules;
 mod deferral;
 mod desk;
 mod desk_done;

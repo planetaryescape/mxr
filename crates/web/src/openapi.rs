@@ -66,7 +66,7 @@ use utoipa::{
         compose_session_update, compose_session_send, compose_session_safety_check,
         compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
-        rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete, rule_treatment,
+        rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete, rule_treatment, rule_categories, category_why,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
         saved_searches_run, accounts_list, accounts_config, account_test,
         account_upsert, account_set_default, account_remove, account_disable,
@@ -1721,3 +1721,6 @@ fn archive_submit() {}
 #[utoipa::path(post, path = "/api/v1/mail/archive-operations/query", request_body = crate::routes_v6::ArchiveQueryBody, responses((status = 200, description = "Side-effect-free retained receipt", body = ResponseData), (status = 409, description = "Identity or workspace conflict", body = ArchiveErrorResponse), (status = 401, description = "Bridge authorization required", body = ArchiveErrorResponse), (status = 422, description = "Unsupported daemon or policy", body = ArchiveErrorResponse), (status = 503, description = "Selected daemon unavailable", body = ArchiveErrorResponse), (status = 400, description = "Malformed Archive request", body = ArchiveErrorResponse), (status = 500, description = "Receipt persistence unavailable", body = ArchiveErrorResponse), (status = 502, description = "IPC response unavailable", body = ArchiveErrorResponse), (status = 504, description = "IPC response timed out", body = ArchiveErrorResponse)))]
 #[allow(dead_code)]
 fn archive_query() {}
+
+endpoint!(post rule_categories "/api/v1/platform/rules/categories", "Preview or apply complete category-rule reconciliation");
+endpoint!(get category_why "/api/v1/mail/categories/why", "Explain category membership and rule provenance");

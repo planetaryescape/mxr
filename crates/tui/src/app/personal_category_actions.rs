@@ -119,6 +119,32 @@ impl App {
                         self.status_message = Some("Category saved".into());
                     }
                 }
+                ResponseData::CategoryMembershipExplanation { explanation } => {
+                    let decision = match explanation["manual_decision"].as_bool() {
+                        Some(true) => "Manual inclusion wins",
+                        Some(false) => "Manual exclusion wins",
+                        None => "No manual override",
+                    };
+                    let mut lines = vec![
+                        format!("Assigned: {}", explanation["assigned"]),
+                        decision.to_string(),
+                    ];
+                    if let Some(sources) = explanation["sources"].as_array() {
+                        for source in sources {
+                            lines.push(format!(
+                                "{}: {} (priority {})",
+                                source["rule_name"].as_str().unwrap_or("rule"),
+                                if source["assigned"] == true {
+                                    "add"
+                                } else {
+                                    "remove"
+                                },
+                                source["priority"]
+                            ));
+                        }
+                    }
+                    state.why = Some(lines);
+                }
                 ResponseData::CategoryMembershipStates { states } => {
                     state.set_memberships(states);
                 }
@@ -275,6 +301,12 @@ impl App {
             return false;
         }
         let generation = state.generation;
+        if state.why.is_some() {
+            if key.code == KeyCode::Esc {
+                state.why = None;
+            }
+            return true;
+        }
         if state.name_action.is_some() {
             if state.name_preview_pending && key.code != KeyCode::Esc {
                 return true;
@@ -382,6 +414,30 @@ impl App {
             }
         }
         match (key.code, key.modifiers) {
+            (KeyCode::Char('w'), _) => {
+                let message_id = if state.surface == Some(CategorySurface::View) {
+                    state
+                        .view_messages
+                        .get(state.selected)
+                        .map(|m| m.id.clone())
+                } else {
+                    state.message_ids.first().cloned()
+                };
+                let category_id = if state.surface == Some(CategorySurface::View) {
+                    state.viewing.clone()
+                } else {
+                    state.selected_category().map(|c| c.id.clone())
+                };
+                if let (Some(message_id), Some(category_id)) = (message_id, category_id) {
+                    self.pending_category_requests.push((
+                        generation,
+                        Request::ExplainCategoryMembership {
+                            message_id,
+                            category_id,
+                        },
+                    ));
+                }
+            }
             (KeyCode::Esc, _) if state.filtering => {
                 state.filtering = false;
                 state.input.clear();
@@ -653,6 +709,7 @@ mod tests {
             None,
             Ok(Box::new(ResponseData::CategoryMembershipPreview {
                 preview: mxr_protocol::CategoryMembershipPreview {
+                    effects: vec![],
                     category_ids: add_category_ids,
                     message_count: 2,
                     added: 2,

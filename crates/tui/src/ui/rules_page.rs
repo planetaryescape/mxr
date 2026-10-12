@@ -55,7 +55,7 @@ pub fn draw(
         draw_footer(
             frame,
             detail_chunks[2],
-            "Tab:next  Ctrl-s:save  Ctrl-d:preview sorting  Space:choose account/toggle  Esc:close",
+            "Tab:next  Ctrl-s:save  Ctrl-d:preview  Space:choose account/toggle  Esc:close",
             theme,
         );
         return;
@@ -87,7 +87,7 @@ pub fn draw(
         if state.rules.is_empty() {
             "n:new rule  Esc:mailbox"
         } else {
-            "j/k:select  Enter:overview  H:history  D:dry run  A:apply sorting preview  E:edit  n:new  e:toggle"
+            "j/k:select  Enter:overview  H:history  D:dry run  A:apply preview  E:edit  n:new  e:toggle"
         },
         theme,
     );
@@ -389,7 +389,7 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
     if let Some(preview) = entries.first().filter(|p| p["result"].is_object()) {
         let result = &preview["result"];
         let mut lines = vec![
-            Line::from("A applies exactly this sorting preview. Personal choices win."),
+            Line::from("A applies exactly this preview. Manual choices win."),
             Line::from(if result["complete"] == true {
                 "Complete selection"
             } else {
@@ -402,8 +402,24 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
                 lines.push(Line::from(format!(
                     "{}: {} → {} · {}",
                     item["subject"].as_str().unwrap_or(""),
-                    item["before"].as_str().unwrap_or(""),
-                    item["after"].as_str().unwrap_or(""),
+                    if item["before"].is_boolean() {
+                        if item["before"] == true {
+                            "Assigned"
+                        } else {
+                            "Unassigned"
+                        }
+                    } else {
+                        item["before"].as_str().unwrap_or("")
+                    },
+                    if item["after"].is_boolean() {
+                        if item["after"] == true {
+                            "Assigned"
+                        } else {
+                            "Unassigned"
+                        }
+                    } else {
+                        item["after"].as_str().unwrap_or("")
+                    },
                     item["reason"].as_str().unwrap_or("")
                 )));
             }

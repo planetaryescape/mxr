@@ -213,6 +213,17 @@ pub(super) async fn run(
     let _sorting = state.rule_mutation_gate.lock().await;
     let rule = super::build_rule_from_form(state, form).await?;
     validate(state, &rule).await?;
+    if super::category_rules::has_categories(&rule) {
+        return Err("Category rules require the category-rule preview/apply path".into());
+    }
+    if let Some(row) = state.store.get_rule_by_id_or_name(&rule.id.0).await? {
+        let prior: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))?;
+        if super::category_rules::has_categories(&prior) {
+            return Err(
+                "Editing category rules requires the category-rule preview/apply path".into(),
+            );
+        }
+    }
     if !rule
         .actions
         .iter()

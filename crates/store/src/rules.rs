@@ -175,7 +175,7 @@ impl super::Store {
     }
 }
 
-async fn write_rule(
+pub(crate) async fn write_rule(
     connection: &mut sqlx::SqliteConnection,
     rule: RuleRecordInput<'_>,
 ) -> Result<(), sqlx::Error> {

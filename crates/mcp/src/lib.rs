@@ -208,6 +208,25 @@ impl ServerHandler for MxrMcpServer {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryRuleParams {
+    pub rule_id: Option<String>,
+    pub account_id: Option<String>,
+    pub name: String,
+    pub condition: String,
+    pub action: String,
+    pub priority: i32,
+    pub enabled: bool,
+    pub preview_token: Option<String>,
+    #[serde(default)]
+    pub delete: bool,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CategoryWhyParams {
+    pub message_id: String,
+    pub category_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SortingRuleParams {
     pub rule_id: Option<String>,
     pub account_id: String,
@@ -524,6 +543,42 @@ impl MxrMcpServer {
     ) -> Result<McpJson<Value>, ErrorData> {
         self.daemon_json(Request::UndoCategoryMembership {
             mutation_id: p.mutation_id,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Preview or apply a local category rule. action uses add-category:ID/remove-category:ID; include all existing actions when editing. account_id null explicitly means All accounts and requires access to every stored/configured account. Without preview_token reviews complete old-source/current-match reconciliation. With the unchanged token atomically saves/applies; delete=true reviews/removes a saved rule. Manual inclusion/exclusion wins over priority-ordered rule sources."
+    )]
+    async fn mxr_category_rule(
+        &self,
+        Parameters(p): Parameters<CategoryRuleParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::RuleCategories {
+            form: mxr_protocol::RuleFormData {
+                id: p.rule_id,
+                account_id: p.account_id.as_deref().map(parse_id).transpose()?,
+                name: p.name,
+                condition: p.condition,
+                action: p.action,
+                priority: p.priority,
+                enabled: p.enabled,
+            },
+            preview_token: p.preview_token,
+            delete: p.delete,
+        })
+        .await
+    }
+    #[tool(
+        description = "Explain effective category membership, manual override and all rule sources, including the winning rule."
+    )]
+    async fn mxr_category_why(
+        &self,
+        Parameters(p): Parameters<CategoryWhyParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ExplainCategoryMembership {
+            message_id: parse_id(&p.message_id)?,
+            category_id: parse_id(&p.category_id)?,
         })
         .await
     }

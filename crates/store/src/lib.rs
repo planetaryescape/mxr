@@ -30,6 +30,7 @@ mod auto_reminders;
 mod body;
 mod calendar;
 mod categories;
+mod category_rules;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -107,7 +108,9 @@ pub use arrival_ledger::{
 pub use arrivals::Arrival;
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;
-pub use categories::{CategoryMembershipChange, CategoryMembershipVersion};
+pub use categories::{
+    normalize_category_name, CategoryMembershipChange, CategoryMembershipVersion,
+};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};
@@ -328,3 +331,5 @@ pub(crate) const NON_SELF_ADDRESSED_MESSAGE_PREDICATE: &str = r#"NOT (
 
 #[cfg(test)]
 mod tests;
+
+pub use category_rules::RuleCategorySource;

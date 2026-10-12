@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   applyCategoryMembership,
+  explainCategory,
   createCategory,
   fetchCategories,
   fetchCategoryMemberships,
@@ -58,6 +59,8 @@ export function CategoriesDialog({
   onDeleted?: (categoryId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const [whyCategory, setWhyCategory] = useState<string | null>(null);
+  const why = useQuery({queryKey:["category-why",whyCategory,target.messageIds],queryFn:() => { if (!whyCategory) throw new Error("Choose a category"); return Promise.all(target.messageIds.map(async (id) => ({id,...await explainCategory(id,whyCategory)}))); },enabled:Boolean(whyCategory)});
   const [query, setQuery] = useState("");
   const [staged, setStaged] = useState<Map<string, boolean>>(new Map());
   const [managing, setManaging] = useState<PersonalCategoryView | null>(null);
@@ -204,6 +207,11 @@ export function CategoriesDialog({
               {describeTarget(target)}
             </DialogDescription>
           </div>
+          {whyCategory ? <div className="space-y-2 text-sm" aria-live="polite">
+            <Button size="sm" variant="ghost" onClick={() => setWhyCategory(null)}>Close Why</Button>
+            {why.isError ? <p role="alert">{why.error.message}</p> : null}
+            {why.data?.map((item) => <p key={item.id}>{item.id}: {item.assigned ? "Assigned" : "Unassigned"}. {item.manual_decision == null ? "No manual override." : item.manual_decision ? "Manual inclusion wins." : "Manual exclusion wins."} {item.sources.map((source) => `${source.rule_name}: ${source.assigned ? "add" : "remove"} (priority ${source.priority})`).join("; ")}</p>)}
+          </div> : null}
           <Command loop>
             <CommandInput
               value={query}
@@ -262,6 +270,7 @@ export function CategoriesDialog({
                           {current === "all" ? "+ add" : "− remove"}
                         </span>
                       ) : null}
+                      <button type="button" className="text-xs text-muted-foreground" onClick={(event) => {event.stopPropagation();setWhyCategory(category.id);}}>Why</button>
                       <button
                         type="button"
                         tabIndex={0}
@@ -333,6 +342,7 @@ export function CategoriesDialog({
               This preview will add {assignmentPreview?.added ?? 0} and remove{" "}
               {assignmentPreview?.removed ?? 0} assignments across{" "}
               {plural(assignmentPreview?.message_count ?? 0, "message")}.
+              {assignmentPreview?.effects?.map((effect) => <span className="block" key={`${effect.message_id}-${effect.category_id}`}>{effect.message_id}: {effect.before ? "Assigned" : "Unassigned"} → {effect.after ? "Assigned" : "Unassigned"}. {effect.reason}. The manual choice applies after this preview.</span>)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

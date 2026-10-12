@@ -1,10 +1,16 @@
 use super::*;
 
-fn mailbox_sidebar_account(account: &mxr_protocol::AccountSummaryData) -> bool {
-    account.enabled && account.sync_kind.is_some()
-}
-
 impl App {
+    fn mailbox_sidebar_account(&self, account: &mxr_protocol::AccountSummaryData) -> bool {
+        let restored_profile = self
+            .diagnostics
+            .page
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.restore_pending || recovery.source_owner_stopped);
+        (account.enabled || restored_profile) && account.sync_kind.is_some()
+    }
+
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = Vec::new();
         // Accounts section (only shown when multiple accounts exist)
@@ -13,7 +19,7 @@ impl App {
             .page
             .accounts
             .iter()
-            .filter(|a| mailbox_sidebar_account(a))
+            .filter(|a| self.mailbox_sidebar_account(a))
             .collect();
         if sync_accounts.len() > 1 && self.mailbox.sidebar_accounts_expanded {
             items.extend(
@@ -111,7 +117,7 @@ impl App {
             .page
             .accounts
             .iter()
-            .filter(|a| mailbox_sidebar_account(a))
+            .filter(|a| self.mailbox_sidebar_account(a))
             .map(|a| AccountInfo {
                 email: a.email.clone(),
                 is_default: a.is_default,

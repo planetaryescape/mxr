@@ -31,7 +31,9 @@ pub use compose::{
     ComposeAction, ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
 };
 pub use deliveries::{DeliveriesState, DeliveryFilter};
-pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};
+pub use diagnostics::{
+    DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState, RecoveryPreview,
+};
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{

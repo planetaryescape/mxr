@@ -951,6 +951,107 @@ async fn archive_workspace(
         .await?,
     )
 }
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(crate) struct RecoveryActivateBody {
+    pub expected_workspace: mxr_protocol::ArchiveWorkspaceData,
+    pub source_owner_stopped: bool,
+    pub confirm: bool,
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(crate) struct RecoveryPrepareBody {
+    pub expected_workspace: mxr_protocol::ArchiveWorkspaceData,
+    pub draft_id: String,
+    pub expected_revision: i64,
+    pub confirm: bool,
+}
+
+async fn recovery_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::GetRecoveryStatus,
+        )
+        .await?,
+    )
+}
+
+async fn recovery_activate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    body: Result<Json<RecoveryActivateBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let Json(body) = body.map_err(|rejection| BridgeError::BadRequest(rejection.body_text()))?;
+    if body.confirm && !body.source_owner_stopped {
+        return Err(BridgeError::BadRequest(
+            "Confirm activation only after stopping the prior owner and setting source_owner_stopped=true".into(),
+        ));
+    }
+    if crate::workspace_owner::captured().as_ref() != Some(&body.expected_workspace) {
+        return Err(BridgeError::ArchiveConflict {
+            message: "Recovery action belongs to another workspace generation".into(),
+            kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+            code: "workspace_conflict".into(),
+            details: None,
+        });
+    }
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::ActivateRecovery {
+                expected_workspace: body.expected_workspace,
+                source_owner_stopped: body.source_owner_stopped,
+                dry_run: !body.confirm,
+            },
+        )
+        .await?,
+    )
+}
+
+async fn recovery_prepare(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    body: Result<Json<RecoveryPrepareBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let Json(body) = body.map_err(|rejection| BridgeError::BadRequest(rejection.body_text()))?;
+    if crate::workspace_owner::captured().as_ref() != Some(&body.expected_workspace) {
+        return Err(BridgeError::ArchiveConflict {
+            message: "Recovery action belongs to another workspace generation".into(),
+            kind: mxr_protocol::IpcErrorKind::InvalidRequest,
+            code: "workspace_conflict".into(),
+            details: None,
+        });
+    }
+    let draft_id = DraftId::from_str(&body.draft_id)
+        .map_err(|error| BridgeError::BadRequest(format!("invalid draft_id: {error}")))?;
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            auth.token.as_deref(),
+            Request::PrepareRecoveredDraft {
+                draft_id,
+                expected_revision: body.expected_revision,
+                expected_workspace: body.expected_workspace,
+                dry_run: !body.confirm,
+            },
+        )
+        .await?,
+    )
+}
 async fn archive_preview(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2982,6 +3083,9 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         )
         .route("/drafts/{draft_id}/send-stored", post(send_stored_draft))
         .route("/archive-operations/workspace", get(archive_workspace))
+        .route("/recovery/status", get(recovery_status))
+        .route("/recovery/activate", post(recovery_activate))
+        .route("/recovery/prepare-draft", post(recovery_prepare))
         .route("/archive-operations/preview", post(archive_preview))
         .route("/archive-operations/submit", post(archive_submit))
         .route("/archive-operations/query", post(archive_query))

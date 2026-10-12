@@ -315,6 +315,23 @@ pub(super) async fn scoped_accounts(
     })
 }
 
+/// Account visibility for cached reads only; sweep/effect scopes stay enabled-only.
+pub(super) async fn scoped_cached_accounts(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> Result<Vec<AccountId>, HandlerError> {
+    Ok(match account_id {
+        Some(id) => vec![id.clone()],
+        None => state
+            .store
+            .list_cached_mail_accounts()
+            .await?
+            .into_iter()
+            .map(|account| account.id)
+            .collect(),
+    })
+}
+
 fn same_sender(message: &PlaceMessage, sender_email: Option<&str>) -> bool {
     sender_email.is_none_or(|wanted| {
         message
@@ -360,7 +377,7 @@ pub(super) async fn list_place(
         message_offset,
     } = page;
     let started = std::time::Instant::now();
-    let accounts = scoped_accounts(state, account_id).await?;
+    let accounts = scoped_cached_accounts(state, account_id).await?;
     let placed = place_messages(state, &accounts, place, sender_email).await?;
     let total_messages = placed.len() as u32;
 

@@ -70,6 +70,8 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                             archive_recovery_supported: true,
                             attachment_transfer_supported: true,
                             draft_attachment_upload_supported: true,
+                            recovery_supported: false,
+                            recovery: None,
                             uptime_secs: 73,
                             accounts: vec!["target-account".into()],
                             total_messages: 19,
@@ -426,4 +428,24 @@ async fn remote_account_setup_fails_before_prompts_or_client_profile_writes() {
     );
     assert!(!root.path().join("client/config/config.toml").exists());
     assert!(!root.path().join("client/data/mxr.db").exists());
+}
+
+#[tokio::test]
+async fn recovery_unreachable_cmd_target_never_falls_back_to_local_daemon() {
+    let root = tempfile::tempdir().unwrap();
+    let mut envs = isolated_env(root.path());
+    envs.push(("MXR_DAEMON_AUTOSTART".into(), "on".into()));
+    std::fs::create_dir_all(Path::new(&envs[3].1).parent().unwrap()).unwrap();
+    let (server, requests) = spawn_fake_daemon(Path::new(&envs[3].1));
+    let output = run_mxr(
+        &envs,
+        &["recovery", "status", "--format", "json"],
+        "cmd://mxr-nonexistent-recovery-bridge",
+    )
+    .await;
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("cmd:// daemon bridge"));
+    assert_eq!(requests.load(Ordering::Relaxed), 0);
+    assert!(!Path::new(&envs[2].1).join("mxr.db").exists());
+    server.abort();
 }

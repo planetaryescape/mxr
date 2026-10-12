@@ -824,6 +824,9 @@ pub async fn reconcile_interrupted_syncs(state: &AppState) {
 
 /// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
+    if state.is_restore_pending() {
+        return;
+    }
     for (account_id, _) in state.sync_provider_entries() {
         if state.mark_sync_loop_spawned(&account_id) {
             let loop_state = state.clone();
@@ -1360,6 +1363,7 @@ pub(crate) async fn apply_rules_to_messages(
     provider: &dyn MailSyncProvider,
     message_ids: &[mxr_core::MessageId],
 ) -> Result<(), String> {
+    state.ensure_effects_allowed()?;
     let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
     if rows.is_empty() || message_ids.is_empty() {
         return Ok(());
@@ -1510,6 +1514,7 @@ async fn execute_rule_action(
     action: &RuleAction,
     labels: &[mxr_core::Label],
 ) -> Result<(), String> {
+    state.ensure_effects_allowed()?;
     if matches!(
         action,
         RuleAction::SetTreatment { .. }
@@ -1952,6 +1957,9 @@ pub(crate) async fn process_due_timers_with_gap(
     now: chrono::DateTime<chrono::Utc>,
     gap: impl std::future::Future<Output = ()>,
 ) -> Result<u32, String> {
+    if state.is_restore_pending() {
+        return Ok(0);
+    }
     // Fail closed: a reminder never fires on a pass whose reply check
     // failed. Its claim also refuses while a possible reply stored after
     // the check exists, so the next pass classifies that one first.
@@ -2049,6 +2057,9 @@ pub async fn process_due_scheduled_sends(
     state: &AppState,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u32, String> {
+    if state.is_restore_pending() {
+        return Ok(0);
+    }
     let due = state
         .store
         .get_due_scheduled_drafts(now)
@@ -2284,6 +2295,9 @@ pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bo
                 continue;
             }
         }
+        if state.is_restore_pending() {
+            continue;
+        }
         // Read Updates' mail into facts once after start, so the first
         // digest (and Now's card) doesn't pay for a mailbox of them.
         if !updates_warm {
@@ -2318,6 +2332,9 @@ pub async fn records_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver
                 continue;
             }
         }
+        if state.is_restore_pending() {
+            continue;
+        }
         wait = match crate::handler::records::tick(&state, chrono::Utc::now()).await {
             Ok(true) => Duration::from_secs(30),
             Ok(false) => Duration::from_secs(300),
@@ -2341,6 +2358,9 @@ pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
                 }
                 continue;
             }
+        }
+        if state.is_restore_pending() {
+            continue;
         }
         match state.store.get_due_snoozes(chrono::Utc::now()).await {
             Ok(snoozed) => {

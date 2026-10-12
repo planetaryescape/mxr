@@ -11,7 +11,7 @@ use super::desk::{self_matcher, Senders};
 use super::mail_kind;
 use super::mode_rules::membership;
 use super::modes::{is_early, signals};
-use super::places::scoped_accounts;
+use super::places::scoped_cached_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
@@ -47,10 +47,10 @@ pub(super) async fn get_freshness(
         .min(FRESHNESS_MAX_ARRIVALS);
     let now = Utc::now();
     let stale_after = stale_after_secs(state.config_snapshot().general.sync_interval);
-    let scope = scoped_accounts(state, account_id).await?;
+    let scope = scoped_cached_accounts(state, account_id).await?;
     let accounts: HashMap<AccountId, Account> = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await?
         .into_iter()
         .map(|account| (account.id.clone(), account))

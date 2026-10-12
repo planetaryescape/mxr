@@ -11,6 +11,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 const accountsApi = vi.hoisted(() => ({
   fetchAccounts: vi.fn<() => Promise<unknown>>(),
 }));
+const recoveryState = vi.hoisted(() => ({ restored: false }));
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children, ...rest }: { to: string; children: ReactNode }) => (
@@ -22,6 +23,17 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/features/accounts/api", () => ({
   fetchAccounts: accountsApi.fetchAccounts,
+}));
+
+vi.mock("@/features/recovery/RecoveryNotice", () => ({
+  isRestoredProfile: (
+    recovery: { restore_pending: boolean; source_owner_stopped: boolean } | null,
+  ) => Boolean(recovery && (recovery.restore_pending || recovery.source_owner_stopped)),
+  useRecoveryStatus: () => ({
+    data: recoveryState.restored ? { restore_pending: false, source_owner_stopped: true } : null,
+    isSuccess: true,
+    isError: false,
+  }),
 }));
 
 function renderWithQueryClient(children: ReactNode) {
@@ -59,6 +71,7 @@ const personal = {
 
 describe("AccountSwitcher", () => {
   beforeEach(() => {
+    recoveryState.restored = false;
     act(() => useUiPrefs.getState().setAccountScope(null));
     accountsApi.fetchAccounts.mockResolvedValue({ accounts: [work, personal] });
   });
@@ -119,6 +132,22 @@ describe("AccountSwitcher", () => {
     await vi.waitFor(() => expect(useUiPrefs.getState().accountScope).toBeNull());
     expect(
       await screen.findByRole("button", { name: "Account: Work. Switch account" }),
+    ).toBeVisible();
+  });
+
+  test("a restored profile keeps cached disabled accounts selectable after activation", async () => {
+    recoveryState.restored = true;
+    const cached = { ...personal, enabled: false };
+    accountsApi.fetchAccounts.mockResolvedValue({ accounts: [work, cached] });
+    renderWithQueryClient(<AccountSwitcher />);
+
+    expect(await screen.findByText("2 accounts")).toBeVisible();
+    openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Personal/ }));
+
+    expect(useUiPrefs.getState().accountScope).toBe("account-2");
+    expect(
+      await screen.findByRole("button", { name: "Account: Personal. Switch account" }),
     ).toBeVisible();
   });
 });

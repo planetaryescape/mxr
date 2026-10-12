@@ -144,6 +144,23 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_activity_tail", &["activity", "tail", "--help"]),
         ("cli_help_logs", &["logs", "--help"]),
         ("cli_help_reset", &["reset", "--help"]),
+        ("cli_help_backup", &["backup", "--help"]),
+        ("cli_help_backup_create", &["backup", "create", "--help"]),
+        ("cli_help_backup_inspect", &["backup", "inspect", "--help"]),
+        ("cli_help_backup_restore", &["backup", "restore", "--help"]),
+        ("cli_help_recovery", &["recovery", "--help"]),
+        (
+            "cli_help_recovery_status",
+            &["recovery", "status", "--help"],
+        ),
+        (
+            "cli_help_recovery_activate",
+            &["recovery", "activate", "--help"],
+        ),
+        (
+            "cli_help_recovery_prepare_draft",
+            &["recovery", "prepare-draft", "--help"],
+        ),
         ("cli_help_burn", &["burn", "--help"]),
         ("cli_help_bug_report", &["bug-report", "--help"]),
         ("cli_help_accounts", &["accounts", "--help"]),
@@ -490,7 +507,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 266);
+    assert_eq!(cases.len(), 274);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

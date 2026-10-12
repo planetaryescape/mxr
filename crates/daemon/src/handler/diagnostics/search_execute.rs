@@ -101,33 +101,30 @@ pub(super) async fn execute_search(
             }
         }
     };
-    filter_disabled_accounts(state, &mut execution).await?;
+    filter_to_cached_mail_accounts(state, &mut execution).await?;
     if needs_owed_filter {
         filter_to_owed_threads(state, &mut execution).await?;
     }
     Ok(execution)
 }
 
-/// Collect every label across enabled accounts so we can rewrite
+/// Collect every label across readable local accounts so we can rewrite
 /// `label:<display name>` into the provider IDs that Tantivy actually
 /// indexes. Failures are non-fatal: if the store is unreachable we
 /// fall back to the unresolved AST, which still serves raw provider
 /// IDs correctly.
 async fn collect_labels_for_resolution(state: &AppState) -> Vec<Label> {
-    let accounts = match state.store.list_accounts().await {
+    let accounts = match state.store.list_cached_mail_accounts().await {
         Ok(accounts) => accounts,
         Err(error) => {
             tracing::warn!(
-                "label resolution: list_accounts failed ({error}); falling back to verbatim labels"
+                "label resolution: local account lookup failed ({error}); falling back to verbatim labels"
             );
             return Vec::new();
         }
     };
     let mut labels = Vec::new();
     for account in accounts {
-        if !account.enabled {
-            continue;
-        }
         match state.store.list_labels_by_account(&account.id).await {
             Ok(mut account_labels) => labels.append(&mut account_labels),
             Err(error) => {
@@ -217,23 +214,22 @@ async fn filter_to_owed_threads(
 /// inboxes with very long backlogs of unanswered threads.
 const OWED_REPLY_FETCH_CAP: u32 = 5_000;
 
-async fn filter_disabled_accounts(
+async fn filter_to_cached_mail_accounts(
     state: &AppState,
     execution: &mut SearchExecution,
 ) -> Result<(), String> {
-    let enabled_accounts = state
+    let visible_accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|account| account.enabled)
         .map(|account| account.id.as_str())
         .collect::<HashSet<_>>();
 
     execution
         .results
-        .retain(|result| enabled_accounts.contains(&result.account_id));
+        .retain(|result| visible_accounts.contains(&result.account_id));
     if let Some(explain) = execution.explain.as_mut() {
         let retained_ids = execution
             .results
@@ -649,16 +645,15 @@ async fn filter_live_search_results(
         return Ok(results);
     }
 
-    let enabled_accounts = state
+    let visible_accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|account| account.enabled)
         .map(|account| account.id.as_str())
         .collect::<HashSet<_>>();
-    if enabled_accounts.is_empty() {
+    if visible_accounts.is_empty() {
         return Ok(Vec::new());
     }
 
@@ -673,7 +668,7 @@ async fn filter_live_search_results(
         .map_err(|e| e.to_string())?;
     let live_ids = envelopes
         .into_iter()
-        .filter(|envelope| enabled_accounts.contains(&envelope.account_id.as_str()))
+        .filter(|envelope| visible_accounts.contains(&envelope.account_id.as_str()))
         .map(|envelope| envelope.id.as_str())
         .collect::<HashSet<_>>();
 

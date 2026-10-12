@@ -125,10 +125,27 @@ fn render_detail_layout(
         } else {
             String::new()
         };
-        if fullscreen {
-            format!("{filter_hint}j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  /:search  d:details  c:config  L:logs")
+        let screen_hint = if fullscreen {
+            "Enter/o:exit full"
         } else {
-            format!("{filter_hint}j/k:section  Ctrl-d/u:scroll  Enter/o:full  /:search  r:refresh  c:config  L:logs")
+            "Enter/o:full  r:refresh"
+        };
+        if state
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.restore_pending)
+        {
+            format!("{filter_hint}j/k:section  {screen_hint}  a:preview activation  A:confirm stopped owner")
+        } else if state
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| !recovery.held_drafts.is_empty())
+        {
+            format!(
+                "{filter_hint}j/k:section  {screen_hint}  [ ]:select draft  p:preview  P:prepare"
+            )
+        } else {
+            format!("{filter_hint}j/k:section  Ctrl-d/u:scroll  {screen_hint}  /:search  d:details  c:config  L:logs")
         }
     };
     render_footer(frame, chunks[2], &footer_text, theme);
@@ -499,6 +516,65 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 .iter()
                 .flat_map(format_finding_lines),
         )
+        .chain(state.recovery.as_ref().into_iter().flat_map(|recovery| {
+            let mut lines = vec![format!(
+                "{}: {} retained intention(s), {} held original draft(s), {} retired intention(s).",
+                if recovery.restore_pending { "RESTORE PAUSED" } else { "RECOVERY RECORD" },
+                recovery.retained_intentions.len(),
+                recovery.held_drafts.len(),
+                recovery.retired_intentions,
+            )];
+            lines.push("Old intentions never replay. A snapshot may predate a send; missing evidence does not prove non-acceptance.".into());
+            for intent in &recovery.retained_intentions {
+                lines.push(format!(
+                    "Retained {} {}: {}{}",
+                    intent.kind,
+                    intent.original_id,
+                    intent.original_state,
+                    intent.outcome_reference.as_ref().map_or(String::new(), |reference| format!(" · {reference}")),
+                ));
+                if let Some(evidence) = &intent.archive_evidence {
+                    lines.extend(serde_json::to_string_pretty(evidence).unwrap_or_else(|_| "Archive evidence could not be rendered.".into()).lines().map(str::to_owned));
+                }
+            }
+            for (index, draft) in recovery.held_drafts.iter().enumerate() {
+                lines.push(format!(
+                    "{} held {} rev {}: {}{}",
+                    if index == state.selected_recovery_draft { ">" } else { " " },
+                    draft.draft_id,
+                    draft.revision,
+                    draft.subject,
+                    draft.prepared_draft_id.as_ref().map_or(String::new(), |id| format!(" · new draft {id}")),
+                ));
+            }
+            if recovery.restore_pending {
+                lines.push("`a` preview activation · `A` confirm only after stopping the source owner".into());
+            } else if !recovery.held_drafts.is_empty() {
+                lines.push("`[`/`]` select held draft · `p` preview new draft · `P` confirm separate local draft".into());
+            }
+            if let Some(preview) = &state.recovery_preview {
+                match preview {
+                    crate::app::RecoveryPreview::Activation { owner } => lines.push(format!(
+                        "Activation preview for workspace {} generation {}.",
+                        owner.workspace_id, owner.recovery_generation,
+                    )),
+                    crate::app::RecoveryPreview::Draft { draft_id, revision, prepared_draft, .. } => {
+                        let addresses = |list: &[mxr_core::Address]| list.iter().map(|a| a.name.as_ref().map_or_else(|| a.email.clone(), |n| format!("{n} <{}>", a.email))).collect::<Vec<_>>().join(", ");
+                        lines.extend([
+                            format!("NEW DRAFT PREVIEW from original {draft_id} rev {revision}; not sent."),
+                            format!("To: {} · Cc: {} · Bcc: {}", addresses(&prepared_draft.to), addresses(&prepared_draft.cc), addresses(&prepared_draft.bcc)),
+                            format!("Subject: {}", prepared_draft.subject),
+                            format!("Body: {}", prepared_draft.content.analysis_text()),
+                        ]);
+                        for attachment in prepared_draft.managed_attachments.as_deref().unwrap_or_default() {
+                            lines.push(format!("Attachment: {} · {} bytes · SHA-256 {}", attachment.filename, attachment.length_bytes, attachment.sha256));
+                        }
+                        lines.push("Review the recipients, content, and attachments; `P` creates a separate local draft.".into());
+                    }
+                }
+            }
+            lines
+        }))
         .chain(state.status_degraded.then(|| {
             "Note: daemon could not read the database in time — counts and sync above are unknown, not empty."
                 .to_string()
@@ -1036,5 +1112,37 @@ mod tests {
                 .any(|line| line.contains("commitments=degraded(LLM disabled)")),
             "feature health must surface degraded reasons; got {lines:?}",
         );
+    }
+
+    #[test]
+    fn status_pane_keeps_retained_archive_receipt_visible_after_activation() {
+        let state = DiagnosticsPageState {
+            recovery: Some(mxr_core::RecoveryStatusData {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-2".into(),
+                restore_pending: false,
+                source_owner_stopped: true,
+                retired_intentions: 1,
+                retained_intentions: vec![mxr_core::RetainedIntentData {
+                    original_id: "archive-1".into(),
+                    kind: "archive".into(),
+                    account_id: None,
+                    original_state: "unknown".into(),
+                    outcome_reference: Some("receipt-1".into()),
+                    archive_evidence: Some(
+                        serde_json::json!({"operation_id":"archive-1","accepted":true,"items":[{"state":"unknown"}]}),
+                    ),
+                }],
+                held_drafts: vec![],
+            }),
+            ..Default::default()
+        };
+
+        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Retained archive archive-1: unknown · receipt-1")));
+        assert!(lines.iter().any(|line| line.contains("\"accepted\": true")));
+        assert!(lines.iter().any(|line| line.contains("RECOVERY RECORD")));
     }
 }

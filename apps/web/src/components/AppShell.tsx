@@ -6,6 +6,7 @@ import { ArchiveRecoveryPanel } from "@/features/mail-actions/ArchiveRecoveryPan
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileTabs } from "@/components/MobileTabs";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { RecoveryNotice } from "@/features/recovery/RecoveryNotice";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
@@ -239,6 +240,7 @@ export function AppShell() {
                   <Topbar />
                 </header>
                 <main id="main" className="app-shell-main">
+                  <RecoveryNotice />
                   <OfflineBanner />
                   <ErrorBoundary resetKey={path}>
                     <Outlet />

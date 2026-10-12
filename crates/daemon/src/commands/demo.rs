@@ -1820,6 +1820,8 @@ mod tests {
     /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
     fn degraded_status() -> ResponseData {
         ResponseData::Status {
+            recovery_supported: false,
+            recovery: None,
             workspace_owner_supported: false,
             draft_revision_supported: true,
             send_outcome_supported: true,

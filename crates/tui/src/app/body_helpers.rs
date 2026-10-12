@@ -85,6 +85,7 @@ impl App {
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
+                    .or_else(|| self.recovery_pause_warning())
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
@@ -116,6 +117,7 @@ impl App {
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
+                    .or_else(|| self.recovery_pause_warning())
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
@@ -138,6 +140,7 @@ impl App {
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
+                    .or_else(|| self.recovery_pause_warning())
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
@@ -162,12 +165,28 @@ impl App {
             compact_sync_status: self.compact_sync_status_label(),
             sync_warning: self.sync_warning(),
             feature_health_status,
-            status_message: self.status_message.clone(),
+            status_message: self
+                .recovery_pause_warning()
+                .or_else(|| self.status_message.clone()),
             pending_mutation_count: self.pending_mutation_count,
             pending_mutation_status: self.pending_mutation_status.clone(),
             mutation_batch_total: self.mutation_batch_total,
             busy: self.has_in_flight_work(),
         }
+    }
+
+    fn recovery_pause_warning(&self) -> Option<String> {
+        self.diagnostics
+            .page
+            .recovery
+            .as_ref()
+            .filter(|recovery| recovery.restore_pending)
+            .map(|recovery| {
+                format!(
+                    "RESTORE PAUSED · {} held drafts · inspect Diagnostics or run `mxr recovery status`",
+                    recovery.held_drafts.len()
+                )
+            })
     }
 
     /// The status bar's sync words. With freshness: when the newest mail

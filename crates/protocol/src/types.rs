@@ -1151,6 +1151,18 @@ pub enum Request {
     /// List recent daemon-side jobs (mutation batches, future long-running
     /// mail operations) with progress and failure/undo state.
     GetArchiveWorkspace,
+    GetRecoveryStatus,
+    ActivateRecovery {
+        expected_workspace: ArchiveWorkspaceData,
+        source_owner_stopped: bool,
+        dry_run: bool,
+    },
+    PrepareRecoveredDraft {
+        draft_id: DraftId,
+        expected_revision: i64,
+        expected_workspace: ArchiveWorkspaceData,
+        dry_run: bool,
+    },
     PreviewArchive {
         identity: ArchiveIdentityData,
         mutation: MutationCommand,
@@ -2532,6 +2544,8 @@ impl Request {
                 | Self::BeginDraftAttachment { .. }
                 | Self::WriteDraftAttachmentChunk { .. }
                 | Self::FinalizeDraftAttachment { .. }
+                | Self::ActivateRecovery { .. }
+                | Self::PrepareRecoveredDraft { .. }
         )
     }
 
@@ -2603,6 +2617,9 @@ impl Request {
             | Self::Mutation { .. }
             | Self::StartMutationJob { .. }
             | Self::GetArchiveWorkspace
+            | Self::GetRecoveryStatus
+            | Self::ActivateRecovery { .. }
+            | Self::PrepareRecoveredDraft { .. }
             | Self::PreviewArchive { .. }
             | Self::SubmitArchive { .. }
             | Self::GetArchiveOperation { .. }
@@ -3428,6 +3445,12 @@ pub enum ResponseData {
     ArchiveWorkspace {
         workspace: ArchiveWorkspaceData,
     },
+    RecoveryStatus {
+        recovery: mxr_core::RecoveryStatusData,
+    },
+    RecoveryAction {
+        action: mxr_core::RecoveryActionData,
+    },
     ArchiveOperation {
         operation: ArchiveOperationData,
     },
@@ -3569,6 +3592,10 @@ pub enum ResponseData {
         send_outcome_supported: bool,
         #[serde(default)]
         archive_recovery_supported: bool,
+        #[serde(default)]
+        recovery_supported: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recovery: Option<mxr_core::RecoveryStatusData>,
         #[serde(default)]
         attachment_transfer_supported: bool,
         #[serde(default)]
@@ -4141,6 +4168,8 @@ impl ResponseData {
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
             | Self::ArchiveWorkspace { .. }
+            | Self::RecoveryStatus { .. }
+            | Self::RecoveryAction { .. }
             | Self::ArchiveOperation { .. }
             | Self::JobStarted { .. }
             | Self::Jobs { .. }

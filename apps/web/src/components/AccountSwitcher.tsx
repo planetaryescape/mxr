@@ -17,6 +17,7 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { SyncHealthDot } from "@/features/freshness/AccountSyncHealth";
+import { isRestoredProfile, useRecoveryStatus } from "@/features/recovery/RecoveryNotice";
 
 /**
  * Scopes every mail view to one account, or all of them. Unlike the TUI,
@@ -25,9 +26,12 @@ import { SyncHealthDot } from "@/features/freshness/AccountSyncHealth";
  */
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
+  const recoveryStatus = useRecoveryStatus();
   const scope = useUiPrefs((s) => s.accountScope);
   const setScope = useUiPrefs((s) => s.setAccountScope);
-  const rows = (accounts.data?.accounts ?? []).filter((row) => row.enabled !== false);
+  const rows = (accounts.data?.accounts ?? []).filter(
+    (row) => row.enabled !== false || isRestoredProfile(recoveryStatus.data),
+  );
   const scoped = rows.find((row) => row.account_id === scope);
   const title = scoped
     ? scoped.name || scoped.email
@@ -36,8 +40,21 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
       : (rows[0]?.name ?? "mxr");
   // A scope pointing at a removed or disabled account would hide all mail.
   useEffect(() => {
-    if (scope && accounts.isSuccess && !scoped) setScope(null);
-  }, [accounts.isSuccess, scope, scoped, setScope]);
+    if (
+      scope &&
+      accounts.isSuccess &&
+      (recoveryStatus.isSuccess || recoveryStatus.isError) &&
+      !scoped
+    )
+      setScope(null);
+  }, [
+    accounts.isSuccess,
+    recoveryStatus.isError,
+    recoveryStatus.isSuccess,
+    scope,
+    scoped,
+    setScope,
+  ]);
   const subtitle = scoped
     ? scoped.email
     : rows.length > 1

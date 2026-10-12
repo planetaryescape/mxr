@@ -15,7 +15,7 @@ pub(super) async fn collect_status_snapshot(
     let started_at = std::time::Instant::now();
     let accounts = state
         .store
-        .list_accounts()
+        .list_cached_mail_accounts()
         .await
         .map_err(|e| e.to_string())?;
     let message_counts = state

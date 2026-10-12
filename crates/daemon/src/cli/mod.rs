@@ -51,6 +51,66 @@ pub enum DaemonAction {
 }
 
 #[derive(Subcommand)]
+pub enum RecoveryAction {
+    /// Show the restored profile's held drafts and retired intentions.
+    Status {
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Preview activation, or activate after confirming the source owner is stopped.
+    Activate {
+        #[arg(long)]
+        source_owner_stopped: bool,
+        /// Owner JSON returned by `mxr recovery status` or its preview.
+        #[arg(long, value_name = "JSON")]
+        expected_workspace: String,
+        #[arg(long)]
+        confirm: bool,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Preview preparing a fresh draft from a held original, or confirm it.
+    PrepareDraft {
+        draft_id: String,
+        #[arg(long)]
+        expected_revision: i64,
+        /// Owner JSON returned by `mxr recovery status` or the preview.
+        #[arg(long, value_name = "JSON")]
+        expected_workspace: String,
+        #[arg(long)]
+        confirm: bool,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BackupAction {
+    /// Preview or create a stopped-profile backup.
+    Create {
+        #[arg(long)]
+        source_data: PathBuf,
+        /// Explicit non-secret account settings file. Omit to use DB settings only.
+        #[arg(long)]
+        source_config: Option<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Validate and describe a backup without restoring it.
+    Inspect { bundle: PathBuf },
+    /// Preview or restore into a new, empty profile.
+    Restore {
+        bundle: PathBuf,
+        #[arg(long)]
+        destination: PathBuf,
+        #[arg(long)]
+        confirm: bool,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum Command {
     /// Start the daemon explicitly
     Daemon {
@@ -1140,6 +1200,16 @@ pub enum Command {
         /// Required for non-interactive destructive execution only
         #[arg(long = "yes-i-understand-this-destroys-local-state")]
         yes_i_understand_this_destroys_local_state: bool,
+    },
+    /// Inspect or reconcile a restored profile without replaying old work.
+    Recovery {
+        #[command(subcommand)]
+        action: RecoveryAction,
+    },
+    /// Create, inspect or restore an offline profile backup.
+    Backup {
+        #[command(subcommand)]
+        action: BackupAction,
     },
     /// Destroy local mxr runtime state after stopping the daemon. Alias for `mxr reset --hard`. Preserves config.toml and credentials by default. Use --including-config to also delete config.toml. Destructive; use --dry-run to preview.
     Burn {
@@ -3602,6 +3672,66 @@ mod tests {
             "-"
         ])
         .is_err());
+    }
+
+    #[test]
+    fn recovery_mutations_require_the_previewed_workspace_and_revision() {
+        let owner = r#"{"workspace_id":"workspace-a","recovery_generation":"generation-a"}"#;
+        assert!(Cli::try_parse_from(["mxr", "recovery", "activate", "--confirm"]).is_err());
+        let activate = Cli::try_parse_from([
+            "mxr",
+            "recovery",
+            "activate",
+            "--expected-workspace",
+            owner,
+            "--source-owner-stopped",
+            "--confirm",
+        ])
+        .expect("activation uses the explicitly reviewed owner");
+        assert!(matches!(
+            activate.command,
+            Some(Command::Recovery {
+                action: RecoveryAction::Activate {
+                    expected_workspace,
+                    source_owner_stopped: true,
+                    confirm: true,
+                    ..
+                }
+            }) if expected_workspace == owner
+        ));
+
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "recovery",
+            "prepare-draft",
+            "draft-a",
+            "--expected-revision",
+            "4",
+        ])
+        .is_err());
+        let prepare = Cli::try_parse_from([
+            "mxr",
+            "recovery",
+            "prepare-draft",
+            "draft-a",
+            "--expected-revision",
+            "4",
+            "--expected-workspace",
+            owner,
+            "--confirm",
+        ])
+        .expect("preparation carries the previewed owner and revision");
+        assert!(matches!(
+            prepare.command,
+            Some(Command::Recovery {
+                action: RecoveryAction::PrepareDraft {
+                    expected_workspace,
+                    expected_revision: 4,
+                    confirm: true,
+                    ..
+                }
+            }) if expected_workspace == owner
+        ));
     }
 
     #[test]

@@ -64,7 +64,7 @@ impl super::Store {
         command_hash: &str,
     ) -> Result<bool, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let changed = sqlx::query("UPDATE drafts SET status = 'sending', status_updated_at = unixepoch(), last_heartbeat_at = unixepoch() WHERE id = ? AND revision = ? AND status = 'draft' AND NOT EXISTS (SELECT 1 FROM draft_send_outcomes WHERE draft_id = ? AND state IN ('unknown','accepted'))")
+        let changed = sqlx::query("UPDATE drafts SET status = 'sending', status_updated_at = unixepoch(), last_heartbeat_at = unixepoch() WHERE id = ? AND revision = ? AND status = 'draft' AND NOT EXISTS (SELECT 1 FROM restored_draft_holds WHERE restored_draft_holds.draft_id = drafts.id) AND NOT EXISTS (SELECT 1 FROM draft_send_outcomes WHERE draft_id = ? AND state IN ('unknown','accepted'))")
             .bind(draft_id.as_str()).bind(stored_revision).bind(draft_id.as_str()).execute(&mut *tx).await?.rows_affected();
         if changed == 0 {
             return Ok(false);

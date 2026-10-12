@@ -27,6 +27,8 @@ const searchApi = vi.hoisted(() => ({
   fetchSearch: vi.fn<(params: unknown, opts?: unknown) => Promise<unknown>>(),
   fetchSearchGroups: vi.fn<(params: unknown, opts?: unknown) => Promise<unknown>>(),
 }));
+const accountApi = vi.hoisted(() => ({ accounts: [] as Array<Record<string, unknown>> }));
+const recoveryState = vi.hoisted(() => ({ restored: false }));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => router.navigate,
@@ -43,7 +45,18 @@ vi.mock("./api", () => ({
 }));
 
 vi.mock("@/features/accounts/api", () => ({
-  fetchAccounts: () => Promise.resolve({ accounts: [] }),
+  fetchAccounts: () => Promise.resolve({ accounts: accountApi.accounts }),
+}));
+
+vi.mock("@/features/recovery/RecoveryNotice", () => ({
+  isRestoredProfile: (
+    recovery: { restore_pending: boolean; source_owner_stopped: boolean } | null,
+  ) => Boolean(recovery && (recovery.restore_pending || recovery.source_owner_stopped)),
+  useRecoveryStatus: () => ({
+    data: recoveryState.restored ? { restore_pending: false, source_owner_stopped: true } : null,
+    isSuccess: true,
+    isError: false,
+  }),
 }));
 
 // The list-and-reader layout has its own tests (MailboxList); here we only
@@ -114,6 +127,12 @@ function renderWithQueryClient(children: ReactNode) {
 
 describe("SearchResultsRoute", () => {
   beforeEach(() => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn<() => void>(),
+    });
+    accountApi.accounts = [];
+    recoveryState.restored = false;
     router.search = { q: "invoice", mode: "lexical", sort: "relevance" };
     useMailboxPane.setState({
       activePane: "sidebar",
@@ -158,6 +177,33 @@ describe("SearchResultsRoute", () => {
     expect(screen.getByText("Subject 1")).toBeVisible();
     expect(screen.getByText("Subject 2")).toBeVisible();
     expect(screen.getByText("2 results")).toBeVisible();
+  });
+
+  test("search account options include cached accounts from restored profiles", async () => {
+    recoveryState.restored = true;
+    accountApi.accounts = [
+      { account_id: "active", name: "Active", email: "active@example.com", enabled: true },
+      { account_id: "personal", name: "Personal", email: "personal@example.com", enabled: true },
+      { account_id: "cached", name: "Cached", email: "cached@example.com", enabled: false },
+    ];
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
+    expect(await screen.findByRole("option", { name: "cached@example.com" })).toBeVisible();
+  });
+
+  test("search account options keep ordinary disabled accounts hidden", async () => {
+    accountApi.accounts = [
+      { account_id: "active", name: "Active", email: "active@example.com", enabled: true },
+      { account_id: "personal", name: "Personal", email: "personal@example.com", enabled: true },
+      { account_id: "cached", name: "Cached", email: "cached@example.com", enabled: false },
+    ];
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
+    expect(await screen.findByRole("option", { name: "active@example.com" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "personal@example.com" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "cached@example.com" })).not.toBeInTheDocument();
   });
 
   test("loads additional pages through offset pagination", async () => {

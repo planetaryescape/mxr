@@ -634,6 +634,9 @@ fn diagnostics_page_snapshot() {
         daemon_pid: Some(4242),
         accounts: vec!["me@example.com".into()],
         total_messages: Some(42),
+        recovery: None,
+        recovery_preview: None,
+        selected_recovery_draft: 0,
         sync_statuses: vec![mxr_protocol::AccountSyncStatus {
             account_id: AccountId::new(),
             account_name: "me@example.com".into(),

@@ -23,6 +23,7 @@ sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+tempfile = { workspace = true }
 caseless = "0.2.2"
 unicode-normalization = "0.1"
 

@@ -420,6 +420,7 @@ pub(crate) struct WrappedCacheKey {
 pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 pub struct AppState {
+    pub(crate) restore_pending: std::sync::atomic::AtomicBool,
     pub store: Arc<Store>,
     /// Static locale resolved once at daemon startup from `MXR_LOCALE` env
     /// var or config `locale` key. Handlers reference this for subject and
@@ -685,16 +686,34 @@ fn resolve_locale_code(config: &mxr_config::MxrConfig) -> String {
 }
 
 impl AppState {
+    pub fn is_restore_pending(&self) -> bool {
+        self.restore_pending
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+    pub fn ensure_effects_allowed(&self) -> std::result::Result<(), String> {
+        if self.is_restore_pending() {
+            Err("Restored workspace is paused; inspect mxr recovery status and explicitly activate after stopping the source owner".into())
+        } else {
+            Ok(())
+        }
+    }
     pub async fn new() -> anyhow::Result<Self> {
-        let config = mxr_config::load_config().unwrap_or_default();
+        let mut config = mxr_config::load_config().unwrap_or_default();
         let data_dir = mxr_config::data_dir();
         std::fs::create_dir_all(&data_dir)?;
 
         let db_path = data_dir.join("mxr.db");
         let index_path = data_dir.join("search_index");
-        std::fs::create_dir_all(&index_path)?;
 
         let store = Arc::new(Store::new(&db_path).await?);
+        std::fs::create_dir_all(&index_path)?;
+        let pending = store.restore_pending().await?;
+        if pending {
+            config.llm.enabled = false;
+            config.llm.overrides = Default::default();
+            config.search.semantic.enabled = false;
+            config.search.semantic.auto_download_models = false;
+        }
         let activity = crate::activity::Recorder::spawn(store.clone());
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -742,6 +761,7 @@ impl AppState {
         let locale = mxr_core::i18n::select(&resolve_locale_code(&config));
 
         Ok(Self {
+            restore_pending: std::sync::atomic::AtomicBool::new(pending),
             store,
             locale,
             activity,
@@ -837,6 +857,14 @@ impl AppState {
         config: &mxr_config::MxrConfig,
         store: &Store,
     ) -> anyhow::Result<ProviderSetup> {
+        if store.restore_pending().await? {
+            return Ok(ProviderSetup {
+                providers: HashMap::new(),
+                send_providers: HashMap::new(),
+                default_provider: None,
+                default_send_provider: None,
+            });
+        }
         let mut providers = HashMap::new();
         let mut send_providers = HashMap::new();
         let mut default_provider = None;
@@ -1748,6 +1776,9 @@ impl AppState {
         &self,
         account_id: &AccountId,
     ) -> Option<Arc<dyn MailSyncProvider>> {
+        if self.is_restore_pending() {
+            return None;
+        }
         self.runtime.read().providers.get(account_id).cloned()
     }
 
@@ -1756,6 +1787,7 @@ impl AppState {
         &self,
         account_id: Option<&AccountId>,
     ) -> std::result::Result<Arc<dyn MailSyncProvider>, String> {
+        self.ensure_effects_allowed()?;
         let runtime = self.runtime.read();
         match account_id {
             Some(id) => runtime
@@ -1774,6 +1806,7 @@ impl AppState {
         &self,
         account_id: &AccountId,
     ) -> std::result::Result<Arc<dyn MailSendProvider>, String> {
+        self.ensure_effects_allowed()?;
         self.runtime
             .read()
             .send_providers
@@ -1787,6 +1820,9 @@ impl AppState {
         &self,
         account_id: Option<&AccountId>,
     ) -> Option<Arc<dyn MailSendProvider>> {
+        if self.is_restore_pending() {
+            return None;
+        }
         let runtime = self.runtime.read();
         match account_id {
             Some(id) => runtime.send_providers.get(id).cloned(),
@@ -1828,7 +1864,13 @@ impl AppState {
     }
 
     pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
-        let config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        if self.is_restore_pending() {
+            config.llm.enabled = false;
+            config.llm.overrides = Default::default();
+            config.search.semantic.enabled = false;
+            config.search.semantic.auto_download_models = false;
+        }
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
@@ -1930,6 +1972,7 @@ impl AppState {
 
         let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
+            restore_pending: std::sync::atomic::AtomicBool::new(false),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2013,6 +2056,7 @@ impl AppState {
 
         let activity = crate::activity::Recorder::spawn(store.clone());
         Ok(Self {
+            restore_pending: std::sync::atomic::AtomicBool::new(false),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2122,6 +2166,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone());
         Ok((
             Self {
+                restore_pending: std::sync::atomic::AtomicBool::new(false),
                 store,
                 locale: mxr_core::i18n::DEFAULT_LOCALE,
                 activity,

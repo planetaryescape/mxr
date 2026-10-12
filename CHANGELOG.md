@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.90](https://github.com/planetaryescape/mxr/compare/v0.6.89...v0.6.90) (2026-10-12)
+
+
+### Bug Fixes
+
+* preserve protocol and MCP compatibility with dependency updates ([#430](https://github.com/planetaryescape/mxr/issues/430)) ([3698882](https://github.com/planetaryescape/mxr/commit/36988825d14f9f08cb3a2ccaf7c607559e7e317d))
+
+
+### Documentation
+
+* clarify email evidence and current provider state ([#428](https://github.com/planetaryescape/mxr/issues/428)) ([e676c8a](https://github.com/planetaryescape/mxr/commit/e676c8add9dae577d890d9425bcfe1d2675780bd))
+
 ## [0.6.89](https://github.com/planetaryescape/mxr/compare/v0.6.88...v0.6.89) (2026-10-12)
 
 

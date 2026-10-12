@@ -1125,7 +1125,7 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::Sql(include_str!("../migrations/079_draft_attachment_resources.sql")),
         ]),
     },
-    Migration { version: 79, name: "rule_category_sources", kind: MigrationKind::Composite(&[MigrationStep::AddColumn {table:"message_category_memberships",column:"manual_decision",sql:include_str!("../migrations/079_category_manual_decision.sql")},MigrationStep::Sql(include_str!("../migrations/079_rule_category_sources.sql"))]) },
+    Migration { version: 80, name: "rule_category_sources", kind: MigrationKind::Composite(&[MigrationStep::AddColumn {table:"message_category_memberships",column:"manual_decision",sql:include_str!("../migrations/080_category_manual_decision.sql")},MigrationStep::Sql(include_str!("../migrations/080_rule_category_sources.sql"))]) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

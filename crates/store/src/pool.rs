@@ -1773,10 +1773,12 @@ mod tests {
         }
 
         let store = Store::new(&db_path).await.unwrap();
-        let version: (i64,) = sqlx::query_as("SELECT version FROM schema_migrations WHERE name = 'todo_resolution_suggestions'")
-            .fetch_one(store.writer())
-            .await
-            .unwrap();
+        let version: (i64,) = sqlx::query_as(
+            "SELECT version FROM schema_migrations WHERE name = 'todo_resolution_suggestions'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
         assert_eq!(version.0, 78);
         let category: (String, String) =
             sqlx::query_as("SELECT id, name FROM personal_categories WHERE id = 'kept-category'")

@@ -13,9 +13,10 @@ mxr todo --format json
 ```
 
 In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
-`Coming up`, `Later`, `Whenever` and `Done this week`. The act-by date tells
-you when to start; the due date is the deadline. Use a row's ID from the JSON
-output for the CLI commands below.
+`Coming up`, `Later`, `Whenever` and `Done this week`. The act-by date is the
+last date to act and still meet the due date; mxr can surface the task earlier
+to give you time. For a bank-transfer bill, act-by is three working days before
+the due date. Use a row's ID from the JSON output for the CLI commands below.
 
 ## Check the source and act
 

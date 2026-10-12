@@ -1501,6 +1501,33 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        let category_requests = std::mem::take(&mut app.pending_category_requests);
+        for (generation, request) in category_requests {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let report_if_stale = matches!(
+                    &request,
+                    Request::UndoCategoryMembership { .. }
+                        | Request::ApplyCategoryMembership { .. }
+                );
+                let view_category_id = match &request {
+                    Request::ListCategoryMessages { category_id, .. } => Some(category_id.clone()),
+                    _ => None,
+                };
+                let result = match ipc_call(&bg, request).await {
+                    Ok(Response::Ok { data }) => Ok(Box::new(data)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(error) => Err(error),
+                };
+                AsyncResult::PersonalCategory {
+                    generation,
+                    report_if_stale,
+                    view_category_id,
+                    result,
+                }
+            });
+        }
+
         // Drain queued semantic-runtime requests (Enable / Disable / Reindex
         // / InstallProfile). Each is a one-shot; result routes through the
         // shared error reporter so failures aren't swallowed.
@@ -3263,6 +3290,19 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Rules(Err(e)) => {
                             app.rules.page.status = Some(format!("Rules error: {e}"));
+                        }
+                        AsyncResult::PersonalCategory {
+                            generation,
+                            report_if_stale,
+                            view_category_id,
+                            result,
+                        } => {
+                            app.handle_personal_category_result(
+                                generation,
+                                report_if_stale,
+                                view_category_id,
+                                result,
+                            );
                         }
                         AsyncResult::SnippetsList(Ok(snippets)) => {
                             let count = snippets.len();
@@ -5448,15 +5488,18 @@ mod sync_all_protocol_tests {
     use super::require_sync_all_protocol;
 
     #[test]
-    fn global_sync_requires_protocol_six() {
-        for version in [4, 5] {
+    fn global_sync_requires_current_protocol() {
+        for version in [4, 5, 6] {
             let error =
                 require_sync_all_protocol(version).expect_err("an older daemon cannot sync all");
-            assert!(error.to_string().contains("requires daemon IPC protocol 6"));
+            assert!(error.to_string().contains(&format!(
+                "requires daemon IPC protocol {}",
+                mxr_protocol::IPC_PROTOCOL_VERSION
+            )));
             assert!(error
                 .to_string()
                 .contains(&format!("running daemon uses {version}")));
         }
-        assert!(require_sync_all_protocol(6).is_ok());
+        assert!(require_sync_all_protocol(mxr_protocol::IPC_PROTOCOL_VERSION).is_ok());
     }
 }

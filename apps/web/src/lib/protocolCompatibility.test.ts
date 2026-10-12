@@ -7,6 +7,7 @@ import {
   EXPECTED_IPC_PROTOCOL_VERSION,
   evaluateProtocolCompatibility,
 } from "./protocolCompatibility";
+import { evaluateProtocolCompatibility as evaluateProtocolCompatibilityV4 } from "./__fixtures__/protocolCompatibility-v4";
 
 describe("protocol compatibility", () => {
   test("accepts the expected bridge protocol", () => {
@@ -15,7 +16,7 @@ describe("protocol compatibility", () => {
     ).toBeUndefined();
   });
 
-  test.each([4, 5])("requires an update from the protocol %i bridge", (protocolVersion) => {
+  test.each([4, 5, 6])("requires an update from the protocol %i bridge", (protocolVersion) => {
     expect(evaluateProtocolCompatibility({ protocol_version: protocolVersion })).toMatchObject({
       actualProtocol: protocolVersion,
       requiredProtocol: EXPECTED_IPC_PROTOCOL_VERSION,
@@ -25,6 +26,13 @@ describe("protocol compatibility", () => {
 
   test("reports missing bridge protocols", () => {
     expect(evaluateProtocolCompatibility({})).toMatchObject({ actualProtocol: null });
+  });
+
+  test("an old web client rejects the new daemon through the health gate", () => {
+    expect(evaluateProtocolCompatibilityV4({ protocol_version: 7 })).toMatchObject({
+      actualProtocol: 7,
+      requiredProtocol: 4,
+    });
   });
 
   test("matches the Rust IPC protocol constant", () => {

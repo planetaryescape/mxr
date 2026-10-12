@@ -6,6 +6,7 @@ pub mod briefing;
 pub mod bug_report;
 pub mod cadence;
 pub mod cat;
+pub mod categories;
 pub mod chimes;
 pub mod commitments;
 pub mod completions;

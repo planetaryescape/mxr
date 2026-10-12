@@ -13,6 +13,7 @@ import type { ShellResponse, SidebarItem } from "./types";
 export type LensRoute =
   | { kind: "system"; mailbox: string }
   | { kind: "label"; name: string }
+  | { kind: "category"; categoryId: string }
   | { kind: "saved"; slug: string };
 
 export interface MailLens {
@@ -20,7 +21,7 @@ export interface MailLens {
   key: string;
   label: string;
   path: string;
-  section: "system" | "labels" | "saved";
+  section: "system" | "labels" | "categories" | "saved";
   unread: number;
   total: number;
   params: MailboxLensParams;
@@ -117,6 +118,17 @@ function lensFromItem(sectionId: string, item: SidebarItem): MailLens | null {
       labelName: item.label,
     };
   }
+  if (lens.kind === "category" && lens.categoryId) {
+    return {
+      key: `category:${lens.categoryId}`,
+      label: item.label,
+      path: `/m/category/${encodeURIComponent(lens.categoryId)}`,
+      section: "categories",
+      ...counts,
+      params: { lens_kind: "category", category_id: lens.categoryId },
+      identity: { kind: "other" },
+    };
+  }
   if (lens.kind === "saved_search" && lens.savedSearch) {
     const slug = item.id.replace(/^saved-search-/, "");
     return {
@@ -160,6 +172,13 @@ export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | nu
         (lens) =>
           lens.section === "labels" &&
           (lens.key === `label:${target}` || slugify(lens.label) === slugify(target)),
+      ) ?? null
+    );
+  }
+  if (route.kind === "category") {
+    return (
+      lenses.find(
+        (lens) => lens.section === "categories" && lens.key === `category:${route.categoryId}`,
       ) ?? null
     );
   }

@@ -626,6 +626,8 @@ impl App {
         // Label picker overlay
         ui::label_picker::draw(frame, area, &self.modals.label_picker, theme);
 
+        ui::personal_category_picker::draw(frame, area, &self.modals.personal_categories, theme);
+
         // Compose picker overlay
         ui::compose_picker::draw(frame, area, &self.compose.compose_picker, theme);
 

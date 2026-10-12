@@ -960,6 +960,411 @@
         }
       }
     },
+    "/api/v1/mail/categories": {
+      "get": {
+        "tags": [],
+        "summary": "List personal categories",
+        "operationId": "categories_list",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Filter membership counts to this account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal categories and account-scoped counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Create a personal category",
+        "operationId": "categories_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated personal category catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid or duplicate category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/assignment/apply": {
+      "post": {
+        "tags": [],
+        "summary": "Apply previewed category assignments",
+        "operationId": "categories_assignment_apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryTokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Applied assignment counts and Undo mutation id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipAppliedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid, stale, or expired preview token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/assignment/preview": {
+      "post": {
+        "tags": [],
+        "summary": "Preview category assignments for selected messages",
+        "operationId": "categories_assignment_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMembershipBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stale-safe assignment preview and confirmation token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account, message, or category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected this account-scoped selection or category"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/delete": {
+      "post": {
+        "tags": [],
+        "summary": "Preview category deletion or apply its stale-safe preview",
+        "operationId": "categories_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteCategoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deletion preview, or deleted category id and name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Category was not found"
+          },
+          "422": {
+            "description": "The daemon rejected a stale, missing, or expired preview token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/memberships": {
+      "post": {
+        "tags": [],
+        "summary": "Read category assignments for selected messages",
+        "operationId": "categories_memberships",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMembershipStateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Membership counts for each selected category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipStatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed account, message, or category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected this account-scoped lookup"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/messages": {
+      "get": {
+        "tags": [],
+        "summary": "List messages in a personal category",
+        "operationId": "categories_messages",
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "query",
+            "description": "Stable category id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "Restrict messages to this account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of category messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMessagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Category was not found"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/name/preview": {
+      "post": {
+        "tags": [],
+        "summary": "Validate a personal category name without changing the catalog",
+        "operationId": "categories_name_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNamePreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Normalized name and whether it is available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/rename": {
+      "post": {
+        "tags": [],
+        "summary": "Rename a personal category while preserving its id and memberships",
+        "operationId": "categories_rename",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameCategoryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated personal category catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed category id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid or duplicate category name"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/categories/undo": {
+      "post": {
+        "tags": [],
+        "summary": "Undo a category assignment mutation",
+        "operationId": "categories_undo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUndoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restored and skipped membership counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMembershipUndoneResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "404": {
+            "description": "Mutation was not found"
+          },
+          "422": {
+            "description": "The daemon rejected an invalid, stale, or expired mutation id"
+          }
+        }
+      }
+    },
     "/api/v1/mail/commitments": {
       "get": {
         "tags": [],
@@ -8617,6 +9022,334 @@
           }
         }
       },
+      "CategoriesResponse": {
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalCategory"
+            }
+          }
+        }
+      },
+      "CategoryDeletePreview": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name",
+          "affected_messages",
+          "preview_token"
+        ],
+        "properties": {
+          "affected_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "preview_token": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryDeleteResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CategoryDeletePreview"
+          },
+          {
+            "$ref": "#/components/schemas/CategoryDeletedResponse"
+          }
+        ]
+      },
+      "CategoryDeletedResponse": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "CategoryMembershipAppliedResponse": {
+        "type": "object",
+        "required": [
+          "mutation_id",
+          "added",
+          "removed"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "mutation_id": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipBody": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "add_category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove_category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CategoryMembershipPreview": {
+        "type": "object",
+        "required": [
+          "category_ids",
+          "message_count",
+          "added",
+          "removed",
+          "preview_token"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryId"
+            }
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "preview_token": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipState": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "selected_messages",
+          "assigned_messages"
+        ],
+        "properties": {
+          "assigned_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "category_id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "selected_messages": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMembershipStateBody": {
+        "type": "object",
+        "required": [
+          "message_ids",
+          "category_ids"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CategoryMembershipStatesResponse": {
+        "type": "object",
+        "required": [
+          "states"
+        ],
+        "properties": {
+          "states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryMembershipState"
+            }
+          }
+        }
+      },
+      "CategoryMembershipUndoneResponse": {
+        "type": "object",
+        "required": [
+          "restored",
+          "skipped"
+        ],
+        "properties": {
+          "restored": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryMessagesResponse": {
+        "type": "object",
+        "required": [
+          "envelopes",
+          "total",
+          "has_more"
+        ],
+        "properties": {
+          "envelopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Envelope"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CategoryNameBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryNamePreviewBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryNamePreviewResponse": {
+        "type": "object",
+        "required": [
+          "normalized_name",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "normalized_name": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryTokenBody": {
+        "type": "object",
+        "required": [
+          "preview_token"
+        ],
+        "properties": {
+          "preview_token": {
+            "type": "string"
+          }
+        }
+      },
+      "CategoryUndoBody": {
+        "type": "object",
+        "required": [
+          "mutation_id"
+        ],
+        "properties": {
+          "mutation_id": {
+            "type": "string"
+          }
+        }
+      },
       "CitationRef": {
         "type": "object",
         "properties": {
@@ -10131,6 +10864,23 @@
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "DeleteCategoryBody": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -15279,6 +16029,34 @@
           }
         }
       },
+      "PersonalCategory": {
+        "type": "object",
+        "description": "A profile-local category used to group messages without changing provider state.",
+        "required": [
+          "id",
+          "name",
+          "unread_count",
+          "total_count"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/CategoryId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "PinMessagesBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/messages/pin`.",
@@ -18414,6 +19192,21 @@
           }
         }
       },
+      "RenameCategoryBody": {
+        "type": "object",
+        "required": [
+          "category_id",
+          "name"
+        ],
+        "properties": {
+          "category_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "ReplyContext": {
         "type": "object",
         "description": "Reply context returned by PrepareReply.",
@@ -19082,6 +19875,293 @@
                 "type": "string"
               },
               "old": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCategories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "limit",
+              "offset",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCategoryMessages"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "category_ids",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetCategoryMemberships"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CreateCategory"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CategoryId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewCategoryName"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "new_name",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RenameCategory"
+                ]
+              },
+              "new_name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "add_category_ids",
+              "remove_category_ids",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "add_category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewCategoryMembership"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              },
+              "remove_category_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview_token",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ApplyCategoryMembership"
+                ]
+              },
+              "preview_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "cmd"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewDeleteCategory"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview_token",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeleteCategory"
+                ]
+              },
+              "preview_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoCategoryMembership"
+                ]
+              },
+              "mutation_id": {
                 "type": "string"
               }
             }
@@ -25903,6 +26983,215 @@
               },
               "label": {
                 "$ref": "#/components/schemas/Label"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "categories",
+              "kind"
+            ],
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PersonalCategory"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Categories"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "normalized_name",
+              "available",
+              "kind"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryNamePreview"
+                ]
+              },
+              "normalized_name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "envelopes",
+              "total",
+              "has_more",
+              "kind"
+            ],
+            "properties": {
+              "envelopes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMessages"
+                ]
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "states",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipStates"
+                ]
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CategoryMembershipState"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipPreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/CategoryMembershipPreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutation_id",
+              "added",
+              "removed",
+              "kind"
+            ],
+            "properties": {
+              "added": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipApplied"
+                ]
+              },
+              "mutation_id": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryDeletePreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/CategoryDeletePreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "category_id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "category_id": {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryDeleted"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "restored",
+              "skipped",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CategoryMembershipUndone"
+                ]
+              },
+              "restored": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "skipped": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
             }
           },

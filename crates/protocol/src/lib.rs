@@ -20,8 +20,9 @@
 //! [`IPC_PROTOCOL_VERSION`] identifies the wire revision. The daemon
 //! advertises it on status surfaces (for example the web bridge's status
 //! endpoint) so clients can detect a mismatched daemon. Field additions use
-//! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding;
-//! the version only moves for breaking shape changes.
+//! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding.
+//! Adding enum variants requires a bump because older peers reject unknown
+//! variants.
 
 mod archive;
 mod codec;
@@ -33,8 +34,9 @@ pub use types::*;
 
 /// Wire revision of the IPC protocol. Bumped when a client needs a daemon
 /// capability that older protocol versions cannot provide; additive fields
-/// stay decodable across versions via serde defaults.
-pub const IPC_PROTOCOL_VERSION: u32 = 6;
+/// stay decodable across versions via serde defaults. New enum variants require
+/// a bump because older peers reject unknown variants.
+pub const IPC_PROTOCOL_VERSION: u32 = 7;
 
 #[cfg(test)]
 mod tests {

@@ -493,6 +493,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List personal categories */
+        get: operations["categories_list"];
+        put?: never;
+        /** Create a personal category */
+        post: operations["categories_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/assignment/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply previewed category assignments */
+        post: operations["categories_assignment_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/assignment/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview category assignments for selected messages */
+        post: operations["categories_assignment_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview category deletion or apply its stale-safe preview */
+        post: operations["categories_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read category assignments for selected messages */
+        post: operations["categories_memberships"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List messages in a personal category */
+        get: operations["categories_messages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/name/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate a personal category name without changing the catalog */
+        post: operations["categories_name_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename a personal category while preserving its id and memberships */
+        post: operations["categories_rename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/categories/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo a category assignment mutation */
+        post: operations["categories_undo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/commitments": {
         parameters: {
             query?: never;
@@ -4569,6 +4723,90 @@ export interface components {
             name?: string | null;
             uri?: string | null;
         };
+        CategoriesResponse: {
+            categories: components["schemas"]["PersonalCategory"][];
+        };
+        CategoryDeletePreview: {
+            /** Format: int32 */
+            affected_messages: number;
+            category_id: components["schemas"]["CategoryId"];
+            name: string;
+            preview_token: string;
+        };
+        CategoryDeleteResponse: components["schemas"]["CategoryDeletePreview"] | components["schemas"]["CategoryDeletedResponse"];
+        CategoryDeletedResponse: {
+            category_id: components["schemas"]["CategoryId"];
+            name: string;
+        };
+        /** Format: uuid */
+        CategoryId: string;
+        CategoryMembershipAppliedResponse: {
+            /** Format: int32 */
+            added: number;
+            mutation_id: string;
+            /** Format: int32 */
+            removed: number;
+        };
+        CategoryMembershipBody: {
+            account_id?: string | null;
+            add_category_ids?: string[];
+            message_ids?: string[];
+            remove_category_ids?: string[];
+        };
+        CategoryMembershipPreview: {
+            /** Format: int32 */
+            added: number;
+            category_ids: components["schemas"]["CategoryId"][];
+            /** Format: int32 */
+            message_count: number;
+            preview_token: string;
+            /** Format: int32 */
+            removed: number;
+        };
+        CategoryMembershipState: {
+            /** Format: int32 */
+            assigned_messages: number;
+            category_id: components["schemas"]["CategoryId"];
+            /** Format: int32 */
+            selected_messages: number;
+        };
+        CategoryMembershipStateBody: {
+            account_id?: string | null;
+            category_ids: string[];
+            message_ids: string[];
+        };
+        CategoryMembershipStatesResponse: {
+            states: components["schemas"]["CategoryMembershipState"][];
+        };
+        CategoryMembershipUndoneResponse: {
+            /** Format: int32 */
+            restored: number;
+            /** Format: int32 */
+            skipped: number;
+        };
+        CategoryMessagesResponse: {
+            envelopes: components["schemas"]["Envelope"][];
+            has_more: boolean;
+            /** Format: int32 */
+            total: number;
+        };
+        CategoryNameBody: {
+            name: string;
+        };
+        CategoryNamePreviewBody: {
+            category_id?: string | null;
+            name: string;
+        };
+        CategoryNamePreviewResponse: {
+            available: boolean;
+            normalized_name: string;
+        };
+        CategoryTokenBody: {
+            preview_token: string;
+        };
+        CategoryUndoBody: {
+            mutation_id: string;
+        };
         CitationRef: {
             field?: string;
             message_id?: string | null;
@@ -5007,6 +5245,10 @@ export interface components {
             kind?: null | components["schemas"]["DeferKindData"];
             message_id?: null | components["schemas"]["MessageId"];
             thread_id: components["schemas"]["ThreadId"];
+        };
+        DeleteCategoryBody: {
+            category_id?: string | null;
+            preview_token?: string | null;
         };
         /** @description A tracked delivery for the Deliveries surface (CLI/web/TUI). */
         DeliveryData: {
@@ -6766,6 +7008,15 @@ export interface components {
             id: string;
             name?: string | null;
         };
+        /** @description A profile-local category used to group messages without changing provider state. */
+        PersonalCategory: {
+            id: components["schemas"]["CategoryId"];
+            name: string;
+            /** Format: int32 */
+            total_count: number;
+            /** Format: int32 */
+            unread_count: number;
+        };
         /** @description Body of `POST /api/v1/mail/messages/pin`. */
         PinMessagesBody: {
             message_ids: string[];
@@ -7871,6 +8122,10 @@ export interface components {
             expected_days?: number | null;
             note?: string | null;
         };
+        RenameCategoryBody: {
+            category_id: string;
+            name: string;
+        };
         /** @description Reply context returned by PrepareReply. */
         ReplyContext: {
             account_id: components["schemas"]["AccountId"];
@@ -8031,6 +8286,62 @@ export interface components {
             cmd: "RenameLabel";
             new: string;
             old: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListCategories";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            category_id: components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            cmd: "ListCategoryMessages";
+            /** Format: int32 */
+            limit: number;
+            /** Format: int32 */
+            offset: number;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            category_ids: components["schemas"]["CategoryId"][];
+            /** @enum {string} */
+            cmd: "GetCategoryMemberships";
+            message_ids: components["schemas"]["MessageId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "CreateCategory";
+            name: string;
+        } | {
+            category_id?: null | components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            cmd: "PreviewCategoryName";
+            name: string;
+        } | {
+            category_id: components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            cmd: "RenameCategory";
+            new_name: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            add_category_ids: components["schemas"]["CategoryId"][];
+            /** @enum {string} */
+            cmd: "PreviewCategoryMembership";
+            message_ids: components["schemas"]["MessageId"][];
+            remove_category_ids: components["schemas"]["CategoryId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "ApplyCategoryMembership";
+            preview_token: string;
+        } | {
+            category_id: components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            cmd: "PreviewDeleteCategory";
+        } | {
+            /** @enum {string} */
+            cmd: "DeleteCategory";
+            preview_token: string;
+        } | {
+            /** @enum {string} */
+            cmd: "UndoCategoryMembership";
+            mutation_id: string;
         } | {
             /** @enum {string} */
             cmd: "ListAccounts";
@@ -9561,6 +9872,54 @@ export interface components {
             /** @enum {string} */
             kind: "Label";
             label: components["schemas"]["Label"];
+        } | {
+            categories: components["schemas"]["PersonalCategory"][];
+            /** @enum {string} */
+            kind: "Categories";
+        } | {
+            available: boolean;
+            /** @enum {string} */
+            kind: "CategoryNamePreview";
+            normalized_name: string;
+        } | {
+            envelopes: components["schemas"]["Envelope"][];
+            has_more: boolean;
+            /** @enum {string} */
+            kind: "CategoryMessages";
+            /** Format: int32 */
+            total: number;
+        } | {
+            /** @enum {string} */
+            kind: "CategoryMembershipStates";
+            states: components["schemas"]["CategoryMembershipState"][];
+        } | {
+            /** @enum {string} */
+            kind: "CategoryMembershipPreview";
+            preview: components["schemas"]["CategoryMembershipPreview"];
+        } | {
+            /** Format: int32 */
+            added: number;
+            /** @enum {string} */
+            kind: "CategoryMembershipApplied";
+            mutation_id: string;
+            /** Format: int32 */
+            removed: number;
+        } | {
+            /** @enum {string} */
+            kind: "CategoryDeletePreview";
+            preview: components["schemas"]["CategoryDeletePreview"];
+        } | {
+            category_id: components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            kind: "CategoryDeleted";
+            name: string;
+        } | {
+            /** @enum {string} */
+            kind: "CategoryMembershipUndone";
+            /** Format: int32 */
+            restored: number;
+            /** Format: int32 */
+            skipped: number;
         } | {
             explain?: null | components["schemas"]["SearchExplain"];
             has_more?: boolean;
@@ -13236,6 +13595,446 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_list: {
+        parameters: {
+            query?: {
+                /** @description Filter membership counts to this account */
+                account_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Personal categories and account-scoped counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriesResponse"];
+                };
+            };
+            /** @description Malformed account id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryNameBody"];
+            };
+        };
+        responses: {
+            /** @description Updated personal category catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriesResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected an invalid or duplicate category name */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_assignment_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryTokenBody"];
+            };
+        };
+        responses: {
+            /** @description Applied assignment counts and Undo mutation id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMembershipAppliedResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected an invalid, stale, or expired preview token */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_assignment_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryMembershipBody"];
+            };
+        };
+        responses: {
+            /** @description Stale-safe assignment preview and confirmation token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMembershipPreview"];
+                };
+            };
+            /** @description Malformed account, message, or category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected this account-scoped selection or category */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteCategoryBody"];
+            };
+        };
+        responses: {
+            /** @description Deletion preview, or deleted category id and name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryDeleteResponse"];
+                };
+            };
+            /** @description Malformed category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Category was not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected a stale, missing, or expired preview token */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_memberships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryMembershipStateBody"];
+            };
+        };
+        responses: {
+            /** @description Membership counts for each selected category */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMembershipStatesResponse"];
+                };
+            };
+            /** @description Malformed account, message, or category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected this account-scoped lookup */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_messages: {
+        parameters: {
+            query: {
+                /** @description Stable category id */
+                category_id: string;
+                /** @description Restrict messages to this account */
+                account_id?: string;
+                /** @description Page size; defaults to 50 */
+                limit?: number;
+                /** @description Zero-based page offset */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of category messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMessagesResponse"];
+                };
+            };
+            /** @description Missing or invalid category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Category was not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_name_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryNamePreviewBody"];
+            };
+        };
+        responses: {
+            /** @description Normalized name and whether it is available */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryNamePreviewResponse"];
+                };
+            };
+            /** @description Malformed category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected an invalid category name */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_rename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameCategoryBody"];
+            };
+        };
+        responses: {
+            /** @description Updated personal category catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriesResponse"];
+                };
+            };
+            /** @description Malformed category id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected an invalid or duplicate category name */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    categories_undo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryUndoBody"];
+            };
+        };
+        responses: {
+            /** @description Restored and skipped membership counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMembershipUndoneResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Mutation was not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The daemon rejected an invalid, stale, or expired mutation id */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -23,6 +23,7 @@ export type MailDialog =
       waiting: boolean;
     }
   | { kind: "labels"; target: MailTarget }
+  | { kind: "categories"; target: MailTarget }
   | {
       kind: "move";
       target: MailTarget;

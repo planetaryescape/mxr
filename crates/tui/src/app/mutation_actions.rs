@@ -227,6 +227,14 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::CategoryMembership(mutation_id) => {
+                            let generation = self.modals.personal_categories.generation;
+                            self.pending_category_requests.push((
+                                generation,
+                                Request::UndoCategoryMembership { mutation_id },
+                            ));
+                            self.status_message = Some(status);
+                        }
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

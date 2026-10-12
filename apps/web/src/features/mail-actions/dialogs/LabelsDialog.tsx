@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, Pencil, Plus, Tag, Trash2 } from "lucide-react";
+import { Check, FolderOpen, Minus, Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 
 import { performMailAction } from "../mailMutations";
 import { describeTarget } from "../mailVerbs";
+import { openMailDialog } from "../mailDialogStore";
 import type { MailTarget } from "../target";
 
 type Presence = "all" | "some" | "none";
@@ -211,6 +212,13 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
               : "Enter toggles a label"}
           </span>
           <span className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openMailDialog({ kind: "categories", target })}
+            >
+              <FolderOpen className="size-3.5" /> Categories
+            </Button>
             <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>

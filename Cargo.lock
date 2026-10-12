@@ -4886,6 +4886,7 @@ name = "mxr-store"
 version = "0.6.82"
 dependencies = [
  "base16ct",
+ "caseless",
  "chrono",
  "mxr-core",
  "serde",
@@ -4895,6 +4896,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "unicode-normalization",
  "uuid",
 ]
 

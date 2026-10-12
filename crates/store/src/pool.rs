@@ -21,6 +21,7 @@ const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub struct Store {
     writer: SqlitePool,
+    resource_dir: std::path::PathBuf,
     reader: SqlitePool,
     /// Serialises the cleanup of a deleted message's files and index
     /// entries with sync storing messages, so a message id that comes back
@@ -30,6 +31,9 @@ pub struct Store {
 }
 
 impl Store {
+    pub fn draft_attachment_dir(&self) -> &Path {
+        &self.resource_dir
+    }
     pub async fn new(db_path: &Path) -> Result<Self, sqlx::Error> {
         let db_url = format!("sqlite:{}", db_path.display());
 
@@ -67,6 +71,7 @@ impl Store {
         let store = Self {
             writer,
             reader,
+            resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
@@ -84,6 +89,8 @@ impl Store {
             .await?;
 
         let store = Self {
+            resource_dir: std::env::temp_dir()
+                .join(format!("mxr-draft-attachments-{}", uuid::Uuid::now_v7())),
             writer: pool.clone(),
             reader: pool,
             message_cleanup: tokio::sync::Mutex::new(()),
@@ -1110,6 +1117,14 @@ const MIGRATIONS: &[Migration] = &[
         name: "todo_resolution_suggestions",
         kind: MigrationKind::Sql(include_str!("../migrations/078_todo_resolution_suggestions.sql")),
     },
+    Migration {
+        version: 79,
+        name: "draft_attachment_resources",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn { table: "drafts", column: "managed_attachments", sql: "ALTER TABLE drafts ADD COLUMN managed_attachments TEXT NOT NULL DEFAULT 'null'" },
+            MigrationStep::Sql(include_str!("../migrations/079_draft_attachment_resources.sql")),
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1318,6 +1333,7 @@ mod tests {
         let store = Store {
             writer: writer.clone(),
             reader: writer,
+            resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         sqlx::raw_sql(
@@ -1558,6 +1574,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn draft_attachment_resources_migration_upgrades_78_and_recovers_partial_79() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-78.db");
+        let draft_id = mxr_core::DraftId::new();
+        let account_id = mxr_core::AccountId::new();
+        {
+            let store = store_at_version(&db_path, 78).await;
+            sqlx::query("INSERT INTO accounts (id,name,email,created_at,updated_at) VALUES (?, 'Fixture','fixture@example.com',1,1)")
+                .bind(account_id.as_str()).execute(store.writer()).await.unwrap();
+            sqlx::query("INSERT INTO drafts (id,account_id,subject,body_markdown,attachments,created_at,updated_at,revision) VALUES (?,?,'Kept draft','Kept body','[\"/legacy/a.txt\"]',1,2,3)")
+                .bind(draft_id.as_str()).bind(account_id.as_str()).execute(store.writer()).await.unwrap();
+            sqlx::query("INSERT INTO personal_categories (id,name,normalized_name,created_at,updated_at) VALUES ('kept','Kept','kept',1,1)")
+                .execute(store.writer()).await.unwrap();
+            sqlx::query("INSERT INTO draft_send_outcomes (operation_id,draft_id,account_id,reviewed_revision,command_hash,state,updated_at) VALUES ('kept-op',?,?,3,'kept-hash','unknown',2)")
+                .bind(draft_id.as_str()).bind(account_id.as_str()).execute(store.writer()).await.unwrap();
+            store.writer().close().await;
+        }
+        for partially_applied in [false, true] {
+            let store = Store::new(&db_path).await.unwrap();
+            let draft = store.get_draft(&draft_id).await.unwrap().unwrap();
+            assert_eq!(
+                draft.attachments,
+                vec![std::path::PathBuf::from("/legacy/a.txt")]
+            );
+            assert_eq!(draft.managed_attachments, None);
+            assert_eq!(draft.revision, Some(3));
+            assert_eq!(draft.content.markdown_source(), Some("Kept body"));
+            assert!(test_table_exists(store.writer(), "draft_attachment_resources").await);
+            let stamps: (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM schema_migrations WHERE version IN (78,79)")
+                    .fetch_one(store.writer())
+                    .await
+                    .unwrap();
+            assert_eq!(stamps.0, 2);
+            let category: (String,) =
+                sqlx::query_as("SELECT name FROM personal_categories WHERE id='kept'")
+                    .fetch_one(store.reader())
+                    .await
+                    .unwrap();
+            assert_eq!(category.0, "Kept");
+            let outcome: (String, String) = sqlx::query_as(
+                "SELECT state,command_hash FROM draft_send_outcomes WHERE operation_id='kept-op'",
+            )
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+            assert_eq!(outcome, ("unknown".into(), "kept-hash".into()));
+            if !partially_applied {
+                sqlx::query("DELETE FROM schema_migrations WHERE version=79")
+                    .execute(store.writer())
+                    .await
+                    .unwrap();
+                sqlx::query("DROP TABLE draft_attachment_resources")
+                    .execute(store.writer())
+                    .await
+                    .unwrap();
+            }
+            store.reader().close().await;
+            store.writer().close().await;
+        }
+    }
+
+    #[tokio::test]
     async fn categories_migration_upgrades_version_76_without_losing_user_state() {
         let temp = tempdir().unwrap();
         let db_path = temp.path().join("version-76.db");
@@ -1694,10 +1773,12 @@ mod tests {
         }
 
         let store = Store::new(&db_path).await.unwrap();
-        let version: (i64,) = sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
-            .fetch_one(store.writer())
-            .await
-            .unwrap();
+        let version: (i64,) = sqlx::query_as(
+            "SELECT version FROM schema_migrations WHERE name = 'todo_resolution_suggestions'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
         assert_eq!(version.0, 78);
         let category: (String, String) =
             sqlx::query_as("SELECT id, name FROM personal_categories WHERE id = 'kept-category'")

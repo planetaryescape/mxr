@@ -7,6 +7,7 @@ Manage drafts: list (default), show scheduled sends, recover orphaned in-flight 
 Usage: mxr drafts [OPTIONS] [COMMAND]
 
 Commands:
+  attach     Upload client-local files as immutable resources and attach to a saved draft
   list       Show all drafts (default if no subcommand)
   scheduled  Show drafts scheduled to send later that have not gone out yet, soonest first. Review first, then schedule with `mxr send <draft-id> --expected-revision <revision> --at <TIME>`; cancel with `mxr unsend <draft-id>`
   recover    Show drafts that look orphaned mid-send (status `'sending'`, stale heartbeat). Query their send outcomes before taking action; uncertain submissions cannot be reset or automatically retried

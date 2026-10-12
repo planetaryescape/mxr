@@ -166,6 +166,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if sending && !draft.attachments.is_empty() {
+        draft = expect_saved_draft(client.request(Request::SaveDraft { draft }).await?)?;
+    }
     if sending {
         let identity = mxr_core::SendIdentity::for_draft(&draft);
         print_send_recovery(&draft.account_id, &identity);
@@ -282,7 +285,7 @@ fn compose_result_output(
         "to": draft.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
         "content_kind": draft.content.kind_str(),
         "inline_count": draft.inline_assets.len(),
-        "attachment_count": draft.attachments.len(),
+        "attachment_count": (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len)),
         "local_message_id": local_message_id,
     });
 
@@ -625,7 +628,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
-    let outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
+    let mut outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, outgoing.content.analysis_text(), sending)?;
 
     if dry_run {
@@ -642,6 +645,13 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     // stop the send, not surface after the mail has already gone.
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
+    if sending && !outgoing.attachments.is_empty() {
+        outgoing = expect_saved_draft(
+            client
+                .request(Request::SaveDraft { draft: outgoing })
+                .await?,
+        )?;
+    }
     if sending {
         let identity = mxr_core::SendIdentity::for_draft(&outgoing);
         print_send_recovery(&outgoing.account_id, &identity);
@@ -1245,6 +1255,7 @@ pub async fn send_draft(
     print_send_recovery(&draft.account_id, &identity);
     let response = client
         .request(Request::SendStoredDraft {
+            managed_attachments_reviewed: true,
             send_identity: Some(identity.clone()),
             draft_id: draft_id.clone(),
             override_safety_token,
@@ -1485,6 +1496,7 @@ pub async fn schedule_send(
     );
     let resp = client
         .request(Request::ScheduleSend {
+            managed_attachments_reviewed: true,
             expected_revision: Some(revision),
             draft_id: draft_id.clone(),
             send_at,
@@ -2058,6 +2070,7 @@ fn draft_from_frontmatter(
         subject: frontmatter.subject.clone(),
         content: DraftContent::markdown(body),
         inline_assets: Vec::new(),
+        managed_attachments: None,
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_calendar_reply: None,
         created_at: now,
@@ -2089,6 +2102,7 @@ fn validate_compose_draft(
         &frontmatter
             .attach
             .iter()
+            .filter(|path| !path.starts_with("mxr-resource:"))
             .map(PathBuf::from)
             .collect::<Vec<_>>(),
     )?;
@@ -2297,7 +2311,8 @@ fn print_draft_preview(
                 format_addresses(&draft.bcc),
                 draft.subject.clone(),
                 draft.content.byte_len().to_string(),
-                draft.attachments.len().to_string(),
+                (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len))
+                    .to_string(),
             ])?;
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
@@ -2322,7 +2337,10 @@ fn print_draft_preview(
             println!("  cc: {}", format_addresses(&draft.cc));
             println!("  bcc: {}", format_addresses(&draft.bcc));
             println!("  subject: {}", draft.subject);
-            println!("  attachments: {}", draft.attachments.len());
+            println!(
+                "  attachments: {}",
+                (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len))
+            );
         }
     }
     Ok(())
@@ -2681,6 +2699,7 @@ mod tests {
                 subject: "subj".into(),
                 content: mxr_core::types::DraftContent::markdown("body"),
                 inline_assets: Vec::new(),
+                managed_attachments: None,
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: Utc::now(),
@@ -2837,6 +2856,7 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 subject: "Quarterly numbers".into(),
                 content: DraftContent::markdown(""),
                 inline_assets: Vec::new(),
+                managed_attachments: None,
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: chrono::Utc::now(),

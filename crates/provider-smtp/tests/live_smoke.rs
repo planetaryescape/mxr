@@ -19,6 +19,7 @@ fn invalid_draft() -> Draft {
         bcc: vec![],
         subject: "fixture".into(),
         content: DraftContent::markdown("body"),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: Vec::new(),
         inline_calendar_reply: None,

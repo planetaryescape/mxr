@@ -44,6 +44,7 @@ fn html_draft(
         subject: "Quarterly numbers".to_string(),
         content: mxr_core::types::DraftContent::html(html, text.map(str::to_string)),
         inline_assets: Vec::new(),
+        managed_attachments: None,
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: chrono::Utc::now(),
@@ -217,6 +218,7 @@ async fn send_stored_draft_revalidates_a_row_written_before_the_gate_existed() {
             &request(
                 1,
                 Request::SendStoredDraft {
+                    managed_attachments_reviewed: true,
                     send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id.clone(),
                     override_safety_token: None,
@@ -542,6 +544,7 @@ async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
             &request(
                 1,
                 Request::SendStoredDraft {
+                    managed_attachments_reviewed: true,
                     send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id,
                     override_safety_token: None,
@@ -591,6 +594,7 @@ async fn sending_an_html_draft_with_a_blank_text_alternative_still_scans_the_doc
             &request(
                 1,
                 Request::SendStoredDraft {
+                    managed_attachments_reviewed: true,
                     send_identity: Some(mxr_core::SendIdentity::for_revision(&id, 1)),
                     draft_id: id,
                     override_safety_token: None,

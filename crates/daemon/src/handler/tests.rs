@@ -607,6 +607,7 @@ fn classify_request_pins_previously_broken_reads() {
 fn classify_request_keeps_send_and_destructive_gates() {
     // Sends require the send capability.
     let send = Request::SendStoredDraft {
+        managed_attachments_reviewed: true,
         send_identity: Some(mxr_core::SendIdentity::for_revision(
             &mxr_core::DraftId::new(),
             1,
@@ -706,6 +707,7 @@ mod categories;
 mod deferral;
 mod desk;
 mod desk_done;
+mod draft_attachment_resources;
 mod draft_revisions;
 mod freshness;
 mod html_drafts;

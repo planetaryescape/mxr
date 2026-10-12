@@ -1,3 +1,4 @@
+use super::draft_attachment_bytes::DraftAttachmentBytes;
 use super::*;
 use std::sync::{Arc, Mutex};
 
@@ -11,6 +12,12 @@ async fn explicit_unsaved_recovery_retry_preserves_identity_and_never_overwrites
         let saves = Arc::new(Mutex::new(0));
         let attempts = saves.clone();
         let saved = store.clone();
+        let resources = DraftAttachmentBytes::new(
+            account.clone(),
+            b"retry bytes",
+            "722bb1429c491dd72c69d2b9a177cca1a452b6a3225604dd221c16fa7e60403c",
+        );
+        let uploaded = resources.clone();
         let responder = draft_store_responder(store.clone(), sample_account(&account));
         let _ipc = spawn_fake_ipc_server(
             &socket,
@@ -40,6 +47,9 @@ async fn explicit_unsaved_recovery_retry_preserves_identity_and_never_overwrites
                             ),
                         });
                     }
+                }
+                if let Some(response) = uploaded.respond(&request) {
+                    return Some(response);
                 }
                 responder(request)
             },
@@ -124,29 +134,35 @@ async fn explicit_unsaved_recovery_retry_preserves_identity_and_never_overwrites
             let destination = accepted["session"]["draftPath"].as_str().unwrap();
             assert_ne!(destination, recovery);
             assert_eq!(accepted["session"]["draftId"], id);
-            assert_eq!(accepted["session"]["revision"], 1);
+            assert_eq!(accepted["session"]["revision"], 2);
             assert_eq!(accepted["session"]["preservedRecoveryPath"], recovery);
             assert!(compose_recovery_source(Path::new(destination))
                 .await
                 .unwrap()
                 .is_none());
-            let canonical_attachment = store.snapshot()[0].attachments[0].clone();
+            let canonical = store.snapshot()[0].clone();
+            assert_eq!(canonical.revision, Some(2));
+            assert!(canonical.attachments.is_empty());
+            let managed = canonical
+                .managed_attachments
+                .as_ref()
+                .expect("managed attachment set");
+            assert_eq!(managed.len(), 1);
+            let resource = &managed[0];
             assert_eq!(
-                accepted["session"]["frontmatter"]["attach"][0],
-                canonical_attachment.display().to_string()
+                accepted["session"]["frontmatter"]["attach"],
+                json!([format!(
+                    "mxr-resource:{}/{}",
+                    resource.id, resource.filename
+                )])
             );
-            assert_ne!(
-                canonical_attachment.display().to_string(),
-                attachments[0].as_str().unwrap()
-            );
+            resources.assert_owned(&canonical);
             remove_compose_file(Path::new(recovery)).await.unwrap();
             remove_compose_attachment_dir(Path::new(recovery))
                 .await
                 .unwrap();
-            assert_eq!(
-                tokio::fs::read(&canonical_attachment).await.unwrap(),
-                b"retry bytes"
-            );
+            assert!(!Path::new(attachments[0].as_str().unwrap()).exists());
+            resources.assert_owned(&canonical);
             remove_compose_file(Path::new(destination)).await.unwrap();
             remove_compose_attachment_dir(Path::new(destination))
                 .await

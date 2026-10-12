@@ -1227,18 +1227,11 @@ async fn cancel_auto_reminder(
     passthrough(response)
 }
 
-#[derive(Debug, Deserialize)]
-struct ScheduleSendBody {
-    expected_revision: Option<i64>,
-    draft_id: String,
-    send_at: chrono::DateTime<chrono::Utc>,
-}
-
 async fn schedule_send(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(body): Json<ScheduleSendBody>,
+    Json(body): Json<super::request_types::ScheduleStoredDraftRequest>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&body.draft_id)
         .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
@@ -1247,6 +1240,7 @@ async fn schedule_send(
         &headers,
         auth.token.as_deref(),
         Request::ScheduleSend {
+            managed_attachments_reviewed: body.managed_attachments_reviewed,
             expected_revision: body.expected_revision,
             draft_id: id,
             send_at: body.send_at,
@@ -2200,6 +2194,8 @@ async fn reset_orphaned_draft(
 
 #[derive(Deserialize)]
 struct ReviewedSendQuery {
+    #[serde(default)]
+    managed_attachments_reviewed: bool,
     token: Option<String>,
     operation_id: String,
     expected_revision: i64,
@@ -2241,6 +2237,7 @@ async fn send_stored_draft(
         &headers,
         auth.token.as_deref(),
         Request::SendStoredDraft {
+            managed_attachments_reviewed: auth.managed_attachments_reviewed,
             send_identity: Some(mxr_core::SendIdentity {
                 operation_id: auth.operation_id.clone(),
                 expected_revision: auth.expected_revision,

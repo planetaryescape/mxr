@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Upload client-local files as immutable resources and attach to a saved draft
+
+Usage: mxr drafts attach [OPTIONS] <DRAFT_ID> <FILES>...
+
+Arguments:
+  <DRAFT_ID>
+  <FILES>...
+
+Options:
+      --expected-revision <EXPECTED_REVISION>
+          Revision shown by the draft preview; stale edits fail before uploading
+      --dry-run
+          Preview filenames and sizes; creates no draft or resource
+  -h, --help
+          Print help

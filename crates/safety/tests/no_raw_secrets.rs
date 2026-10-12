@@ -124,6 +124,7 @@ fn draft_with(body: &str) -> Draft {
         bcc: vec![],
         subject: "test".into(),
         content: DraftContent::markdown(body),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: vec![],
         inline_calendar_reply: None,

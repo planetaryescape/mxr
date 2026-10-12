@@ -58,7 +58,11 @@ impl Spool {
     }
 
     /// Durable fake acceptance evidence, containing identifiers only.
-    pub(crate) fn record_acceptance(&self, message_id: &str) -> Result<(), MxrError> {
+    pub(crate) fn record_acceptance(
+        &self,
+        message_id: &str,
+        attachments: &[serde_json::Value],
+    ) -> Result<(), MxrError> {
         use std::io::Write;
         let path = self
             .dir
@@ -69,7 +73,7 @@ impl Spool {
             .open(path)
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         file.write_all(
-            serde_json::json!({"message_id": message_id})
+            serde_json::json!({"message_id": message_id, "attachments": attachments})
                 .to_string()
                 .as_bytes(),
         )

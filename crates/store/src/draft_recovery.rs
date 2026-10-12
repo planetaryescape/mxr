@@ -102,6 +102,7 @@ mod tests {
             bcc: vec![],
             subject: "Test".into(),
             content: DraftContent::markdown("Body"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

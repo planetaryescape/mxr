@@ -75,6 +75,7 @@ typed_id!(LabelId);
 typed_id!(CategoryId);
 typed_id!(DraftId);
 typed_id!(AttachmentId);
+typed_id!(DraftAttachmentId);
 typed_id!(CalendarInviteId);
 typed_id!(SavedSearchId);
 typed_id!(RuleId);

@@ -4384,6 +4384,7 @@ name = "mxr-client"
 version = "0.6.85"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "futures",
  "mxr-core",
  "mxr-protocol",
@@ -4566,6 +4567,7 @@ version = "0.6.85"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "mxr-client",
  "mxr-config",
@@ -4623,6 +4625,7 @@ dependencies = [
  "mail-builder",
  "mxr-core",
  "serde_json",
+ "sha2 0.11.0",
  "tokio",
  "uuid",
 ]

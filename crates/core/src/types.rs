@@ -1594,6 +1594,19 @@ pub struct DraftContentSchema {
     pub body_text: Option<String>,
 }
 
+/// Immutable daemon-owned bytes belonging to one saved draft.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftAttachment {
+    pub id: DraftAttachmentId,
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub filename: String,
+    pub mime_type: String,
+    pub length_bytes: u64,
+    pub sha256: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Draft {
@@ -1624,6 +1637,9 @@ pub struct Draft {
     pub content: DraftContent,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub attachments: Vec<PathBuf>,
+    /// None identifies old clients; Some(empty) explicitly removes managed resources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_attachments: Option<Vec<DraftAttachment>>,
     /// CID-referenced inline images for an HTML body. Always empty for a
     /// markdown draft.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2577,6 +2593,7 @@ mod draft_content_tests {
             bcc: vec![],
             subject: "Subject".to_string(),
             content,
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

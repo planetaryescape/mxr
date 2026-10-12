@@ -390,6 +390,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
                 Targets(targets)
             }
         }
+        Request::PreviewDraftAttachment { metadata } | Request::BeginDraftAttachment { metadata } => Targets(vec![T::Account(&metadata.account_id), T::Draft(&metadata.draft_id)]),
+        Request::WriteDraftAttachmentChunk { account_id, draft_id, .. } | Request::FinalizeDraftAttachment { account_id, draft_id, .. } => Targets(vec![T::Account(account_id), T::Draft(draft_id)]),
         Request::SendDraft { draft, .. }
         | Request::SaveDraft { draft }
         | Request::UpdateDraft { draft }
@@ -1114,6 +1116,7 @@ pub(super) async fn scope_response(
             send_outcome_supported,
             archive_recovery_supported,
             attachment_transfer_supported,
+            draft_attachment_upload_supported,
             uptime_secs,
             accounts: _,
             total_messages,
@@ -1151,6 +1154,7 @@ pub(super) async fn scope_response(
                 send_outcome_supported,
                 archive_recovery_supported,
                 attachment_transfer_supported,
+                draft_attachment_upload_supported,
                 uptime_secs,
                 accounts: allowed
                     .iter()

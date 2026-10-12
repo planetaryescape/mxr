@@ -30,6 +30,7 @@ mod desk_lanes;
 mod desk_timers;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
+mod draft_attachments;
 mod draft_compose;
 mod draft_context;
 mod draft_eval;
@@ -413,6 +414,10 @@ pub fn request_lane(req: &Request) -> IpcLane {
         Request::DownloadAttachment { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::PreviewDraftAttachment { .. }
+        | Request::BeginDraftAttachment { .. }
+        | Request::WriteDraftAttachmentChunk { .. }
+        | Request::FinalizeDraftAttachment { .. }
         | Request::OpenAttachment { .. }
         | Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
@@ -591,6 +596,32 @@ async fn dispatch(
             mailbox::download_attachment(state, message_id, attachment_id, destination.as_deref())
                 .await
         }
+        Request::PreviewDraftAttachment { metadata } => draft_attachments::preview(metadata),
+        Request::BeginDraftAttachment { metadata } => {
+            draft_attachments::begin(state, metadata).await
+        }
+        Request::WriteDraftAttachmentChunk {
+            draft_id,
+            account_id,
+            resource_id,
+            offset,
+            data_base64,
+        } => {
+            draft_attachments::write_chunk(
+                state,
+                draft_id,
+                account_id,
+                resource_id,
+                *offset,
+                data_base64,
+            )
+            .await
+        }
+        Request::FinalizeDraftAttachment {
+            draft_id,
+            account_id,
+            resource_id,
+        } => draft_attachments::finalize(state, draft_id, account_id, resource_id).await,
         Request::GetAttachmentTransferMetadata {
             message_id,
             attachment_id,
@@ -1190,10 +1221,19 @@ async fn dispatch(
             reply_later::cancel_auto_reminder(state, sent_message_id).await
         }
         Request::ScheduleSend {
+            managed_attachments_reviewed,
             draft_id,
             send_at,
             expected_revision,
-        } => mutations::schedule_send(state, draft_id, *send_at, *expected_revision).await,
+        } => {
+            async {
+                if !managed_attachments_reviewed {
+                    draft_attachments::require_review_flag(state, draft_id).await?;
+                }
+                mutations::schedule_send(state, draft_id, *send_at, *expected_revision).await
+            }
+            .await
+        }
         Request::CancelScheduledSend { draft_id } => {
             mutations::cancel_scheduled_send(state, draft_id).await
         }
@@ -1847,16 +1887,23 @@ async fn dispatch(
         }
         Request::SaveDraft { draft } => mutations::save_draft(state, draft).await,
         Request::SendStoredDraft {
+            managed_attachments_reviewed,
             draft_id,
             send_identity,
             override_safety_token,
         } => {
-            mutations::send_stored_draft_reviewed(
-                state,
-                draft_id,
-                send_identity.as_ref(),
-                override_safety_token.as_deref(),
-            )
+            async {
+                if !managed_attachments_reviewed {
+                    draft_attachments::require_review_flag(state, draft_id).await?;
+                }
+                mutations::send_stored_draft_reviewed(
+                    state,
+                    draft_id,
+                    send_identity.as_ref(),
+                    override_safety_token.as_deref(),
+                )
+                .await
+            }
             .await
         }
         Request::GetSendOutcome {
@@ -2261,6 +2308,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetDraft { .. }
         | Request::ExportThread { .. }
         | Request::ExportSearch { .. }
+        | Request::PreviewDraftAttachment { .. }
         | Request::GetStatus
         | Request::Ping
         | Request::Authenticate { .. }
@@ -2275,9 +2323,12 @@ fn classify_request(req: &Request) -> RequestClass {
 
         // --- DraftOnly: logical draft create/update/delete (local plus an
         // optional linked provider resource) ---
-        Request::SaveDraft { .. } | Request::UpdateDraft { .. } | Request::DeleteDraft { .. } => {
-            DraftOnly
-        }
+        Request::SaveDraft { .. }
+        | Request::UpdateDraft { .. }
+        | Request::DeleteDraft { .. }
+        | Request::BeginDraftAttachment { .. }
+        | Request::WriteDraftAttachmentChunk { .. }
+        | Request::FinalizeDraftAttachment { .. } => DraftOnly,
 
         // --- Send: transmits mail to a provider ---
         Request::SendDraft { .. }
@@ -2468,6 +2519,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::GetAttachmentTransferMetadata { .. } => "attachment_transfer_metadata",
         Request::ReadAttachmentChunk { .. } => "read_attachment_chunk",
+        Request::PreviewDraftAttachment { .. } => "preview_draft_attachment",
+        Request::BeginDraftAttachment { .. } => "begin_draft_attachment",
+        Request::WriteDraftAttachmentChunk { .. } => "write_draft_attachment_chunk",
+        Request::FinalizeDraftAttachment { .. } => "finalize_draft_attachment",
         Request::OpenAttachment { .. } => "open_attachment",
         Request::ListBodies { .. } => "list_bodies",
         Request::GetThread { .. } => "get_thread",

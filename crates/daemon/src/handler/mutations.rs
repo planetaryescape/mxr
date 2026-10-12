@@ -413,6 +413,10 @@ pub(crate) async fn check_draft_safety_request(
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> HandlerResult {
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        super::draft_attachments::require_visible_set(draft, &stored)?;
+    }
+    super::draft_attachments::resolve(state, draft).await?;
     // `--check` builds a transient draft that was never stored, so the text
     // alternative has to be materialised here too — otherwise an HTML draft
     // would be checked against an empty body and always come back SAFE.
@@ -2455,8 +2459,10 @@ async fn checked_draft(
 
 async fn create_draft_locked(state: &AppState, draft: &Draft) -> HandlerResult {
     validate_draft_content(draft)?;
+    super::draft_attachments::validate_set(state, draft).await?;
     let draft = materialize_text_alternative(draft);
     if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        super::draft_attachments::require_visible_set(&draft, &stored)?;
         // Lost creation responses may repeat the same identity and content.
         let mut submitted = draft.clone().into_owned();
         submitted.revision = stored.revision;
@@ -2502,6 +2508,8 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
     validate_draft_content(draft)?;
     let draft = &*materialize_text_alternative(draft);
     let stored = checked_draft(state, &draft.id, draft.revision).await?;
+    super::draft_attachments::require_visible_set(draft, &stored)?;
+    super::draft_attachments::validate_set(state, draft).await?;
     let stored_kind = stored.content.kind_str();
     let incoming_kind = draft.content.kind_str();
     if stored_kind != incoming_kind {
@@ -2528,7 +2536,14 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
         if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
             draft = Cow::Owned(threaded);
         }
-        match sender.update_draft(&provider_draft_id, &draft, &from).await {
+        match sender
+            .update_draft(
+                &provider_draft_id,
+                &super::draft_attachments::resolve(state, &draft).await?,
+                &from,
+            )
+            .await
+        {
             Ok(()) => {
                 updated_provider_revision = sender
                     .fetch_draft(&provider_draft_id)
@@ -2539,7 +2554,10 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
             }
             Err(MxrError::NotFound(_)) => {
                 let replacement_id = sender
-                    .save_draft(&draft, &from)
+                    .save_draft(
+                        &super::draft_attachments::resolve(state, &draft).await?,
+                        &from,
+                    )
                     .await?
                     .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
                 // Point at the replacement before touching the local content.
@@ -2775,6 +2793,7 @@ async fn draft_from_server_snapshot(
         .join(existing.id.as_str())
         .join(uuid::Uuid::now_v7().to_string());
     let mut attachments = Vec::new();
+    let mut managed_attachments = Vec::new();
     let mut inline_assets = Vec::new();
     for (index, part) in parsed.parts.iter().enumerate() {
         let disposition = remote_attachment_disposition(part);
@@ -2792,6 +2811,29 @@ async fn draft_from_server_snapshot(
         let filename = part
             .attachment_name()
             .map_or_else(|| format!("attachment-{index}"), str::to_string);
+        if disposition != AttachmentDisposition::Inline {
+            use sha2::{Digest, Sha256};
+            let digest: String = Sha256::digest(part.contents())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            if let Some(resource) = existing
+                .managed_attachments
+                .iter()
+                .flatten()
+                .find(|resource| {
+                    resource.filename == filename
+                        && resource.length_bytes == part.contents().len() as u64
+                        && resource.sha256 == digest
+                        && !managed_attachments
+                            .iter()
+                            .any(|seen: &mxr_core::DraftAttachment| seen.id == resource.id)
+                })
+            {
+                managed_attachments.push(resource.clone());
+                continue;
+            }
+        }
         let path = revision_dir.join(super::sanitized_attachment_filename(
             &filename,
             &attachment_id,
@@ -2834,6 +2876,7 @@ async fn draft_from_server_snapshot(
         subject: headers.subject,
         content,
         attachments,
+        managed_attachments: Some(managed_attachments),
         inline_assets,
         inline_calendar_reply: existing.inline_calendar_reply.clone(),
         created_at: existing.created_at,
@@ -3264,6 +3307,13 @@ fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
     command.created_at = chrono::DateTime::UNIX_EPOCH;
     command.updated_at = chrono::DateTime::UNIX_EPOCH;
     command.revision = None;
+    if command
+        .managed_attachments
+        .as_ref()
+        .is_some_and(Vec::is_empty)
+    {
+        command.managed_attachments = None;
+    }
     let bytes = serde_json::to_vec(&command).map_err(|e| e.to_string())?;
     Ok(Sha256::digest(bytes)
         .iter()
@@ -3376,8 +3426,10 @@ pub(super) async fn send_draft_reviewed(
         )
         .into());
     }
+    super::draft_attachments::validate_set(state, draft).await?;
     if let Some(stored) = state.store.get_draft(&draft.id).await? {
         checked_draft(state, &draft.id, draft.revision).await?;
+        super::draft_attachments::require_visible_set(draft, &stored)?;
         if send_command_hash(&stored)? != hash {
             return Err(
                 "Submitted content differs from the reviewed saved draft; save and review first"
@@ -3413,6 +3465,11 @@ pub(super) async fn send_draft_reviewed(
 /// here never leaves that record behind.
 pub(super) async fn check_before_send(state: &AppState, draft: &Draft) -> Result<(), HandlerError> {
     validate_draft_content(draft)?;
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        super::draft_attachments::require_visible_set(draft, &stored)?;
+    }
+    super::draft_attachments::resolve(state, draft).await?;
+    super::draft_attachments::validate_set(state, draft).await?;
     let draft = materialize_text_alternative(draft);
     enforce_draft_safety_with_override(state, &draft, None)
         .await
@@ -3547,6 +3604,7 @@ async fn send_stored_draft_locked(
         );
     }
     let command_hash = send_command_hash(&draft)?;
+    draft = super::draft_attachments::resolve(state, &draft).await?;
     // Resolve all definite local failures before claiming submission.
     let sender = state
         .send_provider_for_account(&draft.account_id)
@@ -4033,6 +4091,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
         .get_draft(&draft.id)
         .await?
         .ok_or_else(|| "Draft disappeared".to_string())?;
+    super::draft_attachments::require_visible_set(draft, &canonical)?;
     let draft = &canonical;
     let sender = match state.send_provider_for_account(&draft.account_id) {
         Ok(sender) => sender,
@@ -4047,8 +4106,12 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
     let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
     let draft = threaded.as_ref().unwrap_or(draft);
+    let provider_draft = super::draft_attachments::resolve(state, draft).await?;
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(&draft.id).await? {
-        match sender.update_draft(&provider_draft_id, draft, &from).await {
+        match sender
+            .update_draft(&provider_draft_id, &provider_draft, &from)
+            .await
+        {
             Ok(()) => {
                 if threaded.is_some() {
                     persist_reply_thread_id(state, draft).await;
@@ -4072,7 +4135,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
         }
     }
 
-    match sender.save_draft(draft, &from).await {
+    match sender.save_draft(&provider_draft, &from).await {
         Ok(Some(draft_id)) => {
             if threaded.is_some() {
                 persist_reply_thread_id(state, draft).await;
@@ -4459,6 +4522,7 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
                 subject: subject.clone().unwrap_or_else(|| "unsubscribe".to_string()),
                 content: DraftContent::markdown("unsubscribe".to_string()),
                 inline_assets: Vec::new(),
+                managed_attachments: None,
                 attachments: vec![],
                 inline_calendar_reply: None,
                 created_at: now,
@@ -5014,6 +5078,7 @@ mod safety_context_wiring_tests {
             subject: "subject".into(),
             content: DraftContent::markdown(body),
             inline_assets: Vec::new(),
+            managed_attachments: None,
             attachments: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
@@ -5440,6 +5505,7 @@ mod sent_append_tests {
             subject: "hello".into(),
             content: DraftContent::markdown("body"),
             inline_assets: Vec::new(),
+            managed_attachments: None,
             attachments: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),

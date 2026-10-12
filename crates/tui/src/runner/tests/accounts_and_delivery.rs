@@ -552,6 +552,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
     };
     match &queue[0].request {
         Request::ScheduleSend {
+            managed_attachments_reviewed: true,
             draft_id: scheduled_id,
             send_at,
             ..
@@ -970,6 +971,7 @@ fn test_draft(subject: &str) -> Draft {
         bcc: vec![],
         subject: subject.into(),
         content: DraftContent::markdown("Body."),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: vec![],
         inline_calendar_reply: None,

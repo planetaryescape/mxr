@@ -1262,6 +1262,7 @@ pub(crate) async fn get_status_within_budget(
         send_outcome_supported: true,
         archive_recovery_supported: true,
         attachment_transfer_supported: true,
+        draft_attachment_upload_supported: true,
         uptime_secs: state.uptime_secs(),
         accounts,
         total_messages,

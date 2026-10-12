@@ -223,11 +223,16 @@ pub(super) struct ComposeSessionScheduleRequest {
     pub(super) send_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionAttachmentRequest {
     pub(super) draft_path: String,
-    pub(super) filename: String,
-    pub(super) content_base64: String,
+    pub(super) account_id: String,
+    pub(super) operation: String,
+    pub(super) metadata: Option<mxr_core::DraftAttachment>,
+    pub(super) resource_id: Option<mxr_core::DraftAttachmentId>,
+    pub(super) offset: Option<u64>,
+    pub(super) content_base64: Option<String>,
+    pub(super) expected_revision: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -492,4 +497,41 @@ pub(super) struct ScheduledComposeResponse {
 #[allow(dead_code)]
 pub(super) struct DiscardedComposeResponse {
     ok: bool,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ComposeAttachmentOwnerResponse {
+    pub(super) draft_id: mxr_core::DraftId,
+    pub(super) revision: i64,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ComposeAttachmentChunkResponse {
+    pub(super) ok: bool,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ComposeAttachmentUploadResponse {
+    pub(super) draft_id: mxr_core::DraftId,
+    pub(super) revision: i64,
+    pub(super) path: String,
+    pub(super) filename: String,
+    pub(super) size_bytes: u64,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[serde(untagged)]
+pub(super) enum ComposeAttachmentResponse {
+    Begin(ComposeAttachmentOwnerResponse),
+    Chunk(ComposeAttachmentChunkResponse),
+    Finalize(ComposeAttachmentUploadResponse),
+}
+#[derive(Deserialize, utoipa::ToSchema)]
+pub(super) struct ScheduleStoredDraftRequest {
+    pub(super) expected_revision: Option<i64>,
+    pub(super) draft_id: String,
+    pub(super) send_at: chrono::DateTime<chrono::Utc>,
+    /// True only after reviewing the current managed attachment metadata.
+    #[serde(default)]
+    pub(super) managed_attachments_reviewed: bool,
 }

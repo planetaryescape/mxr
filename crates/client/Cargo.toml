@@ -26,6 +26,7 @@ base64 = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
 mxr-core = { workspace = true }
 mxr-transport = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }

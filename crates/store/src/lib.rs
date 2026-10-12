@@ -42,6 +42,7 @@ mod desk;
 mod desk_done;
 mod diagnostics;
 mod draft;
+mod draft_attachments;
 mod draft_commitments;
 mod draft_recovery;
 mod draft_safety;

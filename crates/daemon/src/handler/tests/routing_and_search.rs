@@ -980,6 +980,7 @@ async fn dispatch_status() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: _,
                     accounts,
                     total_messages: _,

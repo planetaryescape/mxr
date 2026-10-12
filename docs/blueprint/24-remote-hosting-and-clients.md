@@ -2,6 +2,8 @@
 
 Status: proposed implementation contract, 2026-10-12. Commands, routes, fields and timing defaults below are requirements to implement, not descriptions of released behaviour. Source baseline: [`origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`](https://github.com/planetaryescape/mxr/tree/25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb). Implement after the completed [daemon portability preparation](23-daemon-portability.md); this expands its deferred R01 remote boundary. Track execution in [the remote hosting issue](../issues/remote-hosting-and-client-lifecycle.md).
 
+The [execution ladder](../implementation/remote-hosting.md) records F01 as released in v0.6.94: local pairing inspection, approval and revocation. R1 is building the first remote mailbox. The remaining hosting, connection and lifecycle behavior below is still proposed.
+
 Implement `mxr serve` on the computer that owns the mail workspace and `mxr connect` on each client computer. CLI, TUI, MCP and `mxr web` must honour the saved connection. The host knows which clients are registered, which sessions are active, and which operations it has accepted. Clients receive planned shutdown notices, reconnect after interruptions and deregister when deliberately switching away.
 
 The completion check is two separate client homes using one hosted workspace through authenticated HTTPS: read, reply, attach, submit, lose a response, restart the host, recover the outcome, then switch one client to local while the other continues. Include an actual browser session. Repeat the switch while the host is unavailable and prove eventual deregistration without sending old work to the local daemon. Use controlled providers throughout.

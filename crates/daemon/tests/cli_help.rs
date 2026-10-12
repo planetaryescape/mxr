@@ -232,6 +232,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_drafts_discard", &["drafts", "discard", "--help"]),
         ("cli_help_drafts_push", &["drafts", "push", "--help"]),
         ("cli_help_drafts_edit", &["drafts", "edit", "--help"]),
+        ("cli_help_drafts_attach", &["drafts", "attach", "--help"]),
         ("cli_help_send", &["send", "--help"]),
         ("cli_help_unsubscribe", &["unsubscribe", "--help"]),
         ("cli_help_attachments", &["attachments", "--help"]),

@@ -659,6 +659,25 @@ pub enum Request {
         destination: Option<std::path::PathBuf>,
     },
     /// Describe an attachment for a path-free, integrity-checked transfer.
+    /// Validate upload declaration without creating a draft, resource or file.
+    PreviewDraftAttachment {
+        metadata: DraftAttachment,
+    },
+    BeginDraftAttachment {
+        metadata: DraftAttachment,
+    },
+    WriteDraftAttachmentChunk {
+        draft_id: DraftId,
+        account_id: AccountId,
+        resource_id: DraftAttachmentId,
+        offset: u64,
+        data_base64: String,
+    },
+    FinalizeDraftAttachment {
+        draft_id: DraftId,
+        account_id: AccountId,
+        resource_id: DraftAttachmentId,
+    },
     GetAttachmentTransferMetadata {
         message_id: MessageId,
         attachment_id: AttachmentId,
@@ -1208,6 +1227,8 @@ pub enum Request {
     /// the same `send_stored_draft` pipeline that interactive sends use.
     ScheduleSend {
         #[serde(default)]
+        managed_attachments_reviewed: bool,
+        #[serde(default)]
         expected_revision: Option<i64>,
         draft_id: DraftId,
         send_at: chrono::DateTime<chrono::Utc>,
@@ -1461,6 +1482,8 @@ pub enum Request {
         draft: Draft,
     },
     SendStoredDraft {
+        #[serde(default)]
+        managed_attachments_reviewed: bool,
         #[serde(default)]
         send_identity: Option<mxr_core::SendIdentity>,
         draft_id: DraftId,
@@ -2497,6 +2520,10 @@ impl Request {
             | Self::DownloadAttachment { .. }
             | Self::GetAttachmentTransferMetadata { .. }
             | Self::ReadAttachmentChunk { .. }
+            | Self::PreviewDraftAttachment { .. }
+            | Self::BeginDraftAttachment { .. }
+            | Self::WriteDraftAttachmentChunk { .. }
+            | Self::FinalizeDraftAttachment { .. }
             | Self::OpenAttachment { .. }
             | Self::ListBodies { .. }
             | Self::GetThread { .. }
@@ -3113,6 +3140,9 @@ pub enum ResponseData {
     AttachmentFile {
         file: AttachmentFile,
     },
+    DraftAttachment {
+        metadata: DraftAttachment,
+    },
     AttachmentTransferMetadata {
         metadata: AttachmentTransferMetadata,
     },
@@ -3484,6 +3514,8 @@ pub enum ResponseData {
         archive_recovery_supported: bool,
         #[serde(default)]
         attachment_transfer_supported: bool,
+        #[serde(default)]
+        draft_attachment_upload_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
@@ -3994,6 +4026,7 @@ impl ResponseData {
             | Self::AttachmentFile { .. }
             | Self::AttachmentTransferMetadata { .. }
             | Self::AttachmentChunk { .. }
+            | Self::DraftAttachment { .. }
             | Self::Bodies { .. }
             | Self::Thread { .. }
             | Self::Threads { .. }
@@ -4322,6 +4355,8 @@ pub struct AttachmentFile {
 }
 
 pub const MAX_ATTACHMENT_CHUNK_BYTES: u32 = 256 * 1024;
+/// Daemon-local resource policy; provider and legacy attachment limits differ.
+pub const MAX_DRAFT_ATTACHMENT_BYTES: u64 = 25 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -80,6 +80,7 @@ mod tests {
             bcc: Vec::new(),
             subject: "subject".into(),
             content: DraftContent::markdown(body),
+            managed_attachments: None,
             attachments: Vec::new(),
             inline_assets: Vec::new(),
             inline_calendar_reply: None,

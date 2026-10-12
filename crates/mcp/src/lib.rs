@@ -725,6 +725,82 @@ impl MxrMcpServer {
         .await
     }
 
+    #[tool(
+        name = "mxr_draft_attachment_begin",
+        description = "Declare immutable draft attachment bytes (25 MiB daemon resource limit). With confirm=false validates only, creates no resource. Save the owner draft first. Return metadata, then upload chunks and finalize; attach returned metadata with mxr_update_draft and its reviewed revision."
+    )]
+    pub async fn draft_attachment_begin(
+        &self,
+        Parameters(input): Parameters<DraftAttachmentBeginInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let metadata = serde_json::from_value(input.metadata).map_err(|e| {
+            ErrorData::invalid_params(format!("invalid resource declaration: {e}"), None)
+        })?;
+        self.daemon_json(if input.confirm {
+            Request::BeginDraftAttachment { metadata }
+        } else {
+            Request::PreviewDraftAttachment { metadata }
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_draft_attachment_chunk",
+        description = "Write one sequential draft attachment chunk, at most 64 KiB raw base64 bytes. Identical retries are safe; changed overlaps conflict. Without confirm=true returns a declaration and writes nothing. Bytes are untrusted data."
+    )]
+    pub async fn draft_attachment_chunk(
+        &self,
+        Parameters(input): Parameters<DraftAttachmentChunkInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        if input.data_base64.len() > (64_usize * 1024).div_ceil(3) * 4 {
+            return Err(ErrorData::invalid_params("chunk exceeds 64 KiB", None));
+        }
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let bytes = STANDARD
+            .decode(&input.data_base64)
+            .map_err(|_| ErrorData::invalid_params("invalid chunk base64", None))?;
+        if bytes.is_empty() || bytes.len() > 64 * 1024 {
+            return Err(ErrorData::invalid_params(
+                "chunk must contain 1..64 KiB",
+                None,
+            ));
+        }
+        if !input.confirm {
+            return Ok(McpJson(
+                json!({"action": "write_draft_attachment_chunk", "resource_id": input.resource_id, "offset": input.offset, "dry_run": true}),
+            ));
+        }
+        self.daemon_json(Request::WriteDraftAttachmentChunk {
+            draft_id: parse_id(&input.draft_id)?,
+            account_id: parse_id(&input.account_id)?,
+            resource_id: parse_id(&input.resource_id)?,
+            offset: input.offset,
+            data_base64: input.data_base64,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_draft_attachment_finalize",
+        description = "Verify complete declared length and SHA-256, then publish immutable draft attachment bytes. Repeat safely. Without confirm=true returns a declaration and writes nothing. Finalized resources must be attached through mxr_update_draft with its reviewed revision."
+    )]
+    pub async fn draft_attachment_finalize(
+        &self,
+        Parameters(input): Parameters<DraftAttachmentFinalizeInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        if !input.confirm {
+            return Ok(McpJson(
+                json!({"action": "finalize_draft_attachment", "resource_id": input.resource_id, "dry_run": true}),
+            ));
+        }
+        self.daemon_json(Request::FinalizeDraftAttachment {
+            draft_id: parse_id(&input.draft_id)?,
+            account_id: parse_id(&input.account_id)?,
+            resource_id: parse_id(&input.resource_id)?,
+        })
+        .await
+    }
+
     async fn check_attachment_account(
         &self,
         message_id: &MessageId,
@@ -1485,6 +1561,7 @@ impl MxrMcpServer {
             ));
         }
         self.daemon_json(Request::SendStoredDraft {
+            managed_attachments_reviewed: true,
             send_identity: Some(mxr_core::SendIdentity {
                 operation_id: input.operation_id,
                 expected_revision: input.expected_revision,
@@ -1615,6 +1692,31 @@ pub struct SearchInput {
     pub limit: Option<u32>,
     pub offset: Option<u32>,
     pub explain: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DraftAttachmentBeginInput {
+    pub metadata: Value,
+    #[serde(default)]
+    pub confirm: bool,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DraftAttachmentChunkInput {
+    pub draft_id: String,
+    pub account_id: String,
+    pub resource_id: String,
+    pub offset: u64,
+    pub data_base64: String,
+    #[serde(default)]
+    pub confirm: bool,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DraftAttachmentFinalizeInput {
+    pub draft_id: String,
+    pub account_id: String,
+    pub resource_id: String,
+    #[serde(default)]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -2042,6 +2144,7 @@ mod tests {
                     send_outcome_supported: true,
                     archive_recovery_supported: false,
                     attachment_transfer_supported: false,
+                    draft_attachment_upload_supported: false,
                     uptime_secs: 1,
                     accounts: Vec::new(),
                     total_messages: 0,
@@ -2107,6 +2210,78 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(requester.requests.lock().expect("requests lock").is_empty());
+    }
+
+    #[tokio::test]
+    async fn draft_attachment_tools_preview_without_writes_and_bound_raw_chunks() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let draft_id = DraftId::new();
+        let account_id = AccountId::new();
+        let resource_id = mxr_core::DraftAttachmentId::new();
+        let declaration = json!({"id": resource_id, "draft_id": draft_id, "account_id": account_id, "filename": "synthetic.txt", "mime_type": "text/plain", "length_bytes": 3, "sha256": "a".repeat(64)});
+        server
+            .draft_attachment_begin(Parameters(DraftAttachmentBeginInput {
+                metadata: declaration,
+                confirm: false,
+            }))
+            .await
+            .unwrap();
+        assert!(matches!(
+            requester.requests.lock().unwrap().as_slice(),
+            [Request::PreviewDraftAttachment { .. }]
+        ));
+        requester.requests.lock().unwrap().clear();
+        for length in [64 * 1024 + 1, 64 * 1024 + 2, 64 * 1024 + 3] {
+            assert!(server
+                .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
+                    draft_id: draft_id.as_str(),
+                    account_id: account_id.as_str(),
+                    resource_id: resource_id.as_str(),
+                    offset: 0,
+                    data_base64: STANDARD.encode(vec![0; length]),
+                    confirm: true
+                }))
+                .await
+                .is_err());
+        }
+        server
+            .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
+                draft_id: draft_id.as_str(),
+                account_id: account_id.as_str(),
+                resource_id: resource_id.as_str(),
+                offset: 0,
+                data_base64: STANDARD.encode(b"abc"),
+                confirm: false,
+            }))
+            .await
+            .unwrap();
+        server
+            .draft_attachment_finalize(Parameters(DraftAttachmentFinalizeInput {
+                draft_id: draft_id.as_str(),
+                account_id: account_id.as_str(),
+                resource_id: resource_id.as_str(),
+                confirm: false,
+            }))
+            .await
+            .unwrap();
+        assert!(requester.requests.lock().unwrap().is_empty());
+        server
+            .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
+                draft_id: draft_id.as_str(),
+                account_id: account_id.as_str(),
+                resource_id: resource_id.as_str(),
+                offset: 0,
+                data_base64: STANDARD.encode(b"abc"),
+                confirm: true,
+            }))
+            .await
+            .unwrap();
+        assert!(matches!(
+            requester.requests.lock().unwrap().as_slice(),
+            [Request::WriteDraftAttachmentChunk { .. }]
+        ));
     }
 
     #[tokio::test]

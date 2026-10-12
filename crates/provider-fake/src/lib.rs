@@ -115,6 +115,7 @@ pub struct FakeProvider {
     dataset: Dataset,
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
+    attachment_witnesses: Mutex<Vec<serde_json::Value>>,
     server_drafts: Mutex<HashMap<String, Draft>>,
     server_draft_revisions: Mutex<HashMap<String, u64>>,
     /// The resolved From `Address` handed to each `send`, in order — lets
@@ -244,6 +245,7 @@ impl FakeProvider {
             dataset,
             labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
+            attachment_witnesses: Mutex::new(Vec::new()),
             server_drafts: Mutex::new(HashMap::new()),
             server_draft_revisions: Mutex::new(HashMap::new()),
             sent_from: Mutex::new(Vec::new()),
@@ -298,6 +300,13 @@ impl FakeProvider {
         let notify = Arc::new(Notify::new());
         self.idle_trigger = Some(notify.clone());
         notify
+    }
+
+    pub fn attachment_witnesses(&self) -> Vec<serde_json::Value> {
+        self.attachment_witnesses
+            .lock()
+            .expect("fake witness mutex poisoned")
+            .clone()
     }
 
     pub fn sent_drafts(&self) -> Vec<Draft> {
@@ -712,13 +721,28 @@ impl MailSendProvider for FakeProvider {
         from: &Address,
         rfc2822_message_id: &str,
     ) -> Result<SendReceipt, MxrError> {
+        use sha2::{Digest, Sha256};
+        let mut witnesses = Vec::new();
+        for path in &draft.attachments {
+            let bytes = std::fs::read(path)
+                .map_err(|e| MxrError::Provider(format!("fake attachment read: {e}")))?;
+            let sha256: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            witnesses.push(serde_json::json!({"filename": path.file_name().and_then(|s| s.to_str()), "length_bytes": bytes.len(), "sha256": sha256}));
+        }
+        self.attachment_witnesses
+            .lock()
+            .expect("fake witness mutex poisoned")
+            .push(serde_json::json!(witnesses));
         self.sent_guard().push(draft.clone());
         self.sent_from
             .lock()
             .expect("fake provider sent_from mutex should not be poisoned")
             .push(from.clone());
         if let Some(spool) = &self.spool {
-            spool.record_acceptance(rfc2822_message_id)?;
+            spool.record_acceptance(rfc2822_message_id, &witnesses)?;
             while spool.pause_after_acceptance() {
                 tokio::time::sleep(std::time::Duration::from_millis(25)).await;
             }
@@ -850,6 +874,7 @@ impl MailSendProvider for FakeProvider {
             bcc: Vec::new(),
             subject: reply.subject.clone(),
             content: DraftContent::markdown(format!("{}\n\n{}", reply.body_text, reply.ics)),
+            managed_attachments: None,
             attachments: Vec::new(),
             inline_assets: Vec::new(),
             inline_calendar_reply: None,
@@ -1304,6 +1329,7 @@ mod tests {
             bcc: vec![],
             subject: "Test".to_string(),
             content: DraftContent::markdown("Hello"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: Vec::new(),
             inline_calendar_reply: None,

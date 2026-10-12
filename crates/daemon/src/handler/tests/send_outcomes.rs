@@ -35,6 +35,7 @@ async fn fixture_with_sender(
         bcc: vec![],
         subject: "Reviewed send".into(),
         content: mxr_core::DraftContent::markdown("Reviewed text"),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: vec![],
         inline_calendar_reply: None,
@@ -62,6 +63,7 @@ async fn call(state: &Arc<AppState>, request: Request) -> Response {
 }
 fn send(draft: &Draft, identity: SendIdentity) -> Request {
     Request::SendStoredDraft {
+        managed_attachments_reviewed: true,
         send_identity: Some(identity),
         draft_id: draft.id.clone(),
         override_safety_token: None,
@@ -202,6 +204,7 @@ async fn send_outcomes_stale_revision_and_missing_client_identity_have_no_provid
         call(
             &state,
             Request::SendStoredDraft {
+                managed_attachments_reviewed: true,
                 send_identity: None,
                 draft_id: draft.id.clone(),
                 override_safety_token: None,
@@ -215,6 +218,7 @@ async fn send_outcomes_stale_revision_and_missing_client_identity_have_no_provid
             call(
                 &state,
                 Request::ScheduleSend {
+                    managed_attachments_reviewed: true,
                     expected_revision: revision,
                     draft_id: draft.id.clone(),
                     send_at: chrono::Utc::now(),

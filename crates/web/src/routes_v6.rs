@@ -1247,6 +1247,7 @@ async fn schedule_send(
         &headers,
         auth.token.as_deref(),
         Request::ScheduleSend {
+            managed_attachments_reviewed: true,
             expected_revision: body.expected_revision,
             draft_id: id,
             send_at: body.send_at,
@@ -2241,6 +2242,7 @@ async fn send_stored_draft(
         &headers,
         auth.token.as_deref(),
         Request::SendStoredDraft {
+            managed_attachments_reviewed: true,
             send_identity: Some(mxr_core::SendIdentity {
                 operation_id: auth.operation_id.clone(),
                 expected_revision: auth.expected_revision,

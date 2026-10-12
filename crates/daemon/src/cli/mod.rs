@@ -2086,6 +2086,18 @@ pub enum DemoAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum DraftsAction {
+    /// Upload client-local files as immutable resources and attach to a saved draft.
+    Attach {
+        draft_id: String,
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Revision shown by the draft preview; stale edits fail before uploading.
+        #[arg(long, required_unless_present = "dry_run")]
+        expected_revision: Option<i64>,
+        /// Preview filenames and sizes; creates no draft or resource.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Show all drafts (default if no subcommand)
     List,
     /// Show drafts scheduled to send later that have not gone out yet,

@@ -42,6 +42,8 @@ export interface AccountsResponse {
 }
 
 export interface ComposeAttachmentUploadResponse {
+  draft_id: string;
+  revision: number;
   path: string;
   filename: string;
   size_bytes: number;
@@ -286,18 +288,78 @@ export function discardComposeSession(
   });
 }
 
-export function uploadComposeAttachment(input: {
+export async function supportsDraftAttachmentUpload(): Promise<boolean> {
+  const status = await apiFetch<{ draft_attachment_upload_supported?: boolean }>(
+    "/api/v1/admin/status",
+  );
+  return status.draft_attachment_upload_supported === true;
+}
+
+interface ComposeAttachmentOwnerRequest {
   draftPath: string;
-  filename: string;
+  accountId: string;
+}
+interface ComposeAttachmentBeginRequest extends ComposeAttachmentOwnerRequest {
+  operation: "begin";
+  metadata: {
+    id: string;
+    draft_id: string;
+    account_id: string;
+    filename: string;
+    mime_type: string;
+    length_bytes: number;
+    sha256: string;
+  };
+}
+interface ComposeAttachmentChunkRequest extends ComposeAttachmentOwnerRequest {
+  operation: "chunk";
+  resourceId: string;
+  offset: number;
   contentBase64: string;
-}): Promise<ComposeAttachmentUploadResponse> {
-  return apiFetch<ComposeAttachmentUploadResponse>("/api/v1/mail/compose/session/attachment", {
+}
+interface ComposeAttachmentFinalizeRequest extends ComposeAttachmentOwnerRequest {
+  operation: "finalize";
+  resourceId: string;
+  expectedRevision: number;
+}
+type ComposeAttachmentRequest =
+  | ComposeAttachmentBeginRequest
+  | ComposeAttachmentChunkRequest
+  | ComposeAttachmentFinalizeRequest;
+interface ComposeAttachmentOwnerResponse {
+  draft_id: string;
+  revision: number;
+}
+export function uploadComposeAttachment(
+  input: ComposeAttachmentBeginRequest,
+): Promise<ComposeAttachmentOwnerResponse>;
+export function uploadComposeAttachment(
+  input: ComposeAttachmentChunkRequest,
+): Promise<{ ok: boolean }>;
+export function uploadComposeAttachment(
+  input: ComposeAttachmentFinalizeRequest,
+): Promise<ComposeAttachmentUploadResponse>;
+export function uploadComposeAttachment(
+  input: ComposeAttachmentRequest,
+): Promise<ComposeAttachmentOwnerResponse | { ok: boolean } | ComposeAttachmentUploadResponse> {
+  const body = {
+    draft_path: input.draftPath,
+    account_id: input.accountId,
+    operation: input.operation,
+  };
+  const declaration =
+    input.operation === "begin"
+      ? { metadata: input.metadata }
+      : input.operation === "chunk"
+        ? {
+            resource_id: input.resourceId,
+            offset: input.offset,
+            content_base64: input.contentBase64,
+          }
+        : { resource_id: input.resourceId, expected_revision: input.expectedRevision };
+  return apiFetch("/api/v1/mail/compose/session/attachment", {
     method: "POST",
-    body: {
-      draft_path: input.draftPath,
-      filename: input.filename,
-      content_base64: input.contentBase64,
-    },
+    body: { ...body, ...declaration },
   });
 }
 

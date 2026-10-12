@@ -2196,7 +2196,9 @@ async fn canonical_compose_ipc(
                     }
                 }
                 Request::ScheduleSend {
-                    expected_revision, ..
+                    managed_attachments_reviewed: true,
+                    expected_revision,
+                    ..
                 } => {
                     assert_eq!(expected_revision, Some(2));
                     mxr_protocol::ResponseData::Ack

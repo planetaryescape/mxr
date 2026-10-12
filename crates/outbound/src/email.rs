@@ -374,6 +374,7 @@ mod tests {
             bcc: vec![],
             subject: "Accepted: Demo".into(),
             content: DraftContent::markdown("Looking forward to it."),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: Some(InlineCalendarReply {
@@ -435,6 +436,7 @@ mod tests {
             }],
             subject: subject.into(),
             content: DraftContent::markdown(body),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

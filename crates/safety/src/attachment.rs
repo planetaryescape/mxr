@@ -35,7 +35,12 @@ static NEGATIVE: Lazy<RegexSet> = Lazy::new(|| {
 });
 
 pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
-    if !draft.attachments.is_empty() {
+    if !draft.attachments.is_empty()
+        || draft
+            .managed_attachments
+            .as_ref()
+            .is_some_and(|set| !set.is_empty())
+    {
         return Vec::new();
     }
 
@@ -99,6 +104,7 @@ mod tests {
             subject: "test subject".into(),
             content: DraftContent::markdown(body),
             attachments,
+            managed_attachments: None,
             inline_assets: Vec::new(),
             inline_calendar_reply: None,
             created_at: Utc::now(),
@@ -121,6 +127,21 @@ mod tests {
             vec![PathBuf::from("/tmp/deck.pdf")],
         ));
         assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn passes_when_managed_attachments_present() {
+        let mut draft = draft_with("Please see attached.", vec![]);
+        draft.managed_attachments = Some(vec![mxr_core::DraftAttachment {
+            id: mxr_core::DraftAttachmentId::new(),
+            draft_id: draft.id.clone(),
+            account_id: draft.account_id.clone(),
+            filename: "notes.txt".into(),
+            mime_type: "text/plain".into(),
+            length_bytes: 3,
+            sha256: "a".repeat(64),
+        }]);
+        assert!(check(&draft).is_empty());
     }
 
     #[test]

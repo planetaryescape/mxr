@@ -448,8 +448,18 @@ lives server-side until you send/save/discard.
 | `POST` | `/mail/compose/session/update` | Save current edits locally and to a linked provider draft |
 | `POST` | `/mail/compose/session/send` | Send (calls provider) |
 | `POST` | `/mail/compose/session/save` | Save locally or create/update a linked provider draft |
-| `POST` | `/mail/compose/session/attachment` | Attach an uploaded file to the session |
+| `POST` | `/mail/compose/session/attachment` | Declare (`begin`), write a bounded chunk (`chunk`), or finalize an immutable draft resource (`finalize`) |
 | `POST` | `/mail/compose/session/discard` | Throw away |
+
+For compose uploads, each request names `draft_path`, `account_id` and
+`operation`. `begin` supplies resource `metadata` (ID, owner draft/account,
+filename, MIME type, exact length and SHA-256). `chunk` supplies `resource_id`,
+`offset` and `content_base64` for at most 256 KiB raw bytes. `finalize` supplies
+`resource_id` and `expected_revision`; it verifies bytes and CAS-attaches the
+resource. Its response returns `draft_id`, the new `revision`, original
+`filename`, `size_bytes` and an `mxr-resource:` reference for compose frontmatter.
+Resources are capped at 25 MiB by local policy. A changed compose owner or stale
+revision fails instead of attaching to another draft.
 
 ### Attachments and links
 

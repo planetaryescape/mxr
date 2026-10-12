@@ -378,38 +378,49 @@ Rules:
   account and From resolution; the provider still makes the final acceptance
   decision when you send.
 
-## Attachments
+## Attachments retain the uploaded bytes
 
-CLI compose supports:
+Preview a compose request, then save its attachments as immutable daemon resources:
 
 ```bash
-mxr compose --attach ./invoice.pdf --attach ./notes.txt
+mxr compose --to alice@example.com --subject 'Notes' --body 'Please read the attachment.' \
+  --attach ./notes.txt --draft --dry-run --format json
+mxr compose --to alice@example.com --subject 'Notes' --body 'Please read the attachment.' \
+  --attach ./notes.txt --draft --format json
 ```
 
-Every compose flow stores attachment paths in the draft's `attach:` frontmatter.
-That gives replies, reply-all drafts, and forwards the same editor escape hatch
-even when a client does not expose a dedicated attachment control:
+`--attach` reads the file on your client and uploads bounded chunks through its
+connection. The saved draft keeps the uploaded bytes after you edit or delete
+the client file or restart the daemon. Each managed resource is limited to
+25 MiB; provider limits may differ. Dry runs create no draft or upload.
 
-```md
----
-to:
-  - team@example.com
-subject: Re: Investor letter
-attach:
-  - /Users/alice/Documents/investor-letter.docx
----
+To add files to a saved draft, preview and use its current revision:
 
-Please find my rewrite attached.
+```bash
+mxr drafts attach DRAFT_ID ./another.txt --dry-run --format json
+mxr drafts attach DRAFT_ID ./another.txt --expected-revision REVISION --format json
+mxr send DRAFT_ID --dry-run --format json
 ```
 
-Add or remove those paths while the draft is open in `$EDITOR`, or reopen a
-saved draft first:
+The save response contains the canonical draft revision and
+`managed_attachments` metadata: opaque ID, owner draft/account, original
+filename, MIME type, byte length and SHA-256. Review that returned revision
+before sending or scheduling.
+
+The TUI uses the same upload path when you add client file paths in `$EDITOR`.
+Reopening a saved draft renders each managed resource as an
+`mxr-resource:RESOURCE_ID/filename` entry in `attach:`. Keep the entry to retain
+it; remove it to detach the resource. Browser compose uploads files in bounded
+chunks and retains the same managed resources after save/reload.
 
 ```bash
 mxr drafts edit DRAFT_ID
 ```
 
-TUI message viewing supports attachment open/download. Compose-side attachment management is through the editor and CLI.
+Older saved drafts may still contain legacy daemon-local paths. Those drafts
+remain readable and sendable, and their bytes remain path-backed. A client that
+cannot display managed resources is refused when it tries to edit, preview,
+send or schedule a draft containing them; upgrade the client.
 
 ## Snippets
 

@@ -94,21 +94,17 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
         owned.iter().map(PathBuf::from).collect::<Vec<_>>()
     );
 
-    // Add a real bridge upload to the recovery before opening it in two editors.
-    let uploaded: serde_json::Value = client
-        .post(format!(
-            "http://{addr}/api/v1/mail/compose/session/attachment"
-        ))
-        .bearer_auth(TEST_AUTH_TOKEN)
-        .json(&json!({"draft_path": recovery, "filename": "notes.txt",
-            "content_base64": general_purpose::STANDARD.encode(b"uploaded later")}))
-        .send()
-        .await
+    // Recovery continues to preserve legacy path-backed drafts.
+    let legacy = compose_attachment_dir(Path::new(recovery))
         .unwrap()
-        .json()
+        .join("uploaded-later.txt");
+    tokio::fs::create_dir_all(legacy.parent().unwrap())
         .await
         .unwrap();
-    owned.push(uploaded["path"].as_str().unwrap().to_string());
+    mxr_compose::private_tmp::write_private_async(&legacy, b"uploaded later")
+        .await
+        .unwrap();
+    owned.push(legacy.display().to_string());
     let updated = client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&json!({"draft_path": recovery, "account_id": account, "expected_revision": 1,

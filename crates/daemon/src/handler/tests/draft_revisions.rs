@@ -17,6 +17,7 @@ fn draft(state: &AppState) -> mxr_core::Draft {
         bcc: vec![],
         subject: "Revision test".into(),
         content: mxr_core::DraftContent::markdown("original"),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: vec![],
         inline_calendar_reply: None,

@@ -391,6 +391,7 @@ mod tests {
             subject: "re".into(),
             content: DraftContent::markdown(body),
             inline_assets: Vec::new(),
+            managed_attachments: None,
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

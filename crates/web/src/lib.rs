@@ -44,6 +44,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+#[cfg(test)]
 use base64::{engine::general_purpose, Engine as _};
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
 use chrono::{DateTime, Utc};
@@ -1335,6 +1336,7 @@ async fn schedule_compose_session(
             &state.config.socket_path,
             request_id,
             Request::ScheduleSend {
+                managed_attachments_reviewed: true,
                 expected_revision: draft.revision,
                 draft_id: draft_id.clone(),
                 send_at: request.send_at,
@@ -1393,24 +1395,139 @@ async fn upload_compose_attachment(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
-    let bytes = general_purpose::STANDARD
-        .decode(request.content_base64)
-        .map_err(|error| BridgeError::BadRequest(format!("invalid attachment content: {error}")))?;
-    let filename = safe_attachment_filename(&request.filename);
-    let path = compose_attachment_path(Path::new(&request.draft_path), &filename)?;
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
+    let mut connection =
+        IpcConnection::connect(&state.config.socket_path, mxr_protocol::ClientKind::Web)
             .await
-            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    }
-    tokio::fs::write(&path, &bytes)
+            .map_err(map_bridge_error)?;
+    connection
+        .require_draft_attachment_upload()
         .await
-        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    Ok(Json(json!({
-        "path": path.display().to_string(),
-        "filename": filename,
-        "size_bytes": bytes.len(),
-    })))
+        .map_err(map_bridge_error)?;
+    require_canonical_compose(Path::new(&request.draft_path)).await?;
+    let mut owner = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        None,
+        ComposeDraftValidation::Incomplete,
+    )
+    .await?;
+    match request.operation.as_str() {
+        "begin" => {
+            let metadata = request
+                .metadata
+                .ok_or_else(|| BridgeError::BadRequest("upload declaration required".into()))?;
+            if metadata.draft_id != owner.id || metadata.account_id != owner.account_id {
+                return Err(BridgeError::BadRequest(
+                    "upload owner does not match compose session".into(),
+                ));
+            }
+            ipc_request(
+                &state.config.socket_path,
+                Request::PreviewDraftAttachment {
+                    metadata: metadata.clone(),
+                },
+            )
+            .await?;
+            if owner.revision.is_none() {
+                owner = persist_compose_draft(
+                    &state.config.socket_path,
+                    Path::new(&request.draft_path),
+                    owner,
+                    None,
+                )
+                .await?;
+            }
+            ipc_request(
+                &state.config.socket_path,
+                Request::BeginDraftAttachment { metadata },
+            )
+            .await?;
+            Ok(Json(
+                json!({"draft_id": owner.id, "revision": owner.revision}),
+            ))
+        }
+        "chunk" => {
+            ipc_request(
+                &state.config.socket_path,
+                Request::WriteDraftAttachmentChunk {
+                    draft_id: owner.id,
+                    account_id: owner.account_id,
+                    resource_id: request
+                        .resource_id
+                        .ok_or_else(|| BridgeError::BadRequest("resource ID required".into()))?,
+                    offset: request
+                        .offset
+                        .ok_or_else(|| BridgeError::BadRequest("chunk offset required".into()))?,
+                    data_base64: request
+                        .content_base64
+                        .ok_or_else(|| BridgeError::BadRequest("chunk bytes required".into()))?,
+                },
+            )
+            .await?;
+            Ok(Json(json!({"ok": true})))
+        }
+        "finalize" => {
+            let metadata = match ipc_request(
+                &state.config.socket_path,
+                Request::FinalizeDraftAttachment {
+                    draft_id: owner.id.clone(),
+                    account_id: owner.account_id.clone(),
+                    resource_id: request
+                        .resource_id
+                        .ok_or_else(|| BridgeError::BadRequest("resource ID required".into()))?,
+                },
+            )
+            .await?
+            {
+                ResponseData::DraftAttachment { metadata } => metadata,
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+            let mut canonical = match ipc_request(
+                &state.config.socket_path,
+                Request::GetDraft {
+                    draft_id: owner.id.clone(),
+                },
+            )
+            .await?
+            {
+                ResponseData::Draft { draft } => draft,
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+            ensure_compose_revision(&canonical, request.expected_revision)?;
+            let set = canonical.managed_attachments.get_or_insert_default();
+            if !set.iter().any(|resource| resource.id == metadata.id) {
+                set.push(metadata.clone());
+            }
+            canonical = match ipc_request(
+                &state.config.socket_path,
+                Request::UpdateDraft { draft: canonical },
+            )
+            .await?
+            {
+                ResponseData::Draft { draft } => draft,
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+            let resource_reference = format!("mxr-resource:{}/{}", metadata.id, metadata.filename);
+            let raw = read_compose_file(Path::new(&request.draft_path)).await?;
+            let (mut frontmatter, body) = parse_compose_content(&raw)?;
+            if !frontmatter.attach.contains(&resource_reference) {
+                frontmatter.attach.push(resource_reference);
+            }
+            let context = extract_compose_context(&raw);
+            let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
+                .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+            // A token without matching sidecar metadata blocks saves; write it before metadata so a crash cannot silently detach bytes.
+            replace_compose_file(Path::new(&request.draft_path), rendered).await?;
+            write_draft_session_metadata(Path::new(&request.draft_path), &canonical).await?;
+            Ok(Json(
+                json!({"path": format!("mxr-resource:{}/{}", metadata.id, metadata.filename), "filename": metadata.filename,
+                "size_bytes": metadata.length_bytes, "draft_id": canonical.id, "revision": canonical.revision}),
+            ))
+        }
+        _ => Err(BridgeError::BadRequest(
+            "upload operation must be begin, chunk or finalize".into(),
+        )),
+    }
 }
 
 async fn discard_compose_session(
@@ -2778,6 +2895,14 @@ async fn submit_compose_draft(
             comparable.revision = canonical.revision;
             comparable.created_at = canonical.created_at;
             comparable.updated_at = canonical.updated_at;
+            if comparable
+                .managed_attachments
+                .as_ref()
+                .is_some_and(Vec::is_empty)
+                && canonical.managed_attachments.is_none()
+            {
+                comparable.managed_attachments = None;
+            }
             if serde_json::to_value(comparable)
                 .map_err(|error| BridgeError::Ipc(error.to_string()))?
                 == serde_json::to_value(&canonical)
@@ -3003,6 +3128,7 @@ async fn compose_draft_from_snapshot(
         bcc: parse_address_list(&frontmatter.bcc),
         subject: frontmatter.subject,
         content: DraftContent::markdown(body),
+        managed_attachments: None,
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
         inline_assets: Vec::new(),
         // Rebuild the iTIP REPLY payload for an invite-with-comment session so
@@ -3105,7 +3231,7 @@ fn draft_summary_view(draft: Draft, send_at: Option<chrono::DateTime<Utc>>) -> s
         "updated_at_label": format_date_label(draft.updated_at),
         "updated_at_full": format_date_full(draft.updated_at),
         "updated_at_relative": format!("edited {}", format_relative_label(draft.updated_at)),
-        "attachment_count": draft.attachments.len(),
+        "attachment_count": (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len)),
         // Lets a client tell an HTML draft apart before opening it. Without
         // this the only way to discover one is uneditable in the markdown
         // composer is to click it and take the 409.

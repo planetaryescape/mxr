@@ -21,6 +21,7 @@ const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub struct Store {
     writer: SqlitePool,
+    resource_dir: std::path::PathBuf,
     reader: SqlitePool,
     /// Serialises the cleanup of a deleted message's files and index
     /// entries with sync storing messages, so a message id that comes back
@@ -30,6 +31,9 @@ pub struct Store {
 }
 
 impl Store {
+    pub fn draft_attachment_dir(&self) -> &Path {
+        &self.resource_dir
+    }
     pub async fn new(db_path: &Path) -> Result<Self, sqlx::Error> {
         let db_url = format!("sqlite:{}", db_path.display());
 
@@ -67,6 +71,7 @@ impl Store {
         let store = Self {
             writer,
             reader,
+            resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
@@ -84,6 +89,8 @@ impl Store {
             .await?;
 
         let store = Self {
+            resource_dir: std::env::temp_dir()
+                .join(format!("mxr-draft-attachments-{}", uuid::Uuid::now_v7())),
             writer: pool.clone(),
             reader: pool,
             message_cleanup: tokio::sync::Mutex::new(()),
@@ -1104,6 +1111,14 @@ const MIGRATIONS: &[Migration] = &[
         version: 77,
         name: "personal_categories",
         kind: MigrationKind::Sql(include_str!("../migrations/077_personal_categories.sql")),
+    },
+    Migration {
+        version: 78,
+        name: "draft_attachment_resources",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn { table: "drafts", column: "managed_attachments", sql: "ALTER TABLE drafts ADD COLUMN managed_attachments TEXT NOT NULL DEFAULT 'null'" },
+            MigrationStep::Sql(include_str!("../migrations/078_draft_attachment_resources.sql")),
+        ]),
     },
 ];
 

@@ -86,6 +86,13 @@ pub fn frontmatter_from_draft(draft: &Draft, from: &str) -> ComposeFrontmatter {
             .attachments
             .iter()
             .map(|attachment| attachment.display().to_string())
+            .chain(
+                draft
+                    .managed_attachments
+                    .iter()
+                    .flatten()
+                    .map(|resource| format!("mxr-resource:{}/{}", resource.id, resource.filename)),
+            )
             .collect(),
         signature: None,
     }
@@ -135,6 +142,26 @@ pub fn apply_edited_compose_file(
         })
         .or_else(|| existing.reply_headers.clone());
 
+    let mut managed_attachments = Vec::new();
+    let mut attachments = Vec::new();
+    for attachment in &frontmatter.attach {
+        if let Some(token) = attachment.strip_prefix("mxr-resource:") {
+            let id = token.split('/').next().unwrap_or_default();
+            let resource = existing
+                .managed_attachments
+                .iter()
+                .flatten()
+                .find(|resource| resource.id.as_str() == id)
+                .ok_or_else(|| {
+                    ComposeError::InvalidFrontmatter(
+                        "Managed attachment is not owned by this saved draft".into(),
+                    )
+                })?;
+            managed_attachments.push(resource.clone());
+        } else {
+            attachments.push(PathBuf::from(attachment));
+        }
+    }
     Ok(Draft {
         revision: existing.revision,
         id: existing.id.clone(),
@@ -153,7 +180,8 @@ pub fn apply_edited_compose_file(
         bcc: mxr_mail_parse::parse_address_list(&frontmatter.bcc),
         subject: frontmatter.subject,
         content: DraftContent::markdown(body),
-        attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
+        managed_attachments: Some(managed_attachments),
+        attachments,
         inline_assets: existing.inline_assets.clone(),
         inline_calendar_reply: existing.inline_calendar_reply.clone(),
         created_at: existing.created_at,
@@ -189,12 +217,53 @@ mod tests {
             bcc: vec![],
             subject: "Q4 plan".into(),
             content: DraftContent::markdown("Body line one.\n\nBody line two."),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,
             created_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
             updated_at: DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         }
+    }
+
+    #[test]
+    fn managed_resource_editor_roundtrip_and_explicit_removal() {
+        let mut draft = sample_draft();
+        let resource = mxr_core::DraftAttachment {
+            id: mxr_core::DraftAttachmentId::new(),
+            draft_id: draft.id.clone(),
+            account_id: draft.account_id.clone(),
+            filename: "notes.txt".into(),
+            mime_type: "text/plain".into(),
+            length_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        draft.attachments.clear();
+        draft.managed_attachments = Some(vec![resource.clone()]);
+        let rendered = draft_to_compose_file(&draft, "me@example.com").unwrap();
+        assert!(rendered.contains(&format!("mxr-resource:{}/notes.txt", resource.id)));
+        let roundtrip = apply_edited_compose_file(&draft, &rendered, Utc::now()).unwrap();
+        assert!(roundtrip.attachments.is_empty());
+        assert_eq!(roundtrip.managed_attachments, Some(vec![resource]));
+        let (mut fm, body) = parse_compose_file(&rendered).unwrap();
+        fm.attach.clear();
+        let removed = apply_edited_compose_file(
+            &draft,
+            &render_compose_file(&fm, &body, None).unwrap(),
+            Utc::now(),
+        )
+        .unwrap();
+        assert_eq!(removed.managed_attachments, Some(vec![]));
+        fm.attach = vec![format!(
+            "mxr-resource:{}/forged.txt",
+            mxr_core::DraftAttachmentId::new()
+        )];
+        assert!(apply_edited_compose_file(
+            &draft,
+            &render_compose_file(&fm, &body, None).unwrap(),
+            Utc::now()
+        )
+        .is_err());
     }
 
     #[test]

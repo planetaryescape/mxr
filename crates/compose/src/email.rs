@@ -38,6 +38,7 @@ mod tests {
             }],
             subject: "Hello".into(),
             content: DraftContent::markdown("hello"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: Vec::new(),
             inline_calendar_reply: None,

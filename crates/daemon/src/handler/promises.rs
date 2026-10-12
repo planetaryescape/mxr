@@ -440,6 +440,7 @@ mod tests {
             subject: "Re: deck".into(),
             content: DraftContent::markdown(body),
             inline_assets: Vec::new(),
+            managed_attachments: None,
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: Utc::now(),

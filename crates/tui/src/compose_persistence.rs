@@ -88,7 +88,10 @@ pub(crate) async fn prepare_compose_schedule(
         return Ok(None);
     };
     let Request::ScheduleSend {
-        draft_id, send_at, ..
+        managed_attachments_reviewed: _,
+        draft_id,
+        send_at,
+        ..
     } = &pending.request
     else {
         return Ok(None);
@@ -105,6 +108,7 @@ pub(crate) async fn prepare_compose_schedule(
     let send_at = *send_at;
     let (draft, identity) = prepare_reviewed_compose(bg, draft, &compose.draft_path).await?;
     pending.request = Request::ScheduleSend {
+        managed_attachments_reviewed: true,
         draft_id: draft_id.clone(),
         send_at,
         expected_revision: draft.revision,

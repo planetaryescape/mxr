@@ -163,6 +163,11 @@ where
         DraftId,
         Draft,
     >::new()));
+    let fixture_resources =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::<
+            mxr_core::DraftAttachmentId,
+            mxr_core::DraftAttachment,
+        >::new()));
     let listener = UnixListener::bind(socket_path).unwrap();
     tokio::spawn(async move {
         loop {
@@ -171,6 +176,7 @@ where
             };
             let responder = responder.clone();
             let fixture_drafts = fixture_drafts.clone();
+            let fixture_resources = fixture_resources.clone();
             let event = event.clone();
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
@@ -202,6 +208,10 @@ where
                             if status { return Some(Response::Ok { data: sample_status() }); }
                             let mut drafts = fixture_drafts.lock().unwrap();
                             match fallback_request {
+                                Request::PreviewDraftAttachment { metadata } => Some(Response::Ok { data: ResponseData::DraftAttachment { metadata } }),
+                                Request::BeginDraftAttachment { metadata } => { fixture_resources.lock().unwrap().insert(metadata.id.clone(), metadata.clone()); Some(Response::Ok { data: ResponseData::DraftAttachment { metadata } }) },
+                                Request::WriteDraftAttachmentChunk { .. } => Some(Response::Ok { data: ResponseData::Ack }),
+                                Request::FinalizeDraftAttachment { resource_id, .. } => fixture_resources.lock().unwrap().get(&resource_id).cloned().map(|metadata| Response::Ok { data: ResponseData::DraftAttachment { metadata } }),
                                 Request::SaveDraft { mut draft } => { draft.revision = Some(1); Some(Response::Ok { data: ResponseData::Draft { draft } }) }
                                 Request::GetDraft { draft_id } => Some(match drafts.get(&draft_id) { Some(draft) => Response::Ok { data: ResponseData::Draft { draft: draft.clone() } }, None => Response::error_kinded(format!("Draft not found: {draft_id}"), mxr_protocol::IpcErrorKind::NotFound) }),
                                 Request::UpdateDraft { mut draft } => {
@@ -288,6 +298,7 @@ async fn status_endpoint_proxies_ipc_status() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 17,
@@ -658,6 +669,7 @@ async fn auth_accepts_authorization_bearer_header() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 1,
                     accounts: vec![],
                     total_messages: 0,
@@ -1060,6 +1072,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 99,
                     accounts: vec!["work".into()],
                     total_messages: 7,
@@ -1514,6 +1527,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1619,6 +1633,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -1748,6 +1763,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
                     attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
                     uptime_secs: 42,
                     accounts: vec!["personal".into()],
                     total_messages: 8124,
@@ -2261,6 +2277,7 @@ fn draft_summary_includes_updated_time_labels() {
         bcc: Vec::new(),
         subject: "Draft".into(),
         content: DraftContent::markdown("Body"),
+        managed_attachments: None,
         attachments: Vec::new(),
         inline_assets: Vec::new(),
         inline_calendar_reply: None,
@@ -2758,12 +2775,13 @@ async fn compose_session_update_refresh_and_discard_round_trip_draft() {
 }
 
 #[tokio::test]
-async fn compose_attachment_upload_writes_local_file_and_discard_cleans_it() {
+async fn compose_attachment_upload_returns_managed_resource_and_revision() {
     let temp = TempDir::new().unwrap();
-    let socket_path = temp.path().join("mxr.sock");
+    let socket = temp.path().join("mxr.sock");
     let account = sample_account(&AccountId::new());
+    let account_id = account.account_id.clone();
     let _ipc = spawn_fake_ipc_server(
-        &socket_path,
+        &socket,
         move |request| match request {
             Request::ListAccounts => Some(Response::Ok {
                 data: ResponseData::Accounts {
@@ -2775,60 +2793,59 @@ async fn compose_attachment_upload_writes_local_file_and_discard_cleans_it() {
         None,
     )
     .await;
-
     let addr = bind_and_serve(
         std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
         0,
-        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        WebServerConfig::new(socket, TEST_AUTH_TOKEN.into()),
     )
     .await
     .unwrap();
     let client = reqwest::Client::new();
-
     let started: serde_json::Value = client
         .post(format!("http://{addr}/compose/session"))
-        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "kind": "new" }))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"kind": "new"}))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    let draft_path = compose_draft_path(&started);
-
-    let uploaded: serde_json::Value = client
-        .post(format!(
-            "http://{addr}/api/v1/mail/compose/session/attachment"
-        ))
-        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({
-            "draft_path": draft_path,
-            "filename": "notes.txt",
-            "content_base64": general_purpose::STANDARD.encode(b"hello attachment"),
-        }))
-        .send()
+    let path = compose_draft_path(&started);
+    let owner = read_draft_session_metadata(Path::new(&path))
         .await
         .unwrap()
-        .json()
-        .await
         .unwrap();
-    let attachment_path = uploaded["path"].as_str().unwrap();
-    assert_eq!(uploaded["filename"], "notes.txt");
-    assert_eq!(
-        tokio::fs::read_to_string(attachment_path).await.unwrap(),
-        "hello attachment"
-    );
-
-    let discard_response = client
-        .post(format!("http://{addr}/compose/session/discard"))
-        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
-        .json(&serde_json::json!({ "draft_path": draft_path }))
-        .send()
+    let resource = mxr_core::DraftAttachment {
+        id: mxr_core::DraftAttachmentId::new(),
+        draft_id: owner.id,
+        account_id: account_id.clone(),
+        filename: "notes.txt".into(),
+        mime_type: "text/plain".into(),
+        length_bytes: 16,
+        sha256: "a".repeat(64),
+    };
+    let endpoint = format!("http://{addr}/api/v1/mail/compose/session/attachment");
+    let declared: serde_json::Value = client.post(&endpoint).bearer_auth(TEST_AUTH_TOKEN).json(&json!({"draft_path": path, "account_id": account_id, "operation": "begin", "metadata": resource})).send().await.unwrap().json().await.unwrap();
+    assert_eq!(declared["revision"], 1);
+    let chunk = client.post(&endpoint).bearer_auth(TEST_AUTH_TOKEN).json(&json!({"draft_path": path, "account_id": account_id, "operation": "chunk", "resource_id": resource.id, "offset": 0, "content_base64": general_purpose::STANDARD.encode(b"hello attachment")})).send().await.unwrap();
+    assert_eq!(chunk.status(), reqwest::StatusCode::OK);
+    let finished: serde_json::Value = client.post(&endpoint).bearer_auth(TEST_AUTH_TOKEN).json(&json!({"draft_path": path, "account_id": account_id, "operation": "finalize", "resource_id": resource.id, "expected_revision": 1})).send().await.unwrap().json().await.unwrap();
+    assert_eq!(finished["revision"], 2);
+    assert!(finished["path"]
+        .as_str()
+        .unwrap()
+        .starts_with("mxr-resource:"));
+    let canonical = read_draft_session_metadata(Path::new(&path))
         .await
+        .unwrap()
         .unwrap();
-    assert_eq!(discard_response.status(), reqwest::StatusCode::OK);
-    assert!(!std::path::Path::new(attachment_path).exists());
+    assert_eq!(canonical.managed_attachments, Some(vec![resource]));
+    assert!(canonical.attachments.is_empty());
+    let restored = load_compose_session(Path::new(&path)).await.unwrap();
+    assert_eq!(restored["revision"], 2);
+    assert_eq!(restored["frontmatter"]["attach"], json!([finished["path"]]));
+    tokio::fs::remove_file(path).await.unwrap();
 }
 
 #[tokio::test]
@@ -3578,6 +3595,7 @@ fn html_body_draft(draft_id: &DraftId, account_id: &AccountId) -> Draft {
         bcc: Vec::new(),
         subject: "Launch".into(),
         content: DraftContent::html(HTML_DRAFT_BODY, None),
+        managed_attachments: None,
         attachments: Vec::new(),
         inline_assets: Vec::new(),
         inline_calendar_reply: None,
@@ -3707,6 +3725,7 @@ fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
         bcc: Vec::new(),
         subject: "Draft".into(),
         content: DraftContent::markdown("Body"),
+        managed_attachments: None,
         attachments: Vec::new(),
         inline_assets: Vec::new(),
         inline_calendar_reply: None,
@@ -3990,6 +4009,7 @@ fn markdown_draft(
         bcc: Vec::new(),
         subject: subject.into(),
         content: DraftContent::markdown(body),
+        managed_attachments: None,
         attachments: Vec::new(),
         inline_assets: Vec::new(),
         inline_calendar_reply: None,
@@ -4554,6 +4574,7 @@ fn sample_status() -> ResponseData {
         send_outcome_supported: true,
         archive_recovery_supported: true,
         attachment_transfer_supported: true,
+        draft_attachment_upload_supported: true,
         uptime_secs: 1,
         accounts: vec!["personal".into()],
         total_messages: 10,

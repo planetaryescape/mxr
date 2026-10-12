@@ -76,6 +76,7 @@ async fn build_draft(
         subject,
         content: DraftContent::markdown(body),
         inline_assets: Vec::new(),
+        managed_attachments: None,
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: now,

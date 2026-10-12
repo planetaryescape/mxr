@@ -1,16 +1,11 @@
-/*
- * Browser file uploads for a compose session. Each file is uploaded to the
- * bridge, which returns a local temp path that is written into the draft's
- * `attach` frontmatter.
- */
+/* eslint-disable no-await-in-loop -- Sequential offsets and draft revision CAS require ordered upload requests. */
+/* Bounded uploads persist immutable daemon resources for this compose session. */
 
 import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
-import { uploadComposeAttachment } from "../api";
+import { supportsDraftAttachmentUpload, uploadComposeAttachment } from "../api";
 import { errorMessage, type ComposeDraftState } from "./composeDraft";
-
-const LARGE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export interface ComposeUploadProgress {
   /** Stable render key — duplicate filenames are legal within a batch. */
@@ -34,14 +29,13 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
     if (!current) return;
     const fileList = Array.from(files);
     if (fileList.length === 0) return;
-    // Warn (but still upload) on oversized files — many receiving servers
-    // bounce attachments past ~10 MB.
-    for (const file of fileList) {
-      if (file.size > LARGE_ATTACHMENT_BYTES) {
-        toast.warning(`${file.name} is ${formatMegabytes(file.size)}`, {
-          description: "Large attachments are often rejected by mail servers. Uploading anyway.",
-        });
-      }
+    if (fileList.some((file) => file.size > 25 * 1024 * 1024)) {
+      toast.error("Attachments must be within the daemon's 25 MiB resource limit");
+      return;
+    }
+    if (!current.draftId) {
+      toast.error("Save this draft before uploading attachments");
+      return;
     }
     setUploading((value) => value + fileList.length);
     const batch = fileList.map((file) => ({
@@ -53,24 +47,64 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
       ...batch.map((entry) => ({ id: entry.id, name: entry.file.name, done: false })),
     ]);
     try {
-      const paths = await Promise.all(
-        batch.map(async ({ id, file }) => {
-          const contentBase64 = await fileToBase64(file);
-          const uploaded = await uploadComposeAttachment({
-            draftPath: current.draftPath,
+      if (!(await supportsDraftAttachmentUpload()))
+        throw new Error("Upgrade the daemon before uploading portable draft attachments");
+      const paths: string[] = [];
+      let revision = current.revision;
+      for (const { id, file } of batch) {
+        const bytes = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        const sha256 = Array.from(new Uint8Array(digest), (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("");
+        const resourceId = crypto.randomUUID();
+        const declared = await uploadComposeAttachment({
+          draftPath: current.draftPath,
+          accountId: current.accountId,
+          operation: "begin",
+          metadata: {
+            id: resourceId,
+            draft_id: current.draftId,
+            account_id: current.accountId,
             filename: file.name,
-            contentBase64,
+            mime_type: file.type || "application/octet-stream",
+            length_bytes: bytes.byteLength,
+            sha256,
+          },
+        });
+        revision = declared.revision;
+        for (let offset = 0; offset < bytes.byteLength; offset += 256 * 1024) {
+          const chunk = new Uint8Array(bytes.slice(offset, offset + 256 * 1024));
+          let binary = "";
+          for (const byte of chunk) binary += String.fromCharCode(byte);
+          await uploadComposeAttachment({
+            draftPath: current.draftPath,
+            accountId: current.accountId,
+            operation: "chunk",
+            resourceId,
+            offset,
+            contentBase64: btoa(binary),
           });
-          setUploadProgress((items) =>
-            items.map((item) => (item.id === id ? { ...item, done: true } : item)),
-          );
-          return uploaded.path;
-        }),
-      );
+        }
+        const uploaded = await uploadComposeAttachment({
+          draftPath: current.draftPath,
+          accountId: current.accountId,
+          operation: "finalize",
+          resourceId,
+          expectedRevision: revision,
+        });
+        revision = uploaded.revision;
+        paths.push(uploaded.path);
+        setUploadProgress((items) =>
+          items.map((item) => (item.id === id ? { ...item, done: true } : item)),
+        );
+      }
+      if (draftRef.current?.draftPath !== current.draftPath) return;
       setDraft((latest) =>
-        latest
+        latest && latest.draftPath === current.draftPath
           ? {
               ...latest,
+              revision,
               frontmatter: {
                 ...latest.frontmatter,
                 attach: [...latest.frontmatter.attach, ...paths],
@@ -91,28 +125,4 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
   }
 
   return { uploading, uploadProgress, addFiles };
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener(
-      "load",
-      () => {
-        const value = String(reader.result ?? "");
-        resolve(value.includes(",") ? value.slice(value.indexOf(",") + 1) : value);
-      },
-      { once: true },
-    );
-    reader.addEventListener(
-      "error",
-      () => reject(reader.error ?? new Error("Failed to read file")),
-      { once: true },
-    );
-    reader.readAsDataURL(file);
-  });
-}
-
-function formatMegabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

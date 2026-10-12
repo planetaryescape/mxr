@@ -103,6 +103,7 @@ pub fn sample_draft(account_id: AccountId) -> Draft {
         bcc: vec![],
         subject: "Conformance test draft".to_string(),
         content: DraftContent::markdown("Hello from conformance test."),
+        managed_attachments: None,
         attachments: vec![],
         inline_assets: Vec::new(),
         inline_calendar_reply: None,

@@ -398,7 +398,10 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
         .iter()
         .find_map(|request| match request {
             Request::ScheduleSend {
-                draft_id, send_at, ..
+                managed_attachments_reviewed: true,
+                draft_id,
+                send_at,
+                ..
             } => Some((draft_id.clone(), *send_at)),
             _ => None,
         })

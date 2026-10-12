@@ -92,6 +92,7 @@ impl App {
                     bcc: parse_addrs(&pending.fm.bcc),
                     subject: pending.fm.subject.clone(),
                     content: mxr_core::DraftContent::markdown(pending.body.clone()),
+                    managed_attachments: None,
                     attachments: pending
                         .fm
                         .attach

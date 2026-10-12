@@ -129,6 +129,7 @@ mod tests {
             bcc: vec![],
             subject: "fixture".into(),
             content: DraftContent::markdown("synthetic"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

@@ -1869,6 +1869,7 @@ END:VCALENDAR\r\n";
             bcc: vec![],
             subject: "Re: Welcome".into(),
             content: mxr_core::DraftContent::markdown("Thanks!"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: Vec::new(),
             inline_calendar_reply: None,

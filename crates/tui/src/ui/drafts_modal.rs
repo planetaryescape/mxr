@@ -298,6 +298,7 @@ mod tests {
             bcc: vec![],
             subject: subject.to_string(),
             content: DraftContent::markdown(body),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

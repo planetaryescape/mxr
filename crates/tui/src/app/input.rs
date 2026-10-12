@@ -35,6 +35,7 @@ fn draft_from_pending(
         bcc: parse_addrs(&pending.fm.bcc),
         subject: pending.fm.subject.clone(),
         content: mxr_core::DraftContent::markdown(pending.body.clone()),
+        managed_attachments: None,
         attachments: pending
             .fm
             .attach
@@ -653,6 +654,7 @@ impl App {
                             self.queue_platform_request_after(
                                 vec![Request::SaveDraft { draft }],
                                 Request::ScheduleSend {
+                                    managed_attachments_reviewed: true,
                                     draft_id,
                                     send_at,
                                     expected_revision: Some(1),
@@ -800,6 +802,7 @@ impl App {
                             bcc: parse_addrs(&pending.fm.bcc),
                             subject: pending.fm.subject,
                             content: mxr_core::DraftContent::markdown(pending.body),
+                            managed_attachments: None,
                             attachments: pending
                                 .fm
                                 .attach

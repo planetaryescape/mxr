@@ -476,6 +476,7 @@ pub(super) async fn ack_at(
             html: prepared.plan.html.clone(),
             text: Some(prepared.plan.text.clone()),
         },
+        managed_attachments: None,
         attachments: Vec::new(),
         inline_assets: Vec::new(),
         created_at: now,

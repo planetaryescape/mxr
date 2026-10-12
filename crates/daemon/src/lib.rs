@@ -1141,6 +1141,22 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 Some(crate::cli::DraftsAction::Push { draft_id, dry_run }) => {
                     commands::mutations::drafts_push(draft_id, account, dry_run, format).await?;
                 }
+                Some(crate::cli::DraftsAction::Attach {
+                    draft_id,
+                    files,
+                    expected_revision,
+                    dry_run,
+                }) => {
+                    commands::draft_attachments::attach(
+                        draft_id,
+                        files,
+                        expected_revision,
+                        dry_run,
+                        account,
+                        format,
+                    )
+                    .await?;
+                }
                 Some(crate::cli::DraftsAction::Edit { draft_id }) => {
                     commands::mutations::drafts_edit(draft_id, account).await?;
                 }

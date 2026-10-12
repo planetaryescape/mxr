@@ -32,6 +32,7 @@
 mod archive;
 pub use archive::ArchiveJournal;
 mod attachment_transfer;
+mod draft_attachment_upload;
 pub use attachment_transfer::{download_attachment_to, DownloadedAttachment};
 
 use std::path::{Path, PathBuf};
@@ -375,6 +376,25 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        let request = match self.prepare_draft_attachment_request(request).await {
+            Ok(request) => request,
+            Err(ClientError::Daemon {
+                message,
+                kind,
+                code,
+                retryable,
+                details,
+            }) => {
+                return Ok(Response::Error {
+                    message,
+                    kind,
+                    code,
+                    retryable,
+                    details,
+                })
+            }
+            Err(error) => return Err(error),
+        };
         if matches!(
             request,
             Request::GetAttachmentTransferMetadata { .. } | Request::ReadAttachmentChunk { .. }
@@ -1408,6 +1428,7 @@ mod draft_revision_compatibility_tests {
         let response = connection
             .request_response(
                 Request::SendStoredDraft {
+                    managed_attachments_reviewed: true,
                     send_identity: Some(mxr_core::SendIdentity::for_revision(&draft_id, 1)),
                     draft_id,
                     override_safety_token: None,

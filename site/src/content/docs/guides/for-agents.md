@@ -253,8 +253,9 @@ share a filesystem, and over a remote pipe that assumption breaks:
 - **Compose is host-local.** `mxr compose`/`reply`/`forward` open `$EDITOR` and
   key draft sessions by on-disk path *on the daemon's host*, not your terminal.
   Use `--body`/`--body-stdin` for remote composing.
-- **Attachment paths are host-local.** `--attach <path>` and attachment
-  downloads resolve against the daemon host's filesystem, not yours.
+- **New attachments transfer through IPC.** `--attach <path>` reads a client
+  file and saves immutable daemon resources; downloads write to the consuming
+  client. Legacy saved-draft paths still refer to the daemon host.
 - **Autostart targets the daemon host.** `dial-stdio` starts (and, on a binary
   mismatch, restarts) the daemon *on its own machine*.
 

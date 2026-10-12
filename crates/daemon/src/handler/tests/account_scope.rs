@@ -102,6 +102,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
         subject: format!("Draft {tag}"),
         content: mxr_core::types::DraftContent::markdown("Body".to_string()),
         inline_assets: Vec::new(),
+        managed_attachments: None,
         attachments: vec![],
         inline_calendar_reply: None,
         created_at: Utc::now(),

@@ -756,6 +756,7 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
         bcc: parse_addrs(&pending.fm.bcc),
         subject: pending.fm.subject.clone(),
         content: mxr_core::DraftContent::markdown(pending.body.clone()),
+        managed_attachments: None,
         attachments: pending
             .fm
             .attach
@@ -959,6 +960,7 @@ mod tests {
             bcc: vec![],
             subject: "Preserved edit".into(),
             content: mxr_core::DraftContent::markdown("stored text"),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,
@@ -1026,6 +1028,7 @@ mod tests {
             bcc: vec![],
             subject: "Designed".into(),
             content: mxr_core::DraftContent::html("<p>designed</p>", None),
+            managed_attachments: None,
             attachments: vec![],
             inline_assets: vec![],
             inline_calendar_reply: None,

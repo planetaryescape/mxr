@@ -415,7 +415,10 @@ pub fn map_request(
             })),
         ),
         Request::ScheduleSend {
-            draft_id, send_at, ..
+            managed_attachments_reviewed: _,
+            draft_id,
+            send_at,
+            ..
         } => (
             "mail.send",
             Some("draft"),
@@ -798,6 +801,10 @@ pub fn map_request(
         Request::DownloadAttachment { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::PreviewDraftAttachment { .. }
+        | Request::BeginDraftAttachment { .. }
+        | Request::WriteDraftAttachmentChunk { .. }
+        | Request::FinalizeDraftAttachment { .. }
         | Request::OpenAttachment { .. } => {
             skip_activity!(
                 "attachment",
@@ -1392,6 +1399,7 @@ mod tests {
             subject: "Quarterly numbers".into(),
             content,
             inline_assets,
+            managed_attachments: None,
             attachments: vec![],
             inline_calendar_reply: None,
             created_at: chrono::Utc::now(),

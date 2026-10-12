@@ -73,7 +73,8 @@ try:
  rpc(se,{'cmd':'WriteDraftAttachmentChunk','draft_id':original['id'],'account_id':account,'resource_id':meta['id'],'offset':0,'data_base64':base64.b64encode(payload).decode()},old_owner)
  rpc(se,{'cmd':'FinalizeDraftAttachment','draft_id':original['id'],'account_id':account,'resource_id':meta['id']},old_owner)
  original['managed_attachments']=[meta];original=rpc(se,{'cmd':'UpdateDraft','draft':original},old_owner)['draft']
- rpc(se,{'cmd':'ScheduleSend','draft_id':second['id'],'expected_revision':second['revision'],'managed_attachments_reviewed':True,'send_at':(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()},old_owner)
+ scheduled_at=datetime.now(timezone.utc)+timedelta(seconds=20)
+ rpc(se,{'cmd':'ScheduleSend','draft_id':second['id'],'expected_revision':second['revision'],'managed_attachments_reviewed':True,'send_at':scheduled_at.isoformat()},old_owner)
  stop(sp);(source/'config/config.toml').write_text(config(False))
  db=sqlite3.connect(source/'data/mxr.db');db.execute("INSERT INTO user_activity(ts,source,action,context_json) VALUES(1,'cli','search','S09_PHYSICAL_ACTIVITY_CANARY_571991')");db.execute("INSERT INTO draft_safety_overrides VALUES('S09_PHYSICAL_TOKEN_CANARY_571991',NULL,'[]',1,NULL)");archive_evidence={'operation_id':'s09-retained-archive','workspace':old_owner,'state':'unknown','items':[{'message_id':'synthetic-retained-message','state':'unknown','reason':'snapshot predates later source effects'}]}
  db.execute("INSERT INTO mutation_jobs(job_id,kind,status,started_at,data_json) VALUES(?, 'recoverable_archive', 'recoverable', 1, ?)",('s09-retained-archive',json.dumps(archive_evidence)));db.commit();db.close()
@@ -90,7 +91,7 @@ try:
  matches=cli(de,['search','label:inbox','--format','json']);assert matches
  message=rpc(de,{'cmd':'ListEnvelopes','label_id':None,'account_id':None,'limit':1,'offset':0})['envelopes'][0]['id'];cli(de,['cat',message,'--format','json'])
  held=rpc(de,{'cmd':'GetDraft','draft_id':original['id']})['draft'];assert held['body_markdown']==original['body_markdown'];assert (target/f"mxr.draft-attachments/{meta['id']}/final/original.bin").read_bytes()==payload
- before=sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0];time.sleep(a.window);assert sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0]==before;assert not list((destination/'spool').glob('accepted-*.json'))
+ before=sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0];time.sleep(a.window);assert datetime.now(timezone.utc)>=scheduled_at,'Observation must cross the original schedule';assert sqlite3.connect(target/'mxr.db').execute('SELECT COUNT(*) FROM scheduled_send_attempts').fetchone()[0]==before;assert not list((destination/'spool').glob('accepted-*.json'))
  rpc(de,{'cmd':'SendStoredDraft','draft_id':original['id'],'managed_attachments_reviewed':True,'send_identity':{'operation_id':'forbidden-old','expected_revision':held['revision']}},new_owner,False)
  mcp(de,'mxr_recovery_status',{});cases['paused_cached_reads_bytes_no_replay']=True
  cli(de,['recovery','activate','--expected-workspace',json.dumps(new_owner),'--format','json'])

@@ -1257,9 +1257,17 @@ pub(crate) async fn get_status_within_budget(
                 None
             }
         };
+    let recovery = if degraded {
+        None
+    } else {
+        tokio::time::timeout(budget, state.store.recovery_status())
+            .await
+            .ok()
+            .and_then(Result::ok)
+    };
     Ok(ResponseData::Status {
         recovery_supported: true,
-        recovery: Some(state.store.recovery_status().await?),
+        recovery,
         workspace_owner_supported: true,
         draft_revision_supported: true,
         send_outcome_supported: true,

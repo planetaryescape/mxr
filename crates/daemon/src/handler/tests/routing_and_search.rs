@@ -1107,6 +1107,7 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
 #[tokio::test]
 async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
+    let _starved_reader = state.store.reader().acquire().await.unwrap();
 
     // A snapshot that never resolves, so the budget always wins. Racing a real
     // store against a zero budget does not settle it: `timeout` polls the
@@ -1129,6 +1130,8 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
             sync_statuses,
             daemon_pid,
             daemon_version,
+            recovery,
+            recovery_supported,
             ..
         } => {
             assert!(degraded, "a snapshot that missed its budget must say so");
@@ -1140,6 +1143,8 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
             // The DB-free fields stay a real reading.
             assert!(daemon_pid.is_some());
             assert!(daemon_version.is_some());
+            assert!(recovery_supported);
+            assert!(recovery.is_none());
         }
         other => panic!("Expected Status, got {other:?}"),
     }
@@ -1913,4 +1918,30 @@ async fn dispatch_list_bodies_preserves_attachments() {
         }
         other => panic!("Expected Bodies, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn status_recovery_metadata_does_not_escape_starved_reader_budget() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let held_reader = state.store.reader().acquire().await.unwrap();
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        crate::handler::diagnostics_impl::get_status(&state),
+    )
+    .await
+    .expect("GetStatus exceeded its bounded snapshot policy")
+    .unwrap();
+    assert!(matches!(
+        response,
+        ResponseData::Status {
+            degraded: true,
+            recovery: None,
+            recovery_supported: true,
+            ..
+        }
+    ));
+    drop(held_reader);
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
 }

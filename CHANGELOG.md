@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.88](https://github.com/planetaryescape/mxr/compare/v0.6.87...v0.6.88) (2026-10-12)
+
+
+### Bug Fixes
+
+* keep private pending work bound to its original workspace ([#422](https://github.com/planetaryescape/mxr/issues/422)) ([45f917b](https://github.com/planetaryescape/mxr/commit/45f917b53e26cef3b9fdde8ff3fad025084d15e7))
+
 ## [0.6.87](https://github.com/planetaryescape/mxr/compare/v0.6.86...v0.6.87) (2026-10-12)
 
 

@@ -37,6 +37,7 @@ mkdir -p scripts src crates/web/src docs .github/workflows
 cp "${root}/scripts/release_change_scope.sh" scripts/release_change_scope.sh
 cp "${root}/release-please-config.json" release-please-config.json
 touch .github/workflows/release-please.yml
+touch scripts/v1_launch_proof.sh scripts/verify-mailmerge-outcomes.py scripts/s08c_headless_smoke.py scripts/verify-archive-recovery.py
 cat > Cargo.toml <<'EOF'
 [workspace]
 members = ["crates/web"]
@@ -89,5 +90,14 @@ commit_all "release: prepare mxr 0.1.1"
 output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
 assert_output "${output}" "cli_changed=true"
 assert_output "${output}" "has_artifacts=true"
+
+for proof in scripts/v1_launch_proof.sh scripts/verify-mailmerge-outcomes.py scripts/s08c_headless_smoke.py scripts/verify-archive-recovery.py; do
+  reset_fixture
+  echo "# release proof fixture change" >> "${proof}"
+  commit_all "fix: update release proof fixture"
+  output="$(bash scripts/release_change_scope.sh "${baseline}" HEAD)"
+  assert_output "${output}" "cli_changed=true"
+  assert_output "${output}" "has_artifacts=true"
+done
 
 echo "release_change_scope_test: ok"

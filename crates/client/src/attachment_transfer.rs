@@ -54,6 +54,7 @@ pub async fn download_attachment_to(
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(ClientError::Io)?;
     let temp_path = parent.join(format!(".mxr-attachment-{}.part", uuid::Uuid::now_v7()));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);

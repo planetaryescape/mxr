@@ -264,3 +264,49 @@ async fn restart_preserves_authority_but_recovery_generation_invalidates_it() {
         store.remote_authority_status().await.unwrap().host_id
     );
 }
+
+#[tokio::test]
+async fn migration_replay_preserves_grant_when_a_table_and_stamp_are_missing() {
+    let home = tempfile::tempdir().unwrap();
+    let path = home.path().join("mxr.db");
+    let store = crate::Store::new(&path).await.unwrap();
+    let p = start(&store, 100).await;
+    let (mail, cleanup, _, _) = secrets();
+    store
+        .approve_remote_pairing(&p.request_id, false, 101)
+        .await
+        .unwrap();
+    let c = store
+        .claim_remote_pairing(&p.request_id, &mail, &cleanup, 102)
+        .await
+        .unwrap();
+    let identity = store.remote_authority_status().await.unwrap();
+    // Stamp-last adoption must reconcile partial DDL without deleting durable authority.
+    sqlx::raw_sql("DROP TABLE remote_pairings; DELETE FROM schema_migrations WHERE version=83;")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    store.reader().close().await;
+    store.writer().close().await;
+    drop(store);
+    let reopened = crate::Store::new(&path).await.unwrap();
+    assert_eq!(identity, reopened.remote_authority_status().await.unwrap());
+    assert_eq!(
+        c,
+        reopened
+            .authenticate_remote_client(&c.client_id, &mail, 103)
+            .await
+            .unwrap()
+    );
+    assert!(reopened.remote_pairings(103).await.unwrap().is_empty());
+    let stamped: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=83)")
+            .fetch_one(reopened.reader())
+            .await
+            .unwrap();
+    assert!(stamped);
+    reopened
+        .cleanup_remote_client(&c.client_id, &cleanup, 104)
+        .await
+        .unwrap();
+}

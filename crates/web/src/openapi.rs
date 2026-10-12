@@ -246,7 +246,7 @@ endpoint!(post attachment_download "/api/v1/mail/attachments/download", "Downloa
     post, path = "/api/v1/mail/attachments/transfer/metadata",
     summary = "Get attachment transfer metadata",
     request_body = crate::request_types::AttachmentRequest,
-    responses((status = 200, body = mxr_protocol::AttachmentTransferMetadata),
+    responses((status = 200, description = "Attachment identifiers, size, checksum, and maximum chunk size for the transfer", body = mxr_protocol::AttachmentTransferMetadata),
         (status = 401, description = "Missing or invalid bridge token"))
 )]
 #[allow(dead_code)]
@@ -255,7 +255,7 @@ fn attachment_transfer_metadata() {}
     post, path = "/api/v1/mail/attachments/transfer/chunk",
     summary = "Read a bounded attachment transfer chunk",
     request_body = crate::request_types::AttachmentChunkRequest,
-    responses((status = 200, body = mxr_protocol::AttachmentChunk),
+    responses((status = 200, description = "Base64-encoded attachment bytes at the requested offset", body = mxr_protocol::AttachmentChunk),
         (status = 401, description = "Missing or invalid bridge token"))
 )]
 #[allow(dead_code)]

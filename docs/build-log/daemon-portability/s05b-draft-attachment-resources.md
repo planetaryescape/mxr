@@ -48,7 +48,8 @@ packet; candidate `0ea54be1` CLI/MCP/TUI/browser proofs are not current release
 acceptance. The `compose.md` guide already describes chunked client upload,
 resource metadata, browser reload and TUI edit behavior; no guide rewrite was
 needed for this closeout. S05b raises the program tally to ten complete slices;
-S06b is active, with S07 and S09 planned.
+S06b is merged and awaits v0.6.88 publication and installed-client acceptance,
+with S07 and S09 planned.
 
 | Work | Observed duration |
 | --- | ---: |

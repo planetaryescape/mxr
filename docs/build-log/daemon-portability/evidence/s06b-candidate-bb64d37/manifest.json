@@ -5,7 +5,7 @@
   "retained": [
     {
       "name": "README.md",
-      "sha256": "208d75940bc8ab90fb2887c48a6e22aeddcacb64d78848ef1e175093aa39d21e"
+      "sha256": "0727feca39b8187be48c449037db3818706a25e60f572096771e09d47b3d8b12"
     },
     {
       "name": "browser-attachment-acceptance.json",
@@ -47,7 +47,7 @@
       "sha256": "87c8412a3f649fb580f46470b2758283558dc0cb9c7e6b381ee9b040203fda6d"
     }
   ],
-  "status": "four candidate client journeys passed on frozen source 0b059188; final candidate source, CI, and release acceptance pending",
+  "status": "historical candidate packet: four client journeys passed on frozen source 0b059188; later candidate source and CI integrated; published release acceptance pending",
   "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16",
   "tested_binary_tree": "753f713905cdeb338dbbe4d05554e469aff282a5"
 }

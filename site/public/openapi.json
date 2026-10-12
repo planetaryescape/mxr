@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.86"
+    "version": "0.6.87"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -9965,6 +9965,16 @@
               "null"
             ],
             "format": "int64"
+          },
+          "workspace": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              }
+            ]
           }
         }
       },
@@ -9986,6 +9996,16 @@
         "properties": {
           "draft_path": {
             "type": "string"
+          },
+          "expected_attachments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Original attachment references whose identity a private recovery refresh must preserve."
           },
           "expected_revision": {
             "type": [
@@ -29642,6 +29662,9 @@
                 "type": "integer",
                 "format": "int64",
                 "minimum": 0
+              },
+              "workspace_owner_supported": {
+                "type": "boolean"
               }
             }
           },

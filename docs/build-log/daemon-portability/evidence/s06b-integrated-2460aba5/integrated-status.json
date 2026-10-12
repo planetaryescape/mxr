@@ -1,0 +1,89 @@
+{
+  "base": "cab8c4c65feef2489fecaa0172783f7476ee0d90",
+  "browser_cleanup": {
+    "owned_records_absent": true,
+    "port_closed": true,
+    "roles_verified": 6,
+    "socket_absent": true,
+    "token_absent": true
+  },
+  "reviewed_candidate_source": "2460aba5f459dc15d9e9861be17043dd215650ce",
+  "reviewed_candidate_tree": "32b104d5eeeb8373dfd5ac7a813cddf29965747c",
+  "ci": {
+    "docs_build": "skipped in CI; checked locally in this closeout",
+    "fast_tests_passed": 4249,
+    "result": "success",
+    "semantic_tests_passed": 4295,
+    "web_e2e": "passed",
+    "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38214298080"
+  },
+  "frozen_runtime": {
+    "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+    "client_acceptance": "See the historical candidate packet; CLI, MCP, native TUI and same-origin browser journeys passed on this binary.",
+    "source": "0b0591884de84695d5cd494433a19e9489716a16",
+    "tree": "753f713905cdeb338dbbe4d05554e469aff282a5"
+  },
+  "independent_review": "Waived until Anthropic is funded.",
+  "limits": [
+    "Runtime client evidence used frozen source 0b059188, not the release binary.",
+    "The actual browser fixture does not prove the exact blocked-request boundary or a zero-console-error count.",
+    "Production backup/restore generation rotation is outside this slice."
+  ],
+  "local_docs_build": {
+    "command": "cd site && mise exec node@24.21.0 -- npm run build",
+    "execution_seconds": 8.49,
+    "output": "site/dist (191 pages; Pagefind indexed 192 HTML files; llms-full and llms-md each contain 187 pages)",
+    "pueue_task": 6273,
+    "queue_seconds": 0.16,
+    "result": "success",
+    "started_at": "2026-10-12T08:15:22.379091+01:00",
+    "ended_at": "2026-10-12T08:15:30.873427+01:00",
+    "node": "24.21.0",
+    "status": "success",
+    "validation": "CLI reference generation, OpenAPI generation, site validation, search-envelope tests (3 passed), Astro build, Pagefind and llms outputs passed. The initial cold run (task 6268) took 0.19 seconds queued plus 87.32 seconds executing; final build task 6273 rebuilt the final docs snapshot. Vite reported a chunk over 500 kB; the i18n collection was empty."
+  },
+  "merged_commit": "45f917b53e26cef3b9fdde8ff3fad025084d15e7",
+  "merged_tree_matches_candidate": true,
+  "native_tui_tests": {
+    "execution_seconds": 7.0,
+    "failed": 0,
+    "integration_tests": 80,
+    "learning": "Initial CI caught stale native fakes; the 988-test scoped suite confirmed their corrections before the final CI rerun.",
+    "library_tests": 908,
+    "passed": 988,
+    "pueue_task": 6258,
+    "queue_seconds": 0.2,
+    "suites": 9
+  },
+  "openapi": {
+    "result": "success",
+    "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38214298085"
+  },
+  "pull_request": "https://github.com/planetaryescape/mxr/pull/422",
+  "release": {
+    "installed_acceptance": "pending",
+    "latest_published_tag_at_closeout": "v0.6.87",
+    "published_release": false,
+    "release_please_result": "success",
+    "release_please_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38216602234",
+    "release_pr": "https://github.com/planetaryescape/mxr/pull/423",
+    "release_pr_merge_commit": "95b3aab3bb5d6f91e6f68428279c95f419ef198c",
+    "release_pr_state": "merged",
+    "release_version": "0.6.88",
+    "release_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38216652216",
+    "release_workflow_state_at_verification": "in_progress",
+    "release_workflow_verified_at": "2026-10-12T07:21:52Z",
+    "release_metadata_ci": "https://github.com/planetaryescape/mxr/actions/runs/38215931885"
+  },
+  "source_followups": [
+    {
+      "scope": "tests and user-facing CLI help/error strings only; no runtime control-flow or wire-format changes",
+      "source": "91ca120ddfeb725f972f62c816454fc4a6de6a75",
+      "tree": "3167eb5793eb11c7cfe2d93483024c26da899ec9"
+    },
+    {
+      "scope": "two TUI test modules only; runtime control flow and wire contract unchanged",
+      "source": "2460aba5f459dc15d9e9861be17043dd215650ce"
+    }
+  ]
+}

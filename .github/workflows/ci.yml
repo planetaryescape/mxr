@@ -27,10 +27,20 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docs: ${{ steps.filter.outputs.docs }}
       expensive: ${{ steps.filter.outputs.expensive }}
+      rust_version: ${{ steps.rust-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - id: rust-version
+        name: Read workspace Rust version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+
+          with open("Cargo.toml", "rb") as cargo_toml:
+              print(f"version={tomllib.load(cargo_toml)['workspace']['package']['rust-version']}")
+          PY
       - id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -372,14 +382,53 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      # Restore the library report from before package consolidation (b83b9e6).
+      # The crates returned in 09fba614, but the old 90/75 thresholds were left
+      # measuring only the daemon. Run its integration tests for library coverage.
+      # cmd:// children can stop during profile writing; merge complete samples.
       - run: >
           cargo llvm-cov
+          --failure-mode all
+          --package mxr-compose
+          --package mxr-provider-gmail
+          --package mxr-provider-imap
+          --package mxr-provider-smtp
+          --package mxr-reader
+          --package mxr-export
+          --package mxr-sync
           --package mxr
+          --exclude-from-report mxr
           --features semantic-local
           --ignore-filename-regex 'crates/provider-gmail/src/(auth|client)\.rs|crates/provider-imap/src/session\.rs'
           --summary-only
           --fail-under-lines 90
           --fail-under-regions 75
+      - name: Inspect raw coverage profiles after failure
+        if: failure()
+        run: |
+          echo "llvm-profdata version:"
+          rustc_host=$(rustc -vV | sed -n 's/^host: //p')
+          llvm_profdata="$(rustc --print sysroot)/lib/rustlib/$rustc_host/bin/llvm-profdata"
+          "$llvm_profdata" --version || true
+          echo "profile list:"
+          cat target-cli/llvm-cov-target/mxr-profraw-list || true
+          for profile in target-cli/llvm-cov-target/*.profraw; do
+            [ -f "$profile" ] || continue
+            bytes=$(wc -c < "$profile" || true)
+            header=$(od -An -tx1 -N16 "$profile" | tr -d ' \n' || true)
+            echo "profile=$profile bytes=$bytes header=$header"
+          done
+      - name: Upload raw coverage diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-raw-profiles
+          path: |
+            target-cli/llvm-cov-target/*.profraw
+            target-cli/llvm-cov-target/mxr-profraw-list
+            target-cli/llvm-cov-target/mxr.profdata
+          if-no-files-found: warn
+          retention-days: 3
 
   sqlx:
     name: SQLx Offline
@@ -451,13 +500,15 @@ jobs:
       - run: cargo doc --workspace --no-deps
 
   msrv:
-    name: MSRV (1.94)
+    name: MSRV (${{ needs.changes.outputs.rust_version }})
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.120
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.changes.outputs.rust_version }}
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo check --workspace --locked

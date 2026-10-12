@@ -16,6 +16,19 @@ Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/
 | Articles | [articles/](./articles/) | Essays. |
 | Guides | [guides/](./guides/) | Contributor-facing how-tos (e.g. HTTP bridge internals, [writing docs](./guides/writing-docs.md)). User-facing guides live in `site/`. |
 
+## Find the shipped workflows
+
+Use the public guides for current behavior; the blueprint retains design and
+future work. Start with [the daily workflow](https://mxr.sh/guides/your-day/),
+[To do](https://mxr.sh/guides/todo/),
+[reviewing later evidence](https://mxr.sh/guides/todo-resolution/),
+[personal categories](https://mxr.sh/guides/personal-categories/), and
+[backup and recovery](https://mxr.sh/guides/backup-recovery/).
+
+For docs changes, follow the generation and validation commands in
+[Contributing](../CONTRIBUTING.md#docs-and-release-hygiene). Update the guide
+and its navigation links together.
+
 ## Conventions
 
 - Root agent context: [`AGENTS.md`](../AGENTS.md). Scoped context lives in `.agents/skills/`.

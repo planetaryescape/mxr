@@ -5,15 +5,15 @@
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr
-cargo build --workspace
-cargo test --workspace
+cargo build -p mxr
+scripts/cargo-test -p mxr --test cli_help
 ```
 
 If you need the docs site too:
 
 ```bash
 cd site
-npm install
+npm ci
 npm run build
 ```
 
@@ -89,33 +89,26 @@ Repo reality:
 
 ## Required checks
 
-Run all of these before sending changes:
-
-```bash
-cargo fmt --all -- --check
-cargo nextest run --workspace
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo sqlx prepare --check --workspace
-cargo deny check
-```
-
-Before claiming a PR is Rust-clean, update the floating stable toolchain and
-run the local CI mirror:
+Run checks for the surface you changed. For Rust changes, update the floating
+stable toolchain, inspect the affected packages, and run the scoped gate:
 
 ```bash
 rustup update stable
+scripts/pre-pr-rust-gate --list
 scripts/pre-pr-rust-gate
+scripts/cargo-test -p <changed-crate> --tests
+cargo build -p mxr
 ```
 
-The script prints the active `rustc` and Clippy versions, then runs the Rust
-hygiene checks that most often drift from local machines to GitHub CI:
+The gate checks formatting, Clippy for touched crates, architecture boundaries
+and dependency policy. CI runs the workspace checks, tests, SQLx offline check,
+Rustdoc and builds when the changed paths require them. Use `--full` only to
+reproduce a CI failure that cannot be narrowed to one crate.
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-scripts/check_architecture_boundaries.sh
-cargo deny check
-```
+On a shared agent workstation, queue heavy commands with
+`agent-work run -- <command>` and keep workers at four or fewer. The dotfiles
+Cargo wrapper already queues Cargo; do not nest another queue around it.
+Use a separate target directory for each worktree.
 
 For test-quality and web-facing changes, also run:
 
@@ -135,7 +128,7 @@ If you touch the docs site:
 
 ```bash
 cd site
-npm install
+npm ci
 npm run build
 ```
 
@@ -198,10 +191,35 @@ When adding or changing an adapter:
 ## Docs and release hygiene
 
 - Update `README.md` for changed user-facing behavior.
-- Update `site/` docs for new commands or workflows.
+- Update `site/` docs and sidebar navigation for new commands or workflows.
 - Update architecture/blueprint docs when code changes invalidate older assumptions.
 - Keep `.github/workflows/` aligned with the actual build and release process.
 - Keep issue templates and bug-report flow current.
+
+### Regenerate and verify the docs site
+
+Use Node 24, matching the Docs Build CI job:
+
+```bash
+cd site
+npm ci
+npm run build
+```
+
+The build generates CLI pages from committed help snapshots, runs the docs
+validator tests and content checks, builds the site, then creates `llms.txt`
+exports. Edit `site/scripts/generate-cli-reference.mjs` for handwritten CLI
+examples; never edit generated pages under `reference/cli/`.
+
+The OpenAPI generator uses Cargo when available and otherwise retains
+`site/public/openapi.json`. For prose-only work, that committed spec is enough.
+When changing the HTTP API, build `dump_openapi_spec` and run the built binary
+directly into the output file; queue status text must never enter the JSON.
+
+Add user guides to `site/astro.config.mjs` and check their rendered links and
+anchors. `npm run validate` checks known content errors and schema invariants;
+it is not a general broken-link checker. After merging, verify the changed
+pages on mxr.sh. A docs-only change deploys the site without a binary release.
 
 ## Architecture pointer
 

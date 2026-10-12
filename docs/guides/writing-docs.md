@@ -409,10 +409,11 @@ it with a "we'll fix it later."
 | CLI help snapshots | `crates/daemon/tests/snapshots/cli_help__*.snap` | Regenerate with `cargo test cli_help` and accept |
 
 The site builds with `cd site && npm run build`. The build itself runs
-`npm run generate` (CLI reference), `npm run validate` (link/anchor
-check), `astro build`, then `generate-llms-txt.mjs` to produce the
-LLM-friendly site export. If the build doesn't pass, the docs aren't
-ready.
+`npm run generate` (CLI reference), `npm run validate` (content and schema
+checks), `astro build`, then `generate-llms-txt.mjs` to produce the
+LLM-friendly site export. Check the rendered links and anchors separately;
+the validator is not a general link checker. If the build does not pass, the
+docs are not ready.
 
 ---
 

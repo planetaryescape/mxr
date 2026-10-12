@@ -28,6 +28,11 @@ text, and managed attachment bytes. It excludes credentials, authorization
 tokens, activity data, logs, model files, and derived indexes. Treat the bundle
 as private mail data.
 
+The durable state includes pending `Looks resolved` checks and their saved
+attempts and results. Restoring keeps that work; it does not start model calls
+while recovery is paused. Follow [Review later evidence](/guides/todo-resolution/)
+when you resume normal use.
+
 If you omit `--source-config`, the bundle contains database account metadata
 only. mxr does not substitute the current default config. Required legacy files
 outside the source workspace, unfinished uploads, changed resource hashes,

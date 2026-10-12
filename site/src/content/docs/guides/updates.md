@@ -5,8 +5,8 @@ description: Read notifications twice a day as one line per source, hand what ne
 
 Updates gathers notifications from services and apps into a digest at
 fixed times, 08:00 and 16:30 by default. You read one line per source,
-see what changed, and let go of the whole digest in one key. Anything
-that needs you, like a failed payment, is already in To do.
+see what changed, and let go of the whole digest in one key. Press `t` on a line that needs action, such as a failed payment, to add it
+to To do. A suggested task stays a suggestion until you choose to create it.
 
 ```bash
 mxr updates                  # the latest digest and what arrived since

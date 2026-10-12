@@ -647,12 +647,12 @@ impl App {
                 self.modals.error = None;
             }
         }
-        // Events sent while the connection was down are lost: gists shown
-        // may be stale.
+        // No replay exists for events missed while disconnected. Refresh the
+        // authoritative views without replacing private compose ownership.
         if matches!(state, ConnectionState::Connected)
             && !matches!(self.connection_state, ConnectionState::Connected)
         {
-            self.row_gists.invalidate_all();
+            crate::daemon_events::refresh_after_event_gap(self);
         }
         self.connection_state = state;
     }

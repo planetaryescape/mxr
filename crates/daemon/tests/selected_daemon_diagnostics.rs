@@ -60,7 +60,7 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
             let counter = counter.clone();
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
-                if let Some(Ok(message)) = framed.next().await {
+                while let Some(Ok(message)) = framed.next().await {
                     counter.fetch_add(1, Ordering::Relaxed);
                     let data = match message.payload {
                         IpcPayload::Request(Request::GetStatus) => ResponseData::Status {
@@ -121,7 +121,9 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                         source: ClientKind::Daemon,
                         payload: IpcPayload::Response(Response::Ok { data }),
                     };
-                    let _ = framed.send(response).await;
+                    if framed.send(response).await.is_err() {
+                        break;
+                    }
                 }
             });
         }
@@ -404,4 +406,24 @@ async fn local_default_offline_doctor_keeps_local_store_diagnostics() {
             .to_string()
     );
     assert!(stats.get("daemon_target").is_none());
+}
+
+#[tokio::test]
+async fn remote_account_setup_fails_before_prompts_or_client_profile_writes() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let output = run_mxr(
+        &envs,
+        &["accounts", "add", "imap"],
+        "cmd://missing-fixture-bridge",
+    )
+    .await;
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        error.contains("unsupported through a selected remote daemon"),
+        "{error}"
+    );
+    assert!(!root.path().join("client/config/config.toml").exists());
+    assert!(!root.path().join("client/data/mxr.db").exists());
 }

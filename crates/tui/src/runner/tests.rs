@@ -160,3 +160,30 @@ mod todo;
 mod updates;
 
 mod rules;
+
+#[test]
+fn outcome_guidance_uses_retained_native_query_when_no_owner_is_in_response() {
+    let account_id = AccountId::new();
+    let operation_id = "draft:original-operation".to_string();
+    let text = super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
+        outcome: Some(mxr_core::DraftSendOutcome {
+            identity: mxr_core::SendIdentity {
+                operation_id: operation_id.clone(),
+                expected_revision: 7,
+            },
+            account_id,
+            draft_id: DraftId::new(),
+            state: mxr_core::SendOutcomeState::Accepted,
+            local_message_id: None,
+            provider_message_id: None,
+            rfc2822_message_id: None,
+        }),
+    });
+    assert!(text.contains("Provider accepted this send. Do not resend."));
+    assert!(text.contains(&operation_id));
+    assert!(text.contains("Check last send outcome"));
+    assert!(
+        !text.contains("mxr send-outcome"),
+        "CLI recovery requires an original owner absent from this response"
+    );
+}

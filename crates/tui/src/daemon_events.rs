@@ -235,21 +235,24 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::EventsLagged { skipped } => {
-            app.row_gists.invalidate_all();
-            // We missed `skipped` events during a burst, so cached views
-            // may be stale. Refresh everything the same way a completed
-            // sync does rather than trusting our in-memory state.
-            app.mailbox.pending_labels_refresh = true;
-            app.mailbox.pending_all_envelopes_refresh = true;
-            app.mailbox.pending_subscriptions_refresh = true;
-            app.refresh_places();
-            app.diagnostics.pending_status_refresh = true;
-            if let Some(label_id) = app.mailbox.active_label.clone() {
-                app.mailbox.pending_label_fetch = Some(label_id);
-            }
+            refresh_after_event_gap(app);
             tracing::debug!(skipped, "event stream lagged; resyncing TUI views");
         }
         _ => {}
+    }
+}
+
+/// Reconnect and reported event loss need the same authoritative reads. Private
+/// compose state remains under its original workspace owner.
+pub(crate) fn refresh_after_event_gap(app: &mut App) {
+    app.row_gists.invalidate_all();
+    app.mailbox.pending_labels_refresh = true;
+    app.mailbox.pending_all_envelopes_refresh = true;
+    app.mailbox.pending_subscriptions_refresh = true;
+    app.refresh_places();
+    app.diagnostics.pending_status_refresh = true;
+    if let Some(label_id) = app.mailbox.active_label.clone() {
+        app.mailbox.pending_label_fetch = Some(label_id);
     }
 }
 

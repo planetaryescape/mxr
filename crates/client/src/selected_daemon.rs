@@ -1,0 +1,367 @@
+//! One resolved target is reused for every connection in a client session.
+use crate::{ClientError, IpcConnection, TransportAddr};
+use mxr_protocol::{ClientKind, Request, ResponseData, IPC_PROTOCOL_VERSION};
+use mxr_transport::{CmdConnector, Connector, TcpConnector, UnixConnector};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
+const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone)]
+pub struct SelectedDaemonTarget {
+    address: TransportAddr,
+    token: Option<String>,
+}
+
+impl std::fmt::Debug for SelectedDaemonTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SelectedDaemonTarget")
+            .field("address", &self.description())
+            .finish_non_exhaustive()
+    }
+}
+
+impl From<PathBuf> for SelectedDaemonTarget {
+    fn from(path: PathBuf) -> Self {
+        Self::new(TransportAddr::Unix(path), None)
+    }
+}
+
+impl SelectedDaemonTarget {
+    pub fn new(address: TransportAddr, token: Option<String>) -> Self {
+        Self { address, token }
+    }
+
+    /// Resolve credentials only for TCP. The caller owns its configuration.
+    pub fn resolve(
+        default_socket: PathBuf,
+        token: impl FnOnce() -> Result<Option<String>, std::io::Error>,
+    ) -> Result<Self, ClientError> {
+        let address = TransportAddr::resolve(default_socket)?;
+        let token = if matches!(address, TransportAddr::Tcp(_)) {
+            token()?
+        } else {
+            None
+        };
+        Ok(Self::new(address, token))
+    }
+
+    pub fn description(&self) -> String {
+        match &self.address {
+            TransportAddr::Cmd(_) => "cmd://<command hidden>".into(),
+            TransportAddr::Unix(path) => format!("unix://{}", path.display()),
+            TransportAddr::Tcp(address) => format!("tcp://{address}"),
+        }
+    }
+
+    pub fn unix_path(&self) -> Option<&Path> {
+        match &self.address {
+            TransportAddr::Unix(path) => Some(path),
+            _ => None,
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.unix_path().is_none()
+    }
+
+    fn connector(&self) -> Box<dyn Connector> {
+        match &self.address {
+            TransportAddr::Unix(path) => Box::new(UnixConnector::new(path.clone())),
+            TransportAddr::Tcp(address) => {
+                Box::new(TcpConnector::new(*address, self.token.clone()))
+            }
+            TransportAddr::Cmd(argv) => Box::new(CmdConnector::new(argv.clone())),
+        }
+    }
+
+    pub async fn connect(&self, source: ClientKind) -> Result<IpcConnection, ClientError> {
+        if let Some(path) = self.unix_path() {
+            return if crate::daemon_autostart_enabled() {
+                IpcConnection::connect(path, source).await
+            } else {
+                IpcConnection::connect_supervised(path, source).await
+            };
+        }
+        let connector = self.connector();
+        let setup = async {
+            let mut connection = IpcConnection::connect_with(connector.as_ref(), source).await?;
+            match connection.request(Request::GetStatus).await? {
+                ResponseData::Status { protocol_version, .. } if protocol_version == IPC_PROTOCOL_VERSION => {
+                    connection.selected_remote = true;
+                    Ok(connection)
+                }
+                ResponseData::Status { protocol_version, .. } => Err(self.setup_error(&format!("daemon reports protocol {protocol_version}; this client supports protocol {IPC_PROTOCOL_VERSION}"))),
+                _ => Err(self.setup_error("daemon returned an unexpected status response")),
+            }
+        };
+        tokio::time::timeout(SETUP_TIMEOUT, setup)
+            .await
+            .map_err(|_| {
+                self.setup_error(
+                    "connect/authentication/status handshake timed out after 5 seconds",
+                )
+            })?
+            .map_err(|error| {
+                let reason = if matches!(self.address, TransportAddr::Cmd(_))
+                    && matches!(error, ClientError::Transport(_))
+                {
+                    "Cannot open the selected cmd:// daemon bridge; check that its executable is available"
+                        .to_string()
+                } else {
+                    error.to_string()
+                };
+                self.setup_error(&reason)
+            })
+    }
+
+    fn setup_error(&self, reason: &str) -> ClientError {
+        ClientError::Io(std::io::Error::other(format!("Cannot connect to selected {}: {reason}. Check the selected daemon/bridge and supported IPC protocol {IPC_PROTOCOL_VERSION}; no local daemon was used", self.description())))
+    }
+}
+
+pub(crate) fn requires_local_account_setup(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::AuthorizeAccountConfig { .. }
+            | Request::StartAuthSession { .. }
+            | Request::GetAuthSession { .. }
+            | Request::CancelAuthSession { .. }
+            | Request::CompleteAuthSession { .. }
+            | Request::UpsertAccountConfig { .. }
+            | Request::SetDefaultAccount { .. }
+            | Request::TestAccountConfig { .. }
+            | Request::DisableAccountConfig { .. }
+            | Request::RemoveAccountConfig { .. }
+            | Request::RepairAccountConfig { .. }
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "owned transport fixtures assert directly"
+    )]
+    use super::*;
+    use futures::{SinkExt, StreamExt};
+    use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Response};
+    use tokio::net::TcpListener;
+    use tokio_util::codec::Framed;
+
+    fn status(protocol: Option<u32>, capabilities: bool) -> ResponseData {
+        let mut value = serde_json::json!({"kind":"Status", "uptime_secs":0, "accounts":[], "total_messages":0, "daemon_version":"older-package", "daemon_build_id":"another-host-build", "workspace_owner_supported": capabilities, "future_optional_field":{"ignored":true}});
+        if let Some(protocol) = protocol {
+            value["protocol_version"] = protocol.into();
+        }
+        serde_json::from_value(value).unwrap()
+    }
+    async fn fixture(
+        data: ResponseData,
+    ) -> (SelectedDaemonTarget, tokio::task::JoinHandle<Vec<Request>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target = SelectedDaemonTarget::new(
+            TransportAddr::Tcp(listener.local_addr().unwrap()),
+            Some("fixture-token".into()),
+        );
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            let mut requests = Vec::new();
+            while let Some(Ok(message)) = framed.next().await {
+                let IpcPayload::Request(request) = message.payload else {
+                    panic!("request")
+                };
+                let response = match &request {
+                    Request::Authenticate { token } => {
+                        assert_eq!(token, "fixture-token");
+                        ResponseData::Authenticated
+                    }
+                    Request::GetStatus => data.clone(),
+                    Request::Ping => ResponseData::Pong,
+                    _ => panic!("unexpected business request {request:?}"),
+                };
+                requests.push(request);
+                framed
+                    .send(IpcMessage {
+                        expected_workspace: None,
+                        id: message.id,
+                        source: ClientKind::Daemon,
+                        payload: IpcPayload::Response(Response::Ok { data: response }),
+                    })
+                    .await
+                    .unwrap();
+            }
+            requests
+        });
+        (target, task)
+    }
+
+    #[tokio::test]
+    async fn authenticates_first_accepts_equal_protocol_build_skew_and_blocks_account_setup() {
+        let (target, server) = fixture(status(Some(IPC_PROTOCOL_VERSION), true)).await;
+        assert!(!format!("{target:?}").contains("fixture-token"));
+        let mut connection = target.connect(ClientKind::Cli).await.unwrap();
+        let error = connection
+            .request(Request::SetDefaultAccount {
+                key: "secret-account".into(),
+            })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("unsupported"));
+        assert!(matches!(
+            connection.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+        drop(connection);
+        let requests = server.await.unwrap();
+        assert!(matches!(
+            requests.as_slice(),
+            [
+                Request::Authenticate { .. },
+                Request::GetStatus,
+                Request::Ping
+            ]
+        ));
+    }
+
+    #[tokio::test]
+    async fn missing_older_and_newer_protocol_fail_before_business() {
+        for protocol in [
+            None,
+            Some(IPC_PROTOCOL_VERSION - 1),
+            Some(IPC_PROTOCOL_VERSION + 1),
+        ] {
+            let (target, server) = fixture(status(protocol, true)).await;
+            let error = target.connect(ClientKind::Mcp).await.err().unwrap();
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("supports protocol {IPC_PROTOCOL_VERSION}")),
+                "{error}"
+            );
+            assert!(matches!(
+                server.await.unwrap().as_slice(),
+                [Request::Authenticate { .. }, Request::GetStatus]
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_status_is_rejected_and_missing_capability_cannot_capture_owner() {
+        let (target, server) = fixture(ResponseData::Pong).await;
+        assert!(target
+            .connect(ClientKind::Tui)
+            .await
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unexpected status"));
+        assert_eq!(server.await.unwrap().len(), 2);
+        let (target, server) = fixture(status(Some(IPC_PROTOCOL_VERSION), false)).await;
+        let mut connection = target.connect(ClientKind::Tui).await.unwrap();
+        assert!(connection
+            .capture_workspace()
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("workspace"));
+        drop(connection);
+        assert!(server
+            .await
+            .unwrap()
+            .iter()
+            .all(|request| matches!(request, Request::Authenticate { .. } | Request::GetStatus)));
+    }
+
+    #[tokio::test]
+    async fn complete_handshake_timeout_includes_unanswered_authentication() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target = SelectedDaemonTarget::new(
+            TransportAddr::Tcp(listener.local_addr().unwrap()),
+            Some("fixture-token".into()),
+        );
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            let message = framed.next().await.unwrap().unwrap();
+            assert!(matches!(
+                message.payload,
+                IpcPayload::Request(Request::Authenticate { .. })
+            ));
+            assert!(framed.next().await.is_none());
+        });
+        let error = target.connect(ClientKind::Cli).await.err().unwrap();
+        assert!(error.to_string().contains("handshake timed out"), "{error}");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn timed_out_cmd_handshake_drops_owned_dialer() {
+        let directory = tempfile::tempdir().unwrap();
+        let pid_path = directory.path().join("pid");
+        let target = SelectedDaemonTarget::new(
+            TransportAddr::Cmd(vec![
+                "/bin/sh".into(),
+                "-c".into(),
+                "echo $$ > \"$1\"; exec sleep 60".into(),
+                "fixture".into(),
+                pid_path.display().to_string(),
+            ]),
+            None,
+        );
+        let error = target.connect(ClientKind::Cli).await.err().unwrap();
+        assert!(error.to_string().contains("handshake timed out"));
+        let pid = std::fs::read_to_string(pid_path).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let running = std::process::Command::new("/bin/kill")
+                    .args(["-0", pid.trim()])
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .unwrap()
+                    .success();
+                if !running {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn unavailable_cmd_does_not_surface_private_arguments() {
+        let target = SelectedDaemonTarget::new(
+            TransportAddr::Cmd(vec![
+                "/missing-mxr-fixture-program".into(),
+                "PRIVATE_ARG_SENTINEL".into(),
+            ]),
+            None,
+        );
+        let error = target
+            .connect(ClientKind::Cli)
+            .await
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(error.contains("selected cmd://"));
+        assert!(!error.contains("PRIVATE_ARG_SENTINEL"));
+        assert!(!error.contains("missing-mxr-fixture-program"));
+    }
+
+    #[test]
+    fn token_lookup_is_lazy_and_target_debug_hides_command_arguments() {
+        let target = SelectedDaemonTarget::from(PathBuf::from("/not-local.sock"));
+        assert!(!target.is_remote());
+        let command = SelectedDaemonTarget::new(
+            TransportAddr::Cmd(vec!["secret-wrapper".into(), "private-argument".into()]),
+            None,
+        );
+        assert!(!format!("{command:?}").contains("private-argument"));
+    }
+}

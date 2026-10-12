@@ -11,8 +11,8 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::account_workflow::{
-    daemon_socket_path, ipc_get_auth_session, ipc_start_auth_session, request_account_operation,
-    run_account_save_workflow,
+    ipc_get_auth_session, ipc_start_auth_session, request_account_operation,
+    run_account_save_workflow, selected_daemon_target,
 };
 use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, StatusSnapshot, UnsubscribeResultData};
@@ -28,7 +28,7 @@ use crate::daemon_events::{
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{
-    ipc_call, ipc_call_dedicated, ipc_transfer_attachment, spawn_ipc_worker,
+    ipc_call, ipc_call_dedicated, ipc_transfer_attachment, spawn_ipc_worker_for_session,
     AttachmentTransferRequest, IpcRequest,
 };
 use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
@@ -370,12 +370,10 @@ fn format_platform_response(data: &ResponseData) -> String {
                 }
             };
             format!(
-                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nCheck again with:\nmxr send-outcome '{}' --account {}",
+                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nOpen the command palette and choose Check last send outcome to query this retained outcome again.",
                 outcome.identity.operation_id,
                 outcome.account_id,
-                outcome.identity.expected_revision,
-                outcome.identity.operation_id,
-                outcome.account_id
+                outcome.identity.expected_revision
             )
         }
         ResponseData::SendOutcome { outcome: None } => {
@@ -387,12 +385,18 @@ fn format_platform_response(data: &ResponseData) -> String {
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    let socket_path = daemon_socket_path()?;
-    let mut client = Client::connect(&socket_path).await?;
+    let target = selected_daemon_target()?;
+    let mut client = Client::connect_target(&target).await?;
+    let owner = tokio::time::timeout(crate::ipc::IPC_REQUEST_TIMEOUT, client.capture_workspace())
+        .await
+        .ok()
+        .and_then(Result::ok);
+    let session = crate::client::DaemonSession { target, owner };
     let config = load_config()?;
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    app.compose.workspace_owner = session.owner.clone();
     match crate::send_recovery_state::last() {
         Ok(identity) => {
             app.compose.last_send_identity = identity;
@@ -405,7 +409,7 @@ pub async fn run() -> anyhow::Result<()> {
     app.command_palette
         .palette
         .restore_recents_from_labels(&local_state.recent_action_labels);
-    if config.accounts.is_empty() {
+    if config.accounts.is_empty() && !session.target.is_remote() {
         app.accounts.page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
@@ -425,7 +429,7 @@ pub async fn run() -> anyhow::Result<()> {
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
     // Background IPC worker — also forwards daemon events to result_tx
-    let bg = spawn_ipc_worker(socket_path.clone(), result_tx.clone());
+    let bg = spawn_ipc_worker_for_session(session.clone(), result_tx.clone());
     let html_assets =
         crate::terminal_images::spawn_html_image_asset_worker(bg.clone(), result_tx.clone());
     let html_decodes = crate::terminal_images::spawn_html_image_decode_worker(result_tx.clone());
@@ -1080,14 +1084,14 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(thread_id) = app.pending_summary_requests.pop_front() {
-            let socket_path = socket_path.clone();
+            let session = session.clone();
             let captured_id = thread_id.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
                 let resp = tokio::time::timeout(
                     SUMMARY_REQUEST_TIMEOUT,
                     ipc_call_dedicated(
-                        &socket_path,
+                        &session,
                         Request::SummarizeThread {
                             thread_id: thread_id.clone(),
                         },
@@ -1116,11 +1120,11 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(message_id) = app.pending_promise_check.take() {
-            let socket_path = socket_path.clone();
+            let session = session.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
                 let resp = ipc_call_dedicated(
-                    &socket_path,
+                    &session,
                     Request::DetectPromises {
                         source: mxr_protocol::PromiseSourceData::SentMessage {
                             message_id: message_id.clone(),
@@ -1146,11 +1150,11 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(thread_id) = app.pending_thread_context.take() {
-            let socket_path = socket_path.clone();
+            let session = session.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
                 let resp = ipc_call_dedicated(
-                    &socket_path,
+                    &session,
                     Request::GetThreadContext {
                         thread_id: thread_id.clone(),
                     },
@@ -1174,13 +1178,13 @@ pub async fn run() -> anyhow::Result<()> {
             if tokio::time::Instant::now() >= *deadline {
                 let thread_id = thread_id.clone();
                 app.pending_gist_debounce = None;
-                let socket_path = socket_path.clone();
+                let session = session.clone();
                 let result_tx = result_tx.clone();
                 tokio::spawn(async move {
                     let resp = tokio::time::timeout(
                         SUMMARY_REQUEST_TIMEOUT,
                         ipc_call_dedicated(
-                            &socket_path,
+                            &session,
                             Request::GetThreadGist {
                                 thread_id: thread_id.clone(),
                                 refresh: false,
@@ -1211,11 +1215,11 @@ pub async fn run() -> anyhow::Result<()> {
             let candidates = app.row_gist_candidates();
             if let Some(thread_ids) = app.row_gists.take_request(candidates, now) {
                 let epoch = app.row_gists.epoch();
-                let socket_path = socket_path.clone();
+                let session = session.clone();
                 let result_tx = result_tx.clone();
                 tokio::spawn(async move {
                     let resp = ipc_call_dedicated(
-                        &socket_path,
+                        &session,
                         Request::GetThreadGists {
                             thread_ids: thread_ids.clone(),
                             generate: true,
@@ -1617,20 +1621,18 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(message_ids) = app.pending_archive_preview.take() {
+            let session = session.clone();
             let _ = submit_task(&queued, async move {
                 let result = async {
-                    let path =
-                        daemon_socket_path().map_err(|error| MxrError::Ipc(error.to_string()))?;
-                    let mut connection =
-                        mxr_client::IpcConnection::connect(&path, mxr_protocol::ClientKind::Tui)
-                            .await
-                            .map_err(|error| MxrError::Ipc(error.to_string()))?;
+                    let owner = session.owner.as_ref().ok_or_else(|| MxrError::Ipc("Archive preview has no original workspace owner; reopen the client before continuing".into()))?;
+                    let mut connection = session.target.connect(mxr_protocol::ClientKind::Tui).await.map_err(|error| MxrError::Ipc(error.to_string()))?;
                     let journal = mxr_client::ArchiveJournal::new(&mxr_config::data_dir())
                         .map_err(|error| MxrError::Ipc(error.to_string()))?;
                     let operation = connection
-                        .preview_archive(
+                        .preview_archive_owned(
                             &journal,
                             mxr_protocol::MutationCommand::Archive { message_ids },
+                            owner,
                         )
                         .await
                         .map_err(|error| MxrError::Ipc(error.to_string()))?;
@@ -3240,15 +3242,14 @@ pub async fn run() -> anyhow::Result<()> {
             let already_cached = app.compose.reply_context_cache.contains_key(&env_id);
             if !already_warming && !already_cached {
                 app.compose.last_prewarmed_message_id = Some(env_id.clone());
-                let socket_path = socket_path.clone();
+                let session = session.clone();
                 let result_tx_clone = result_tx.clone();
                 let message_id = env_id.clone();
                 tokio::spawn(async move {
                     let reply =
-                        fetch_reply_context_dedicated(&socket_path, message_id.clone(), false)
-                            .await;
+                        fetch_reply_context_dedicated(&session, message_id.clone(), false).await;
                     let reply_all =
-                        fetch_reply_context_dedicated(&socket_path, message_id.clone(), true).await;
+                        fetch_reply_context_dedicated(&session, message_id.clone(), true).await;
                     let _ = result_tx_clone.send(AsyncResult::ReplyContextWarmed {
                         message_id,
                         reply: Box::new(reply),

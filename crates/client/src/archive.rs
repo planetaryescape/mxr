@@ -130,6 +130,33 @@ impl IpcConnection {
             .await
     }
 
+    /// Preview using the session's original owner instead of adopting a replacement.
+    pub async fn preview_archive_owned(
+        &mut self,
+        journal: &ArchiveJournal,
+        mutation: MutationCommand,
+        owner: &ArchiveWorkspaceData,
+    ) -> Result<ArchiveOperationData, ClientError> {
+        self.verify_workspace_with_events(owner, &mut |_| {})
+            .await?;
+        let identity = journal.identity(owner.clone())?;
+        let response = self
+            .request_response_owned(
+                Request::PreviewArchive { identity, mutation },
+                Some(owner),
+                |_| {},
+                self.default_timeout,
+            )
+            .await?;
+        let ResponseData::ArchiveOperation { operation } = crate::into_data(response)? else {
+            return Err(ClientError::Io(io::Error::other(
+                "Unexpected Archive preview response",
+            )));
+        };
+        journal.retain(&operation)?;
+        Ok(operation)
+    }
+
     pub async fn preview_archive_with_events<F>(
         &mut self,
         journal: &ArchiveJournal,

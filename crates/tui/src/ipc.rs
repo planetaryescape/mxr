@@ -1,6 +1,6 @@
 use crate::app::ConnectionState;
 use crate::async_result::AsyncResult;
-use crate::client::Client;
+use crate::client::{Client, DaemonSession};
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request, Response};
 use std::path::Path;
@@ -35,8 +35,24 @@ pub(crate) struct AttachmentTransferRequest {
 /// Runs a single persistent daemon connection in a background task.
 /// The main loop sends requests via channel — no new connections per operation.
 /// Daemon events (SyncCompleted, LabelCountsUpdated, etc.) are forwarded to result_tx.
+#[cfg(test)]
 pub(crate) fn spawn_ipc_worker(
     socket_path: std::path::PathBuf,
+    result_tx: mpsc::UnboundedSender<AsyncResult>,
+) -> mpsc::UnboundedSender<IpcRequest> {
+    spawn_ipc_worker_selected(socket_path.into(), None, result_tx)
+}
+
+pub(crate) fn spawn_ipc_worker_for_session(
+    session: DaemonSession,
+    result_tx: mpsc::UnboundedSender<AsyncResult>,
+) -> mpsc::UnboundedSender<IpcRequest> {
+    spawn_ipc_worker_selected(session.target, Some(session.owner), result_tx)
+}
+
+fn spawn_ipc_worker_selected(
+    target: mxr_client::SelectedDaemonTarget,
+    initial_owner: Option<Option<mxr_protocol::ArchiveWorkspaceData>>,
     result_tx: mpsc::UnboundedSender<AsyncResult>,
 ) -> mpsc::UnboundedSender<IpcRequest> {
     let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
@@ -52,9 +68,11 @@ pub(crate) fn spawn_ipc_worker(
         // for the UI to render, and reply Err to any pending requests so the
         // main loop's mutation queue doesn't stall.
         let (mut client, session_workspace) = loop {
-            match connect_ipc_client(&socket_path, event_tx.clone()).await {
+            match connect_ipc_client(&target, event_tx.clone()).await {
                 Ok(mut client) => {
-                    let owner = {
+                    let owner = if let Some(owner) = &initial_owner {
+                        owner.clone()
+                    } else {
                         let capture =
                             tokio::time::timeout(IPC_REQUEST_TIMEOUT, client.capture_workspace());
                         tokio::pin!(capture);
@@ -142,10 +160,12 @@ pub(crate) fn spawn_ipc_worker(
                                     // it and connect fresh. If the reconnect
                                     // fails, keep going — the next request
                                     // re-enters the reconnect path.
-                                    if let Ok(fresh) =
-                                        connect_ipc_client(&socket_path, event_tx.clone()).await
-                                    {
+                                    let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
+                                        since: std::time::Instant::now(), reason: "request timed out; reconnecting without replay".into(),
+                                    }));
+                                    if let Ok(fresh) = connect_ipc_client(&target, event_tx.clone()).await {
                                         client = fresh;
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
                                     }
                                     Err(MxrError::Ipc(format!(
                                         "daemon did not respond within {}s — the request may or may not have been applied",
@@ -156,8 +176,12 @@ pub(crate) fn spawn_ipc_worker(
                             if !is_transfer && should_reconnect_ipc(&result)
                                 && request_supports_retry(&req.request)
                             {
-                                match connect_ipc_client(&socket_path, event_tx.clone()).await {
+                                let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
+                                    since: std::time::Instant::now(), reason: "connection failed; retrying a safe read".into(),
+                                }));
+                                match connect_ipc_client(&target, event_tx.clone()).await {
                                     Ok(mut reconnected) => {
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
                                         let retry = match tokio::time::timeout(
                                             IPC_REQUEST_TIMEOUT,
                                             reconnected.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref().or(session_workspace.as_ref())),
@@ -204,7 +228,7 @@ pub(crate) fn spawn_ipc_worker(
                                 reason: error.to_string(),
                             },
                         ));
-                        match connect_ipc_client(&socket_path, event_tx.clone()).await {
+                        match connect_ipc_client(&target, event_tx.clone()).await {
                             Ok(fresh) => {
                                 client = fresh;
                                 let _ = result_tx
@@ -229,12 +253,15 @@ pub(crate) fn spawn_ipc_worker(
 }
 
 async fn connect_ipc_client(
-    socket_path: &std::path::Path,
+    target: &mxr_client::SelectedDaemonTarget,
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 ) -> Result<Client, MxrError> {
-    match Client::connect(socket_path).await {
+    match Client::connect_target(target).await {
         Ok(client) => Ok(client.with_event_channel(event_tx)),
-        Err(error) if should_autostart_daemon(&error) => {
+        Err(error) if target.unix_path().is_some() && should_autostart_daemon(&error) => {
+            let Some(socket_path) = target.unix_path() else {
+                return Err(MxrError::Ipc(error.to_string()));
+            };
             if !mxr_client::daemon_autostart_enabled() {
                 return Err(MxrError::Ipc(format!(
                     "{} ({})",
@@ -441,13 +468,14 @@ pub(crate) async fn ipc_transfer_attachment(
 /// Used for slow, user-triggered LLM work so the main TUI IPC worker can keep
 /// serving body fetches, search, and mutations while the LLM request runs.
 pub(crate) async fn ipc_call_dedicated(
-    socket_path: &Path,
+    session: &DaemonSession,
     request: Request,
 ) -> Result<Response, MxrError> {
+    let owner = session.owner.as_ref().ok_or_else(|| MxrError::Ipc("This native session has no original workspace owner; reopen the client before continuing".into()))?;
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     drop(event_rx);
-    let mut client = connect_ipc_client(socket_path, event_tx).await?;
-    client.raw_request(request).await
+    let mut client = connect_ipc_client(&session.target, event_tx).await?;
+    client.raw_request_owned(request, Some(owner)).await
 }
 
 #[cfg(test)]

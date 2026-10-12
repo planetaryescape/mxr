@@ -1,0 +1,27 @@
+{
+  "binary_sha256": "ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624",
+  "daemon_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "runtime": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-client-targets-20261012/target/s07-evidence/selected-clients-c4",
+  "cases": {
+    "mixed_package_build_cmd_status_selected_only": true,
+    "daemon_cannot_read_client_input": true,
+    "cli_local_editor_reply_and_immutable_upload": true,
+    "actual_stdio_mcp_selected_read": true,
+    "actual_mcp_upload_preview_chunk_finalize_update": true,
+    "actual_mcp_download_client_file_integrity": true,
+    "cli_download_under_filesystem_denial": true,
+    "review_confirm_one_send_receipt": true,
+    "same_original_owner_reconnect_outcome_without_replay": true,
+    "actual_cli_mcp_authenticated_tcp": true,
+    "actual_cli_mcp_invalid_token_no_fallback": true,
+    "original_owner_refused_after_recovery_generation_change": true,
+    "actual_cli_mcp_dead_cmd_redaction_no_fallback": true,
+    "no_client_database_socket_or_daemon": true
+  },
+  "passed": true,
+  "owned_processes_stopped": true,
+  "request_counts": {
+    "cli": 13,
+    "mcp": 19
+  }
+}

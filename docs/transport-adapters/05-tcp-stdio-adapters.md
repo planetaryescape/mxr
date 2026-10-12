@@ -50,8 +50,8 @@ The Docker `connhelper` move: a subcommand that connects to the local daemon soc
   - SSH remoting: `ssh -T host mxr daemon dial-stdio` (`-T`: no PTY — a PTY corrupts the byte stream) — bytes flow, full protocol, events included.
   - Container access: `docker exec -i <c> mxr daemon dial-stdio`.
   - Any community bridge that can exec a process and pipe stdio.
-- **`cmd://` connector (stretch, recommended):** `CmdConnector` spawns a command and wraps its stdio as the byte stream — making `MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"` work for every client (CLI, TUI, bridge) uniformly. This is the entire "community transport plugin" system: an executable that speaks bytes.
-- Remote caveats from discovery §9 apply and should be documented where `dial-stdio` is documented: compose `$EDITOR` flow, attachment paths, and autostart assume same-machine; over SSH those degrade — acceptable for scripting/agent use, documented as such. Build-id mismatch handling must not try to restart a remote daemon (`daemon_requires_restart` callers gate on locality capability).
+- **`cmd://` connector (stretch, recommended):** `CmdConnector` spawns a command and wraps its stdio as the byte stream — making `MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"` work for CLI, native TUI and stdio MCP. The web bridge stays beside its daemon on Unix. This is the entire "community transport plugin" system: an executable that speaks bytes.
+- Editors and attachment input/output stay on the client; immutable attachment bytes cross IPC, so these workflows also work through SSH. Remote connections require equal protocol versions and retain the original workspace owner. Package/build differences never trigger a remote restart, and account setup runs on the daemon host.
 
 ## 5d. Q5: daemon-hosted bridge goes in-process (optional, recommended)
 

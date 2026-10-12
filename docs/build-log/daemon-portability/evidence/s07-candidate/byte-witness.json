@@ -1,0 +1,20 @@
+{
+  "cli_mcp_download_equal": true,
+  "download_length_bytes": 23,
+  "download_sha256": "508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d",
+  "provider_acceptances": 1,
+  "attachments": [
+    {
+      "filename": "original.bin",
+      "length_bytes": 7707,
+      "sha256": "8756c381184893bea592a850a12ee34f327def752fa36816a22ef3da3a7d4daf"
+    },
+    {
+      "filename": "mcp-extra.bin",
+      "length_bytes": 7707,
+      "sha256": "8756c381184893bea592a850a12ee34f327def752fa36816a22ef3da3a7d4daf"
+    }
+  ],
+  "original_client_file_absent": true,
+  "candidate_binary_sha256": "ee52269fb707d8c8201774169e0231b1d23d0f00d500282b4184e1b3bb119624"
+}

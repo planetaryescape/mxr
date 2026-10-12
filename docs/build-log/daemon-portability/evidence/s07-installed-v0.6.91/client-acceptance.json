@@ -1,0 +1,39 @@
+{
+  "source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+  "release_version": "mxr 0.6.91",
+  "daemon_version": "0.6.89",
+  "client_binary_sha256": "be0f15cfe36bd19d5f621f8328fccf5a6c2147e1461160a1352743bb9bd79465",
+  "daemon_binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "passed": true,
+  "case_count": 14,
+  "passed_cases": 14,
+  "cases": {
+    "mixed_package_build_cmd_status_selected_only": true,
+    "daemon_cannot_read_client_input": true,
+    "cli_local_editor_reply_and_immutable_upload": true,
+    "actual_stdio_mcp_selected_read": true,
+    "actual_mcp_upload_preview_chunk_finalize_update": true,
+    "actual_mcp_download_client_file_integrity": true,
+    "cli_download_under_filesystem_denial": true,
+    "review_confirm_one_send_receipt": true,
+    "same_original_owner_reconnect_outcome_without_replay": true,
+    "actual_cli_mcp_authenticated_tcp": true,
+    "actual_cli_mcp_invalid_token_no_fallback": true,
+    "original_owner_refused_after_recovery_generation_change": true,
+    "actual_cli_mcp_dead_cmd_redaction_no_fallback": true,
+    "no_client_database_socket_or_daemon": true
+  },
+  "actual_stdio_mcp_tool_calls": 19,
+  "synthetic_provider_acceptance": {
+    "accepted_file_count": 1,
+    "attachment_count": 2,
+    "attachment_bytes_each": 7707,
+    "attachment_sha256": "8756c381184893bea592a850a12ee34f327def752fa36816a22ef3da3a7d4daf",
+    "client_original_deleted_before_acceptance": true
+  },
+  "owned_processes_stopped": true,
+  "limitations": [
+    "The provider acceptance used the controlled fake provider, not live mail accounts.",
+    "The release workflow explicitly skipped credentialed Gmail, IMAP, and SMTP checks because test credentials were unavailable."
+  ]
+}

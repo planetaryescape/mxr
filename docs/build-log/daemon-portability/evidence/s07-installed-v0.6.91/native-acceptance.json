@@ -1,0 +1,66 @@
+{
+  "source": "4805bc7c6c7f3060ac0b384312bf146c8d67f091",
+  "client_binary_sha256": "be0f15cfe36bd19d5f621f8328fccf5a6c2147e1461160a1352743bb9bd79465",
+  "daemon_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "daemon_binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "client_accounts": 0,
+  "direct_daemon_files_denied": true,
+  "owner_swap": {
+    "B_unchanged": true,
+    "private_editor_exact": true,
+    "B_stable_sha256": "31f4f51c528acc56fd1307e0e032e2c2b99daaed8fd3ff7e80dd8076f22d35cb"
+  },
+  "saved_draft": {
+    "original_deleted": true,
+    "reopened_with_managed_resource": true,
+    "bytes": 110336,
+    "sha256": "7d935aae7b9645077b695b648a5e6b6f059e1e0c899438d9ba55392764e32e78",
+    "not_sent": true
+  },
+  "fresh_reply_send": {
+    "acceptances": 1,
+    "accepted_outcomes": 1,
+    "original_deleted_after_send": true,
+    "native_safety_preview": true,
+    "native_outcome_after_client_restart": "accepted"
+  },
+  "fresh_reply_attachment": {
+    "bytes": 43008,
+    "sha256": "b561b19493b28f1498c93fb5bf28f86aa8e645a26a68dda9845376e7b5952fc7"
+  },
+  "incoming_attachment": {
+    "bytes": 23,
+    "sha256": "508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d",
+    "equals_daemon_source": true
+  },
+  "recoverable_archive_preview": {
+    "accepted": false,
+    "undo_available": false,
+    "running": false,
+    "submitted": false,
+    "item_count": 2
+  },
+  "outage_recovery": {
+    "observed_selected_connection_failures": true,
+    "recovered_same_owner": true,
+    "healthy_window_seconds": 109.441,
+    "no_watchdog_modal_after_recovery": true,
+    "provider_acceptances_unchanged": 1
+  },
+  "cleanup": {
+    "all_roles_clean": true,
+    "pty_exit_codes": [
+      0,
+      0
+    ],
+    "terminal_frames_sha256": "3490745ee70f611fd85014d862cf52242ce6e6dc7e329fe29d253bbfe1ecf8de"
+  },
+  "limitations": [
+    "Seeded fake provider sync disabled after setup to retain server draft across restart; fake send enabled.",
+    "Saved canonical draft was reopened and retained; send used a separate fresh native reply.",
+    "Synthetic 23-byte PDF proves transfer and opener invocation, not PDF rendering.",
+    "Initial legacy archive confirmation attempted two changes and returned 0 successes/account unavailable because fixture sync provider is disabled; then actual retained recoverable Archive preview passed without submission.",
+    "Specific timeout then failed fresh-connect then safe-request-retry branch remains covered by real TCP regression, not attributed to this native PTY journey.",
+    "First launch terminal output was tool-truncated; later named frames and editor/resource receipts carry the acceptance evidence."
+  ]
+}

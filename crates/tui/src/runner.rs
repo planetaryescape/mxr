@@ -5540,7 +5540,7 @@ mod sync_all_protocol_tests {
 
     #[test]
     fn global_sync_requires_current_protocol() {
-        for version in [4, 5, 6] {
+        for version in 4..mxr_protocol::IPC_PROTOCOL_VERSION {
             let error =
                 require_sync_all_protocol(version).expect_err("an older daemon cannot sync all");
             assert!(error.to_string().contains(&format!(

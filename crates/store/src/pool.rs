@@ -1664,6 +1664,8 @@ mod tests {
 
         {
             let store = store_at_version(&db_path, 77).await;
+            sqlx::query("INSERT INTO personal_categories (id, name, normalized_name, created_at, updated_at) VALUES ('kept-category', 'Travel', 'travel', 10, 11)")
+                .execute(store.writer()).await.unwrap();
             sqlx::query(
                 "INSERT INTO accounts (id, name, email, created_at, updated_at)
                  VALUES ('version-77-account', 'Personal', 'me@example.com', 1, 1)",
@@ -1697,6 +1699,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(version.0, 78);
+        let category: (String, String) =
+            sqlx::query_as("SELECT id, name FROM personal_categories WHERE id = 'kept-category'")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(category, ("kept-category".into(), "Travel".into()));
         assert!(test_table_exists(store.writer(), "todo_resolution_suggestions").await);
         assert!(test_table_exists(store.writer(), "todo_resolution_evidence").await);
         let preserved: (String, String, String, String, i64, i64) = sqlx::query_as(

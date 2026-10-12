@@ -16,6 +16,7 @@ import { formatRelativeAge } from "@/lib/utils";
 import {
   forgetActiveDraft,
   loadInitialComposeSession,
+  UnownedPrivateDraftError,
   rememberActiveDraft,
 } from "./session/activeDrafts";
 import {
@@ -60,9 +61,10 @@ export function useComposeSession(
     queryFn: () => apiFetch<{ snippets: Snippet[] }>("/api/v1/mail/snippets"),
     staleTime: 60_000,
   });
+  const canonicalReopenRef = useRef(false);
   const sessionQuery = useQuery({
     queryKey: ["compose-session", intent.key],
-    queryFn: () => loadInitialComposeSession(intent),
+    queryFn: () => loadInitialComposeSession(intent, canonicalReopenRef.current),
     retry: false,
     staleTime: Infinity,
     // Reopening an intent (undoing a send, a reply closed and reopened)
@@ -169,17 +171,19 @@ export function useComposeSession(
     );
     // Loading a session is not a save: nothing is claimed until one lands.
     setLastSavedAt(null);
-    lastSavedFingerprintRef.current = sessionQuery.data?.retainedSnapshot || next.recoverySourcePath
-      ? null
-      : changed
-        ? draftFingerprint(baseDraft)
-        : draftFingerprint(next);
+    lastSavedFingerprintRef.current =
+      sessionQuery.data?.retainedSnapshot || next.recoverySourcePath
+        ? null
+        : changed
+          ? draftFingerprint(baseDraft)
+          : draftFingerprint(next);
     setShowCc(Boolean(next.frontmatter.cc.trim()));
     setShowBcc(Boolean(next.frontmatter.bcc.trim()));
     rememberActiveDraft(intent.key, next);
   }, [
     intent,
     sessionQuery.data?.session,
+    sessionQuery.data?.retainedSnapshot,
     sessionQuery.data?.preservedRecoveryPath,
     lastSavedFingerprintRef,
     setLastSavedAt,
@@ -187,7 +191,10 @@ export function useComposeSession(
   ]);
 
   useEffect(() => {
-    if (draft && !rememberActiveDraft(intent.key, draft)) setSaveError("Browser storage cannot retain private edits across reload. Keep this editor open until they are saved or copied.");
+    if (draft && !rememberActiveDraft(intent.key, draft))
+      setSaveError(
+        "Browser storage cannot retain private edits across reload. Keep this editor open until they are saved or copied.",
+      );
   }, [draft, intent.key, setSaveError]);
 
   const hasUnsavedWork = dirty || autosave.saving || send.pendingSends > 0;
@@ -351,7 +358,7 @@ export function useComposeSession(
       return;
     }
     autosave.markSessionFinished();
-    forgetActiveDraft(intent.key);
+    forgetActiveDraft(intent.key, current.binding);
     setDiscardConfirmOpen(false);
     toast.success("Draft discarded");
     if (options.onDiscarded) {
@@ -392,7 +399,15 @@ export function useComposeSession(
     intent,
     sessionLoading: sessionQuery.isLoading,
     sessionError: sessionQuery.isError ? sessionQuery.error : null,
+    reopenSavedDraft:
+      intent.draftId && sessionQuery.error instanceof UnownedPrivateDraftError
+        ? () => {
+            canonicalReopenRef.current = true;
+            void sessionQuery.refetch();
+          }
+        : null,
     retrySession: () => {
+      canonicalReopenRef.current = false;
       void sessionQuery.refetch();
     },
 

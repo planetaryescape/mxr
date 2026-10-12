@@ -204,7 +204,7 @@ export function useDraftSaveActions({
       }
       const response =
         current.recoverySourcePath && current.draftId
-          ? await restoreComposeSession(current.draftId)
+          ? await restoreComposeSession(current.draftId, current.binding)
           : await refreshComposeSession(current.draftPath);
       if (
         draftRef.current?.draftPath !== current.draftPath ||

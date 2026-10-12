@@ -4,7 +4,9 @@ import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 import type { components } from "@/api/generated";
 import type { MutationResponse } from "@/features/mailbox/types";
 
-export type ArchiveOperation = components["schemas"]["ArchiveOperationData"] & { binding?: WorkspaceBinding };
+export type ArchiveOperation = components["schemas"]["ArchiveOperationData"] & {
+  binding?: WorkspaceBinding;
+};
 type Identity = components["schemas"]["ArchiveIdentityData"];
 const PREFIX = "mxr.archive.operation.";
 const CALLER = "mxr.archive.caller";
@@ -201,7 +203,10 @@ export async function archiveMessagesRecoverably(ids: string[]): Promise<Mutatio
 }
 
 function archiveBinding(operation: ArchiveOperation): WorkspaceBinding {
-  const binding = operation.binding ?? { target: getBridgeBaseUrl(), workspace: operation.identity.workspace };
+  const binding = operation.binding ?? {
+    target: getBridgeBaseUrl(),
+    workspace: operation.identity.workspace,
+  };
   assertWorkspaceBinding(binding);
   return binding;
 }

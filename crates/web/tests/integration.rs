@@ -71,7 +71,20 @@ where
                 while let Some(message) = framed.next().await {
                     let Ok(message) = message else { break };
                     if let IpcPayload::Request(request) = message.payload {
-                        if let Some(response) = responder(request) {
+                        let response = if matches!(request, Request::GetArchiveWorkspace) {
+                            Some(Response::Ok {
+                                data: ResponseData::ArchiveWorkspace {
+                                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                                        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                                        recovery_generation: "00000000-0000-7000-8000-000000000002"
+                                            .into(),
+                                    },
+                                },
+                            })
+                        } else {
+                            responder(request)
+                        };
+                        if let Some(response) = response {
                             let _ = framed
                                 .send(IpcMessage {
                                     expected_workspace: None,

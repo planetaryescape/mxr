@@ -10,6 +10,8 @@ Arguments:
   <DRAFT_ID>  Draft ID to send
 
 Options:
+      --expected-workspace <EXPECTED_WORKSPACE>
+          Workspace JSON returned by the reviewed preview; required for sending
       --expected-revision <EXPECTED_REVISION>
           Revision returned by the reviewed preview. Required for sending now
       --operation-id <OPERATION_ID>

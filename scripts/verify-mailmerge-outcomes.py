@@ -142,7 +142,7 @@ try:
     assert retained['status']=='uncertain' and count()==2
     operation=retained['review']['operation_id']
     account=retained['review']['account_id']
-    receipt=json.loads(cli('send-outcome',operation,'--account',account,'--format','json').stdout)
+    receipt=json.loads(cli('send-outcome',operation,'--account',account,'--expected-workspace',json.dumps(retained['review']['expected_workspace']),'--format','json').stdout)
     assert receipt['state']=='accepted'
     # Response recovery must not depend on a live draft. Wait only for cleanup.
     for _ in range(50):

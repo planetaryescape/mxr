@@ -286,6 +286,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
         match result {
             Ok(draft) => {
                 manifest.upsert(RecordEntry {
+                    expected_workspace: Some(draft.expected_workspace),
                     record_hash: hash,
                     review: None,
                     to: record.to.clone(),
@@ -297,6 +298,7 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
             }
             Err(error) => {
                 manifest.upsert(RecordEntry {
+                    expected_workspace: None,
                     record_hash: hash,
                     review: None,
                     to: record.to.clone(),
@@ -670,6 +672,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut existing = Manifest::new("c1".into(), "notto@example.com".into());
         existing.upsert(RecordEntry {
+            expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-a".into(),
+            }),
             record_hash: "h1".into(),
             review: None,
             to: "a@example.com".into(),
@@ -1179,12 +1185,20 @@ mod tests {
                 .collect();
             let sent = manifest.entry(&hashes[0]).unwrap().clone();
             manifest.upsert(RecordEntry {
+                expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                    workspace_id: "workspace-a".into(),
+                    recovery_generation: "generation-a".into(),
+                }),
                 status: RecordStatus::Sent,
                 ..sent
             });
             let failed = manifest.entry(&hashes[1]).unwrap().clone();
             let failed_draft = failed.draft_id.clone().unwrap();
             manifest.upsert(RecordEntry {
+                expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                    workspace_id: "workspace-a".into(),
+                    recovery_generation: "generation-a".into(),
+                }),
                 status: RecordStatus::Failed,
                 error: Some(FailureReason::Send),
                 ..failed

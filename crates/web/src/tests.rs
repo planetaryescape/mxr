@@ -30,6 +30,7 @@ mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
 mod unsaved_recovery;
+mod workspace_owner;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 
@@ -209,7 +210,6 @@ where
                             payload: IpcPayload::Event(event),
                         })
                         .await;
-                    return;
                 }
                 while let Some(message) = framed.next().await {
                     let Ok(message) = message else {
@@ -225,7 +225,9 @@ where
                         let update = matches!(request, Request::UpdateDraft { .. });
                         let status = matches!(request, Request::GetStatus);
                         let fallback_request = request.clone();
-                        let Some(mut response) = (if matches!(request, Request::GetArchiveWorkspace) { Some(Response::Ok { data: ResponseData::ArchiveWorkspace { workspace: test_workspace() } }) } else { responder(request) }).or_else(|| {
+                        let Some(mut response) = (if matches!(request, Request::GetStatus) && message.expected_workspace.is_none() {
+                            Some(Response::Ok { data: sample_status() })
+                        } else if matches!(request, Request::GetArchiveWorkspace) { Some(Response::Ok { data: ResponseData::ArchiveWorkspace { workspace: test_workspace() } }) } else { responder(request) }).or_else(|| {
                             if status { return Some(Response::Ok { data: sample_status() }); }
                             let mut drafts = fixture_drafts.lock().unwrap();
                             match fallback_request {
@@ -316,7 +318,7 @@ async fn status_endpoint_proxies_ipc_status() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -688,7 +690,7 @@ async fn auth_accepts_authorization_bearer_header() {
         |_| {
             Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1092,7 +1094,7 @@ async fn v1_status_endpoint_returns_same_payload_as_legacy() {
         |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1548,7 +1550,7 @@ async fn mailbox_endpoint_lists_envelopes() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1655,7 +1657,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,
@@ -1786,7 +1788,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
         move |request| match request {
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,

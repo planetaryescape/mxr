@@ -324,7 +324,7 @@ export function useComposeSend({
     }
     setSendLaterOpen(false);
     markSessionFinished();
-    forgetActiveDraft(intent.key);
+    forgetActiveDraft(intent.key, current?.binding);
     // The exact time, so the user sees what was stored whichever way it
     // was picked.
     toast.success(label ? `Send scheduled for ${label}` : "Send scheduled", {
@@ -407,7 +407,12 @@ export function useComposeSend({
       toast.error("Save and review the draft before sending");
       return;
     }
-    const sendReference = { binding: current.binding, operationId: `${current.draftId}:${expectedRevision}`, accountId, draftId: current.draftId };
+    const sendReference = {
+      binding: current.binding,
+      operationId: `${current.draftId}:${expectedRevision}`,
+      accountId,
+      draftId: current.draftId,
+    };
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
     const archiveSourceId =
       archiveAfterSendRef.current && intent.messageId ? intent.messageId : undefined;
@@ -423,19 +428,22 @@ export function useComposeSend({
     // reach the failure path would put a sent reply back and invite a
     // second send.
     const afterSend = async (response: Awaited<ReturnType<typeof sendComposeSession>>) => {
-      if (!sendReference.binding) throw new Error("Send owner is missing; retain this outcome for explicit recovery");
+      if (!sendReference.binding)
+        throw new Error("Send owner is missing; retain this outcome for explicit recovery");
       assertWorkspaceBinding(sendReference.binding);
       markSessionFinished();
-      forgetActiveDraft(intent.key);
+      forgetActiveDraft(intent.key, sendReference.binding);
       emitSendEvent({
         kind: "sent",
         ...sendEvent,
         sentMessageId: response.message_id ?? undefined,
       });
       toast.success(VERB_FEEDBACK.send.pastTense);
-      if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
+      if (remind)
+        await setReminderAfterSend(response.message_id ?? undefined, remind, sendReference.binding);
       if (archiveSourceId) {
         try {
+          assertWorkspaceBinding(sendReference.binding);
           await archiveMessages([archiveSourceId]);
           void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
           void queryClient.invalidateQueries({ queryKey: ["thread"] });
@@ -463,7 +471,13 @@ export function useComposeSend({
         return;
       }
       sendSession
-        .mutateAsync({ draftPath, accountId, overrideToken, expectedRevision, operationId: reviewedReference.operationId })
+        .mutateAsync({
+          draftPath,
+          accountId,
+          overrideToken,
+          expectedRevision,
+          operationId: reviewedReference.operationId,
+        })
         .then(
           (response) =>
             afterSend(response).catch((error: unknown) =>
@@ -473,7 +487,9 @@ export function useComposeSend({
             ),
           (err: Error) => {
             emitSendEvent({ kind: "failed", ...sendEvent });
-            toast.error("Send outcome needs checking", { description: `${err.message} Operation ${reviewedReference.operationId}; check Send outcomes in Drafts before trying again.` });
+            toast.error("Send outcome needs checking", {
+              description: `${err.message} Operation ${reviewedReference.operationId}; check Send outcomes in Drafts before trying again.`,
+            });
           },
         )
         .finally(() => {
@@ -577,6 +593,7 @@ function sendSummary(draft: ComposeDraftState): string {
 async function setReminderAfterSend(
   sentMessageId: string | undefined,
   remind: { at: Date; label: string },
+  binding: import("@/lib/workspaceOwner").WorkspaceBinding,
 ) {
   if (!sentMessageId) {
     toast.warning("Sent, but no reminder was set", {
@@ -585,7 +602,7 @@ async function setReminderAfterSend(
     return;
   }
   try {
-    await setAutoReminder(sentMessageId, remind.at);
+    await setAutoReminder(sentMessageId, remind.at, binding);
   } catch (error) {
     toast.error("Sent, but the reminder failed", { description: errorMessage(error) });
     return;
@@ -596,7 +613,7 @@ async function setReminderAfterSend(
     action: {
       label: "Cancel",
       onClick: () => {
-        cancelAutoReminder(sentMessageId)
+        cancelAutoReminder(sentMessageId, binding)
           .then(() => toast.success("Reminder cancelled"))
           .catch((error: unknown) =>
             toast.error("Couldn't cancel the reminder", { description: errorMessage(error) }),

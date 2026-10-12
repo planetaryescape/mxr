@@ -131,6 +131,7 @@ async fn daemon_bench_fixture() -> (Arc<AppState>, Vec<MessageId>) {
 
 fn status_request(id: u64) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id,
         source: mxr_protocol::ClientKind::Cli,
         payload: IpcPayload::Request(Request::GetStatus),
@@ -139,6 +140,7 @@ fn status_request(id: u64) -> IpcMessage {
 
 fn search_request(id: u64) -> IpcMessage {
     IpcMessage {
+        expected_workspace: None,
         id,
         source: mxr_protocol::ClientKind::Cli,
         payload: IpcPayload::Request(Request::Search {

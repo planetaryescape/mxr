@@ -153,6 +153,8 @@ describe("Archive consuming client recovery", () => {
         "fetch",
         vi.fn<typeof fetch>(async (input) => {
           const path = String(input);
+          if (path.endsWith("/admin/status"))
+            return Response.json({ workspace_owner_supported: true });
           if (path.endsWith("/workspace"))
             return Response.json({
               kind: "ArchiveWorkspace",

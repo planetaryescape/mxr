@@ -20,8 +20,14 @@ pub fn dispatch_record(
         .draft_id
         .clone()
         .ok_or_else(|| anyhow::anyhow!("Record has no draft"))?;
-    // The alias also recovers legacy manifests and acceptance after draft cleanup.
-    let prior = client.outcome(&manifest.account, &format!("draft:{draft}"));
+    let owner = match &entry.review {
+        Some(review) => review.expected_workspace.as_ref(),
+        None => entry.expected_workspace.as_ref(),
+    };
+    let Some(owner) = owner.cloned() else {
+        anyhow::bail!("This retained campaign has no original workspace owner. Preserve its manifest and explicitly reopen/review the original drafts before continuing.");
+    };
+    let prior = client.outcome(&manifest.account, &format!("draft:{draft}"), &owner);
     let rejected = match prior {
         Ok(Some(OutcomeState::Accepted)) => {
             entry.status = RecordStatus::Sent;
@@ -70,7 +76,14 @@ pub fn dispatch_record(
             if at.is_some() && review.scheduled_at.as_deref() != at {
                 anyhow::bail!("Requested delivery mode or time differs from the retained review; query its outcome before changing the command")
             }
-            match client.outcome(&review.account_id, &review.operation_id) {
+            match client.outcome(
+                &review.account_id,
+                &review.operation_id,
+                review
+                    .expected_workspace
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Retained review lacks original workspace"))?,
+            ) {
                 Ok(Some(OutcomeState::Accepted)) => {
                     entry.status = RecordStatus::Sent;
                     entry.error = None;
@@ -93,7 +106,7 @@ pub fn dispatch_record(
         }
     }
     if entry.review.is_none() || rejected {
-        let mut review = match client.preview(&manifest.account, &draft) {
+        let mut review = match client.preview(&manifest.account, &draft, &owner) {
             Ok(review) => review,
             Err(_) => {
                 entry.status = RecordStatus::Failed;
@@ -143,7 +156,14 @@ pub fn dispatch_record(
             Some(FailureReason::ScheduleOutcome)
         };
     } else {
-        match client.outcome(&review.account_id, &review.operation_id) {
+        match client.outcome(
+            &review.account_id,
+            &review.operation_id,
+            review
+                .expected_workspace
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Retained review lacks original workspace"))?,
+        ) {
             Ok(Some(OutcomeState::Accepted)) => {
                 entry.status = RecordStatus::Sent;
                 entry.error = None;
@@ -174,12 +194,20 @@ mod tests {
         let stub = Stub::new();
         let mut manifest = Manifest::new("campaign".into(), "legacy-selector".into());
         manifest.upsert(RecordEntry {
+            expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                workspace_id: "workspace-a".into(),
+                recovery_generation: "generation-a".into(),
+            }),
             record_hash: "hash".into(),
             to: "recipient@example.com".into(),
             draft_id: Some("draft-1".into()),
             status: RecordStatus::Drafted,
             error: None,
             review: review.then_some(SendReview {
+                expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                    workspace_id: "workspace-a".into(),
+                    recovery_generation: "generation-a".into(),
+                }),
                 account_id: "notto".into(),
                 expected_revision: 1,
                 operation_id: "draft-1:1".into(),
@@ -340,5 +368,73 @@ mod tests {
         )
         .is_err());
         assert!(stub.calls_to("send").is_empty());
+    }
+    #[test]
+    fn send_and_recovery_keep_the_reviewed_workspace() {
+        let (dir, stub, mut manifest) = fixture(true);
+        let owner = manifest.records[0]
+            .review
+            .as_ref()
+            .unwrap()
+            .expected_workspace
+            .clone()
+            .unwrap();
+        dispatch_record(
+            &Mxr::new(Some(stub.binary())),
+            &mut manifest,
+            dir.path(),
+            "hash",
+            None,
+            false,
+        )
+        .unwrap();
+        for cmd in ["send", "send-outcome"] {
+            let calls = stub.calls_to(cmd);
+            assert!(!calls.is_empty());
+            for call in calls {
+                assert_eq!(
+                    stub.value_after(&call, "--expected-workspace"),
+                    Some(serde_json::to_string(&owner).unwrap().as_str())
+                );
+            }
+        }
+    }
+    #[test]
+    fn legacy_unowned_manifest_is_retained_without_any_subprocess_replay() {
+        let (dir, stub, mut manifest) = fixture(false);
+        manifest.records[0].expected_workspace = None;
+        let before = serde_json::to_value(&manifest).unwrap();
+        assert!(dispatch_record(
+            &Mxr::new(Some(stub.binary())),
+            &mut manifest,
+            dir.path(),
+            "hash",
+            None,
+            false
+        )
+        .is_err());
+        assert_eq!(serde_json::to_value(&manifest).unwrap(), before);
+        assert!(stub.calls().is_empty());
+    }
+    #[test]
+    fn legacy_review_without_owner_never_looks_up_the_alias_in_current_workspace() {
+        let (dir, stub, mut manifest) = fixture(true);
+        manifest.records[0]
+            .review
+            .as_mut()
+            .unwrap()
+            .expected_workspace = None;
+        let before = serde_json::to_value(&manifest).unwrap();
+        assert!(dispatch_record(
+            &Mxr::new(Some(stub.binary())),
+            &mut manifest,
+            dir.path(),
+            "hash",
+            None,
+            false
+        )
+        .is_err());
+        assert_eq!(serde_json::to_value(&manifest).unwrap(), before);
+        assert!(stub.calls().is_empty());
     }
 }

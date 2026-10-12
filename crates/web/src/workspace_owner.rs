@@ -35,7 +35,15 @@ pub(super) async fn middleware(
         &state.config.auth_token,
     );
     let mut actual = None;
-    if authenticated {
+    let path = request.uri().path();
+    if authenticated && owner.is_none() && path.contains("/compose/session") {
+        return BridgeError::ArchiveConflict { message: "This private compose command has no original workspace owner. Upgrade the client and explicitly reopen/review retained work.".into(), kind: mxr_protocol::IpcErrorKind::InvalidRequest, code: "workspace_owner_required".into(), details: None }.into_response();
+    }
+    let read_observation = request.method() == axum::http::Method::GET
+        && !path.ends_with("openapi.json")
+        && !path.contains("/docs")
+        && !path.ends_with("/health");
+    if authenticated && (owner.is_some() || read_observation) {
         let mut connection = match mxr_client::IpcConnection::connect(
             &state.config.socket_path,
             mxr_protocol::ClientKind::Web,
@@ -50,7 +58,7 @@ pub(super) async fn middleware(
             .await
         {
             Ok(mxr_protocol::ResponseData::ArchiveWorkspace { workspace }) => {
-                actual = Some(workspace)
+                actual = Some(workspace);
             }
             Ok(_) => return BridgeError::UnexpectedResponse.into_response(),
             Err(error) => return crate::map_bridge_error(error).into_response(),

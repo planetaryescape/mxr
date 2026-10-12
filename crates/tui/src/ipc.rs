@@ -51,15 +51,26 @@ pub(crate) fn spawn_ipc_worker(
         // "connecting" forever. Now we retry forever, emit state transitions
         // for the UI to render, and reply Err to any pending requests so the
         // main loop's mutation queue doesn't stall.
-        let mut client = loop {
+        let (mut client, session_workspace) = loop {
             match connect_ipc_client(&socket_path, event_tx.clone()).await {
                 Ok(mut client) => {
-                    if let Ok(owner) = client.capture_workspace().await {
-                        let _ = result_tx.send(AsyncResult::WorkspaceOwner(owner));
+                    let owner = {
+                        let capture =
+                            tokio::time::timeout(IPC_REQUEST_TIMEOUT, client.capture_workspace());
+                        tokio::pin!(capture);
+                        loop {
+                            tokio::select! {
+                                result = &mut capture => break result.ok().and_then(Result::ok),
+                                Some(event) = event_rx.recv() => { let _ = result_tx.send(AsyncResult::DaemonEvent(event)); }
+                            }
+                        }
+                    };
+                    if let Some(owner) = &owner {
+                        let _ = result_tx.send(AsyncResult::WorkspaceOwner(owner.clone()));
                     }
                     let _ =
                         result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
-                    break client;
+                    break (client, owner);
                 }
                 Err(error) => {
                     let _ = result_tx.send(AsyncResult::ConnectionState(
@@ -100,7 +111,12 @@ pub(crate) fn spawn_ipc_worker(
                             let is_transfer = req.attachment_transfer.is_some();
                             let transfer = req.attachment_transfer;
                             let operation = async {
+                                if session_workspace.is_none() && req.expected_workspace.is_none() && matches!(req.request, Request::GetArchiveWorkspace) {
+                                    return Err(MxrError::Ipc("This native session has no original workspace owner. Preserve retained work and explicitly reopen the client to review the selected workspace.".into()));
+                                }
                                 if let Some(transfer) = transfer {
+                                    let owner = req.expected_workspace.as_ref().or(session_workspace.as_ref()).ok_or_else(|| MxrError::Ipc("Attachment transfer has no original workspace owner; reopen the client before continuing".into()))?;
+                                    client.raw_request_owned(Request::Ping, Some(owner)).await?;
                                     let file = client.transfer_attachment_to(
                                         &transfer.message_id,
                                         &transfer.attachment_id,
@@ -109,7 +125,7 @@ pub(crate) fn spawn_ipc_worker(
                                     ).await?;
                                     Ok(Response::Ok { data: mxr_protocol::ResponseData::AttachmentFile { file } })
                                 } else {
-                                    client.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref()).await
+                                    client.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref().or(session_workspace.as_ref())).await
                                 }
                             };
                             let mut result = match tokio::time::timeout(
@@ -144,7 +160,7 @@ pub(crate) fn spawn_ipc_worker(
                                     Ok(mut reconnected) => {
                                         let retry = match tokio::time::timeout(
                                             IPC_REQUEST_TIMEOUT,
-                                            reconnected.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref()),
+                                            reconnected.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref().or(session_workspace.as_ref())),
                                         )
                                         .await
                                         {
@@ -493,6 +509,20 @@ mod tests {
                 return;
             };
             let mut framed = Framed::new(stream, IpcCodec::new());
+            let status_request = futures::StreamExt::next(&mut framed)
+                .await
+                .unwrap()
+                .unwrap();
+            let status = serde_json::from_value(serde_json::json!({ "kind": "Status", "workspace_owner_supported": true, "uptime_secs": 0, "accounts": [], "total_messages": 0, "protocol_version": mxr_protocol::IPC_PROTOCOL_VERSION, "daemon_version": env!("CARGO_PKG_VERSION"), "daemon_build_id": mxr_client::current_daemon_build_id() })).unwrap();
+            framed
+                .send(IpcMessage {
+                    expected_workspace: None,
+                    id: status_request.id,
+                    source: mxr_protocol::ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok { data: status }),
+                })
+                .await
+                .unwrap();
             let event_msg = IpcMessage {
                 expected_workspace: None,
                 id: 0,

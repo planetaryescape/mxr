@@ -66,8 +66,9 @@ pub(crate) async fn handle_compose_action(
     let original = match &action {
         ComposeAction::EditDraft { path, .. } => {
             let id = mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
-            crate::send_recovery_state::owner_for_request(&Request::GetDraft { draft_id: id })
+            Some(crate::send_recovery_state::owner_for_request(&Request::GetDraft { draft_id: id })
                 .map_err(|error| MxrError::Ipc(error.to_string()))?
+                .ok_or_else(|| MxrError::Ipc("This retained private file has no original workspace owner; keep it and explicitly reopen the saved canonical draft before continuing".into()))?)
         }
         _ => None,
     };

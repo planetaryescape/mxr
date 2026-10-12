@@ -11,7 +11,16 @@
  * showing the paste-token panel.
  */
 
-import { assertTarget, assertWorkspaceBinding, observeWorkspace, parseWorkspace, selectedWorkspace, workspaceGeneration, WorkspaceConflictError, type WorkspaceBinding } from "@/lib/workspaceOwner";
+import {
+  assertTarget,
+  assertWorkspaceBinding,
+  observeWorkspace,
+  parseWorkspace,
+  selectedWorkspace,
+  workspaceGeneration,
+  WorkspaceConflictError,
+  type WorkspaceBinding,
+} from "@/lib/workspaceOwner";
 import createClient, { type Middleware } from "openapi-fetch";
 
 import type { paths } from "./generated";
@@ -77,7 +86,12 @@ function reportReachability(reachable: boolean): void {
   for (const listener of reachabilityListeners) listener(reachable);
 }
 
-async function sendToBridge(path: string, init: RequestInit, target = getBridgeBaseUrl(), binding?: WorkspaceBinding): Promise<Response> {
+async function sendToBridge(
+  path: string,
+  init: RequestInit,
+  target = getBridgeBaseUrl(),
+  binding?: WorkspaceBinding,
+): Promise<Response> {
   let res: Response;
   try {
     assertTarget(target);
@@ -128,7 +142,11 @@ function jsonObject(body: string): Record<string, unknown> | null {
   }
 }
 
-interface RequestOwnerContext { target: string; generation: number; binding?: WorkspaceBinding }
+interface RequestOwnerContext {
+  target: string;
+  generation: number;
+  binding?: WorkspaceBinding;
+}
 const typedContexts = new WeakMap<Request, RequestOwnerContext>();
 function observeResponseOwner(response: Response, context: RequestOwnerContext): void {
   assertTarget(context.target);
@@ -143,14 +161,20 @@ function observeResponseOwner(response: Response, context: RequestOwnerContext):
 }
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
-    const context: RequestOwnerContext = { target: getBridgeBaseUrl(), generation: workspaceGeneration(), binding: request.method === "GET" ? undefined : selectedWorkspace() };
-    if (new URL(request.url).origin !== new URL(context.target).origin) throw new WorkspaceConflictError();
+    const context: RequestOwnerContext = {
+      target: getBridgeBaseUrl(),
+      generation: workspaceGeneration(),
+      binding: request.method === "GET" ? undefined : selectedWorkspace(),
+    };
+    if (new URL(request.url).origin !== new URL(context.target).origin)
+      throw new WorkspaceConflictError();
     let token = getToken();
     if (!token) token = await tryLocalHandshake();
     assertTarget(context.target);
     if (context.binding) assertWorkspaceBinding(context.binding);
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
-    if (context.binding) request.headers.set("x-mxr-workspace", JSON.stringify(context.binding.workspace));
+    if (context.binding)
+      request.headers.set("x-mxr-workspace", JSON.stringify(context.binding.workspace));
     typedContexts.set(request, context);
     return request;
   },
@@ -192,7 +216,8 @@ export interface RawFetchOpts {
 
 export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promise<T> {
   const target = opts.binding?.target ?? getBridgeBaseUrl();
-  const commandBinding = opts.binding ?? (opts.method && opts.method !== "GET" ? selectedWorkspace() : undefined);
+  const commandBinding =
+    opts.binding ?? (opts.method && opts.method !== "GET" ? selectedWorkspace() : undefined);
   const startedGeneration = workspaceGeneration();
   assertTarget(target);
   if (commandBinding) assertWorkspaceBinding(commandBinding);
@@ -221,7 +246,9 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) throw await failureFrom(res);
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const result = (await res.json()) as T;
+  observeResponseOwner(res, { target, generation: startedGeneration, binding: commandBinding });
+  return result;
 }
 
 /** Like `apiFetch`, for endpoints that return bytes (inline images). */
@@ -251,10 +278,18 @@ export function logoutAndReload(): void {
 
 export async function captureWorkspaceBinding(): Promise<WorkspaceBinding> {
   const target = getBridgeBaseUrl();
-  const result = await apiFetch<{ workspace: unknown }>("/api/v1/mail/archive-operations/workspace");
+  const status = await apiFetch<{ workspace_owner_supported?: boolean }>("/api/v1/admin/status");
+  if (status.workspace_owner_supported !== true)
+    throw new Error(
+      "Daemon does not support durable workspace ownership; upgrade before opening private compose work",
+    );
+  const result = await apiFetch<{ workspace: unknown }>(
+    "/api/v1/mail/archive-operations/workspace",
+  );
   assertTarget(target);
   const workspace = parseWorkspace(result.workspace);
-  if (!workspace) throw new Error("Daemon does not support durable workspace identity; upgrade before editing");
+  if (!workspace)
+    throw new Error("Daemon does not support durable workspace identity; upgrade before editing");
   const binding = { target, workspace };
   observeWorkspace(binding);
   return binding;

@@ -99,7 +99,7 @@ case "$1" in
   send)
     for arg in "$@"; do
       if [ "$arg" = "--dry-run" ]; then
-        printf '{{"draft":{{"id":"%s","account_id":"notto","revision":1}},"send_identity":{{"operation_id":"%s:1","expected_revision":1}}}}\n' "$2" "$2"; exit 0
+        printf '{{"draft":{{"id":"%s","account_id":"notto","revision":1}},"send_identity":{{"operation_id":"%s:1","expected_revision":1}},"expected_workspace":{{"workspace_id":"workspace-a","recovery_generation":"generation-a"}}}}\n' "$2" "$2"; exit 0
       fi
     done
     for arg in "$@"; do
@@ -234,7 +234,7 @@ exit 1
 fn reply_script(reply: &Reply, draft_allowed: bool) -> String {
     match reply {
         Reply::Draft if draft_allowed => {
-            r#"    printf '{"draft_id":"draft-%s"}\n' "$n"; exit 0"#.to_string()
+            r#"    printf '{"draft_id":"draft-%s","expected_workspace":{"workspace_id":"workspace-a","recovery_generation":"generation-a"}}\n' "$n"; exit 0"#.to_string()
         }
         Reply::Draft => "    exit 0".to_string(),
         Reply::Literal(text) => format!("    printf '%s' {}; exit 0", shell_quote(text)),

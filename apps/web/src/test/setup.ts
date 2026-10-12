@@ -16,7 +16,8 @@ beforeEach(() => {
   // the node environment have no such global.
   if (typeof window === "undefined") return;
   try {
-    if (!window.localStorage || typeof window.localStorage.setItem !== "function") vi.stubGlobal("localStorage", privateStorage());
+    if (!window.localStorage || typeof window.localStorage.setItem !== "function")
+      vi.stubGlobal("localStorage", privateStorage());
     window.localStorage.clear();
     window.sessionStorage.clear();
   } catch {

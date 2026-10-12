@@ -392,8 +392,18 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        if request.requires_workspace_owner() && expected_workspace.is_none() {
+            return Err(ClientError::Daemon {
+                message: "This private command has no original workspace owner. Keep the work and explicitly reopen/review it before continuing.".into(),
+                kind: IpcErrorKind::InvalidRequest,
+                code: "workspace_owner_required".into(),
+                retryable: false,
+                details: None,
+            });
+        }
         if let Some(workspace) = expected_workspace {
-            self.verify_workspace(workspace).await?;
+            self.verify_workspace_with_events(workspace, &mut on_event)
+                .await?;
         }
         let request = match self
             .prepare_draft_attachment_request(request, expected_workspace)
@@ -638,14 +648,24 @@ impl IpcConnection {
     pub async fn capture_workspace(
         &mut self,
     ) -> Result<mxr_protocol::ArchiveWorkspaceData, ClientError> {
-        match self.request_response_unchecked(Request::GetStatus, &mut |_| {}, self.default_timeout).await? {
+        self.capture_workspace_with_events(drop_event).await
+    }
+
+    pub async fn capture_workspace_with_events<F>(
+        &mut self,
+        mut on_event: F,
+    ) -> Result<mxr_protocol::ArchiveWorkspaceData, ClientError>
+    where
+        F: FnMut(DaemonEvent),
+    {
+        match self.request_response_unchecked(Request::GetStatus, &mut on_event, self.default_timeout).await? {
             Response::Ok { data: ResponseData::Status { workspace_owner_supported: true, .. } } => (),
             _ => return Err(workspace_error("workspace_owner_unsupported", "Daemon does not support workspace ownership; upgrade before replaying private work")),
         }
         match self
             .request_response_unchecked(
                 Request::GetArchiveWorkspace,
-                &mut |_| {},
+                &mut on_event,
                 self.default_timeout,
             )
             .await?
@@ -666,7 +686,19 @@ impl IpcConnection {
         &mut self,
         expected: &mxr_protocol::ArchiveWorkspaceData,
     ) -> Result<(), ClientError> {
-        if self.capture_workspace().await? != *expected {
+        self.verify_workspace_with_events(expected, drop_event)
+            .await
+    }
+
+    async fn verify_workspace_with_events<F>(
+        &mut self,
+        expected: &mxr_protocol::ArchiveWorkspaceData,
+        on_event: F,
+    ) -> Result<(), ClientError>
+    where
+        F: FnMut(DaemonEvent),
+    {
+        if self.capture_workspace_with_events(on_event).await? != *expected {
             return Err(workspace_error("workspace_conflict", "Selected workspace or recovery generation changed; return to the original workspace to recover retained private work"));
         }
         Ok(())
@@ -1462,7 +1494,7 @@ mod tests {
 mod draft_revision_compatibility_tests {
     use super::*;
     use futures::{SinkExt, StreamExt};
-    use mxr_core::{AccountId, DraftId};
+    use mxr_core::AccountId;
     use tokio::net::UnixListener;
 
     #[tokio::test]
@@ -1528,22 +1560,12 @@ mod draft_revision_compatibility_tests {
             ResponseData::Pong
         ));
         let response = connection
-            .request_response(
-                Request::DeleteDraft {
-                    draft_id: DraftId::new(),
-                    expected_revision: Some(1),
-                },
-                |_| {},
-                Some(Duration::from_secs(1)),
-            )
+            .capture_workspace()
             .await
-            .expect("compatibility test fixture");
+            .expect_err("legacy has no owner capability");
         assert!(matches!(
             response,
-            Response::Error {
-                kind: IpcErrorKind::Unsupported,
-                ..
-            }
+            ClientError::Daemon { ref code, .. } if code == "workspace_owner_unsupported"
         ));
         server.await.expect("compatibility test fixture");
         let _ = AccountId::new();
@@ -1585,26 +1607,13 @@ mod draft_revision_compatibility_tests {
         let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
             .await
             .expect("send compatibility fixture");
-        let draft_id = DraftId::new();
         let response = connection
-            .request_response(
-                Request::SendStoredDraft {
-                    managed_attachments_reviewed: true,
-                    send_identity: Some(mxr_core::SendIdentity::for_revision(&draft_id, 1)),
-                    draft_id,
-                    override_safety_token: None,
-                },
-                |_| {},
-                Some(Duration::from_secs(1)),
-            )
+            .capture_workspace()
             .await
-            .expect("send compatibility fixture");
+            .expect_err("legacy has no owner capability");
         assert!(matches!(
             response,
-            Response::Error {
-                kind: IpcErrorKind::Unsupported,
-                ..
-            }
+            ClientError::Daemon { ref code, .. } if code == "workspace_owner_unsupported"
         ));
         server.await.expect("send compatibility fixture");
     }

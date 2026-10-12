@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Inspect a send operation after disconnect, including after draft cleanup
+
+Usage: mxr send-outcome [OPTIONS] --account <ACCOUNT> <OPERATION_ID>
+
+Arguments:
+  <OPERATION_ID>
+
+Options:
+      --expected-workspace <EXPECTED_WORKSPACE>
+          Original workspace JSON retained with the send review
+      --account <ACCOUNT>
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+  -h, --help
+          Print help

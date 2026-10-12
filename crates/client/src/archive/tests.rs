@@ -242,7 +242,7 @@ async fn v068_status_fixture_refuses_archive_submission_without_capability() {
     server.await.unwrap();
 }
 #[tokio::test]
-async fn v068_status_fixture_still_accepts_existing_draft_and_send_requests() {
+async fn v068_status_fixture_refuses_private_replay_without_owner_capability() {
     use futures::{SinkExt, StreamExt};
     use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Response};
     use tokio::net::UnixListener;
@@ -253,70 +253,33 @@ async fn v068_status_fixture_still_accepts_existing_draft_and_send_requests() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
-        for expect_send in [false, true] {
-            let status_request = framed.next().await.unwrap().unwrap();
-            assert!(matches!(
-                status_request.payload,
-                IpcPayload::Request(Request::GetStatus)
-            ));
-            let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
-            framed
-                .send(IpcMessage {
-                    expected_workspace: None,
-                    id: status_request.id,
-                    source: ClientKind::Daemon,
-                    payload: IpcPayload::Response(Response::Ok { data: status }),
-                })
+        let status_request = framed.next().await.unwrap().unwrap();
+        assert!(matches!(
+            status_request.payload,
+            IpcPayload::Request(Request::GetStatus)
+        ));
+        let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
+        framed
+            .send(IpcMessage {
+                expected_workspace: None,
+                id: status_request.id,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Response(Response::Ok { data: status }),
+            })
+            .await
+            .unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), framed.next())
                 .await
-                .unwrap();
-            let action = framed.next().await.unwrap().unwrap();
-            if expect_send {
-                assert!(matches!(
-                    action.payload,
-                    IpcPayload::Request(Request::GetSendOutcome { .. })
-                ));
-            } else {
-                assert!(matches!(
-                    action.payload,
-                    IpcPayload::Request(Request::DeleteDraft { .. })
-                ));
-            }
-            framed
-                .send(IpcMessage {
-                    expected_workspace: None,
-                    id: action.id,
-                    source: ClientKind::Daemon,
-                    payload: IpcPayload::Response(Response::Ok {
-                        data: ResponseData::Ack,
-                    }),
-                })
-                .await
-                .unwrap();
-        }
+                .is_err()
+        );
     });
     let mut client = IpcConnection::connect(&socket, ClientKind::Cli)
         .await
         .unwrap();
-    let draft_id = mxr_core::DraftId::new();
-    assert!(matches!(
-        client
-            .request(Request::DeleteDraft {
-                draft_id: draft_id.clone(),
-                expected_revision: Some(1)
-            })
-            .await
-            .unwrap(),
-        ResponseData::Ack
-    ));
-    assert!(matches!(
-        client
-            .request(Request::GetSendOutcome {
-                account_id: mxr_core::AccountId::new(),
-                operation_id: "reviewed-send".into()
-            })
-            .await
-            .unwrap(),
-        ResponseData::Ack
-    ));
+    let error = client.capture_workspace().await.unwrap_err();
+    assert!(
+        matches!(error, ClientError::Daemon { ref code, .. } if code == "workspace_owner_unsupported")
+    );
     server.await.unwrap();
 }

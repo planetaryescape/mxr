@@ -1,4 +1,10 @@
-import { assertTarget, assertWorkspaceBinding, selectedWorkspace, workspaceGeneration, WorkspaceConflictError } from "./workspaceOwner";
+import {
+  assertTarget,
+  assertWorkspaceBinding,
+  selectedWorkspace,
+  workspaceGeneration,
+  WorkspaceConflictError,
+} from "./workspaceOwner";
 import { getBridgeBaseUrl } from "./tokenStorage";
 
 export type ReplaceableRequestContext = {
@@ -58,12 +64,14 @@ export class WebRequestCoordinator {
     const target = getBridgeBaseUrl();
     const owner = selectedWorkspace();
     const generation = workspaceGeneration();
-    const run = this.mutationTail.catch(() => undefined).then(() => {
-      assertTarget(target);
-      if (generation !== workspaceGeneration()) throw new WorkspaceConflictError();
-      if (owner) assertWorkspaceBinding(owner);
-      return task();
-    });
+    const run = this.mutationTail
+      .catch(() => undefined)
+      .then(() => {
+        assertTarget(target);
+        if (generation !== workspaceGeneration()) throw new WorkspaceConflictError();
+        if (owner) assertWorkspaceBinding(owner);
+        return task();
+      });
     this.mutationTail = run.then(
       () => undefined,
       () => undefined,

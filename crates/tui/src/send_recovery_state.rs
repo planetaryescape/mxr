@@ -360,6 +360,7 @@ mod revision_owner_tests {
     }
 }
 
+#[cfg(not(test))]
 pub(crate) fn retain_owner(
     draft: &DraftId,
     owner: &mxr_protocol::ArchiveWorkspaceData,

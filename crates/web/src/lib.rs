@@ -1178,6 +1178,7 @@ async fn suggest_compose_collaborators(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
+    workspace_owner::require_sidecar(Path::new(&request.draft_path)).await?;
     let request_id = bridge_request_id(&headers);
     // Read-only suggestion lookup; nothing is stored under this draft's id.
     let draft = compose_draft_from_file(
@@ -1568,6 +1569,7 @@ async fn discard_compose_session(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
+    workspace_owner::require_sidecar(Path::new(&request.draft_path)).await?;
     if let Some(draft) = read_draft_session_metadata(Path::new(&request.draft_path)).await? {
         if draft.revision.is_some()
             && compose_recovery_source(Path::new(&request.draft_path))

@@ -10,7 +10,7 @@ pub(super) async fn validate(
     state: &AppState,
     request: &Request,
     expected: Option<&ArchiveWorkspaceData>,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     if !required(request) && expected.is_none() {
         return Ok(());
     }
@@ -39,12 +39,12 @@ pub(super) async fn validate(
     Ok(())
 }
 
-fn refused(code: &str, message: impl Into<String>) -> Response {
-    Response::Error {
+fn refused(code: &str, message: impl Into<String>) -> Box<Response> {
+    Box::new(Response::Error {
         message: message.into(),
         kind: IpcErrorKind::InvalidRequest,
         code: code.into(),
         retryable: false,
         details: None,
-    }
+    })
 }

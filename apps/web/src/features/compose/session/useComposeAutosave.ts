@@ -95,200 +95,210 @@ export function useComposeAutosave({
     attemptedFingerprintRef.current = `${snapshot.draftPath}:${snapshot.fingerprint}`;
     pendingSavesRef.current += 1;
     try {
-      if (!rememberActiveDraft(intentKey, current)) throw new Error("Browser storage could not retain your private edits. Keep this editor open until they are saved or copied.");
-      const binding = snapshot.binding;
-      if (!binding) throw new Error("Retained editor has no workspace owner; your private text stays preserved. Reopen explicitly.");
-      const result = await requestCoordinator.queueComposeLatest(queueKey, async () => {
-        const activeDraft = draftRef.current;
-        const sameSession =
-          activeDraft != null &&
-          composeQueueKey(activeDraft.draftPath, activeDraft.recoverySourcePath) === queueKey &&
-          (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
-        const recoveryTarget =
-          recoveryTargetRef.current?.sourcePath === sourcePath &&
-          recoveryTargetRef.current.draftId === snapshot.draftId
-            ? recoveryTargetRef.current
-            : undefined;
-        const submittedPath = sameSession
-          ? activeDraft.draftPath
-          : recoveryTarget
-            ? recoveryTarget.draftPath
-            : snapshot.draftPath;
-        const expectedRevision = sameSession
-          ? (activeDraft.revision ?? snapshot.revision)
-          : recoveryTarget
-            ? recoveryTarget.revision
-            : snapshot.revision;
-        const submittedAttachments = snapshot.frontmatter.attach.map(
-          (path) => recoveryTarget?.attachmentPaths?.get(path) ?? path,
+      if (!rememberActiveDraft(intentKey, current))
+        throw new Error(
+          "Browser storage could not retain your private edits. Keep this editor open until they are saved or copied.",
         );
-        rememberComposeBinding(submittedPath, binding);
-        const response = await (async () => {
-          try {
-            return await updateSession.mutateAsync({
-              accountId: snapshot.accountId,
-              draftPath: submittedPath,
-              frontmatter: { ...snapshot.frontmatter, attach: submittedAttachments },
-              body: snapshot.body,
-              expectedRevision,
-            });
-          } catch (error) {
-            const accepted = acceptedDraftRevision(error);
-            const recovery = recoveredComposeSession(error);
-            const latest = draftRef.current;
-            if (
-              recovery &&
-              recovery.attachment_paths.length === snapshot.frontmatter.attach.length &&
-              recovery.draft_id === snapshot.draftId &&
-              recovery.revision ===
-                (accepted && accepted.draft_id === snapshot.draftId
-                  ? accepted.revision
-                  : expectedRevision) &&
-              recovery.draft_path !== submittedPath
-            ) {
-              const attachmentPaths = new Map(recoveryTarget?.attachmentPaths);
-              snapshot.frontmatter.attach.forEach((path, index) => {
-                const preserved = recovery.attachment_paths[index];
-                if (preserved != null) attachmentPaths.set(path, preserved);
+      const binding = snapshot.binding;
+      if (!binding)
+        throw new Error(
+          "Retained editor has no workspace owner; your private text stays preserved. Reopen explicitly.",
+        );
+      const result = await requestCoordinator.queueComposeLatest(
+        queueKey,
+        async () => {
+          const activeDraft = draftRef.current;
+          const sameSession =
+            activeDraft != null &&
+            composeQueueKey(activeDraft.draftPath, activeDraft.recoverySourcePath) === queueKey &&
+            (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
+          const recoveryTarget =
+            recoveryTargetRef.current?.sourcePath === sourcePath &&
+            recoveryTargetRef.current.draftId === snapshot.draftId
+              ? recoveryTargetRef.current
+              : undefined;
+          const submittedPath = sameSession
+            ? activeDraft.draftPath
+            : recoveryTarget
+              ? recoveryTarget.draftPath
+              : snapshot.draftPath;
+          const expectedRevision = sameSession
+            ? (activeDraft.revision ?? snapshot.revision)
+            : recoveryTarget
+              ? recoveryTarget.revision
+              : snapshot.revision;
+          const submittedAttachments = snapshot.frontmatter.attach.map(
+            (path) => recoveryTarget?.attachmentPaths?.get(path) ?? path,
+          );
+          rememberComposeBinding(submittedPath, binding);
+          const response = await (async () => {
+            try {
+              return await updateSession.mutateAsync({
+                accountId: snapshot.accountId,
+                draftPath: submittedPath,
+                frontmatter: { ...snapshot.frontmatter, attach: submittedAttachments },
+                body: snapshot.body,
+                expectedRevision,
               });
-              recoveryTargetRef.current = {
-                attachmentPaths,
-                sourcePath,
-                draftPath: recovery.draft_path,
-                draftId: snapshot.draftId,
-                revision: recovery.revision,
-              };
-              const recovered = {
-                ...snapshot,
-                frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
-                draftPath: recovery.draft_path,
-                recoverySourcePath: sourcePath,
-                bodyMarkdown: snapshot.body,
-                rawContent: "",
-                kind: "recovery",
-                issues: [],
-                revision: recovery.revision,
-              };
-              const belongsToActive =
-                latest != null &&
-                composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
-                latest.draftId === snapshot.draftId;
-              if (belongsToActive) {
-                lastSavedFingerprintRef.current = null;
-                draftRef.current = {
-                  ...latest,
-                  frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
+            } catch (error) {
+              const accepted = acceptedDraftRevision(error);
+              const recovery = recoveredComposeSession(error);
+              const latest = draftRef.current;
+              if (
+                recovery &&
+                recovery.attachment_paths.length === snapshot.frontmatter.attach.length &&
+                recovery.draft_id === snapshot.draftId &&
+                recovery.revision ===
+                  (accepted && accepted.draft_id === snapshot.draftId
+                    ? accepted.revision
+                    : expectedRevision) &&
+                recovery.draft_path !== submittedPath
+              ) {
+                const attachmentPaths = new Map(recoveryTarget?.attachmentPaths);
+                snapshot.frontmatter.attach.forEach((path, index) => {
+                  const preserved = recovery.attachment_paths[index];
+                  if (preserved != null) attachmentPaths.set(path, preserved);
+                });
+                recoveryTargetRef.current = {
+                  attachmentPaths,
+                  sourcePath,
                   draftPath: recovery.draft_path,
-                  recoverySourcePath: sourcePath,
+                  draftId: snapshot.draftId,
                   revision: recovery.revision,
                 };
+                const recovered = {
+                  ...snapshot,
+                  frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
+                  draftPath: recovery.draft_path,
+                  recoverySourcePath: sourcePath,
+                  bodyMarkdown: snapshot.body,
+                  rawContent: "",
+                  kind: "recovery",
+                  issues: [],
+                  revision: recovery.revision,
+                };
+                const belongsToActive =
+                  latest != null &&
+                  composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+                  latest.draftId === snapshot.draftId;
+                if (belongsToActive) {
+                  lastSavedFingerprintRef.current = null;
+                  draftRef.current = {
+                    ...latest,
+                    frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
+                    draftPath: recovery.draft_path,
+                    recoverySourcePath: sourcePath,
+                    revision: recovery.revision,
+                  };
+                  setDraft((value) =>
+                    value != null &&
+                    composeQueueKey(value.draftPath, value.recoverySourcePath) === queueKey &&
+                    value.draftId === snapshot.draftId
+                      ? {
+                          ...value,
+                          frontmatter: remapAttachments(value.frontmatter, attachmentPaths),
+                          draftPath: recovery.draft_path,
+                          recoverySourcePath: sourcePath,
+                          revision: recovery.revision,
+                        }
+                      : value,
+                  );
+                }
+                if (snapshot.binding) rememberComposeBinding(recovery.draft_path, snapshot.binding);
+                if (belongsToActive || currentIntentKeyRef.current !== intentKey)
+                  rememberActiveDraft(intentKey, recovered);
+                if (belongsToActive)
+                  setSaveError(`${errorMessage(error)} Your edits are preserved locally.`);
+                // The bridge confirmed this exact snapshot was preserved locally.
+                // Its token is still the observed canonical token, never acceptance.
+                const preserved: ComposeSessionResponse = {
+                  session: {
+                    draftPath: recovery.draft_path,
+                    draftId: recovery.draft_id,
+                    revision: recovery.revision,
+                    recoverySourcePath: sourcePath,
+                    accountId: snapshot.accountId,
+                    rawContent: "",
+                    frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
+                    bodyMarkdown: snapshot.body,
+                    previewHtml: "",
+                    issues: [],
+                    kind: "recovery",
+                  },
+                };
+                return preserved;
+              } else if (
+                accepted &&
+                accepted.draft_id === snapshot.draftId &&
+                latest != null &&
+                composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+                latest.draftId === snapshot.draftId
+              ) {
+                draftRef.current = { ...latest, revision: accepted.revision };
                 setDraft((value) =>
                   value != null &&
                   composeQueueKey(value.draftPath, value.recoverySourcePath) === queueKey &&
                   value.draftId === snapshot.draftId
-                    ? {
-                        ...value,
-                        frontmatter: remapAttachments(value.frontmatter, attachmentPaths),
-                        draftPath: recovery.draft_path,
-                        recoverySourcePath: sourcePath,
-                        revision: recovery.revision,
-                      }
+                    ? { ...value, revision: accepted.revision }
                     : value,
                 );
               }
-              if (snapshot.binding) rememberComposeBinding(recovery.draft_path, snapshot.binding);
-              if (belongsToActive || currentIntentKeyRef.current !== intentKey)
-                rememberActiveDraft(intentKey, recovered);
-              if (belongsToActive)
-                setSaveError(`${errorMessage(error)} Your edits are preserved locally.`);
-              // The bridge confirmed this exact snapshot was preserved locally.
-              // Its token is still the observed canonical token, never acceptance.
-              const preserved: ComposeSessionResponse = {
-                session: {
-                  draftPath: recovery.draft_path,
-                  draftId: recovery.draft_id,
-                  revision: recovery.revision,
-                  recoverySourcePath: sourcePath,
-                  accountId: snapshot.accountId,
-                  rawContent: "",
-                  frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
-                  bodyMarkdown: snapshot.body,
-                  previewHtml: "",
-                  issues: [],
-                  kind: "recovery",
-                },
-              };
-              return preserved;
-            } else if (
-              accepted &&
-              accepted.draft_id === snapshot.draftId &&
-              latest != null &&
-              composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
-              latest.draftId === snapshot.draftId
-            ) {
-              draftRef.current = { ...latest, revision: accepted.revision };
-              setDraft((value) =>
-                value != null &&
-                composeQueueKey(value.draftPath, value.recoverySourcePath) === queueKey &&
-                value.draftId === snapshot.draftId
-                  ? { ...value, revision: accepted.revision }
-                  : value,
-              );
+              throw error;
             }
-            throw error;
-          }
-        })();
-        if (snapshot.draftId != null && response.session.draftId !== snapshot.draftId)
-          throw new Error("The saved response belongs to another draft; your text stays here");
-        const receivedAttachments = response.session.frontmatter.attach ?? [];
-        if (receivedAttachments.length !== snapshot.frontmatter.attach.length)
-          throw new Error("The saved response does not confirm this snapshot's attachments");
-        const knownTarget = recoveryTargetRef.current;
-        const attachmentPaths = new Map(
-          knownTarget?.sourcePath === sourcePath && knownTarget.draftId === snapshot.draftId
-            ? knownTarget.attachmentPaths
-            : undefined,
-        );
-        snapshot.frontmatter.attach.forEach((path, index) => {
-          const preserved = receivedAttachments[index];
-          if (preserved != null) attachmentPaths.set(path, preserved);
-        });
-        recoveryTargetRef.current = {
-          attachmentPaths,
-          sourcePath,
-          draftPath: response.session.draftPath,
-          draftId: response.session.draftId ?? snapshot.draftId,
-          revision: response.session.revision,
-        };
-        const latest = draftRef.current;
-        if (
-          latest != null &&
-          composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
-          (snapshot.draftId == null || latest.draftId === snapshot.draftId)
-        ) {
-          draftRef.current = {
-            ...latest,
-            frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
-            draftId: response.session.draftId ?? undefined,
+          })();
+          if (snapshot.draftId != null && response.session.draftId !== snapshot.draftId)
+            throw new Error("The saved response belongs to another draft; your text stays here");
+          const receivedAttachments = response.session.frontmatter.attach ?? [];
+          if (receivedAttachments.length !== snapshot.frontmatter.attach.length)
+            throw new Error("The saved response does not confirm this snapshot's attachments");
+          const knownTarget = recoveryTargetRef.current;
+          const attachmentPaths = new Map(
+            knownTarget?.sourcePath === sourcePath && knownTarget.draftId === snapshot.draftId
+              ? knownTarget.attachmentPaths
+              : undefined,
+          );
+          snapshot.frontmatter.attach.forEach((path, index) => {
+            const preserved = receivedAttachments[index];
+            if (preserved != null) attachmentPaths.set(path, preserved);
+          });
+          recoveryTargetRef.current = {
+            attachmentPaths,
+            sourcePath,
+            draftPath: response.session.draftPath,
+            draftId: response.session.draftId ?? snapshot.draftId,
             revision: response.session.revision,
           };
-          setDraft((active) =>
-            active != null &&
-            composeQueueKey(active.draftPath, active.recoverySourcePath) === queueKey &&
-            (snapshot.draftId == null || active.draftId === snapshot.draftId)
-              ? {
-                  ...active,
-                  frontmatter: remapAttachments(active.frontmatter, attachmentPaths),
-                  draftId: response.session.draftId ?? undefined,
-                  revision: response.session.revision,
-                }
-              : active,
-          );
-        }
-        return response;
-      }, () => {
-        assertWorkspaceBinding(binding);
-      });
+          const latest = draftRef.current;
+          if (
+            latest != null &&
+            composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+            (snapshot.draftId == null || latest.draftId === snapshot.draftId)
+          ) {
+            draftRef.current = {
+              ...latest,
+              frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
+              draftId: response.session.draftId ?? undefined,
+              revision: response.session.revision,
+            };
+            setDraft((active) =>
+              active != null &&
+              composeQueueKey(active.draftPath, active.recoverySourcePath) === queueKey &&
+              (snapshot.draftId == null || active.draftId === snapshot.draftId)
+                ? {
+                    ...active,
+                    frontmatter: remapAttachments(active.frontmatter, attachmentPaths),
+                    draftId: response.session.draftId ?? undefined,
+                    revision: response.session.revision,
+                  }
+                : active,
+            );
+          }
+          return response;
+        },
+        () => {
+          assertWorkspaceBinding(binding);
+        },
+      );
       if (result.status !== "committed") return undefined;
       const response = result.value;
       if (
@@ -313,7 +323,10 @@ export function useComposeAutosave({
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === savedFingerprint) {
         const next = {
-          ...draftFromSession({ ...response.session, binding: snapshot.binding }, snapshot.accountId),
+          ...draftFromSession(
+            { ...response.session, binding: snapshot.binding },
+            snapshot.accountId,
+          ),
           recoverySourcePath: recoverySource,
           preservedRecoveryPath: latest.preservedRecoveryPath,
         };

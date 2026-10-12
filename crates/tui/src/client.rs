@@ -136,8 +136,13 @@ impl Client {
     pub(crate) async fn capture_workspace(
         &mut self,
     ) -> Result<mxr_protocol::ArchiveWorkspaceData, MxrError> {
+        let event_tx = self.event_tx.clone();
         self.conn
-            .capture_workspace()
+            .capture_workspace_with_events(move |event| {
+                if let Some(tx) = &event_tx {
+                    let _ = tx.send(event);
+                }
+            })
             .await
             .map_err(map_request_error)
     }

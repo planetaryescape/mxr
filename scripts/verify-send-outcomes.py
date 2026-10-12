@@ -75,7 +75,11 @@ records = []
 daemon = None
 
 
+workspace = None
+
 def cli(*args, timeout=30, short=False):
+    if workspace and args and ((args[0] == "send" and "--expected-revision" in args) or args[0] == "send-outcome"):
+        args = (*args, "--expected-workspace", json.dumps(workspace))
     e = env.copy()
     if short:
         e["MXR_IPC_TIMEOUT_SECS"] = "1"
@@ -172,7 +176,7 @@ def ipc(request):
         connection.settimeout(30)
         connection.connect(sock)
         data = json.dumps(
-            {"id": 999, "source": "tui", "payload": {"type": "Request", **request}}
+            {"id": 999, "source": "tui", "expected_workspace": workspace, "payload": {"type": "Request", **request}}
         ).encode()
         connection.sendall(struct.pack(">I", len(data)) + data)
 
@@ -192,6 +196,7 @@ def ipc(request):
 
 try:
     start()
+    workspace = ipc({"cmd": "GetArchiveWorkspace"})["data"]["workspace"]
     draft_id, account, identity = draft("Lost response")
     marker = r / "spool/send-pause-after-accept"
     marker.touch()
@@ -225,7 +230,7 @@ try:
     # Query via the actual authenticated HTTP bridge after the draft is deleted.
     request = Request(
         f"http://127.0.0.1:{a.port}/api/v1/mail/send-outcomes/{identity['operation_id']}?account_id={account}",
-        headers={"Authorization": "Bearer synthetic-s03-token"},
+        headers={"Authorization": "Bearer synthetic-s03-token", "x-mxr-workspace": json.dumps(workspace)},
     )
     http = json.load(urlopen(request, timeout=30))
     assert http["outcome"]["state"] == "accepted"
@@ -303,7 +308,7 @@ try:
     request = Request(
         f"http://127.0.0.1:{a.port}/api/v1/mail/drafts/{retry_id}/send-stored?expected_revision={retry_identity['expected_revision']}&operation_id={retry_operation}",
         method="POST",
-        headers={"Authorization": "Bearer synthetic-s03-token"},
+        headers={"Authorization": "Bearer synthetic-s03-token", "x-mxr-workspace": json.dumps(workspace)},
     )
     json.load(urlopen(request, timeout=30))
     retry_outcome = outcome(retry_account, retry_operation)

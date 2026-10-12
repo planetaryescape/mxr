@@ -202,6 +202,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
                 .as_ref()
                 .map(|info| info.local_message_id.to_string()),
             options.format.clone(),
+            &client.capture_workspace().await?,
         )?;
         report_promises_after_send(&mut client, receipt.as_ref(), options.format).await;
     } else {
@@ -215,7 +216,13 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        print_compose_result("save_draft", &draft, None, options.format)?;
+        print_compose_result(
+            "save_draft",
+            &draft,
+            None,
+            options.format,
+            &client.capture_workspace().await?,
+        )?;
     }
     Ok(())
 }
@@ -260,11 +267,20 @@ fn print_compose_result(
     draft: &Draft,
     local_message_id: Option<String>,
     format: Option<OutputFormat>,
+    workspace: &mxr_protocol::ArchiveWorkspaceData,
 ) -> anyhow::Result<()> {
-    print!(
-        "{}",
-        compose_result_output(action, draft, local_message_id, format)?
-    );
+    let output = compose_result_output(action, draft, local_message_id, format.clone())?;
+    if matches!(format, Some(OutputFormat::Json | OutputFormat::Jsonl)) {
+        let mut value: serde_json::Value = serde_json::from_str(&output)?;
+        value["expected_workspace"] = serde_json::to_value(workspace)?;
+        if matches!(format, Some(OutputFormat::Json)) {
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        } else {
+            println!("{}", serde_json::to_string(&value)?);
+        }
+    } else {
+        print!("{output}");
+    }
     Ok(())
 }
 
@@ -698,6 +714,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
                 .as_ref()
                 .map(|info| info.local_message_id.to_string()),
             format.clone(),
+            &client.capture_workspace().await?,
         )?;
         report_promises_after_send(client, receipt.as_ref(), format).await;
     } else {
@@ -711,7 +728,13 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
-        print_compose_result("save_draft", &outgoing, None, format)?;
+        print_compose_result(
+            "save_draft",
+            &outgoing,
+            None,
+            format,
+            &client.capture_workspace().await?,
+        )?;
     }
     Ok(())
 }
@@ -1259,6 +1282,9 @@ pub async fn send_draft(
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+    if let Some(owner) = &review.expected_workspace {
+        client.expect_workspace(owner.clone()).await?;
+    }
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if dry_run {
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;

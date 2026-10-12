@@ -489,7 +489,7 @@ pub async fn handle_request_with_peer(
                                 .instrument(span)
                                 .await
                         }
-                        Err(response) => response,
+                        Err(response) => *response,
                     };
 
                 // Activity capture seam. Fire-and-forget; never propagates errors.

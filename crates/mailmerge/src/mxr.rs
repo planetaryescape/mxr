@@ -27,6 +27,7 @@ pub struct Mxr {
 /// What `mxr compose --draft --format json` reports back.
 #[derive(Debug, Clone)]
 pub struct DraftCreated {
+    pub expected_workspace: crate::manifest::WorkspaceOwner,
     pub draft_id: String,
 }
 
@@ -104,11 +105,17 @@ impl Mxr {
             .ok_or_else(|| anyhow::anyhow!("`mxr compose` JSON had no draft_id"))?;
 
         Ok(DraftCreated {
+            expected_workspace: serde_json::from_value(value.get("expected_workspace").cloned().ok_or_else(|| anyhow::anyhow!("Compose receipt lacks workspace ownership; upgrade mxr before creating retained work"))?)?,
             draft_id: draft_id.to_string(),
         })
     }
 
-    pub fn preview(&self, account: &str, draft_id: &str) -> anyhow::Result<SendReview> {
+    pub fn preview(
+        &self,
+        account: &str,
+        draft_id: &str,
+        owner: &crate::manifest::WorkspaceOwner,
+    ) -> anyhow::Result<SendReview> {
         let output = Command::new(&self.binary)
             .args([
                 "send",
@@ -116,6 +123,8 @@ impl Mxr {
                 "--account",
                 account,
                 "--dry-run",
+                "--expected-workspace",
+                &serde_json::to_string(owner)?,
                 "--format",
                 "json",
             ])
@@ -135,13 +144,15 @@ impl Mxr {
         }
         #[derive(Deserialize)]
         struct Preview {
+            expected_workspace: crate::manifest::WorkspaceOwner,
             draft: Draft,
             send_identity: Identity,
         }
         let preview: Preview =
             serde_json::from_slice(&output.stdout).context("invalid reviewed preview")?;
         anyhow::ensure!(
-            preview.draft.id == draft_id
+            preview.expected_workspace == *owner
+                && preview.draft.id == draft_id
                 && preview.draft.revision == preview.send_identity.expected_revision
                 && preview.draft.revision > 0
                 && !preview.draft.account_id.is_empty()
@@ -149,6 +160,7 @@ impl Mxr {
             "reviewed preview conflicts with selected draft"
         );
         Ok(SendReview {
+            expected_workspace: Some(preview.expected_workspace),
             account_id: preview.draft.account_id,
             expected_revision: preview.draft.revision,
             operation_id: preview.send_identity.operation_id,
@@ -156,11 +168,18 @@ impl Mxr {
             scheduled_at: None,
         })
     }
-    pub fn outcome(&self, account: &str, operation: &str) -> anyhow::Result<Option<OutcomeState>> {
+    pub fn outcome(
+        &self,
+        account: &str,
+        operation: &str,
+        owner: &crate::manifest::WorkspaceOwner,
+    ) -> anyhow::Result<Option<OutcomeState>> {
         let output = Command::new(&self.binary)
             .args([
                 "send-outcome",
                 operation,
+                "--expected-workspace",
+                &serde_json::to_string(owner)?,
                 "--account",
                 account,
                 "--format",
@@ -180,9 +199,16 @@ impl Mxr {
     /// Submit only the manifest's durably retained reviewed command.
     pub fn send_draft(&self, draft_id: &str, review: &SendReview) -> anyhow::Result<()> {
         let mut command = Command::new(&self.binary);
+        let owner = review.expected_workspace.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Retained review has no original workspace; preserve it for explicit reopen/review"
+            )
+        })?;
         command.args([
             "send",
             draft_id,
+            "--expected-workspace",
+            &serde_json::to_string(owner)?,
             "--account",
             &review.account_id,
             "--expected-revision",
@@ -452,6 +478,10 @@ mod tests {
             mxr.send_draft(
                 "draft-7",
                 &SendReview {
+                    expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                        workspace_id: "workspace-a".into(),
+                        recovery_generation: "generation-a".into(),
+                    }),
                     account_id: "notto".into(),
                     expected_revision: 1,
                     operation_id: "draft-7:1".into(),
@@ -474,6 +504,10 @@ mod tests {
             mxr.send_draft(
                 "draft-7",
                 &SendReview {
+                    expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                        workspace_id: "workspace-a".into(),
+                        recovery_generation: "generation-a".into(),
+                    }),
                     account_id: "notto".into(),
                     expected_revision: 1,
                     operation_id: "draft-7:1".into(),
@@ -498,6 +532,10 @@ mod tests {
                 .send_draft(
                     "draft-7",
                     &SendReview {
+                        expected_workspace: Some(crate::manifest::WorkspaceOwner {
+                            workspace_id: "workspace-a".into(),
+                            recovery_generation: "generation-a".into(),
+                        }),
                         account_id: "notto".into(),
                         expected_revision: 1,
                         operation_id: "draft-7:1".into(),

@@ -16,8 +16,14 @@ export interface ComposeIssue {
   message: string;
 }
 
-export type ComposeSession = components["schemas"]["ComposeSessionData"] & { workspace?: WorkspaceBinding["workspace"] | null; binding?: WorkspaceBinding };
-export type ComposeSessionResponse = Omit<components["schemas"]["ComposeSessionResponse"], "session"> & { session: ComposeSession; retainedSnapshot?: boolean };
+export type ComposeSession = components["schemas"]["ComposeSessionData"] & {
+  workspace?: WorkspaceBinding["workspace"] | null;
+  binding?: WorkspaceBinding;
+};
+export type ComposeSessionResponse = Omit<
+  components["schemas"]["ComposeSessionResponse"],
+  "session"
+> & { session: ComposeSession; retainedSnapshot?: boolean };
 
 export interface RuntimeAccount {
   account_id: string;
@@ -55,19 +61,38 @@ export type InviteReplyAction = "accept" | "tentative" | "decline";
 export type ComposeSessionKind = ComposeKind | "invite_reply";
 
 export async function startComposeSession(
-  kind: ComposeSessionKind, messageId?: string, inviteAction?: InviteReplyAction,
+  kind: ComposeSessionKind,
+  messageId?: string,
+  inviteAction?: InviteReplyAction,
 ): Promise<ComposeSessionResponse> {
-  return ownedSession("/api/v1/mail/compose/session", {
-    kind, message_id: messageId, ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
-  }, await captureWorkspaceBinding());
+  return ownedSession(
+    "/api/v1/mail/compose/session",
+    {
+      kind,
+      message_id: messageId,
+      ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
+    },
+    await captureWorkspaceBinding(),
+  );
 }
 
-export async function restoreComposeSession(draftId: string, original?: WorkspaceBinding): Promise<ComposeSessionResponse> {
-  return ownedSession("/api/v1/mail/compose/session/restore", { draft_id: draftId }, original ?? await captureWorkspaceBinding());
+export async function restoreComposeSession(
+  draftId: string,
+  original?: WorkspaceBinding,
+): Promise<ComposeSessionResponse> {
+  return ownedSession(
+    "/api/v1/mail/compose/session/restore",
+    { draft_id: draftId },
+    original ?? (await captureWorkspaceBinding()),
+  );
 }
 
 export function refreshComposeSession(draftPath: string): Promise<ComposeSessionResponse> {
-  return ownedSession("/api/v1/mail/compose/session/refresh", { draft_path: draftPath }, requireComposeBinding(draftPath));
+  return ownedSession(
+    "/api/v1/mail/compose/session/refresh",
+    { draft_path: draftPath },
+    requireComposeBinding(draftPath),
+  );
 }
 
 export function updateComposeSession(input: {
@@ -212,15 +237,24 @@ export function scheduleComposeSession(input: {
 }
 
 /** "Remind me if no reply by `remindAt`" for a message already sent. */
-export function setAutoReminder(sentMessageId: string, remindAt: Date): Promise<unknown> {
+export function setAutoReminder(
+  sentMessageId: string,
+  remindAt: Date,
+  binding?: WorkspaceBinding,
+): Promise<unknown> {
   return composeFetch<unknown>("/api/v1/mail/reminders", {
     method: "POST",
+    binding,
     body: { sent_message_id: sentMessageId, remind_at: remindAt.toISOString() },
   });
 }
 
-export function cancelAutoReminder(sentMessageId: string): Promise<unknown> {
+export function cancelAutoReminder(
+  sentMessageId: string,
+  binding?: WorkspaceBinding,
+): Promise<unknown> {
   return composeFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
+    binding,
     method: "DELETE",
   });
 }
@@ -356,16 +390,29 @@ export function rememberComposeBinding(path: string, binding: WorkspaceBinding):
 }
 export function requireComposeBinding(path: string): WorkspaceBinding {
   const binding = composeBindings.get(path);
-  if (!binding) throw new Error("This retained editor has no workspace identity; its private text is preserved. Explicitly reopen the saved draft before continuing.");
+  if (!binding)
+    throw new Error(
+      "This retained editor has no workspace identity; its private text is preserved. Explicitly reopen the saved draft before continuing.",
+    );
   assertWorkspaceBinding(binding);
   return binding;
 }
 function composeFetch<T>(path: string, opts: Parameters<typeof apiFetch>[1] = {}): Promise<T> {
   const body = opts.body;
-  const draftPath = body && typeof body === "object" && "draft_path" in body && typeof body.draft_path === "string" ? body.draft_path : undefined;
-  return apiFetch<T>(path, { ...opts, binding: draftPath ? requireComposeBinding(draftPath) : opts.binding });
+  const draftPath =
+    body && typeof body === "object" && "draft_path" in body && typeof body.draft_path === "string"
+      ? body.draft_path
+      : undefined;
+  return apiFetch<T>(path, {
+    ...opts,
+    binding: draftPath ? requireComposeBinding(draftPath) : opts.binding,
+  });
 }
-async function ownedSession(path: string, body: unknown, binding: WorkspaceBinding): Promise<ComposeSessionResponse> {
+async function ownedSession(
+  path: string,
+  body: unknown,
+  binding: WorkspaceBinding,
+): Promise<ComposeSessionResponse> {
   const response = await apiFetch<ComposeSessionResponse>(path, { method: "POST", body, binding });
   const next = { ...response, session: { ...response.session, binding } };
   rememberComposeBinding(next.session.draftPath, binding);

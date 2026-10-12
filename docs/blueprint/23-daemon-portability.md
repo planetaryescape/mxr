@@ -219,7 +219,7 @@ Test corrupt/missing files, unsupported manifest/schema, a different home direct
 
 ## R01. Off-machine HTTP requires an authenticated gateway
 
-The proposed [remote hosting and client lifecycle contract](24-remote-hosting-and-clients.md) expands R01 into staged implementation work for `mxr serve`, `mxr connect`, Tailscale-private HTTPS, registration, shutdown/reconnect and deregistration. P01-P08 remain complete; the new commands and remote boundary remain unimplemented.
+The [remote hosting and client lifecycle contract](24-remote-hosting-and-clients.md) expands R01 into staged implementation work for `mxr serve`, `mxr connect`, Tailscale-private HTTPS, registration, shutdown/reconnect and deregistration. P01-P08 remain complete. Local `mxr serve` pairing inspection, approval and revocation are implemented in F01; its release status and the remaining remote boundary are tracked in the [release ladder](../implementation/remote-hosting.md).
 
 The [bridge refuses non-loopback binds](https://github.com/planetaryescape/mxr/blob/80606f4833b651bf9b07975ddd49083d7cb2568a/crates/daemon/src/bridge.rs#L121-L130). Keep that default. A gateway in front of it can terminate HTTPS while the daemon remains local-only. Deliberately disable the [local token bootstrap](https://github.com/planetaryescape/mxr/blob/80606f4833b651bf9b07975ddd49083d7cb2568a/crates/web/src/router.rs#L59-L84) for forwarded traffic; the proxy's loopback address is not the end user's identity.
 

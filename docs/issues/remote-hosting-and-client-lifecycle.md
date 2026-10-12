@@ -1,14 +1,16 @@
 # Remote hosting needs saved connections and explicit client lifecycles
 
-Status: F01 pairing authority in review; no remote-hosting release yet. Updated 2026-10-12.
+Status: F01 independent review passed; final PR checks and release acceptance pending. No remote-hosting release yet. Updated 2026-10-12.
 
 Canonical contract: [remote hosting and clients](../blueprint/24-remote-hosting-and-clients.md). This follows the completed daemon portability preparation and owns its deferred R01 work. The previous 13-stage release sequence remains complete.
 
 Implement `mxr serve` on a Mac or Linux host and `mxr connect` on client installations. One daemon owns SQLite, managed files, indexes and provider work. Clients share a saved target, register with the host, receive lifecycle events, reconnect through an authenticated handshake and deregister when deliberately switching away.
 
-## F01 needs installed acceptance and independent review
+## F01 has passed independent review and needs release acceptance
 
-The foundation candidate `6159ee95` is based on fresh `origin/main` `bf66f451`. Complete its installed CLI/IPC acceptance, fresh Claude review, exact-candidate PR checks, release-please release and deployed documentation check. The subsequent R1 stage must inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control, before exposing a listener.
+Claude Opus 5.5 reviewed the full foundation diff at `ab35c25c`, based on `origin/main` `bf66f451`, and found no blockers. The isolated CLI/IPC fixture passed 32 checks against that candidate binary. [PR 443](https://github.com/planetaryescape/mxr/pull/443) still needs the final ready-PR checks, release-please release, published-binary acceptance and deployed documentation check. The controlled fixture checks approval, revocation, retries and restart; store tests with an injected clock check expiry.
+
+The subsequent R1 stage must inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control, before exposing a listener. Keep host authority outside forwarded requests and remove host filesystem paths from allowed mail responses. Resolve revocation durability across power loss before promising that an acknowledged revocation survives it; the current store uses WAL with `synchronous=NORMAL` (`crates/store/src/pool.rs`, reviewed at `ab35c25c`).
 
 Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`. The blueprint links exact code evidence and the official Tailscale references. Commands and proposed wire shapes are not installed features.
 
@@ -33,4 +35,4 @@ Specification validation on 2026-10-12: 72 relative links and 10 pinned source r
 
 ## Orchestration started
 
-Execution now follows [the vertical release ladder](../implementation/remote-hosting.md), starting with the explicitly labelled F01 pairing-authority foundation. Source base is origin/main c0a4b11553088e3c95326b2cb69d10fb8c1979fd. Durable worktree and ledger paths, model routing, deployed acceptance, website obligations and unresolved fixture choices are in that plan. No implementation stage is complete yet.
+Execution follows [the vertical release ladder](../implementation/remote-hosting.md), starting with the explicitly labelled F01 pairing-authority foundation. The kickoff base was `c0a4b115`; F01 was rebased onto freshly fetched `origin/main` `bf66f451` before review. Durable worktree and ledger paths, model routing, deployed acceptance, website obligations and unresolved fixture choices are in that plan. No implementation stage is complete yet.

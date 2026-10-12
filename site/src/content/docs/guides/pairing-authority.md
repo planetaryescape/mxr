@@ -3,14 +3,21 @@ title: Inspect and revoke local pairing authority
 description: Preview local pairing approvals and revoke registered credentials. Remote hosting is not yet available.
 ---
 
+If the local daemon is stopped, run it in a separate terminal:
+
 ```sh
-mxr daemon
+env -u MXR_DAEMON_ADDR mxr daemon --foreground
+```
+
+Then inspect its pairing authority from your working terminal:
+
+```sh
 mxr serve status --format json
 mxr serve pair list --format json
 mxr serve clients --format json
 ```
 
-Inspect the current computer's pairing authority through its local Unix socket. These commands ignore `MXR_DAEMON_ADDR` and do not start or restart a daemon. If the local daemon is stopped, start it with `mxr daemon` first. Before the first pairing request, `host_id` is `null`; inspecting status or a list does not create authority.
+Inspect the current computer's pairing authority through its local Unix socket. These commands ignore `MXR_DAEMON_ADDR` and do not start or restart a daemon. Before the first pairing request, `host_id` is `null`; inspecting status or a list does not create authority.
 
 This release provides pairing and revocation foundations. Remote mailbox access, HTTPS hosting, saved client connections and service installation are not yet available. Running `mxr serve` without a subcommand returns an explicit error.
 

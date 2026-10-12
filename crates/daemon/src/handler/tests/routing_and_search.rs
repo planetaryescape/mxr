@@ -1008,7 +1008,7 @@ async fn dispatch_status() {
         IpcPayload::Response(Response::Ok {
             data:
                 ResponseData::Status {
-                    workspace_owner_supported: false,
+                    workspace_owner_supported: true,
                     draft_revision_supported: true,
                     send_outcome_supported: true,
                     archive_recovery_supported: true,

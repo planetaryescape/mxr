@@ -1,0 +1,113 @@
+{
+  "candidate_source": "140225cd27c7dd143d4ed987b5efce1562d9e3dd",
+  "main_commit": "6d6fe2da39178681de396f8f807d4d7bc3020961",
+  "tree": "f6325003fe616e9957d634feac80a5a59fb3687f",
+  "binary_sha256": "2217f123a02794984900e058f2bfba2c37cfe12b9bfbe83c2b00609fbed6d6ff",
+  "sources": [
+    {
+      "name": "candidate-source-receipt",
+      "path": "target/s05b-evidence/candidate-140225cd/source-receipt.json",
+      "sha256": "383078f333cee34ec797e23e1fe76c97b2c9f3dd85ef188dd042d2285a9a8e5c"
+    },
+    {
+      "name": "integrated-review-and-check-summary",
+      "path": "target/s05b-evidence/integrated-review.json",
+      "sha256": "0fde2dbe582d0e9d8f5acc52ee3801a698a1c5745496e94f943c9e37c5a2d7e3"
+    },
+    {
+      "name": "frozen-candidate-binary-receipt",
+      "path": "target/s05b-evidence/frozen-140225cd/receipt.json",
+      "sha256": "9150210755bf5f8fd64fa9fc4bcc96b7ed8573607da6ff73cd564b3570e0621a"
+    },
+    {
+      "name": "root-http-recovery-ledger-receipt",
+      "path": "program-ledger:s05b-root-recovery-140225cd.json",
+      "sha256": "9413724ac0a1d93a77331087e05ebe3f349e4438198da5742051ba2b0b44208e"
+    },
+    {
+      "name": "root-http-recovery-result",
+      "path": "target/s05b-browser-acceptance/recovery-fixed-140225cd/evidence/recovery-result.json",
+      "sha256": "99d4401fbcb7546963721df0c4bf70fd70fab3edb8e54b583c91837ba3670f5d"
+    },
+    {
+      "name": "root-http-recovery-cleanup",
+      "path": "target/s05b-browser-acceptance/recovery-fixed-140225cd/cleanup.json",
+      "sha256": "3171b56bca4548a9718c29565980271ee6fb53a0555222ab05f2aaf1ecb9d6ca"
+    },
+    {
+      "name": "final-browser-ui-result",
+      "path": "target/s05b-browser-acceptance/final-140225cd/evidence/result.json",
+      "sha256": "9948a4fd6f53f1fc65961410b27ca61dabdf28ea77f9762987db38918874f3f0"
+    },
+    {
+      "name": "final-browser-ui-cleanup",
+      "path": "target/s05b-browser-acceptance/final-140225cd/cleanup.json",
+      "sha256": "0d93939f426073c5f2df8e0d173903d0cece7fa956c464574864f0b1347ff235"
+    },
+    {
+      "name": "final-browser-provider-witness",
+      "path": "target/s05b-browser-acceptance/final-140225cd/evidence/provider-witness.json",
+      "sha256": "3fed0bd2119de51116cfe40073b4d1efc01dbffce9f4f6946e19dafc4b02a11e"
+    },
+    {
+      "name": "final-browser-reopened-draft-screenshot",
+      "path": "target/s05b-browser-acceptance/final-140225cd/evidence/draft-reopened-after-restart.png",
+      "sha256": "508bf0cf7beec334806da97925e169b4743e528d02e26031839fc6f0f6267e59"
+    },
+    {
+      "name": "prior-candidate-receipt-index",
+      "path": "target/s05b-evidence/root-runtime-0ea54be1.json",
+      "sha256": "66f9fcb88dd27f81d903bb735879dcd3489f6c739b88d16fce9ef9d7483879ca"
+    },
+    {
+      "name": "prior-candidate-cli-proof",
+      "path": "target/s05b-evidence/candidate-cli/upload-cli-acceptance.json",
+      "sha256": "495d07fc15c9bf96ff3f60c893317187f9675624f6cc9ad10e14bfe729af3855"
+    },
+    {
+      "name": "prior-candidate-mcp-proof",
+      "path": "target/s05b-evidence/candidate-mcp/upload-mcp-acceptance.json",
+      "sha256": "81d2ef95a763f769e05403fca99a01e551d58393f88af57bc722c99002888748"
+    },
+    {
+      "name": "prior-candidate-tui-proof",
+      "path": "target/s05b-evidence/candidate-tui-relaunch/upload-tui-acceptance.json",
+      "sha256": "29a5ba30881b22acba4ee9d772f03da4654a709b4801e9db573f9503dd76adb3"
+    },
+    {
+      "name": "prior-candidate-browser-proof",
+      "path": "target/s05b-browser-acceptance/frozen-run/evidence/result.json",
+      "sha256": "b43a75262ff0ce46f35ba10fef4bbdf3229af42fbb01246a73d9684b3afe746c"
+    }
+  ],
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "5b32fc49b6427e33acd6668f04924d8062ad4289dc1433c4416ca371ebd01517"
+    },
+    {
+      "name": "browser-ui-acceptance.json",
+      "sha256": "58a36e2439c22dbd1db41d55103e1352619d2c27e56bb4ef501181198f17cbd9"
+    },
+    {
+      "name": "draft-reopened-after-restart.png",
+      "sha256": "508bf0cf7beec334806da97925e169b4743e528d02e26031839fc6f0f6267e59"
+    },
+    {
+      "name": "http-recovery-acceptance.json",
+      "sha256": "3fb5cc39017351c7da455d11eb5dd41146704619d4608c2b253ead257ed2d45b"
+    },
+    {
+      "name": "integrated-review.json",
+      "sha256": "3a699a2cd22ea41d230ae31feee9670f868fda520d012e200f332052285338db"
+    },
+    {
+      "name": "prior-candidate-acceptance.json",
+      "sha256": "707ed5c72014d1c524ce75c2015ea181ff5dac7b35cb35971dff2716bfe8f65a"
+    },
+    {
+      "name": "source.json",
+      "sha256": "669a796ed89959235d33cca6a13ca3890b0b72d1d8343a9582c5d5e2dfb00aa7"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "cases": {
+    "daemon_cannot_read_client_source": true,
+    "portable_metadata_and_original_digest": true,
+    "preview_and_stale_revision_create_no_resource": true,
+    "restart_editor_and_send_use_original_bytes": true,
+    "retained_outcome_after_draft_removal_and_no_duplicate_send": true
+  },
+  "daemon_stopped": true,
+  "passed": true,
+  "provider_witness": [
+    {
+      "filename": "client-original.bin",
+      "length_bytes": 576000,
+      "sha256": "9df41b691a5125f90e2db9596b08498221818813fbaf58eecd5bebc72336812b"
+    }
+  ],
+  "socket_removed": true,
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f"
+}

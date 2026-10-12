@@ -1,6 +1,6 @@
 # Daemon portability preserves one workspace authority
 
-Status: implementation specification with staged implementation underway. This blueprint was written 2026-10-10 against `origin/main` at [`80606f4833b651bf9b07975ddd49083d7cb2568a`](https://github.com/planetaryescape/mxr/tree/80606f4833b651bf9b07975ddd49083d7cb2568a). Since then, S01, S02, S03, S04, S05a, S06a, S08a, S08b, and S08c have merged. S08c source is in `main` at `b6b88deff57e0ab1b6f523844e1708e63d2121a7`; v0.6.84 published acceptance passed on macOS, Linux and native TUI. The [orchestration ladder](../implementation/daemon-portability/orchestration.md) tracks stage delivery; this blueprint remains the requirements source. The [iOS architecture assessment](../research/ios-architecture.md) records the product choice: a SwiftUI client may depend on a reachable daemon, initially on the laptop or later on a personal VPS.
+Status: implementation specification with staged implementation underway. This blueprint was written 2026-10-10 against `origin/main` at [`80606f4833b651bf9b07975ddd49083d7cb2568a`](https://github.com/planetaryescape/mxr/tree/80606f4833b651bf9b07975ddd49083d7cb2568a). Since then, S01, S02, S03, S04, S05a, S05b, S06a, S08a, S08b, and S08c have merged. S08c source is in `main` at `b6b88deff57e0ab1b6f523844e1708e63d2121a7`; v0.6.84 published acceptance passed on macOS, Linux and native TUI. S05b shipped in v0.6.86 from `b651ee69ae01a1e08ecc021fa8d7767aa68cf12f`; the [orchestration ladder](../implementation/daemon-portability/orchestration.md) tracks stage delivery, and the [S05b stage report](../build-log/daemon-portability/s05b-draft-attachment-resources.md) records published client acceptance. This blueprint remains the requirements source. The [iOS architecture assessment](../research/ios-architecture.md) records the product choice: a SwiftUI client may depend on a reachable daemon, initially on the laptop or later on a personal VPS.
 
 Keep one daemon in charge of a workspace. Keep SQLite, provider adapters, the existing IPC protocol and the HTTP gateway. Improve the operations those surfaces expose before introducing another client. Each capability must remain available through daemon IPC and CLI JSON/JSONL; web and future clients consume the same behavior.
 
@@ -24,7 +24,7 @@ The final completion check is the separate-filesystem workflow above, plus the r
 | --- | --- | --- | --- |
 | P01: durable drafts | Now | Web edits and sends retain identity and reject stale revisions | Specified |
 | P02: recoverable operations | Now for outcome/provider audit; P01 for send integration | A lost response has a queryable result without blind resend | Specified |
-| P03: file resources | P01 defines draft ownership | Compose and attachments work without shared paths | Specified |
+| P03: file resources | P01 defines draft ownership | Compose and attachments work without shared paths | S05a/S05b published |
 | P04: contracts and compatibility | Schema work accompanies P01 onward | Selected web workflow uses generated, checked contracts | Specified |
 | P05: reconnection | Event-gap regression can start now; workspace checks use P04 | Event-only outages recover without losing edits | Specified |
 | P06: client targeting | Diagnostics now; broader workflows after P01-P04 | Status and doctor report the selected daemon truthfully | Specified |

@@ -1,11 +1,73 @@
 # Saved drafts retain the bytes the client uploaded
 
-Current checks use root checkpoint `a457130dce40687d06c02872b92079437b715a4a`
+Status on 2026-10-12: S05b is complete in published v0.6.86, built from
+`b651ee69ae01a1e08ecc021fa8d7767aa68cf12f` (tree
+`9b220eca0fb79c13eaaec66a4f4bdfee5603d962`). Release workflow 38201282820
+succeeded. PR413 merged as `6d6fe2da39178681de396f8f807d4d7bc3020961` (tree
+`f6325003fe616e9957d634feac80a5a59fb3687f`); CI 38199485371, including Web
+E2E, and OpenAPI run 38199485380 passed. Release PR417 produced v0.6.86. All
+four GitHub asset digests and both archive checksum files
+matched; the installer and Homebrew binary SHA-256 matched
+`619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06`.
+Homebrew was present only at `/opt/homebrew/bin/mxr`; the personal daemon was
+not restarted. The final documentation closeout deployment remains pending.
+The standing independent Claude review waiver remains in effect until Anthropic
+is funded.
+
+Published CLI, MCP, TUI and browser acceptance passed. CLI verified previews
+and stale revisions make no resource, then saved, reopened and sent the exact
+576,000-byte file; retained outcome replay did not send twice. MCP verified
+read/write isolation, preview-without-write, ownership and integrity checks,
+old-client review-marker fencing, restart and receipt replay with the exact
+193,900-byte file. Native TUI verified save under daemon-file denial, client
+relaunch with the resource token after deleting the original, a cross-client
+CLI send of the 384,800-byte resource, and a separate direct TUI send of
+349,200 bytes. The saved-draft TUI relaunch kept its fake-provider daemon alive
+because that provider's drafts are in memory; CLI, MCP, browser and HTTP
+recovery each separately proved daemon restart. Browser UI uploaded
+1,495,000 bytes, modified and deleted the client file, reloaded and restarted
+the daemon, reopened the draft, and sent the original filename, bytes and SHA
+once. The browser journey made no filesystem-denial claim. Root's separate real
+HTTP bridge/daemon recovery run retried a failed save, deleted the source file,
+restarted the daemon and delivered the exact 432,000 bytes once. Its UUID-prefixed
+legacy filename remains a nonblocking follow-up; normal managed browser upload
+preserved the original filename. The live Gmail step in release CLI smoke was
+skipped because CI lacked `MXR_GMAIL_TEST` credentials.
+
+The installed evidence packet is in
+[`evidence/s05b-installed-v0.6.86/`](evidence/s05b-installed-v0.6.86/).
+Candidate source, root review and earlier receipts remain in the historical
+[`evidence/s05b-candidate-140225cd/`](evidence/s05b-candidate-140225cd/)
+packet; candidate `0ea54be1` CLI/MCP/TUI/browser proofs are not current release
+acceptance. The `compose.md` guide already describes chunked client upload,
+resource metadata, browser reload and TUI edit behavior; no guide rewrite was
+needed for this closeout. S05b raises the program tally to ten complete slices;
+S06b is active, with S07 and S09 planned.
+
+| Work | Observed duration |
+| --- | ---: |
+| [PR413 Web E2E](https://github.com/planetaryescape/mxr/actions/runs/38199485371) | 15m28s (03:22:56–03:38:24 UTC) |
+| [Release PR417 CI](https://github.com/planetaryescape/mxr/actions/runs/38200620112) | 6m06s (03:39:44–03:45:50 UTC) |
+| v0.6.86 release workflow | 23m32s (03:49:35–04:13:07 UTC), within 30m gate |
+| Linux release job | 17m45s, including 16m33s compile |
+| macOS release job | 20m17s, including 18m34s compile |
+| Release CLI smoke | 9m03s; live Gmail step skipped |
+| Homebrew Formula job | 2m09s, including 1m46s install verification |
+| Published browser UI runtime | 75s, from fixture initialization through cleanup |
+| Local SPA build task 6123 | 4.61s execution; 0.08s queue wait |
+| Local embedded binary task 6125 | 1m42s execution; 0.13s queue wait |
+| Final documentation site build | 36.4s runtime; 0.06s queue wait |
+
+Release jobs overlapped; their durations do not sum to the full workflow time.
+The checkpoint notes below retain the chronology of earlier reviews and runs;
+pending statements refer to those snapshots and are superseded by this status.
+
+Initial worker checks used root checkpoint `a457130dce40687d06c02872b92079437b715a4a`
 (tree `eda8a404b930062401af19e7e6e9f6e4d0f48fc1`), integrated onto fresh main
 `74a151c5c41d2d3f6b780fdbeb92c74db535ab57`. Migration 077 is personal
 categories, 078 is to-do resolution suggestions, and 079 adds draft resources.
 The attachment enum variants require IPC protocol 9; the web compatibility
-gate matches it. Root owns Git, the next generated checkpoint, CI and release.
+gate matches it. Root owns Git, CI and release.
 The initial worker base was `5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3`;
 earlier checkpoint and verification history remains below.
 

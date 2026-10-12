@@ -1,0 +1,23 @@
+{
+  "pr": 413,
+  "main_commit": "6d6fe2da39178681de396f8f807d4d7bc3020961",
+  "source": "140225cd27c7dd143d4ed987b5efce1562d9e3dd",
+  "tree": "f6325003fe616e9957d634feac80a5a59fb3687f",
+  "base": "74a151c5c41d2d3f6b780fdbeb92c74db535ab57",
+  "protocol": 9,
+  "resource_migration": 79,
+  "binary_sha256": "2217f123a02794984900e058f2bfba2c37cfe12b9bfbe83c2b00609fbed6d6ff",
+  "features": "web-ui",
+  "checks": {
+    "pr_ci_run": "https://github.com/planetaryescape/mxr/actions/runs/38199485371",
+    "pr_ci_conclusion": "success",
+    "web_e2e": "success (2026-10-12 03:22:56–03:38:24 UTC)",
+    "openapi_run": "https://github.com/planetaryescape/mxr/actions/runs/38199485380",
+    "openapi_conclusion": "success"
+  },
+  "release": {
+    "pull_request": 417,
+    "version": "0.6.86",
+    "state_at_packet_creation": "CI in progress; no release or published-client acceptance recorded"
+  }
+}

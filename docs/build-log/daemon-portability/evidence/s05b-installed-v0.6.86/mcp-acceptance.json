@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "cases": {
+    "all_previews_write_nothing": true,
+    "chunks_integrity_ownership_and_old_edit_fenced": true,
+    "mcp_cannot_read_daemon_files": true,
+    "old_send_marker_omission_has_no_provider_effect": true,
+    "restart_send_original_bytes_and_receipt_replay": true
+  },
+  "daemon_stopped": true,
+  "mcp_stopped": true,
+  "passed": true,
+  "provider_witness": [
+    {
+      "filename": "mcp-original.bin",
+      "length_bytes": 193900,
+      "sha256": "7a293e04abb9affcf585bd5df2af4959d65093b651deff797b33bbde45393941"
+    }
+  ],
+  "socket_removed": true,
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f"
+}

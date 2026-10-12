@@ -1,0 +1,7 @@
+{
+  "source": "0ea54be1543c40075f899a2d82e48ce87c0dd5c9",
+  "binary_sha256": "6005cb324173853d5f434e76e9fad6d4fce5fbfe955371681404f2513e939561",
+  "status": "historical prior-candidate evidence only; recovery issue was corrected before source 140225",
+  "journeys": ["CLI", "MCP", "TUI", "browser"],
+  "published_acceptance": false
+}

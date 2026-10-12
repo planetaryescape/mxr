@@ -270,3 +270,73 @@ async fn category_rules_priority_ties_use_stable_id_and_reconcile_beyond_old_lim
         .iter()
         .all(|s| s.rule_id == *second.id.as_ref().unwrap()));
 }
+
+#[tokio::test]
+async fn category_sync_reads_after_gate_and_rejects_stale_transaction_eligibility() {
+    let fx = Fixture::new().await;
+    let category = fx
+        .state
+        .store
+        .create_personal_category("Travel")
+        .await
+        .unwrap();
+    let mut message = mail(&fx, "airline@example.com").await;
+    let mut rule = form(&fx, &category.id, "Airline", true, 10);
+    save(&fx, &mut rule).await;
+    let stale = fx
+        .state
+        .store
+        .category_rule_message_snapshot(&message.id)
+        .await
+        .unwrap();
+    let sources = fx.state.store.category_rule_sources().await.unwrap();
+    let gate = fx.state.rule_mutation_gate.lock().await;
+    let state = fx.state.clone();
+    let id = message.id.clone();
+    let waiting = tokio::spawn(async move {
+        let _gate = state.rule_mutation_gate.lock().await;
+        category_rules::classify_message(&state, &id).await
+    });
+    message.from.email = "ordinary@example.com".into();
+    fx.state.store.upsert_envelope(&message).await.unwrap();
+    assert!(fx
+        .state
+        .store
+        .reconcile_message_category_sources(&message.id, &sources, &stale)
+        .await
+        .is_err());
+    drop(gate);
+    waiting.await.unwrap().unwrap();
+    assert!(fx
+        .state
+        .store
+        .category_rule_sources()
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(!assigned(&fx, &message, &category.id).await);
+}
+
+#[tokio::test]
+async fn category_rule_two_categories_have_distinct_ids_and_names_in_complete_preview() {
+    let fx = Fixture::new().await;
+    mail(&fx, "airline@example.com").await;
+    let travel = fx
+        .state
+        .store
+        .create_personal_category("Travel")
+        .await
+        .unwrap();
+    let home = fx
+        .state
+        .store
+        .create_personal_category("Home")
+        .await
+        .unwrap();
+    let mut rule = form(&fx, &travel.id, "Both", true, 10);
+    rule.action.push_str(&format!(",add-category:{}", home.id));
+    let p = preview(&fx, &rule, None, false).await;
+    assert_eq!(p.matches.len(), 2);
+    assert_ne!(p.matches[0].category_id, p.matches[1].category_id);
+    assert_ne!(p.matches[0].category_name, p.matches[1].category_name);
+}

@@ -400,7 +400,8 @@ fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
         if let Some(matches) = result["matches"].as_array() {
             for item in matches {
                 lines.push(Line::from(format!(
-                    "{}: {} → {} · {}",
+                    "{} {}: {} → {} · {}",
+                    item["category_name"].as_str().unwrap_or(""),
                     item["subject"].as_str().unwrap_or(""),
                     if item["before"].is_boolean() {
                         if item["before"] == true {

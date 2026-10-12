@@ -5311,6 +5311,7 @@ pub struct RuleCategoryMatchData {
     pub from: String,
     pub subject: String,
     pub category_id: CategoryId,
+    pub category_name: String,
     pub before: bool,
     pub after: bool,
     pub manual_decision: Option<bool>,

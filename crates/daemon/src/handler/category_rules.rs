@@ -113,7 +113,8 @@ async fn selection(state: &AppState, rule: &Rule, delete: bool) -> Result<Select
         .collect::<Result<_, _>>()?;
     let rules = serde_json::to_value(&stored)?;
     let sources = state.store.category_rule_sources().await?;
-    let categories = serde_json::to_value(state.store.list_personal_categories(None).await?)?;
+    let category_catalog = state.store.list_personal_categories(None).await?;
+    let categories = serde_json::to_value(&category_catalog)?;
     let mut next = Vec::new();
     let mut mail = Vec::new();
     let mut envelopes = Vec::new();
@@ -190,21 +191,30 @@ async fn selection(state: &AppState, rule: &Rule, delete: bool) -> Result<Select
             .min_by_key(|s| (s.priority, &s.rule_id));
         let after = version
             .manual_decision
-            .unwrap_or(winner.is_some_and(|s| s.assigned));
+            .unwrap_or_else(|| winner.is_some_and(|s| s.assigned));
         let reason = match version.manual_decision {
             Some(true) => "Manual inclusion".into(),
             Some(false) => "Manual exclusion".into(),
-            None => winner.map_or("No matching category rule".into(), |s| {
-                format!(
-                    "{} by {} (priority {})",
-                    if s.assigned { "Added" } else { "Removed" },
-                    s.rule_name,
-                    s.priority
-                )
-            }),
+            None => winner.map_or_else(
+                || "No matching category rule".into(),
+                |s| {
+                    format!(
+                        "{} by {} (priority {})",
+                        if s.assigned { "Added" } else { "Removed" },
+                        s.rule_name,
+                        s.priority
+                    )
+                },
+            ),
         };
         matches.push(RuleCategoryMatchData {
             message_id,
+            category_name: category_catalog
+                .iter()
+                .find(|c| c.id == category_id)
+                .ok_or("Category disappeared; preview again")?
+                .name
+                .clone(),
             category_id,
             account_id: envelope.account_id.clone(),
             from: envelope.from.email.clone(),
@@ -247,6 +257,9 @@ pub(super) async fn run(
     } else {
         None
     };
+    if form.id.is_some() && prior.is_none() {
+        return Err("Saved rule no longer exists; reload before previewing".into());
+    }
     if !has_categories(&rule) && !prior.as_ref().is_some_and(has_categories) {
         return Err("This preview requires category actions or a saved category rule".into());
     }
@@ -336,11 +349,24 @@ pub(super) async fn run(
     );
     Ok(ResponseData::RuleCategoriesResult { preview: result })
 }
-pub(crate) async fn classify_message(
-    state: &AppState,
-    envelope: &Envelope,
-    message: &RuleMessage,
-) -> Result<(), HandlerError> {
+/// Caller holds rule_mutation_gate; the store CAS rejects a persistence race after these reads.
+pub(crate) async fn classify_message(state: &AppState, id: &MessageId) -> Result<(), HandlerError> {
+    let expected = state.store.category_rule_message_snapshot(id).await?;
+    let Some(envelope) = state.store.get_envelope(id).await? else {
+        return Ok(());
+    };
+    let body = state.store.get_body(id).await?;
+    let labels = state
+        .store
+        .list_labels_by_account(&envelope.account_id)
+        .await?;
+    let ids = state.store.get_message_label_ids(id).await?;
+    let visible = labels
+        .iter()
+        .filter(|l| ids.contains(&l.id))
+        .map(|l| l.provider_id.clone())
+        .collect();
+    let message = RuleMessage::from_parts(envelope.clone(), body, visible);
     let rules: Vec<Rule> = state
         .store
         .list_rules()
@@ -350,7 +376,7 @@ pub(crate) async fn classify_message(
         .collect::<Result<_, _>>()?;
     let mut sources: Vec<_> = rules
         .iter()
-        .flat_map(|r| contributions(r, envelope, message))
+        .flat_map(|r| contributions(r, &envelope, &message))
         .collect();
     sources.sort_by_key(|s| {
         (
@@ -362,10 +388,11 @@ pub(crate) async fn classify_message(
     });
     state
         .store
-        .reconcile_message_category_sources(&envelope.id, &sources)
+        .reconcile_message_category_sources(id, &sources, &expected)
         .await?;
     Ok(())
 }
+
 pub(super) async fn explain(
     state: &AppState,
     message: &MessageId,

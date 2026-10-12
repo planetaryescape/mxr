@@ -221,10 +221,14 @@ impl super::Store {
                 return Err("category not found".into());
             }
         }
-        let sources = self
-            .category_rule_sources()
-            .await
-            .map_err(|e| e.to_string())?;
+        let mut sources = Vec::new();
+        for id in message_ids {
+            sources.extend(
+                crate::category_rules::read_sources(&mut tx, Some(id))
+                    .await
+                    .map_err(|e| e.to_string())?,
+            );
+        }
         let mut result = Vec::with_capacity(message_ids.len() * category_ids.len());
         for message_id in message_ids {
             for category_id in category_ids {

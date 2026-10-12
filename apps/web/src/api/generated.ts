@@ -647,6 +647,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/categories/why": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explain category membership and rule provenance */
+        get: operations["category_why"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/commitments": {
         parameters: {
             query?: never;
@@ -3641,6 +3658,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/rules/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview or apply complete category-rule reconciliation */
+        post: operations["rule_categories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/rules/delete": {
         parameters: {
             query?: never;
@@ -4741,6 +4775,13 @@ export interface components {
         CategoriesResponse: {
             categories: components["schemas"]["PersonalCategory"][];
         };
+        CategoryAssignmentEffect: {
+            after: boolean;
+            before: boolean;
+            category_id: components["schemas"]["CategoryId"];
+            message_id: components["schemas"]["MessageId"];
+            reason: string;
+        };
         CategoryDeletePreview: {
             /** Format: int32 */
             affected_messages: number;
@@ -4772,6 +4813,7 @@ export interface components {
             /** Format: int32 */
             added: number;
             category_ids: components["schemas"]["CategoryId"][];
+            effects?: components["schemas"]["CategoryAssignmentEffect"][];
             /** Format: int32 */
             message_count: number;
             preview_token: string;
@@ -8488,6 +8530,17 @@ export interface components {
             preview_token?: string | null;
         } | {
             /** @enum {string} */
+            cmd: "RuleCategories";
+            delete?: boolean;
+            form: components["schemas"]["RuleFormData"];
+            preview_token?: string | null;
+        } | {
+            category_id: components["schemas"]["CategoryId"];
+            /** @enum {string} */
+            cmd: "ExplainCategoryMembership";
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            /** @enum {string} */
             cmd: "ListRules";
         } | {
             /** @enum {string} */
@@ -10241,6 +10294,14 @@ export interface components {
             result: components["schemas"]["UnsubscribePurgeResultData"];
         } | {
             /** @enum {string} */
+            kind: "RuleCategoriesResult";
+            preview: components["schemas"]["RuleCategoriesPreviewData"];
+        } | {
+            explanation: unknown;
+            /** @enum {string} */
+            kind: "CategoryMembershipExplanation";
+        } | {
+            /** @enum {string} */
             kind: "RuleTreatmentResult";
             preview: components["schemas"]["RuleTreatmentPreviewData"];
         } | {
@@ -10886,6 +10947,31 @@ export interface components {
          * @enum {string}
          */
         Role: "inbox" | "sent" | "drafts" | "trash" | "spam" | "archive" | "all_mail" | "important" | "starred";
+        RuleCategoriesPreviewData: {
+            accounts: components["schemas"]["AccountId"][];
+            applied: boolean;
+            complete: boolean;
+            delete: boolean;
+            matches: components["schemas"]["RuleCategoryMatchData"][];
+            notice: string;
+            rule_id: string;
+            token?: string | null;
+            /** Format: int32 */
+            unavailable: number;
+        };
+        RuleCategoryMatchData: {
+            account_id: components["schemas"]["AccountId"];
+            after: boolean;
+            before: boolean;
+            category_id: components["schemas"]["CategoryId"];
+            category_name: string;
+            from: string;
+            manual_decision?: boolean | null;
+            message_id: components["schemas"]["MessageId"];
+            reason: string;
+            subject: string;
+            winner?: string | null;
+        };
         RuleFormData: {
             account_id?: null | components["schemas"]["AccountId"];
             action: string;
@@ -14170,6 +14256,31 @@ export interface operations {
             };
             /** @description The daemon rejected an invalid, stale, or expired mutation id */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    category_why: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19828,6 +19939,31 @@ export interface operations {
         };
     };
     rules_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rule_categories: {
         parameters: {
             query?: never;
             header?: never;

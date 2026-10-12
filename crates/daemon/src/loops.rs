@@ -1410,7 +1410,7 @@ pub(crate) async fn apply_rules_to_messages(
         let message_id_str = message_id.as_str();
         {
             let _sorting = state.rule_mutation_gate.lock().await;
-            crate::handler::category_rules::classify_message(state, &envelope, &message)
+            crate::handler::category_rules::classify_message(state, message_id)
                 .await
                 .map_err(|e| e.to_string())?;
             crate::handler::rule_treatment::classify_pending(

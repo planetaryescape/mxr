@@ -240,6 +240,10 @@ pub enum CategoriesAction {
 
 #[derive(Subcommand)]
 pub enum RulesAction {
+    /// Export the complete editable RuleFormData JSON for preview/apply.
+    Form {
+        rule: String,
+    },
     /// Preview the complete category-rule reconciliation, including old contributions.
     CategoryPreview {
         rule: Option<String>,

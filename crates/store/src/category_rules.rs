@@ -16,35 +16,22 @@ pub struct RuleCategorySource {
 impl super::Store {
     pub async fn category_rule_snapshot(&self) -> Result<String, sqlx::Error> {
         let mut tx = self.reader().begin().await?;
-        let value = snapshot(&mut tx).await?;
+        let value = snapshot(&mut tx, None).await?;
         tx.commit().await?;
         Ok(value)
     }
+    pub async fn category_rule_message_snapshot(
+        &self,
+        message: &MessageId,
+    ) -> Result<String, sqlx::Error> {
+        let mut tx = self.reader().begin().await?;
+        let result = snapshot(&mut tx, Some(message)).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
     pub async fn category_rule_sources(&self) -> Result<Vec<RuleCategorySource>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT * FROM rule_category_sources ORDER BY message_id,category_id,priority,rule_id",
-        )
-        .fetch_all(self.reader())
-        .await?;
-        rows.into_iter()
-            .map(|row| {
-                Ok(RuleCategorySource {
-                    message_id: row
-                        .get::<String, _>("message_id")
-                        .parse()
-                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
-                    category_id: row
-                        .get::<String, _>("category_id")
-                        .parse()
-                        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
-                    rule_id: row.get("rule_id"),
-                    assigned: row.get::<i64, _>("assigned") != 0,
-                    priority: row.get::<i64, _>("priority") as i32,
-                    rule_name: row.get("rule_name"),
-                    rule_revision: row.get("rule_revision"),
-                })
-            })
-            .collect()
+        let mut connection = self.reader().acquire().await?;
+        read_sources(&mut connection, None).await
     }
 
     /// Saving and replacing this rule's complete contribution is one transaction.
@@ -56,7 +43,7 @@ impl super::Store {
         expected: &str,
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        if snapshot(&mut tx).await? != expected {
+        if snapshot(&mut tx, None).await? != expected {
             return Err(sqlx::Error::Protocol(
                 "Category rule inputs changed; preview again".into(),
             ));
@@ -85,9 +72,15 @@ impl super::Store {
         &self,
         id: &MessageId,
         sources: &[RuleCategorySource],
+        expected: &str,
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let current = self.category_rule_sources().await?;
+        if snapshot(&mut tx, Some(id)).await? != expected {
+            return Err(sqlx::Error::Protocol(
+                "Category sync eligibility changed; retry reconciliation".into(),
+            ));
+        }
+        let current = read_sources(&mut tx, Some(id)).await?;
         if current
             .iter()
             .filter(|s| &s.message_id == id)
@@ -119,7 +112,10 @@ async fn write_source(
 
 // A transaction snapshot closes the race between daemon revalidation and sync persistence.
 // Table/column names come only from this fixed internal allowlist and SQLite schema.
-async fn snapshot(connection: &mut sqlx::SqliteConnection) -> Result<String, sqlx::Error> {
+async fn snapshot(
+    connection: &mut sqlx::SqliteConnection,
+    message: Option<&MessageId>,
+) -> Result<String, sqlx::Error> {
     let mut result = Vec::new();
     for table in [
         "accounts",
@@ -148,11 +144,63 @@ async fn snapshot(connection: &mut sqlx::SqliteConnection) -> Result<String, sql
             .map(|c| format!("\"{c}\""))
             .collect::<Vec<_>>()
             .join(",");
-        let query = format!("SELECT COALESCE(json_group_array(json(row)), '[]') FROM (SELECT json_object({fields}) AS row FROM {table} ORDER BY {order})");
-        let value: String = sqlx::query_scalar(sqlx::AssertSqlSafe(query.as_str()))
-            .fetch_one(&mut *connection)
-            .await?;
+        let column = match table {
+            "messages" => Some("id"),
+            "bodies"
+            | "message_labels"
+            | "message_category_memberships"
+            | "rule_category_sources" => Some("message_id"),
+            _ => None,
+        };
+        let filter = if message.is_some() {
+            column
+                .map(|c| format!(" WHERE {c} = ?"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let query = format!("SELECT COALESCE(json_group_array(json(row)), '[]') FROM (SELECT json_object({fields}) AS row FROM {table}{filter} ORDER BY {order})");
+        let mut query = sqlx::query_scalar(sqlx::AssertSqlSafe(query.as_str()));
+        if let (Some(message), Some(_)) = (message, column) {
+            query = query.bind(message.as_str());
+        }
+        let value: String = query.fetch_one(&mut *connection).await?;
         result.push(value);
     }
     Ok(result.join("\n"))
+}
+
+pub(crate) async fn read_sources(
+    connection: &mut sqlx::SqliteConnection,
+    message: Option<&MessageId>,
+) -> Result<Vec<RuleCategorySource>, sqlx::Error> {
+    let sql = if message.is_some() {
+        "SELECT * FROM rule_category_sources WHERE message_id = ? ORDER BY message_id,category_id,priority,rule_id"
+    } else {
+        "SELECT * FROM rule_category_sources ORDER BY message_id,category_id,priority,rule_id"
+    };
+    let mut query = sqlx::query(sql);
+    if let Some(message) = message {
+        query = query.bind(message.as_str());
+    }
+    let rows = query.fetch_all(connection).await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(RuleCategorySource {
+                message_id: row
+                    .get::<String, _>("message_id")
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                category_id: row
+                    .get::<String, _>("category_id")
+                    .parse()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                rule_id: row.get("rule_id"),
+                assigned: row.get::<i64, _>("assigned") != 0,
+                priority: row.get::<i64, _>("priority") as i32,
+                rule_name: row.get("rule_name"),
+                rule_revision: row.get("rule_revision"),
+            })
+        })
+        .collect()
 }

@@ -1711,3 +1711,109 @@ async fn sorting_rule_scope_checks_previous_account_before_retargeting() {
     .is_err());
     assert!(check(&s, &Request::GetRuleForm { rule: id }).await.is_err());
 }
+
+#[tokio::test]
+async fn category_rules_global_scope_requires_full_coverage_and_can_be_narrowed() {
+    let s = scoped().await;
+    let category =
+        s.fx.state
+            .store
+            .create_personal_category("Travel")
+            .await
+            .unwrap();
+    let mut form = mxr_protocol::RuleFormData {
+        id: None,
+        account_id: None,
+        name: "Global category".into(),
+        condition: "from:orders@shop.example".into(),
+        action: format!("add-category:{}", category.id),
+        priority: 10,
+        enabled: true,
+    };
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::RuleCategories {
+                form: form.clone(),
+                preview_token: None,
+                delete: false
+            }
+        )
+        .await,
+        Response::Error { .. }
+    ));
+    let mut config = s.fx.state.config_snapshot();
+    let profile = config.agent_surfaces.profiles.get_mut("mcp").unwrap();
+    profile.allowed_accounts = vec![s.own.account.to_string(), s.other.account.to_string()];
+    for (key, account) in &config.accounts {
+        profile.allowed_accounts.push(key.clone());
+        profile.allowed_accounts.push(account.email.clone());
+    }
+    s.fx.state.set_config_for_test(config).await;
+    let token = match scoped_dispatch(
+        &s,
+        Request::RuleCategories {
+            form: form.clone(),
+            preview_token: None,
+            delete: false,
+        },
+    )
+    .await
+    {
+        Response::Ok {
+            data: ResponseData::RuleCategoriesResult { preview },
+        } => preview.token.unwrap(),
+        other => panic!("unexpected {other:?}"),
+    };
+    let id = match scoped_dispatch(
+        &s,
+        Request::RuleCategories {
+            form: form.clone(),
+            preview_token: Some(token),
+            delete: false,
+        },
+    )
+    .await
+    {
+        Response::Ok {
+            data: ResponseData::RuleCategoriesResult { preview },
+        } => preview.rule_id,
+        other => panic!("unexpected {other:?}"),
+    };
+    assert!(matches!(
+        scoped_dispatch(&s, Request::GetRuleForm { rule: id.clone() }).await,
+        Response::Ok { .. }
+    ));
+    form.id = Some(id);
+    form.account_id = Some(s.own.account.clone());
+    let token = match scoped_dispatch(
+        &s,
+        Request::RuleCategories {
+            form: form.clone(),
+            preview_token: None,
+            delete: false,
+        },
+    )
+    .await
+    {
+        Response::Ok {
+            data: ResponseData::RuleCategoriesResult { preview },
+        } => preview.token.unwrap(),
+        other => panic!("unexpected {other:?}"),
+    };
+    assert!(matches!(
+        scoped_dispatch(
+            &s,
+            Request::RuleCategories {
+                form,
+                preview_token: Some(token),
+                delete: false
+            }
+        )
+        .await,
+        Response::Ok { .. }
+    ));
+    let sources = s.fx.state.store.category_rule_sources().await.unwrap();
+    assert!(sources.iter().any(|r| r.message_id == s.own.message));
+    assert!(!sources.iter().any(|r| r.message_id == s.other.message));
+}

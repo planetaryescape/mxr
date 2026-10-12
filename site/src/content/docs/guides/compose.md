@@ -29,7 +29,7 @@ mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
   --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW
 mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
-  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --format json
 ```
 
 Copy the exact `expected_workspace` JSON from the original preview and pass it
@@ -118,9 +118,9 @@ unsendable — especially from scripts or agents, where an accidental
 before submission. If its response is lost, query that operation; rerunning
 the one-shot command creates a new draft and can send a second message. For a
 saved draft, first run `mxr send DRAFT_ID --dry-run --format json`, then submit
-the returned revision and operation ID with `--expected-revision` and
-`--operation-id`. See [crash-safe drafts](/guides/crash-safe-drafts/) for the
-outcome query and recovery rules.
+the returned revision, exact `expected_workspace` JSON and operation ID with
+`--expected-revision`, `--expected-workspace` and `--operation-id`. See the
+[crash-safe drafts guide](/guides/crash-safe-drafts/) for recovery rules.
 
 The send preview returns `expected_workspace` with the workspace ID and
 recovery generation. Keep that JSON with the draft revision and operation ID;
@@ -314,6 +314,7 @@ mxr send DRAFT_ID --dry-run --format json
 # If --check turned up a Blocker you accept, use its single-use token
 # with the same reviewed identity.
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW \
   --override-safety OVERRIDE_TOKEN_FROM_CHECK
 ```
@@ -483,7 +484,8 @@ allows a fresh review and an explicit new operation.
 
 ```bash
 mxr drafts recover
-mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 mxr drafts discard DRAFT_ID  # permanently delete
 ```
 
@@ -496,7 +498,8 @@ full state machine.
   the draft, save it (`mxr drafts`), preview it with `mxr send DRAFT_ID
   --dry-run --format json`, then schedule the reviewed revision with
   `mxr send DRAFT_ID --at 'tomorrow 9am' --expected-revision
-  REVISION_FROM_PREVIEW`.
+  REVISION_FROM_PREVIEW --expected-workspace
+  '<OWNER_JSON_FROM_PREVIEW>'`.
 - **Repetitive client onboarding emails:** keep a `;welcome` snippet
   with `{first_name}` placeholders.
 - **Composing from a script:** `--body-stdin` lets you pipe rendered

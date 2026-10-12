@@ -294,6 +294,7 @@ local draft is unchanged. CLI, TUI, web, and MCP share this lifecycle.
 ### `mxr send <DRAFT_ID> [OPTIONS]`
 ```
 --expected-revision <N>  Required from the reviewed preview
+--expected-workspace <JSON> Required, unchanged from the reviewed preview
 --operation-id <ID>      Retain before submitting; defaults to draft ID/revision
 --account <ACCOUNT>
 --at <TIME>               Schedule (same forms as snooze --until)
@@ -308,21 +309,26 @@ or scheduling it:
 ```bash
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW
-mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
 
-`--at` requires `--expected-revision` from the preview. The scheduler assigns a
-separate operation identity. Query its latest outcome with
-`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`; the
-ordinary send preview's operation ID does not identify a scheduled attempt.
+Keep the exact `expected_workspace` JSON from the preview and pass it unchanged,
+shell-quoted, on saved-draft sends and outcome queries. `--at` requires both
+`--expected-revision` and `--expected-workspace` from the preview. The scheduler
+assigns a separate operation identity. Query its latest outcome with
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --expected-workspace '<OWNER_JSON_FROM_SCHEDULE_PREVIEW>' --format json`; the ordinary send preview's operation ID does not identify a scheduled attempt.
 `unknown` means do not resend; only explicit `not_accepted` evidence allows a
 newly reviewed operation.
 
 ### `mxr send-outcome <OPERATION_ID> --account <ACCOUNT_ID>`
 Inspect a retained send after a disconnect, including after draft cleanup.
 Results distinguish `accepted`, `not_accepted`, and `unknown`; a missing result
-means no submission was claimed. Keep the operation ID printed before a send.
+means no submission was claimed. Keep both the operation ID and exact workspace
+JSON printed by the original preview; do not infer a new owner after a daemon
+change.
 
 One-shot `compose`, `reply`, `reply-all`, and `forward` commands with `--yes`
 print their operation ID and query command to stderr before submission. If the

@@ -18,7 +18,7 @@ mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
   --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW
 mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
-  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' --format json
 ```
 
 The send command prints the operation ID and its outcome-query command to
@@ -62,14 +62,16 @@ Query the operation ID printed before the original submission:
 
 ```bash
 mxr drafts recover
-mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
 
 For a legacy receipt with no retained operation ID, query the account-scoped
 draft alias instead:
 
 ```bash
-mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json
+mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
 
 Do not infer non-acceptance from an old `sending` status, a missing local Sent

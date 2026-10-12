@@ -157,8 +157,8 @@ mxr reply MESSAGE_ID        Open $EDITOR for reply
 mxr forward MESSAGE_ID      Open $EDITOR for forward
 mxr drafts                  List drafts
 mxr send DRAFT_ID --dry-run --format json  Review draft revision and send identity
-mxr send DRAFT_ID --expected-revision N   Send that reviewed revision
-mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json  Inspect acceptance
+mxr send DRAFT_ID --expected-revision N --expected-workspace JSON
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID --expected-workspace JSON
 mxr export THREAD_ID        Export a thread
 mxr accounts                List configured accounts
 mxr labels                  List labels with counts
@@ -168,19 +168,26 @@ mxr version                 Version info
 
 ## Lost send responses remain recoverable
 
-A saved draft send requires `--expected-revision` from its preview. The preview
-also returns `send_identity.operation_id`; an explicit `--operation-id` overrides
-that stable default. Retain it before sending. The CLI prints it and a query
-command to stderr before submission, keeping JSON/JSONL stdout pipeable.
+A saved draft send requires `--expected-revision` and `--expected-workspace` from
+its preview. Keep the exact `expected_workspace` JSON unchanged and shell-quote
+it for the send and all outcome queries. The preview also returns
+`send_identity.operation_id`; an explicit `--operation-id` overrides that stable
+default. Retain it before sending. The CLI prints it and a query command to
+stderr before submission, keeping JSON/JSONL stdout pipeable.
 
-`mxr send-outcome OPERATION_ID --account ACCOUNT_ID --format json` returns an
-accepted, not-accepted or unknown outcome, or null when no submission was claimed.
-Acceptance survives draft cleanup and daemon restart. A local message ID may still
-be null if local Sent indexing has not completed or failed. Unknown acceptance
-blocks sending, scheduling and orphan resume, including attempts with a new ID.
-Only explicit provider evidence of non-acceptance permits a newly reviewed operation.
-Scheduling with `mxr send DRAFT_ID --at TIME --expected-revision N` captures that
-revision; later edits require a fresh review instead of silently changing the mail.
+`mxr send-outcome OPERATION_ID --account ACCOUNT_ID
+--expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json` returns
+an accepted, not-accepted or unknown outcome, or null when no submission was
+claimed. Acceptance survives draft cleanup and daemon restart. A local message
+ID may still be null if local Sent indexing has not completed or failed. Unknown
+acceptance blocks sending, scheduling and orphan resume, including attempts
+with a new ID. Only explicit provider evidence of non-acceptance permits a
+newly reviewed operation.
+
+Scheduling with
+`mxr send DRAFT_ID --at TIME --expected-revision N --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'`
+captures the reviewed revision and original workspace; later edits require a
+fresh review instead of silently changing the mail.
 
 The web Drafts page exposes retained send outcomes with a query-only refresh. The
 TUI palette exposes “Check last send outcome”; MCP exposes `mxr_send_outcome`.

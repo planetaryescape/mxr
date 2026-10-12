@@ -703,6 +703,97 @@ fn enter_opens_the_source_message_with_its_link_to_mark() {
 }
 
 #[test]
+fn source_reader_shows_email_and_escape_returns_to_the_resolution_preview() {
+    let mut app = todo_app(true);
+    let source_id = app
+        .selected_todo()
+        .unwrap()
+        .source_message_id
+        .clone()
+        .unwrap();
+    let mut row = app.selected_todo().unwrap().clone();
+    row.resolution = Some(mxr_protocol::TodoResolutionData {
+        id: "resolution-reader".into(),
+        message_id: source_id.clone(),
+        thread_id: mxr_core::id::ThreadId::new(),
+        source_date: chrono::Utc::now(),
+        quote: "Your council tax payment has been received.".into(),
+        quote_location: "body".into(),
+        source_method: "rule".into(),
+        action: "complete".into(),
+        proposed_due_at: None,
+        proposed_due_words: None,
+        status: "pending".into(),
+    });
+    app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row.clone();
+    let preview_summary = "Would complete the to-do. Nothing changed yet.";
+    app.show_resolution_preview(
+        row.id.clone(),
+        "resolution-reader".into(),
+        TodoChangeData {
+            dry_run: true,
+            action: "resolution_preview".into(),
+            changed: vec![row],
+            unchanged: vec![],
+            summary: preview_summary.into(),
+        },
+    );
+    let source = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .subject("Your council tax bill")
+        .thread_id(mxr_core::id::ThreadId::new())
+        .build();
+    let mut source = source;
+    source.id = source_id.clone();
+    app.mailbox.body_cache.insert(
+        source_id.clone(),
+        mxr_core::types::MessageBody {
+            message_id: source_id,
+            text_plain: Some("The payment is due on 31 October.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+    app.mailbox.all_envelopes.push(source.clone());
+    let selected_id = app.selected_todo().unwrap().id.clone();
+
+    press(&mut app, KeyCode::Char('o'));
+    let open = app
+        .mailbox
+        .todo_page
+        .pending_open
+        .take()
+        .expect("o opens the exact evidence message");
+    assert_eq!(open.message_id, source.id);
+    app.open_todo_envelope(source, open.link);
+    let reader = render_to_string(120, 32, |frame| app.draw(frame));
+    assert!(
+        reader.contains("The payment is due on 31 October."),
+        "{reader}"
+    );
+
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Todo);
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert_eq!(
+        app.selected_todo().map(|todo| todo.id.clone()),
+        Some(selected_id)
+    );
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .resolution_preview
+            .as_ref()
+            .map(|(todo_id, resolution_id, _)| (todo_id.as_str(), resolution_id.as_str())),
+        Some(("todo_1", "resolution-reader"))
+    );
+    let todo_view = render_to_string(120, 32, |frame| app.draw(frame));
+    assert!(todo_view.contains(preview_summary), "{todo_view}");
+}
+
+#[test]
 fn ticking_off_the_last_row_puts_the_cursor_on_the_one_before() {
     let mut app = todo_app(true);
     app.mailbox.selected_index = 1;

@@ -25,7 +25,9 @@ At kickoff the host offers Fast `gpt-6-luna`, Balanced `gpt-5.6-terra` (newest o
 
 ## Released clients must fail safely during an upgrade
 
-Baseline IPC is 12 and clients require exact remote IPC compatibility. New request variants can retain protocol 12 only if additive behavior is explicitly negotiated and tested; any incompatible wire requirement bumps the protocol. F01 does not add fields to every existing IPC envelope merely to reserve future shape. Each stage records mixed-version behavior, daemon/client installation order and fixture versions. Older clients must receive an actionable error rather than restart a remote host or fall back locally. Database migrations are additive; forward-fix after migration rather than guessing that an older binary can open a newer schema. Portable backup/restore must invalidate remote auth while retaining workspace ownership/recovery safeguards.
+Baseline IPC is 12 and clients require exact remote IPC compatibility. F01 uses protocol 13 because its new enum variants are rejected by older peers. The local host CLI probes compatibility before sending an authority request and reports an upgrade instruction without restarting the daemon. F01 does not add fields to every existing IPC envelope merely to reserve future shape. Each stage records mixed-version behavior, daemon/client installation order and fixture versions. Older clients must receive an actionable error rather than restart a remote host or fall back locally. Database migrations are additive; forward-fix after migration rather than guessing that an older binary can open a newer schema. Portable backup/restore must invalidate remote auth while retaining workspace ownership/recovery safeguards.
+
+F01 requests only `mail_read`; later write grants require explicit approval. Pairings expire after ten minutes, at most sixteen remain pending, and five failed claim proofs lock a request. Ordinary credentials expire after ninety days. Separate cleanup verifiers remain after expiry or revocation so lost-acknowledgement retries can only deregister the original client. Portable backup excludes all remote authority; restore clears it. These defaults are implemented in candidate `6159ee95`, pending release acceptance.
 
 ## The docs website changes with each release
 
@@ -43,5 +45,4 @@ The durable ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-rem
 
 - Which authorized tailnet fixture can expose the isolated fake-provider gateway for R1 acceptance? Prepare exact proxy mapping and rollback before requesting the change; do not start the user's stopped Tailscale automatically.
 - Which installed macOS Tailscale distribution and Linux supervisor/account arrangement can R5 verify? Confirm from those environments before implementation promises.
-- Token lifetime and revoked-registration retention need an explicit F01 contract; cleanup retries must stay safe after expiry and lost acknowledgements.
 - Confirm the tested API/IPC compatibility window per stage; do not promise cross-version compatibility from package versions alone.

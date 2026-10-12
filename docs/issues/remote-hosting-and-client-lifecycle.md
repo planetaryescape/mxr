@@ -1,14 +1,14 @@
 # Remote hosting needs saved connections and explicit client lifecycles
 
-Status: specified, implementation not started. Updated 2026-10-12.
+Status: F01 pairing authority in review; no remote-hosting release yet. Updated 2026-10-12.
 
 Canonical contract: [remote hosting and clients](../blueprint/24-remote-hosting-and-clients.md). This follows the completed daemon portability preparation and owns its deferred R01 work. The previous 13-stage release sequence remains complete.
 
 Implement `mxr serve` on a Mac or Linux host and `mxr connect` on client installations. One daemon owns SQLite, managed files, indexes and provider work. Clients share a saved target, register with the host, receive lifecycle events, reconnect through an authenticated handshake and deregister when deliberately switching away.
 
-## The next action is the contract and allowlist inventory
+## F01 needs installed acceptance and independent review
 
-Start R01a against a freshly fetched `origin/main`. Inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control. Define registration/session identity, authenticated forwarding context, lifecycle messages, versioning and atomic selection/switch persistence before exposing a listener.
+The foundation candidate `6159ee95` is based on fresh `origin/main` `bf66f451`. Complete its installed CLI/IPC acceptance, fresh Claude review, exact-candidate PR checks, release-please release and deployed documentation check. The subsequent R1 stage must inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control, before exposing a listener.
 
 Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`. The blueprint links exact code evidence and the official Tailscale references. Commands and proposed wire shapes are not installed features.
 
@@ -16,7 +16,7 @@ Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c6826
 
 Use isolated client homes, a controlled provider and an actual browser. Prove read/reply/attachment workflows, planned restart and unexpected disconnect, uncertain outcome recovery, online and offline switching, eventual deregistration, browser child-session revocation and no accidental use of another workspace. Run the final installed path through the supported Tailscale proxy and both OS supervision arrangements.
 
-No implementation blocker has been observed because implementation has not started. A tailnet fixture and supported Mac/Linux supervisor environments are required for deployment acceptance. Production VPS provisioning, real mail migration and the native SwiftUI app remain separate work.
+A tailnet fixture and supported Mac/Linux supervisor environments are required for later deployment acceptance. The Mac's Tailscale service was stopped at kickoff and has been left stopped. Production VPS provisioning, real mail migration and the native SwiftUI app remain separate work.
 
 ## The specification preserves the lifecycle decisions
 
@@ -27,9 +27,9 @@ No implementation blocker has been observed because implementation has not start
 - Keep pending mail and accepted outcomes with their original workspace.
 - Supervise hosting with zero clients; respect explicit stop state.
 
-Documentation-only handover: validate relative links and source anchors, inspect the HTML companion, and retain proposed status. No daemon, database, provider, system service or Tailscale setting should change while drafting this specification.
+The original specification was documentation-only. The authorized implementation now uses isolated fixture daemons and databases; personal mail, system services and Tailscale settings remain outside that fixture authority.
 
-Specification validation on 2026-10-12: 72 relative links and 10 pinned source references resolved; `git diff --check` passed. The standalone HTML companion rendered at desktop and 390px mobile widths without page overflow; all five lifecycle walkthroughs produced their expected states. The browser reported no page errors, and the accessibility scan reported zero violations with contrast checks still requiring manual review. Product acceptance remains unexecuted. Resume at R01a, using the blueprint's source table and acceptance matrix.
+Specification validation on 2026-10-12: 72 relative links and 10 pinned source references resolved; `git diff --check` passed. The standalone HTML companion rendered at desktop and 390px mobile widths without page overflow; all five lifecycle walkthroughs produced their expected states. The browser reported no page errors, and the accessibility scan reported zero violations with contrast checks still requiring manual review. This was specification validation, not product acceptance.
 
 ## Orchestration started
 

@@ -58,6 +58,11 @@ mxr rules --format json category-apply --form airline-rule.json --preview-token 
 mxr categories --format json why <message-id> <category-id>
 ```
 
+In TUI Rules, use `add-category:Travel` or `remove-category:Travel` in the action
+field. `Ctrl-S` or `Ctrl-D` opens the preview. Use `PageUp` and `PageDown` to review
+each effect, then `A` to apply. The account field includes **All accounts** for
+category rules.
+
 The preview includes old contributions and current matches without a hidden
 selection cap. Changes to mail, rules, categories, manual decisions or sources
 require a new preview. Undo restores the previous manual decision while keeping

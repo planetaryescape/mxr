@@ -28,6 +28,7 @@ impl App {
                             self.rules.pending_category_preview = Some((form, false));
                             self.rules.page.panel = RulesPanel::DryRun;
                             self.rules.page.dry_run.clear();
+                            self.rules.page.dry_run_page = 0;
                             return;
                         }
                     }
@@ -52,6 +53,7 @@ impl App {
                             self.rules.pending_category_preview = Some((form, true));
                             self.rules.page.panel = RulesPanel::DryRun;
                             self.rules.page.dry_run.clear();
+                            self.rules.page.dry_run_page = 0;
                             return;
                         }
                     }
@@ -88,6 +90,7 @@ impl App {
                             self.rules.pending_treatment = Some((form, token.to_string()));
                         }
                         self.rules.page.dry_run.clear();
+                        self.rules.page.dry_run_page = 0;
                         self.rules.page.status = Some("Applying the sorting preview...".into());
                     }
                 }
@@ -119,6 +122,7 @@ impl App {
                     self.rules.page.form.visible = false;
                     self.rules.page.panel = RulesPanel::DryRun;
                     self.rules.page.dry_run.clear();
+                    self.rules.page.dry_run_page = 0;
                     return;
                 }
                 self.rules.page.panel = RulesPanel::DryRun;

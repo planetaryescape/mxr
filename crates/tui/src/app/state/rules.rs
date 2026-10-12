@@ -30,6 +30,7 @@ pub struct RulesPageState {
     pub detail: Option<serde_json::Value>,
     pub history: Vec<serde_json::Value>,
     pub dry_run: Vec<serde_json::Value>,
+    pub dry_run_page: usize,
     pub panel: RulesPanel,
     pub status: Option<String>,
     pub refresh_pending: bool,
@@ -44,6 +45,7 @@ impl Default for RulesPageState {
             detail: None,
             history: Vec::new(),
             dry_run: Vec::new(),
+            dry_run_page: 0,
             panel: RulesPanel::Details,
             status: None,
             refresh_pending: false,
@@ -81,3 +83,13 @@ pub struct RulesState {
     pub action_editor: TextArea<'static>,
 }
 use tui_textarea::TextArea;
+
+impl RulesPageState {
+    pub fn dry_run_pages(&self) -> usize {
+        self.dry_run
+            .first()
+            .and_then(|preview| preview["result"]["matches"].as_array())
+            .map_or(self.dry_run.len(), Vec::len)
+            .max(1)
+    }
+}

@@ -1951,6 +1951,19 @@ impl App {
         }
 
         match (key.code, key.modifiers) {
+            (KeyCode::PageDown, _) if self.rules.page.panel == RulesPanel::DryRun => {
+                self.rules.page.dry_run_page = self
+                    .rules
+                    .page
+                    .dry_run_page
+                    .saturating_add(1)
+                    .min(self.rules.page.dry_run_pages().saturating_sub(1));
+                None
+            }
+            (KeyCode::PageUp, _) if self.rules.page.panel == RulesPanel::DryRun => {
+                self.rules.page.dry_run_page = self.rules.page.dry_run_page.saturating_sub(1);
+                None
+            }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 if self.rules.page.selected_index + 1 < self.rules.page.rules.len() {
                     self.rules.page.selected_index += 1;
@@ -2008,19 +2021,24 @@ impl App {
                 None
             }
             (KeyCode::Char(' '), _) if self.rules.page.form.active_field == 5 => {
-                let choices: Vec<_> = self
+                let mut choices: Vec<_> = self
                     .accounts
                     .page
                     .accounts
                     .iter()
                     .filter(|a| a.enabled)
-                    .map(|a| a.account_id.clone())
+                    .map(|a| Some(a.account_id.clone()))
                     .collect();
+                if super::rule_actions::category_actions(&self.rules.page.form.action)
+                    || self.rules.category_edit
+                {
+                    choices.push(None);
+                }
                 let index = choices
                     .iter()
-                    .position(|id| Some(id) == self.rules.page.form.account_id.as_ref())
+                    .position(|id| id == &self.rules.page.form.account_id)
                     .map_or(0, |i| (i + 1) % choices.len().max(1));
-                self.rules.page.form.account_id = choices.get(index).cloned();
+                self.rules.page.form.account_id = choices.get(index).cloned().flatten();
                 None
             }
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::ShowRuleDryRun),

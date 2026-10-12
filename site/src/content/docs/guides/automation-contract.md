@@ -43,6 +43,7 @@ These are the common automation-oriented read surfaces. Exact formats live in th
 | `mxr snippets list` | snippets | json, jsonl, table |
 | `mxr storage` / `mxr stale` / `mxr response-time` / `mxr contacts` / `mxr subscriptions` / `mxr wrapped` | analytics summaries | json, jsonl, csv, table |
 | `mxr status` | daemon health | json, jsonl, table |
+| `mxr serve status` / `mxr serve pair list` / `mxr serve clients` | local host pairing authority and registrations | json (default), jsonl |
 | `mxr sync --status` | sync state per account | json, jsonl, table |
 | `mxr events` / `mxr history` / `mxr logs` | streaming event/log records | json, jsonl, csv, table |
 | `mxr notify` | unread summary | json, jsonl, text |
@@ -118,6 +119,7 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 | `mxr drafts delete DRAFT_ID` | one local draft | ✓ | — | — |
 | `mxr drafts push DRAFT_ID` | one local draft + provider capability | ✓ | — | — |
 | `mxr rules dry-run` | a rule | n/a (always dry-run) | — | — |
+| `mxr serve pair approve` / `mxr serve clients revoke` | one local pairing / registration | yes; preview by default, commit with `--confirm` | — | — |
 
 Account-scoped mutations use the same target set for preview and apply:
 

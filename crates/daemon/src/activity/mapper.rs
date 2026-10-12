@@ -1015,6 +1015,12 @@ pub fn map_request(
         | Request::GenerateBugReport { .. } => {
             skip_activity!("diagnostics", "diagnostics requests are not activity");
         }
+        Request::RemoteAuthority { .. } => {
+            skip_activity!(
+                "remote_authority",
+                "pairing credentials and client inventory are not user activity"
+            );
+        }
         Request::GetStatus | Request::Ping | Request::Shutdown | Request::Authenticate { .. } => {
             skip_activity!(
                 "daemon_lifecycle",

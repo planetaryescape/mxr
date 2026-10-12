@@ -50,6 +50,22 @@ fn shell_completions_run_with_the_normal_process_stack() {
 fn cli_help_snapshots_cover_all_commands() {
     let cases: &[(&str, &[&str])] = &[
         ("cli_help_root", &["--help"]),
+        ("cli_help_serve", &["serve", "--help"]),
+        ("cli_help_serve_status", &["serve", "status", "--help"]),
+        ("cli_help_serve_pair", &["serve", "pair", "--help"]),
+        (
+            "cli_help_serve_pair_list",
+            &["serve", "pair", "list", "--help"],
+        ),
+        (
+            "cli_help_serve_pair_approve",
+            &["serve", "pair", "approve", "--help"],
+        ),
+        ("cli_help_serve_clients", &["serve", "clients", "--help"]),
+        (
+            "cli_help_serve_clients_revoke",
+            &["serve", "clients", "revoke", "--help"],
+        ),
         ("cli_help_search", &["search", "--help"]),
         ("cli_help_triage", &["triage", "--help"]),
         ("cli_help_daemon", &["daemon", "--help"]),
@@ -507,7 +523,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 274);
+    assert_eq!(cases.len(), 281);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

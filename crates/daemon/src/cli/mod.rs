@@ -111,7 +111,54 @@ pub enum BackupAction {
 }
 
 #[derive(Subcommand)]
+pub enum ServeAction {
+    /// Inspect local identity; hosting is not yet available
+    Status,
+    /// Inspect or approve local pairing requests
+    Pair {
+        #[command(subcommand)]
+        action: ServePairAction,
+    },
+    /// List registered clients, or preview/revoke one
+    Clients {
+        #[command(subcommand)]
+        action: Option<ServeClientAction>,
+    },
+}
+#[derive(Subcommand)]
+pub enum ServePairAction {
+    List,
+    /// Preview by default; compare the challenge before --confirm
+    Approve {
+        request_id: String,
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+}
+#[derive(Subcommand)]
+pub enum ServeClientAction {
+    /// Preview by default; --confirm revokes credentials without cancelling mail work
+    Revoke {
+        client_id: String,
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum Command {
+    /// Local pairing authority foundation; remote hosting is not yet available
+    Serve {
+        #[command(subcommand)]
+        action: Option<ServeAction>,
+        /// Structured output (json or jsonl)
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// Start the daemon explicitly
     Daemon {
         /// Daemon subcommand. Omit to start the daemon.

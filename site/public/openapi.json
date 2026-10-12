@@ -13644,6 +13644,36 @@
           }
         }
       },
+      "HostAuthority": {
+        "type": "object",
+        "required": [
+          "hosting_available"
+        ],
+        "properties": {
+          "host_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent until the first pairing starts. Inspection never initializes authority."
+          },
+          "hosting_available": {
+            "type": "boolean"
+          },
+          "recovery_generation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "HtmlImageAsset": {
         "type": "object",
         "required": [
@@ -16403,6 +16433,48 @@
           "waiting_days": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "PendingPairing": {
+        "type": "object",
+        "required": [
+          "capabilities",
+          "request_id",
+          "name",
+          "challenge",
+          "expires_at",
+          "approved",
+          "failed_attempts"
+        ],
+        "properties": {
+          "approved": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemoteCapability"
+            }
+          },
+          "challenge": {
+            "type": "string",
+            "description": "Both screens must display this exact verifier-bound challenge."
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed_attempts": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
           }
         }
       },
@@ -19729,6 +19801,45 @@
           }
         }
       },
+      "RegisteredClient": {
+        "type": "object",
+        "required": [
+          "capabilities",
+          "client_id",
+          "name",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemoteCapability"
+            }
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "RelationshipDriftData": {
         "type": "object",
         "required": [
@@ -19829,6 +19940,335 @@
           }
         }
       },
+      "RemoteCapability": {
+        "type": "string",
+        "enum": [
+          "mail_read"
+        ]
+      },
+      "RemoteRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Status"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Pairings"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Clients"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "capabilities",
+              "mail_verifier",
+              "cleanup_verifier",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "StartPairing"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RemoteCapability"
+                }
+              },
+              "cleanup_verifier": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "mail_verifier": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "request_id",
+              "dry_run",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "ApprovePairing"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "request_id",
+              "mail_secret",
+              "cleanup_secret",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "ClaimPairing"
+                ]
+              },
+              "cleanup_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "mail_secret",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Authenticate"
+                ]
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "dry_run",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "RevokeClient"
+                ]
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "dry_run": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "cleanup_secret",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Cleanup"
+                ]
+              },
+              "cleanup_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "client_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "RemoteResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "authority",
+              "result"
+            ],
+            "properties": {
+              "authority": {
+                "$ref": "#/components/schemas/HostAuthority"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Status"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pairings",
+              "result"
+            ],
+            "properties": {
+              "pairings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PendingPairing"
+                }
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Pairings"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "clients",
+              "result"
+            ],
+            "properties": {
+              "clients": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RegisteredClient"
+                }
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Clients"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pairing",
+              "dry_run",
+              "result"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "pairing": {
+                "$ref": "#/components/schemas/PendingPairing"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Pairing"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client",
+              "dry_run",
+              "result"
+            ],
+            "properties": {
+              "client": {
+                "$ref": "#/components/schemas/RegisteredClient"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Client"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "result"
+            ],
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Cleaned"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RemoteSecret": {
+        "type": "string",
+        "description": "Credential or verifier on the wire. Debug output never reveals its contents."
+      },
       "RenameCategoryBody": {
         "type": "object",
         "required": [
@@ -19920,6 +20360,24 @@
       },
       "Request": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "request",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RemoteAuthority"
+                ]
+              },
+              "request": {
+                "$ref": "#/components/schemas/RemoteRequest"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -27517,6 +27975,24 @@
       },
       "ResponseData": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "response",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RemoteAuthority"
+                ]
+              },
+              "response": {
+                "$ref": "#/components/schemas/RemoteResponse"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [

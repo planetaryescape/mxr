@@ -197,7 +197,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=82).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=83).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -254,6 +254,13 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 83 {
+        sqlx::raw_sql(
+            "DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;",
+        )
+        .execute(expected.writer())
+        .await?;
+    }
     if manifest.schema_version == 81 {
         // Compare legacy bundles against their immutable schema, not today's migrated schema.
         sqlx::query("DROP TABLE todo_resolution_queue")
@@ -269,6 +276,17 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     expected.writer().close().await;
     if actual_schema != expected_schema {
         return Err("Unsupported backup schema definition".into());
+    }
+    if manifest.schema_version >= 83 {
+        for table in ["remote_clients", "remote_pairings", "remote_host"] {
+            let count: i64 =
+                sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                    .fetch_one(&mut db)
+                    .await?;
+            if count != 0 {
+                return Err("Portable backup contains remote authority".into());
+            }
+        }
     }
     super::backup_resources::verify_references(&mut db, &manifest.files).await?;
     let schema: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_migrations")
@@ -354,7 +372,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=82).contains(&version) {
+    if !(80..=83).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -425,8 +443,8 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:82, workspace_id,recovery_generation,files,
-        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into()] })
+    Ok(BackupManifest { format_version:1, schema_version:83, workspace_id,recovery_generation,files,
+        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into()] })
 }
 
 /// Retire runnable state before any restored Store or daemon can open it.
@@ -434,6 +452,17 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
     let mut db =
         SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(db_path)).await?;
     let mut tx = db.begin().await?;
+    let remote_tables: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='remote_host')")
+            .fetch_one(&mut *tx)
+            .await?;
+    if remote_tables {
+        sqlx::raw_sql(
+            "DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;",
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query("INSERT INTO restore_recovery VALUES(1,1,0) ON CONFLICT(singleton) DO UPDATE SET pending=1,source_owner_stopped=0").execute(&mut *tx).await?;
     sqlx::query("UPDATE archive_workspace SET recovery_generation=? WHERE singleton=1")
         .bind(uuid::Uuid::now_v7().to_string())

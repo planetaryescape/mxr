@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 82);
+    assert_eq!(manifest.schema_version, 83);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -305,7 +305,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     .await
     .unwrap();
     sqlx::raw_sql(
-        "DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version=82;",
+        "DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
     )
     .execute(&mut db)
     .await
@@ -325,7 +325,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     .unwrap();
     inspect(stage.path()).await.unwrap();
 
-    manifest.schema_version = 83;
+    manifest.schema_version = 84;
     std::fs::write(
         stage.path().join("manifest.json"),
         serde_json::to_vec(&manifest).unwrap(),
@@ -467,4 +467,107 @@ async fn portable_legacy_resource_keeps_the_multichunk_content_digest() {
     assert_eq!(copied.length, expected.length);
     assert_eq!(copied.sha256, expected.sha256);
     assert_eq!(std::fs::read(stage.path().join(relative)).unwrap(), payload);
+}
+
+#[tokio::test]
+async fn portable_backup_excludes_and_restore_erases_remote_authority() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let mail = mxr_core::RemoteSecret::new("a".repeat(64));
+    let cleanup = mxr_core::RemoteSecret::new("b".repeat(64));
+    let hash = |secret: &mxr_core::RemoteSecret| {
+        mxr_core::RemoteSecret::new(base16ct::lower::encode_string(&Sha256::digest(
+            secret.expose().as_bytes(),
+        )))
+    };
+    let p = store
+        .start_remote_pairing(
+            "fixture",
+            &[mxr_core::RemoteCapability::MailRead],
+            &hash(&mail),
+            &hash(&cleanup),
+            100,
+        )
+        .await
+        .unwrap();
+    store
+        .approve_remote_pairing(&p.request_id, false, 101)
+        .await
+        .unwrap();
+    let c = store
+        .claim_remote_pairing(&p.request_id, &mail, &cleanup, 102)
+        .await
+        .unwrap();
+    store.writer().close().await;
+    write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    inspect(stage.path()).await.unwrap();
+    let portable = Store::new(&stage.path().join("mxr.db")).await.unwrap();
+    assert!(portable.remote_clients().await.unwrap().is_empty());
+    assert!(portable
+        .remote_authority_status()
+        .await
+        .unwrap()
+        .host_id
+        .is_none());
+    portable.writer().close().await;
+    portable.reader().close().await;
+    // Raw copies are not portable backups; retirement still explicitly erases their grants.
+    retire_restored(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let restored = Store::new(&source.path().join("mxr.db")).await.unwrap();
+    assert!(restored.remote_clients().await.unwrap().is_empty());
+    assert!(restored
+        .authenticate_remote_client(&c.client_id, &mail, 103)
+        .await
+        .is_err());
+    assert!(restored.restore_pending().await.unwrap());
+}
+
+#[tokio::test]
+async fn exact_schema_82_backup_remains_restorable() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql("DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version=83;").execute(&mut db).await.unwrap();
+    db.close().await.unwrap();
+    manifest.schema_version = 82;
+    *manifest
+        .files
+        .iter_mut()
+        .find(|f| f.path == "mxr.db")
+        .unwrap() = file_metadata(stage.path(), "mxr.db").unwrap();
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    inspect(stage.path()).await.unwrap();
+    retire_restored(&stage.path().join("mxr.db")).await.unwrap();
+    let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
+    assert!(restored
+        .remote_authority_status()
+        .await
+        .unwrap()
+        .host_id
+        .is_none());
+    assert!(restored.restore_pending().await.unwrap());
 }

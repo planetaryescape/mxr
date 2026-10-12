@@ -596,6 +596,9 @@ pub enum IpcPayload {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "cmd")]
 pub enum Request {
+    RemoteAuthority {
+        request: crate::RemoteRequest,
+    },
     // Core mail/runtime. This is the most stable bucket.
     ListEnvelopes {
         label_id: Option<LabelId>,
@@ -2827,7 +2830,8 @@ impl Request {
             | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. }
             | Self::ResolveTime { .. } => IpcCategory::MxrPlatform,
-            Self::ListEvents { .. }
+            Self::RemoteAuthority { .. }
+            | Self::ListEvents { .. }
             | Self::GetLogs { .. }
             | Self::GetDoctorReport
             | Self::GenerateBugReport { .. }
@@ -3166,6 +3170,9 @@ fn error_looks_retryable(message: &str) -> bool {
     reason = "ResponseData is the tagged IPC contract; large variants are preserved inline to keep serde JSON compatibility obvious"
 )]
 pub enum ResponseData {
+    RemoteAuthority {
+        response: crate::RemoteResponse,
+    },
     // Core mail/runtime responses.
     Envelopes {
         envelopes: Vec<Envelope>,
@@ -4276,7 +4283,8 @@ impl ResponseData {
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. }
             | Self::ResolvedTime { .. } => IpcCategory::MxrPlatform,
-            Self::EventLogEntries { .. }
+            Self::RemoteAuthority { .. }
+            | Self::EventLogEntries { .. }
             | Self::LogLines { .. }
             | Self::DoctorReport { .. }
             | Self::BugReport { .. }

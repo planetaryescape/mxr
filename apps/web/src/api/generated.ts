@@ -6306,6 +6306,13 @@ export interface components {
             /** @description True dismisses the hint in every client; false shows it again. */
             seen?: boolean;
         };
+        HostAuthority: {
+            /** @description Absent until the first pairing starts. Inspection never initializes authority. */
+            host_id?: string | null;
+            hosting_available: boolean;
+            recovery_generation?: string | null;
+            workspace_id?: string | null;
+        };
         HtmlImageAsset: {
             detail?: string | null;
             kind: components["schemas"]["HtmlImageSourceKind"];
@@ -7297,6 +7304,18 @@ export interface components {
             usual_seconds?: number | null;
             /** Format: double */
             waiting_days: number;
+        };
+        PendingPairing: {
+            approved: boolean;
+            capabilities: components["schemas"]["RemoteCapability"][];
+            /** @description Both screens must display this exact verifier-bound challenge. */
+            challenge: string;
+            /** Format: int64 */
+            expires_at: number;
+            /** Format: int32 */
+            failed_attempts: number;
+            name: string;
+            request_id: string;
         };
         /** @description Returned by `Request::MergePeople` and `Request::SplitPerson`. */
         PersonMergeData: {
@@ -8478,6 +8497,17 @@ export interface components {
             source_owner_stopped: boolean;
             workspace_id: string;
         };
+        RegisteredClient: {
+            capabilities: components["schemas"]["RemoteCapability"][];
+            client_id: string;
+            /** Format: int64 */
+            created_at: number;
+            /** Format: int64 */
+            expires_at: number;
+            name: string;
+            /** Format: int64 */
+            revoked_at?: number | null;
+        };
         RelationshipDriftData: {
             /** Format: date-time */
             detected_at: string;
@@ -8501,6 +8531,95 @@ export interface components {
             expected_days?: number | null;
             note?: string | null;
         };
+        /** @enum {string} */
+        RemoteCapability: "mail_read";
+        RemoteRequest:
+            | {
+                  /** @enum {string} */
+                  action: "Status";
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Pairings";
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Clients";
+              }
+            | {
+                  /** @enum {string} */
+                  action: "StartPairing";
+                  capabilities: components["schemas"]["RemoteCapability"][];
+                  cleanup_verifier: components["schemas"]["RemoteSecret"];
+                  mail_verifier: components["schemas"]["RemoteSecret"];
+                  name: string;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "ApprovePairing";
+                  dry_run: boolean;
+                  request_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "ClaimPairing";
+                  cleanup_secret: components["schemas"]["RemoteSecret"];
+                  mail_secret: components["schemas"]["RemoteSecret"];
+                  request_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Authenticate";
+                  client_id: string;
+                  mail_secret: components["schemas"]["RemoteSecret"];
+              }
+            | {
+                  /** @enum {string} */
+                  action: "RevokeClient";
+                  client_id: string;
+                  dry_run: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Cleanup";
+                  cleanup_secret: components["schemas"]["RemoteSecret"];
+                  client_id: string;
+              };
+        RemoteResponse:
+            | {
+                  authority: components["schemas"]["HostAuthority"];
+                  /** @enum {string} */
+                  result: "Status";
+              }
+            | {
+                  pairings: components["schemas"]["PendingPairing"][];
+                  /** @enum {string} */
+                  result: "Pairings";
+              }
+            | {
+                  clients: components["schemas"]["RegisteredClient"][];
+                  /** @enum {string} */
+                  result: "Clients";
+              }
+            | {
+                  dry_run: boolean;
+                  pairing: components["schemas"]["PendingPairing"];
+                  /** @enum {string} */
+                  result: "Pairing";
+              }
+            | {
+                  client: components["schemas"]["RegisteredClient"];
+                  dry_run: boolean;
+                  /** @enum {string} */
+                  result: "Client";
+              }
+            | {
+                  client_id: string;
+                  /** @enum {string} */
+                  result: "Cleaned";
+              };
+        /** @description Credential or verifier on the wire. Debug output never reveals its contents. */
+        RemoteSecret: string;
         RenameCategoryBody: {
             category_id: string;
             name: string;
@@ -8538,6 +8657,11 @@ export interface components {
          *     state writes.
          */
         Request:
+            | {
+                  /** @enum {string} */
+                  cmd: "RemoteAuthority";
+                  request: components["schemas"]["RemoteRequest"];
+              }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
@@ -10513,6 +10637,11 @@ export interface components {
                   status: "Error";
               };
         ResponseData:
+            | {
+                  /** @enum {string} */
+                  kind: "RemoteAuthority";
+                  response: components["schemas"]["RemoteResponse"];
+              }
             | {
                   envelopes: components["schemas"]["Envelope"][];
                   /** @enum {string} */

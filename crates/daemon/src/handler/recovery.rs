@@ -227,6 +227,7 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | GetNow { .. }
             | GetThreadGist { .. }
             | GetThreadGists { .. }
+            | RemoteAuthority { .. }
             | GetRecoveryStatus
             | ActivateRecovery { .. }
             | GetStatus

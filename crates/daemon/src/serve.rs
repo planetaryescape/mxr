@@ -622,6 +622,32 @@ mod tests {
     use tokio::sync::Semaphore;
     use tokio_util::codec::Framed;
 
+    #[test]
+    fn registration_proof_cannot_unlock_legacy_daemon_auth() {
+        let peer = mxr_transport::PeerInfo {
+            auth: mxr_transport::PeerAuth::TokenRequired,
+        };
+        let mut auth = super::ConnectionAuth::new(&peer, Some(Arc::from("local-daemon-token")));
+        let request = IpcMessage {
+            id: 1,
+            expected_workspace: None,
+            source: mxr_protocol::ClientKind::Cli,
+            payload: IpcPayload::Request(Request::RemoteAuthority {
+                request: mxr_protocol::RemoteRequest::Authenticate {
+                    client_id: "client".into(),
+                    mail_secret: mxr_core::RemoteSecret::new("a".repeat(64)),
+                },
+            }),
+        };
+        assert!(auth.gate(&request).is_some());
+        assert!(!auth.is_authenticated());
+        let ping = IpcMessage {
+            payload: IpcPayload::Request(Request::Ping),
+            ..request
+        };
+        assert!(auth.gate(&ping).is_some());
+    }
+
     #[tokio::test]
     async fn handler_panic_returns_error_response() {
         let response = guard_ipc_response(7, async {

@@ -25,6 +25,18 @@ const PREFIX = 'cli_help__cli_help_';
 const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW`, `--operation-id OPERATION_ID_FROM_PREVIEW` and `--expected-workspace \'<OWNER_JSON_FROM_PREVIEW>\'`. Use that same quoted owner for `mxr send-outcome` and for scheduling with `--at TIME`.';
 
 const COMMAND_EXAMPLES = {
+  serve: {
+    use: 'Inspect local pairing authority. Remote hosting is not yet available. Commands use the explicit local socket and ignore MXR_DAEMON_ADDR. Approval and revocation preview by default; compare the pairing challenge before confirming.',
+    examples: [
+      'mxr serve status',
+      'mxr serve pair list',
+      'mxr serve pair approve REQUEST_ID --dry-run',
+      'mxr serve pair approve REQUEST_ID --confirm',
+      'mxr serve clients',
+      'mxr serve clients revoke CLIENT_ID --dry-run',
+      'mxr serve clients revoke CLIENT_ID --confirm',
+    ],
+  },
   search: {
     use: 'Find messages fast, then pipe IDs or JSON into the next step.',
     examples: [

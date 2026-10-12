@@ -73,6 +73,7 @@ mod record_subscriptions;
 mod records;
 mod recovery;
 mod relationship_watchlist;
+mod remote_authority;
 mod reply_pairs;
 mod rules;
 mod scheduled_sends;

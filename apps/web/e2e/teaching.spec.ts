@@ -94,11 +94,12 @@ test("the runway hint shows at the first bar at first need; Esc dismisses it for
   await expect(hints(page)).toHaveCount(0);
   // Never again: not on a reload, and not in the TUI or the CLI, which
   // read the same daemon state.
+  // DOM removal is optimistic, so wait for the shared state before reloading.
+  await expect.poll(() => hintSeen(page, "todo.runway")).toBe(true);
   await page.reload();
   await expect(page.getByTestId("todo-row").first()).toBeVisible();
   await page.keyboard.press("j");
   await expect(hints(page)).toHaveCount(0);
-  expect(await hintSeen(page, "todo.runway")).toBe(true);
 });
 
 test("doing what the hint names dismisses it", async ({ page }) => {

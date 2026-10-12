@@ -931,6 +931,7 @@ mod tests {
                         supports_streaming: false,
                         request_timeout_secs: 120,
                         allow_cloud_relationship_data: false,
+                        observations: Vec::new(),
                     },
                 },
                 IpcCategory::MxrPlatform,

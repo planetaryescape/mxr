@@ -49,7 +49,10 @@ only when a short call on a slow host is genuinely timing out.
 `MXR_DAEMON_ADDR` selects which transport the `mxr` CLI dials:
 `unix://<path>` (default), `tcp://<host:port>`, or `cmd://<command>` (e.g.
 `cmd://ssh -T host mxr daemon dial-stdio`). `MXR_DAEMON_TOKEN` supplies the
-daemon bearer token for `tcp://`. See [`transports`](#transports).
+daemon bearer token for `tcp://`. Set `MXR_DAEMON_AUTOSTART=off` when a service
+manager owns a foreground daemon; clients can connect to a compatible owner but
+will not start or replace one. See [`transports`](#transports) and the
+[headless Linux service recipe](/guides/headless-linux/).
 
 ## Top-level sections
 
@@ -587,9 +590,14 @@ from being sent to non-local LLM endpoints. Set it to `true` only when you want
 cloud providers to receive that context for relationship-aware summaries,
 briefings, and draft assistance.
 
-Use `mxr llm status` to inspect the running provider, model, context
-window, timeout, and whether the configured API-key environment variable
-is present. Daemon config reloads rebuild the LLM provider, so changing
+Use `mxr llm status --format json` to inspect the running provider, model,
+context window, timeout, and whether the configured API-key environment variable
+is present. It also reports process-local model request outcomes by provider
+route: initially no observation, then a typed success or failure. A successful
+request on one feature route does not clear another route's failure, and a
+provider reload clears the old outcomes. Status never probes the model endpoint.
+Feature health reports the same observations while core mail remains usable when
+an optional model is unavailable. Daemon config reloads rebuild the LLM provider, so changing
 `base_url`, `model`, or `api_key_env` is reflected after reload without
 restarting the process.
 

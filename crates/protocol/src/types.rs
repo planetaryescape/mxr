@@ -177,6 +177,40 @@ pub struct LlmStatusSnapshot {
     /// cached model output on it.
     #[serde(default)]
     pub allow_cloud_relationship_data: bool,
+    /// Last process-local endpoint outcomes, separated by routed feature.
+    /// These contain typed failure classes only, never provider error text.
+    #[serde(default)]
+    pub observations: Vec<LlmObservationData>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LlmObservationStatus {
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LlmFailureKindData {
+    Unreachable,
+    RateLimited,
+    Timeout,
+    Unauthorized,
+    Empty,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LlmObservationData {
+    /// `default` is the base provider; other values are feature route names.
+    pub feature: String,
+    pub status: LlmObservationStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<LlmFailureKindData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -102,6 +102,11 @@ Response:
 | `POST` | `/admin/ping` | Liveness round-trip |
 | `POST` | `/admin/shutdown` | Graceful daemon shutdown |
 
+After a sync attempt, doctor diagnostics classify an observed missing IMAP sync
+credential and point to the active config directory's `secrets.toml` or the OS
+keychain. The finding does not include the credential reference or secret.
+SMTP send failures are not yet aggregated into doctor diagnostics.
+
 ## `/api/v1/mail/*` — Reading
 
 | Method | Path | Purpose |
@@ -534,7 +539,7 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 | `POST` | `/platform/llm/config` | Update `[llm]` config and reload provider |
 | `GET` | `/platform/notifications/chimes` | The shared chime setting (`NotificationChimes`) |
 | `POST` | `/platform/notifications/chimes` | Change fields of the chime setting: the body is a `NotificationChimesPatchData` (only the fields to change), applied by the daemon to the current setting |
-| `GET` | `/platform/llm/status` | Runtime LLM provider + model status |
+| `GET` | `/platform/llm/status` | Runtime provider + model status and process-local typed outcomes by feature route; status does not probe the endpoint |
 
 ### Semantic
 

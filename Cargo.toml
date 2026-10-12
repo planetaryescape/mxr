@@ -443,6 +443,7 @@ serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }
+shell-words = { workspace = true }
 base16ct = { workspace = true }
 sqlx = { workspace = true }
 tantivy = { workspace = true }

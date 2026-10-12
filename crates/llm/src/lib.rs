@@ -38,11 +38,17 @@ use tokio::time::Instant;
 mod background;
 mod demo;
 mod endpoint;
+mod observations;
+
+#[cfg(test)]
+mod observation_tests;
 
 use background::{AttemptLedger, BackgroundBreaker};
 
 pub use demo::DemoLlmProvider;
 pub use endpoint::is_loopback_endpoint;
+use observations::CompletionObservations;
+pub use observations::{CompletionObservation, LlmFailureKind};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -69,6 +75,27 @@ pub enum LlmFeature {
     Briefing,
     Expert,
     DeliveryExtraction,
+}
+
+impl LlmFeature {
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Summarize => "summarize",
+            Self::RelationshipSummary => "relationship_summary",
+            Self::Commitments => "commitments",
+            Self::DraftAssist => "draft_assist",
+            Self::DraftNew => "draft_new",
+            Self::DraftRefine => "draft_refine",
+            Self::VoiceMatch => "voice_match",
+            Self::HumanizeRewrite => "humanize_rewrite",
+            Self::AnswerCoverage => "answer_coverage",
+            Self::ArchiveAsk => "archive_ask",
+            Self::DecisionLog => "decision_log",
+            Self::Briefing => "briefing",
+            Self::Expert => "expert",
+            Self::DeliveryExtraction => "delivery_extraction",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,6 +271,7 @@ pub struct LlmRuntime {
     background_timeout: RwLock<Duration>,
     background_breaker: Mutex<BackgroundBreaker>,
     background_attempts: Mutex<AttemptLedger>,
+    observations: CompletionObservations,
 }
 
 pub struct FeatureLlmRuntime {
@@ -260,6 +288,7 @@ impl LlmRuntime {
             background_timeout: RwLock::new(DEFAULT_BACKGROUND_TIMEOUT),
             background_breaker: Mutex::new(BackgroundBreaker::default()),
             background_attempts: Mutex::new(AttemptLedger::default()),
+            observations: CompletionObservations::default(),
         }
     }
 
@@ -282,12 +311,14 @@ impl LlmRuntime {
     /// Also resets the background breaker and attempt ledger: a new
     /// provider (config reload) deserves a fresh attempt at everything.
     pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
-        *self
-            .provider
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
-        *self.breaker() = BackgroundBreaker::default();
-        *self.attempts() = AttemptLedger::default();
+        self.observations.replace(|| {
+            *self
+                .provider
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+            *self.breaker() = BackgroundBreaker::default();
+            *self.attempts() = AttemptLedger::default();
+        });
     }
 
     pub fn replace_feature_providers(
@@ -295,14 +326,16 @@ impl LlmRuntime {
         providers: HashMap<LlmFeature, Arc<dyn LlmProvider>>,
         blocked_features: HashMap<LlmFeature, String>,
     ) {
-        *self
-            .feature_providers
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = providers;
-        *self
-            .blocked_features
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = blocked_features;
+        self.observations.replace(|| {
+            *self
+                .feature_providers
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = providers;
+            *self
+                .blocked_features
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = blocked_features;
+        });
     }
 
     pub fn for_feature(self: &Arc<Self>, feature: LlmFeature) -> FeatureLlmRuntime {
@@ -313,7 +346,12 @@ impl LlmRuntime {
     }
 
     pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        self.current().complete(req).await
+        let (generation, provider) = self
+            .observations
+            .with_generation(|generation| (generation, self.current()));
+        let result = provider.complete(req).await;
+        self.observations.record(generation, None, &result);
+        result
     }
 
     pub fn capabilities(&self) -> LlmCapabilities {
@@ -328,11 +366,21 @@ impl LlmRuntime {
         self.blocked_reason(feature)
     }
 
+    pub fn observation(&self, feature: Option<LlmFeature>) -> Option<CompletionObservation> {
+        self.observations.get(feature)
+    }
+
+    pub fn observations(&self) -> Vec<(Option<LlmFeature>, CompletionObservation)> {
+        self.observations.snapshot()
+    }
+
     /// The background budget and breaker around one call: refuse while the
     /// breaker is open, cut the call at the background timeout, and count
     /// real endpoint failures toward opening it.
     async fn guard_background(
         &self,
+        generation: u64,
+        feature: Option<LlmFeature>,
         call: impl std::future::Future<Output = Result<CompletionResponse, LlmError>>,
     ) -> Result<CompletionResponse, LlmError> {
         let open_for = self.breaker().remaining(Instant::now());
@@ -354,6 +402,7 @@ impl LlmRuntime {
             ) => {}
             Err(error) => self.breaker().record_failure(Instant::now(), error),
         }
+        self.observations.record(generation, feature, &result);
         result
     }
 
@@ -399,10 +448,14 @@ impl FeatureLlmRuntime {
         if let Some(reason) = self.runtime.blocked_reason(self.feature) {
             return Err(LlmError::PrivacyBlocked(reason));
         }
+        let (generation, provider) = self.runtime.observations.with_generation(|generation| {
+            (generation, self.runtime.provider_for_feature(self.feature))
+        });
+        let result = provider.complete(req).await;
         self.runtime
-            .provider_for_feature(self.feature)
-            .complete(req)
-            .await
+            .observations
+            .record(generation, Some(self.feature), &result);
+        result
     }
 
     /// Like [`Self::complete`], but bounded by the runtime's background
@@ -418,7 +471,7 @@ impl FeatureLlmRuntime {
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
-        self.runtime.guard_background(self.complete(req)).await
+        self.pin().complete_background(req).await
     }
 
     /// Whether a background worker should send this input (`key` names it,
@@ -458,11 +511,15 @@ impl FeatureLlmRuntime {
     /// deciding what to send from the pinned provider and sending through it
     /// keeps the decision and the call on the same endpoint.
     pub fn pin(&self) -> PinnedLlm {
-        PinnedLlm {
-            provider: self.runtime.provider_for_feature(self.feature),
-            blocked: self.runtime.blocked_reason(self.feature),
-            runtime: self.runtime.clone(),
-        }
+        self.runtime
+            .observations
+            .with_generation(|generation| PinnedLlm {
+                provider: self.runtime.provider_for_feature(self.feature),
+                blocked: self.runtime.blocked_reason(self.feature),
+                runtime: self.runtime.clone(),
+                feature: self.feature,
+                generation,
+            })
     }
 }
 
@@ -473,6 +530,8 @@ pub struct PinnedLlm {
     provider: Arc<dyn LlmProvider>,
     blocked: Option<String>,
     runtime: Arc<LlmRuntime>,
+    feature: LlmFeature,
+    generation: u64,
 }
 
 impl PinnedLlm {
@@ -480,7 +539,11 @@ impl PinnedLlm {
         if let Some(reason) = &self.blocked {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
-        self.provider.complete(req).await
+        let result = self.provider.complete(req).await;
+        self.runtime
+            .observations
+            .record(self.generation, Some(self.feature), &result);
+        result
     }
 
     /// [`Self::complete`] under the background timeout and breaker, like
@@ -489,7 +552,9 @@ impl PinnedLlm {
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
-        self.runtime.guard_background(self.complete(req)).await
+        self.runtime
+            .guard_background(self.generation, Some(self.feature), self.complete(req))
+            .await
     }
 
     /// A model is configured for this feature (see
@@ -821,6 +886,18 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, LlmError::Disabled));
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
+        assert!(matches!(
+            runtime
+                .complete(CompletionRequest {
+                    messages: vec![ChatMessage::user("hello")],
+                    max_tokens: None,
+                    temperature: None,
+                })
+                .await,
+            Err(LlmError::Disabled)
+        ));
+        assert_eq!(runtime.observation(None), None);
     }
 
     /// A config reload can swap providers mid-request: a pinned handle keeps

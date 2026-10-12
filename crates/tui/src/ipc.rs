@@ -154,6 +154,12 @@ pub(crate) fn spawn_ipc_worker(
                                         result = retry;
                                     }
                                     Err(error) => {
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(
+                                            ConnectionState::Reconnecting {
+                                                since: std::time::Instant::now(),
+                                                reason: error.to_string(),
+                                            },
+                                        ));
                                         result = Err(error);
                                     }
                                 }
@@ -182,7 +188,13 @@ pub(crate) fn spawn_ipc_worker(
                                 let _ = result_tx
                                     .send(AsyncResult::ConnectionState(ConnectionState::Connected));
                             }
-                            Err(_) => {
+                            Err(error) => {
+                                let _ = result_tx.send(AsyncResult::ConnectionState(
+                                    ConnectionState::Reconnecting {
+                                        since: std::time::Instant::now(),
+                                        reason: error.to_string(),
+                                    },
+                                ));
                                 sleep(Duration::from_secs(2)).await;
                             }
                         }
@@ -201,6 +213,13 @@ async fn connect_ipc_client(
     match Client::connect(socket_path).await {
         Ok(client) => Ok(client.with_event_channel(event_tx)),
         Err(error) if should_autostart_daemon(&error) => {
+            if !mxr_client::daemon_autostart_enabled() {
+                return Err(MxrError::Ipc(format!(
+                    "{} ({})",
+                    mxr_client::daemon_autostart_disabled_message(),
+                    socket_path.display()
+                )));
+            }
             start_daemon_process(socket_path).await?;
             wait_for_daemon_client(socket_path, START_DAEMON_TIMEOUT)
                 .await

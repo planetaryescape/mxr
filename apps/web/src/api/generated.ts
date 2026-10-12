@@ -6188,6 +6188,16 @@ export interface components {
             /** Format: int64 */
             request_timeout_secs: number;
         };
+        /** @enum {string} */
+        LlmFailureKindData: "unreachable" | "rate_limited" | "timeout" | "unauthorized" | "empty" | "other";
+        LlmObservationData: {
+            failure?: null | components["schemas"]["LlmFailureKindData"];
+            /** @description `default` is the base provider; other values are feature route names. */
+            feature: string;
+            status: components["schemas"]["LlmObservationStatus"];
+        };
+        /** @enum {string} */
+        LlmObservationStatus: "succeeded" | "failed";
         LlmOverrideData: {
             /** @default null */
             api_key_env: string | null;
@@ -6252,6 +6262,11 @@ export interface components {
             context_window: number;
             enabled: boolean;
             model: string;
+            /**
+             * @description Last process-local endpoint outcomes, separated by routed feature.
+             *     These contain typed failure classes only, never provider error text.
+             */
+            observations?: components["schemas"]["LlmObservationData"][];
             provider: string;
             /** Format: int64 */
             request_timeout_secs: number;

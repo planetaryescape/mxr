@@ -13625,6 +13625,50 @@
           }
         }
       },
+      "LlmFailureKindData": {
+        "type": "string",
+        "enum": [
+          "unreachable",
+          "rate_limited",
+          "timeout",
+          "unauthorized",
+          "empty",
+          "other"
+        ]
+      },
+      "LlmObservationData": {
+        "type": "object",
+        "required": [
+          "feature",
+          "status"
+        ],
+        "properties": {
+          "failure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmFailureKindData"
+              }
+            ]
+          },
+          "feature": {
+            "type": "string",
+            "description": "`default` is the base provider; other values are feature route names."
+          },
+          "status": {
+            "$ref": "#/components/schemas/LlmObservationStatus"
+          }
+        }
+      },
+      "LlmObservationStatus": {
+        "type": "string",
+        "enum": [
+          "succeeded",
+          "failed"
+        ]
+      },
       "LlmOverrideData": {
         "type": "object",
         "properties": {
@@ -13880,6 +13924,13 @@
           },
           "model": {
             "type": "string"
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmObservationData"
+            },
+            "description": "Last process-local endpoint outcomes, separated by routed feature.\nThese contain typed failure classes only, never provider error text."
           },
           "provider": {
             "type": "string"

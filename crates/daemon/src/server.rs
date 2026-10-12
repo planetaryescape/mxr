@@ -15,9 +15,7 @@ use crate::serve::{
 };
 use crate::state::AppState;
 use anyhow::Context;
-use mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
-};
+use mxr_protocol::{AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData};
 use mxr_transport::{
     BoxedIo, Connector, PeerInfo, ServerTransport, TransportError, TransportListener,
     UdsServerTransport, UnixConnector,
@@ -27,7 +25,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -637,10 +635,22 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         return Ok(());
     }
     let sock_path = resolve_daemon_socket()?;
+    let autostart_enabled = mxr_client::daemon_autostart_enabled();
 
     let socket_state = inspect_socket_state(&sock_path).await;
     if matches!(socket_state, SocketState::Reachable) {
+        if !autostart_enabled {
+            return ensure_supervised_daemon_compatible(&sock_path).await;
+        }
         return ensure_current_daemon_matches_binary(&sock_path).await;
+    }
+
+    if !autostart_enabled {
+        anyhow::bail!(
+            "{} ({})",
+            mxr_client::daemon_autostart_disabled_message(),
+            sock_path.display()
+        );
     }
 
     match recover_from_broken_socket(&sock_path).await {
@@ -664,6 +674,29 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     }
 
     spawn_daemon_process(&sock_path, "Starting daemon...").await
+}
+
+async fn ensure_supervised_daemon_compatible(sock_path: &std::path::Path) -> anyhow::Result<()> {
+    let snapshot = fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "{} ({}) — daemon status failed: {error}",
+                mxr_client::daemon_autostart_disabled_message(),
+                sock_path.display()
+            )
+        })?;
+    if daemon_requires_restart(
+        snapshot.protocol_version,
+        snapshot.daemon_version.as_deref(),
+        snapshot.daemon_build_id.as_deref(),
+    ) {
+        anyhow::bail!(
+            "The supervised daemon at {} is incompatible with this mxr binary. Update or restart it through the service manager; mxr did not replace the supervised process.",
+            sock_path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Work out how to recover a socket that just failed its liveness probe.
@@ -736,20 +769,7 @@ pub(crate) fn current_daemon_version() -> &'static str {
 }
 
 pub(crate) fn current_build_id() -> String {
-    let version = current_daemon_version();
-    let Ok(exe) = std::env::current_exe() else {
-        return format!("{version}:unknown");
-    };
-    let path = std::fs::canonicalize(&exe).unwrap_or(exe);
-    let Ok(meta) = std::fs::metadata(&path) else {
-        return format!("{version}:{}", path.display());
-    };
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map_or(0, |duration| duration.as_secs());
-    format!("{version}:{}:{}:{modified}", path.display(), meta.len())
+    mxr_client::current_daemon_build_id()
 }
 
 pub(crate) fn daemon_requires_restart(
@@ -757,10 +777,7 @@ pub(crate) fn daemon_requires_restart(
     daemon_version: Option<&str>,
     daemon_build_id: Option<&str>,
 ) -> bool {
-    let current_build_id = current_build_id();
-    protocol_version != IPC_PROTOCOL_VERSION
-        || daemon_version != Some(current_daemon_version())
-        || daemon_build_id != Some(current_build_id.as_str())
+    !mxr_client::daemon_matches_current_binary(protocol_version, daemon_version, daemon_build_id)
 }
 
 /// One word for what the daemon is: the header line of `mxr status`, and what

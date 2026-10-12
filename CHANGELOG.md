@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.83](https://github.com/planetaryescape/mxr/compare/v0.6.82...v0.6.83) (2026-10-12)
+
+
+### Features
+
+* add personal categories across mail clients ([#406](https://github.com/planetaryescape/mxr/issues/406)) ([ef677cc](https://github.com/planetaryescape/mxr/commit/ef677ccda4b62d65aac98310197e79e69ce3fdf4))
+
+
+### Documentation
+
+* close released browser recovery and attachment transfers ([#407](https://github.com/planetaryescape/mxr/issues/407)) ([12109ea](https://github.com/planetaryescape/mxr/commit/12109eac12265b8e1e2567c49cdb7289b44c69ce))
+
 ## [0.6.82](https://github.com/planetaryescape/mxr/compare/v0.6.81...v0.6.82) (2026-10-12)
 
 

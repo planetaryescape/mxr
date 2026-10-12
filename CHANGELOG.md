@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.82](https://github.com/planetaryescape/mxr/compare/v0.6.81...v0.6.82) (2026-10-12)
+
+
+### Bug Fixes
+
+* create missing directories for attachment downloads ([#404](https://github.com/planetaryescape/mxr/issues/404)) ([9c5c306](https://github.com/planetaryescape/mxr/commit/9c5c306adda575ec622694eb53ec72fa97f09b83))
+
 ## [0.6.81](https://github.com/planetaryescape/mxr/compare/v0.6.80...v0.6.81) (2026-10-11)
 
 

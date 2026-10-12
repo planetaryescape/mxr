@@ -1,0 +1,25 @@
+{
+  "source": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "binary_sha256": "6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "tool": "exec_command tty + write_stdin; real TUI",
+  "cases": {
+    "save_exact_1188000_bytes": true,
+    "first_enter_preserves_existing_file": true,
+    "second_enter_confirmed_overwrite_exact_bytes": true,
+    "open_client_owned_text_file": true,
+    "daemon_cache_denied": true
+  },
+  "open": {
+    "attachment_id": "01a12d06-fd04-76f1-8072-82c080f60d39",
+    "message_id": "01a12d06-fd04-76f1-8072-82b60db4aba3",
+    "bytes": 53,
+    "sha256": "78cb9b01eb0f6116b5df72ae749dbcb223b1a724f7f005602eb370888fc3c7ef",
+    "seeding": "Replaced synthetic attachment metadata while fixture daemon stopped"
+  },
+  "limits": [
+    "OS opener returned success and TUI reported Opened; external editor contents were not inspected",
+    "TUI currently uses Unix socket; broader connector selection remains S07"
+  ],
+  "owned_daemon_stopped": true,
+  "socket_removed": true
+}

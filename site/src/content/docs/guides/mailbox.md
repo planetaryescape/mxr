@@ -156,6 +156,11 @@ When a message has attachments:
 - `Enter` / `o` opens the selected attachment
 - `d` downloads it
 
+In the TUI, press `d`, choose a destination and press Enter. Missing parent
+directories are created. If the file exists, press Enter again to confirm
+replacement. Download and Open verify the attachment bytes before writing the
+final file on the client.
+
 The browser assembles and verifies attachment bytes on the client. It opens
 plain text and common raster images in a separate tab; other file types and
 blocked popups download the file instead. Open downloaded files from the

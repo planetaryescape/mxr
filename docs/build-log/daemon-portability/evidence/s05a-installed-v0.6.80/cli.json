@@ -1,0 +1,43 @@
+{
+  "source": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr",
+  "binary_sha256": "sha256:108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+  "daemon_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr",
+  "daemon_binary_sha256": "108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+  "legacy": false,
+  "expect_unsupported": false,
+  "cases": {
+    "daemon_file_unreadable": true,
+    "cmd_connector_reaches_owned_daemon": true,
+    "exact_download_without_daemon_file_access": true,
+    "existing_destination_preserved": true,
+    "no_local_fallback_daemon_or_store": true
+  },
+  "owned_pid": 73744,
+  "fixture": {
+    "message_id": "01a12d68-67cc-7bc2-a7e0-e09201b03d23",
+    "attachment_id": "01a12d68-67cc-7bc2-a7e0-e0a2afbac390",
+    "bytes": 1188000,
+    "sha256": "sha256:5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16",
+    "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/daemon-data/transfer-fixture.bin",
+    "seeding": "Known cached bytes set while daemon stopped; provider fixture remains unchanged."
+  },
+  "denial": {
+    "exit": 1,
+    "stdout_bytes": 0,
+    "stderr": "cat: /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/daemon-data/transfer-fixture.bin: Operation not permitted\n"
+  },
+  "download_output": [
+    {
+      "message_id": "01a12d68-67cc-7bc2-a7e0-e09201b03d23",
+      "attachment_id": "01a12d68-67cc-7bc2-a7e0-e0a2afbac390",
+      "filename": "boundary.bin",
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/downloads/boundary.bin",
+      "length_bytes": 1188000,
+      "sha256": "5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16"
+    }
+  ],
+  "passed": true,
+  "owned_daemon_stopped": true,
+  "socket_exists_after_shutdown": false
+}

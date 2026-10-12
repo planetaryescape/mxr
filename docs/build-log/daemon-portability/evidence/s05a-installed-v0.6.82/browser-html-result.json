@@ -1,0 +1,40 @@
+{
+  "source_commit": "5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3",
+  "source_tree": "43269888f7c907d6c77043ee65265e33259f8e45",
+  "installed_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-release/installer-bin/mxr",
+  "installed_binary_sha256": "sha256:3bb6d6b178cf97aa3aaeae246667cea001a3523c84d18fac794a8d16879c35a4",
+  "fixture": {
+    "kind": "html",
+    "bytes": 1280116,
+    "sha256": "sha256:928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+    "cache_read_denial_profile": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/deny-cache.sb"
+  },
+  "routes_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/route-statuses.json",
+  "browser_console_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/browser-console.txt",
+  "screenshots": [
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/html-after-open.png",
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/html-before-open.png"
+  ],
+  "openapi": {
+    "status": 200,
+    "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/api-v1-openapi.json",
+    "sha256": "b5164776d8ac9d89cd31ec371c7eeb648806598b250d258981ddcdd1f5549c90"
+  },
+  "cases": {
+    "cache_direct_read_denied": true,
+    "ui_search": "Invoice #2847",
+    "opened_message": "Frank Billing",
+    "download": {
+      "bytes": 1280116,
+      "sha256": "928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+      "matches_fixture": true
+    },
+    "open": {
+      "observed": "download fallback; no new tab",
+      "bytes": 1280116,
+      "sha256": "928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+      "matches_fixture": true,
+      "script_canary_visible": false
+    }
+  }
+}

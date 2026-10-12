@@ -1,0 +1,39 @@
+{
+  "source_commit": "5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3",
+  "source_tree": "43269888f7c907d6c77043ee65265e33259f8e45",
+  "installed_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-release/installer-bin/mxr",
+  "installed_binary_sha256": "sha256:3bb6d6b178cf97aa3aaeae246667cea001a3523c84d18fac794a8d16879c35a4",
+  "fixture": {
+    "kind": "text",
+    "bytes": 810000,
+    "sha256": "sha256:28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+    "cache_read_denial_profile": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/deny-cache.sb"
+  },
+  "routes_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/route-statuses.json",
+  "browser_console_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/browser-console.txt",
+  "screenshots": [
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/text-open-tab.png"
+  ],
+  "openapi": {
+    "status": 200,
+    "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/api-v1-openapi.json",
+    "sha256": "b5164776d8ac9d89cd31ec371c7eeb648806598b250d258981ddcdd1f5549c90"
+  },
+  "cases": {
+    "ui_search": "Invoice #2847",
+    "opened_message": "Frank Billing",
+    "download": {
+      "bytes": 810000,
+      "sha256": "28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+      "matches_fixture": true
+    },
+    "open": {
+      "result": "new passive text tab",
+      "origin": "http://127.0.0.1:59170",
+      "content_type": "text/plain",
+      "rendered_text_bytes": 810000,
+      "rendered_text_sha256": "28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+      "matches_fixture": true
+    }
+  }
+}

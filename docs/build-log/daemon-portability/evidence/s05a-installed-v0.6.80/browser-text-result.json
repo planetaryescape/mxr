@@ -1,0 +1,34 @@
+{
+  "source_commit": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "source_tree": "5c9393f4dd65e09d1c879c387d7a135a3ac8e289",
+  "installed_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr",
+  "installed_binary_sha256": "sha256:108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+  "fixture": {
+    "kind": "text",
+    "bytes": 810000,
+    "sha256": "sha256:28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+    "cache_read_denial_profile": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/deny-cache.sb"
+  },
+  "routes_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/route-statuses.json",
+  "browser_console_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/browser-console.txt",
+  "screenshots": [
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/text-open-tab.png"
+  ],
+  "cases": {
+    "ui_search": "Invoice #2847",
+    "opened_message": "Frank Billing",
+    "download": {
+      "bytes": 810000,
+      "sha256": "28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+      "matches_fixture": true
+    },
+    "open": {
+      "result": "new passive text tab",
+      "origin": "http://127.0.0.1:51177",
+      "content_type": "text/plain",
+      "rendered_text_bytes": 810000,
+      "rendered_text_sha256": "28e7cf1aacc3222a52c84f70cc82822d353f8a885d5aa8c668450ac26eb0bc7e",
+      "matches_fixture": true
+    }
+  }
+}

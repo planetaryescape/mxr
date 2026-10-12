@@ -1,0 +1,9 @@
+{
+  "source": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "binary_sha256": "108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+  "default_destination": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-cli/home/Downloads/boundary.bin",
+  "observed": "TUI Save failed with IPC error: No such file or directory (os error 2) while default Downloads parent was absent",
+  "old_source": "f2e522c882599127d6fae9fbe5a0855f542472b4",
+  "old_behavior": "handler/mod.rs materialize_attachment_to_path recursively creates destination parent",
+  "status": "forward fix required; directory now created only to continue other acceptance cases"
+}

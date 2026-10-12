@@ -1,0 +1,122 @@
+[
+  {
+    "file": "release.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-release/verification.json",
+    "original_sha256": "10f4bbc1987685f717ef011f9350ff2da75bc9c57a755b0da0efed285a635f7b",
+    "retained_sha256": "10f4bbc1987685f717ef011f9350ff2da75bc9c57a755b0da0efed285a635f7b"
+  },
+  {
+    "file": "workflow.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-release/workflow.json",
+    "original_sha256": "9143ccbe8be3ef2c4a327b324d69f4a9fe2f7d72aaaee54ed8b6f43cb9438d54",
+    "retained_sha256": "9143ccbe8be3ef2c4a327b324d69f4a9fe2f7d72aaaee54ed8b6f43cb9438d54"
+  },
+  {
+    "file": "homebrew.json",
+    "source": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s05a-homebrew-v0.6.82.json",
+    "original_sha256": "61561d79d3aef724af2b0136295668497f99a534567270a0956cb75ea6773d65",
+    "retained_sha256": "61561d79d3aef724af2b0136295668497f99a534567270a0956cb75ea6773d65"
+  },
+  {
+    "file": "cli.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/result.json",
+    "original_sha256": "cc04ab1f51c5413f1afeb082f89be9597ebe410bad761c364eb51be6b4117ec4",
+    "retained_sha256": "ef0fa83b0fe391bbea2cd9efc295403a32bf5e253abaf849af6c5f0131386b8d"
+  },
+  {
+    "file": "mcp.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/mcp-acceptance.json",
+    "original_sha256": "d39dfbc1ed35a6fc7c093a9de55d6f90b7fc260f22906abe4a7d78c367ccdaec",
+    "retained_sha256": "5f57e03ae98c5c3e82cb6fee62796e5af421e8481b4066f7c9a14cff2592e037"
+  },
+  {
+    "file": "tui.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/tui-acceptance.json",
+    "original_sha256": "e087aabde8be52b0d16ba5f59080a04aa3948e1fbeda8b331bbc0b2225abbc49",
+    "retained_sha256": "e087aabde8be52b0d16ba5f59080a04aa3948e1fbeda8b331bbc0b2225abbc49"
+  },
+  {
+    "file": "tui-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/tui-cleanup.json",
+    "original_sha256": "b2b2341d4403532e2e67125b010f9e67ef2377e3aff19bd97ed9ca1a3a4db645",
+    "retained_sha256": "b2b2341d4403532e2e67125b010f9e67ef2377e3aff19bd97ed9ca1a3a4db645"
+  },
+  {
+    "file": "tui-download-frames.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/tui-download-frames.json",
+    "original_sha256": "934d1994ba1b68089ccaa1a6270227fb644a1720c101f1e2b149e1a783a7982c",
+    "retained_sha256": "934d1994ba1b68089ccaa1a6270227fb644a1720c101f1e2b149e1a783a7982c"
+  },
+  {
+    "file": "tui-open-frames.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/tui-open-frames.json",
+    "original_sha256": "c6e13813958fbb074d14ca6e9ae59be542f5f501736ac7363b1594d68722d620",
+    "retained_sha256": "c6e13813958fbb074d14ca6e9ae59be542f5f501736ac7363b1594d68722d620"
+  },
+  {
+    "file": "browser-html-result.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/result.json",
+    "original_sha256": "0632cdb0e6202cc933394a684813239ef4d1eb72ebf759cbdac451240949c6fc",
+    "retained_sha256": "0632cdb0e6202cc933394a684813239ef4d1eb72ebf759cbdac451240949c6fc"
+  },
+  {
+    "file": "browser-html-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/cleanup.json",
+    "original_sha256": "72a9a9fc717ef57f0265e487fe03e0e966d9b675c3a106b2d05d97c8ecb81d44",
+    "retained_sha256": "72a9a9fc717ef57f0265e487fe03e0e966d9b675c3a106b2d05d97c8ecb81d44"
+  },
+  {
+    "file": "browser-html-route-statuses.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/route-statuses.json",
+    "original_sha256": "cbe1e07783f8b7906b06ad6a90876a400a499449a8a3051e3599408feb8b9925",
+    "retained_sha256": "cbe1e07783f8b7906b06ad6a90876a400a499449a8a3051e3599408feb8b9925"
+  },
+  {
+    "file": "browser-html-browser-console.txt",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/browser-console.txt",
+    "original_sha256": "0ff1510fb76b0bb5352db6dc41e735c7650cd5760f14f5f5813c2530e1751760",
+    "retained_sha256": "0ff1510fb76b0bb5352db6dc41e735c7650cd5760f14f5f5813c2530e1751760"
+  },
+  {
+    "file": "html-after-open.png",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/html-after-open.png",
+    "original_sha256": "b91d3edc50ed1b9e552f54868c1f10287794cec62bdb096fa963b25bd5aab7e8",
+    "retained_sha256": "b91d3edc50ed1b9e552f54868c1f10287794cec62bdb096fa963b25bd5aab7e8"
+  },
+  {
+    "file": "html-before-open.png",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-html/html-before-open.png",
+    "original_sha256": "1562861efc2764c5bf486024fb5393a2cdedc5978c0e2cded41ccb2c0dc5382b",
+    "retained_sha256": "1562861efc2764c5bf486024fb5393a2cdedc5978c0e2cded41ccb2c0dc5382b"
+  },
+  {
+    "file": "browser-text-result.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/result.json",
+    "original_sha256": "5c697520e3ccd86dcbab0d869aecafd64661949043213249e1894c7b766d1e72",
+    "retained_sha256": "5c697520e3ccd86dcbab0d869aecafd64661949043213249e1894c7b766d1e72"
+  },
+  {
+    "file": "browser-text-cleanup.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/cleanup.json",
+    "original_sha256": "7e0f6d150366fe346216b1ec0d7874c7abade7351d82a9aeabbeef15278c04d2",
+    "retained_sha256": "7e0f6d150366fe346216b1ec0d7874c7abade7351d82a9aeabbeef15278c04d2"
+  },
+  {
+    "file": "browser-text-route-statuses.json",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/route-statuses.json",
+    "original_sha256": "26161723c4894241bacd75903093a55242e7841605c26ef3d8cad4436c61f6f3",
+    "retained_sha256": "26161723c4894241bacd75903093a55242e7841605c26ef3d8cad4436c61f6f3"
+  },
+  {
+    "file": "browser-text-browser-console.txt",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/browser-console.txt",
+    "original_sha256": "0ff1510fb76b0bb5352db6dc41e735c7650cd5760f14f5f5813c2530e1751760",
+    "retained_sha256": "0ff1510fb76b0bb5352db6dc41e735c7650cd5760f14f5f5813c2530e1751760"
+  },
+  {
+    "file": "text-open-tab.png",
+    "source": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-browser-text/text-open-tab.png",
+    "original_sha256": "f1aa6ef5b9a5d8f0e871b160554d93b14505d3d4ad3c6645aea2d3ef4f47e8ad",
+    "retained_sha256": "f1aa6ef5b9a5d8f0e871b160554d93b14505d3d4ad3c6645aea2d3ef4f47e8ad"
+  }
+]

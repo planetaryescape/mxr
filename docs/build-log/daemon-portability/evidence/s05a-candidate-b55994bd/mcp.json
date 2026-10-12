@@ -1,0 +1,17 @@
+{
+  "source": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "binary_sha256": "sha256:6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "cases": {
+    "mcp_process_cannot_read_daemon_attachment": true,
+    "existing_mutation_permission_required": true,
+    "exact_mcp_assembly": {
+      "chunks": 19,
+      "bytes": 1188000,
+      "sha256": "5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16"
+    },
+    "invalid_ranges_and_wrong_account_rejected": true
+  },
+  "passed": true,
+  "daemon_stopped": true,
+  "mcp_stopped": true
+}

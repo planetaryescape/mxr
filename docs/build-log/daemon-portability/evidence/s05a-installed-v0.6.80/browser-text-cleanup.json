@@ -1,0 +1,21 @@
+{
+  "processes": {
+    "daemon_pid": 77655,
+    "web_pid": 77669,
+    "both_exited": true,
+    "command_path_verified": true
+  },
+  "network": {
+    "port": 51177,
+    "listener_closed": true
+  },
+  "ipc": {
+    "socket": "/tmp/mxr-browser-11da39f841.sock",
+    "removed_by_daemon": true
+  },
+  "bridge_token_file": {
+    "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-text/runtime/config/bridge-token",
+    "removed": true
+  },
+  "browser_session_closed": true
+}

@@ -1,0 +1,10 @@
+{
+  "old_client_version": "mxr 0.6.77",
+  "old_client_binary_sha256": "6489d22c430a3d42b3aadaf64f347e90a6abf6601f25cfaee3bcb1d37a042e6a",
+  "daemon_source": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "daemon_binary_sha256": "6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "legacy_local_host_path_download_works": true,
+  "bytes": 53,
+  "stdout": "#1 s05-client-open.txt -> /Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/candidate-b55994bd-client-bridge-v3/legacy-downloads/s05-client-open.txt\n",
+  "owned_daemon_stopped": true
+}

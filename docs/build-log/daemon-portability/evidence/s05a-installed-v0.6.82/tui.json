@@ -1,0 +1,29 @@
+{
+  "source": "5007eb3f95484ec3a067fe5d3126d3aa8d1fa9d3",
+  "binary_sha256": "3bb6d6b178cf97aa3aaeae246667cea001a3523c84d18fac794a8d16879c35a4",
+  "observed_at": "2026-10-12T00:50:29.057866+00:00",
+  "native_pty": true,
+  "cases": {
+    "missing_downloads_created": true,
+    "exact_download": {
+      "bytes": 1188000,
+      "sha256": "5b63e9ce9b6d3979b2993d87ffef9cce98a63846cc5b8770c2b362cbabe0fd16",
+      "mode": "0600"
+    },
+    "unconfirmed_overwrite_preserves_marker": true,
+    "confirmed_overwrite_restores_exact_bytes": true,
+    "open_creates_client_cache_copy": {
+      "files": [
+        "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.82-cli/client-data/attachments/01a12d96-1e2a-74a0-812c-68c43772c31c-boundary-open.txt"
+      ],
+      "bytes": 35,
+      "sha256": "34bf566db08b209b6886f34c6469c5e985aa044e02ebfac8b71fa3ad95db190e"
+    },
+    "tui_reported_opened": true
+  },
+  "limitations": [
+    "OS opener success observed in TUI; external editor contents not inspected.",
+    "Synthetic data only."
+  ],
+  "passed": true
+}

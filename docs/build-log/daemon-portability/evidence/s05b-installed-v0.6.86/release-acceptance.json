@@ -1,0 +1,23 @@
+{
+  "all_asset_digests_and_checksum_sidecars_matched": true,
+  "asset_digests": {
+    "mxr-v0.6.86-linux-x86_64.tar.gz": "97776962bec01f62cd2ca3aa984b7d2c67a5358b964cf772ec4a4ddd6848bd01",
+    "mxr-v0.6.86-linux-x86_64.tar.gz.sha256": "de156cef9f89bd2e1edd5ed656dcba63bfa75d091dd038028edc87752019bfef",
+    "mxr-v0.6.86-macos-aarch64.tar.gz": "0ad34ad902fb53a06ffb15cf2f7d7363b808fec570f109bc1ee58da7e4ffafa8",
+    "mxr-v0.6.86-macos-aarch64.tar.gz.sha256": "64f23ff9b0c86caa97eabec3e16c6fbed8d309daee5186bee48d6336437a3464"
+  },
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "homebrew": {
+    "matches_installer": true,
+    "path": "/opt/homebrew/bin/mxr",
+    "personal_daemon_restarted": false,
+    "sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+    "version": "mxr 0.6.86"
+  },
+  "installer_matches_published_binary": true,
+  "release": "v0.6.86",
+  "release_url": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.86",
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f",
+  "tree": "9b220eca0fb79c13eaaec66a4f4bdfee5603d962",
+  "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38201282820"
+}

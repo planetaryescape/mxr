@@ -1,0 +1,24 @@
+{
+  "source": "140225cd27c7dd143d4ed987b5efce1562d9e3dd",
+  "tree": "f6325003fe616e9957d634feac80a5a59fb3687f",
+  "base": "74a151c5c41d2d3f6b780fdbeb92c74db535ab57",
+  "protocol": 9,
+  "resource_migration": 79,
+  "review": {
+    "code_simplifier": "No further edits; canonical header rewrite owns all three persistence seams, and shared fixtures verify exact bytes and persisted ownership.",
+    "typescript": "No findings in generated upload response shapes or integrated compatibility fixtures.",
+    "anti_slop": "No source or rule changes for test-pattern/generated OpenAPI findings; scoped project lint passed."
+  },
+  "integrated_checks": {
+    "6113": {
+      "migration_tests": 11,
+      "web_lib_tests": 129,
+      "cli_integration_tests": 2,
+      "cli_help_cases": 265
+    },
+    "6119": "scoped Rust gate passed",
+    "6123": "SPA build passed",
+    "6125": "embedded web-ui binary build passed"
+  },
+  "binary_sha256": "2217f123a02794984900e058f2bfba2c37cfe12b9bfbe83c2b00609fbed6d6ff"
+}

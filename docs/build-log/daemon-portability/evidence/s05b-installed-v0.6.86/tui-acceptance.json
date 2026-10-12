@@ -1,0 +1,30 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "cases": {
+    "cli_sent_native_tui_saved_resource_original_bytes": true,
+    "native_tui_direct_send_witnessed_uploaded_bytes": true,
+    "native_tui_relaunch_editor_preserved_resource_token_after_original_deleted": true,
+    "native_tui_saved_client_bytes_under_daemon_denial": true
+  },
+  "daemon_stopped": true,
+  "limitation": "Provider daemon remained alive for native TUI saved-draft relaunch because fake provider server drafts are in memory. Daemon restart proven through CLI, MCP, browser and HTTP recovery. Stored-drafts modal edits; cross-client send used CLI; direct TUI send was separately exercised.",
+  "passed": true,
+  "provider_witnesses": [
+    {
+      "filename": "native-tui-original.bin",
+      "length_bytes": 384800,
+      "sha256": "1fd04c1ce2a45e0d3544ce1e3311aef38de73198f7d200525d7f931549d90899"
+    },
+    {
+      "filename": "native-tui-original.bin",
+      "length_bytes": 349200,
+      "sha256": "a9c18ba76539fb8bb7afd6527c9525e35a7b62285d212d8349ed8a5e31acc827"
+    }
+  ],
+  "socket_removed": true,
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f",
+  "tui_exit_codes": [
+    0,
+    0
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "release_source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f",
+  "release_tree": "9b220eca0fb79c13eaaec66a4f4bdfee5603d962",
+  "release_workflow": "https://github.com/planetaryescape/mxr/actions/runs/38201282820",
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "c8d517040034f58dd576fa0c812422b8a26526f1fddadb1151c98165f44b12d2"
+    },
+    {
+      "name": "browser-acceptance.json",
+      "sha256": "640964313f970131d5b0b93eff2bcc7aae8305bdffbcc7a6e0d6b666586a2b34"
+    },
+    {
+      "name": "cli-acceptance.json",
+      "sha256": "a2045e8ad19dc7a9dc56aa64d4f6a06823489975b037a36320c56e484b55824c"
+    },
+    {
+      "name": "draft-reopened-after-restart.png",
+      "sha256": "97a8958f52273c581f16e79d3b8e61bf2e9ecff92d783f7fb111bd8c38c64f89"
+    },
+    {
+      "name": "http-recovery-acceptance.json",
+      "sha256": "40d2041d8754fbef28d5d78cdf319a04556676baaa9c9ea5fa749e79a0502521"
+    },
+    {
+      "name": "mcp-acceptance.json",
+      "sha256": "0350a38d1e4bfc2bf05b73a8694f7431f15bdb31911ea83ef1fa8403c31d85fa"
+    },
+    {
+      "name": "release-acceptance.json",
+      "sha256": "09b93c253978ecc0b153ac209056e86db2884aa684860b91c40306d5df9ea897"
+    },
+    {
+      "name": "tui-acceptance.json",
+      "sha256": "cf0c117a486e3aac9bd3e66e35f88f94708600fdb7fc3d45b340e6d1334c0068"
+    }
+  ],
+  "scope": "Sanitized release and client acceptance summaries. Raw logs, network captures, tokens, mail content, binaries and full release metadata are not retained.",
+  "sources": [
+    {
+      "name": "release-verification",
+      "path": "s05b-evidence/published-v0.6.86-release/verification.json",
+      "sha256": "75f9d22732d45013e3a629d82ebf805708589ed7a1a202e72dcc931ed85e2ec0"
+    },
+    {
+      "name": "release-homebrew",
+      "path": "s05b-evidence/published-v0.6.86-release/homebrew.json",
+      "sha256": "e656d19c1119914cc29857ad5b2a4f00ece85f2d249e16edbf4697bf37b829b7"
+    },
+    {
+      "name": "release-timing",
+      "path": "s05b-evidence/published-v0.6.86-release/timing.json",
+      "sha256": "2e5e4a596442ca02c3590327c5d86a0094feb65ec10cf8e7ac3d8ab440c4e30b"
+    },
+    {
+      "name": "release-workflow",
+      "path": "s05b-evidence/published-v0.6.86-release/workflow.json",
+      "sha256": "44092dfe9b9d348da88726f08c7a268034e406ab044cf765948f7775b6abb10c"
+    },
+    {
+      "name": "published-cli",
+      "path": "s05b-evidence/published-v0.6.86-cli/upload-cli-acceptance.json",
+      "sha256": "defafddf31dadebfaf25cf7598f3ea8e7eb85ed0df0a08a00341bb272336595e"
+    },
+    {
+      "name": "published-mcp",
+      "path": "s05b-evidence/published-v0.6.86-mcp/upload-mcp-acceptance.json",
+      "sha256": "ffb195ccb01a55e92e19c4a4bbfa19225cd9fd53a2e8dcd2e1f345b45535a808"
+    },
+    {
+      "name": "published-tui",
+      "path": "s05b-evidence/published-v0.6.86-tui/upload-tui-acceptance.json",
+      "sha256": "44181c54acc40df25a7b8a85722c91efb50a972c79dc9dd46570bc6262f45510"
+    },
+    {
+      "name": "browser-ui-result",
+      "path": "s05b-browser-acceptance/published-v0.6.86/evidence/result.json",
+      "sha256": "b7d3b76d97d95d6bd73771fb8fbf731c230015e5af3e709305e45076eaa5b69e"
+    },
+    {
+      "name": "browser-ui-provider-witness",
+      "path": "s05b-browser-acceptance/published-v0.6.86/evidence/provider-witness.json",
+      "sha256": "3fed0bd2119de51116cfe40073b4d1efc01dbffce9f4f6946e19dafc4b02a11e"
+    },
+    {
+      "name": "browser-ui-cleanup",
+      "path": "s05b-browser-acceptance/published-v0.6.86/cleanup.json",
+      "sha256": "cf7115d553f9b45e86501b45e7ba354cb69df1fb0e508de4e787a013c922b042"
+    },
+    {
+      "name": "browser-ui-reopened-screenshot",
+      "path": "s05b-browser-acceptance/published-v0.6.86/evidence/draft-reopened-after-restart.png",
+      "sha256": "97a8958f52273c581f16e79d3b8e61bf2e9ecff92d783f7fb111bd8c38c64f89"
+    },
+    {
+      "name": "http-recovery-result",
+      "path": "s05b-browser-acceptance/recovery-published-v0.6.86/evidence/recovery-result.json",
+      "sha256": "56a03072b8f673590be254155cb4a232a27ef2a5191b7fb25c5c15d2f09d4026"
+    },
+    {
+      "name": "http-recovery-cleanup",
+      "path": "s05b-browser-acceptance/recovery-published-v0.6.86/cleanup.json",
+      "sha256": "67a9deeb6fe11c4871b662171968608b1f43cc538d27c6c8204eb49335d64b4a"
+    },
+    {
+      "name": "root-consolidated-ledger",
+      "path": "program-ledger:s05b-complete.json",
+      "sha256": "7941a817d035a77ce770022808914b49b51378f4cc8fba6ce53e7815ef13a0df"
+    }
+  ]
+}

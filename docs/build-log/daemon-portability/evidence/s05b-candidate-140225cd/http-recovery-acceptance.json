@@ -1,0 +1,24 @@
+{
+  "source": "140225cd27c7dd143d4ed987b5efce1562d9e3dd",
+  "binary_sha256": "2217f123a02794984900e058f2bfba2c37cfe12b9bfbe83c2b00609fbed6d6ff",
+  "surface": "real HTTP bridge and daemon; separate from browser UI acceptance",
+  "passed": true,
+  "journey": {
+    "failed_save_preserved_private_copy": true,
+    "retry_published_canonical_resource_token": true,
+    "client_original_deleted": true,
+    "daemon_restarted": true,
+    "send_succeeded": true,
+    "provider_witness_count": 1,
+    "provider_filename": "01a12e26-c434-7042-8483-c06873c827c2-01a12e26-c42f-7f42-8caa-f4da2da479e7-recovery-original.bin",
+    "provider_length_bytes": 432000,
+    "provider_sha256": "c8d8d2b24bf66a43689763d57906e1fdb43b45168342687f594f7354592a9cd2"
+  },
+  "limitation": "Legacy raw-path recovery preserves bytes but exposes UUID prefixes in the recovered display filename; the unchanged helper is tracked as a nonblocking follow-up.",
+  "cleanup": {
+    "owned_processes_stopped": true,
+    "socket_closed": true,
+    "port_closed": true,
+    "bridge_token_removed": true
+  }
+}

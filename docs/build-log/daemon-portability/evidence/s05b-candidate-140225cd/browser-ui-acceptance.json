@@ -1,0 +1,30 @@
+{
+  "source": "140225cd27c7dd143d4ed987b5efce1562d9e3dd",
+  "tree": "f6325003fe616e9957d634feac80a5a59fb3687f",
+  "binary_sha256": "2217f123a02794984900e058f2bfba2c37cfe12b9bfbe83c2b00609fbed6d6ff",
+  "passed": true,
+  "journey": {
+    "upload_bytes": 1495000,
+    "chunk_size_bytes": 262144,
+    "chunk_count": 6,
+    "client_file_modified_then_deleted": true,
+    "browser_reloaded": true,
+    "daemon_restarted": true,
+    "draft_reopened_with_attachment": true,
+    "ui_send": "passed",
+    "provider_witness_count": 1,
+    "provider_filename": "s05b-original-multichunk.bin",
+    "provider_bytes_match_original": true,
+    "provider_sha256": "f9b2beccc75a4ddd9cef23ba849210429d0a4427eb3fd8ea40167c5ae90cbfcb"
+  },
+  "browser_console_errors": 0,
+  "browser_page_errors": 0,
+  "limitation": "The isolated local bridge run did not apply filesystem denial; separate client probes own that check.",
+  "cleanup": {
+    "owned_processes_stopped": true,
+    "socket_closed": true,
+    "port_closed": true,
+    "bridge_token_removed": true
+  },
+  "screenshot": "draft-reopened-after-restart.png"
+}

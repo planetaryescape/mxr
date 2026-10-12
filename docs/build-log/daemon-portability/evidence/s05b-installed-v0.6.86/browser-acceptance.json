@@ -1,0 +1,37 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "browser_reloaded": true,
+  "client_file_modified_then_deleted": true,
+  "console_errors": 0,
+  "daemon_restarted": true,
+  "draft_reopened_with_attachment": true,
+  "limitations": [
+    "No filesystem denial was applied to the local bridge runtime; client file deletion, reload, and daemon restart were exercised. Root owns separate CLI/MCP/TUI/HTTP fixtures.",
+    "Disabled-upload UI behavior was not exercised; scoped tests cover partial-batch state."
+  ],
+  "owned_processes_closed": true,
+  "page_errors": 0,
+  "passed": true,
+  "provider_witness": {
+    "accepted_attachment_count": 1,
+    "accepted_file_count": 1,
+    "attachment": {
+      "filename": "s05b-original-multichunk.bin",
+      "length_bytes": 1495000,
+      "sha256": "f9b2beccc75a4ddd9cef23ba849210429d0a4427eb3fd8ea40167c5ae90cbfcb"
+    },
+    "client_original_deleted": true,
+    "matches_original_upload": true
+  },
+  "runtime_seconds": 75,
+  "socket_port_closed_and_token_removed": true,
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f",
+  "tree": "9b220eca0fb79c13eaaec66a4f4bdfee5603d962",
+  "upload": {
+    "chunks": 6,
+    "filename": "s05b-original-multichunk.bin",
+    "length_bytes": 1495000,
+    "request_count": 8,
+    "sha256": "f9b2beccc75a4ddd9cef23ba849210429d0a4427eb3fd8ea40167c5ae90cbfcb"
+  }
+}

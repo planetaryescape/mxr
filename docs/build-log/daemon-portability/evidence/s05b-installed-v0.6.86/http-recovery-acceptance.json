@@ -1,0 +1,19 @@
+{
+  "binary_sha256": "619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06",
+  "cases": {
+    "discard_original_delete_daemon_restart_send_original_bytes": true,
+    "failed_save_preserved_private_copy": true,
+    "retry_published_canonical_resource_token": true
+  },
+  "daemon_restarted": true,
+  "limitation": "This was a separate real HTTP bridge/daemon probe, not a browser UI journey. Legacy recovery display filename retained UUID prefixes.",
+  "owned_processes_closed": true,
+  "passed": true,
+  "provider_witness": {
+    "filename": "01a12e51-f4c9-78a0-8096-6b51fe767720-01a12e51-f4c5-73c0-a14b-119f84c796ca-recovery-original.bin",
+    "length_bytes": 432000,
+    "sha256": "c8d8d2b24bf66a43689763d57906e1fdb43b45168342687f594f7354592a9cd2"
+  },
+  "socket_port_closed_and_token_removed": true,
+  "source": "b651ee69ae01a1e08ecc021fa8d7767aa68cf12f"
+}

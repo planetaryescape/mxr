@@ -1,0 +1,9 @@
+# S05b published v0.6.86 acceptance
+
+S05b shipped in v0.6.86 from source `b651ee69ae01a1e08ecc021fa8d7767aa68cf12f` (tree `9b220eca0fb79c13eaaec66a4f4bdfee5603d962`). Release workflow [38201282820](https://github.com/planetaryescape/mxr/actions/runs/38201282820) succeeded. The four published asset digests and checksum sidecars matched; the installer binary and Homebrew executable matched SHA-256 `619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06`. Homebrew was available at `/opt/homebrew/bin/mxr`; the personal daemon was not restarted.
+
+CLI, MCP, native TUI and browser UI passed against the published installer. The browser UI uploaded a 1,495,000-byte file, deleted the source, reloaded the browser and daemon, reopened the saved draft, and sent the original bytes once. Root's separate HTTP bridge/daemon recovery probe passed after a failed save, retry, source deletion and daemon restart. Its UUID-prefixed legacy display filename is tracked as a nonblocking follow-up in [draft recovery attachment filename](../../../../issues/draft-recovery-attachment-filename.md).
+
+The native TUI saved-draft relaunch kept its fake-provider daemon alive because that provider stores drafts in memory. CLI, MCP, browser and HTTP recovery separately proved daemon restart. The browser journey did not apply filesystem denial; CLI and MCP receipts cover client/daemon file separation. The release CLI smoke's live Gmail step was skipped because CI lacked `MXR_GMAIL_TEST` credentials. Independent Claude review remains waived until Anthropic is funded.
+
+The [manifest](manifest.json) records hashes for retained summaries and the original receipts. Summaries omit raw logs, network captures, tokens, mail bodies, local process details and full release metadata. The screenshot shows the published browser draft reopened with its attachment after restart.

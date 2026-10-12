@@ -94,7 +94,7 @@ use utoipa::{
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
-        mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
+        mail_todo_get, mail_todos_state, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen,
         mail_now, mail_rail, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
@@ -123,6 +123,7 @@ use utoipa::{
         ThreadGistsBody,
         SenderKindBody,
         crate::todo_routes::TodoStateBody,
+        crate::todo_routes::TodoResolutionBody,
         crate::todo_routes::TodoScheduleBody,
         crate::todo_routes::TodoEditBody,
         crate::todo_routes::TodoCreateBody,
@@ -733,6 +734,21 @@ fn mail_todo_get() {}
 )]
 #[allow(dead_code)]
 fn mail_todos_state() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos/{todo_id}/resolution",
+    summary = "Review, accept, dismiss or undo a later-email resolution offer",
+    params(("todo_id" = String, Path, description = "A full id or a unique prefix")),
+    request_body = crate::todo_routes::TodoResolutionBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 400, description = "The offer is stale or the requested action is unavailable"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todo_resolve() {}
 
 #[utoipa::path(
     post,

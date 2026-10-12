@@ -18,6 +18,7 @@ export type TodoCatchup = Schemas["TodoCatchupData"];
 export type TodoChange = Schemas["TodoChangeData"];
 export type TodoField = Schemas["TodoFieldData"];
 type TodoStateAction = Schemas["TodoStateActionData"];
+type TodoResolutionAction = Schemas["TodoResolutionActionData"];
 type TodoCatchupDecision = Schemas["TodoCatchupDecisionData"];
 
 type Runway = Extract<Schemas["ResponseData"], { kind: "TodoRunway" }>;
@@ -77,6 +78,19 @@ async function change(path: string, body: unknown): Promise<TodoChange> {
 
 export function setTodoState(ids: string[], action: TodoStateAction, dryRun = false) {
   return change("/api/v1/mail/todos/state", { todo_ids: ids, action, dry_run: dryRun });
+}
+
+export function resolveTodoSuggestion(
+  todoId: string,
+  suggestionId: string,
+  action: TodoResolutionAction,
+  dryRun = false,
+) {
+  return change(`/api/v1/mail/todos/${encodeURIComponent(todoId)}/resolution`, {
+    suggestion_id: suggestionId,
+    action,
+    dry_run: dryRun,
+  });
 }
 
 /** `when` is a phrase or the RFC 3339 instant the time field resolved; null clears it. */

@@ -861,6 +861,7 @@ pub fn map_request(
         | Request::ListTodos { .. }
         | Request::GetTodo { .. }
         | Request::SetTodoState { .. }
+        | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
         | Request::CreateTodo { .. }

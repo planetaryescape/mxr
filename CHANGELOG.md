@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.85](https://github.com/planetaryescape/mxr/compare/v0.6.84...v0.6.85) (2026-10-12)
+
+
+### Features
+
+* offer evidenced to-do resolutions and date changes ([#414](https://github.com/planetaryescape/mxr/issues/414)) ([32cd1fe](https://github.com/planetaryescape/mxr/commit/32cd1feb5f8cafdf003c6426c897fbda395c002e))
+
+
+### Documentation
+
+* record headless release acceptance ([#412](https://github.com/planetaryescape/mxr/issues/412)) ([525bde7](https://github.com/planetaryescape/mxr/commit/525bde74bfea87119bb3dd99ef3a11aafaee3943))
+
 ## [0.6.84](https://github.com/planetaryescape/mxr/compare/v0.6.83...v0.6.84) (2026-10-12)
 
 

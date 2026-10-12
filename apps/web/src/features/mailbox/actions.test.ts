@@ -5,6 +5,7 @@ import { BridgeRequestError } from "@/api/client";
 import type { ActionContext } from "@/lib/actions/types";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useModals } from "@/state/modalStore";
+import { EXPECTED_IPC_PROTOCOL_VERSION } from "@/lib/protocolCompatibility";
 
 const client = vi.hoisted(() => ({
   apiFetch: vi.fn<(path: string, init?: unknown) => Promise<unknown>>(),
@@ -38,7 +39,7 @@ const ctx: ActionContext = {
 beforeEach(() => {
   useConnectionStore.setState({ syncProgress: undefined });
   useModals.setState({ commandPaletteOpen: false, rightRail: null });
-  bridgeHealth.fetch.mockResolvedValue({ protocol_version: 8 });
+  bridgeHealth.fetch.mockResolvedValue({ protocol_version: EXPECTED_IPC_PROTOCOL_VERSION });
 });
 
 afterEach(() => {
@@ -158,7 +159,7 @@ describe("syncNow", () => {
     client.apiFetch.mockRejectedValue(
       new BridgeRequestError(
         426,
-        "Global sync requires daemon IPC protocol 6; running daemon uses 5.",
+        `Global sync requires daemon IPC protocol ${EXPECTED_IPC_PROTOCOL_VERSION}; running daemon uses 5.`,
         "protocol_mismatch",
       ),
     );

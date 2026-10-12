@@ -810,6 +810,69 @@ impl super::Store {
             .collect()
     }
 
+    /// Open rows linked to the exact sender or thread of one later message.
+    /// A shared sender domain alone is too broad for resolution evidence.
+    pub async fn list_open_todos_for_resolution_context(
+        &self,
+        account_id: &AccountId,
+        sender_email: &str,
+        thread_id: &ThreadId,
+    ) -> Result<Vec<TodoRecord>, sqlx::Error> {
+        let sql = format!(
+            "SELECT {COLUMNS} FROM todos
+             WHERE account_id = ?1 AND state = 'open'
+               AND (thread_id = ?2 OR EXISTS (
+                 SELECT 1 FROM messages source
+                 WHERE source.id = todos.source_message_id
+                   AND source.account_id = todos.account_id
+                   AND LOWER(source.from_email) = LOWER(?3)
+               ))"
+        );
+        sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(thread_id.as_str())
+            .bind(sender_email.trim())
+            .fetch_all(self.reader())
+            .await?
+            .iter()
+            .map(row_to_todo)
+            .collect()
+    }
+
+    /// Bounded cached later mail for a newly discovered task. This is what
+    /// lets newest-first first-run scans reconcile messages seen before the
+    /// task existed without reading every account body on every tick.
+    pub async fn list_todo_resolution_candidate_messages(
+        &self,
+        todo_id: &str,
+        limit: u32,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let rows = sqlx::query(
+            "WITH candidates AS (
+                 SELECT later.id, later.date FROM todos t
+                 JOIN messages source ON source.id = t.source_message_id
+                   AND source.account_id = t.account_id
+                 JOIN messages later ON later.account_id = t.account_id
+                   AND (later.date > source.date OR (later.date = source.date AND later.id > source.id))
+                   AND later.direction = 'inbound'
+                   AND (LOWER(later.from_email) = LOWER(source.from_email)
+                        OR later.thread_id = source.thread_id)
+                 WHERE t.id = ?1 AND t.state = 'open'
+             ), newest AS (
+                 SELECT id, date FROM candidates
+                 ORDER BY date DESC, id DESC LIMIT ?2
+             )
+             SELECT id FROM newest ORDER BY date ASC, id ASC",
+        )
+        .bind(todo_id)
+        .bind(i64::from(limit))
+        .fetch_all(self.reader())
+        .await?;
+        rows.iter()
+            .map(|row| decode_id(&row.try_get::<String, _>("id")?))
+            .collect()
+    }
+
     /// The sweep: expires open detected rows past their window. Bills and
     /// promises stay "was due" until the user acts, and rows the user made
     /// or touched never expire.

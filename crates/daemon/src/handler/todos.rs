@@ -14,10 +14,13 @@ use chrono::{DateTime, Local, Utc};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{
     todo_copy, ResponseData, TodoCatchupData, TodoCatchupDecisionData, TodoChangeData,
-    TodoEditData, TodoFirstRunData, TodoKindCountData, TodoRunwayData, TodoStateActionData,
-    TodoStateData,
+    TodoEditData, TodoFirstRunData, TodoKindCountData, TodoResolutionActionData, TodoRunwayData,
+    TodoStateActionData, TodoStateData,
 };
-use mxr_store::{CommitmentStatus, TodoCatchup, TodoRecord, TodoState};
+use mxr_store::{
+    CommitmentStatus, TodoCatchup, TodoRecord, TodoResolutionAction, TodoResolutionDates,
+    TodoResolutionSnapshot, TodoResolutionStatus, TodoState,
+};
 use mxr_todo::pass::{self, PassConfig};
 use mxr_todo::provenance::{FieldProvenance, FieldSource, FieldSources};
 use mxr_todo::timing::{lead_time, window, TimingInput};
@@ -57,7 +60,11 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
     }
     let cfg = pass_config(state, Utc::now());
     match pass::scan_messages(&state.store, &cfg, message_ids).await {
-        Ok(summary) if summary.created + summary.updated + summary.looks_done > 0 => {
+        Ok(summary) => {
+            super::todo_resolution::scan_messages(state, message_ids).await;
+            if summary.created + summary.updated + summary.looks_done == 0 {
+                return;
+            }
             tracing::info!(
                 created = summary.created,
                 updated = summary.updated,
@@ -66,7 +73,6 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
                 "post-sync to-do scan"
             );
         }
-        Ok(_) => {}
         Err(error) => tracing::warn!(%error, "to-do scan failed"),
     }
 }
@@ -104,6 +110,9 @@ pub(crate) async fn tick(
                 continue;
             }
         };
+        if !progress.scanned_message_ids.is_empty() {
+            super::todo_resolution::scan_messages(state, &progress.scanned_message_ids).await;
+        }
         running |= !progress.complete;
         if progress.summary.created > 0 {
             tracing::info!(
@@ -198,7 +207,7 @@ pub(super) async fn runway_at(
         .now
         .is_empty()
         .then(|| empty_state(never_had_any, bands.next_surface.as_ref()));
-    Ok(TodoRunwayData {
+    let mut runway = TodoRunwayData {
         generated_at: now,
         header: todo_copy::HEADER.to_string(),
         headline,
@@ -212,7 +221,29 @@ pub(super) async fn runway_at(
         expired_since_last_looked: u32::try_from(expired_since).unwrap_or(u32::MAX),
         next_surface: bands.next_surface,
         first_run: first_run(state, account_id).await?,
-    })
+    };
+    attach_resolutions(state, &mut runway.now).await?;
+    attach_resolutions(state, &mut runway.later).await?;
+    attach_resolutions(state, &mut runway.whenever).await?;
+    attach_resolutions(state, &mut runway.done_this_week).await?;
+    for week in &mut runway.coming_up {
+        attach_resolutions(state, &mut week.todos).await?;
+    }
+    Ok(runway)
+}
+
+async fn attach_resolutions(
+    state: &AppState,
+    todos: &mut [mxr_protocol::TodoData],
+) -> Result<(), HandlerError> {
+    for todo in todos {
+        todo.resolution = state
+            .store
+            .latest_todo_resolution(&todo.id, &todo.account_id)
+            .await?
+            .map(|suggestion| super::todo_resolution::resolution_data(&suggestion));
+    }
+    Ok(())
 }
 
 pub(super) async fn first_run(
@@ -249,13 +280,15 @@ pub(super) async fn list_todos(
     limit: u32,
 ) -> HandlerResult {
     let now = Utc::now();
-    let todos = state
+    let records = state
         .store
         .list_todos_in_state(account_id, store_state(todo_state), limit)
-        .await?
+        .await?;
+    let mut todos = records
         .iter()
         .map(|record| to_data(record, now))
-        .collect();
+        .collect::<Vec<_>>();
+    attach_resolutions(state, &mut todos).await?;
     Ok(ResponseData::Todos { todos })
 }
 
@@ -266,20 +299,19 @@ pub(super) async fn get_todo(state: &AppState, raw_id: &str) -> HandlerResult {
         .get_todo(&id)
         .await?
         .ok_or_else(|| HandlerError::InvalidRequest(format!("No to-do {raw_id}.")))?;
-    Ok(ResponseData::Todo {
-        todo: to_data(&record, Utc::now()),
-    })
+    let mut todo = to_data(&record, Utc::now());
+    attach_resolutions(state, std::slice::from_mut(&mut todo)).await?;
+    Ok(ResponseData::Todo { todo })
 }
 
 pub(super) async fn get_catchup(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
-    let todos: Vec<_> = state
-        .store
-        .list_catchup_todos(account_id)
-        .await?
+    let records = state.store.list_catchup_todos(account_id).await?;
+    let mut todos = records
         .iter()
         .map(|record| to_data(record, now))
-        .collect();
+        .collect::<Vec<_>>();
+    attach_resolutions(state, &mut todos).await?;
     let window_days = state.config_snapshot().todo.catchup_days;
     let already_over: Vec<TodoKindCountData> = state
         .store
@@ -384,6 +416,360 @@ pub(super) async fn set_state(
         changed
     };
     Ok(change(dry_run, verb, done_word, &changed, unchanged, now))
+}
+
+pub(super) async fn resolve_suggestion(
+    state: &AppState,
+    raw_todo_id: &str,
+    suggestion_id: &str,
+    action: TodoResolutionActionData,
+    dry_run: bool,
+) -> HandlerResult {
+    let now = Utc::now();
+    let todo_id = resolve_todo_id(state, raw_todo_id).await?;
+    let record = state
+        .store
+        .get_todo(&todo_id)
+        .await?
+        .ok_or_else(|| HandlerError::InvalidRequest(format!("No to-do {raw_todo_id}.")))?;
+    let suggestion = state
+        .store
+        .latest_todo_resolution(&todo_id, &record.account_id)
+        .await?
+        .filter(|suggestion| suggestion.id == suggestion_id)
+        .ok_or_else(|| {
+            HandlerError::InvalidRequest(
+                "That resolution offer is no longer current. Refresh the to-do and review the newer evidence.".into(),
+            )
+        })?;
+    if action == TodoResolutionActionData::Accept
+        && suggestion.status == TodoResolutionStatus::Accepted
+    {
+        return Ok(ResponseData::TodoChange {
+            change: TodoChangeData {
+                dry_run: false,
+                action: "resolution_accept".into(),
+                changed: Vec::new(),
+                unchanged: Vec::new(),
+                summary: "This resolution was already accepted; nothing changed again.".into(),
+            },
+        });
+    }
+    let expects_pending = !matches!(action, TodoResolutionActionData::Undo);
+    if expects_pending != (suggestion.status == TodoResolutionStatus::Pending) {
+        return Err(HandlerError::InvalidRequest(format!(
+            "This resolution offer is {} and cannot be {}.",
+            suggestion.status.as_str(),
+            match action {
+                TodoResolutionActionData::Preview => "previewed",
+                TodoResolutionActionData::Accept => "accepted",
+                TodoResolutionActionData::Dismiss => "dismissed",
+                TodoResolutionActionData::Undo => "undone",
+            }
+        )));
+    }
+    if !state.store.validate_resolution_source(&suggestion).await?
+        || !resolution_quote_is_current(state, &suggestion).await?
+    {
+        return Err(HandlerError::InvalidRequest(
+            "The source email is no longer available; refresh this to-do.".into(),
+        ));
+    }
+    let task_is_current = if action == TodoResolutionActionData::Undo {
+        state
+            .store
+            .validate_todo_resolution_undo(&suggestion)
+            .await?
+    } else {
+        state
+            .store
+            .validate_todo_resolution_task(&suggestion)
+            .await?
+    };
+    if matches!(
+        action,
+        TodoResolutionActionData::Preview
+            | TodoResolutionActionData::Accept
+            | TodoResolutionActionData::Undo
+    ) && !task_is_current
+    {
+        return Err(HandlerError::InvalidRequest(
+            "The to-do changed after this offer was created. Refresh and review the current task."
+                .into(),
+        ));
+    }
+    let preview = dry_run || matches!(action, TodoResolutionActionData::Preview);
+    let mut prepared_dates = None;
+    if suggestion.action == TodoResolutionAction::ReviseDate {
+        let due_at = suggestion.proposed_due_at.ok_or_else(|| {
+            HandlerError::InvalidRequest("The proposed date is no longer valid.".into())
+        })?;
+        let due_words = suggestion.proposed_due_words.clone().ok_or_else(|| {
+            HandlerError::InvalidRequest("The proposed date has no source words.".into())
+        })?;
+        let mut proposed = record.clone();
+        proposed.due_at = Some(due_at);
+        proposed.due_words = Some(due_words.clone());
+        let mut fields = FieldSources::from_json(&proposed.field_sources);
+        fields.set(
+            "due_at",
+            FieldProvenance::with_evidence(
+                if suggestion.source_method == "model" {
+                    FieldSource::Model
+                } else {
+                    FieldSource::Rule
+                },
+                suggestion.source_quote.clone(),
+            ),
+        );
+        retime_record(
+            &mut proposed,
+            &mut fields,
+            state.snooze_time_prefs().morning_hour,
+        );
+        prepared_dates = Some(TodoResolutionDates {
+            due_at,
+            due_words,
+            act_by_at: proposed.act_by_at,
+            surface_at: proposed.surface_at,
+            relevant_until: proposed.relevant_until,
+            field_sources: fields.to_json(),
+        });
+    }
+    if preview {
+        let mut projected = record.clone();
+        let projected_status = match action {
+            TodoResolutionActionData::Preview => TodoResolutionStatus::Pending,
+            TodoResolutionActionData::Accept => TodoResolutionStatus::Accepted,
+            TodoResolutionActionData::Dismiss => TodoResolutionStatus::Dismissed,
+            TodoResolutionActionData::Undo => TodoResolutionStatus::Undone,
+        };
+        match action {
+            TodoResolutionActionData::Preview | TodoResolutionActionData::Accept
+                if suggestion.action == TodoResolutionAction::Complete =>
+            {
+                projected.state = TodoState::Done;
+                projected.done_at = Some(now);
+                projected.user_edited = true;
+                projected.updated_at = now;
+            }
+            TodoResolutionActionData::Preview | TodoResolutionActionData::Accept => {
+                if let Some(dates) = &prepared_dates {
+                    apply_resolution_dates(&mut projected, dates, now);
+                }
+            }
+            TodoResolutionActionData::Undo => {
+                let snapshot: TodoResolutionSnapshot = suggestion
+                    .snapshot_json
+                    .as_deref()
+                    .ok_or_else(|| {
+                        HandlerError::InvalidRequest(
+                            "The accepted resolution has no undo snapshot.".into(),
+                        )
+                    })
+                    .and_then(|snapshot| {
+                        serde_json::from_str(snapshot).map_err(|error| {
+                            HandlerError::InvalidRequest(format!(
+                                "The undo snapshot is invalid: {error}"
+                            ))
+                        })
+                    })?;
+                projected.due_at = snapshot.due_at;
+                projected.due_words = snapshot.due_words;
+                projected.act_by_at = snapshot.act_by_at;
+                projected.surface_at = snapshot.surface_at;
+                projected.relevant_until = snapshot.relevant_until;
+                projected.window_source = snapshot.window_source;
+                projected.field_sources = snapshot.field_sources;
+                projected.state = snapshot.state;
+                projected.done_at = snapshot.done_at;
+                projected.expired_at = snapshot.expired_at;
+                projected.dismissed_at = snapshot.dismissed_at;
+                projected.user_edited = snapshot.user_edited;
+                projected.updated_at = now;
+            }
+            TodoResolutionActionData::Dismiss => {}
+        }
+        let mut todo = to_data(&projected, now);
+        let mut resolution = super::todo_resolution::resolution_data(&suggestion);
+        resolution.status = projected_status.as_str().into();
+        todo.resolution = Some(resolution);
+        let summary = match (action, suggestion.action) {
+            (TodoResolutionActionData::Undo, _) => {
+                format!(
+                    "Would undo the accepted resolution for “{}”. Nothing changed yet.",
+                    record.title
+                )
+            }
+            (TodoResolutionActionData::Dismiss, _) => {
+                format!(
+                    "Would dismiss the resolution offer for “{}”. Nothing changed yet.",
+                    record.title
+                )
+            }
+            (_, TodoResolutionAction::Complete) => {
+                format!(
+                    "Would complete “{}” based on the quoted email. Nothing changed yet.",
+                    record.title
+                )
+            }
+            (_, TodoResolutionAction::ReviseDate) => format!(
+                "Would change the due date for “{}” from {} to {}. Nothing changed yet.",
+                record.title,
+                record.due_at.map_or_else(
+                    || "no date".to_string(),
+                    |date| date
+                        .with_timezone(&Local)
+                        .format("%a %-d %b %Y")
+                        .to_string()
+                ),
+                prepared_dates
+                    .as_ref()
+                    .map(|dates| dates
+                        .due_at
+                        .with_timezone(&Local)
+                        .format("%a %-d %b %Y")
+                        .to_string())
+                    .unwrap_or_default(),
+            ),
+        };
+        return Ok(ResponseData::TodoChange {
+            change: TodoChangeData {
+                dry_run: true,
+                action: "resolution_preview".into(),
+                changed: vec![todo],
+                unchanged: Vec::new(),
+                summary,
+            },
+        });
+    }
+    let changed = match action {
+        TodoResolutionActionData::Dismiss => {
+            state
+                .store
+                .dismiss_todo_resolution(suggestion_id, &todo_id, &record.account_id, now)
+                .await?
+        }
+        TodoResolutionActionData::Accept => {
+            state
+                .store
+                .accept_todo_resolution(
+                    suggestion_id,
+                    &todo_id,
+                    &record.account_id,
+                    prepared_dates.as_ref(),
+                    now,
+                )
+                .await?
+        }
+        TodoResolutionActionData::Undo => {
+            state
+                .store
+                .undo_todo_resolution(suggestion_id, &todo_id, &record.account_id, now)
+                .await?
+        }
+        TodoResolutionActionData::Preview => false,
+    };
+    if !changed {
+        return Err(HandlerError::InvalidRequest(
+            "The to-do changed after this offer was created. Refresh and review the current task."
+                .into(),
+        ));
+    }
+    let updated = state
+        .store
+        .get_todo(&todo_id)
+        .await?
+        .ok_or_else(|| HandlerError::InvalidRequest("The to-do no longer exists.".into()))?;
+    match action {
+        TodoResolutionActionData::Accept if suggestion.action == TodoResolutionAction::Complete => {
+            mirror_promise(state, &updated, TodoState::Done, now).await?;
+            super::records::file_ticked_todos(state, std::slice::from_ref(&updated)).await;
+        }
+        TodoResolutionActionData::Undo if suggestion.action == TodoResolutionAction::Complete => {
+            mirror_promise(state, &updated, updated.state, now).await?;
+            if updated.state == TodoState::Done {
+                super::records::file_ticked_todos(state, std::slice::from_ref(&updated)).await;
+            } else {
+                super::records::unfile_todos(state, std::slice::from_ref(&updated)).await;
+            }
+        }
+        _ => {}
+    }
+    let mut todo = to_data(&updated, now);
+    todo.resolution = state
+        .store
+        .latest_todo_resolution(&todo_id, &record.account_id)
+        .await?
+        .map(|current| super::todo_resolution::resolution_data(&current));
+    Ok(ResponseData::TodoChange {
+        change: TodoChangeData {
+            dry_run: false,
+            action: match action {
+                TodoResolutionActionData::Dismiss => "resolution_dismiss",
+                TodoResolutionActionData::Accept => "resolution_accept",
+                TodoResolutionActionData::Undo => "resolution_undo",
+                TodoResolutionActionData::Preview => "resolution_preview",
+            }
+            .into(),
+            changed: vec![todo],
+            unchanged: Vec::new(),
+            summary: match action {
+                TodoResolutionActionData::Dismiss => "Dismissed the resolution offer.".into(),
+                TodoResolutionActionData::Accept => "Accepted the resolution offer.".into(),
+                TodoResolutionActionData::Undo => "Undid the resolution offer.".into(),
+                TodoResolutionActionData::Preview => unreachable!(),
+            },
+        },
+    })
+}
+
+fn apply_resolution_dates(
+    record: &mut TodoRecord,
+    dates: &TodoResolutionDates,
+    now: DateTime<Utc>,
+) {
+    record.due_at = Some(dates.due_at);
+    record.due_words = Some(dates.due_words.clone());
+    record.act_by_at = dates.act_by_at;
+    record.surface_at = dates.surface_at;
+    record.relevant_until = dates.relevant_until;
+    record.window_source = Some("table".into());
+    record.field_sources = dates.field_sources.clone();
+    record.user_edited = true;
+    record.updated_at = now;
+}
+
+async fn resolution_quote_is_current(
+    state: &AppState,
+    suggestion: &mxr_store::TodoResolutionSuggestion,
+) -> Result<bool, HandlerError> {
+    let Some(envelope) = state
+        .store
+        .get_envelope(&suggestion.source_message_id)
+        .await?
+    else {
+        return Ok(false);
+    };
+    if envelope.account_id != suggestion.account_id || envelope.date != suggestion.source_date {
+        return Ok(false);
+    }
+    match suggestion.quote_location.as_str() {
+        "subject" => Ok(envelope.subject.contains(&suggestion.source_quote)),
+        "body" => {
+            let Some(body) = state.store.get_body(&suggestion.source_message_id).await? else {
+                return Ok(false);
+            };
+            let text = mxr_reader::clean(
+                body.text_plain.as_deref(),
+                body.text_html.as_deref(),
+                &mxr_reader::ReaderConfig::default(),
+            )
+            .content;
+            Ok(text.contains(&suggestion.source_quote))
+        }
+        _ => Ok(false),
+    }
 }
 
 /// A promise row's state goes back to its commitment, so the desk and
@@ -948,7 +1334,7 @@ pub(super) async fn resolve_todo_ids(
     Ok(ids)
 }
 
-fn resolve_phrase(
+pub(super) fn resolve_phrase(
     state: &AppState,
     phrase: &str,
     now: DateTime<Utc>,

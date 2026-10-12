@@ -13,7 +13,6 @@
 //! change can add at most one more catch-up batch, never a flood.
 
 use crate::action_link::registrable_domain;
-use crate::complete::{looks_done, LaterMessage, OpenRow};
 use crate::detect::{detect, from_invite, Detection, MessageInput, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
 use crate::text::clip;
@@ -89,6 +88,9 @@ pub struct FirstRunProgress {
     /// The date of the oldest message classified so far.
     pub reached: Option<DateTime<Utc>>,
     pub summary: PassSummary,
+    /// Messages classified in this tick, for bounded reconciliation with
+    /// later cached evidence after a task is created.
+    pub scanned_message_ids: Vec<MessageId>,
 }
 
 /// Words that earn a message a read of its body. Cheap on headers so the
@@ -170,8 +172,10 @@ where
             scanned: run.scanned,
             reached: run.cursor.map(|(date, _)| date),
             summary,
+            scanned_message_ids: Vec::new(),
         });
     }
+    let mut scanned_message_ids = Vec::new();
     for _ in 0..max_pages {
         let page = store
             .list_messages_for_todo_scan(account_id, run.cursor.as_ref(), page_size)
@@ -185,11 +189,13 @@ where
                 scanned: run.scanned,
                 reached: run.cursor.map(|(date, _)| date),
                 summary,
+                scanned_message_ids,
             });
         };
         let cursor = (last.date, last.id.clone());
         let mut page_summary = PassSummary::default();
         for row in &page {
+            scanned_message_ids.push(row.id.clone());
             page_summary.add(&classify_or_skip(store, cfg, row, true).await);
         }
         if page_summary.catchup > 0 {
@@ -208,6 +214,7 @@ where
         scanned: run.scanned,
         reached: run.cursor.map(|(date, _)| date),
         summary,
+        scanned_message_ids,
     })
 }
 
@@ -272,7 +279,6 @@ where
         &ReaderConfig::default(),
     )
     .content;
-    let sender_domain = crate::action_link::email_domain(&row.from_email);
 
     let detection = match invite_detection(store, row).await? {
         Some(detection) => Some(detection),
@@ -289,10 +295,6 @@ where
             &cfg.tz,
         ),
     };
-
-    if let Some(domain) = &sender_domain {
-        summary.looks_done += offer_confirmations(store, cfg, row, domain, &text).await?;
-    }
 
     let Some(detection) = detection else {
         return Ok(summary);
@@ -550,48 +552,6 @@ where
 /// same millisecond.
 pub fn new_todo_id() -> String {
     format!("todo_{}", uuid::Uuid::new_v4().simple())
-}
-
-/// Offers "looks done" on open rows from this sender that this message
-/// confirms. Never closes a row.
-async fn offer_confirmations<Tz>(
-    store: &Store,
-    cfg: &PassConfig<Tz>,
-    row: &TodoScanRow,
-    sender_domain: &str,
-    text: &str,
-) -> anyhow::Result<u64> {
-    let mut offered = 0;
-    for todo in store
-        .list_open_todos_for_domain(&row.account_id, sender_domain)
-        .await?
-    {
-        if todo.source_message_id.as_ref() == Some(&row.id) {
-            continue;
-        }
-        let Some(kind) = TodoKind::parse(&todo.kind) else {
-            continue;
-        };
-        let open = OpenRow {
-            kind,
-            amount_minor: todo.amount_minor,
-            source_date: todo.source_date,
-        };
-        let later = LaterMessage {
-            subject: &row.subject,
-            text,
-            date: row.date,
-        };
-        if let Some(done) = looks_done(&open, &later) {
-            if store
-                .set_todo_looks_done(&todo.id, &row.id, &done.reason, cfg.now)
-                .await?
-            {
-                offered += 1;
-            }
-        }
-    }
-    Ok(offered)
 }
 
 /// A message you sent in a thread where you promised something offers the

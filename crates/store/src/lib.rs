@@ -92,6 +92,7 @@ mod thread;
 mod thread_context;
 mod thread_summary;
 mod todo_first_run;
+mod todo_resolution;
 mod todos;
 mod triage;
 mod undo;
@@ -159,6 +160,10 @@ pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
 pub use todo_first_run::{PromiseForTodo, TodoRun, TodoScanRow};
+pub use todo_resolution::{
+    todo_resolution_fingerprint, NewTodoResolutionSuggestion, TodoResolutionAction,
+    TodoResolutionDates, TodoResolutionSnapshot, TodoResolutionStatus, TodoResolutionSuggestion,
+};
 pub use todos::{TodoCatchup, TodoRecord, TodoState, TodoUpsert};
 pub use updates::{SourceLetGo, UpdateFactRow, UpdateSourceRow};
 pub use voice_samples::{MyReplySample, MySentSample};

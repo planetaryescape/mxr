@@ -1114,10 +1114,15 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 78,
+        name: "todo_resolution_suggestions",
+        kind: MigrationKind::Sql(include_str!("../migrations/078_todo_resolution_suggestions.sql")),
+    },
+    Migration {
+        version: 79,
         name: "draft_attachment_resources",
         kind: MigrationKind::Composite(&[
             MigrationStep::AddColumn { table: "drafts", column: "managed_attachments", sql: "ALTER TABLE drafts ADD COLUMN managed_attachments TEXT NOT NULL DEFAULT 'null'" },
-            MigrationStep::Sql(include_str!("../migrations/078_draft_attachment_resources.sql")),
+            MigrationStep::Sql(include_str!("../migrations/079_draft_attachment_resources.sql")),
         ]),
     },
 ];
@@ -1569,13 +1574,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn draft_attachment_resources_migration_upgrades_77_and_recovers_partial_78() {
+    async fn draft_attachment_resources_migration_upgrades_78_and_recovers_partial_79() {
         let temp = tempdir().unwrap();
-        let db_path = temp.path().join("version-77.db");
+        let db_path = temp.path().join("version-78.db");
         let draft_id = mxr_core::DraftId::new();
         let account_id = mxr_core::AccountId::new();
         {
-            let store = store_at_version(&db_path, 77).await;
+            let store = store_at_version(&db_path, 78).await;
             sqlx::query("INSERT INTO accounts (id,name,email,created_at,updated_at) VALUES (?, 'Fixture','fixture@example.com',1,1)")
                 .bind(account_id.as_str()).execute(store.writer()).await.unwrap();
             sqlx::query("INSERT INTO drafts (id,account_id,subject,body_markdown,attachments,created_at,updated_at,revision) VALUES (?,?,'Kept draft','Kept body','[\"/legacy/a.txt\"]',1,2,3)")
@@ -1598,7 +1603,7 @@ mod tests {
             assert_eq!(draft.content.markdown_source(), Some("Kept body"));
             assert!(test_table_exists(store.writer(), "draft_attachment_resources").await);
             let stamps: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM schema_migrations WHERE version IN (77,78)")
+                sqlx::query_as("SELECT COUNT(*) FROM schema_migrations WHERE version IN (78,79)")
                     .fetch_one(store.writer())
                     .await
                     .unwrap();
@@ -1617,7 +1622,7 @@ mod tests {
             .unwrap();
             assert_eq!(outcome, ("unknown".into(), "kept-hash".into()));
             if !partially_applied {
-                sqlx::query("DELETE FROM schema_migrations WHERE version=78")
+                sqlx::query("DELETE FROM schema_migrations WHERE version=79")
                     .execute(store.writer())
                     .await
                     .unwrap();
@@ -1729,6 +1734,76 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(cycle.0, "kept-cycle-key");
+    }
+
+    #[tokio::test]
+    async fn todo_resolution_migration_upgrades_version_77_without_rewriting_tasks() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-77.db");
+
+        {
+            let store = store_at_version(&db_path, 77).await;
+            sqlx::query("INSERT INTO personal_categories (id, name, normalized_name, created_at, updated_at) VALUES ('kept-category', 'Travel', 'travel', 10, 11)")
+                .execute(store.writer()).await.unwrap();
+            sqlx::query(
+                "INSERT INTO accounts (id, name, email, created_at, updated_at)
+                 VALUES ('version-77-account', 'Personal', 'me@example.com', 1, 1)",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO todos
+                 (id, account_id, kind, verb, title, origin, reason, rules_version,
+                  dedup_key, created_at, updated_at, scheduled_for, user_edited,
+                  due_words, field_sources)
+                 VALUES ('manual-renewal', 'version-77-account', 'renewal', 'renew',
+                         'Call about renewal', 'manual', 'Created by the user', 1,
+                         'manual-renewal-key', 10, 11, 1800000000, 1,
+                         'before 1 Nov', '{\"due_at\":\"user\"}')",
+            )
+            .execute(store.writer())
+            .await
+            .unwrap();
+            let version: (i64,) = sqlx::query_as("SELECT MAX(version) FROM schema_migrations")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+            assert_eq!(version.0, 77);
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let version: (i64,) = sqlx::query_as("SELECT version FROM schema_migrations WHERE name = 'todo_resolution_suggestions'")
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+        assert_eq!(version.0, 78);
+        let category: (String, String) =
+            sqlx::query_as("SELECT id, name FROM personal_categories WHERE id = 'kept-category'")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(category, ("kept-category".into(), "Travel".into()));
+        assert!(test_table_exists(store.writer(), "todo_resolution_suggestions").await);
+        assert!(test_table_exists(store.writer(), "todo_resolution_evidence").await);
+        let preserved: (String, String, String, String, i64, i64) = sqlx::query_as(
+            "SELECT title, origin, reason, due_words, scheduled_for, user_edited
+             FROM todos WHERE id = 'manual-renewal'",
+        )
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            preserved,
+            (
+                "Call about renewal".into(),
+                "manual".into(),
+                "Created by the user".into(),
+                "before 1 Nov".into(),
+                1_800_000_000,
+                1,
+            )
+        );
     }
 
     #[tokio::test]

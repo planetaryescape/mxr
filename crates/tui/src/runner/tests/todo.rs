@@ -44,6 +44,24 @@ fn todo_app(hints_seen: bool) -> App {
     app
 }
 
+fn attach_resolution(app: &mut App, status: &str) {
+    let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+    row.resolution = Some(mxr_protocol::TodoResolutionData {
+        id: "resolution-1".into(),
+        message_id: mxr_core::id::MessageId::new(),
+        thread_id: mxr_core::id::ThreadId::new(),
+        source_date: chrono::Utc::now(),
+        quote: "Your council tax payment has been received.".into(),
+        quote_location: "body".into(),
+        source_method: "rule".into(),
+        action: "complete".into(),
+        proposed_due_at: None,
+        proposed_due_words: None,
+        status: status.into(),
+    });
+    app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+}
+
 #[test]
 fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
     let mut app = todo_app(true);
@@ -65,6 +83,226 @@ fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
         .status_message
         .as_deref()
         .is_some_and(|status| status.contains("camden.gov.uk")));
+}
+
+#[test]
+fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
+    let mut app = todo_app(true);
+    let source_id = mxr_core::id::MessageId::new();
+    let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+    row.resolution = Some(mxr_protocol::TodoResolutionData {
+        id: "resolution-1".into(),
+        message_id: source_id.clone(),
+        thread_id: mxr_core::id::ThreadId::new(),
+        source_date: chrono::Utc::now(),
+        quote: "Your council tax payment has been received.".into(),
+        quote_location: "body".into(),
+        source_method: "rule".into(),
+        action: "complete".into(),
+        proposed_due_at: None,
+        proposed_due_words: None,
+        status: "pending".into(),
+    });
+    app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+    press(&mut app, KeyCode::Char('v'));
+    assert!(app.mailbox.todo_page.pending_resolution.is_some());
+    press(&mut app, KeyCode::Char('o'));
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .pending_open
+            .as_ref()
+            .unwrap()
+            .message_id,
+        source_id
+    );
+    app.show_resolution_preview(
+        "todo_1".into(),
+        "resolution-1".into(),
+        TodoChangeData {
+            dry_run: true,
+            action: "resolution_preview".into(),
+            changed: vec![app.selected_todo().unwrap().clone()],
+            unchanged: vec![],
+            summary: "Would complete the to-do. Nothing changed yet.".into(),
+        },
+    );
+    app.mailbox.todo_page.pending_open = None;
+    press(&mut app, KeyCode::Char('o'));
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .pending_open
+            .as_ref()
+            .unwrap()
+            .message_id,
+        source_id,
+        "opening the cited source remains available during preview"
+    );
+    assert!(app.mailbox.todo_page.resolution_preview.is_some());
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::ResolveTodoSuggestion {
+            action: mxr_protocol::TodoResolutionActionData::Accept,
+            dry_run: false,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn o_uses_the_task_source_when_its_resolution_is_not_visible() {
+    for status in ["dismissed", "undone"] {
+        let mut app = todo_app(true);
+        let task_source = app
+            .selected_todo()
+            .unwrap()
+            .source_message_id
+            .clone()
+            .unwrap();
+        let hidden_offer_source = mxr_core::id::MessageId::new();
+        let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+        row.resolution = Some(mxr_protocol::TodoResolutionData {
+            id: "resolution-1".into(),
+            message_id: hidden_offer_source,
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: chrono::Utc::now(),
+            quote: "Your council tax payment has been received.".into(),
+            quote_location: "body".into(),
+            source_method: "rule".into(),
+            action: "complete".into(),
+            proposed_due_at: None,
+            proposed_due_words: None,
+            status: status.into(),
+        });
+        app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+
+        press(&mut app, KeyCode::Char('o'));
+
+        assert_eq!(
+            app.mailbox.todo_page.pending_open.unwrap().message_id,
+            task_source,
+            "{status} evidence is hidden, so o must open the selected task's own source"
+        );
+    }
+}
+
+#[test]
+fn o_uses_evidence_source_only_while_offer_evidence_is_visible() {
+    for status in ["pending", "accepted"] {
+        let mut app = todo_app(true);
+        let task_source = app
+            .selected_todo()
+            .unwrap()
+            .source_message_id
+            .clone()
+            .unwrap();
+        let offer_source = mxr_core::id::MessageId::new();
+        let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+        row.resolution = Some(mxr_protocol::TodoResolutionData {
+            id: "resolution-1".into(),
+            message_id: offer_source.clone(),
+            thread_id: mxr_core::id::ThreadId::new(),
+            source_date: chrono::Utc::now(),
+            quote: "Your council tax payment has been received.".into(),
+            quote_location: "body".into(),
+            source_method: "rule".into(),
+            action: "complete".into(),
+            proposed_due_at: None,
+            proposed_due_words: None,
+            status: status.into(),
+        });
+        app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+
+        press(&mut app, KeyCode::Char('o'));
+
+        assert_ne!(task_source, offer_source);
+        assert_eq!(
+            app.mailbox.todo_page.pending_open.unwrap().message_id,
+            offer_source
+        );
+    }
+}
+
+#[test]
+fn resolution_preview_is_discarded_after_selection_moves() {
+    let mut app = todo_app(true);
+    attach_resolution(&mut app, "pending");
+    let first_todo = app.selected_todo().unwrap().clone();
+    press(&mut app, KeyCode::Char('j'));
+    let selected_source = app
+        .selected_todo()
+        .unwrap()
+        .source_message_id
+        .clone()
+        .unwrap();
+    assert_eq!(app.selected_todo().unwrap().id, "todo_9");
+
+    app.show_resolution_preview(
+        "todo_1".into(),
+        "resolution-1".into(),
+        TodoChangeData {
+            dry_run: true,
+            action: "resolution_preview".into(),
+            changed: vec![first_todo],
+            unchanged: vec![],
+            summary: "Would complete the to-do. Nothing changed yet.".into(),
+        },
+    );
+
+    assert!(app.mailbox.todo_page.resolution_preview.is_none());
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        queued(&app).is_empty(),
+        "Enter must not accept the unseen offer"
+    );
+    assert_eq!(
+        app.mailbox.todo_page.pending_open.unwrap().message_id,
+        selected_source,
+        "Enter acts on the currently selected row"
+    );
+}
+
+#[test]
+fn u_undoes_the_recent_mutation_before_an_accepted_resolution() {
+    let mut app = todo_app(true);
+    attach_resolution(&mut app, "accepted");
+    app.set_pending_undo(crate::app::PendingUndo {
+        action: crate::app::UndoAction::Todos(vec!["todo_9".into()]),
+        verb_past: "Ticked off".into(),
+        count: 1,
+        applied_at: std::time::Instant::now(),
+    });
+
+    press(&mut app, KeyCode::Char('u'));
+
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::SetTodoState {
+            todo_ids,
+            action: TodoStateActionData::Undo,
+            ..
+        }] if todo_ids == &["todo_9".to_string()]
+    ));
+}
+
+#[test]
+fn u_undoes_an_accepted_resolution_when_no_recent_mutation_is_pending() {
+    let mut app = todo_app(true);
+    attach_resolution(&mut app, "accepted");
+
+    press(&mut app, KeyCode::Char('u'));
+
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::ResolveTodoSuggestion {
+            todo_id,
+            suggestion_id,
+            action: mxr_protocol::TodoResolutionActionData::Undo,
+            dry_run: false,
+        }] if todo_id == "todo_1" && suggestion_id == "resolution-1"
+    ));
 }
 
 #[test]
@@ -462,6 +700,97 @@ fn enter_opens_the_source_message_with_its_link_to_mark() {
         app.mailbox.todo_link,
         Some((source.id, "https://www.camden.gov.uk/pay".to_string()))
     );
+}
+
+#[test]
+fn source_reader_shows_email_and_escape_returns_to_the_resolution_preview() {
+    let mut app = todo_app(true);
+    let source_id = app
+        .selected_todo()
+        .unwrap()
+        .source_message_id
+        .clone()
+        .unwrap();
+    let mut row = app.selected_todo().unwrap().clone();
+    row.resolution = Some(mxr_protocol::TodoResolutionData {
+        id: "resolution-reader".into(),
+        message_id: source_id.clone(),
+        thread_id: mxr_core::id::ThreadId::new(),
+        source_date: chrono::Utc::now(),
+        quote: "Your council tax payment has been received.".into(),
+        quote_location: "body".into(),
+        source_method: "rule".into(),
+        action: "complete".into(),
+        proposed_due_at: None,
+        proposed_due_words: None,
+        status: "pending".into(),
+    });
+    app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row.clone();
+    let preview_summary = "Would complete the to-do. Nothing changed yet.";
+    app.show_resolution_preview(
+        row.id.clone(),
+        "resolution-reader".into(),
+        TodoChangeData {
+            dry_run: true,
+            action: "resolution_preview".into(),
+            changed: vec![row],
+            unchanged: vec![],
+            summary: preview_summary.into(),
+        },
+    );
+    let source = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .subject("Your council tax bill")
+        .thread_id(mxr_core::id::ThreadId::new())
+        .build();
+    let mut source = source;
+    source.id = source_id.clone();
+    app.mailbox.body_cache.insert(
+        source_id.clone(),
+        mxr_core::types::MessageBody {
+            message_id: source_id,
+            text_plain: Some("The payment is due on 31 October.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+    app.mailbox.all_envelopes.push(source.clone());
+    let selected_id = app.selected_todo().unwrap().id.clone();
+
+    press(&mut app, KeyCode::Char('o'));
+    let open = app
+        .mailbox
+        .todo_page
+        .pending_open
+        .take()
+        .expect("o opens the exact evidence message");
+    assert_eq!(open.message_id, source.id);
+    app.open_todo_envelope(source, open.link);
+    let reader = render_to_string(120, 32, |frame| app.draw(frame));
+    assert!(
+        reader.contains("The payment is due on 31 October."),
+        "{reader}"
+    );
+
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Todo);
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert_eq!(
+        app.selected_todo().map(|todo| todo.id.clone()),
+        Some(selected_id)
+    );
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .resolution_preview
+            .as_ref()
+            .map(|(todo_id, resolution_id, _)| (todo_id.as_str(), resolution_id.as_str())),
+        Some(("todo_1", "resolution-reader"))
+    );
+    let todo_view = render_to_string(120, 32, |frame| app.draw(frame));
+    assert!(todo_view.contains(preview_summary), "{todo_view}");
 }
 
 #[test]

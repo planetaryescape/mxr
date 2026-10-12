@@ -1,15 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { Mail, Reply } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { useWhen } from "@/components/When";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchThread } from "@/features/mailbox/api";
 import { formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import type { Todo } from "./api";
+import { resolveSuggestion } from "./todoVerbs";
 import {
   fieldLabel,
   kindIcon,
@@ -240,6 +242,7 @@ export interface TodoRowProps {
   onRestore: (todo: Todo) => void;
   onToggleSource: (todo: Todo) => void;
   onOpenEmail: (todo: Todo) => void;
+  onOpenResolution: (todo: Todo, threadId: string, messageId: string) => void;
   /** The hint anchored under this row's runway bar, while it shows. */
   hint?: ReactNode;
 }
@@ -262,8 +265,12 @@ export const TodoRow = memo(function TodoRow({
   onRestore,
   onToggleSource,
   onOpenEmail,
+  onOpenResolution,
   hint,
 }: TodoRowProps) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const requestInFlight = useRef(false);
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
   const Icon = kindIcon(todo.kind);
@@ -272,6 +279,42 @@ export const TodoRow = memo(function TodoRow({
   const fill = runwayFill(todo);
   const dimmed = band === "coming";
   const done = band === "done";
+  const resolution = todo.resolution;
+  const resolutionIdentity = `${todo.id}\u0000${resolution?.id ?? ""}\u0000${resolution?.status ?? ""}`;
+  const currentResolutionIdentity = useRef(resolutionIdentity);
+  const mounted = useRef(false);
+  currentResolutionIdentity.current = resolutionIdentity;
+  useEffect(() => {
+    setPreview(null);
+  }, [resolutionIdentity]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const runResolution = async (resolutionAction: "preview" | "accept" | "dismiss" | "undo") => {
+    if (!resolution) return;
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    setBusy(true);
+    const requestIdentity = resolutionIdentity;
+    try {
+      const result = await resolveSuggestion(todo, resolutionAction);
+      if (
+        resolutionAction === "preview" &&
+        result &&
+        mounted.current &&
+        currentResolutionIdentity.current === requestIdentity
+      ) {
+        setPreview(result.summary);
+      }
+    } finally {
+      requestInFlight.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
   return (
     <li
       data-index={index}
@@ -342,6 +385,82 @@ export const TodoRow = memo(function TodoRow({
             {todo.looks_done ? (
               <p className="mt-1 text-[12px] text-foreground/85">
                 Looks done: {todo.looks_done.reason}
+              </p>
+            ) : null}
+            {resolution?.status === "pending" ? (
+              <div
+                data-testid="todo-resolution"
+                className="mt-2 grid gap-2 rounded-md border border-border bg-background/70 p-2 text-[12px]"
+              >
+                <p className={cn("text-foreground/90", preview ? "" : "line-clamp-2")}>
+                  Later email: “{resolution.quote}”
+                </p>
+                {preview ? <p data-testid="todo-resolution-preview">{preview}</p> : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      onOpenResolution(todo, resolution.thread_id, resolution.message_id)
+                    }
+                    className="min-h-10"
+                  >
+                    Source email
+                  </Button>
+                  {!preview ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void runResolution("preview")}
+                      className="min-h-10"
+                    >
+                      {busy ? "Reviewing…" : "Review"}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void runResolution("accept")}
+                        className="min-h-10"
+                      >
+                        {resolution.action === "complete"
+                          ? "Accept and complete"
+                          : "Accept new date"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void runResolution("dismiss")}
+                        className="min-h-10"
+                      >
+                        Dismiss offer
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {resolution?.status === "accepted" ? (
+              <p className="mt-2 text-[12px] text-muted-foreground">
+                Applied from “{resolution.quote}”.{" "}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void runResolution("undo")}
+                  className="min-h-10"
+                >
+                  Undo
+                </Button>
               </p>
             ) : null}
             {hint}

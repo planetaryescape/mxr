@@ -75,6 +75,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_todo_list`: tasks in one state, defaulting to open, with an optional account scope
 - `mxr_todo_get`: one task with its source mail and field provenance
 - `mxr_todo_set_state`: `done`, `dismiss` or `undo` for task IDs; previews unless `confirm=true`
+- `mxr_todo_resolve`: preview, accept, dismiss or undo one later-message offer; `confirm=true` applies the named action
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
 - `mxr_draft_assist`
@@ -96,6 +97,16 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_reading_item`
 - `mxr_reading_later`
 - `mxr_reading_highlights`
+
+## Todo resolution
+
+`mxr_todo_resolve` takes `todo_id`, `suggestion_id`, and an `action` of `accept`, `dismiss`, or `undo`. Without `confirm=true`, the daemon validates and previews that same action without changing the task. With confirmation, it applies the named action. The returned source quote and message ID identify the evidence to review.
+
+```bash
+mxr todo --format json
+```
+
+Use the IDs from the task's `resolution` field. See [Review later evidence](/guides/todo-resolution/) for the CLI, TUI, web, and MCP review flow.
 
 `mxr_read_message` only includes full body content when `include_body = true`.
 `mxr_attachment_metadata` returns the filename, MIME type, exact byte length,

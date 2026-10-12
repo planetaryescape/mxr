@@ -119,6 +119,29 @@ pub struct TodoLooksDoneData {
     pub reason: String,
 }
 
+/// A later message that offers a specific, user-reviewed resolution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TodoResolutionData {
+    pub id: String,
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub source_date: chrono::DateTime<chrono::Utc>,
+    /// Exact bounded substring of the source subject or cleaned body.
+    pub quote: String,
+    pub quote_location: String,
+    /// rule | model
+    pub source_method: String,
+    /// complete | revise_date
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_due_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_due_words: Option<String>,
+    /// pending | accepted | dismissed | undone | superseded
+    pub status: String,
+}
+
 /// One row: a thing to do, titled verb plus object, never the subject.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -180,6 +203,8 @@ pub struct TodoData {
     pub action: Option<TodoActionData>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub looks_done: Option<TodoLooksDoneData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<TodoResolutionData>,
     /// Where each field came from.
     pub fields: Vec<TodoFieldData>,
     /// You made or changed it: it never expires and re-runs leave it be.
@@ -308,6 +333,16 @@ pub enum TodoStateActionData {
     Undo,
     /// Not a to-do.
     Dismiss,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TodoResolutionActionData {
+    Preview,
+    Accept,
+    Dismiss,
+    Undo,
 }
 
 /// Keep or let go in the catch-up.

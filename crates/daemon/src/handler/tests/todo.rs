@@ -11,10 +11,13 @@ use mxr_core::types::{
     Address, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
 };
 use mxr_protocol::{
-    TodoActionKindData, TodoCatchupDecisionData, TodoData, TodoRunwayData, TodoStateActionData,
-    TodoStateData,
+    TodoActionKindData, TodoCatchupDecisionData, TodoData, TodoResolutionActionData,
+    TodoRunwayData, TodoStateActionData, TodoStateData,
 };
-use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
+use mxr_store::{
+    todo_resolution_fingerprint, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
+    NewTodoResolutionSuggestion, TodoResolutionAction,
+};
 use mxr_todo::pass;
 use std::collections::HashMap;
 
@@ -151,6 +154,405 @@ fn coming_up(runway: &TodoRunwayData) -> Vec<&TodoData> {
         .iter()
         .flat_map(|week| &week.todos)
         .collect()
+}
+
+#[tokio::test]
+async fn resolution_preview_projects_the_same_task_fields_as_accept_and_undo() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Your council tax bill",
+            "Your Camden Council Tax payment is due.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Pay Camden Council Tax".into(),
+            kind: Some("bill".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+    let later = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Payment received",
+            "Camden Council Tax payment received.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&later)).await;
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: todo_id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let offer = todo.resolution.expect("later payment evidence");
+    let resolve = |action, dry_run| Request::ResolveTodoSuggestion {
+        todo_id: todo_id.clone(),
+        suggestion_id: offer.id.clone(),
+        action,
+        dry_run,
+    };
+
+    let ResponseData::TodoChange { change: preview } =
+        request(&fx, resolve(TodoResolutionActionData::Preview, true)).await
+    else {
+        panic!()
+    };
+    assert_eq!(preview.changed[0].state, TodoStateData::Done);
+    assert!(preview.changed[0].done_at.is_some());
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todo_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        mxr_store::TodoState::Open
+    );
+
+    let ResponseData::TodoChange { change: applied } =
+        request(&fx, resolve(TodoResolutionActionData::Accept, false)).await
+    else {
+        panic!()
+    };
+    assert_eq!(preview.changed[0].state, applied.changed[0].state);
+    assert!(applied.changed[0].done_at.is_some());
+
+    let ResponseData::TodoChange {
+        change: undo_preview,
+    } = request(&fx, resolve(TodoResolutionActionData::Undo, true)).await
+    else {
+        panic!()
+    };
+    assert_eq!(undo_preview.changed[0].state, TodoStateData::Open);
+    let ResponseData::TodoChange { change: undone } =
+        request(&fx, resolve(TodoResolutionActionData::Undo, false)).await
+    else {
+        panic!()
+    };
+    assert_eq!(undo_preview.changed[0].state, undone.changed[0].state);
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todo_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        mxr_store::TodoState::Open
+    );
+}
+
+#[tokio::test]
+async fn resolution_date_preview_accept_and_undo_share_the_proposed_dates() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Council tax bill",
+            "Your Camden Council Tax payment is due.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Pay Camden Council Tax".into(),
+            kind: Some("bill".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+    let original_record = fx.state.store.get_todo(&todo_id).await.unwrap().unwrap();
+    let original_due = original_record.due_at;
+    let later = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "A revised due date",
+            "Your Camden Council Tax due date is now in 20 days.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+    let later_envelope = fx.state.store.get_envelope(&later).await.unwrap().unwrap();
+    let due_words = "in 20 days";
+    let proposed_due_at =
+        todos::resolve_phrase(&fx.state, due_words, later_envelope.date, None).unwrap();
+    fx.state
+        .store
+        .offer_todo_resolution(&NewTodoResolutionSuggestion {
+            id: "offer-date-change".into(),
+            todo_id: todo_id.clone(),
+            account_id: fx.account.clone(),
+            source_message_id: later.clone(),
+            source_thread_id: later_envelope.thread_id,
+            source_date: later_envelope.date,
+            source_quote: "Your Camden Council Tax due date is now in 20 days.".into(),
+            quote_location: "body".into(),
+            source_method: "model".into(),
+            action: TodoResolutionAction::ReviseDate,
+            proposed_due_at: Some(proposed_due_at),
+            proposed_due_words: Some(due_words.into()),
+            task_updated_at: original_record.updated_at,
+            task_fingerprint: todo_resolution_fingerprint(&original_record),
+            created_at: now,
+        })
+        .await
+        .unwrap();
+    let suggestion = fx
+        .state
+        .store
+        .latest_todo_resolution(&todo_id, &fx.account)
+        .await
+        .unwrap()
+        .unwrap();
+    let resolve = |dry_run| Request::ResolveTodoSuggestion {
+        todo_id: todo_id.clone(),
+        suggestion_id: suggestion.id.clone(),
+        action: TodoResolutionActionData::Accept,
+        dry_run,
+    };
+
+    let ResponseData::TodoChange { change: preview } = request(&fx, resolve(true)).await else {
+        panic!()
+    };
+    assert_eq!(preview.changed[0].due_at, Some(proposed_due_at));
+    assert_eq!(preview.changed[0].due_words.as_deref(), Some(due_words));
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todo_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .due_at,
+        original_due
+    );
+
+    let ResponseData::TodoChange { change: applied } = request(&fx, resolve(false)).await else {
+        panic!()
+    };
+    assert_eq!(applied.changed[0].due_at, preview.changed[0].due_at);
+    assert_eq!(applied.changed[0].due_words, preview.changed[0].due_words);
+    let ResponseData::TodoChange { change: undone } = request(
+        &fx,
+        Request::ResolveTodoSuggestion {
+            todo_id: todo_id.clone(),
+            suggestion_id: suggestion.id,
+            action: TodoResolutionActionData::Undo,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    assert_eq!(undone.changed[0].due_at, original_due);
+    assert_eq!(undone.changed[0].due_words, original_record.due_words);
+}
+
+#[tokio::test]
+async fn resolution_model_offer_quotes_later_mail_without_mutating_the_task() {
+    use axum::{routing::post, Json, Router};
+    use serde_json::{json, Value};
+
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Council tax account",
+            "Please review the annual account summary in the portal.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Check Camden Council Tax account".into(),
+            kind: Some("bill".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+    let later = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Account update",
+            "Your account remains in good standing. No action was needed.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+    let (request_tx, mut request_rx) = tokio::sync::mpsc::unbounded_channel();
+    let response = json!({
+        "model": "todo-resolution-test",
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "{\"action\":\"complete\",\"quote\":\"Your account remains in good standing.\",\"due_words\":\"\"}"
+            },
+            "finish_reason": "stop"
+        }]
+    });
+    let app = Router::new().route(
+        "/v1/chat/completions",
+        post(move |Json(payload): Json<Value>| {
+            let request_tx = request_tx.clone();
+            let response = response.clone();
+            async move {
+                let _ = request_tx.send(payload);
+                Json(response)
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let mut config = mxr_config::MxrConfig::default();
+    config.llm.enabled = true;
+    config.llm.base_url = format!("http://{address}/v1");
+    config.llm.model = "todo-resolution-test".into();
+    config.llm.background_request_timeout_secs = 2;
+    fx.state.set_config_for_test(config).await;
+
+    todos::scan_messages(&fx.state, std::slice::from_ref(&later)).await;
+    let payload = tokio::time::timeout(Duration::seconds(2).to_std().unwrap(), request_rx.recv())
+        .await
+        .expect("loopback model request")
+        .expect("request payload");
+    let prompt = payload["messages"][1]["content"].as_str().unwrap();
+    assert!(prompt.contains("Check Camden Council Tax account"));
+    assert!(prompt.contains("Your account remains in good standing."));
+
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: todo_id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let offer = todo.resolution.expect("model resolution offer");
+    assert_eq!(offer.source_method, "model");
+    assert_eq!(offer.quote, "Your account remains in good standing.");
+    assert_eq!(
+        todo.state,
+        TodoStateData::Open,
+        "evidence only offers a review"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn first_run_backfill_finds_resolution_evidence_already_in_the_store() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Your council tax bill",
+            "Your Camden Council Tax payment is due.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let later = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "bills@camden.gov.uk"),
+            "Payment received",
+            "Camden Council Tax payment received.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Pay Camden Council Tax".into(),
+            kind: Some("bill".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+
+    finish_first_run(&fx, now).await;
+
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: todo_id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let offer = todo.resolution.expect("cached later message is backfilled");
+    assert_eq!(offer.message_id, later);
+    assert_eq!(offer.quote, "Camden Council Tax payment received.");
+    assert_eq!(todo.state, TodoStateData::Open);
 }
 
 fn invoice_html(due: DateTime<Utc>, link: &str) -> String {
@@ -300,31 +702,135 @@ async fn a_lookalike_domain_gets_open_email_to_pay_and_its_raw_domain() {
 }
 
 #[tokio::test]
-async fn the_receipt_offers_looks_done_and_never_closes_the_row() {
+async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     camden_bill(&fx, now).await;
     finish_first_run(&fx, now).await;
-    let mut receipt = Mail::new(
+
+    // Amount and sender alone cannot distinguish this bill from another
+    // payment to the same council.
+    let mut generic_receipt = Mail::new(
         ("Camden Council", "council.tax@camden.gov.uk"),
         "Payment received",
         "Thank you for your payment of £142.00.",
         now + Duration::hours(2),
     );
-    receipt.auth = Some(CAMDEN_AUTH);
-    let id = put(&fx, receipt).await;
-    let summary = scan(&fx, std::slice::from_ref(&id), now + Duration::hours(2)).await;
-    assert_eq!(summary.looks_done, 1);
-    assert_eq!(summary.created, 0, "a receipt is not a to-do");
-    let row = coming_up(&runway(&fx, now + Duration::hours(2)).await)[0].clone();
-    assert_eq!(row.state, TodoStateData::Open);
-    let looks = row.looks_done.expect("looks done");
-    assert_eq!(looks.message_id.as_ref(), Some(&id));
-    assert!(
-        looks.reason.starts_with("payment received"),
-        "{}",
-        looks.reason
+    generic_receipt.auth = Some(CAMDEN_AUTH);
+    let generic_id = put(&fx, generic_receipt).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&generic_id)).await;
+    let after_generic = runway(&fx, now + Duration::hours(2)).await;
+    let rows = coming_up(&after_generic);
+    assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
+    assert!(rows[0].resolution.is_none(), "amount alone is ambiguous");
+    assert_eq!(rows[0].state, TodoStateData::Open);
+
+    let mut cancelled_payment = Mail::new(
+        ("Camden Council", "council.tax@camden.gov.uk"),
+        "Direct debit cancelled",
+        "Your council tax direct debit has been cancelled.",
+        now + Duration::hours(3),
     );
+    cancelled_payment.auth = Some(CAMDEN_AUTH);
+    let cancelled_id = put(&fx, cancelled_payment).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&cancelled_id)).await;
+    let after_cancelled = runway(&fx, now + Duration::hours(3)).await;
+    let rows = coming_up(&after_cancelled);
+    assert_eq!(rows.len(), 1, "a cancelled debit does not resolve the bill");
+    assert!(rows[0].resolution.is_none());
+
+    let mut identified_receipt = Mail::new(
+        ("Camden Council", "council.tax@camden.gov.uk"),
+        "Payment received",
+        "Camden Council Tax payment received for £142.00.",
+        now + Duration::hours(4),
+    );
+    identified_receipt.auth = Some(CAMDEN_AUTH);
+    let id = put(&fx, identified_receipt).await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&id)).await;
+
+    let after_identified = runway(&fx, now + Duration::hours(4)).await;
+    let rows = coming_up(&after_identified);
+    assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
+    let row = rows[0];
+    assert_eq!(row.state, TodoStateData::Open);
+    let resolution = row.resolution.as_ref().expect("reviewable resolution");
+    assert_eq!(resolution.message_id, id);
+    assert_eq!(
+        resolution.quote,
+        "Camden Council Tax payment received for £142.00."
+    );
+    assert_eq!(resolution.action, "complete");
+    assert_eq!(resolution.status, "pending");
+    assert_eq!(
+        fx.state
+            .store
+            .count_todos_in_state(None, mxr_store::TodoState::Open)
+            .await
+            .unwrap(),
+        1,
+        "receipts never create or close a task automatically"
+    );
+}
+
+#[tokio::test]
+async fn a_cancellation_can_resolve_a_renewal_without_resolving_a_bill() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let original = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "permits@camden.gov.uk"),
+            "Parking permit renewal",
+            "Please renew your parking permit before the end of the month.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: original,
+            title: "Renew parking permit".into(),
+            kind: Some("renewal".into()),
+            due: Some("in 10d".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let todo_id = change.changed[0].id.clone();
+    let cancellation = put(
+        &fx,
+        Mail::new(
+            ("Camden Council", "permits@camden.gov.uk"),
+            "Parking permit status",
+            "Your parking permit has been cancelled as requested.",
+            now - Duration::days(1),
+        ),
+    )
+    .await;
+    todos::scan_messages(&fx.state, std::slice::from_ref(&cancellation)).await;
+
+    let ResponseData::Todo { todo } = request(&fx, Request::GetTodo { todo_id }).await else {
+        panic!()
+    };
+    let resolution = todo
+        .resolution
+        .expect("the cancelled renewal is reviewable");
+    assert_eq!(resolution.message_id, cancellation);
+    assert_eq!(
+        resolution.quote,
+        "Your parking permit has been cancelled as requested."
+    );
+    assert_eq!(resolution.quote_location, "body");
+    assert_eq!(resolution.action, "complete");
+    assert_eq!(resolution.status, "pending");
+    assert_eq!(todo.state, TodoStateData::Open);
 }
 
 #[tokio::test]
@@ -703,13 +1209,13 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
             id: "c-form".into(),
             account_id: fx.account.clone(),
             email: "priya@work.com".into(),
-            thread_id: thread,
+            thread_id: thread.clone(),
             direction: CommitmentDirection::Yours,
             status: CommitmentStatus::Open,
             who_owes: "you".into(),
             what: "send the signed form".into(),
             by_when: None,
-            evidence_msg_id: evidence,
+            evidence_msg_id: evidence.clone(),
             extracted_at: now,
             resolved_at: None,
         })
@@ -740,23 +1246,88 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     .await;
     let today = runway(&fx, now).await;
     assert_eq!(titles(&today.whenever), vec!["Send the signed form"]);
-    request(
-        &fx,
-        Request::SetTodoState {
-            todo_ids: vec![id],
-            action: TodoStateActionData::Done,
-            dry_run: false,
-        },
-    )
-    .await;
-    let commitment = fx
+    let record = fx.state.store.get_todo(&id).await.unwrap().unwrap();
+    let later = fx
+        .message(
+            &thread,
+            "priya@work.com",
+            super::desk::ME,
+            Duration::days(1),
+            None,
+        )
+        .await;
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: later.id.clone(),
+            text_plain: Some("The signed form is complete.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: later.date,
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    let suggestion = NewTodoResolutionSuggestion {
+        id: "offer-c-form".into(),
+        todo_id: id.clone(),
+        account_id: fx.account.clone(),
+        source_message_id: later.id.clone(),
+        source_thread_id: thread,
+        source_date: later.date,
+        source_quote: "The signed form is complete.".into(),
+        quote_location: "body".into(),
+        source_method: "model".into(),
+        action: TodoResolutionAction::Complete,
+        proposed_due_at: None,
+        proposed_due_words: None,
+        task_updated_at: record.updated_at,
+        task_fingerprint: todo_resolution_fingerprint(&record),
+        created_at: now,
+    };
+    assert!(fx
         .state
         .store
-        .get_contact_commitment("c-form")
+        .offer_todo_resolution(&suggestion)
+        .await
+        .unwrap());
+    let offer = fx
+        .state
+        .store
+        .latest_todo_resolution(&id, &fx.account)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(commitment.status, CommitmentStatus::Resolved);
+    for action in [
+        TodoResolutionActionData::Accept,
+        TodoResolutionActionData::Undo,
+    ] {
+        request(
+            &fx,
+            Request::ResolveTodoSuggestion {
+                todo_id: id.clone(),
+                suggestion_id: offer.id.clone(),
+                action,
+                dry_run: false,
+            },
+        )
+        .await;
+        let commitment = fx
+            .state
+            .store
+            .get_contact_commitment("c-form")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            commitment.status,
+            if action == TodoResolutionActionData::Accept {
+                CommitmentStatus::Resolved
+            } else {
+                CommitmentStatus::Open
+            }
+        );
+    }
 }
 
 /// A commitment marked yours, with `evidence` as its evidence message.

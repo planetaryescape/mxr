@@ -82,6 +82,7 @@ mod thread_context;
 mod thread_gist;
 pub(crate) mod thread_gists;
 mod time;
+mod todo_resolution;
 mod todo_view;
 pub(crate) mod todos;
 mod triage;
@@ -1478,6 +1479,12 @@ async fn dispatch(
             action,
             dry_run,
         } => todos::set_state(state, todo_ids, *action, *dry_run).await,
+        Request::ResolveTodoSuggestion {
+            todo_id,
+            suggestion_id,
+            action,
+            dry_run,
+        } => todos::resolve_suggestion(state, todo_id, suggestion_id, *action, *dry_run).await,
         Request::ScheduleTodo {
             todo_id,
             when,
@@ -2158,6 +2165,9 @@ enum RequestClass {
 fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
+        Request::ResolveTodoSuggestion {
+            action, dry_run, ..
+        } if *dry_run || matches!(action, mxr_protocol::TodoResolutionActionData::Preview) => Read,
         // --- Read: pure reads, exports, previews, local AI analysis ---
         Request::ListEnvelopes { .. }
         | Request::ListEnvelopesByIds { .. }
@@ -2433,6 +2443,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::SetTodoState { .. }
+        | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
         | Request::CreateTodo { .. }
@@ -2691,6 +2702,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListTodos { .. } => "list_todos",
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",
+        Request::ResolveTodoSuggestion { .. } => "resolve_todo_suggestion",
         Request::GetNow { .. } => "get_now",
         Request::GetArrivals { .. } => "get_arrivals",
         Request::ListArrivals { .. } => "list_arrivals",

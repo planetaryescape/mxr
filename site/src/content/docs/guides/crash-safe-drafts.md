@@ -15,17 +15,17 @@ returns:
 ```bash
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
-  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW
 mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
-  --expected-workspace WORKSPACE_JSON_FROM_ORIGINAL_REVIEW --format json
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
 
 The send command prints the operation ID and its outcome-query command to
 stderr before submission. The preview returns `expected_workspace`, containing
 the workspace ID and recovery generation. Keep that exact JSON with the
-revision and operation ID, and pass it to both send and outcome queries. JSON
-and JSONL output remain on stdout.
+revision and operation ID, and pass it unchanged in single quotes to both send
+and outcome queries. JSON and JSONL output remain on stdout.
 
 If the selected daemon changes, do not replace the retained workspace JSON
 with the new daemon's identity. A `workspace_conflict` means the reviewed work
@@ -94,12 +94,13 @@ silently change the scheduled message:
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --at "tomorrow 9am" \
   --expected-revision REVISION_FROM_PREVIEW \
-  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>'
 ```
 
 The scheduler assigns a separate operation identity and records its attempt
 before sending. Query the scheduled draft by its account-scoped alias:
-`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --format json`.
+`mxr send-outcome 'draft:DRAFT_ID' --account ACCOUNT_ID --expected-workspace '<OWNER_JSON_FROM_SCHEDULE_PREVIEW>' --format json`.
+Keep the exact `expected_workspace` JSON from the schedule preview and shell-quote it.
 The ordinary send preview's ID does not identify a scheduled attempt, and the
 global last-send query may still refer to another draft. An uncertain attempt
 must be resolved by its retained send outcome; do not schedule it again under a

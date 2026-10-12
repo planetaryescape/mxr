@@ -1,0 +1,143 @@
+{
+  "reviewed_candidate_source": "2460aba5f459dc15d9e9861be17043dd215650ce",
+  "merged_source": "45f917b53e26cef3b9fdde8ff3fad025084d15e7",
+  "merged_tree": "32b104d5eeeb8373dfd5ac7a813cddf29965747c",
+  "published_release_source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "published_release_tree": "002a3967334458f69892e5a86c7bdea0e431f960",
+  "binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "scope": "Sanitized published release and four-client acceptance summaries; raw logs, binaries, tokens, network captures and mail content excluded.",
+  "retained": [
+    {
+      "name": "README.md",
+      "sha256": "9c33f2dfcc00a6f67b2e02d712aaf62f418bac7fd5dae9a258f3084f953ea956"
+    },
+    {
+      "name": "release-acceptance.json",
+      "sha256": "1997209ef9a8f1a719e9a8735a99032079a5bde44efb07cee98cc2ab6e8711e0"
+    },
+    {
+      "name": "client-acceptance.json",
+      "sha256": "931f7df8757b317603467385b1ee9e96394714ab6d9734b159bb589084986be4"
+    },
+    {
+      "name": "native-acceptance.json",
+      "sha256": "4d87c6ed3a959c902b6443d3b4ed9b1aa5bc10e90e4083c958ba368c8a30b661"
+    },
+    {
+      "name": "browser-acceptance.json",
+      "sha256": "7157cf33c3375b17529b53e6a75d79aef21aff92330332616a6dd20f22e043ac"
+    },
+    {
+      "name": "browser-diagnostics-followup.json",
+      "sha256": "45f959b7b91e494e83bdcd6015c66dcaf14aedd1eb7c7f062f7dd2c263c89991"
+    },
+    {
+      "name": "browser-blocked-retention.png",
+      "sha256": "57b06c3e878ca24a64f66e3d57f3b56fa6e7a8525beace0ef4cc651bc932d4b0"
+    },
+    {
+      "name": "openapi.json",
+      "path": "site/public/openapi.json",
+      "sha256": "931fe9e3ba9a79345f06230dcf99951af882b050b5a9119f7fc91b6a09447fbb"
+    },
+    {
+      "name": "send.md",
+      "path": "site/src/content/docs/reference/cli/send.md",
+      "sha256": "b8dba30a4fb6e8c1850e8a81954283f31cb34604a26aaab34a586196eb6ceadc"
+    },
+    {
+      "name": "send-outcome.md",
+      "path": "site/src/content/docs/reference/cli/send-outcome.md",
+      "sha256": "feb95c95790858b0554ecaba0c73edf0d5e9f417b391358c8ca52a06c8dffcc3"
+    }
+  ],
+  "sources": [
+    {
+      "name": "published-release-verification",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/published-v0.6.89-release/verification.json",
+      "sha256": "7636d0ae75d491869a8a3017d224decd9dc3d6ae0181970440812ad8ae6b5f6f"
+    },
+    {
+      "name": "published-release-workflow",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/published-v0.6.89-release/workflow.json",
+      "sha256": "064e2c9a4d0cce242cdec2c920e13a203519d51c8b75d2f520cf9f4df2598f2f"
+    },
+    {
+      "name": "published-homebrew-verification",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/published-v0.6.89-release/homebrew.json",
+      "sha256": "941fcf1c5356a9d892e2d8b4218e09e0ff199fd60646d59c5359684e67a1d773"
+    },
+    {
+      "name": "published-cli-ipc-mcp-mailmerge-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/clients-published-1894c8b6/result.json",
+      "sha256": "494b6eb83e184bb0e2c4e3c26be39c82f28bafe655ac9b8a0fefa5fcb76ad479"
+    },
+    {
+      "name": "published-native-held-editor-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-evidence/native-pub-1894/result.json",
+      "sha256": "4f4072ca3b7e15ed16a80f7429bc528c8395f2fe0f35de7be4c14ad4a831a517"
+    },
+    {
+      "name": "published-browser-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.worktrees/mxr-portability-owner-20261012/target/s06b-browser-acceptance/published-1894c8b6/evidence/browser-result.json",
+      "sha256": "02067250a06c637980d0fd2db9dfea24a119185382b827d24bae6e269fa4414c"
+    },
+    {
+      "name": "published-browser-diagnostic-correction",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-browser-published-diagnostics-correction.json",
+      "sha256": "0ce25c479df73d2b24239de9681cbe7d4e3e807b7c389460859661892a545559"
+    },
+    {
+      "name": "root-published-cli-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-root-client-published-1894c8b6.json",
+      "sha256": "494b6eb83e184bb0e2c4e3c26be39c82f28bafe655ac9b8a0fefa5fcb76ad479"
+    },
+    {
+      "name": "root-published-native-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-root-native-published-1894c8b6.json",
+      "sha256": "4f4072ca3b7e15ed16a80f7429bc528c8395f2fe0f35de7be4c14ad4a831a517"
+    },
+    {
+      "name": "root-browser-cleanup-and-corrected-triage",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-browser-published-root-check.json",
+      "sha256": "1e768a43438469e7ddb592cedf417dc285696e7928962508dd2f77b56978e3bf"
+    },
+    {
+      "name": "root-published-browser-acceptance",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-browser-published-1894c8b6.json",
+      "sha256": "02067250a06c637980d0fd2db9dfea24a119185382b827d24bae6e269fa4414c"
+    },
+    {
+      "name": "historical-v088-release-failure",
+      "path": "/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/s06b-release-088-failure.json",
+      "sha256": "b143a758249bb04f3a31d8340d4dd491ebb96b35fc6b36eba7b62ea9a74b0136"
+    },
+    {
+      "name": "historical-candidate-manifest",
+      "path": "docs/build-log/daemon-portability/evidence/s06b-candidate-bb64d37/manifest.json",
+      "sha256": "f95f9e7a142bfb0f5782fe1a886191c75d6da7080fe5d4e282430e802eb72755"
+    }
+  ],
+  "local_docs_build": {
+    "status": "Passed on the pre-PR430 docs source; rerun generator and site build after rebase onto current main.",
+    "node": "24.21.0",
+    "pueue_task": 6321,
+    "queue_seconds": 0.2,
+    "execution_seconds": 12.48,
+    "generated_cli_pages": 114,
+    "openapi_version": "0.6.89",
+    "openapi_paths": 239,
+    "search_tests": "3/3 passed",
+    "site_pages": 191,
+    "indexed_html_files": 192,
+    "llms_pages": 187,
+    "warnings": [
+      "Vite reported a chunk above 500 kB.",
+      "The i18n collection was empty."
+    ],
+    "output": "ignored site/dist",
+    "base": "17f15c7de77deb033e96033e3553d72a6c7fa9b0 (before PR430 dependency-compatibility merge)"
+  },
+  "status": "S06b published release and CLI/raw IPC/MCP/mailmerge, native TUI and browser acceptance passed. Docs deployment pending.",
+  "diagnostics_note": "Original acceptance interval is not a reliable no-new-errors measurement because errors --clear had no confirmed clear acknowledgment. Separate fresh-session no-clear window is recorded."
+}

@@ -26,11 +26,14 @@ mxr forward MESSAGE_ID --to team@example.com
 mxr drafts
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
-  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW \
+  --expected-workspace '<OWNER_JSON_FROM_PREVIEW>' \
   --operation-id OPERATION_ID_FROM_PREVIEW
 mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
-  --expected-workspace WORKSPACE_JSON_FROM_ORIGINAL_PREVIEW --format json
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
 ```
+
+Copy the exact `expected_workspace` JSON from the original preview and pass it
+unchanged in single quotes to `--expected-workspace` for send and outcome queries.
 
 ## Local and linked provider drafts
 

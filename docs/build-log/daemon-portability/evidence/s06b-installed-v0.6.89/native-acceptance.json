@@ -1,0 +1,39 @@
+{
+  "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "passed": true,
+  "cases": {
+    "held_editor_stale_save_refused": true,
+    "b_scoped_state_unchanged": true,
+    "exact_private_file_retained_after_rejected_save": true,
+    "original_owner_same_pending_draft_send_once": true,
+    "sent_body_matches_private_marker": true
+  },
+  "provider_acceptances": {
+    "a": 1,
+    "b": 0
+  },
+  "accepted_outcomes": 1,
+  "sent_draft_receipts": 1,
+  "private_body_bytes": 42,
+  "private_body_sha256": "12ca4692181ebea7b5df19e3e3953ac1624692e9351bc85e0b923a62926df88b",
+  "cleanup": {
+    "ui": {
+      "ui_socket_closed": true,
+      "token_removed": true
+    },
+    "b": {
+      "b_socket_closed": true,
+      "token_removed": true
+    },
+    "a": {
+      "a_socket_closed": true,
+      "token_removed": true
+    }
+  },
+  "scope": "Actual published v0.6.89 native held-editor stale-save rejection and return-to-original send. B state remained unchanged; A accepted one send and one outcome.",
+  "limitations": [
+    "Published native repeat covers held-editor save and return-to-original send. Earlier candidate evidence covers cached canonical Edit/Delete.",
+    "Body verified by messages/bodies join; provider spool itself records identifiers, not body."
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "tag": "v0.6.89",
+  "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "tree": "002a3967334458f69892e5a86c7bdea0e431f960",
+  "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38219348976",
+  "release": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.89",
+  "published_at": "2026-10-12T08:04:32Z",
+  "full_workflow_completed_at": "2026-10-12T08:06:16Z",
+  "binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "binary_version": "mxr 0.6.89",
+  "assets": [
+    {
+      "name": "mxr-v0.6.89-macos-aarch64.tar.gz",
+      "bytes": 61965775,
+      "sha256": "44aeb98414e0be953474bbb169f7c95bc50e085e15e231f0900bbd4a236d6f9d"
+    },
+    {
+      "name": "mxr-v0.6.89-macos-aarch64.tar.gz.sha256",
+      "bytes": 99,
+      "sha256": "cacc47d9b66202c717cff7d96787b70c9de35d038d4832c5b6a5abfd5a95429b"
+    },
+    {
+      "name": "mxr-v0.6.89-linux-x86_64.tar.gz",
+      "bytes": 67109556,
+      "sha256": "b90a9fa6a85b62bf09f6a040d8c3bb1cdc8359e96f630e7087c5f8aa7b394e89"
+    },
+    {
+      "name": "mxr-v0.6.89-linux-x86_64.tar.gz.sha256",
+      "bytes": 98,
+      "sha256": "a0a6eb2264f9a34b3311de886e828067b09135bd46e36902a673d98c72e758c6"
+    }
+  ],
+  "homebrew": {
+    "version": "mxr 0.6.89",
+    "mxr_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+    "mailmerge_sha256": "5e6e32d1d9299ec545f2ded4ea006c2afa8c453834a1779bb496deecb40e538d",
+    "path_entries": [
+      "/opt/homebrew/bin/mxr",
+      "/opt/homebrew/bin/mxr"
+    ],
+    "personal_daemon_restarted": false
+  },
+  "workflow_jobs": {
+    "Build aarch64-apple-darwin": {
+      "started_at": "2026-10-12T07:43:54Z",
+      "completed_at": "2026-10-12T08:04:06Z",
+      "result": "success"
+    },
+    "Build x86_64-unknown-linux-gnu": {
+      "started_at": "2026-10-12T07:43:50Z",
+      "completed_at": "2026-10-12T07:58:22Z",
+      "result": "success"
+    },
+    "GitHub Release": {
+      "started_at": "2026-10-12T08:04:13Z",
+      "completed_at": "2026-10-12T08:04:35Z",
+      "result": "success"
+    },
+    "Homebrew Formula": {
+      "started_at": "2026-10-12T08:04:43Z",
+      "completed_at": "2026-10-12T08:06:16Z",
+      "result": "success"
+    }
+  },
+  "full_chain_seconds": 1364,
+  "timing": {
+    "macos_build": "20m12s",
+    "linux_build": "14m32s",
+    "release_cli_smoke": "10m02s",
+    "full_chain": "22m44s"
+  },
+  "verification": "All four release assets and their published checksums matched the release workflow; exact-source installer and Homebrew binary hashes matched the published binary.",
+  "status": "Published release verified and all four client acceptance paths passed; docs deployment pending."
+}

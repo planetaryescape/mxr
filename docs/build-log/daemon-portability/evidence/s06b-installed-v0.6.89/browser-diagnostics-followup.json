@@ -1,0 +1,51 @@
+{
+  "source": "1894c8b67dff7789f675a3bfe80023db4c98bba3",
+  "binary_sha256": "6f1eb0b578afd080e628126c9de1afa6440501accd41a10cfdd2e5d81a6b1852",
+  "diagnostic_runtime": "fresh published-binary UI session; loopback fixture",
+  "fresh_no_clear_window": {
+    "start_utc": "2026-10-12T08:32:18.165668Z",
+    "end_utc": "2026-10-12T08:33:48.641122Z",
+    "duration_seconds": 90.475,
+    "samples": [
+      {
+        "page_errors": 0,
+        "console_messages": 0
+      },
+      {
+        "page_errors": 0,
+        "console_messages": 0,
+        "ready": "complete",
+        "path": "/m/inbox",
+        "main_visible": true
+      },
+      {
+        "page_errors": 0,
+        "console_messages": 0,
+        "ready": "complete",
+        "path": "/m/inbox",
+        "main_visible": true
+      }
+    ],
+    "interpretation": "Error and console buffers were read without --clear at all three samples; both remained empty. This separate window records the fresh UI session only."
+  },
+  "original_acceptance_capture": {
+    "observed_page_errors": 1,
+    "observed_console_messages": 0,
+    "cause": "unknown",
+    "interpretation": "The original capture invoked errors --clear between reads but did not confirm clearing. Its two snapshots cannot establish whether any new page errors occurred during that interval."
+  },
+  "clear_command_probe": {
+    "agent_browser_version": "0.34.0",
+    "command": "errors --clear",
+    "success": true,
+    "returned_error_records": 2,
+    "cleared_acknowledgment": false,
+    "subsequent_read_records": 2,
+    "interpretation": "This run returned no clear acknowledgment and the follow-up read contained two entries. This observation is not a general capability verdict."
+  },
+  "no_claims": [
+    "No claim that the original transition had zero page errors.",
+    "No claim of zero HTTP request bytes or pre-dispatch attribution."
+  ],
+  "cleanup": "Fresh diagnostic session closed; all owned roles stopped, tokens removed, sockets closed, A web port closed."
+}

@@ -1,0 +1,37 @@
+{
+  "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+  "cases": {
+    "b_scoped_state_unchanged": true,
+    "exact_private_file_retained": true,
+    "held_editor_stale_save_refused": true,
+    "original_owner_same_pending_draft_send_once": true,
+    "sent_body_matches_private_marker": true
+  },
+  "cleanup": {
+    "a": {
+      "checks": {
+        "a_socket_closed": true,
+        "token_removed": true
+      }
+    },
+    "b": {
+      "checks": {
+        "b_socket_closed": true,
+        "token_removed": true
+      }
+    },
+    "ui": {
+      "checks": {
+        "token_removed": true,
+        "ui_socket_closed": true
+      }
+    }
+  },
+  "limits": [
+    "Final repeat covers held-editor save and return-to-original send. Cached canonical Edit/Delete exercised on earlier653 with same native code.",
+    "Spool records acceptance identifiers, not body. Sent body verified by joining messages/bodies and the accepted draft outcome."
+  ],
+  "passed": true,
+  "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16",
+  "transcript_sha256": "9033475cebc80070b0604d05ac0f21a58d87dc2a22248f0b52936aa85b2932ac"
+}

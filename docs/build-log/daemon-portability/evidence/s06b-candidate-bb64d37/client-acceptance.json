@@ -1,0 +1,34 @@
+{
+  "binary_sha256": "8be64bceb411e97ebf16cfc373c40064d8a36d5477ad97b90eb66572761a4e8d",
+  "cases": {
+    "actual_companion_creation_owner_rejects_b_and_recovers_on_a_once": true,
+    "actual_companion_unowned_legacy_record_and_review_preserved_without_effects": true,
+    "all_stale_raw_commands_and_missing_owner_have_zero_b_effects": true,
+    "cli_original_owner_preview_commit_and_outcome_deliver_once": true,
+    "cli_preview_owner_survives_new_process_and_rejects_b_send_and_outcome": true,
+    "controlled_stopped_generation_rotation_fences_old_commands": true,
+    "ordinary_restart_preserves_owner_and_private_resources": true,
+    "original_owner_send_and_receipt_replay_deliver_once": true,
+    "same_ids_revisions_and_resource_bytes_distinct_owners": true,
+    "stdio_mcp_retained_owner_rejects_colliding_b_draft_send_outcome_and_upload": true
+  },
+  "cleanup": {
+    "a": {
+      "socket_removed": true,
+      "stopped": true
+    },
+    "b": {
+      "socket_removed": true,
+      "stopped": true
+    }
+  },
+  "generation_limit": "Fixture-only SQL while stopped; not production backup/restore acceptance.",
+  "mailmerge_sha256": "b727dd831df721689851b0bd19768bb7dead9e4b6ee560e488bfd1b4ece7381c",
+  "passed": true,
+  "tested_binary_source": "0b0591884de84695d5cd494433a19e9489716a16",
+  "witness": {
+    "filename": "original-owner.bin",
+    "length_bytes": 73600,
+    "sha256": "d620246ab2df72f0f57c6e6c60cc0a4a3658f114115c0e52cd0cae0e0fa83886"
+  }
+}

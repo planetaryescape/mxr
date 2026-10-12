@@ -10,7 +10,13 @@ four GitHub asset digests and both archive checksum files
 matched; the installer and Homebrew binary SHA-256 matched
 `619427b3e25e14b6588cc3f24fc21fcf1d397643b2cc703ef686e4ff3d675d06`.
 Homebrew was present only at `/opt/homebrew/bin/mxr`; the personal daemon was
-not restarted. The final documentation closeout deployment remains pending.
+not restarted. Documentation PR420 merged at
+`1f7e21b29f0761f77090f9e3928c4e7e7da35a3c` (tree
+`c89335e5845908db4c0fbf136a0409994b79602c`); deployment
+`dpl_EeHGUL4ertAHW57pwDszBgmkhzHU` reached READY on `https://mxr.sh`.
+The published [Compose guide](https://mxr.sh/guides/compose/) was checked in a
+browser, including its rendered attachment commands. The deployment receipt is
+retained in the project ledger.
 The standing independent Claude review waiver remains in effect until Anthropic
 is funded.
 

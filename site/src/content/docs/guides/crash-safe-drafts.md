@@ -15,13 +15,24 @@ returns:
 ```bash
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW \
   --operation-id OPERATION_ID_FROM_PREVIEW
-mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
+  --expected-workspace WORKSPACE_JSON_FROM_ORIGINAL_REVIEW --format json
 ```
 
 The send command prints the operation ID and its outcome-query command to
-stderr before submission. Keep that ID if the connection fails. JSON and JSONL
-output remain on stdout.
+stderr before submission. The preview returns `expected_workspace`, containing
+the workspace ID and recovery generation. Keep that exact JSON with the
+revision and operation ID, and pass it to both send and outcome queries. JSON
+and JSONL output remain on stdout.
+
+If the selected daemon changes, do not replace the retained workspace JSON
+with the new daemon's identity. A `workspace_conflict` means the reviewed work
+still belongs to another workspace or recovery generation. Keep the private
+draft and pending operation, return to their original workspace, and reopen or
+review them explicitly before continuing. Do not submit the same private work
+to the newly selected workspace.
 
 The outcome query reports whether acceptance is known:
 
@@ -82,7 +93,8 @@ silently change the scheduled message:
 ```bash
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --at "tomorrow 9am" \
-  --expected-revision REVISION_FROM_PREVIEW
+  --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW
 ```
 
 The scheduler assigns a separate operation identity and records its attempt

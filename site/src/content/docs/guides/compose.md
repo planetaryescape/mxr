@@ -26,8 +26,10 @@ mxr forward MESSAGE_ID --to team@example.com
 mxr drafts
 mxr send DRAFT_ID --dry-run --format json
 mxr send DRAFT_ID --expected-revision REVISION_FROM_PREVIEW \
+  --expected-workspace WORKSPACE_JSON_FROM_PREVIEW \
   --operation-id OPERATION_ID_FROM_PREVIEW
-mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID --format json
+mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
+  --expected-workspace WORKSPACE_JSON_FROM_ORIGINAL_PREVIEW --format json
 ```
 
 ## Local and linked provider drafts
@@ -116,6 +118,15 @@ saved draft, first run `mxr send DRAFT_ID --dry-run --format json`, then submit
 the returned revision and operation ID with `--expected-revision` and
 `--operation-id`. See [crash-safe drafts](/guides/crash-safe-drafts/) for the
 outcome query and recovery rules.
+
+The send preview returns `expected_workspace` with the workspace ID and
+recovery generation. Keep that JSON with the draft revision and operation ID;
+pass it unchanged when sending, scheduling, or querying the send outcome. The
+CLI captures the selected workspace before opening its editor. If the selected
+daemon changes before private work is saved or submitted, mxr refuses to
+rebind that work. Return to its original workspace and explicitly reopen or
+review it before continuing. See [crash-safe drafts](/guides/crash-safe-drafts/)
+for recovery after a workspace conflict.
 
 ## TUI
 

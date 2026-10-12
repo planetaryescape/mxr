@@ -1,0 +1,7 @@
+{
+  "pid": 74395,
+  "verified_command": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr daemon --foreground --no-bridge",
+  "signal": "SIGINT",
+  "socket_removed": true,
+  "tui_exit_code": 0
+}

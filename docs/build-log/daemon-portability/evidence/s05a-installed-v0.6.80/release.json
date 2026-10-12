@@ -1,0 +1,51 @@
+{
+  "observed_at": "2026-10-11T23:59:18.409304+00:00",
+  "tag": "v0.6.80",
+  "source": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "tree": "5c9393f4dd65e09d1c879c387d7a135a3ac8e289",
+  "workflow": "https://github.com/planetaryescape/mxr/actions/runs/38184347088",
+  "release": "https://github.com/planetaryescape/mxr/releases/tag/v0.6.80",
+  "downloads": [
+    {
+      "name": "mxr-v0.6.80-macos-aarch64.tar.gz",
+      "bytes": 60426523,
+      "sha256": "169ffb2c6817bac92c5034711e0f182fe23bb7919d6ee9242b3596e3141407d6",
+      "asset_id": 632131562,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.80/mxr-v0.6.80-macos-aarch64.tar.gz"
+    },
+    {
+      "name": "mxr-v0.6.80-macos-aarch64.tar.gz.sha256",
+      "bytes": 99,
+      "sha256": "d140a686ce36db26bbdfbcd94237373d922a077dbc13fe0a4bab16d9b38fcaaf",
+      "asset_id": 632131565,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.80/mxr-v0.6.80-macos-aarch64.tar.gz.sha256"
+    },
+    {
+      "name": "mxr-v0.6.80-linux-x86_64.tar.gz",
+      "bytes": 65437967,
+      "sha256": "2b3b373a4836af32d8551e3c04b4427d9dcd7abc32b8deb99bc32959a7586175",
+      "asset_id": 632131566,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.80/mxr-v0.6.80-linux-x86_64.tar.gz"
+    },
+    {
+      "name": "mxr-v0.6.80-linux-x86_64.tar.gz.sha256",
+      "bytes": 98,
+      "sha256": "2c183fba34e6a9eff378b0d5530ff92665dbb7e2e657927ede9d8a17dc85599c",
+      "asset_id": 632131569,
+      "url": "https://github.com/planetaryescape/mxr/releases/download/v0.6.80/mxr-v0.6.80-linux-x86_64.tar.gz.sha256"
+    }
+  ],
+  "binaries": {
+    "mxr": {
+      "sha256": "108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+      "version": "mxr 0.6.80",
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr"
+    },
+    "mxr-mailmerge": {
+      "sha256": "98171d0d3b0d5e839ce596264ce52db4ce27936542da40d8bb60cb9f2579d729",
+      "version": "mxr-mailmerge 0.6.80",
+      "path": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr-mailmerge"
+    }
+  },
+  "chime_player_sha256": "64d967a1a6fa8c698983ad279e251e908f8e8941e98978e2cf96887a382f726a"
+}

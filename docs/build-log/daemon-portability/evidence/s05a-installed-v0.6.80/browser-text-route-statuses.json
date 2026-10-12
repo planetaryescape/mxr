@@ -1,0 +1,596 @@
+[
+  {
+    "method": "GET",
+    "path": "/",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/status",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/local-token",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/client/shell",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/health",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/arrivals",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/desk",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/freshness",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/mailbox",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/messages/{id}/kind",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/modes/guide",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/modes/membership",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/now",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/rail",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/reply-later",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/search",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/threads/01a12d6b-03ef-7901-b950-244b78408a0e",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/mail/threads/{id}/context",
+    "status": 200,
+    "count": 2
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/platform/accounts",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/platform/llm/status",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/platform/notifications/chimes",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/AlsoInLine-iDPpjQ0k.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/AttachmentActions-uD_NayWz.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/CommandPalette-05s-uIi0.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/ListWithReader-BbXwocVX.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/LowTide-BnmZfZ73.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/MailView-lpFzjehi.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/MailViewParts-D-gC9rje.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/MessageBody-CVHbkYs2.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/MessageCard-B855xXZ_.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/ModeFrame-CKy2yagg.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/NewSenderQuestion-D4_cLVMr.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/ReaderSkeleton-CB0p3s0X.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/RowSwipe-BTLVJBHT.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/SearchPalette-BV6rCJFY.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/ThreadPane-C_fFE_Y-.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/When-CGmb4RbJ.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/alert-dialog-BrPPIvni.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/api-1A0XADCV.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/api-CHOnotM8.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/api-CmmAdI1d.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/api-DRQM_15Y.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/api-RMM0OivM.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/arrivalLine-A2rvVS7v.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/attachmentTransfer-FxvdiSqX.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/avatarTone-Dyy1xYgn.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/badge-DxfNGA1w.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/command-CvnWjgfX.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/contextFormat-BYjxv77R.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/deskCopy-Dl7knSFO.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/deskDone-BM-HKZMK.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/dialog-BG2BbkBQ.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/doneHereHint-DXcza5JL.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/focusPane-CViISwv_.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/index-BprBRLie.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/index-CzchGVsW.css",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/input-Bot0oMtF.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/listPane-DJuKnfw2.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/m._mailbox-D2E74k8D.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/m._mailbox._threadId-BI6lgoUT.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/mailMutations-F9vBsLAF.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/mailUndo-DPIefGOb.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/mailVerbs-DmBMhkoP.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/messages-CuL2VVgz.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/modeDone-CSMB_r2v.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/moveSubjects-rdM9r9C4.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/moves-OnGpb0PG.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/now-C9NAt8ca.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/placeCopy-CzWZzFMr.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/placeVerbs-BNtXx--2.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/readerNav-DAC8qGes.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/recursive-latin-mono-normal-a6FpAesW.woff2",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/requestCoordinator-CUS5Ufo9.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/senderKind-D5_-LGdJ.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/target-BGEUMDze.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/todoVerbs-MnxwUqxj.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/updatesVerbs-BcUgwqYF.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/useAdvanceOnRemoval-DEMoQ1TL.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/useDelayedPending-CkKhyC33.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/useHint-Bf9A0K5_.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/useInviteResponse-BXMljjgY.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/useSplitPane-CwK4rxG5.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-codemirror-state-BfOHWgG1.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-codemirror-view-Cpy-g8u5.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-icons-CuapDvve.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-radix-B2T4lAEk.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-react-C-f1Ei3k.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-tanstack-7LqS0JFu.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/vendor-tiptap-BwUbd_Oo.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/assets/workbox-window.prod.es5-BBnX5xw4.js",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/favicon.svg",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/manifest.webmanifest",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "GET",
+    "path": "/pwa-192.png",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/arrivals/modes",
+    "status": 200,
+    "count": 3
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/attachments/transfer/chunk",
+    "status": 200,
+    "count": 4
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/attachments/transfer/metadata",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/gists",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/modes/membership",
+    "status": 200,
+    "count": 1
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/mail/mutations/read",
+    "status": 200,
+    "count": 1
+  }
+]

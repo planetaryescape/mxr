@@ -1,0 +1,56 @@
+{
+  "source": "b55994bdc352cd95db893ceda95e77a065cc20ee",
+  "binary_sha256": "6742fde492fdeb822e67123d8edfdf46239d53809e465d83a0a047da6759c7c9",
+  "sealed_at": "2026-10-11T23:28:02.394604+00:00",
+  "files": [
+    {
+      "file": "cli.json",
+      "sha256": "456a89d40c13e158d2ee5b1d0c9461d027ead3b462f87e3f39f55a4c06395b00",
+      "original_evidence": "candidate-b55994bd-client-bridge-v3/result.json",
+      "original_sha256": "39d57138090cf325116f17181ae9c521ea28af8e17b6a8f7931947ece3c821cb",
+      "omitted_fields": [
+        "records",
+        "download_output"
+      ]
+    },
+    {
+      "file": "mcp.json",
+      "sha256": "27c70eb9b5d03cccb877d3ee3ac57670d3c12ff401a086e1d8bf821d2df6f8b4",
+      "original_evidence": "candidate-b55994bd-client-bridge-v3/mcp-acceptance.json",
+      "original_sha256": "1ce4b4bc18d5577d520e3de2f3c93a08082d3a031c19b291ee8acaf88dfaf9a3",
+      "omitted_fields": [
+        "records"
+      ]
+    },
+    {
+      "file": "tui.json",
+      "sha256": "5df63be4c54d93cbb181d65ac8991cc9fd820a77c471cae4b3234dab97a904b3",
+      "original_evidence": "candidate-b55994bd-client-bridge-v3/tui-acceptance.json",
+      "original_sha256": "5df63be4c54d93cbb181d65ac8991cc9fd820a77c471cae4b3234dab97a904b3",
+      "omitted_fields": []
+    },
+    {
+      "file": "old-client.json",
+      "sha256": "b77f011dfade32bedfe80ce7ebf2832528340dc2062ac67cd6a6929c366a1514",
+      "original_evidence": "candidate-b55994bd-client-bridge-v3/old-client-acceptance.json",
+      "original_sha256": "b77f011dfade32bedfe80ce7ebf2832528340dc2062ac67cd6a6929c366a1514",
+      "omitted_fields": []
+    },
+    {
+      "file": "old-daemon.json",
+      "sha256": "7f7633155227c47ba3cdf3d08ae852a8e937ef827d6db6b2b023845b84bad612",
+      "original_evidence": "candidate-b55994bd-old-daemon/result.json",
+      "original_sha256": "2cdd9489f7a8e2c8b69a840bd219e5e619cc832e6f2faf9bf6181192bbda3349",
+      "omitted_fields": [
+        "records"
+      ]
+    },
+    {
+      "file": "browser.json",
+      "sha256": "2a4e46a13b1a82442ae48908cf23f578f2217a96399446d846b04c17fd429412",
+      "original_evidence": "browser-candidate-b55994bd/result.json",
+      "original_sha256": "2a4e46a13b1a82442ae48908cf23f578f2217a96399446d846b04c17fd429412",
+      "omitted_fields": []
+    }
+  ]
+}

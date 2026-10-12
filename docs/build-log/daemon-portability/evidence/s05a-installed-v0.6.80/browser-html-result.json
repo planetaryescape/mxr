@@ -1,0 +1,40 @@
+{
+  "source_commit": "0067e774fc690f67df481f9f9ef4568d3d4ff442",
+  "source_tree": "5c9393f4dd65e09d1c879c387d7a135a3ac8e289",
+  "installed_binary": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-release/installer-bin/mxr",
+  "installed_binary_sha256": "sha256:108af1a80beffe7eb195154d37440981480a8daeac77b0436a541b53a33f1e54",
+  "fixture": {
+    "kind": "html",
+    "bytes": 1280116,
+    "sha256": "sha256:928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+    "cache_read_denial_profile": "/Users/bhekanik/.dotfiles/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/deny-cache.sb"
+  },
+  "routes_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/route-statuses.json",
+  "browser_console_file": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/browser-console.txt",
+  "screenshots": [
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/html-after-open.png",
+    "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/html-before-open.png"
+  ],
+  "cases": {
+    "cache_direct_read_denied": true,
+    "ui_search": "Invoice #2847",
+    "opened_message": "Frank Billing",
+    "download": {
+      "bytes": 1280116,
+      "sha256": "928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+      "matches_fixture": true
+    },
+    "open": {
+      "observed": "download fallback toast; no new tab",
+      "bytes": 1280116,
+      "sha256": "928ccf826af5d99854461530995cc0b91d5a1775845ed100a59bbba6caad5aeb",
+      "matches_fixture": true,
+      "script_canary_visible": false
+    },
+    "openapi": {
+      "status": 200,
+      "path": "/Users/bhekanik/.codex/worktrees/mxr-portability-stage-01/mxr/target/s05-evidence/published-v0.6.80-browser-html/api-v1-openapi.json",
+      "sha256": "a7e643a527dcba828c712bcf62afa550c8d11a5cbf05fa5872e880a3a2c8025f"
+    }
+  }
+}

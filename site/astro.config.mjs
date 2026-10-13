@@ -72,6 +72,7 @@ export default defineConfig({
             { label: 'Updates: a Briefing Twice a Day', slug: 'guides/updates' },
             { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
             { label: 'Read Newsletters as an Edition', slug: 'guides/reading' },
+            { label: 'Open Reading Items in Marginalia', slug: 'guides/marginalia' },
             { label: 'Clear Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
           ],
         },

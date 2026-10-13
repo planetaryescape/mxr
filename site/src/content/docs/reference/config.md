@@ -73,6 +73,7 @@ will not start or replace one. See [`transports`](#transports) and the
 [safety.tone]
 [deliveries]
 [updates]
+[reading]
 
 [accounts.work]
 ```
@@ -703,6 +704,20 @@ cuts = ["08:00", "16:30"]
 ```bash
 mxr updates --format json | jq '.cut'   # the cut in use, and every cut of the day
 ```
+
+## `reading`
+
+Where Reading items open with `M`: [Marginalia](/guides/marginalia/). Set
+by `mxr reading marginalia connect` or **Settings → Marginalia**, which
+check the token with Marginalia first.
+
+```toml
+[reading]
+marginalia_url = "https://reader.example.com/"
+```
+
+- `marginalia_url`: Marginalia's address. Unset by default, and nothing is
+  sent anywhere. The token is kept in the secrets file, never here.
 
 ## Custom keybindings
 

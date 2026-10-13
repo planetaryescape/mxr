@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, Loader2, MailX, RefreshCw } from "lucide-react";
+import { ArrowLeft, BookOpenText, ExternalLink, Loader2, MailX, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -17,6 +17,7 @@ import {
   READING_KEY,
   recordEngagement,
   useItemQuery,
+  useMarginaliaStatus,
   type ReadingDetail,
   type ReadingParagraph,
 } from "./api";
@@ -28,7 +29,15 @@ import {
   visibleBands,
   domainLabel,
 } from "./readingView";
-import { fetchLinked, highlightSelection, letGo, putOnLater, rememberLayout } from "./readingVerbs";
+import {
+  fetchLinked,
+  highlightSelection,
+  letGo,
+  openInMarginalia,
+  putOnLater,
+  refreshMarginaliaHighlights,
+  rememberLayout,
+} from "./readingVerbs";
 import type { ReadingEdition } from "./api";
 
 /** How often reading time is reported while the page is visible. */
@@ -134,6 +143,23 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     void highlightSelection(selection, item.item_key, showingArticle ? "article" : "issue");
   }, [item.item_key, showingArticle]);
 
+  const marginaliaStatus = useMarginaliaStatus();
+  const sentTo = detail.marginalia ?? null;
+  const openMarginalia = useCallback(
+    () =>
+      void openInMarginalia(item.item_key, sentTo?.read_url, {
+        connected: marginaliaStatus.data?.connected ?? false,
+        onConnect: () =>
+          void navigate({ to: "/settings/$section", params: { section: "marginalia" } }),
+      }),
+    [item.item_key, marginaliaStatus.data?.connected, navigate, sentTo?.read_url],
+  );
+  // Highlights made in Marginalia come back when a sent item opens.
+  const sentArticle = sentTo?.article_id;
+  useEffect(() => {
+    if (sentArticle) void refreshMarginaliaHighlights(item.item_key);
+  }, [item.item_key, sentArticle]);
+
   useShortcutScope("reading-reader");
   useScopeController("reading-reader", {
     down: () => columnRef.current?.scrollBy({ top: 80 }),
@@ -159,6 +185,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     unsubscribe: () => setUnsubscribing(true),
     openEmail: () =>
       void navigate({ to: "/reading/$threadId", params: { threadId: item.thread_id } }),
+    marginalia: openMarginalia,
     back,
   });
 
@@ -215,6 +242,20 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
           >
             <MailX aria-hidden className="size-3.5" /> Unsubscribe <KeyChip>D</KeyChip>
+          </button>
+          <button
+            type="button"
+            data-testid="reader-marginalia"
+            onClick={openMarginalia}
+            title={
+              sentTo
+                ? "Open it in Marginalia"
+                : "Send it to Marginalia and open it there: its text goes to Marginalia"
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
+          >
+            <BookOpenText aria-hidden className="size-3.5" />
+            {sentTo ? "In Marginalia" : "Open in Marginalia"} <KeyChip>M</KeyChip>
           </button>
           <span className="ml-auto hidden items-center gap-3 sm:inline-flex">
             <span className="inline-flex items-center gap-1">
@@ -286,6 +327,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                       className="border-l-2 border-primary pl-3 text-[14px] text-foreground/90"
                     >
                       {h.quote}
+                      {h.origin === "marginalia" ? (
+                        <span className="ml-2 text-[11.5px] text-muted-foreground">
+                          from Marginalia
+                        </span>
+                      ) : null}
                       {h.note ? (
                         <p className="text-[12.5px] text-muted-foreground">{h.note}</p>
                       ) : null}

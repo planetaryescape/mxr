@@ -1,7 +1,8 @@
 //! Reading in the TUI: `g r` opens the edition, Enter reads beside it and
 //! records the open, `b` on a digest link puts it on Later and saves its
 //! article, `A` and `D` preview before they change anything and commit
-//! exactly what they previewed, `L` names the site before it fetches.
+//! exactly what they previewed, `L` names the site before it fetches, and
+//! `M` sends the item to Marginalia.
 
 use super::*;
 use crate::app::ReadingConfirm;
@@ -362,6 +363,7 @@ fn h_in_the_reader_highlights_the_top_paragraph() {
             article: None,
             article_error: None,
             highlights: Vec::new(),
+            marginalia: None,
             minutes_left: 1,
             pace_wpm: 230,
             item: detail_item,
@@ -373,6 +375,17 @@ fn h_in_the_reader_highlights_the_top_paragraph() {
         request,
         Request::SaveHighlight { quote, view: Some(view), .. }
             if quote.starts_with("Every reader") && view == "issue"
+    )));
+}
+
+#[test]
+fn shift_m_sends_the_item_under_the_cursor_to_marginalia() {
+    let mut app = reading_app();
+    let expected = edition().bands[0].items[0].item_key.clone();
+    key(&mut app, 'M');
+    assert!(queued(&app).iter().any(|request| matches!(
+        request,
+        Request::SendReadingToMarginalia { item_key, dry_run: false } if *item_key == expected
     )));
 }
 

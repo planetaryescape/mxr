@@ -291,6 +291,10 @@ pub struct ReadingArticleData {
     pub html: String,
 }
 
+fn mxr_origin() -> String {
+    "mxr".to_string()
+}
+
 /// A saved passage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -304,6 +308,9 @@ pub struct ReadingHighlightData {
     pub quote: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// `mxr`, or `marginalia` for one made there and read back.
+    #[serde(default = "mxr_origin")]
+    pub origin: String,
     /// The item's title and source, as of saving.
     pub title: String,
     pub source: String,
@@ -331,6 +338,9 @@ pub struct ReadingItemDetailData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub article_error: Option<String>,
     pub highlights: Vec<ReadingHighlightData>,
+    /// The Marginalia article it became, when it was sent there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marginalia: Option<ReadingMarginaliaData>,
     /// Minutes left at your pace, from your progress.
     pub minutes_left: u32,
     pub pace_wpm: u32,
@@ -364,4 +374,99 @@ pub struct ReadingFetchData {
     /// Why it failed: a paywall, a private address, a page too large.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Marginalia, the reading app items can be sent to.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarginaliaStatusData {
+    /// A site and a token are saved.
+    pub connected: bool,
+    /// The site, such as `https://reader.example.com/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Items sent so far, whose highlights are read back.
+    pub sent: u32,
+}
+
+/// The site and the personal token to connect Marginalia with.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarginaliaConnectionData {
+    pub url: String,
+    /// `mrg_…`, from Marginalia's Account, Connected apps. Kept in the
+    /// secrets file, never in config or logs.
+    pub token: String,
+}
+
+impl std::fmt::Debug for MarginaliaConnectionData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MarginaliaConnectionData")
+            .field("url", &self.url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+/// The Marginalia article an item became.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReadingMarginaliaData {
+    pub article_id: String,
+    /// Where it opens in Marginalia.
+    pub read_url: String,
+    pub sent_at: chrono::DateTime<chrono::Utc>,
+    /// When its highlights were last read back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlights_synced_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// What `SendReadingToMarginalia` did, or would do.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarginaliaSendData {
+    pub item_key: String,
+    pub dry_run: bool,
+    /// The Marginalia site the item goes to.
+    pub host: String,
+    pub title: String,
+    /// `issue` or `article`: the text that is sent.
+    pub view: String,
+    /// Size of the text sent, in bytes; 0 when it was sent before.
+    pub bytes: u64,
+    /// The article's site, contacted first to fetch it for a digest link
+    /// whose article isn't saved yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetch_first: Option<String>,
+    /// It was sent before: nothing is sent, and it opens where it went.
+    pub already_sent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marginalia: Option<ReadingMarginaliaData>,
+    /// "Sent to Marginalia." or "Already in Marginalia."
+    pub copy: String,
+}
+
+/// One item whose highlights couldn't be read back.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarginaliaSyncFailureData {
+    pub item_key: String,
+    pub error: String,
+}
+
+/// What `SyncMarginaliaHighlights` read back.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarginaliaSyncData {
+    /// Items whose highlights were read.
+    pub items: u32,
+    pub added: u32,
+    /// Deleted in Marginalia, so removed here too.
+    pub removed: u32,
+    /// Items Marginalia no longer has: sending them again makes a new one.
+    pub forgotten: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<MarginaliaSyncFailureData>,
 }

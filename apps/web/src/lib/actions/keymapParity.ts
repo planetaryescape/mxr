@@ -236,6 +236,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "reading.open-email": ["ReadingOpenEmail"],
   "reading.later-shelf": ["ReadingLaterShelf"],
   "reading.move-sender": ["OpenSenderKindMenu"],
+  "reading.marginalia": ["ReadingMarginalia"],
   "modes.move": ["OpenMoveMenu"],
   "modes.move-sender": ["OpenSenderMoveMenu"],
 };
@@ -556,7 +557,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "reading",
     // prettier-ignore
-    keys: ["G", "g g", "H", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["G", "g g", "H", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web edition moves with j and k",
   },

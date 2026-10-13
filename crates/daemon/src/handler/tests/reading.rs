@@ -989,3 +989,304 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
     };
     assert_eq!(item.item.account_id, fx.account);
 }
+
+mod marginalia {
+    //! Sending an item to Marginalia and reading its highlights back,
+    //! against a stand-in Marginalia, with config and secrets in a temp dir.
+
+    use super::*;
+    use crate::handler::handle_request;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const TOKEN: &str = "mrg_fixture-token";
+
+    async fn try_request(fx: &Fixture, req: Request) -> Result<ResponseData, String> {
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 3,
+            source: ClientKind::default(),
+            payload: IpcPayload::Request(req),
+        };
+        match handle_request(&fx.state, &msg).await.payload {
+            IpcPayload::Response(Response::Ok { data }) => Ok(data),
+            IpcPayload::Response(Response::Error { message, .. }) => Err(message),
+            other => panic!("unexpected payload {other:?}"),
+        }
+    }
+
+    async fn item(fx: &Fixture, key: &str) -> mxr_protocol::ReadingItemDetailData {
+        let ResponseData::ReadingItem { item } = request(
+            fx,
+            Request::GetReadingItem {
+                item_key: key.to_string(),
+            },
+        )
+        .await
+        else {
+            panic!("item");
+        };
+        item
+    }
+
+    async fn sync(fx: &Fixture) -> mxr_protocol::MarginaliaSyncData {
+        let ResponseData::MarginaliaSync { sync } =
+            request(fx, Request::SyncMarginaliaHighlights { item_key: None }).await
+        else {
+            panic!("sync");
+        };
+        sync
+    }
+
+    fn highlights_body(marks: &[(&str, &str)]) -> serde_json::Value {
+        serde_json::json!({
+            "articleId": "k57",
+            "title": "t",
+            "highlights": marks.iter().map(|(id, text)| serde_json::json!({
+                "id": id, "kind": "highlight", "text": text,
+                "paragraphIndex": 0, "createdAt": 1_760_000_000_000_i64,
+            })).collect::<Vec<_>>(),
+        })
+    }
+
+    async fn journey() {
+        let fx = Fixture::new().await;
+        let (id, _) = issue(
+            &fx,
+            WEEKLY,
+            "Why sync engines need tombstones",
+            &essay(200),
+            Utc::now(),
+        )
+        .await;
+        let key = format!("{id}:0");
+
+        // Nothing goes anywhere before Marginalia is connected.
+        let error = try_request(
+            &fx,
+            Request::SendReadingToMarginalia {
+                item_key: key.clone(),
+                dry_run: true,
+            },
+        )
+        .await
+        .expect_err("not connected");
+        assert!(error.contains("isn't connected"), "{error}");
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/articles/mxr-connection-check/highlights"))
+            .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/articles/mxr-connection-check/highlights"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        // A token Marginalia refuses is never saved.
+        let refused = try_request(
+            &fx,
+            Request::SetMarginaliaConnection {
+                connection: Some(mxr_protocol::MarginaliaConnectionData {
+                    url: server.uri(),
+                    token: "mrg_wrong".into(),
+                }),
+            },
+        )
+        .await
+        .expect_err("refused");
+        assert!(refused.contains("token"), "{refused}");
+        assert!(fx.state.config_snapshot().reading.marginalia_url.is_none());
+
+        let ResponseData::MarginaliaStatus { status } = request(
+            &fx,
+            Request::SetMarginaliaConnection {
+                connection: Some(mxr_protocol::MarginaliaConnectionData {
+                    url: format!("{}/read/whatever", server.uri()),
+                    token: TOKEN.into(),
+                }),
+            },
+        )
+        .await
+        else {
+            panic!("status");
+        };
+        assert!(status.connected);
+        assert_eq!(status.host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(status.url, Some(format!("{}/", server.uri())));
+        let saved = mxr_config::load_config().expect("config");
+        assert_eq!(saved.reading.marginalia_url, status.url);
+        let config_text =
+            std::fs::read_to_string(mxr_config::config_file_path()).expect("config file");
+        assert!(
+            !config_text.contains(TOKEN),
+            "the token stays out of config"
+        );
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/articles"))
+            .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "articleId": "k57",
+                "readUrl": "https://reader.example.com/read/k57",
+                "created": true,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        // The dry run names what would go where and sends nothing.
+        let ResponseData::MarginaliaSend { send } = request(
+            &fx,
+            Request::SendReadingToMarginalia {
+                item_key: key.clone(),
+                dry_run: true,
+            },
+        )
+        .await
+        else {
+            panic!("dry run");
+        };
+        assert!(send.dry_run && !send.already_sent);
+        assert_eq!(send.view, "issue");
+        assert!(send.bytes > 0);
+        assert_eq!(send.copy, "Would send to 127.0.0.1.");
+        assert!(item(&fx, &key).await.marginalia.is_none());
+
+        let ResponseData::MarginaliaSend { send } = request(
+            &fx,
+            Request::SendReadingToMarginalia {
+                item_key: key.clone(),
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("send");
+        };
+        assert_eq!(send.copy, "Sent to Marginalia.");
+        assert_eq!(
+            send.marginalia.as_ref().map(|m| m.read_url.as_str()),
+            Some("https://reader.example.com/read/k57")
+        );
+        let sent_body: serde_json::Value = server
+            .received_requests()
+            .await
+            .expect("requests")
+            .iter()
+            .find(|r| r.method.as_str() == "POST")
+            .map(|r| serde_json::from_slice(&r.body).expect("json"))
+            .expect("posted");
+        assert_eq!(sent_body["externalId"], format!("mxr:{key}"));
+        assert_eq!(sent_body["title"], "Why sync engines need tombstones");
+        assert_eq!(sent_body["author"], "Long Reads Weekly");
+        assert!(sent_body["html"]
+            .as_str()
+            .is_some_and(|html| html.contains("A delete is the absence of a row")));
+
+        // Sending again opens what was sent: nothing new goes out.
+        let ResponseData::MarginaliaSend { send } = request(
+            &fx,
+            Request::SendReadingToMarginalia {
+                item_key: key.clone(),
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("again");
+        };
+        assert!(send.already_sent);
+        assert_eq!(
+            item(&fx, &key).await.marginalia.map(|m| m.article_id),
+            Some("k57".into())
+        );
+
+        // Highlights made in Marginalia come back beside mxr's own.
+        request(
+            &fx,
+            Request::SaveHighlight {
+                item_key: key.clone(),
+                quote: "A delete is the absence of a row".into(),
+                note: None,
+                view: None,
+            },
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/articles/k57/highlights"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(highlights_body(&[
+                ("h1", "an absence does not travel on its own"),
+                ("h2", "A delete"),
+            ])))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let first = sync(&fx).await;
+        assert_eq!((first.items, first.added, first.removed), (1, 2, 0));
+        let origins: Vec<String> = item(&fx, &key)
+            .await
+            .highlights
+            .iter()
+            .map(|h| format!("{}:{}", h.origin, h.quote))
+            .collect();
+        assert_eq!(origins.len(), 3);
+        assert!(origins.contains(&"mxr:A delete is the absence of a row".to_string()));
+        assert!(origins.contains(&"marginalia:an absence does not travel on its own".to_string()));
+
+        // Deleted there, deleted here; mxr's own highlight stays.
+        Mock::given(method("GET"))
+            .and(path("/api/v1/articles/k57/highlights"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(highlights_body(&[(
+                "h1",
+                "an absence does not travel on its own",
+            )])))
+            .mount(&server)
+            .await;
+        let second = sync(&fx).await;
+        assert_eq!((second.added, second.removed), (0, 1));
+        assert_eq!(item(&fx, &key).await.highlights.len(), 2);
+
+        let ResponseData::MarginaliaStatus { status } =
+            request(&fx, Request::SetMarginaliaConnection { connection: None }).await
+        else {
+            panic!("disconnect");
+        };
+        assert!(!status.connected);
+        assert_eq!(status.sent, 1);
+    }
+
+    #[test]
+    fn sends_once_and_reads_highlights_back_beside_your_own() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("runtime");
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir.as_os_str())),
+                ("MXR_DATA_DIR", Some(dir.path().join("data").as_os_str())),
+                (
+                    "MXR_SOCKET_PATH",
+                    Some(dir.path().join("mxr.sock").as_os_str()),
+                ),
+                (
+                    "MXR_SECRETS_PATH",
+                    Some(config_dir.join("secrets.toml").as_os_str()),
+                ),
+                ("MXR_INSTANCE", Some("mxr".as_ref())),
+                ("MXR_KEYCHAIN", Some("off".as_ref())),
+            ],
+            || runtime.block_on(journey()),
+        );
+        let secrets = std::fs::read_to_string(config_dir.join("secrets.toml")).unwrap_or_default();
+        assert!(!secrets.contains(TOKEN), "disconnecting clears the token");
+    }
+}

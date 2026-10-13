@@ -14,6 +14,7 @@
 
 mod article;
 mod item;
+mod marginalia;
 mod sources;
 
 pub(super) use article::fetch_article;
@@ -788,6 +789,16 @@ pub(super) async fn handle(
             ))
             .await
         }
+        Request::GetMarginaliaStatus => marginalia::status(state).await,
+        Request::SetMarginaliaConnection { connection } => {
+            Box::pin(marginalia::set_connection(state, connection.as_ref())).await
+        }
+        Request::SendReadingToMarginalia { item_key, dry_run } => {
+            Box::pin(marginalia::send(state, item_key, *dry_run)).await
+        }
+        Request::SyncMarginaliaHighlights { item_key } => {
+            Box::pin(marginalia::sync(state, item_key.as_deref())).await
+        }
         _ => Err(HandlerError::from(format!(
             "not a Reading request: {}",
             super::request_kind(req)
@@ -829,6 +840,7 @@ pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId) {
         Ok(_) => {}
         Err(error) => tracing::warn!(account = %account_id, %error, "reading sweep failed"),
     }
+    marginalia::after_sync(state, account_id).await;
 }
 
 #[cfg(test)]

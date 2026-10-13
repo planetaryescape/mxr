@@ -286,6 +286,8 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
         quote: "Start with the tablet.".into(),
         note: Some("good".into()),
         created_at: at(3),
+        origin: "mxr".into(),
+        origin_id: None,
     };
     fx.store
         .insert_reading_highlight(&highlight)
@@ -357,4 +359,120 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
     let got = fx.store.reading_visit(&fx.account).await.expect("read");
     assert_eq!(got.first_seen, Some(at(1)), "the first visit is kept");
     assert_eq!(got.boundary, Some(at(1)));
+}
+
+#[tokio::test]
+async fn marginalia_highlights_mirror_without_touching_your_own() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = ReadingHighlightRow {
+        id: "own".into(),
+        account_id: fx.account.clone(),
+        message_id: issue.clone(),
+        idx: 0,
+        view: "issue".into(),
+        quote: "made in mxr".into(),
+        note: None,
+        created_at: at(1),
+        origin: "mxr".into(),
+        origin_id: None,
+    };
+    fx.store.insert_reading_highlight(&own).await.expect("own");
+    let sent = ReadingMarginaliaRow {
+        message_id: issue.clone(),
+        idx: 0,
+        account_id: fx.account.clone(),
+        article_id: "k57".into(),
+        read_url: "https://reader.example.com/read/k57".into(),
+        view: "issue".into(),
+        sent_at: at(2),
+        highlights_synced_at: None,
+    };
+    fx.store
+        .upsert_reading_marginalia(&sent)
+        .await
+        .expect("sent");
+    assert_eq!(
+        fx.store.reading_marginalia(&issue, 0).await.expect("read"),
+        Some(sent.clone())
+    );
+    assert_eq!(
+        fx.store
+            .reading_marginalia_due(None, at(3), at(0), 10)
+            .await
+            .expect("due")
+            .len(),
+        1
+    );
+
+    let marked = |id: &str, quote: &str| MarginaliaHighlightIn {
+        origin_id: id.into(),
+        quote: quote.into(),
+        created_at: at(3),
+    };
+    let first = fx
+        .store
+        .mirror_marginalia_highlights(&sent, &[marked("a", "one"), marked("b", "two")], at(4))
+        .await
+        .expect("mirror");
+    assert_eq!(
+        first,
+        MarginaliaMirror {
+            added: 2,
+            removed: 0
+        }
+    );
+    let second = fx
+        .store
+        .mirror_marginalia_highlights(&sent, &[marked("b", "two, edited")], at(5))
+        .await
+        .expect("mirror again");
+    assert_eq!(
+        second,
+        MarginaliaMirror {
+            added: 0,
+            removed: 1
+        }
+    );
+
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .expect("highlights");
+    let quotes: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|row| (row.origin.as_str(), row.quote.as_str()))
+        .collect();
+    assert_eq!(
+        quotes,
+        vec![("mxr", "made in mxr"), ("marginalia", "two, edited")]
+    );
+    assert_eq!(
+        fx.store
+            .reading_marginalia(&issue, 0)
+            .await
+            .expect("read")
+            .and_then(|row| row.highlights_synced_at),
+        Some(at(5))
+    );
+    assert!(fx
+        .store
+        .reading_marginalia_due(None, at(5), at(0), 10)
+        .await
+        .expect("due")
+        .is_empty());
+
+    fx.store
+        .delete_messages_and_derived(&fx.account, &["p1".to_string()])
+        .await
+        .expect("delete");
+    assert_eq!(
+        fx.store.reading_marginalia(&issue, 0).await.expect("gone"),
+        None
+    );
 }

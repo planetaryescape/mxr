@@ -104,7 +104,8 @@ use utoipa::{
         mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export,
         mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
         mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
-        mail_reading_sources,
+        mail_reading_sources, mail_reading_marginalia_get, mail_reading_marginalia_post,
+        mail_reading_marginalia_send, mail_reading_marginalia_sync,
         mail_updates_digest, mail_updates_let_go, mail_updates_source,
         mail_arrivals, mail_arrivals_list, mail_arrivals_modes, mail_message_move,
         mail_move_undo, mail_corrections
@@ -145,6 +146,9 @@ use utoipa::{
         crate::reading_routes::ReadingArticleBody,
         crate::reading_routes::ReadingHighlightBody,
         crate::reading_routes::ReadingSourceBody,
+        crate::reading_routes::MarginaliaConnectionBody,
+        crate::reading_routes::MarginaliaSendBody,
+        crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
         crate::arrival_routes::ArrivalModesBody,
@@ -1339,6 +1343,58 @@ fn mail_reading_highlights_post() {}
 )]
 #[allow(dead_code)]
 fn mail_reading_sources() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/reading/marginalia",
+    summary = "Whether Marginalia is connected, where, and how many items were sent",
+    responses(
+        (status = 200, description = "The `MarginaliaStatus` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_marginalia_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/marginalia",
+    summary = "Connect Marginalia with its site and a personal token (checked first), or disconnect with null",
+    request_body = crate::reading_routes::MarginaliaConnectionBody,
+    responses(
+        (status = 200, description = "The `MarginaliaStatus` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_marginalia_post() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/items/{item_key}/marginalia",
+    summary = "Send a Reading item to Marginalia, or find it there if sent before; dry_run contacts nothing",
+    params(("item_key" = String, Path, description = "`<message id>:<index>`")),
+    request_body = crate::reading_routes::MarginaliaSendBody,
+    responses(
+        (status = 200, description = "The `MarginaliaSend` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_marginalia_send() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/marginalia/highlights",
+    summary = "Read back highlights made in Marginalia on one sent item, or every sent item",
+    request_body = crate::reading_routes::MarginaliaSyncBody,
+    responses(
+        (status = 200, description = "The `MarginaliaSync` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_marginalia_sync() {}
 
 #[utoipa::path(
     get,

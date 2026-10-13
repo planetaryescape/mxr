@@ -1173,6 +1173,21 @@ const MIGRATIONS: &[Migration] = &[
         MigrationStep::AddColumn { table: "remote_pairings", column: "allow_send", sql: include_str!("../migrations/085_remote_pairing_send.sql") },
         MigrationStep::AddColumn { table: "remote_clients", column: "allow_send", sql: include_str!("../migrations/085_remote_client_send.sql") },
     ]) },
+    Migration { version: 86, name: "reading_marginalia", kind: MigrationKind::Composite(READING_MARGINALIA_STEPS) },
+];
+
+const READING_MARGINALIA_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "reading_highlights",
+        column: "origin",
+        sql: "ALTER TABLE reading_highlights ADD COLUMN origin TEXT NOT NULL DEFAULT 'mxr'",
+    },
+    MigrationStep::AddColumn {
+        table: "reading_highlights",
+        column: "origin_id",
+        sql: "ALTER TABLE reading_highlights ADD COLUMN origin_id TEXT",
+    },
+    MigrationStep::Sql(include_str!("../migrations/086_reading_marginalia.sql")),
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -103,7 +103,7 @@ impl IpcConnection {
 
     /// Capability check precedes opening any client file. No host-path fallback.
     pub async fn require_draft_attachment_upload(&mut self) -> Result<(), ClientError> {
-        match self.upload_request(if self.selected_remote { Request::GetRemoteReady } else { Request::GetStatus }, None).await? {
+        match self.upload_request(if self.is_paired_remote() { Request::GetRemoteReady } else { Request::GetStatus }, None).await? {
             ResponseData::Status { draft_attachment_upload_supported: true, .. } => Ok(()),
             ResponseData::RemoteReady { draft_attachment_upload_supported: true, capabilities, .. } if capabilities.contains(&mxr_core::RemoteCapability::MailSend) => Ok(()),
             ResponseData::RemoteReady { .. } => Err(error("Portable attachment uploads require host-approved send access; request mxr connect --allow-send and host approval")),
@@ -219,7 +219,7 @@ impl IpcConnection {
         mut request: Request,
         workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Request, ClientError> {
-        if self.selected_remote {
+        if self.is_paired_remote() {
             if let Request::CheckDraftSafety { draft, context } = request {
                 request = Request::PreviewDraft {
                     draft,
@@ -303,7 +303,7 @@ impl IpcConnection {
             _ => return Ok(request),
         };
         if draft.attachments.is_empty() {
-            if self.selected_remote {
+            if self.is_paired_remote() {
                 if let Some(reviewed) = self.preview_attachment_declarations.get(&draft.id) {
                     check_preview_attachments(
                         reviewed,
@@ -399,7 +399,7 @@ impl IpcConnection {
                     managed.push(resource.clone());
                 }
             } else {
-                if !self.selected_remote
+                if !self.is_paired_remote()
                     && canonical
                         .as_ref()
                         .is_some_and(|stored| stored.attachments.contains(&path))
@@ -414,7 +414,7 @@ impl IpcConnection {
                 files.push((filename, bytes));
             }
         }
-        if self.selected_remote {
+        if self.is_paired_remote() {
             if let Some(reviewed) = &reviewed {
                 check_preview_attachments(reviewed, &managed, &files)?;
             }

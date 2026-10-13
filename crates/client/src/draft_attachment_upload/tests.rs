@@ -477,6 +477,7 @@ async fn remote_preview_uses_declarations_without_upload_and_changed_bytes_fail_
         .await
         .expect("connection");
     connection.selected_remote = true;
+    connection.remote_registration_identity = Some(("fixture".into(), "fixture".into()));
     let draft = draft(&path);
     let preview = connection
         .prepare_draft_attachment_request(

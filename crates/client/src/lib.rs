@@ -214,6 +214,7 @@ pub struct IpcConnection {
     source: ClientKind,
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
+    // TCP/command targets restrict local provisioning without paired authority.
     selected_remote: bool,
     preview_attachment_declarations:
         std::collections::HashMap<mxr_core::DraftId, Vec<mxr_core::DraftAttachment>>,
@@ -224,7 +225,7 @@ pub struct IpcConnection {
 
 impl IpcConnection {
     pub fn is_paired_remote(&self) -> bool {
-        self.selected_remote
+        self.remote_registration_identity.is_some()
     }
 
     /// Carry byte reviews only across reconnection of the same selected session.
@@ -440,7 +441,7 @@ impl IpcConnection {
     {
         remote_connection::schedule_cleanup();
         self.verify_selection().await?;
-        if self.selected_remote && matches!(request, Request::GetArchiveWorkspace) {
+        if self.is_paired_remote() && matches!(request, Request::GetArchiveWorkspace) {
             let workspace = self.capture_workspace_with_events(&mut on_event).await?;
             return Ok(Response::Ok {
                 data: ResponseData::ArchiveWorkspace { workspace },
@@ -465,7 +466,7 @@ impl IpcConnection {
                 .await?;
         }
         let safety_preview =
-            self.selected_remote && matches!(request, Request::CheckDraftSafety { .. });
+            self.is_paired_remote() && matches!(request, Request::CheckDraftSafety { .. });
         let request = match self
             .prepare_draft_attachment_request(request, expected_workspace)
             .await
@@ -503,7 +504,7 @@ impl IpcConnection {
         ) {
             let status = self
                 .request_response_unchecked(
-                    if self.selected_remote {
+                    if self.is_paired_remote() {
                         Request::GetRemoteReady
                     } else {
                         Request::GetStatus
@@ -527,7 +528,7 @@ impl IpcConnection {
         {
             let status = self
                 .request_response_unchecked(
-                    if self.selected_remote {
+                    if self.is_paired_remote() {
                         Request::GetRemoteReady
                     } else {
                         Request::GetStatus
@@ -581,7 +582,7 @@ impl IpcConnection {
         ) {
             let status = self
                 .request_response_unchecked(
-                    if self.selected_remote {
+                    if self.is_paired_remote() {
                         Request::GetRemoteReady
                     } else {
                         Request::GetStatus
@@ -635,7 +636,7 @@ impl IpcConnection {
         ) {
             let status = self
                 .request_response_unchecked(
-                    if self.selected_remote {
+                    if self.is_paired_remote() {
                         Request::GetRemoteReady
                     } else {
                         Request::GetStatus
@@ -671,7 +672,7 @@ impl IpcConnection {
         ) {
             let status = self
                 .request_response_unchecked(
-                    if self.selected_remote {
+                    if self.is_paired_remote() {
                         Request::GetRemoteReady
                     } else {
                         Request::GetStatus
@@ -1520,6 +1521,8 @@ mod tests {
                 .await
                 .unwrap();
             connection.selected_remote = true;
+            connection.remote_registration_identity =
+                Some(("fixture-host".into(), "fixture-client".into()));
             let response = connection
                 .request_response(request, |_| {}, None)
                 .await

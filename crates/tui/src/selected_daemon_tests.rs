@@ -23,11 +23,11 @@ fn owner(workspace: &str) -> ArchiveWorkspaceData {
     }
 }
 fn status() -> ResponseData {
-    serde_json::from_value(serde_json::json!({"kind":"Status","uptime_secs":0,"accounts":[],"total_messages":1,"workspace_owner_supported":true,"protocol_version":mxr_protocol::IPC_PROTOCOL_VERSION,"daemon_version":"different-package","daemon_build_id":"different-build"})).unwrap()
+    serde_json::from_value(serde_json::json!({"kind":"Status","uptime_secs":0,"accounts":[],"total_messages":1,"workspace_owner_supported":true,"archive_recovery_supported":true,"protocol_version":mxr_protocol::IPC_PROTOCOL_VERSION,"daemon_version":"different-package","daemon_build_id":"different-build"})).unwrap()
 }
 
 #[tokio::test]
-async fn worker_reconnect_preserves_remote_preview_before_any_save_or_upload() {
+async fn legacy_worker_preserves_safety_request_across_reconnect() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("reviewed.bin");
     std::fs::write(&path, b"reviewed bytes").unwrap();
@@ -60,38 +60,17 @@ async fn worker_reconnect_preserves_remote_preview_before_any_save_or_upload() {
                             workspace: owner("original"),
                         },
                     },
-                    Request::GetRemoteReady => Response::Ok {
-                        data: ResponseData::RemoteReady {
-                            attachment_transfer_supported: true,
-                            capabilities: vec![
-                                mxr_core::RemoteCapability::MailRead,
-                                mxr_core::RemoteCapability::MailSend,
-                            ],
-                            draft_attachment_upload_supported: true,
-                            draft_revision_supported: true,
-                            send_outcome_supported: true,
-                            protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
-                            host_id: "fixture".into(),
-                            client_id: "fixture".into(),
-                            workspace: owner("original"),
-                        },
-                    },
-                    Request::PreviewDraft {
-                        draft,
-                        pending_attachments,
-                        ..
-                    } => {
-                        // CheckDraftSafety must have taken the selected_remote branch.
-                        assert_eq!(connection, 0);
-                        assert!(draft.attachments.is_empty());
-                        assert_eq!(pending_attachments.len(), 1);
-                        close = true;
+                    Request::GetRemoteReady => Response::error_kinded(
+                        "Remote readiness requires authenticated admission",
+                        mxr_protocol::IpcErrorKind::Auth,
+                    ),
+                    Request::PreviewDraft { .. } => panic!("legacy safety became paired preview"),
+                    Request::CheckDraftSafety { draft, .. } => {
+                        assert_eq!(draft.attachments.len(), 1);
+                        close = connection == 0;
                         Response::Ok {
                             data: ResponseData::Ack,
                         }
-                    }
-                    Request::CheckDraftSafety { .. } => {
-                        panic!("worker did not use remote preview semantics")
                     }
                     _ => {
                         server_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -160,12 +139,23 @@ async fn worker_reconnect_preserves_remote_preview_before_any_save_or_upload() {
     std::fs::write(&path, b"changed bytes").unwrap();
     let response = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        ipc_call(&worker, Request::SaveDraft { draft }),
+        ipc_call(
+            &worker,
+            Request::CheckDraftSafety {
+                draft,
+                context: Default::default(),
+            },
+        ),
     )
     .await
     .unwrap()
-    .expect_err("changed bytes must stop before any write");
-    assert!(response.to_string().contains("changed since preview"));
+    .unwrap();
+    assert!(matches!(
+        response,
+        Response::Ok {
+            data: ResponseData::Ack
+        }
+    ));
     assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 0);
     drop(worker);
     tokio::time::timeout(std::time::Duration::from_secs(5), server)

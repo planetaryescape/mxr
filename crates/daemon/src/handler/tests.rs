@@ -713,6 +713,7 @@ mod draft_attachment_resources;
 mod draft_revisions;
 mod freshness;
 mod html_drafts;
+mod legacy_transport;
 mod messages;
 mod messages_report;
 mod modes;

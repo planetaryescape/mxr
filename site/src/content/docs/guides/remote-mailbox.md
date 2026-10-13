@@ -107,7 +107,7 @@ mxr send-outcome ORIGINAL_OPERATION_ID --account ACCOUNT_ID \
 
 Keep the original identity after a disconnect or host restart. An `accepted` outcome means the provider accepted the send; retrying that operation with the retained account returns the accepted result even after the draft was removed. `unknown` remains uncertain: query it and do not resend under a new operation ID. `not_accepted` requires a fresh review before a new attempt.
 
-Outgoing attachment paths are read on the client and uploaded as bounded bytes. The host opens only managed resources. Legacy drafts with host paths or inline path-backed assets are refused remotely; recreate them with portable uploads. Received attachments download to the client:
+Outgoing attachment paths are read on the client and uploaded as bounded bytes. The host opens only managed resources. Reading, previewing and sending legacy drafts with host paths or inline path-backed assets are refused remotely; recreate them with portable uploads. Received attachments download to the client:
 
 ```sh
 mxr attachments download MESSAGE_ID --dir ./downloads --format json

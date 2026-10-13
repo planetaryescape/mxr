@@ -1,6 +1,6 @@
 # Remote hosting needs saved connections and explicit client lifecycles
 
-Status: F01 done in v0.6.94; R1 building. Remote mailbox access remains unshipped. Updated 2026-10-12.
+Status: F01 done in v0.6.94; R1 building. Remote mailbox access remains unshipped. Updated 2026-10-13.
 
 Canonical contract: [remote hosting and clients](../blueprint/24-remote-hosting-and-clients.md). This follows the completed daemon portability preparation and owns its deferred R01 work. The previous 13-stage release sequence remains complete.
 
@@ -12,7 +12,7 @@ Implement `mxr serve` on a Mac or Linux host and `mxr connect` on client install
 
 Both published platform binaries passed all 32 checks in the isolated CLI/IPC fixture: approval, revocation, retries and restart. Store tests with an injected clock cover expiry. Archive checksums, separate installer and Homebrew bytes matched. The [release workflow](https://github.com/planetaryescape/mxr/actions/runs/38306908031) passed, and the public [pairing guide](https://mxr.sh/guides/pairing-authority/), CLI reference and automation contract passed production browser checks. The remaining retry-passing CI observations are tracked in [the browser issue](browser-retry-observations.md).
 
-The subsequent R1 stage must inventory every remote HTTP and IPC operation, including indirect paths to host files, credentials, scripts and process control, before exposing a listener. Keep host authority outside forwarded requests and remove host filesystem paths from allowed mail responses. Resolve revocation durability across power loss before promising that an acknowledged revocation survives it; the current store uses WAL with `synchronous=NORMAL` (`crates/store/src/pool.rs`, reviewed at `ab35c25c`).
+The unreleased R1 candidate at `5cd688d2` uses a dedicated router, an explicit read-operation allowlist and per-operation registration checks. It strips host attachment paths from body responses and keeps host administration local. Its writer uses WAL with `synchronous=FULL` and `fullfsync=ON`; effective-pragmas tests pass. A small synthetic bulk-write comparison has overlapping sample ranges and is not a general performance guarantee. Review also caught and fixed restoring a schema-83 backup before migration: the retirement table introduced in schema 84 is optional at that point. Full private HTTPS installed acceptance, independent review and release remain outstanding.
 
 Source baseline for the specification: `origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`. The blueprint links exact code evidence and the official Tailscale references. The local pairing commands described above are released; the remaining proposed commands and wire shapes still require implementation.
 

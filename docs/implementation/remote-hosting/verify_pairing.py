@@ -20,7 +20,7 @@ def digest(path):
 
 
 class Fixture:
-    def __init__(self, binary, root, source):
+    def __init__(self, binary, root, source, hosting_available=False):
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=False)
         for name in ('home', 'tmp', 'config', 'data'):
@@ -39,6 +39,7 @@ class Fixture:
         self.log = None
         self.checks = []
         self.tokens = []
+        self.hosting_available = hosting_available
         self.evidence = {'source': source, 'binary_sha256': digest(self.binary), 'checks': self.checks}
 
     def check(self, name, condition):
@@ -130,7 +131,7 @@ class Fixture:
     def run(self):
         self.start()
         initial = self.remote('Status')['authority']
-        self.check('Foundation does not advertise remote hosting', initial['hosting_available'] is False)
+        self.check('Hosting capability matches the expected release', initial['hosting_available'] is self.hosting_available)
         self.check('Inspection does not initialize host authority', initial['host_id'] is None)
         self.cli('serve', 'status', override=True)
         self.cli('serve', 'clients')
@@ -183,8 +184,10 @@ def main():
     parser.add_argument('--binary',required=True,type=Path)
     parser.add_argument('--runtime',required=True,type=Path)
     parser.add_argument('--source',required=True)
+    parser.add_argument('--hosting-available',action='store_true',
+                        help='Expect the remote-serving build capability added after v0.6.94')
     args=parser.parse_args()
-    fixture=Fixture(args.binary,args.runtime,args.source)
+    fixture=Fixture(args.binary,args.runtime,args.source,args.hosting_available)
     started=time.monotonic()
     try:
         fixture.run()

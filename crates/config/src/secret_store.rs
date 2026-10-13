@@ -226,7 +226,7 @@ impl Drop for TempFileGuard {
 /// Read the secrets file symlink-safely through a single descriptor. `Ok(None)`
 /// for a missing file; errors for a symlink/non-regular file or IO failure.
 #[cfg(unix)]
-fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
+pub(crate) fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
     use std::io::Read;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
@@ -259,7 +259,7 @@ fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
 }
 
 #[cfg(not(unix))]
-fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
+pub(crate) fn read_secrets_file(path: &Path) -> io::Result<Option<String>> {
     match std::fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -282,7 +282,7 @@ fn parent_dir(path: &Path) -> PathBuf {
 /// Durably, atomically, and symlink-safely replace the secrets file with
 /// `contents`. See the module docs for the fsync/rename/fsync ordering.
 #[cfg(unix)]
-fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+pub(crate) fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
@@ -315,7 +315,7 @@ fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
-fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+pub(crate) fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     use std::io::Write;
 
     std::fs::create_dir_all(parent_dir(path))?;

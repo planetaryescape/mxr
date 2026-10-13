@@ -336,6 +336,7 @@ pub(super) enum SidebarGroup {
 }
 
 pub struct App {
+    paired_remote_read_only: bool,
     pub theme: Theme,
     pub mailbox: MailboxState,
     pub search: SearchState,
@@ -537,6 +538,19 @@ impl App {
         self.download_dir = config.general.download_dir.clone();
     }
 
+    pub(crate) fn enable_paired_remote_read_only_session(&mut self) {
+        self.paired_remote_read_only = true;
+        self.accounts.page.onboarding_required = false;
+        self.accounts.page.onboarding_modal_open = false;
+        self.mailbox.pending_subscriptions_refresh = false;
+        self.mailbox.pending_desk_refresh = false;
+        self.diagnostics.pending_status_refresh = false;
+    }
+
+    pub(crate) fn is_paired_remote_read_only(&self) -> bool {
+        self.paired_remote_read_only
+    }
+
     pub fn from_render_config(render: &RenderConfig) -> Self {
         Self::from_render_and_snooze(render, &mxr_config::SnoozeConfig::default())
     }
@@ -546,6 +560,7 @@ impl App {
         snooze_config: &mxr_config::SnoozeConfig,
     ) -> Self {
         Self {
+            paired_remote_read_only: false,
             theme: Theme::default(),
             mailbox: MailboxState::from_render_config(render),
             search: SearchState::default(),

@@ -112,7 +112,7 @@ pub enum BackupAction {
 
 #[derive(Subcommand)]
 pub enum ServeAction {
-    /// Inspect local identity; hosting is not yet available
+    /// Inspect local pairing authority; supervised gateway setup is not available
     Status,
     /// Inspect or approve local pairing requests
     Pair {
@@ -151,8 +151,31 @@ pub enum ServeClientAction {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Local pairing authority foundation; remote hosting is not yet available
+    /// Save an HTTPS mailbox connection, inspect it, or switch this installation to local.
+    Connect {
+        url: Option<String>,
+        #[arg(long, conflicts_with = "url")]
+        local: bool,
+        #[arg(long, conflicts_with_all = ["url", "local", "confirm"])]
+        status: bool,
+        #[arg(long, default_value = "mxr client")]
+        name: String,
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+    },
+    /// Manage local pairing authority or run the loopback gateway in foreground
     Serve {
+        /// Run the native gateway beside the explicit local daemon.
+        #[arg(long)]
+        foreground: bool,
+        #[arg(long, default_value = "127.0.0.1:18741")]
+        listen: std::net::SocketAddr,
+        #[arg(long)]
+        dry_run: bool,
         #[command(subcommand)]
         action: Option<ServeAction>,
         /// Structured output (json or jsonl)

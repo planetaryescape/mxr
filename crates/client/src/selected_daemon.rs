@@ -13,6 +13,8 @@ const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct SelectedDaemonTarget {
     address: TransportAddr,
     token: Option<String>,
+    generation: Option<u64>,
+    saved: Option<(mxr_config::connection_state::ConnectionRegistration, u64)>,
 }
 
 impl std::fmt::Debug for SelectedDaemonTarget {
@@ -31,7 +33,12 @@ impl From<PathBuf> for SelectedDaemonTarget {
 
 impl SelectedDaemonTarget {
     pub fn new(address: TransportAddr, token: Option<String>) -> Self {
-        Self { address, token }
+        Self {
+            address,
+            token,
+            saved: None,
+            generation: None,
+        }
     }
 
     /// Resolve credentials only for TCP. The caller owns its configuration.
@@ -39,6 +46,26 @@ impl SelectedDaemonTarget {
         default_socket: PathBuf,
         token: impl FnOnce() -> Result<Option<String>, std::io::Error>,
     ) -> Result<Self, ClientError> {
+        if std::env::var("MXR_DAEMON_ADDR")
+            .ok()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            let state = mxr_config::connection_state::read(&mxr_config::connection_state::path())?;
+            if let Some(saved) = state.selected {
+                return Ok(Self {
+                    address: TransportAddr::Unix(default_socket),
+                    token: None,
+                    saved: Some((saved, state.generation)),
+                    generation: Some(state.generation),
+                });
+            }
+            return Ok(Self {
+                address: TransportAddr::Unix(default_socket),
+                token: None,
+                saved: None,
+                generation: Some(state.generation),
+            });
+        }
         let address = TransportAddr::resolve(default_socket)?;
         let token = if matches!(address, TransportAddr::Tcp(_)) {
             token()?
@@ -49,6 +76,9 @@ impl SelectedDaemonTarget {
     }
 
     pub fn description(&self) -> String {
+        if let Some((saved, _)) = &self.saved {
+            return saved.origin.clone();
+        }
         match &self.address {
             TransportAddr::Cmd(_) => "cmd://<command hidden>".into(),
             TransportAddr::Unix(path) => format!("unix://{}", path.display()),
@@ -57,10 +87,17 @@ impl SelectedDaemonTarget {
     }
 
     pub fn unix_path(&self) -> Option<&Path> {
+        if self.saved.is_some() {
+            return None;
+        }
         match &self.address {
             TransportAddr::Unix(path) => Some(path),
             _ => None,
         }
+    }
+
+    pub fn is_paired_remote(&self) -> bool {
+        self.saved.is_some()
     }
 
     pub fn is_remote(&self) -> bool {
@@ -78,12 +115,21 @@ impl SelectedDaemonTarget {
     }
 
     pub async fn connect(&self, source: ClientKind) -> Result<IpcConnection, ClientError> {
+        crate::remote_connection::schedule_cleanup();
+        if let Some((saved, generation)) = &self.saved {
+            let connection = connect_registration(saved, source).await?;
+            return Ok(connection.with_selection_generation(*generation));
+        }
         if let Some(path) = self.unix_path() {
-            return if crate::daemon_autostart_enabled() {
+            let connection = if crate::daemon_autostart_enabled() {
                 IpcConnection::connect(path, source).await
             } else {
                 IpcConnection::connect_supervised(path, source).await
-            };
+            }?;
+            return Ok(match self.generation {
+                Some(generation) => connection.with_selection_generation(generation),
+                None => connection,
+            });
         }
         let connector = self.connector();
         let setup = async {
@@ -137,6 +183,34 @@ pub(crate) fn requires_local_account_setup(request: &Request) -> bool {
             | Request::RemoveAccountConfig { .. }
             | Request::RepairAccountConfig { .. }
     )
+}
+
+/// Verify the authenticated host, workspace epoch and exact wire revision before use.
+pub async fn connect_registration(
+    saved: &mxr_config::connection_state::ConnectionRegistration,
+    source: ClientKind,
+) -> Result<IpcConnection, ClientError> {
+    let connector = mxr_transport::WssConnector::new(
+        saved.origin.clone(),
+        &saved.client_id,
+        saved.mail_secret.expose(),
+    )?;
+    let setup = async {
+        let mut connection = IpcConnection::connect_with(&connector, source).await?;
+        match connection.request(Request::GetRemoteReady).await? {
+            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id}
+                if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id
+                    && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
+                        connection.selected_remote = true;
+                        connection.remote_workspace = Some(workspace);
+                        Ok(connection)
+                    }
+            _ => Err(ClientError::Io(std::io::Error::other("Remote host/workspace/protocol identity mismatch; retain work and reconnect explicitly"))),
+        }
+    };
+    tokio::time::timeout(SETUP_TIMEOUT, setup)
+        .await
+        .map_err(|_| ClientError::Timeout(SETUP_TIMEOUT))?
 }
 
 #[cfg(test)]

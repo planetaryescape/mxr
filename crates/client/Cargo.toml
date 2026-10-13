@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 mxr-protocol = { workspace = true }
 mxr-core = { workspace = true }
+mxr-config = { workspace = true }
 mxr-transport = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
@@ -24,6 +25,8 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 base64 = { workspace = true }
 sha2 = { workspace = true }
+base16ct = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }

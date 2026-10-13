@@ -3,10 +3,15 @@ title: HTTP Bridge
 description: Every endpoint the daemon exposes over HTTP, with auth, request/response shapes, and curl recipes.
 ---
 
-The HTTP bridge runs alongside the daemon when `[bridge] enabled = true`
-in the active `config.toml`. It exposes the same IPC contract the TUI uses, but over
-HTTP — so the web app, mobile clients, agent runners, and your own shell
-scripts all talk to the same daemon through one stable surface.
+The local HTTP bridge runs alongside the daemon when `[bridge] enabled = true`
+in the active `config.toml`. The web app and local scripts use its HTTP routes
+over the daemon's IPC contract. For another computer, use the separate
+[remote mailbox gateway](/guides/remote-mailbox/) and pair that client.
+
+The remote gateway exposes pairing, exact-client cleanup and authenticated WSS
+mailbox reads. It has no local-token bootstrap, filesystem or administration
+routes. The endpoints below describe the local bridge; its token-bootstrap
+workflow is not a remote hosting setup.
 
 The bridge serves an OpenAPI 3.1 spec at
 `http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable

@@ -6309,6 +6309,7 @@ export interface components {
         HostAuthority: {
             /** @description Absent until the first pairing starts. Inspection never initializes authority. */
             host_id?: string | null;
+            /** @description Whether this build implements host serving; it does not report listener liveness. */
             hosting_available: boolean;
             recovery_generation?: string | null;
             workspace_id?: string | null;
@@ -8581,6 +8582,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  action: "AbandonPairing";
+                  cleanup_secret: components["schemas"]["RemoteSecret"];
+              }
+            | {
+                  /** @enum {string} */
                   action: "Cleanup";
                   cleanup_secret: components["schemas"]["RemoteSecret"];
                   client_id: string;
@@ -8657,6 +8663,17 @@ export interface components {
          *     state writes.
          */
         Request:
+            | {
+                  client_id: string;
+                  /** @enum {string} */
+                  cmd: "RemoteRead";
+                  mail_secret: components["schemas"]["RemoteSecret"];
+                  request: components["schemas"]["Request"];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "GetRemoteReady";
+              }
             | {
                   /** @enum {string} */
                   cmd: "RemoteAuthority";
@@ -10637,6 +10654,15 @@ export interface components {
                   status: "Error";
               };
         ResponseData:
+            | {
+                  client_id: string;
+                  host_id: string;
+                  /** @enum {string} */
+                  kind: "RemoteReady";
+                  /** Format: int32 */
+                  protocol_version: number;
+                  workspace: components["schemas"]["ArchiveWorkspaceData"];
+              }
             | {
                   /** @enum {string} */
                   kind: "RemoteAuthority";

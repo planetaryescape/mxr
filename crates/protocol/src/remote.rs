@@ -32,6 +32,9 @@ pub enum RemoteRequest {
         client_id: String,
         dry_run: bool,
     },
+    AbandonPairing {
+        cleanup_secret: RemoteSecret,
+    },
     Cleanup {
         client_id: String,
         cleanup_secret: RemoteSecret,
@@ -87,12 +90,19 @@ pub enum RemoteResponse {
     },
 }
 
-/// Candidate read policy for the gateway stage; no F01 forwarding endpoint exists.
+/// Remote mailbox read policy.
 /// Deliberately enumerate operations: categories include private diagnostics/exports.
 pub fn remote_read_allowed(request: &crate::Request) -> bool {
     matches!(
         request,
-        crate::Request::ListEnvelopes { .. }
+        crate::Request::GetRemoteReady
+            | crate::Request::Ping
+            | crate::Request::Search { .. }
+            | crate::Request::Count { .. }
+            | crate::Request::GetBody { .. }
+            | crate::Request::ListBodies { .. }
+            | crate::Request::ListLabels { .. }
+            | crate::Request::ListEnvelopes { .. }
             | crate::Request::ListEnvelopesByIds { .. }
             | crate::Request::GetEnvelope { .. }
             | crate::Request::GetThread { .. }
@@ -119,6 +129,11 @@ mod tests {
         }
         assert!(remote_read_allowed(&crate::Request::GetEnvelope {
             message_id: mxr_core::MessageId::new()
+        }));
+        assert!(remote_read_allowed(&crate::Request::Count {
+            query: "subject:fixture".into(),
+            account_id: None,
+            mode: None,
         }));
     }
     #[test]

@@ -43,6 +43,21 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     run_parsed_cli(cli).await
 }
 
+fn ensure_web_target_supported(
+    remote_host: Option<&str>,
+    action: Option<&cli::WebAction>,
+) -> anyhow::Result<()> {
+    if remote_host.is_none()
+        && !matches!(action, Some(cli::WebAction::Stop))
+        && server::selected_daemon_target()?.is_paired_remote()
+    {
+        anyhow::bail!(
+            "`mxr web` is unavailable for a paired remote connection; use the CLI, TUI, or MCP client"
+        );
+    }
+    Ok(())
+}
+
 // Keep Clap's command construction outside the large debug dispatch poll frame.
 async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
@@ -105,7 +120,44 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     init_tracing(is_foreground)?;
 
     match cli.command {
-        Some(Command::Serve { action, format }) => commands::serve::run(action, format).await?,
+        Some(Command::Connect {
+            url,
+            local,
+            status,
+            name,
+            dry_run,
+            confirm,
+            format,
+        }) => commands::connect::run(url, local, status, name, dry_run, confirm, format).await?,
+        Some(Command::Serve {
+            action,
+            format,
+            foreground,
+            listen,
+            dry_run,
+        }) => {
+            if dry_run && action.is_some() {
+                anyhow::bail!("`mxr serve --dry-run` previews only the foreground gateway; put `--dry-run` after the serve action to preview pairing or client changes (for example, `mxr serve pair approve <request-id> --dry-run`)");
+            }
+            if foreground {
+                if action.is_some() {
+                    anyhow::bail!("--foreground cannot be combined with a serve action");
+                }
+                if !listen.ip().is_loopback() {
+                    anyhow::bail!("Gateway requires a loopback listen address");
+                }
+                if dry_run {
+                    crate::output::print_json(
+                        &serde_json::json!({"listen":listen,"foreground":true,"selection_source":"explicit_local_profile","dry_run":true}),
+                        format.unwrap_or(cli::OutputFormat::Json),
+                    )?;
+                } else {
+                    mxr_web::remote_gateway::serve(mxr_config::socket_path(), listen).await?;
+                }
+            } else {
+                commands::serve::run(action, format).await?;
+            }
+        }
         Some(Command::Daemon {
             action: Some(DaemonAction::DialStdio),
             ..
@@ -906,6 +958,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             foreground,
             detached_child,
         }) => {
+            ensure_web_target_supported(remote_host.as_deref(), action.as_ref())?;
             if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
                 crate::server::ensure_daemon_running().await?;
             }
@@ -1679,6 +1732,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }
     }
 
+    mxr_client::remote_connection::finish_cleanup().await;
     Ok(())
 }
 
@@ -1740,21 +1794,98 @@ fn safe_dependency_log(target: &str, level: &tracing::Level) -> bool {
     // async-imap logs complete commands and response buffers at TRACE. That
     // includes LOGIN passwords and message bodies, so those events must never
     // reach either daemon log sink.
-    !(target.starts_with("async_imap") && level == &tracing::Level::TRACE)
+    // tungstenite logs handshake headers and websocket frames at TRACE, which
+    // can contain the paired mail credential and mailbox contents.
+    !((target.starts_with("async_imap") || target.starts_with("tungstenite"))
+        && level == &tracing::Level::TRACE)
 }
 
 #[cfg(test)]
 mod tracing_tests {
-    use super::safe_dependency_log;
+    use super::{safe_dependency_log, safe_dependency_metadata};
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[derive(Clone, Default)]
+    struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buffer {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn contents(buffer: &Buffer) -> String {
+        String::from_utf8(buffer.0.lock().unwrap().clone()).expect("valid UTF-8 log output")
+    }
 
     #[test]
-    fn blocks_async_imap_wire_traces_without_hiding_other_logs() {
+    fn blocks_wire_traces_before_both_sinks_without_hiding_safe_logs() {
+        let file = Buffer::default();
+        let stdout = Buffer::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::filter::filter_fn(
+                safe_dependency_metadata,
+            ))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_writer(file.clone())
+                    .with_ansi(false),
+            )
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(stdout.clone())
+                    .with_ansi(false),
+            );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::trace!(target: "tungstenite::handshake::client", credential = "SYNTHETIC_MAIL_SECRET");
+            tracing::trace!(target: "tungstenite::protocol::frame", payload = "SYNTHETIC_MAIL_BODY");
+            tracing::trace!(target: "async_imap::imap_stream", command = "SYNTHETIC_IMAP_SECRET");
+            tracing::trace!(target: "mxr::sync", event = "safe trace");
+            tracing::debug!(target: "tungstenite::handshake::client", event = "safe debug");
+        });
+
+        for output in [contents(&file), contents(&stdout)] {
+            assert!(!output.contains("SYNTHETIC_MAIL_SECRET"));
+            assert!(!output.contains("SYNTHETIC_MAIL_BODY"));
+            assert!(!output.contains("SYNTHETIC_IMAP_SECRET"));
+            assert!(output.contains("safe trace"));
+            assert!(output.contains("safe debug"));
+        }
+
         assert!(!safe_dependency_log(
             "async_imap::imap_stream",
             &tracing::Level::TRACE
         ));
+        assert!(!safe_dependency_log(
+            "tungstenite::handshake::client",
+            &tracing::Level::TRACE
+        ));
+        assert!(!safe_dependency_log(
+            "tungstenite::protocol::frame",
+            &tracing::Level::TRACE
+        ));
         assert!(safe_dependency_log(
             "async_imap::imap_stream",
+            &tracing::Level::DEBUG
+        ));
+        assert!(safe_dependency_log(
+            "tungstenite::handshake::client",
             &tracing::Level::DEBUG
         ));
         assert!(safe_dependency_log("mxr::sync", &tracing::Level::TRACE));

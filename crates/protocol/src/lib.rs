@@ -38,7 +38,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 13;
+pub const IPC_PROTOCOL_VERSION: u32 = 14;
 
 #[cfg(test)]
 mod tests {
@@ -212,7 +212,7 @@ mod tests {
             source_owner_stopped: true,
             dry_run: false,
         };
-        assert_eq!(IPC_PROTOCOL_VERSION, 13);
+        assert_eq!(IPC_PROTOCOL_VERSION, 14);
         assert!(activate.requires_workspace_owner());
         let encoded = serde_json::to_value(&activate).unwrap();
         assert_eq!(encoded["cmd"], "ActivateRecovery");

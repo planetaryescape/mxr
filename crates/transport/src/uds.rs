@@ -310,6 +310,8 @@ mod tests {
     async fn stop_accepting_refuses_new_connections_but_defers_unlink() {
         use crate::{Connector, ServerTransport, TransportError, UnixConnector};
 
+        // A forked test child can retain the listener until exec closes CLOEXEC fds.
+        let _guard = crate::SUBPROCESS_FD_TEST_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.sock");
         let mut listener = super::UdsServerTransport::new(path.clone())

@@ -163,6 +163,7 @@ mod tests {
     /// is wired as a bidirectional byte stream.
     #[tokio::test]
     async fn spawns_and_pipes_stdio_round_trip() {
+        let _guard = crate::SUBPROCESS_FD_TEST_LOCK.lock().await;
         let connector = CmdConnector::new(vec!["cat".into()]);
         let mut stream = connector.connect().await.unwrap();
 
@@ -176,6 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_fails_for_a_missing_program() {
+        let _guard = crate::SUBPROCESS_FD_TEST_LOCK.lock().await;
         let connector = CmdConnector::new(vec!["mxr-no-such-binary-xyz".into()]);
         match connector.connect().await {
             Err(TransportError::Connect { .. }) => {}

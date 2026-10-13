@@ -596,6 +596,14 @@ pub enum IpcPayload {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "cmd")]
 pub enum Request {
+    /// Every forwarded operation authenticates independently; nested wrappers are denied.
+    RemoteRead {
+        client_id: String,
+        mail_secret: mxr_core::RemoteSecret,
+        #[cfg_attr(feature = "openapi", schema(no_recursion))]
+        request: Box<Self>,
+    },
+    GetRemoteReady,
     RemoteAuthority {
         request: crate::RemoteRequest,
     },
@@ -2830,7 +2838,9 @@ impl Request {
             | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. }
             | Self::ResolveTime { .. } => IpcCategory::MxrPlatform,
-            Self::RemoteAuthority { .. }
+            Self::RemoteRead { .. }
+            | Self::GetRemoteReady
+            | Self::RemoteAuthority { .. }
             | Self::ListEvents { .. }
             | Self::GetLogs { .. }
             | Self::GetDoctorReport
@@ -3170,6 +3180,12 @@ fn error_looks_retryable(message: &str) -> bool {
     reason = "ResponseData is the tagged IPC contract; large variants are preserved inline to keep serde JSON compatibility obvious"
 )]
 pub enum ResponseData {
+    RemoteReady {
+        protocol_version: u32,
+        host_id: String,
+        workspace: ArchiveWorkspaceData,
+        client_id: String,
+    },
     RemoteAuthority {
         response: crate::RemoteResponse,
     },
@@ -4283,7 +4299,8 @@ impl ResponseData {
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. }
             | Self::ResolvedTime { .. } => IpcCategory::MxrPlatform,
-            Self::RemoteAuthority { .. }
+            Self::RemoteReady { .. }
+            | Self::RemoteAuthority { .. }
             | Self::EventLogEntries { .. }
             | Self::LogLines { .. }
             | Self::DoctorReport { .. }

@@ -79,7 +79,8 @@ impl crate::Store {
             host_id,
             workspace_id: owner.as_ref().map(|o| o.0.clone()),
             recovery_generation: owner.map(|o| o.1),
-            hosting_available: false,
+            // This reports build capability; gateway liveness belongs to its supervisor.
+            hosting_available: true,
         })
     }
     pub async fn remote_pairings(&self, now: i64) -> Result<Vec<PendingPairing>, sqlx::Error> {
@@ -133,10 +134,41 @@ impl crate::Store {
         let stale:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM remote_host WHERE workspace_id<>? OR recovery_generation<>?)").bind(&workspace_id).bind(&recovery_generation).fetch_one(&mut *tx).await?;
         if stale {
             sqlx::raw_sql(
-                "DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;",
+                "DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_pairing_retirements; DELETE FROM remote_host;",
             )
             .execute(&mut *tx)
             .await?;
+        }
+        if let Some(row) = sqlx::query(
+            "SELECT * FROM remote_pairings WHERE mail_verifier=? AND cleanup_verifier=? AND name=?",
+        )
+        .bind(mail.expose())
+        .bind(cleanup.expose())
+        .bind(name.trim())
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            let existing = pairing(&row);
+            tx.commit().await?;
+            return Ok(existing);
+        }
+        let retired: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM remote_pairing_retirements WHERE cleanup_verifier=?)",
+        )
+        .bind(cleanup.expose())
+        .fetch_one(&mut *tx)
+        .await?;
+        if retired {
+            return Err(denied());
+        }
+        let claimed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM remote_clients WHERE cleanup_verifier=?)",
+        )
+        .bind(cleanup.expose())
+        .fetch_one(&mut *tx)
+        .await?;
+        if claimed {
+            return Err(denied());
         }
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM remote_pairings")
             .fetch_one(&mut *tx)
@@ -288,6 +320,29 @@ impl crate::Store {
         }
         tx.commit().await?;
         Ok(result)
+    }
+    /// Retire only the pending/claimed registration bound to this installation's cleanup proof.
+    /// This is idempotent even when the start/claim acknowledgement was lost.
+    pub async fn abandon_remote_pairing(
+        &self,
+        cleanup: &RemoteSecret,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        let cleanup = verifier(cleanup)?;
+        let mut tx = self.writer().begin().await?;
+        valid_owner(&mut tx).await?;
+        let known: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM remote_pairings WHERE cleanup_verifier=? UNION ALL SELECT 1 FROM remote_clients WHERE cleanup_verifier=? UNION ALL SELECT 1 FROM remote_pairing_retirements WHERE cleanup_verifier=?)").bind(&cleanup).bind(&cleanup).bind(&cleanup).fetch_one(&mut *tx).await?;
+        // Unknown cleanup must not acknowledge a start that has not reached the host yet.
+        if !known {
+            return Err(denied());
+        }
+        sqlx::query("INSERT INTO remote_pairing_retirements(cleanup_verifier) VALUES(?) ON CONFLICT DO NOTHING").bind(&cleanup).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM remote_pairings WHERE cleanup_verifier=?")
+            .bind(&cleanup)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE remote_clients SET revoked_at=COALESCE(revoked_at,?),mail_verifier='',name='' WHERE cleanup_verifier=?").bind(now).bind(cleanup).execute(&mut *tx).await?;
+        tx.commit().await
     }
     pub async fn cleanup_remote_client(
         &self,

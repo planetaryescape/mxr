@@ -115,6 +115,45 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                             .unwrap();
                             ResponseData::DoctorReport { report }
                         }
+                        IpcPayload::Request(Request::RemoteAuthority { request }) => {
+                            let response = match request {
+                                mxr_protocol::RemoteRequest::ApprovePairing {
+                                    request_id,
+                                    dry_run,
+                                } => serde_json::from_value(serde_json::json!({
+                                    "result": "Pairing",
+                                    "pairing": {
+                                        "capabilities": [],
+                                        "request_id": request_id,
+                                        "name": "fixture",
+                                        "challenge": "fixture-challenge",
+                                        "expires_at": 0,
+                                        "approved": false,
+                                        "failed_attempts": 0
+                                    },
+                                    "dry_run": dry_run
+                                }))
+                                .unwrap(),
+                                mxr_protocol::RemoteRequest::RevokeClient {
+                                    client_id,
+                                    dry_run,
+                                } => serde_json::from_value(serde_json::json!({
+                                    "result": "Client",
+                                    "client": {
+                                        "capabilities": [],
+                                        "client_id": client_id,
+                                        "name": "fixture",
+                                        "created_at": 0,
+                                        "expires_at": 0,
+                                        "revoked_at": null
+                                    },
+                                    "dry_run": dry_run
+                                }))
+                                .unwrap(),
+                                other => panic!("unexpected remote authority request: {other:?}"),
+                            };
+                            ResponseData::RemoteAuthority { response }
+                        }
                         other => panic!("unexpected request in fixture: {other:?}"),
                     };
                     let response = IpcMessage {
@@ -138,10 +177,38 @@ async fn run_mxr(
     args: &[&str],
     daemon_addr: &str,
 ) -> std::process::Output {
-    let child = tokio::process::Command::new(MXR_BIN)
+    run_mxr_with_optional_override(envs, args, Some(daemon_addr)).await
+}
+
+async fn run_mxr_without_daemon_override(
+    envs: &[(String, String)],
+    args: &[&str],
+) -> std::process::Output {
+    run_mxr_with_optional_override(envs, args, None).await
+}
+
+async fn run_mxr_with_optional_override(
+    envs: &[(String, String)],
+    args: &[&str],
+    daemon_addr: Option<&str>,
+) -> std::process::Output {
+    let mut command = tokio::process::Command::new(MXR_BIN);
+    command
         .args(args)
-        .envs(envs.iter().map(|(key, value)| (key, value)))
-        .env("MXR_DAEMON_ADDR", daemon_addr)
+        .envs(envs.iter().map(|(key, value)| (key, value)));
+    if let Some(address) = daemon_addr {
+        command.env("MXR_DAEMON_ADDR", address);
+    } else {
+        command
+            .env_remove("MXR_DAEMON_ADDR")
+            .env_remove("HTTP_PROXY")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("ALL_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("https_proxy")
+            .env_remove("all_proxy");
+    }
+    let child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -151,6 +218,147 @@ async fn run_mxr(
         .await
         .expect("mxr subprocess exceeded the 10-second smoke-test bound")
         .unwrap()
+}
+
+fn connection_state_path(envs: &[(String, String)]) -> PathBuf {
+    PathBuf::from(&envs[1].1).join("client-connection.json")
+}
+
+fn saved_registration() -> mxr_config::connection_state::ConnectionRegistration {
+    mxr_config::connection_state::ConnectionRegistration {
+        origin: "https://saved.example".into(),
+        client_id: "fixture-client".into(),
+        host_id: "fixture-host".into(),
+        workspace_id: "fixture-workspace".into(),
+        recovery_generation: "1".into(),
+        mail_secret: mxr_core::RemoteSecret::new("a".repeat(64)),
+        cleanup_secret: mxr_core::RemoteSecret::new("b".repeat(64)),
+    }
+}
+
+fn assert_no_pairing_connection(listener: &std::net::TcpListener) {
+    assert!(matches!(
+        listener.accept(),
+        Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock
+    ));
+}
+
+#[tokio::test]
+async fn connect_validates_names_before_preview_or_pairing_state() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = format!("https://{address}");
+    let state_path = connection_state_path(&envs);
+
+    let invalid_names = [
+        String::new(),
+        "   ".into(),
+        "invalid\nname".into(),
+        "é".repeat(41),
+    ];
+    let status =
+        run_mxr_without_daemon_override(&envs, &["connect", "--status", "--name", ""]).await;
+    assert!(status.status.success());
+    let local_preview =
+        run_mxr_without_daemon_override(&envs, &["connect", "--local", "--dry-run", "--name", ""])
+            .await;
+    assert!(local_preview.status.success());
+
+    for name in &invalid_names {
+        let output = run_mxr_without_daemon_override(
+            &envs,
+            &["connect", &origin, "--name", name, "--confirm"],
+        )
+        .await;
+        assert!(
+            !output.status.success(),
+            "invalid name was accepted: {name:?}"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("Client name must be non-empty"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!state_path.exists(), "invalid name persisted client state");
+        assert_no_pairing_connection(&listener);
+    }
+
+    let output =
+        run_mxr_without_daemon_override(&envs, &["connect", &origin, "--name", "   ", "--dry-run"])
+            .await;
+    assert!(
+        !output.status.success(),
+        "invalid name was accepted in preview"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Client name must be non-empty"));
+    assert!(!state_path.exists());
+
+    let bounded_name = "é".repeat(40);
+    let output = run_mxr_without_daemon_override(
+        &envs,
+        &["connect", &origin, "--name", &bounded_name, "--dry-run"],
+    )
+    .await;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let preview: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(preview["dry_run"], true);
+    assert_eq!(preview["selection_applied"], false);
+    assert!(!state_path.exists());
+    assert_no_pairing_connection(&listener);
+}
+
+#[tokio::test]
+async fn connect_status_redacts_command_override_without_executing_it() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let local = run_mxr_without_daemon_override(&envs, &["connect", "--status"]).await;
+    assert!(local.status.success());
+    let local: serde_json::Value = serde_json::from_slice(&local.stdout).unwrap();
+    assert_eq!(local["effective_target"], "local");
+    assert_eq!(local["selection_source"], "local");
+
+    let state_path = connection_state_path(&envs);
+    mxr_config::connection_state::update(&state_path, Some(0), |state| {
+        state.generation = 1;
+        state.selected = Some(saved_registration());
+        Ok(())
+    })
+    .unwrap();
+    let saved = run_mxr_without_daemon_override(&envs, &["connect", "--status"]).await;
+    assert!(saved.status.success());
+    let saved: serde_json::Value = serde_json::from_slice(&saved.stdout).unwrap();
+    assert_eq!(saved["effective_target"], "https://saved.example");
+    assert_eq!(saved["selection_source"], "saved");
+
+    let marker = root.path().join("command-ran");
+    let synthetic_argument = root.path().join("synthetic-token-that-must-not-appear");
+    let address = format!(
+        "cmd://touch {} {}",
+        marker.display(),
+        synthetic_argument.display()
+    );
+    let status = run_mxr(&envs, &["connect", "--status"], &address).await;
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["effective_target"], "cmd://<command hidden>");
+    assert_eq!(status["selection_source"], "environment");
+    assert!(!status
+        .to_string()
+        .contains(&synthetic_argument.display().to_string()));
+    assert!(!status.to_string().contains(&marker.display().to_string()));
+    assert!(!marker.exists(), "status executed the command override");
+    assert!(!synthetic_argument.exists());
 }
 
 #[tokio::test]
@@ -282,6 +490,87 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
         status["client_local"]["socket_path"],
         unix_target.display().to_string()
     );
+}
+
+#[tokio::test]
+async fn serve_root_dry_run_cannot_confirm_pairing_and_leaf_previews_work() {
+    let root = tempfile::tempdir().unwrap();
+    let socket = root.path().join("authority.sock");
+    let (_server, requests) = spawn_fake_daemon(&socket);
+    let mut envs = isolated_env(root.path());
+    envs[3].1 = socket.display().to_string();
+
+    let invalid = run_mxr(
+        &envs,
+        &[
+            "serve",
+            "--dry-run",
+            "pair",
+            "approve",
+            "request-unsafe",
+            "--confirm",
+        ],
+        "unused",
+    )
+    .await;
+    assert!(!invalid.status.success());
+    let error = String::from_utf8(invalid.stderr).unwrap();
+    assert!(
+        error.contains("put `--dry-run` after the serve action"),
+        "{error}"
+    );
+    assert_eq!(
+        requests.load(Ordering::Relaxed),
+        0,
+        "invalid invocation reached IPC"
+    );
+
+    let foreground_preview = run_mxr(
+        &envs,
+        &[
+            "serve",
+            "--foreground",
+            "--dry-run",
+            "--listen",
+            "127.0.0.1:0",
+            "--format",
+            "json",
+        ],
+        "unused",
+    )
+    .await;
+    assert!(foreground_preview.status.success());
+    let output: serde_json::Value = serde_json::from_slice(&foreground_preview.stdout).unwrap();
+    assert_eq!(output["foreground"], true);
+    assert_eq!(output["dry_run"], true);
+    assert_eq!(
+        requests.load(Ordering::Relaxed),
+        0,
+        "foreground preview reached IPC"
+    );
+
+    for args in [
+        vec![
+            "serve",
+            "--format",
+            "json",
+            "pair",
+            "approve",
+            "request-preview",
+            "--dry-run",
+        ],
+        vec!["serve", "clients", "revoke", "client-preview", "--dry-run"],
+    ] {
+        let preview = run_mxr(&envs, &args, "unused").await;
+        assert!(
+            preview.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preview.stderr)
+        );
+        let output: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+        assert_eq!(output["response"]["dry_run"], true, "{output}");
+    }
+    assert_eq!(requests.load(Ordering::Relaxed), 4);
 }
 
 #[tokio::test]
@@ -486,7 +775,13 @@ async fn serve_old_local_daemon_reports_upgrade_before_new_request_or_remote_ove
     .await;
     assert!(!output.status.success());
     let error = String::from_utf8_lossy(&output.stderr);
-    assert!(error.contains("requires IPC protocol 13"), "{error}");
+    assert!(
+        error.contains(&format!(
+            "requires IPC protocol {}",
+            mxr_protocol::IPC_PROTOCOL_VERSION
+        )),
+        "{error}"
+    );
     assert!(error.contains("local daemon uses 12"), "{error}");
     server.await.unwrap();
     assert!(!Path::new(&envs[2].1).join("mxr.db").exists());

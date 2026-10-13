@@ -12,3 +12,10 @@ id = "generic-api-key"
   paths = ['''(^|/)docs/build-log/daemon-portability/evidence/s06-event-recovery-audit-2c55a735\.json$''']
   regexTarget = "secret"
   regexes = ['''^80aadc8c5f301179fcb7666f6361f5a7227fb0dd$''']
+
+  [[rules.allowlists]]
+  description = "Public WebSocket handshake nonce in the gateway fixture"
+  condition = "AND"
+  paths = ['''(^|/)crates/web/src/remote_gateway_tests\.rs$''']
+  regexTarget = "secret"
+  regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']

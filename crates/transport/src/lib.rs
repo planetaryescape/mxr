@@ -27,12 +27,18 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 mod addr;
+mod wss;
+pub use wss::{https_origin, WssConnector};
 mod caps;
 mod cmd;
 mod error;
 mod peer;
 mod tcp;
 mod uds;
+
+#[cfg(test)]
+pub(crate) static SUBPROCESS_FD_TEST_LOCK: tokio::sync::Mutex<()> =
+    tokio::sync::Mutex::const_new(());
 
 #[cfg(feature = "test-util")]
 mod memory;

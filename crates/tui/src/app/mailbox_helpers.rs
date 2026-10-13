@@ -600,6 +600,12 @@ impl App {
     }
 
     pub(super) fn schedule_preview_read(&mut self, envelope: &Envelope) {
+        if self.is_paired_remote_read_only() {
+            // Opening remote mail must not queue this implicit flag write.
+            self.mailbox.pending_preview_read = None;
+            return;
+        }
+
         if envelope.flags.contains(MessageFlags::READ)
             || self.has_pending_set_read(&envelope.id, true)
         {

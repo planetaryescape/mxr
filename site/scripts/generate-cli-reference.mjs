@@ -26,8 +26,10 @@ const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send
 
 const COMMAND_EXAMPLES = {
   serve: {
-    use: 'Inspect local pairing authority. Remote hosting is not yet available. Commands use the explicit local socket and ignore MXR_DAEMON_ADDR. Approval and revocation preview by default; compare the pairing challenge before confirming.',
+    use: 'Inspect local pairing authority or run the foreground loopback gateway behind private HTTPS. Commands use the explicit local socket and ignore saved remote selection and MXR_DAEMON_ADDR. Approval and revocation preview by default; compare the pairing challenge before confirming.',
     examples: [
+      'mxr serve --foreground --listen 127.0.0.1:18741 --dry-run',
+      'mxr serve --foreground --listen 127.0.0.1:18741',
       'mxr serve status',
       'mxr serve pair list',
       'mxr serve pair approve REQUEST_ID --dry-run',
@@ -35,6 +37,16 @@ const COMMAND_EXAMPLES = {
       'mxr serve clients',
       'mxr serve clients revoke CLIENT_ID --dry-run',
       'mxr serve clients revoke CLIENT_ID --confirm',
+    ],
+  },
+  connect: {
+    use: 'Preview or save this installation\'s remote mailbox connection. Confirmed pairing needs matching local host approval; repeat the command to claim it. Switching to local retires only this installation, with durable cleanup if the host is offline.',
+    examples: [
+      'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --dry-run',
+      'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --confirm',
+      'mxr connect --status --format json',
+      'mxr connect --local --dry-run',
+      'mxr connect --local --confirm',
     ],
   },
   search: {

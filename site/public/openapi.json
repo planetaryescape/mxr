@@ -13658,7 +13658,8 @@
             "description": "Absent until the first pairing starts. Inspection never initializes authority."
           },
           "hosting_available": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this build implements host serving; it does not report listener liveness."
           },
           "recovery_generation": {
             "type": [
@@ -20118,6 +20119,24 @@
           {
             "type": "object",
             "required": [
+              "cleanup_secret",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "AbandonPairing"
+                ]
+              },
+              "cleanup_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "client_id",
               "cleanup_secret",
               "action"
@@ -20360,6 +20379,47 @@
       },
       "Request": {
         "oneOf": [
+          {
+            "type": "object",
+            "description": "Every forwarded operation authenticates independently; nested wrappers are denied.",
+            "required": [
+              "client_id",
+              "mail_secret",
+              "request",
+              "cmd"
+            ],
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RemoteRead"
+                ]
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "request": {
+                "$ref": "#/components/schemas/Request"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRemoteReady"
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -27975,6 +28035,38 @@
       },
       "ResponseData": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "protocol_version",
+              "host_id",
+              "workspace",
+              "client_id",
+              "kind"
+            ],
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "host_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RemoteReady"
+                ]
+              },
+              "protocol_version": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "workspace": {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [

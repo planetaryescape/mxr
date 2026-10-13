@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Inspect local identity; hosting is not yet available
+Inspect local pairing authority; supervised gateway setup is not available
 
 Usage: mxr serve status [OPTIONS]
 

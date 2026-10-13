@@ -166,6 +166,29 @@ fn thread_focus_change_marks_newly_focused_unread_message_read_after_dwell() {
 }
 
 #[test]
+fn paired_remote_open_does_not_auto_mark_unread_message_read() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.envelopes[0].flags = MessageFlags::empty();
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    app.enable_paired_remote_read_only_session();
+
+    app.apply(Action::OpenSelected);
+    app.expire_pending_preview_read_for_tests();
+    app.tick();
+
+    assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+    assert!(!app
+        .mailbox
+        .viewing_envelope
+        .as_ref()
+        .unwrap()
+        .flags
+        .contains(MessageFlags::READ));
+    assert!(app.pending_mutation_queue.is_empty());
+}
+
+#[test]
 fn preview_navigation_only_marks_message_read_after_settling() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(2);
@@ -1054,6 +1077,22 @@ fn onboarding_blocks_mailbox_screen_until_account_exists() {
 
     assert_eq!(app.screen, Screen::Accounts);
     assert!(app.accounts.page.onboarding_required);
+}
+
+#[test]
+fn paired_remote_empty_config_opens_mailbox_and_search_without_onboarding() {
+    let config = mxr_config::MxrConfig::default();
+    let mut app = App::from_config(&config);
+    app.enable_paired_remote_read_only_session();
+
+    app.apply(Action::OpenMailboxScreen);
+    assert_eq!(app.screen, Screen::Mailbox);
+    assert!(!app.accounts.page.onboarding_required);
+    assert!(!app.accounts.page.onboarding_modal_open);
+
+    app.apply(Action::OpenGlobalSearch);
+    assert_eq!(app.screen, Screen::Search);
+    assert!(app.search.page.editing);
 }
 
 #[test]

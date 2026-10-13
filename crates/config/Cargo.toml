@@ -17,6 +17,9 @@ mxr-core = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+base16ct = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }

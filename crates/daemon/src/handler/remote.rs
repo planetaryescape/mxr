@@ -106,6 +106,16 @@ pub(super) async fn handle(
                 .map_err(authority_error)?,
             dry_run: *dry_run,
         },
+        RemoteRequest::AbandonPairing { cleanup_secret } => {
+            state
+                .store
+                .abandon_remote_pairing(cleanup_secret, now)
+                .await
+                .map_err(authority_error)?;
+            RemoteResponse::Cleaned {
+                client_id: String::new(),
+            }
+        }
         RemoteRequest::Cleanup {
             client_id,
             cleanup_secret,
@@ -121,6 +131,78 @@ pub(super) async fn handle(
         }
     };
     Ok(ResponseData::RemoteAuthority { response })
+}
+
+/// The proof is checked at each admission on the writer, never cached on a socket.
+pub(super) async fn read(
+    state: &std::sync::Arc<AppState>,
+    client_id: &str,
+    mail_secret: &mxr_core::RemoteSecret,
+    request: &mxr_protocol::Request,
+) -> HandlerResult {
+    use mxr_protocol::{Request, Response};
+    if !mxr_protocol::remote_read_allowed(request) {
+        return Err(super::HandlerError::RemoteAuthorityDenied(
+            "Unsupported remote operation; R1 supports mailbox reading and search".into(),
+        ));
+    }
+    state
+        .store
+        .authenticate_remote_client(client_id, mail_secret, chrono::Utc::now().timestamp())
+        .await
+        .map_err(authority_error)?;
+    if matches!(request, Request::GetRemoteReady) {
+        let authority = state
+            .store
+            .remote_authority_status()
+            .await
+            .map_err(authority_error)?;
+        let (workspace_id, recovery_generation) = state.store.archive_workspace().await?;
+        let host_id = authority.host_id.ok_or_else(|| {
+            super::HandlerError::RemoteAuthorityDenied("Host authority unavailable".into())
+        })?;
+        return Ok(ResponseData::RemoteReady {
+            protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+            host_id,
+            workspace: mxr_protocol::ArchiveWorkspaceData {
+                workspace_id,
+                recovery_generation,
+            },
+            client_id: client_id.into(),
+        });
+    }
+    match Box::pin(super::dispatch(
+        state,
+        mxr_protocol::ClientKind::Cli,
+        &PeerInfo {
+            auth: PeerAuth::TokenRequired,
+        },
+        request,
+    ))
+    .await
+    {
+        Response::Ok { mut data } => {
+            if let ResponseData::Bodies { failures, .. } = &mut data {
+                for failure in failures {
+                    failure.error = "Body unavailable on the remote host".into();
+                }
+            }
+            let bodies: &mut [mxr_core::MessageBody] = match &mut data {
+                ResponseData::Body { body } => std::slice::from_mut(body),
+                ResponseData::Bodies { bodies, .. } => bodies,
+                _ => &mut [],
+            };
+            for body in bodies {
+                for attachment in &mut body.attachments {
+                    attachment.local_path = None;
+                }
+            }
+            Ok(data)
+        }
+        Response::Error { .. } => Err(super::HandlerError::RemoteAuthorityDenied(
+            "Remote mailbox read failed".into(),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -162,7 +244,7 @@ mod tests {
             .await
             .unwrap();
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("hosting_available\":false"));
+        assert!(json.contains("hosting_available\":true"));
         assert!(!json.contains("secret"));
         assert!(!json.contains("verifier"));
     }

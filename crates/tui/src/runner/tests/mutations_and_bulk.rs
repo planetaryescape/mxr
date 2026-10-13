@@ -166,6 +166,29 @@ fn thread_focus_change_marks_newly_focused_unread_message_read_after_dwell() {
 }
 
 #[test]
+fn paired_remote_open_does_not_auto_mark_unread_message_read() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.envelopes[0].flags = MessageFlags::empty();
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    app.enable_paired_remote_read_only_session();
+
+    app.apply(Action::OpenSelected);
+    app.expire_pending_preview_read_for_tests();
+    app.tick();
+
+    assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+    assert!(!app
+        .mailbox
+        .viewing_envelope
+        .as_ref()
+        .unwrap()
+        .flags
+        .contains(MessageFlags::READ));
+    assert!(app.pending_mutation_queue.is_empty());
+}
+
+#[test]
 fn preview_navigation_only_marks_message_read_after_settling() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(2);

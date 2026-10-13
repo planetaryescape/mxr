@@ -73,9 +73,11 @@ fn preview_attachment_comparison_preserves_set_multiplicity_and_managed_bytes() 
         ]
     )
     .is_err());
-    assert!(check_preview_attachments(&reviewed, &[a.clone()], &[]).is_err());
+    assert!(check_preview_attachments(&reviewed, std::slice::from_ref(&a), &[]).is_err());
     assert!(check_preview_attachments(&reviewed, &[], &[]).is_err());
-    assert!(check_preview_attachments(&[a.clone()], &[a.clone(), a.clone()], &[]).is_err());
+    assert!(
+        check_preview_attachments(std::slice::from_ref(&a), &[a.clone(), a.clone()], &[]).is_err()
+    );
     let mut uploaded_a = a.clone();
     uploaded_a.id = DraftAttachmentId::new();
     assert!(check_preview_attachments(&reviewed, &[uploaded_a, b], &[]).is_ok());

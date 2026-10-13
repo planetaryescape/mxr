@@ -98,6 +98,7 @@ pub fn remote_read_allowed(request: &crate::Request) -> bool {
         crate::Request::GetRemoteReady
             | crate::Request::Ping
             | crate::Request::Search { .. }
+            | crate::Request::Count { .. }
             | crate::Request::GetBody { .. }
             | crate::Request::ListBodies { .. }
             | crate::Request::ListLabels { .. }
@@ -128,6 +129,11 @@ mod tests {
         }
         assert!(remote_read_allowed(&crate::Request::GetEnvelope {
             message_id: mxr_core::MessageId::new()
+        }));
+        assert!(remote_read_allowed(&crate::Request::Count {
+            query: "subject:fixture".into(),
+            account_id: None,
+            mode: None,
         }));
     }
     #[test]

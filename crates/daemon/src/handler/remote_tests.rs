@@ -63,6 +63,35 @@ async fn revocation_denies_the_next_operation_on_an_already_authenticated_client
 }
 
 #[tokio::test]
+async fn authenticated_remote_client_can_count_mail_search_results() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (client_id, mail) = registered_client(&state).await;
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let response = remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::Count {
+            query: "deployment".into(),
+            account_id: None,
+            mode: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let ResponseData::Count { count } = response else {
+        panic!("Count should return the matching mailbox result count");
+    };
+    assert!(count > 0, "the synthetic mailbox has deployment matches");
+}
+
+#[tokio::test]
 async fn body_reads_remove_host_paths_from_bodies_and_failure_details() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (client_id, mail) = registered_client(&state).await;

@@ -177,10 +177,38 @@ async fn run_mxr(
     args: &[&str],
     daemon_addr: &str,
 ) -> std::process::Output {
-    let child = tokio::process::Command::new(MXR_BIN)
+    run_mxr_with_optional_override(envs, args, Some(daemon_addr)).await
+}
+
+async fn run_mxr_without_daemon_override(
+    envs: &[(String, String)],
+    args: &[&str],
+) -> std::process::Output {
+    run_mxr_with_optional_override(envs, args, None).await
+}
+
+async fn run_mxr_with_optional_override(
+    envs: &[(String, String)],
+    args: &[&str],
+    daemon_addr: Option<&str>,
+) -> std::process::Output {
+    let mut command = tokio::process::Command::new(MXR_BIN);
+    command
         .args(args)
-        .envs(envs.iter().map(|(key, value)| (key, value)))
-        .env("MXR_DAEMON_ADDR", daemon_addr)
+        .envs(envs.iter().map(|(key, value)| (key, value)));
+    if let Some(address) = daemon_addr {
+        command.env("MXR_DAEMON_ADDR", address);
+    } else {
+        command
+            .env_remove("MXR_DAEMON_ADDR")
+            .env_remove("HTTP_PROXY")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("ALL_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("https_proxy")
+            .env_remove("all_proxy");
+    }
+    let child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -190,6 +218,147 @@ async fn run_mxr(
         .await
         .expect("mxr subprocess exceeded the 10-second smoke-test bound")
         .unwrap()
+}
+
+fn connection_state_path(envs: &[(String, String)]) -> PathBuf {
+    PathBuf::from(&envs[1].1).join("client-connection.json")
+}
+
+fn saved_registration() -> mxr_config::connection_state::ConnectionRegistration {
+    mxr_config::connection_state::ConnectionRegistration {
+        origin: "https://saved.example".into(),
+        client_id: "fixture-client".into(),
+        host_id: "fixture-host".into(),
+        workspace_id: "fixture-workspace".into(),
+        recovery_generation: "1".into(),
+        mail_secret: mxr_core::RemoteSecret::new("a".repeat(64)),
+        cleanup_secret: mxr_core::RemoteSecret::new("b".repeat(64)),
+    }
+}
+
+fn assert_no_pairing_connection(listener: &std::net::TcpListener) {
+    assert!(matches!(
+        listener.accept(),
+        Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock
+    ));
+}
+
+#[tokio::test]
+async fn connect_validates_names_before_preview_or_pairing_state() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = format!("https://{address}");
+    let state_path = connection_state_path(&envs);
+
+    let invalid_names = [
+        String::new(),
+        "   ".into(),
+        "invalid\nname".into(),
+        "é".repeat(41),
+    ];
+    let status =
+        run_mxr_without_daemon_override(&envs, &["connect", "--status", "--name", ""]).await;
+    assert!(status.status.success());
+    let local_preview =
+        run_mxr_without_daemon_override(&envs, &["connect", "--local", "--dry-run", "--name", ""])
+            .await;
+    assert!(local_preview.status.success());
+
+    for name in &invalid_names {
+        let output = run_mxr_without_daemon_override(
+            &envs,
+            &["connect", &origin, "--name", name, "--confirm"],
+        )
+        .await;
+        assert!(
+            !output.status.success(),
+            "invalid name was accepted: {name:?}"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("Client name must be non-empty"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!state_path.exists(), "invalid name persisted client state");
+        assert_no_pairing_connection(&listener);
+    }
+
+    let output =
+        run_mxr_without_daemon_override(&envs, &["connect", &origin, "--name", "   ", "--dry-run"])
+            .await;
+    assert!(
+        !output.status.success(),
+        "invalid name was accepted in preview"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Client name must be non-empty"));
+    assert!(!state_path.exists());
+
+    let bounded_name = "é".repeat(40);
+    let output = run_mxr_without_daemon_override(
+        &envs,
+        &["connect", &origin, "--name", &bounded_name, "--dry-run"],
+    )
+    .await;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let preview: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(preview["dry_run"], true);
+    assert_eq!(preview["selection_applied"], false);
+    assert!(!state_path.exists());
+    assert_no_pairing_connection(&listener);
+}
+
+#[tokio::test]
+async fn connect_status_redacts_command_override_without_executing_it() {
+    let root = tempfile::tempdir().unwrap();
+    let envs = isolated_env(root.path());
+    let local = run_mxr_without_daemon_override(&envs, &["connect", "--status"]).await;
+    assert!(local.status.success());
+    let local: serde_json::Value = serde_json::from_slice(&local.stdout).unwrap();
+    assert_eq!(local["effective_target"], "local");
+    assert_eq!(local["selection_source"], "local");
+
+    let state_path = connection_state_path(&envs);
+    mxr_config::connection_state::update(&state_path, Some(0), |state| {
+        state.generation = 1;
+        state.selected = Some(saved_registration());
+        Ok(())
+    })
+    .unwrap();
+    let saved = run_mxr_without_daemon_override(&envs, &["connect", "--status"]).await;
+    assert!(saved.status.success());
+    let saved: serde_json::Value = serde_json::from_slice(&saved.stdout).unwrap();
+    assert_eq!(saved["effective_target"], "https://saved.example");
+    assert_eq!(saved["selection_source"], "saved");
+
+    let marker = root.path().join("command-ran");
+    let synthetic_argument = root.path().join("synthetic-token-that-must-not-appear");
+    let address = format!(
+        "cmd://touch {} {}",
+        marker.display(),
+        synthetic_argument.display()
+    );
+    let status = run_mxr(&envs, &["connect", "--status"], &address).await;
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["effective_target"], "cmd://<command hidden>");
+    assert_eq!(status["selection_source"], "environment");
+    assert!(!status
+        .to_string()
+        .contains(&synthetic_argument.display().to_string()));
+    assert!(!status.to_string().contains(&marker.display().to_string()));
+    assert!(!marker.exists(), "status executed the command override");
+    assert!(!synthetic_argument.exists());
 }
 
 #[tokio::test]

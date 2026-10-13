@@ -65,6 +65,8 @@ mxr serve pair approve REQUEST_ID --confirm --format json
 
 Repeat the client's confirmed `mxr connect` command to claim the registration and save the connection. It reports `selection_applied: true` after verifying the host identity, workspace and protocol. Repeating it again reuses that registration. Pair another client from its own installation; give it a distinct name so the host's list is useful.
 
+A registration grants the supported reads across the host's mailbox accounts. Remote MCP uses that registration's grant; the host's local MCP profile restrictions do not narrow it. Pair only clients that should have this access.
+
 Omitting `--confirm` previews without contacting the host or creating credentials. `--dry-run` and `--confirm` conflict. Unset `MXR_DAEMON_ADDR` before changing a saved connection; that environment variable temporarily overrides saved selection.
 
 ## The CLI, TUI and MCP use the saved connection

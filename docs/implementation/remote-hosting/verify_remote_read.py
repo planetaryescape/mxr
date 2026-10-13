@@ -234,7 +234,9 @@ type = "fake"
                                    stdout=slave, stderr=slave, start_new_session=True)
         os.close(slave)
         transcript = bytearray()
+        status_queries = 0
         def rendered(text, timeout=20):
+            nonlocal status_queries
             start = len(transcript)
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
@@ -247,6 +249,10 @@ type = "fake"
                     if not data:
                         break
                     transcript.extend(data)
+                    while transcript.count(b'\x1b[5n') > status_queries:
+                        # ratatui-image waits for a terminal DSR response before reading keys.
+                        os.write(master, b'\x1b[0n')
+                        status_queries += 1
                     plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '',
                                    transcript[start:].decode(errors='replace'))
                     if text in plain:

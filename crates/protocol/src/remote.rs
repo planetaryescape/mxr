@@ -106,6 +106,35 @@ pub fn remote_read_allowed(request: &crate::Request) -> bool {
             | crate::Request::ListEnvelopesByIds { .. }
             | crate::Request::GetEnvelope { .. }
             | crate::Request::GetThread { .. }
+            | crate::Request::GetAttachmentTransferMetadata { .. }
+            | crate::Request::ReadAttachmentChunk { .. }
+    )
+}
+
+/// Registration-wide send authority is deliberately narrower than IPC categories.
+pub fn remote_send_allowed(request: &crate::Request) -> bool {
+    matches!(
+        request,
+        crate::Request::ListAccounts
+            | crate::Request::GetArchiveWorkspace
+            | crate::Request::PrepareReply { .. }
+            | crate::Request::ResolveSignature { .. }
+            | crate::Request::ResolveSendFrom { .. }
+            | crate::Request::ListSnippets
+            | crate::Request::ListDrafts
+            | crate::Request::GetDraft { .. }
+            | crate::Request::SaveDraft { .. }
+            | crate::Request::UpdateDraft { .. }
+            | crate::Request::DeleteDraft { .. }
+            | crate::Request::PreviewDraft { .. }
+            | crate::Request::CheckDraftSafety { .. }
+            | crate::Request::PreviewDraftAttachment { .. }
+            | crate::Request::BeginDraftAttachment { .. }
+            | crate::Request::WriteDraftAttachmentChunk { .. }
+            | crate::Request::FinalizeDraftAttachment { .. }
+            | crate::Request::SendDraft { .. }
+            | crate::Request::SendStoredDraft { .. }
+            | crate::Request::GetSendOutcome { .. }
     )
 }
 
@@ -147,11 +176,42 @@ mod tests {
         let json = serde_json::json!({"action":"Authenticate", "client_id":"client", "mail_secret":"secret", "context":{"admin":true}});
         assert!(serde_json::from_value::<RemoteRequest>(json).is_err());
         for invalid in [
-            serde_json::json!({"action":"StartPairing","name":"fixture","capabilities":["mail_write"],"mail_verifier":"a","cleanup_verifier":"b"}),
+            serde_json::json!({"action":"StartPairing","name":"fixture","capabilities":["mail_compose"],"mail_verifier":"a","cleanup_verifier":"b"}),
             serde_json::json!({"action":"ClaimPairing","request_id":"fixture","mail_secret":42,"cleanup_secret":"b"}),
             serde_json::json!({"action":"ApprovePairing","request_id":"fixture"}),
         ] {
             assert!(serde_json::from_value::<RemoteRequest>(invalid).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    #[test]
+    fn old_readiness_decodes_for_an_actionable_protocol_failure_without_advertising_writes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let data: crate::ResponseData = serde_json::from_value(serde_json::json!({
+            "kind":"RemoteReady", "protocol_version":14, "host_id":"old-host", "client_id":"reader",
+            "workspace":{"workspace_id":"workspace","recovery_generation":"generation"}
+        }))?;
+        let crate::ResponseData::RemoteReady {
+            capabilities,
+            draft_attachment_upload_supported,
+            draft_revision_supported,
+            send_outcome_supported,
+            protocol_version,
+            ..
+        } = data
+        else {
+            return Err("Expected remote readiness".into());
+        };
+        assert!(capabilities.is_empty());
+        assert!(
+            !draft_attachment_upload_supported
+                && !draft_revision_supported
+                && !send_outcome_supported
+        );
+        assert_ne!(protocol_version, crate::IPC_PROTOCOL_VERSION);
+        Ok(())
     }
 }

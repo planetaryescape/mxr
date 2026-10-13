@@ -19944,7 +19944,8 @@
       "RemoteCapability": {
         "type": "string",
         "enum": [
-          "mail_read"
+          "mail_read",
+          "mail_send"
         ]
       },
       "RemoteRequest": {
@@ -20398,6 +20399,16 @@
                   "RemoteRead"
                 ]
               },
+              "expected_workspace": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ArchiveWorkspaceData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "mail_secret": {
                 "$ref": "#/components/schemas/RemoteSecret"
               },
@@ -20417,6 +20428,36 @@
                 "enum": [
                   "GetRemoteReady"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Portable compose preview. Declarations are unpersisted; no upload, audit or token is written.",
+            "required": [
+              "draft",
+              "context",
+              "pending_attachments",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewDraft"
+                ]
+              },
+              "context": {
+                "$ref": "#/components/schemas/DraftSafetyContextData"
+              },
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              },
+              "pending_attachments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DraftAttachment"
+                }
               }
             }
           },
@@ -28038,6 +28079,51 @@
           {
             "type": "object",
             "required": [
+              "requires_save",
+              "draft",
+              "from",
+              "workspace",
+              "send_identity",
+              "pending_attachments",
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              },
+              "from": {
+                "$ref": "#/components/schemas/Address"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DraftPreview"
+                ]
+              },
+              "pending_attachments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DraftAttachment"
+                }
+              },
+              "report": {
+                "$ref": "#/components/schemas/DraftSafetyReport"
+              },
+              "requires_save": {
+                "type": "boolean"
+              },
+              "send_identity": {
+                "$ref": "#/components/schemas/SendIdentity"
+              },
+              "workspace": {
+                "$ref": "#/components/schemas/ArchiveWorkspaceData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "protocol_version",
               "host_id",
               "workspace",
@@ -28045,8 +28131,23 @@
               "kind"
             ],
             "properties": {
+              "attachment_transfer_supported": {
+                "type": "boolean"
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RemoteCapability"
+                }
+              },
               "client_id": {
                 "type": "string"
+              },
+              "draft_attachment_upload_supported": {
+                "type": "boolean"
+              },
+              "draft_revision_supported": {
+                "type": "boolean"
               },
               "host_id": {
                 "type": "string"
@@ -28061,6 +28162,9 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "send_outcome_supported": {
+                "type": "boolean"
               },
               "workspace": {
                 "$ref": "#/components/schemas/ArchiveWorkspaceData"

@@ -153,6 +153,9 @@ pub enum ServeClientAction {
 pub enum Command {
     /// Save an HTTPS mailbox connection, inspect it, or switch this installation to local.
     Connect {
+        /// Request host-approved draft, attachment and send access; default pairing is read-only.
+        #[arg(long, conflicts_with_all = ["local", "status"])]
+        allow_send: bool,
         url: Option<String>,
         #[arg(long, conflicts_with = "url")]
         local: bool,

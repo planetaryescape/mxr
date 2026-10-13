@@ -32,6 +32,13 @@ pub(crate) enum HandlerError {
     },
     #[error("{0}")]
     RemoteAuthorityDenied(String),
+    #[error("Path-backed drafts cannot be used remotely; recreate this draft using portable attachment uploads on the client")]
+    PortableDraft,
+    #[error("Send outcome requires recovery; query the original operation before another attempt")]
+    SendOutcome(Box<mxr_core::DraftSendOutcome>),
+    /// Already sanitized at authenticated remote admission.
+    #[error("Remote operation was refused")]
+    RemoteResponse(Box<Response>),
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -49,6 +56,21 @@ impl HandlerError {
     /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
+            Self::RemoteResponse(response) => *response,
+            Self::PortableDraft => Response::Error {
+                message: self.to_string(), kind: IpcErrorKind::InvalidRequest,
+                code: "remote_path_backed_draft".into(), retryable: false, details: None,
+            },
+            Self::SendOutcome(outcome) => Response::Error {
+                message: match outcome.state {
+                    mxr_core::SendOutcomeState::Unknown => "Send acceptance is uncertain; query the original operation and do not resend".into(),
+                    _ => "Provider did not accept this operation; review before starting a new send operation".into(),
+                },
+                kind: IpcErrorKind::InvalidRequest,
+                code: match outcome.state { mxr_core::SendOutcomeState::Unknown => "send_outcome_unknown", _ => "send_not_accepted" }.into(),
+                retryable: false,
+                details: Some(serde_json::json!({"outcome": outcome})),
+            },
             Self::RemoteAuthorityDenied(message) => Response::Error {
                 message, kind: IpcErrorKind::Auth, code: "remote_authority_denied".into(), retryable: false, details: None,
             },

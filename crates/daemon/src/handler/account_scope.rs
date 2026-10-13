@@ -398,6 +398,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SaveDraft { draft }
         | Request::UpdateDraft { draft }
         | Request::SaveDraftToServer { draft }
+        | Request::PreviewDraft { draft, .. }
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Targets(vec![T::DraftBody(draft)]),

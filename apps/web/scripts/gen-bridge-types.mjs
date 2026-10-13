@@ -59,4 +59,11 @@ if (gen.status !== 0) {
   process.exit(gen.status ?? 1);
 }
 
+// Preserve the generated file's existing four-space formatting, including unions.
+const format = spawnSync("npx", ["--no-install", "prettier", "--tab-width", "4", "--write", target], {
+  cwd: resolve(here, ".."),
+  stdio: "inherit",
+});
+if (format.status !== 0) process.exit(format.status ?? 1);
+
 console.info(`[gen:types] wrote ${target}`);

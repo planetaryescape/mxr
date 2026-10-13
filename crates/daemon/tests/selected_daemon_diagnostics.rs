@@ -226,6 +226,7 @@ fn connection_state_path(envs: &[(String, String)]) -> PathBuf {
 
 fn saved_registration() -> mxr_config::connection_state::ConnectionRegistration {
     mxr_config::connection_state::ConnectionRegistration {
+        capabilities: vec![mxr_core::RemoteCapability::MailRead],
         origin: "https://saved.example".into(),
         client_id: "fixture-client".into(),
         host_id: "fixture-host".into(),

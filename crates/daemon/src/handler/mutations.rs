@@ -362,7 +362,7 @@ const CONTACT_STYLE_LOOKUP_CAP: usize = 10;
 
 /// Run the full safety pipeline: existing daemon checks (recipients,
 /// reply-all parent diff) + new `mxr-safety` deterministic checks.
-async fn run_safety_pipeline(
+pub(super) async fn run_safety_pipeline(
     state: &AppState,
     draft: &Draft,
     context: &DraftSafetyContextData,
@@ -2420,7 +2420,7 @@ fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerEr
 /// skips the CLI — used to survive this function untouched, and then reached
 /// safety as an empty analysis body: the exact scan-nothing hazard the function
 /// exists to close, one variant over.
-fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
+pub(super) fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
     let DraftContent::Html { html, text } = &draft.content else {
         return std::borrow::Cow::Borrowed(draft);
     };
@@ -3311,7 +3311,7 @@ pub(crate) async fn resolve_send_from(
     Ok(ResponseData::ResolvedSendFrom { from: address })
 }
 
-fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
+pub(super) fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
     use sha2::{Digest, Sha256};
     let mut command = materialize_text_alternative(draft).into_owned();
     // Storage timestamps and revision metadata are not mail content.
@@ -3334,12 +3334,25 @@ fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
 
 fn outcome_response(outcome: mxr_core::DraftSendOutcome) -> HandlerResult {
     match outcome.state {
-        mxr_core::SendOutcomeState::Unknown => Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}", outcome.identity.operation_id, outcome.account_id).into()),
-        mxr_core::SendOutcomeState::NotAccepted => Err(format!("Provider did not accept this operation; review before starting a new send operation: {}", outcome.identity.operation_id).into()),
+        mxr_core::SendOutcomeState::Unknown => Err(HandlerError::SendOutcome(Box::new(outcome))),
+        mxr_core::SendOutcomeState::NotAccepted => {
+            Err(HandlerError::SendOutcome(Box::new(outcome)))
+        }
         mxr_core::SendOutcomeState::Accepted => {
-            if let (Some(local_message_id), Some(rfc2822_message_id)) = (outcome.local_message_id.clone(), outcome.rfc2822_message_id.clone()) {
-                Ok(ResponseData::SendReceipt { local_message_id, provider_message_id: outcome.provider_message_id, rfc2822_message_id })
-            } else { Ok(ResponseData::SendOutcome { outcome: Some(outcome) }) }
+            if let (Some(local_message_id), Some(rfc2822_message_id)) = (
+                outcome.local_message_id.clone(),
+                outcome.rfc2822_message_id.clone(),
+            ) {
+                Ok(ResponseData::SendReceipt {
+                    local_message_id,
+                    provider_message_id: outcome.provider_message_id,
+                    rfc2822_message_id,
+                })
+            } else {
+                Ok(ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                })
+            }
         }
     }
 }
@@ -3406,11 +3419,33 @@ pub(super) async fn send_draft_reviewed(
     identity: Option<&mxr_core::SendIdentity>,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
+    send_draft_reviewed_scoped(state, draft, identity, override_safety_token, false).await
+}
+
+pub(super) async fn send_draft_remote(
+    state: &AppState,
+    draft: &Draft,
+    identity: Option<&mxr_core::SendIdentity>,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    send_draft_reviewed_scoped(state, draft, identity, override_safety_token, true).await
+}
+
+async fn send_draft_reviewed_scoped(
+    state: &AppState,
+    draft: &Draft,
+    identity: Option<&mxr_core::SendIdentity>,
+    override_safety_token: Option<&str>,
+    portable: bool,
+) -> HandlerResult {
     let identity = identity.ok_or("Reviewed send identity is required; upgrade the client")?;
     if identity.expected_revision != draft.revision.unwrap_or(0) {
         return Err("Reviewed draft revision does not match send identity".into());
     }
     let _draft_guard = state.acquire_draft_operation(&draft.id).await;
+    if portable {
+        super::draft_preview::require_portable(draft)?;
+    }
     validate_draft_content(draft)?;
     let hash = send_command_hash(draft)?;
     if let Some((outcome, prior_hash)) =
@@ -3439,6 +3474,9 @@ pub(super) async fn send_draft_reviewed(
     }
     super::draft_attachments::validate_set(state, draft).await?;
     if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        if portable {
+            super::draft_preview::require_portable(&stored)?;
+        }
         checked_draft(state, &draft.id, draft.revision).await?;
         super::draft_attachments::require_visible_set(draft, &stored)?;
         if send_command_hash(&stored)? != hash {
@@ -3448,6 +3486,11 @@ pub(super) async fn send_draft_reviewed(
             );
         }
     } else {
+        if portable {
+            return Err(HandlerError::InvalidRequest(
+                "Save and review the canonical draft revision before sending remotely".into(),
+            ));
+        }
         if state
             .store
             .get_draft_send_outcome(&draft.id)
@@ -3467,7 +3510,7 @@ pub(super) async fn send_draft_reviewed(
             .insert_draft_if_absent(&materialize_text_alternative(draft))
             .await?;
     }
-    send_stored_draft_locked(state, &draft.id, identity, override_safety_token).await
+    send_stored_draft_locked(state, &draft.id, identity, override_safety_token, portable).await
 }
 
 /// Everything `send_stored_draft` checks before it reaches the provider:
@@ -3550,7 +3593,7 @@ pub(crate) async fn send_stored_draft(
         .await?
         .ok_or("Draft not found")?;
     let identity = mxr_core::SendIdentity::for_draft(&draft);
-    send_stored_draft_locked(state, draft_id, &identity, override_safety_token).await
+    send_stored_draft_locked(state, draft_id, &identity, override_safety_token, false).await
 }
 
 pub(crate) async fn send_stored_draft_reviewed(
@@ -3564,7 +3607,21 @@ pub(crate) async fn send_stored_draft_reviewed(
         return Err("A saved draft's reviewed revision is required".into());
     }
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
-    send_stored_draft_locked(state, draft_id, identity, override_safety_token).await
+    send_stored_draft_locked(state, draft_id, identity, override_safety_token, false).await
+}
+
+pub(super) async fn send_stored_draft_remote(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    identity: Option<&mxr_core::SendIdentity>,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    let identity = identity.ok_or("Reviewed send identity is required")?;
+    if identity.expected_revision <= 0 {
+        return Err("A saved draft's reviewed revision is required".into());
+    }
+    let _guard = state.acquire_draft_operation(draft_id).await;
+    send_stored_draft_locked(state, draft_id, identity, override_safety_token, true).await
 }
 
 async fn send_stored_draft_locked(
@@ -3572,6 +3629,7 @@ async fn send_stored_draft_locked(
     draft_id: &mxr_core::DraftId,
     identity: &mxr_core::SendIdentity,
     override_safety_token: Option<&str>,
+    portable: bool,
 ) -> HandlerResult {
     state
         .ensure_effects_allowed()
@@ -3614,6 +3672,9 @@ async fn send_stored_draft_locked(
         .await?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
 
+    if portable {
+        super::draft_preview::require_portable(&draft)?;
+    }
     let stored_revision = draft.revision.ok_or("Saved draft has no revision")?;
     if identity.expected_revision != stored_revision && identity.expected_revision != 0 {
         return Err(
@@ -3692,15 +3753,32 @@ async fn send_stored_draft_locked(
         Ok(receipt) => receipt,
         Err(mxr_core::SendFailure::NotAccepted(error)) => {
             state.store.reject_draft_send(identity).await?;
-            return Err(format!(
-                "Provider did not accept send operation {}: {error}",
-                identity.operation_id
-            )
-            .into());
+            if !portable {
+                return Err(format!(
+                    "Provider did not accept send operation {}: {error}",
+                    identity.operation_id
+                )
+                .into());
+            }
+            tracing::warn!(operation_id = %identity.operation_id, "provider rejected send: {error}");
+            let (outcome, _) = state
+                .store
+                .get_send_outcome(&identity.operation_id)
+                .await?
+                .ok_or("Send outcome missing")?;
+            return Err(HandlerError::SendOutcome(Box::new(outcome)));
         }
         Err(mxr_core::SendFailure::Unknown(error)) => {
             tracing::warn!(operation_id = %identity.operation_id, "provider acceptance is uncertain: {error}");
-            return Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}. Provider error: {error}", identity.operation_id, draft.account_id).into());
+            if !portable {
+                return Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}. Provider error: {error}", identity.operation_id, draft.account_id).into());
+            }
+            let (outcome, _) = state
+                .store
+                .get_send_outcome(&identity.operation_id)
+                .await?
+                .ok_or("Send outcome missing")?;
+            return Err(HandlerError::SendOutcome(Box::new(outcome)));
         }
     };
     state.store.accept_draft_send(identity, &receipt).await.map_err(|error| format!("Send outcome uncertain: accepted by provider but receipt persistence failed; query operation {}: {error}", identity.operation_id))?;

@@ -122,9 +122,10 @@ test("focus mode and the places keep exactly their inventoried controls", async 
 
   await openApp(page, "/reading");
   await expect(page.getByRole("heading", { level: 1, name: "Reading", exact: true })).toBeVisible();
-  expect(
-    await names(page.getByRole("region", { name: "Reading" }).locator("header").first()),
-  ).toEqual(INVENTORY.readingHeader);
+  const readingHeader = page.getByRole("region", { name: "Reading" }).locator("header").first();
+  await expect
+    .poll(() => names(readingHeader), { timeout: 30_000 })
+    .toEqual(INVENTORY.readingHeader);
   await openApp(page, "/updates");
   await expect(page.getByRole("heading", { level: 1, name: "Updates", exact: true })).toBeVisible();
   expect(

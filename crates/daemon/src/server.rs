@@ -2139,6 +2139,7 @@ mod tests {
         mxr_config::connection_state::update(&state_path, None, |state| {
             state.generation = 1;
             state.selected = Some(mxr_config::connection_state::ConnectionRegistration {
+                capabilities: vec![mxr_core::RemoteCapability::MailRead],
                 origin: "https://fixture.example".into(),
                 client_id: "fixture-client".into(),
                 host_id: "fixture-host".into(),

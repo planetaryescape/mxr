@@ -23,6 +23,7 @@ chrono = { workspace = true }
 mxr-client = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
+mxr-mail-parse = { workspace = true }
 mxr-protocol = { workspace = true }
 rmcp = { workspace = true, features = ["client", "transport-io"] }
 schemars = { workspace = true }

@@ -40,10 +40,12 @@ const COMMAND_EXAMPLES = {
     ],
   },
   connect: {
-    use: 'Preview or save this installation\'s remote mailbox connection. Confirmed pairing needs matching local host approval; repeat the command to claim it. Switching to local retires only this installation, with durable cleanup if the host is offline.',
+    use: 'Preview or save this installation\'s remote mailbox connection. Default pairing is read-only; --allow-send requests explicit host approval for portable compose and reviewed sending. Repeat the command with the same grant to claim it. Switching to local retires only this installation, with durable cleanup if the host is offline.',
     examples: [
       'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --dry-run',
       'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --confirm',
+      'mxr connect https://mail-host.example-tailnet.ts.net:8443 --allow-send --dry-run',
+      'mxr connect https://mail-host.example-tailnet.ts.net:8443 --allow-send --confirm',
       'mxr connect --status --format json',
       'mxr connect --local --dry-run',
       'mxr connect --local --confirm',

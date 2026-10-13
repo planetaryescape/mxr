@@ -164,8 +164,9 @@ fn spawn_ipc_worker_selected(
                                         since: std::time::Instant::now(), reason: "request timed out; reconnecting without replay".into(),
                                     }));
                                     if let Ok(fresh) = connect_ipc_client(&target, event_tx.clone()).await {
-                                        client = fresh;
-                                        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                                        if client.replace_connection(fresh).is_ok() {
+                                            let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                                        }
                                     }
                                     Err(MxrError::Ipc(format!(
                                         "daemon did not respond within {}s — the request may or may not have been applied",
@@ -194,10 +195,11 @@ fn spawn_ipc_worker_selected(
                                                 IPC_REQUEST_TIMEOUT.as_secs()
                                             ))),
                                         };
-                                        if retry.is_ok() {
-                                            client = reconnected;
-                                        }
-                                        result = retry;
+                                        result = if retry.is_ok() {
+                                            client.replace_connection(reconnected).and(retry)
+                                        } else {
+                                            retry
+                                        };
                                     }
                                     Err(error) => {
                                         let _ = result_tx.send(AsyncResult::ConnectionState(
@@ -230,9 +232,17 @@ fn spawn_ipc_worker_selected(
                         ));
                         match connect_ipc_client(&target, event_tx.clone()).await {
                             Ok(fresh) => {
-                                client = fresh;
-                                let _ = result_tx
-                                    .send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                                match client.replace_connection(fresh) {
+                                    Ok(()) => {
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                                    }
+                                    Err(error) => {
+                                        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
+                                            since: std::time::Instant::now(), reason: error.to_string(),
+                                        }));
+                                        sleep(Duration::from_secs(2)).await;
+                                    }
+                                }
                             }
                             Err(error) => {
                                 let _ = result_tx.send(AsyncResult::ConnectionState(

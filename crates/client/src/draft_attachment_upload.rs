@@ -11,6 +11,69 @@ fn error(message: impl Into<String>) -> ClientError {
     ClientError::Io(std::io::Error::other(message.into()))
 }
 
+fn read_client_attachment(path: &std::path::Path) -> Result<(String, Vec<u8>), ClientError> {
+    let metadata = std::fs::metadata(path).map_err(ClientError::Io)?;
+    if !metadata.is_file() || metadata.len() > MAX_DRAFT_ATTACHMENT_BYTES {
+        return Err(error(
+            "Attachment must be a regular file within the daemon's 25 MiB managed-resource limit",
+        ));
+    }
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| error("Attachment filename must be UTF-8"))?
+        .to_string();
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(ClientError::Io)?
+        .take(MAX_DRAFT_ATTACHMENT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(ClientError::Io)?;
+    if bytes.len() as u64 > MAX_DRAFT_ATTACHMENT_BYTES {
+        return Err(error(
+            "Attachment grew beyond the daemon's 25 MiB managed-resource limit",
+        ));
+    }
+    Ok((filename, bytes))
+}
+
+fn check_preview_attachments(
+    reviewed: &[DraftAttachment],
+    managed: &[DraftAttachment],
+    files: &[(String, Vec<u8>)],
+) -> Result<(), ClientError> {
+    let mut remaining = std::collections::HashMap::new();
+    for metadata in reviewed {
+        *remaining
+            .entry((
+                metadata.filename.clone(),
+                metadata.length_bytes,
+                metadata.sha256.clone(),
+            ))
+            .or_insert(0_usize) += 1;
+    }
+    let attachments = managed
+        .iter()
+        .map(|m| (m.filename.clone(), m.length_bytes, m.sha256.clone()))
+        .chain(files.iter().map(|(filename, bytes)| {
+            (
+                filename.clone(),
+                bytes.len() as u64,
+                base16ct::lower::encode_string(&Sha256::digest(bytes)),
+            )
+        }));
+    for key in attachments {
+        match remaining.get_mut(&key) {
+            Some(count) if *count > 0 => *count -= 1,
+            _ => return Err(error("Attachment bytes or selection changed since preview; reopen and review before saving or sending")),
+        }
+    }
+    if remaining.values().any(|count| *count != 0) {
+        return Err(error("Attachment bytes or selection changed since preview; reopen and review before saving or sending"));
+    }
+    Ok(())
+}
+
 impl IpcConnection {
     async fn upload_request(
         &mut self,
@@ -40,8 +103,10 @@ impl IpcConnection {
 
     /// Capability check precedes opening any client file. No host-path fallback.
     pub async fn require_draft_attachment_upload(&mut self) -> Result<(), ClientError> {
-        match self.upload_request(Request::GetStatus, None).await? {
+        match self.upload_request(if self.is_paired_remote() { Request::GetRemoteReady } else { Request::GetStatus }, None).await? {
             ResponseData::Status { draft_attachment_upload_supported: true, .. } => Ok(()),
+            ResponseData::RemoteReady { draft_attachment_upload_supported: true, capabilities, .. } if capabilities.contains(&mxr_core::RemoteCapability::MailSend) => Ok(()),
+            ResponseData::RemoteReady { .. } => Err(error("Portable attachment uploads require host-approved send access; request mxr connect --allow-send and host approval")),
             _ => Err(error("Daemon does not support portable draft attachments; upgrade the daemon before uploading")),
         }
     }
@@ -154,6 +219,79 @@ impl IpcConnection {
         mut request: Request,
         workspace: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Request, ClientError> {
+        if self.is_paired_remote() {
+            if let Request::CheckDraftSafety { draft, context } = request {
+                request = Request::PreviewDraft {
+                    draft,
+                    context,
+                    pending_attachments: Vec::new(),
+                };
+            }
+        }
+        if let Request::PreviewDraft {
+            draft,
+            pending_attachments,
+            ..
+        } = &mut request
+        {
+            if !draft.inline_assets.is_empty() {
+                return Err(error("Inline path-backed assets are unsupported remotely; recreate the draft with portable attachments"));
+            }
+            let paths = std::mem::take(&mut draft.attachments);
+            for path in paths {
+                let rendered = path.to_string_lossy();
+                if let Some(token) = rendered.strip_prefix("mxr-resource:") {
+                    let id: DraftAttachmentId = token
+                        .split('/')
+                        .next()
+                        .unwrap_or_default()
+                        .parse()
+                        .map_err(|_| error("Invalid managed attachment reference"))?;
+                    let canonical = match self
+                        .upload_request(
+                            Request::GetDraft {
+                                draft_id: draft.id.clone(),
+                            },
+                            workspace,
+                        )
+                        .await?
+                    {
+                        ResponseData::Draft { draft } => draft,
+                        _ => return Err(error("Unexpected owner draft response")),
+                    };
+                    let metadata = canonical
+                        .managed_attachments
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|m| m.id == id)
+                        .ok_or_else(|| error("Managed resource is not attached to this draft"))?;
+                    let managed = draft.managed_attachments.get_or_insert_default();
+                    if !managed.iter().any(|m| m.id == id) {
+                        managed.push(metadata.clone());
+                    }
+                } else {
+                    let (filename, bytes) = read_client_attachment(&path)?;
+                    pending_attachments.push(DraftAttachment {
+                        id: DraftAttachmentId::new(),
+                        draft_id: draft.id.clone(),
+                        account_id: draft.account_id.clone(),
+                        filename,
+                        mime_type: "application/octet-stream".into(),
+                        length_bytes: bytes.len() as u64,
+                        sha256: Sha256::digest(&bytes)
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect(),
+                    });
+                }
+            }
+            let mut declarations = pending_attachments.clone();
+            declarations.extend(draft.managed_attachments.iter().flatten().cloned());
+            self.preview_attachment_declarations
+                .insert(draft.id.clone(), declarations);
+            return Ok(request);
+        }
         let preview_only = matches!(request, Request::CheckDraftSafety { .. });
         let sending = matches!(request, Request::SendDraft { .. });
         let draft = match &mut request {
@@ -165,6 +303,15 @@ impl IpcConnection {
             _ => return Ok(request),
         };
         if draft.attachments.is_empty() {
+            if self.is_paired_remote() {
+                if let Some(reviewed) = self.preview_attachment_declarations.get(&draft.id) {
+                    check_preview_attachments(
+                        reviewed,
+                        draft.managed_attachments.as_deref().unwrap_or_default(),
+                        &[],
+                    )?;
+                }
+            }
             return Ok(request);
         }
         if preview_only
@@ -178,6 +325,7 @@ impl IpcConnection {
         self.require_draft_attachment_upload().await?;
         let mut managed = draft.managed_attachments.take().unwrap_or_default();
         let mut files = Vec::new();
+        let reviewed = self.preview_attachment_declarations.get(&draft.id).cloned();
         let mut canonical = if draft.revision.unwrap_or(0) > 0 {
             match self
                 .request_response_unchecked_owned(
@@ -251,9 +399,10 @@ impl IpcConnection {
                     managed.push(resource.clone());
                 }
             } else {
-                if canonical
-                    .as_ref()
-                    .is_some_and(|stored| stored.attachments.contains(&path))
+                if !self.is_paired_remote()
+                    && canonical
+                        .as_ref()
+                        .is_some_and(|stored| stored.attachments.contains(&path))
                 {
                     draft.attachments.push(path);
                     continue;
@@ -261,27 +410,13 @@ impl IpcConnection {
                 if sending {
                     return Err(error("Save portable draft attachments and review the returned revision before sending"));
                 }
-                let metadata = std::fs::metadata(&path).map_err(ClientError::Io)?;
-                if !metadata.is_file() || metadata.len() > MAX_DRAFT_ATTACHMENT_BYTES {
-                    return Err(error("Attachment must be a regular file within the daemon's 25 MiB managed-resource limit"));
-                }
-                let filename = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| error("Attachment filename must be UTF-8"))?
-                    .to_string();
-                let mut bytes = Vec::new();
-                std::fs::File::open(&path)
-                    .map_err(ClientError::Io)?
-                    .take(MAX_DRAFT_ATTACHMENT_BYTES + 1)
-                    .read_to_end(&mut bytes)
-                    .map_err(ClientError::Io)?;
-                if bytes.len() as u64 > MAX_DRAFT_ATTACHMENT_BYTES {
-                    return Err(error(
-                        "Attachment grew beyond the daemon's 25 MiB managed-resource limit",
-                    ));
-                }
+                let (filename, bytes) = read_client_attachment(&path)?;
                 files.push((filename, bytes));
+            }
+        }
+        if self.is_paired_remote() {
+            if let Some(reviewed) = &reviewed {
+                check_preview_attachments(reviewed, &managed, &files)?;
             }
         }
         draft.managed_attachments = Some(managed);

@@ -46,6 +46,7 @@ pub async fn authority(
     route: &str,
     request: RemoteRequest,
 ) -> Result<ResponseData, ClientError> {
+    let send_grant_request = matches!(&request, RemoteRequest::StartPairing { capabilities, .. } if capabilities.contains(&mxr_core::RemoteCapability::MailSend));
     let origin = mxr_transport::https_origin(origin)?;
     let mut response = http()?
         .post(format!("{origin}/api/v1/remote/{route}"))
@@ -53,6 +54,9 @@ pub async fn authority(
         .send()
         .await
         .map_err(|_| error("Remote HTTPS request failed; saved selection was preserved"))?;
+    if send_grant_request && matches!(response.status().as_u16(), 400 | 422) {
+        return Err(error("Remote host does not support the requested send grant; upgrade host and client to matching mxr IPC versions, then retry explicitly. Saved selection was preserved"));
+    }
     if !response.status().is_success() {
         return Err(error(
             "Remote pairing/cleanup was denied; inspect host approval and retry",
@@ -145,7 +149,7 @@ async fn retire_pairing(
                     "pairings",
                     RemoteRequest::StartPairing {
                         name: old.name.clone(),
-                        capabilities: vec![mxr_core::RemoteCapability::MailRead],
+                        capabilities: old.capabilities.clone(),
                         mail_verifier: old.mail_verifier.clone(),
                         cleanup_verifier,
                     },

@@ -38,17 +38,35 @@ fn validate_client_name(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn run(
-    url: Option<String>,
-    local: bool,
-    status: bool,
-    name: String,
-    dry_run: bool,
-    confirm: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
+pub struct ConnectCommand {
+    pub url: Option<String>,
+    pub local: bool,
+    pub status: bool,
+    pub name: String,
+    pub dry_run: bool,
+    pub confirm: bool,
+    pub allow_send: bool,
+    pub format: Option<OutputFormat>,
+}
+
+pub async fn run(command: ConnectCommand) -> anyhow::Result<()> {
+    let ConnectCommand {
+        url,
+        local,
+        status,
+        name,
+        dry_run,
+        confirm,
+        allow_send,
+        format,
+    } = command;
     let format = format.unwrap_or(OutputFormat::Json);
     let snapshot = read().await?;
+    let capabilities = if allow_send {
+        vec![RemoteCapability::MailRead, RemoteCapability::MailSend]
+    } else {
+        vec![RemoteCapability::MailRead]
+    };
     if status {
         if !dry_run {
             retry_cleanup().await?;
@@ -63,7 +81,7 @@ pub async fn run(
             .transpose()?
             .map(|address| mxr_client::SelectedDaemonTarget::new(address, None).description());
         return crate::output::print_json(
-            &serde_json::json!({"effective_target":override_target.as_deref().or_else(|| snapshot.selected.as_ref().map(|entry| entry.origin.as_str())).unwrap_or("local"),"selection_source":if override_address.is_some(){"environment"}else if snapshot.selected.is_some(){"saved"}else{"local"},"selection_generation":snapshot.generation,"registration_state":if snapshot.selected.is_some(){"paired"}else{"local"},"session_state":"not_inspected","pending_deregistration_count":snapshot.cleanup.len()+snapshot.retired_pairings.len()}),
+            &serde_json::json!({"effective_target":override_target.as_deref().or_else(|| snapshot.selected.as_ref().map(|entry| entry.origin.as_str())).unwrap_or("local"),"selection_source":if override_address.is_some(){"environment"}else if snapshot.selected.is_some(){"saved"}else{"local"},"selection_generation":snapshot.generation,"registration_state":if snapshot.selected.is_some(){"paired"}else{"local"},"session_state":"not_inspected","capabilities":snapshot.selected.as_ref().map(|entry| &entry.capabilities),"pending_deregistration_count":snapshot.cleanup.len()+snapshot.retired_pairings.len()}),
             format,
         );
     }
@@ -85,7 +103,7 @@ pub async fn run(
     }
     if dry_run || !confirm {
         return crate::output::print_json(
-            &serde_json::json!({"dry_run":true,"old_target":snapshot.selected.as_ref().map(|entry| &entry.origin),"new_target":origin.as_deref().unwrap_or("local"),"selection_applied":false}),
+            &serde_json::json!({"dry_run":true,"old_target":snapshot.selected.as_ref().map(|entry| &entry.origin),"new_target":origin.as_deref().unwrap_or("local"),"selection_applied":false,"requested_capabilities":capabilities,"old_capabilities":snapshot.selected.as_ref().map(|entry| &entry.capabilities)}),
             format,
         );
     }
@@ -112,24 +130,29 @@ pub async fn run(
     }
     let origin = origin.ok_or_else(|| anyhow::anyhow!("HTTPS origin required"))?;
     if let Some(saved) = &snapshot.selected {
-        if saved.origin == origin {
+        if saved.origin == origin
+            && capabilities
+                .iter()
+                .all(|grant| saved.capabilities.contains(grant))
+        {
             mxr_client::selected_daemon::connect_registration(saved, ClientKind::Cli).await?;
             return crate::output::print_json(
-                &serde_json::json!({"selection_applied":true,"effective_target":origin,"client_id":saved.client_id,"reused":true}),
+                &serde_json::json!({"selection_applied":true,"effective_target":origin,"client_id":saved.client_id,"reused":true,"capabilities":saved.capabilities}),
                 format,
             );
         }
     }
     let pending = update(Some(snapshot.generation), move |state| {
         if let Some(pending) = &state.pending_pairing {
-            if pending.origin != origin {
+            if pending.origin != origin || pending.capabilities != capabilities {
                 return Err(std::io::Error::other(
-                    "A different pairing is pending; complete it before changing origin",
+                    "A pairing with a different origin or grant is pending; complete it or cancel it before changing the request",
                 ));
             }
             return Ok(pending.clone());
         }
         let pending = PendingConnection {
+            capabilities,
             origin,
             name,
             mail_secret: secret()?,
@@ -148,7 +171,7 @@ pub async fn run(
                 "pairings",
                 RemoteRequest::StartPairing {
                     name: pending.name.clone(),
-                    capabilities: vec![RemoteCapability::MailRead],
+                    capabilities: pending.capabilities.clone(),
                     mail_verifier: verifier(&pending.mail_secret),
                     cleanup_verifier: verifier(&pending.cleanup_secret),
                 },
@@ -194,7 +217,11 @@ pub async fn run(
     else {
         anyhow::bail!("Unexpected claim response");
     };
+    if client.capabilities != pending.capabilities {
+        anyhow::bail!("Host approved different grants; saved selection was preserved");
+    }
     let mut registration = ConnectionRegistration {
+        capabilities: client.capabilities,
         origin: pending.origin,
         client_id: client.client_id,
         host_id: String::new(),
@@ -222,6 +249,7 @@ pub async fn run(
     registration.recovery_generation = workspace.recovery_generation;
     let displayed_id = registration.client_id.clone();
     let displayed_origin = registration.origin.clone();
+    let displayed_capabilities = registration.capabilities.clone();
     update(Some(snapshot.generation), move |state| {
         if let Some(old) = state.selected.take() {
             state.cleanup.push(old.into());
@@ -237,7 +265,7 @@ pub async fn run(
     .await?;
     let pending_count = retry_cleanup().await?;
     crate::output::print_json(
-        &serde_json::json!({"selection_applied":true,"effective_target":displayed_origin,"client_id":displayed_id,"pending_deregistration_count":pending_count}),
+        &serde_json::json!({"selection_applied":true,"effective_target":displayed_origin,"client_id":displayed_id,"capabilities":displayed_capabilities,"pending_deregistration_count":pending_count}),
         format,
     )
 }

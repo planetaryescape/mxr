@@ -214,12 +214,44 @@ pub struct IpcConnection {
     source: ClientKind,
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
+    // TCP/command targets restrict local provisioning without paired authority.
     selected_remote: bool,
+    preview_attachment_declarations:
+        std::collections::HashMap<mxr_core::DraftId, Vec<mxr_core::DraftAttachment>>,
     remote_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+    remote_registration_identity: Option<(String, String)>,
     selection_generation: Option<u64>,
 }
 
 impl IpcConnection {
+    pub fn is_paired_remote(&self) -> bool {
+        self.remote_registration_identity.is_some()
+    }
+
+    /// Carry byte reviews only across reconnection of the same selected session.
+    /// A refused replacement leaves the original review intact for another attempt.
+    pub fn retain_draft_attachment_previews_from(
+        &mut self,
+        previous: &mut Self,
+    ) -> Result<(), ClientError> {
+        if self.selected_remote != previous.selected_remote
+            || self.remote_workspace != previous.remote_workspace
+            || self.remote_registration_identity != previous.remote_registration_identity
+            || self.selection_generation != previous.selection_generation
+        {
+            return Err(workspace_error(
+                "workspace_conflict",
+                "Connection changed; reopen and review the draft on its original workspace",
+            ));
+        }
+        for (draft, declarations) in std::mem::take(&mut previous.preview_attachment_declarations) {
+            self.preview_attachment_declarations
+                .entry(draft)
+                .or_insert(declarations);
+        }
+        Ok(())
+    }
+
     pub(crate) fn with_selection_generation(mut self, generation: u64) -> Self {
         self.selection_generation = Some(generation);
         self
@@ -306,7 +338,9 @@ impl IpcConnection {
             default_timeout: None,
             attachment_transfer_supported: None,
             selected_remote: false,
+            preview_attachment_declarations: std::collections::HashMap::new(),
             remote_workspace: None,
+            remote_registration_identity: None,
             selection_generation: None,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate
@@ -407,6 +441,12 @@ impl IpcConnection {
     {
         remote_connection::schedule_cleanup();
         self.verify_selection().await?;
+        if self.is_paired_remote() && matches!(request, Request::GetArchiveWorkspace) {
+            let workspace = self.capture_workspace_with_events(&mut on_event).await?;
+            return Ok(Response::Ok {
+                data: ResponseData::ArchiveWorkspace { workspace },
+            });
+        }
         if self.selected_remote && selected_daemon::requires_local_account_setup(&request) {
             return Err(ClientError::Io(std::io::Error::other(
                 "Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host",
@@ -425,6 +465,8 @@ impl IpcConnection {
             self.verify_workspace_with_events(workspace, &mut on_event)
                 .await?;
         }
+        let safety_preview =
+            self.is_paired_remote() && matches!(request, Request::CheckDraftSafety { .. });
         let request = match self
             .prepare_draft_attachment_request(request, expected_workspace)
             .await
@@ -461,9 +503,18 @@ impl IpcConnection {
             Request::RuleCategories { .. } | Request::ExplainCategoryMembership { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
+                Response::Ok { data: ResponseData::RemoteReady { .. } } => return Ok(Response::error_kinded("Category rules are unavailable on paired remote hosts", IpcErrorKind::Unsupported)),
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => {},
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} => return Ok(Response::error_kinded(format!("Category rules require daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",mxr_protocol::IPC_PROTOCOL_VERSION),IpcErrorKind::Unsupported)),
                 error @ Response::Error {..} => return Ok(error),
@@ -476,7 +527,15 @@ impl IpcConnection {
         ) && self.attachment_transfer_supported != Some(true)
         {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
                 error @ Response::Error { .. } => return Ok(error),
@@ -485,11 +544,19 @@ impl IpcConnection {
                         ResponseData::Status {
                             attachment_transfer_supported: true,
                             ..
+                        }
+                        | ResponseData::RemoteReady {
+                            attachment_transfer_supported: true,
+                            ..
                         },
                 } => self.attachment_transfer_supported = Some(true),
                 Response::Ok {
                     data:
                         ResponseData::Status {
+                            attachment_transfer_supported: false,
+                            ..
+                        }
+                        | ResponseData::RemoteReady {
                             attachment_transfer_supported: false,
                             ..
                         },
@@ -514,10 +581,26 @@ impl IpcConnection {
                 | Request::GetArchiveOperation { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
                 error @ Response::Error { .. } => return Ok(error),
+                Response::Ok {
+                    data: ResponseData::RemoteReady { .. },
+                } => {
+                    return Ok(Response::error_kinded(
+                        "Recoverable Archive is unavailable on paired remote hosts",
+                        IpcErrorKind::Unsupported,
+                    ));
+                }
                 Response::Ok {
                     data:
                         ResponseData::Status {
@@ -552,12 +635,23 @@ impl IpcConnection {
                 | Request::GetSendOutcome { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             if !matches!(
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
+                        send_outcome_supported: true,
+                        ..
+                    } | ResponseData::RemoteReady {
                         send_outcome_supported: true,
                         ..
                     }
@@ -577,12 +671,24 @@ impl IpcConnection {
                 | Request::SaveDraftToServer { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             if !matches!(
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
+                        draft_revision_supported: true,
+                        send_outcome_supported: true,
+                        ..
+                    } | ResponseData::RemoteReady {
                         draft_revision_supported: true,
                         send_outcome_supported: true,
                         ..
@@ -601,6 +707,16 @@ impl IpcConnection {
             )
             .await?;
         self.verify_selection().await?;
+        if safety_preview {
+            if let Response::Ok {
+                data: ResponseData::DraftPreview { report, .. },
+            } = response
+            {
+                return Ok(Response::Ok {
+                    data: ResponseData::DraftSafetyReportResponse { report },
+                });
+            }
+        }
         Ok(response)
     }
 
@@ -1348,6 +1464,78 @@ mod tests {
                 assert_eq!(code, "provider");
             }
             other => panic!("expected verbatim Error response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_preflights_return_unsupported_without_dispatching_the_operation() {
+        for request in [
+            Request::ExplainCategoryMembership {
+                message_id: mxr_core::MessageId::new(),
+                category_id: mxr_core::CategoryId::new(),
+            },
+            Request::GetArchiveOperation {
+                identity: mxr_protocol::ArchiveIdentityData {
+                    operation_id: "fixture-operation".into(),
+                    caller_id: "fixture-caller".into(),
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "fixture-workspace".into(),
+                        recovery_generation: "fixture-generation".into(),
+                    },
+                },
+            },
+            Request::GetAttachmentTransferMetadata {
+                message_id: mxr_core::MessageId::new(),
+                attachment_id: mxr_core::AttachmentId::new(),
+            },
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("mxr.sock");
+            let calls = Arc::new(AtomicU64::new(0));
+            let server_calls = calls.clone();
+            let server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+                assert!(matches!(
+                    message.payload,
+                    IpcPayload::Request(Request::GetRemoteReady)
+                ));
+                server_calls.fetch_add(1, Ordering::SeqCst);
+                Some(Response::Ok {
+                    data: ResponseData::RemoteReady {
+                        attachment_transfer_supported: false,
+                        capabilities: vec![mxr_core::RemoteCapability::MailRead],
+                        draft_attachment_upload_supported: false,
+                        draft_revision_supported: false,
+                        send_outcome_supported: false,
+                        protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                        host_id: "fixture-host".into(),
+                        client_id: "fixture-client".into(),
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "fixture-workspace".into(),
+                            recovery_generation: "fixture-generation".into(),
+                        },
+                    },
+                })
+            })
+            .await;
+            let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
+                .await
+                .unwrap();
+            connection.selected_remote = true;
+            connection.remote_registration_identity =
+                Some(("fixture-host".into(), "fixture-client".into()));
+            let response = connection
+                .request_response(request, |_| {}, None)
+                .await
+                .unwrap();
+            assert!(matches!(
+                response,
+                Response::Error {
+                    kind: IpcErrorKind::Unsupported,
+                    ..
+                }
+            ));
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
         }
     }
 

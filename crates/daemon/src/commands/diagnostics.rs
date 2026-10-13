@@ -46,6 +46,7 @@ mod tests {
 
     fn saved_remote() -> ConnectionRegistration {
         ConnectionRegistration {
+            capabilities: vec![mxr_core::RemoteCapability::MailRead],
             origin: "https://fixture.example".into(),
             client_id: "fixture-client".into(),
             host_id: "fixture-host".into(),

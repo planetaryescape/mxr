@@ -10,6 +10,7 @@ Arguments:
   [URL]
 
 Options:
+      --allow-send       Request host-approved draft, attachment and send access; default pairing is read-only
       --local
       --status
       --name <NAME>      [default: "mxr client"]

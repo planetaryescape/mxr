@@ -5,9 +5,9 @@ description: Run mxr as a local Model Context Protocol server.
 
 mxr ships a first-party MCP server for agents that support stdio MCP tools.
 The server does not talk to Gmail or IMAP directly. Every tool calls the selected
-mxr daemon over IPC with source `mcp`, so daemon profiles, account allowlists,
-send gates, destructive gates, activity origins, and provider adapters stay in
-one place.
+mxr daemon. Local MCP calls use the host's MCP profile, account allowlist and
+send gates; paired HTTPS calls use the approved registration grant. Provider
+adapters and send safety remain on the daemon.
 
 ## Start the server
 
@@ -23,7 +23,7 @@ The command speaks MCP over stdin/stdout. It retains the selected daemon for eve
 MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 ```
 
-`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 11; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 15; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 
@@ -31,9 +31,11 @@ For a supervised daemon,
 the MCP client and the `mxr` CLI both connect to the service-owned process. If
 the service is unavailable, MCP reports the IPC connection error.
 
+A saved paired HTTPS connection uses the host-approved registration across mailbox accounts. The local `[agents.profiles.mcp]` policy does not narrow that registration. Default registrations are read-only; request `mxr connect HTTPS_ORIGIN --allow-send` and compare the grant and challenge during host approval to compose or send. Host configuration, process control, activity and recovery administration remain unavailable through that connection.
+
 ## Required profile
 
-MCP IPC is denied unless `[agents.profiles.mcp]` exists in `config.toml`:
+Local MCP IPC is denied unless `[agents.profiles.mcp]` exists in `config.toml`:
 
 ```toml
 [agents.profiles.mcp]
@@ -89,6 +91,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
 - `mxr_draft_assist`
+- `mxr_prepare_reply`
+- `mxr_draft_preview`
 - `mxr_save_draft`
 - `mxr_get_draft`
 - `mxr_update_draft`
@@ -102,6 +106,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_archive_preview`
 - `mxr_archive_submit`
 - `mxr_archive_outcome`
+- `mxr_send_outcome`: recover the original send operation before retrying
 - `mxr_send_draft`
 - `mxr_reading_edition`
 - `mxr_reading_item`
@@ -123,6 +128,14 @@ explicitly before continuing. Do not submit it to the new workspace. The
 daemon's `workspace_owner_supported` capability must be true before an agent
 starts private compose work; upgrade an older daemon instead of dropping the
 owner check.
+
+## Prepare and preview a portable reply
+
+Call `mxr_prepare_reply` with `message_id`, optional `reply_all` and optional `body`. It returns a complete unsaved draft with the daemon's recipients and reply headers, plus `expected_workspace`. Edit only the intended prose, then call `mxr_save_draft` with that draft and owner.
+
+Use the attachment begin/chunk/finalize tools to upload bytes, then attach the finalized metadata with `mxr_update_draft` and the current revision. Call `mxr_draft_preview` with the saved draft and original owner. It returns the effective sender, draft, attachment set, safety report and `send_identity`, without persistent writes. `requires_save: true` means it is not yet the canonical saved command; save and preview again.
+
+Pass the reviewed revision, operation ID and original owner to `mxr_send_draft` with `managed_attachments_reviewed=true` and `confirm=true`. After interruption, call `mxr_send_outcome` with the same owner and operation ID. Accepted and unknown operations must never become fresh sends automatically. Remote input and stored drafts with filesystem paths or inline path-backed assets are refused; actual mail prose is preserved.
 
 ## Todo resolution
 

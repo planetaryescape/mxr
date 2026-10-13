@@ -719,17 +719,14 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
-    // Remote negotiation is performed on the TUI's retained target; never probe
-    // the default local socket on behalf of a remote selection.
-    if !matches!(
-        resolve_daemon_addr()?,
-        mxr_transport::TransportAddr::Unix(_)
-    ) {
+    let target = selected_daemon_target()?;
+    // Remote targets perform their own identity/protocol handshake when the
+    // TUI connects; never probe the default local socket for them.
+    let Some(sock_path) = target.unix_path() else {
         return Ok(());
-    }
-    let sock_path = resolve_daemon_socket()?;
+    };
     let snapshot =
-        match fetch_daemon_status_snapshot_from_path(&sock_path, STATUS_REQUEST_TIMEOUT).await {
+        match fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 // The status query can still time out if the daemon is
@@ -737,7 +734,7 @@ pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
                 // protocol-compatible enough to launch into — don't block the
                 // TUI on a transient status stall (mirrors the daemon-match
                 // path's ping fallback).
-                if daemon_responds_to_ping(&sock_path, Duration::from_secs(2)).await {
+                if daemon_responds_to_ping(sock_path, Duration::from_secs(2)).await {
                     eprintln!(
                     "Daemon status check failed ({error}); daemon is responsive, launching anyway."
                 );
@@ -2123,6 +2120,12 @@ mod tests {
             .build()
             .unwrap()
             .block_on(super::ensure_daemon_running())
+            .unwrap();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(super::ensure_daemon_supports_tui())
             .unwrap();
         assert!(!std::path::Path::new(&socket).exists());
     }

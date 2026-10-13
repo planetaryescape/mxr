@@ -5136,6 +5136,7 @@ dependencies = [
  "futures",
  "rcgen",
  "rustls",
+ "rustls-native-certs",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",

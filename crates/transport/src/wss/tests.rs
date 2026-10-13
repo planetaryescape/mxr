@@ -17,13 +17,18 @@ async fn fixture() -> (TcpListener, TlsAcceptor, WssConnector) {
     let certificate = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let der = certificate.cert.der().clone();
     let key = PrivatePkcs8KeyDer::from(certificate.signing_key.serialize_der());
-    let server = rustls::ServerConfig::builder()
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let server = rustls::ServerConfig::builder_with_provider(Arc::clone(&provider))
+        .with_safe_default_protocol_versions()
+        .unwrap()
         .with_no_client_auth()
         .with_single_cert(vec![der.clone()], key.into())
         .unwrap();
     let mut roots = rustls::RootCertStore::empty();
     roots.add(der).unwrap();
-    let client = rustls::ClientConfig::builder()
+    let client = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .unwrap()
         .with_root_certificates(roots)
         .with_no_client_auth();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -36,7 +41,7 @@ async fn fixture() -> (TcpListener, TlsAcceptor, WssConnector) {
         &"a".repeat(64),
     )
     .unwrap();
-    connector.tls = Some(tokio_tungstenite::Connector::Rustls(Arc::new(client)));
+    connector.test_tls = Some(tokio_tungstenite::Connector::Rustls(Arc::new(client)));
     (listener, TlsAcceptor::from(Arc::new(server)), connector)
 }
 
@@ -231,7 +236,7 @@ async fn redirect_never_sends_credentials_to_second_origin_and_errors_are_redact
 #[tokio::test]
 async fn untrusted_certificate_is_rejected_without_websocket_credentials() {
     let (listener, tls, mut connector) = fixture().await;
-    connector.tls = None;
+    connector.test_tls = None;
     let server = tokio::spawn(async move {
         let (tcp, _) = listener.accept().await.unwrap();
         assert!(tls.accept(tcp).await.is_err());

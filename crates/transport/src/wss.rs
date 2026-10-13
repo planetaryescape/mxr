@@ -5,10 +5,12 @@ use futures::{SinkExt, StreamExt};
 use std::{
     io,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+use tokio_tungstenite::Connector as TlsConnector;
 
 const LIMIT: usize = 16 * 1024 * 1024 + 4;
 
@@ -35,7 +37,7 @@ pub struct WssConnector {
     origin: String,
     proof: String,
     #[cfg(test)]
-    tls: Option<tokio_tungstenite::Connector>,
+    test_tls: Option<TlsConnector>,
 }
 impl WssConnector {
     pub fn new(origin: String, client_id: &str, secret: &str) -> Result<Self> {
@@ -44,10 +46,41 @@ impl WssConnector {
             origin,
             proof: format!("{client_id}:{secret}"),
             #[cfg(test)]
-            tls: None,
+            test_tls: None,
         })
     }
 }
+
+fn native_client_config() -> Result<Arc<rustls::ClientConfig>> {
+    let loaded = rustls_native_certs::load_native_certs();
+    let error_count = loaded.errors.len();
+    let mut roots = rustls::RootCertStore::empty();
+    let (added, _) = roots.add_parsable_certificates(loaded.certs);
+    if error_count > 0 {
+        tracing::warn!(error_count, "some native TLS roots could not be loaded");
+    }
+    if added == 0 {
+        return Err(TransportError::Addr(
+            "No native TLS root certificates could be loaded".into(),
+        ));
+    }
+
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let builder = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|_| TransportError::Addr("Unable to configure native TLS client".into()))?;
+    Ok(Arc::new(
+        builder.with_root_certificates(roots).with_no_client_auth(),
+    ))
+}
+
+async fn native_tls_connector() -> Result<TlsConnector> {
+    let config = tokio::task::spawn_blocking(native_client_config)
+        .await
+        .map_err(|_| TransportError::Addr("Unable to load native TLS configuration".into()))??;
+    Ok(TlsConnector::Rustls(config))
+}
+
 #[async_trait]
 impl Connector for WssConnector {
     async fn connect(&self) -> Result<BoxedIo> {
@@ -68,13 +101,20 @@ impl Connector for WssConnector {
             .max_frame_size(Some(LIMIT));
         // This API rejects non-101 responses; it never forwards credentials through redirects.
         #[cfg(test)]
-        let tls = self.tls.clone();
+        let tls = match self.test_tls.clone() {
+            Some(tls) => tls,
+            None => native_tls_connector().await.map_err(|_| error())?,
+        };
         #[cfg(not(test))]
-        let tls = None;
-        let (mut ws, _) =
-            tokio_tungstenite::connect_async_tls_with_config(request, Some(config), false, tls)
-                .await
-                .map_err(|_| error())?;
+        let tls = native_tls_connector().await.map_err(|_| error())?;
+        let (mut ws, _) = tokio_tungstenite::connect_async_tls_with_config(
+            request,
+            Some(config),
+            false,
+            Some(tls),
+        )
+        .await
+        .map_err(|_| error())?;
         let (client, mut bridge) = tokio::io::duplex(64 * 1024);
         let task = tokio::spawn(async move {
             let mut outgoing = vec![0; 16 * 1024];

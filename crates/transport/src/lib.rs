@@ -27,6 +27,8 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 mod addr;
+mod wss;
+pub use wss::{https_origin, WssConnector};
 mod caps;
 mod cmd;
 mod error;

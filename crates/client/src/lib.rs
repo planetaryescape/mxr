@@ -29,7 +29,8 @@
 //! # }
 //! ```
 
-mod selected_daemon;
+pub mod remote_connection;
+pub mod selected_daemon;
 pub use selected_daemon::SelectedDaemonTarget;
 mod archive;
 pub use archive::ArchiveJournal;
@@ -214,9 +215,16 @@ pub struct IpcConnection {
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
     selected_remote: bool,
+    remote_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+    selection_generation: Option<u64>,
 }
 
 impl IpcConnection {
+    pub(crate) fn with_selection_generation(mut self, generation: u64) -> Self {
+        self.selection_generation = Some(generation);
+        self
+    }
+
     /// Connect to the daemon at `path`, tagging every request with `source`.
     ///
     /// The `source` tag rides on each [`IpcMessage`] so the daemon's activity
@@ -298,6 +306,8 @@ impl IpcConnection {
             default_timeout: None,
             attachment_transfer_supported: None,
             selected_remote: false,
+            remote_workspace: None,
+            selection_generation: None,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate
         // in-band as the FIRST request on the connection. The byte-stream seam
@@ -395,6 +405,19 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        remote_connection::schedule_cleanup();
+        if let Some(generation) = self.selection_generation {
+            let state = tokio::task::spawn_blocking(|| {
+                mxr_config::connection_state::read(&mxr_config::connection_state::path())
+            })
+            .await
+            .map_err(|_| ClientError::Closed)??;
+            if state.generation != generation {
+                return Err(ClientError::Io(std::io::Error::other(
+                    "Saved connection changed; close and reopen this client before continuing",
+                )));
+            }
+        }
         if self.selected_remote && selected_daemon::requires_local_account_setup(&request) {
             return Err(ClientError::Io(std::io::Error::other(
                 "Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host",
@@ -666,6 +689,36 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        if let Some(expected) = &self.remote_workspace {
+            let expected = expected.clone();
+            match self
+                .request_response_unchecked(
+                    Request::GetRemoteReady,
+                    &mut on_event,
+                    self.default_timeout,
+                )
+                .await?
+            {
+                Response::Ok {
+                    data:
+                        ResponseData::RemoteReady {
+                            workspace,
+                            protocol_version,
+                            ..
+                        },
+                } if workspace == expected
+                    && protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION =>
+                {
+                    return Ok(workspace)
+                }
+                _ => {
+                    return Err(workspace_error(
+                        "workspace_conflict",
+                        "Remote workspace identity changed; reopen the original workspace",
+                    ))
+                }
+            }
+        }
         match self.request_response_unchecked(Request::GetStatus, &mut on_event, self.default_timeout).await? {
             Response::Ok { data: ResponseData::Status { workspace_owner_supported: true, .. } } => (),
             _ => return Err(workspace_error("workspace_owner_unsupported", "Daemon does not support workspace ownership; upgrade before replaying private work")),

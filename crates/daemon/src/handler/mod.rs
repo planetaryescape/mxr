@@ -577,6 +577,14 @@ async fn dispatch(
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
+        Request::RemoteRead {
+            client_id,
+            mail_secret,
+            request,
+        } => remote::read(state, client_id, mail_secret, request).await,
+        Request::GetRemoteReady => Err(HandlerError::RemoteAuthorityDenied(
+            "Remote readiness requires authenticated admission".into(),
+        )),
         Request::RemoteAuthority { request } => remote::handle(state, peer, request).await,
         Request::GetRecoveryStatus => recovery::status(state).await,
         Request::ActivateRecovery {
@@ -2237,6 +2245,7 @@ enum RequestClass {
 fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
+        Request::RemoteRead { .. } | Request::GetRemoteReady => Read,
         Request::RemoteAuthority { request } if request.is_read_only() => Read,
         Request::RemoteAuthority { .. } => Admin,
         Request::GetRecoveryStatus
@@ -2866,6 +2875,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetStatus => "get_status",
         Request::Ping => "ping",
         Request::Shutdown => "shutdown",
+        Request::RemoteRead { .. } => "remote_read",
+        Request::GetRemoteReady => "remote_ready",
         Request::RemoteAuthority { .. } => "remote_authority",
         Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",

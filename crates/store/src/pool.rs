@@ -50,7 +50,9 @@ impl Store {
         let write_opts = SqliteConnectOptions::from_str(&db_url)?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal)
+            // Authority commits must survive host power loss; keep the pooled policy constant.
+            .synchronous(SqliteSynchronous::Full)
+            .pragma("fullfsync", "ON")
             .busy_timeout(BUSY_TIMEOUT)
             .pragma("foreign_keys", "ON");
 
@@ -1166,6 +1168,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 81, name: "restore_recovery", kind: MigrationKind::Sql(include_str!("../migrations/081_restore_recovery.sql")) },
     Migration { version: 82, name: "todo_resolution_queue", kind: MigrationKind::Sql(include_str!("../migrations/082_todo_resolution_queue.sql")) },
     Migration { version: 83, name: "remote_authority", kind: MigrationKind::Sql(include_str!("../migrations/083_remote_authority.sql")) },
+    Migration { version: 84, name: "remote_pairing_retirements", kind: MigrationKind::Sql(include_str!("../migrations/084_remote_pairing_retirements.sql")) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

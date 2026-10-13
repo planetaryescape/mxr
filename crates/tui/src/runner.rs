@@ -416,9 +416,14 @@ pub async fn run() -> anyhow::Result<()> {
         // Now is the front page; the inbox stays loaded one key away.
         // No tour: each mode teaches itself with hints at the element they
         // explain, the first time it is needed (blueprint 22, D118).
-        app.apply(crate::action::Action::OpenNow);
+        if session.target.is_paired_remote() {
+            app.apply(crate::action::Action::OpenMailboxScreen);
+            app.status_message = Some("Remote mailbox: reading and search are available; other operations require the host".into());
+        } else {
+            app.apply(crate::action::Action::OpenNow);
+        }
         // Load accounts for sidebar account section
-        app.accounts.page.refresh_pending = true;
+        app.accounts.page.refresh_pending = !session.target.is_paired_remote();
     }
 
     let mut terminal = ratatui::init();

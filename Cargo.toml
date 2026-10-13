@@ -373,6 +373,7 @@ utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
 [dependencies]
+getrandom = "0.4"
 mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }

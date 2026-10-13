@@ -12,6 +12,7 @@ pub mod chimes;
 pub mod commitments;
 pub mod completions;
 pub mod config;
+pub mod connect;
 pub mod contacts;
 pub mod count;
 pub mod daemon;

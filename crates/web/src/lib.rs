@@ -23,6 +23,7 @@ mod place_routes;
 mod promise_routes;
 mod reading_routes;
 mod record_routes;
+pub mod remote_gateway;
 mod request_types;
 mod routes_v6;
 mod row_labels;

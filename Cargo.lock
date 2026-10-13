@@ -4370,6 +4370,7 @@ dependencies = [
  "data-url",
  "dirs 7.0.0",
  "futures",
+ "getrandom 0.4.2",
  "glob-match",
  "html2text",
  "htmlescape",
@@ -4489,9 +4490,11 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "futures",
+ "mxr-config",
  "mxr-core",
  "mxr-protocol",
  "mxr-transport",
+ "reqwest 0.13.5",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -4539,6 +4542,7 @@ dependencies = [
  "libc",
  "mxr-core",
  "serde",
+ "serde_json",
  "temp-env",
  "tempfile",
  "thiserror 2.0.21",
@@ -5068,7 +5072,9 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -8612,7 +8618,11 @@ checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
 dependencies = [
  "futures-util",
  "log",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls",
  "tungstenite 0.29.0",
 ]
 
@@ -8893,6 +8903,8 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.9.4",
+ "rustls",
+ "rustls-pki-types",
  "sha1 0.10.6",
  "thiserror 2.0.21",
 ]

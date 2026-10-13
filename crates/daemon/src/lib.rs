@@ -105,7 +105,41 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     init_tracing(is_foreground)?;
 
     match cli.command {
-        Some(Command::Serve { action, format }) => commands::serve::run(action, format).await?,
+        Some(Command::Connect {
+            url,
+            local,
+            status,
+            name,
+            dry_run,
+            confirm,
+            format,
+        }) => commands::connect::run(url, local, status, name, dry_run, confirm, format).await?,
+        Some(Command::Serve {
+            action,
+            format,
+            foreground,
+            listen,
+            dry_run,
+        }) => {
+            if foreground {
+                if action.is_some() {
+                    anyhow::bail!("--foreground cannot be combined with a serve action");
+                }
+                if !listen.ip().is_loopback() {
+                    anyhow::bail!("Gateway requires a loopback listen address");
+                }
+                if dry_run {
+                    crate::output::print_json(
+                        &serde_json::json!({"listen":listen,"foreground":true,"selection_source":"explicit_local_profile","dry_run":true}),
+                        format.unwrap_or(cli::OutputFormat::Json),
+                    )?;
+                } else {
+                    mxr_web::remote_gateway::serve(mxr_config::socket_path(), listen).await?;
+                }
+            } else {
+                commands::serve::run(action, format).await?;
+            }
+        }
         Some(Command::Daemon {
             action: Some(DaemonAction::DialStdio),
             ..

@@ -406,18 +406,7 @@ impl IpcConnection {
         F: FnMut(DaemonEvent),
     {
         remote_connection::schedule_cleanup();
-        if let Some(generation) = self.selection_generation {
-            let state = tokio::task::spawn_blocking(|| {
-                mxr_config::connection_state::read(&mxr_config::connection_state::path())
-            })
-            .await
-            .map_err(|_| ClientError::Closed)??;
-            if state.generation != generation {
-                return Err(ClientError::Io(std::io::Error::other(
-                    "Saved connection changed; close and reopen this client before continuing",
-                )));
-            }
-        }
+        self.verify_selection().await?;
         if self.selected_remote && selected_daemon::requires_local_account_setup(&request) {
             return Err(ClientError::Io(std::io::Error::other(
                 "Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host",
@@ -603,13 +592,16 @@ impl IpcConnection {
                 return Ok(Response::error_kinded("Daemon does not support durable draft revisions; upgrade the daemon before saving or deleting drafts", mxr_protocol::IpcErrorKind::Unsupported));
             }
         }
-        self.request_response_unchecked_owned(
-            request,
-            on_event,
-            request_timeout,
-            expected_workspace,
-        )
-        .await
+        let response = self
+            .request_response_unchecked_owned(
+                request,
+                on_event,
+                request_timeout,
+                expected_workspace,
+            )
+            .await?;
+        self.verify_selection().await?;
+        Ok(response)
     }
 
     async fn request_response_unchecked<F>(
@@ -689,6 +681,7 @@ impl IpcConnection {
     where
         F: FnMut(DaemonEvent),
     {
+        self.verify_selection().await?;
         if let Some(expected) = &self.remote_workspace {
             let expected = expected.clone();
             match self
@@ -818,6 +811,7 @@ impl IpcConnection {
 
     /// Fire-and-forget: send `request` without awaiting a response.
     pub async fn notify(&mut self, request: Request) -> Result<(), ClientError> {
+        self.verify_selection().await?;
         if matches!(
             request,
             Request::PreviewArchive { .. }
@@ -842,11 +836,32 @@ impl IpcConnection {
     /// frame buffered inside the connection, so it is safe to use as a
     /// `tokio::select!` branch.
     pub async fn next_event(&mut self) -> Result<IpcMessage, ClientError> {
-        match self.framed.next().await {
-            Some(Ok(message)) => Ok(message),
-            Some(Err(error)) => Err(ClientError::Io(error)),
-            None => Err(ClientError::Closed),
+        loop {
+            self.verify_selection().await?;
+            remote_connection::schedule_cleanup();
+            tokio::select! {
+                message = self.framed.next() => return match message {
+                    Some(Ok(message)) => Ok(message), Some(Err(error)) => Err(ClientError::Io(error)), None => Err(ClientError::Closed),
+                },
+                _ = tokio::time::sleep(Duration::from_secs(1)), if self.selection_generation.is_some() => (),
+            }
         }
+    }
+    async fn verify_selection(&mut self) -> Result<(), ClientError> {
+        if let Some(generation) = self.selection_generation {
+            let state = tokio::task::spawn_blocking(|| {
+                mxr_config::connection_state::read(&mxr_config::connection_state::path())
+            })
+            .await
+            .map_err(|_| ClientError::Closed)??;
+            if state.generation != generation {
+                let _ = tokio::time::timeout(Duration::from_secs(1), self.framed.close()).await;
+                return Err(ClientError::Io(std::io::Error::other(
+                    "Saved connection changed; close and reopen this client before continuing",
+                )));
+            }
+        }
+        Ok(())
     }
 }
 

@@ -310,3 +310,104 @@ async fn migration_replay_preserves_grant_when_a_table_and_stamp_are_missing() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn lost_start_ack_reuses_pairing_and_retirement_prevents_stale_start() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let pending = start(&store, 100).await;
+    assert_eq!(pending, start(&store, 101).await);
+    let (mail, cleanup, mv, cv) = secrets();
+    assert!(store.abandon_remote_pairing(&mail, 101).await.is_err());
+    store.abandon_remote_pairing(&cleanup, 102).await.unwrap();
+    store.abandon_remote_pairing(&cleanup, 103).await.unwrap();
+    assert!(store
+        .approve_remote_pairing(&pending.request_id, false, 103)
+        .await
+        .is_err());
+    assert!(store
+        .start_remote_pairing("fixture", &[RemoteCapability::MailRead], &mv, &cv, 104)
+        .await
+        .is_err());
+    assert!(store.remote_clients().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn unknown_cleanup_cannot_ack_a_start_that_has_not_arrived() {
+    let store = crate::Store::in_memory().await.unwrap();
+    start(&store, 100).await;
+    assert!(store
+        .abandon_remote_pairing(&RemoteSecret::new("c".repeat(64)), 102)
+        .await
+        .is_err());
+    assert_eq!(store.remote_pairings(102).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn claimed_pairing_cleanup_is_exact_and_revocation_blocks_later_admission() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let pending = start(&store, 100).await;
+    let (mail, cleanup, _, _) = secrets();
+    store
+        .approve_remote_pairing(&pending.request_id, false, 101)
+        .await
+        .unwrap();
+    let client = store
+        .claim_remote_pairing(&pending.request_id, &mail, &cleanup, 102)
+        .await
+        .unwrap();
+    store
+        .authenticate_remote_client(&client.client_id, &mail, 103)
+        .await
+        .unwrap();
+    store.abandon_remote_pairing(&cleanup, 104).await.unwrap();
+    assert!(store
+        .authenticate_remote_client(&client.client_id, &mail, 105)
+        .await
+        .is_err());
+    assert!(store
+        .claim_remote_pairing(&pending.request_id, &mail, &cleanup, 106)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn authority_writer_has_effective_full_durability_and_rerunnable_retirement_schema() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = crate::Store::new(&directory.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let synchronous: i64 = sqlx::query_scalar("PRAGMA synchronous")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    let fullfsync: i64 = sqlx::query_scalar("PRAGMA fullfsync")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    assert_eq!(synchronous, 2);
+    assert_eq!(fullfsync, 1);
+    let started = std::time::Instant::now();
+    let pending = start(&store, 100).await;
+    let (_, cleanup, _, _) = secrets();
+    store.abandon_remote_pairing(&cleanup, 101).await.unwrap();
+    sqlx::query("DELETE FROM schema_migrations WHERE version=84")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    store.run_migrations().await.unwrap();
+    assert!(store
+        .approve_remote_pairing(&pending.request_id, false, 102)
+        .await
+        .is_err());
+    assert!(start_result(&store, 103).await.is_err());
+    eprintln!(
+        "FULL writer pairing/retirement/adoption elapsed {:?}",
+        started.elapsed()
+    );
+}
+async fn start_result(store: &crate::Store, now: i64) -> Result<PendingPairing, sqlx::Error> {
+    let (_, _, mv, cv) = secrets();
+    store
+        .start_remote_pairing("fixture", &[RemoteCapability::MailRead], &mv, &cv, now)
+        .await
+}

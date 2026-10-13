@@ -2,7 +2,12 @@
 use crate::ClientError;
 use mxr_config::connection_state::{self as persistence, ConnectionState};
 use mxr_protocol::{RemoteRequest, Response, ResponseData};
-use std::sync::atomic::{AtomicU64, Ordering};
+use sha2::Digest;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+static CLEANUP_TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
 fn error(message: &str) -> ClientError {
     ClientError::Io(std::io::Error::other(message))
 }
@@ -66,16 +71,34 @@ pub async fn authority(
 pub async fn retry_cleanup() -> Result<usize, ClientError> {
     let snapshot = read().await?;
     for old in snapshot.retired_pairings {
-        if authority(
-            &old.origin,
-            "self/deregister",
-            RemoteRequest::AbandonPairing {
-                cleanup_secret: old.cleanup_secret.clone(),
-            },
-        )
-        .await
-        .is_ok()
-        {
+        let retire = RemoteRequest::AbandonPairing {
+            cleanup_secret: old.cleanup_secret.clone(),
+        };
+        let retired = match authority(&old.origin, "self/deregister", retire.clone()).await {
+            Ok(_) => true,
+            Err(_) => {
+                // Reestablish only an unapproved proof record when start was lost or expired.
+                let cleanup_verifier = mxr_core::RemoteSecret::new(base16ct::lower::encode_string(
+                    &sha2::Sha256::digest(old.cleanup_secret.expose().as_bytes()),
+                ));
+                authority(
+                    &old.origin,
+                    "pairings",
+                    RemoteRequest::StartPairing {
+                        name: old.name.clone(),
+                        capabilities: vec![mxr_core::RemoteCapability::MailRead],
+                        mail_verifier: old.mail_verifier.clone(),
+                        cleanup_verifier,
+                    },
+                )
+                .await
+                .is_ok()
+                    && authority(&old.origin, "self/deregister", retire)
+                        .await
+                        .is_ok()
+            }
+        };
+        if retired {
             update(move |state| {
                 state
                     .retired_pairings
@@ -126,7 +149,22 @@ pub(crate) fn schedule_cleanup() {
     {
         return;
     }
-    tokio::spawn(async {
+    let task = tokio::spawn(async {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), retry_cleanup()).await;
     });
+    *CLEANUP_TASK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(task);
+}
+
+/// Short-lived clients finish their scheduled retry after rendering the mail result.
+/// Deadline expiry retains every unacknowledged intent for the next client use.
+pub async fn finish_cleanup() {
+    let task = CLEANUP_TASK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    if let Some(task) = task {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), task).await;
+    }
 }

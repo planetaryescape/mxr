@@ -160,6 +160,15 @@ impl crate::Store {
         if retired {
             return Err(denied());
         }
+        let claimed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM remote_clients WHERE cleanup_verifier=?)",
+        )
+        .bind(cleanup.expose())
+        .fetch_one(&mut *tx)
+        .await?;
+        if claimed {
+            return Err(denied());
+        }
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM remote_pairings")
             .fetch_one(&mut *tx)
             .await?;

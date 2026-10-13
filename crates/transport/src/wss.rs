@@ -34,6 +34,8 @@ pub fn https_origin(value: &str) -> Result<String> {
 pub struct WssConnector {
     origin: String,
     proof: String,
+    #[cfg(test)]
+    tls: Option<tokio_tungstenite::Connector>,
 }
 impl WssConnector {
     pub fn new(origin: String, client_id: &str, secret: &str) -> Result<Self> {
@@ -41,6 +43,8 @@ impl WssConnector {
         Ok(Self {
             origin,
             proof: format!("{client_id}:{secret}"),
+            #[cfg(test)]
+            tls: None,
         })
     }
 }
@@ -63,8 +67,12 @@ impl Connector for WssConnector {
             .max_message_size(Some(LIMIT))
             .max_frame_size(Some(LIMIT));
         // This API rejects non-101 responses; it never forwards credentials through redirects.
+        #[cfg(test)]
+        let tls = self.tls.clone();
+        #[cfg(not(test))]
+        let tls = None;
         let (mut ws, _) =
-            tokio_tungstenite::connect_async_with_config(request, Some(config), false)
+            tokio_tungstenite::connect_async_tls_with_config(request, Some(config), false, tls)
                 .await
                 .map_err(|_| error())?;
         let (client, mut bridge) = tokio::io::duplex(64 * 1024);
@@ -130,3 +138,7 @@ impl AsyncWrite for OwnedStream {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
+
+#[cfg(test)]
+#[path = "wss_tests.rs"]
+mod tests;

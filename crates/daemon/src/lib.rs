@@ -1713,6 +1713,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }
     }
 
+    mxr_client::remote_connection::finish_cleanup().await;
     Ok(())
 }
 

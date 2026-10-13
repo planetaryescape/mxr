@@ -3,6 +3,7 @@
 //! guards the whole selection/credential/cleanup commit across processes.
 use mxr_core::RemoteSecret;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -103,13 +104,105 @@ impl From<ConnectionRegistration> for RetiredRegistration {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetiredPairing {
     pub origin: String,
+    pub name: String,
+    pub mail_verifier: RemoteSecret,
     pub cleanup_secret: RemoteSecret,
 }
 impl From<PendingConnection> for RetiredPairing {
     fn from(entry: PendingConnection) -> Self {
         Self {
             origin: entry.origin,
+            name: entry.name,
+            mail_verifier: RemoteSecret::new(base16ct::lower::encode_string(
+                &sha2::Sha256::digest(entry.mail_secret.expose().as_bytes()),
+            )),
             cleanup_secret: entry.cleanup_secret,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "isolated state fixtures assert directly"
+    )]
+    use super::*;
+    #[test]
+    fn stale_generation_cannot_overwrite_switch_or_drop_cleanup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("connection.json");
+        update(&path, Some(0), |state| {
+            state.generation = 1;
+            state.cleanup.push(RetiredRegistration {
+                origin: "https://fixture.example".into(),
+                client_id: "own-id".into(),
+                cleanup_secret: RemoteSecret::new("b".repeat(64)),
+            });
+            Ok(())
+        })
+        .unwrap();
+        assert!(update(&path, Some(0), |state| {
+            state.cleanup.clear();
+            Ok(())
+        })
+        .is_err());
+        let state = read(&path).unwrap();
+        assert_eq!(state.generation, 1);
+        assert_eq!(state.cleanup.len(), 1);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("mail_secret"));
+    }
+    #[test]
+    fn cross_process_writers_keep_all_updates_on_stable_lock_inode() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("connection.json");
+        let mut children = Vec::new();
+        for _ in 0..3 {
+            children.push(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["connection_state::tests::child_writer", "--exact"])
+                    .env("MXR_TEST_CLIENT_STATE", &path)
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+        for mut child in children {
+            assert!(child.wait().unwrap().success());
+        }
+        assert_eq!(read(&path).unwrap().generation, 60);
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    #[test]
+    fn child_writer() {
+        let Some(path) = std::env::var_os("MXR_TEST_CLIENT_STATE") else {
+            return;
+        };
+        for _ in 0..20 {
+            update(Path::new(&path), None, |state| {
+                state.generation += 1;
+                Ok(())
+            })
+            .unwrap();
+        }
+    }
+    #[test]
+    fn symlinked_state_and_lock_are_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("connection.json");
+        let victim = directory.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        std::os::unix::fs::symlink(&victim, &path).unwrap();
+        assert!(read(&path).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&victim, path.with_extension("lock")).unwrap();
+        assert!(update(&path, None, |_| Ok(())).is_err());
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "keep");
     }
 }

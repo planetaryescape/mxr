@@ -125,52 +125,57 @@ async fn session(mut ws: WebSocket, socket: PathBuf, id: String, secret: RemoteS
     while let Some(Ok(message)) = ws.next().await {
         match message {
             Message::Binary(data) => {
-                if bytes.len().saturating_add(data.len()) > LIMIT {
-                    break;
-                }
-                bytes.extend_from_slice(&data);
-                loop {
-                    let frame = match codec.decode(&mut bytes) {
-                        Ok(Some(frame)) => frame,
-                        Ok(None) => break,
-                        Err(_) => return,
-                    };
-                    let IpcPayload::Request(request) = frame.payload else {
-                        return;
-                    };
-                    // The daemon validates proof and the precise operation at every admission.
-                    let response = match connection
-                        .request_response(
-                            Request::RemoteRead {
-                                client_id: id.clone(),
-                                mail_secret: secret.clone(),
-                                request: Box::new(request),
-                            },
-                            |_| {},
-                            Some(std::time::Duration::from_secs(30)),
-                        )
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(_) => return,
-                    };
-                    let mut output = BytesMut::new();
-                    if codec
-                        .encode(
-                            IpcMessage {
-                                expected_workspace: None,
-                                id: frame.id,
-                                source: ClientKind::Daemon,
-                                payload: IpcPayload::Response(response),
-                            },
-                            &mut output,
-                        )
-                        .is_err()
-                    {
+                let mut offset = 0;
+                while offset < data.len() {
+                    let size = (LIMIT - bytes.len()).min(data.len() - offset);
+                    if size == 0 {
                         return;
                     }
-                    if ws.send(Message::Binary(output.freeze())).await.is_err() {
-                        return;
+                    bytes.extend_from_slice(&data[offset..offset + size]);
+                    offset += size;
+                    loop {
+                        let frame = match codec.decode(&mut bytes) {
+                            Ok(Some(frame)) => frame,
+                            Ok(None) => break,
+                            Err(_) => return,
+                        };
+                        let IpcPayload::Request(request) = frame.payload else {
+                            return;
+                        };
+                        // The daemon validates proof and the precise operation at every admission.
+                        let response = match connection
+                            .request_response(
+                                Request::RemoteRead {
+                                    client_id: id.clone(),
+                                    mail_secret: secret.clone(),
+                                    request: Box::new(request),
+                                },
+                                |_| {},
+                                Some(std::time::Duration::from_secs(30)),
+                            )
+                            .await
+                        {
+                            Ok(response) => response,
+                            Err(_) => return,
+                        };
+                        let mut output = BytesMut::new();
+                        if codec
+                            .encode(
+                                IpcMessage {
+                                    expected_workspace: None,
+                                    id: frame.id,
+                                    source: ClientKind::Daemon,
+                                    payload: IpcPayload::Response(response),
+                                },
+                                &mut output,
+                            )
+                            .is_err()
+                        {
+                            return;
+                        }
+                        if ws.send(Message::Binary(output.freeze())).await.is_err() {
+                            return;
+                        }
                     }
                 }
             }

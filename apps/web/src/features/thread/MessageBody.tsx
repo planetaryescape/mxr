@@ -41,6 +41,7 @@ export function MessageBody({
   onInteractRef.current = onInteract;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const resizeTimeoutsRef = useRef<number[]>([]);
   const [height, setHeight] = useState(120);
   const [loaded, setLoaded] = useState(false);
   const appTheme = useUiPrefs((s) => s.theme);
@@ -65,16 +66,23 @@ export function MessageBody({
 
   useEffect(() => {
     setLoaded(false);
+    clearResizeTimeouts();
     resizeObserverRef.current?.disconnect();
     resizeObserverRef.current = null;
   }, [srcDoc]);
 
   useEffect(
     () => () => {
+      clearResizeTimeouts();
       resizeObserverRef.current?.disconnect();
     },
     [],
   );
+
+  function clearResizeTimeouts() {
+    resizeTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
+    resizeTimeoutsRef.current = [];
+  }
 
   // The gist can land after the frame has loaded; mark (or unmark) then.
   // Frames that never had a quote are left alone.
@@ -116,6 +124,7 @@ export function MessageBody({
   }
 
   function handleLoad() {
+    clearResizeTimeouts();
     resizeToContent();
     try {
       const doc = iframeRef.current?.contentDocument;
@@ -137,8 +146,10 @@ export function MessageBody({
     } catch {
       // The iframe still renders; fixed fallback height comes from resizeToContent.
     }
-    window.setTimeout(resizeToContent, 100);
-    window.setTimeout(resizeToContent, 500);
+    resizeTimeoutsRef.current = [
+      window.setTimeout(resizeToContent, 100),
+      window.setTimeout(resizeToContent, 500),
+    ];
   }
 
   return (

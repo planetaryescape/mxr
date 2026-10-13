@@ -601,7 +601,7 @@ pub enum Request {
         client_id: String,
         mail_secret: mxr_core::RemoteSecret,
         #[cfg_attr(feature = "openapi", schema(no_recursion))]
-        request: Box<Request>,
+        request: Box<Self>,
     },
     GetRemoteReady,
     RemoteAuthority {

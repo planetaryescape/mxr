@@ -140,5 +140,4 @@ impl AsyncWrite for OwnedStream {
 }
 
 #[cfg(test)]
-#[path = "wss_tests.rs"]
 mod tests;

@@ -7,7 +7,8 @@ Terminal email client (pronounced "Mixer")
 Usage: mxr [COMMAND]
 
 Commands:
-  serve               Local pairing authority foundation; remote hosting is not yet available
+  connect             Save an HTTPS mailbox connection, inspect it, or switch this installation to local
+  serve               Manage local pairing authority or run the loopback gateway in foreground
   daemon              Start the daemon explicitly
   restart             Restart the daemon with the current binary
   mcp                 Model Context Protocol server commands

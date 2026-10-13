@@ -35,11 +35,11 @@ async fn update(
     Ok(())
 }
 fn http() -> Result<reqwest::Client, ClientError> {
-    Ok(reqwest::Client::builder()
+    reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(5))
         .build()
-        .map_err(|_| error("Cannot initialize HTTPS client"))?)
+        .map_err(|_| error("Cannot initialize HTTPS client"))
 }
 pub async fn authority(
     origin: &str,
@@ -109,11 +109,8 @@ where
     F: Future<Output = Result<(), ClientError>>,
 {
     let mut work = Box::pin(work.buffer_unordered(CLEANUP_CONCURRENCY));
-    loop {
-        match tokio::time::timeout_at(deadline, work.next()).await {
-            Ok(Some(result)) => result?,
-            Ok(None) | Err(_) => break,
-        }
+    while let Ok(Some(result)) = tokio::time::timeout_at(deadline, work.next()).await {
+        result?;
     }
     Ok(())
 }
@@ -275,7 +272,7 @@ mod tests {
 
         run_cleanup_tasks(stream::iter([unreachable, reachable]), deadline)
             .await
-            .unwrap();
+            .expect("cleanup tasks should finish or retain pending work at the deadline");
 
         assert!(reachable_ran.load(Ordering::SeqCst));
     }

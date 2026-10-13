@@ -185,6 +185,34 @@ pub(crate) fn requires_local_account_setup(request: &Request) -> bool {
     )
 }
 
+/// Verify the authenticated host, workspace epoch and exact wire revision before use.
+pub async fn connect_registration(
+    saved: &mxr_config::connection_state::ConnectionRegistration,
+    source: ClientKind,
+) -> Result<IpcConnection, ClientError> {
+    let connector = mxr_transport::WssConnector::new(
+        saved.origin.clone(),
+        &saved.client_id,
+        saved.mail_secret.expose(),
+    )?;
+    let setup = async {
+        let mut connection = IpcConnection::connect_with(&connector, source).await?;
+        match connection.request(Request::GetRemoteReady).await? {
+            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id}
+                if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id
+                    && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
+                        connection.selected_remote = true;
+                        connection.remote_workspace = Some(workspace);
+                        Ok(connection)
+                    }
+            _ => Err(ClientError::Io(std::io::Error::other("Remote host/workspace/protocol identity mismatch; retain work and reconnect explicitly"))),
+        }
+    };
+    tokio::time::timeout(SETUP_TIMEOUT, setup)
+        .await
+        .map_err(|_| ClientError::Timeout(SETUP_TIMEOUT))?
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -410,32 +438,4 @@ mod tests {
         );
         assert!(!format!("{command:?}").contains("private-argument"));
     }
-}
-
-/// Verify the authenticated host, workspace epoch and exact wire revision before use.
-pub async fn connect_registration(
-    saved: &mxr_config::connection_state::ConnectionRegistration,
-    source: ClientKind,
-) -> Result<IpcConnection, ClientError> {
-    let connector = mxr_transport::WssConnector::new(
-        saved.origin.clone(),
-        &saved.client_id,
-        saved.mail_secret.expose(),
-    )?;
-    let setup = async {
-        let mut connection = IpcConnection::connect_with(&connector, source).await?;
-        match connection.request(Request::GetRemoteReady).await? {
-            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id}
-                if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id
-                    && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
-                        connection.selected_remote = true;
-                        connection.remote_workspace = Some(workspace);
-                        Ok(connection)
-                    }
-            _ => Err(ClientError::Io(std::io::Error::other("Remote host/workspace/protocol identity mismatch; retain work and reconnect explicitly"))),
-        }
-    };
-    tokio::time::timeout(SETUP_TIMEOUT, setup)
-        .await
-        .map_err(|_| ClientError::Timeout(SETUP_TIMEOUT))?
 }

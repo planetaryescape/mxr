@@ -133,51 +133,6 @@ pub(super) async fn handle(
     Ok(ResponseData::RemoteAuthority { response })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn token_peer_cannot_inspect_or_mutate_local_authority() {
-        let state = AppState::in_memory().await.unwrap();
-        let peer = PeerInfo {
-            auth: PeerAuth::TokenRequired,
-        };
-        for request in [
-            RemoteRequest::Status,
-            RemoteRequest::Pairings,
-            RemoteRequest::Clients,
-            RemoteRequest::ApprovePairing {
-                request_id: "missing".into(),
-                dry_run: true,
-            },
-            RemoteRequest::RevokeClient {
-                client_id: "missing".into(),
-                dry_run: false,
-            },
-        ] {
-            assert!(handle(&state, &peer, &request).await.is_err());
-        }
-        assert!(state
-            .store
-            .remote_authority_status()
-            .await
-            .unwrap()
-            .host_id
-            .is_none());
-    }
-    #[tokio::test]
-    async fn inspection_has_no_credential_or_activity_fields() {
-        let state = AppState::in_memory().await.unwrap();
-        let response = handle(&state, &PeerInfo::local(), &RemoteRequest::Status)
-            .await
-            .unwrap();
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("hosting_available\":true"));
-        assert!(!json.contains("secret"));
-        assert!(!json.contains("verifier"));
-    }
-}
-
 /// The proof is checked at each admission on the writer, never cached on a socket.
 pub(super) async fn read(
     state: &std::sync::Arc<AppState>,
@@ -247,5 +202,50 @@ pub(super) async fn read(
         Response::Error { .. } => Err(super::HandlerError::RemoteAuthorityDenied(
             "Remote mailbox read failed".into(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn token_peer_cannot_inspect_or_mutate_local_authority() {
+        let state = AppState::in_memory().await.unwrap();
+        let peer = PeerInfo {
+            auth: PeerAuth::TokenRequired,
+        };
+        for request in [
+            RemoteRequest::Status,
+            RemoteRequest::Pairings,
+            RemoteRequest::Clients,
+            RemoteRequest::ApprovePairing {
+                request_id: "missing".into(),
+                dry_run: true,
+            },
+            RemoteRequest::RevokeClient {
+                client_id: "missing".into(),
+                dry_run: false,
+            },
+        ] {
+            assert!(handle(&state, &peer, &request).await.is_err());
+        }
+        assert!(state
+            .store
+            .remote_authority_status()
+            .await
+            .unwrap()
+            .host_id
+            .is_none());
+    }
+    #[tokio::test]
+    async fn inspection_has_no_credential_or_activity_fields() {
+        let state = AppState::in_memory().await.unwrap();
+        let response = handle(&state, &PeerInfo::local(), &RemoteRequest::Status)
+            .await
+            .unwrap();
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("hosting_available\":true"));
+        assert!(!json.contains("secret"));
+        assert!(!json.contains("verifier"));
     }
 }

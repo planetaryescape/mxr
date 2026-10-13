@@ -31,10 +31,6 @@ fn verifier(secret: &RemoteSecret) -> RemoteSecret {
     )))
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI parser fields passed unchanged"
-)]
 pub async fn run(
     url: Option<String>,
     local: bool,

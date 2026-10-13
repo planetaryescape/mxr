@@ -125,7 +125,6 @@ impl From<PendingConnection> for RetiredPairing {
 mod tests {
     #![expect(
         clippy::unwrap_used,
-        clippy::panic,
         reason = "isolated state fixtures assert directly"
     )]
     use super::*;

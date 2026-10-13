@@ -1,5 +1,4 @@
 use super::remote_gateway;
-use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::{net::TcpListener, task::JoinHandle};
 
@@ -9,7 +8,7 @@ async fn gateway() -> (TempDir, String, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let task = tokio::spawn(async move {
-        axum::serve(listener, remote_gateway::router(PathBuf::from(socket)))
+        axum::serve(listener, remote_gateway::router(socket))
             .await
             .unwrap();
     });

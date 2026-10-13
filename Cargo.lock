@@ -4549,6 +4549,7 @@ dependencies = [
 name = "mxr-client"
 version = "0.6.94"
 dependencies = [
+ "base16ct",
  "base64 0.23.1",
  "chrono",
  "futures",
@@ -4599,12 +4600,14 @@ dependencies = [
 name = "mxr-config"
 version = "0.6.94"
 dependencies = [
+ "base16ct",
  "chrono",
  "dirs 7.0.0",
  "libc",
  "mxr-core",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "temp-env",
  "tempfile",
  "thiserror 2.0.21",

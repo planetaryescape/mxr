@@ -1,8 +1,8 @@
 # Remote hosting keeps one daemon in charge of registered clients
 
-Status: proposed implementation contract, 2026-10-12. Commands, routes, fields and timing defaults below are requirements to implement, not descriptions of released behaviour. Source baseline: [`origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`](https://github.com/planetaryescape/mxr/tree/25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb). Implement after the completed [daemon portability preparation](23-daemon-portability.md); this expands its deferred R01 remote boundary. Track execution in [the remote hosting issue](../issues/remote-hosting-and-client-lifecycle.md).
+Status: implementation contract, updated 2026-10-13. F01 shipped in v0.6.94; R1 shipped in v0.6.95 from `abb9b5a3fb90bb14f462c61c6a329561b379a93b`. The feature merged as `b2ceb47ffbe0ea8839384d94945ed28810e95f04`. R2–R5 remain proposed requirements. The original source baseline is [`origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`](https://github.com/planetaryescape/mxr/tree/25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb). This contract expands the deferred R01 remote boundary from [daemon portability preparation](23-daemon-portability.md). Track execution in [the remote hosting issue](../issues/remote-hosting-and-client-lifecycle.md).
 
-The [execution ladder](../implementation/remote-hosting.md) records F01 as released in v0.6.94: local pairing inspection, approval and revocation. R1 is building the first remote mailbox. The remaining hosting, connection and lifecycle behavior below is still proposed.
+The [execution ladder](../implementation/remote-hosting.md) records F01 as released in v0.6.94 and R1 as shipped in v0.6.95. The rest of the hosting, connection and lifecycle requirements below remain proposed.
 
 Implement `mxr serve` on the computer that owns the mail workspace and `mxr connect` on each client computer. CLI, TUI, MCP and `mxr web` must honour the saved connection. The host knows which clients are registered, which sessions are active, and which operations it has accepted. Clients receive planned shutdown notices, reconnect after interruptions and deregister when deliberately switching away.
 
@@ -47,7 +47,7 @@ All source links in this table are pinned to the baseline commit. Re-fetch befor
 
 ## Serving and connecting have separate command scopes
 
-These examples specify the proposed UX. `--dry-run` is read-only and uses the same target resolution and validation as execution. Interactive mutations show the preview and ask for confirmation; noninteractive execution requires `--confirm`. All results and failures support `--format json`; event watching supports JSONL. Secrets never appear in normal structured output.
+These examples record the required command UX. R1 commands shipped in v0.6.95; the [remote mailbox guide](../../site/src/content/docs/guides/remote-mailbox.md) records their usage. Requirements for later stages remain proposed. `--dry-run` is read-only and uses the same target resolution and validation as execution. Interactive mutations show the preview and ask for confirmation; noninteractive execution requires `--confirm`. All results and failures support `--format json`; event watching supports JSONL. Secrets never appear in normal structured output.
 
 ```sh
 # On the host, preview before enabling persistent hosting.
@@ -232,11 +232,11 @@ Switching a Mac client to local later does not authorise reactivating its old mi
 
 ## Each implementation stage proves a usable boundary
 
-Execution follows the [vertical release ladder](../implementation/remote-hosting.md). The table below retains component ownership and coverage; it is not the release order.
+Execution follows the [vertical release ladder](../implementation/remote-hosting.md). The table below retains the original component ownership and coverage; it is historical decomposition, not current stage status or release order.
 
 Use the existing crate boundaries. `core` owns domain identifiers, `protocol` owns DTOs/events, `store` owns persisted registrations/revocation, `daemon` owns authority and lifecycle, `config` owns host/client settings, `transport` owns the WSS adapter, `client` owns shared selection/reconnect, and `web` remains an IPC client and authenticated gateway. OS service and Tailscale commands belong in host CLI integration. Web, TUI and MCP consume the shared contract. Avoid adding unrelated code to already large protocol/web files; follow their existing module seams.
 
-The proposed remote routes are `/api/v1/remote/pairings`, `/sessions`, `/self`, `/self/deregister`, `/browser-grants` and `/ipc`, all under that prefix. Reuse existing mail resource routes and event streaming with the remote authentication layer. These names are schema inputs to finalise in R01a, not live endpoints. Expose reusable domain operations through typed IPC and CLI JSON too. Keep host installation and other local-only administration outside the remote allowlist; client parity does not grant remote OS privileges.
+R1 implements `/api/v1/remote/pairings`, `/api/v1/remote/self/deregister` and `/api/v1/remote/ipc`. The proposed `/api/v1/remote/sessions`, `/api/v1/remote/self` and `/api/v1/remote/browser-grants` routes remain future requirements. Reuse existing mail resource routes and event streaming with the remote authentication layer. Expose reusable domain operations through typed IPC and CLI JSON too. Keep host installation and other local-only administration outside the remote allowlist; client parity does not grant remote OS privileges.
 
 | Stage | Depends on | Implementation and acceptance |
 | --- | --- | --- |
@@ -248,7 +248,7 @@ The proposed remote routes are `/api/v1/remote/pairings`, `/sessions`, `/self`, 
 | R01f: supervised Tailscale hosting | R01b through R01e | Add `mxr serve` setup/status/stop, supervisor state and owned proxy reconciliation. Prove Mac and Linux service behaviour, repeated setup, partial failure, restart, explicit stop and preservation of other services. |
 | R01g: installed acceptance and runbooks | R01f | Run the complete two-client scenario through the actual supported HTTPS proxy with installed artifacts. Publish hosting, pairing, switching, revocation and VPS migration guidance; update CLI/API/generated clients and the readiness status. |
 
-Do not expose a real mail workspace before R01b's negative authentication checks and R01f's deployment gates pass. Early stages may ship dormant support. Before each implementation push, fetch current remote state and preserve other work. Release-please owns versions and tags; when a stage is authorised to ship, verify the release artifacts rather than treating a merge as completion. This blueprint does not authorise personal VPS provisioning or mailbox migration.
+R1's negative authentication checks and installed HTTPS acceptance passed against synthetic mail, and v0.6.95 was published; its release workflow also passed. Do not treat this as acceptance of unattended hosting: R5 still requires supported Mac/Linux service and reboot checks. Early stages may ship dormant support. Before each implementation push, fetch current remote state and preserve other work. Release-please owns versions and tags; verify release artifacts rather than treating a merge as completion. This blueprint does not authorise persistent hosting on BK's personal VPS or mailbox migration.
 
 ## Acceptance includes failures across the real gateway
 
@@ -281,7 +281,7 @@ Use fake providers and isolated homes for deterministic fault injection. Run foc
 
 Update the transport blueprint, CLI reference source/generator, remote API/OpenAPI schemas and generated clients as each surface ships. Add public operator guides only for implemented behaviour. Record each stage's commit, test environment, acceptance evidence and release result in the existing issue and linked implementation reports. Mark proposed commands as available only after installed acceptance.
 
-For this specification, validation is limited to source-reference checks, relative-link checks and the HTML companion. Product, provider, supervisor and tailnet acceptance remain unexecuted. The next implementation action is R01a's contract/allowlist inventory against a fresh remote SHA.
+The original specification passed source-reference, relative-link and HTML-companion checks. R1's release and installed HTTPS acceptance are complete and recorded in the [execution ladder](../implementation/remote-hosting.md). R2–R5 product acceptance remains unexecuted; R2 is next. R5 still requires supported Mac/Linux supervisor and reboot acceptance.
 
 ## Unresolved choices have defaults and explicit decision points
 

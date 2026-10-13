@@ -16,7 +16,7 @@ pub async fn run(
         anyhow::bail!("serve supports --format json or jsonl");
     }
     let Some(action) = action else {
-        anyhow::bail!("Remote hosting is not implemented in this foundation. Use mxr serve status to inspect local pairing authority.")
+        anyhow::bail!("Choose a `mxr serve` subcommand, or use `mxr serve --foreground` to run the loopback gateway.")
     };
     let request = match action {
         ServeAction::Status => RemoteRequest::Status,

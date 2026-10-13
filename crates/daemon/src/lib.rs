@@ -1794,21 +1794,98 @@ fn safe_dependency_log(target: &str, level: &tracing::Level) -> bool {
     // async-imap logs complete commands and response buffers at TRACE. That
     // includes LOGIN passwords and message bodies, so those events must never
     // reach either daemon log sink.
-    !(target.starts_with("async_imap") && level == &tracing::Level::TRACE)
+    // tungstenite logs handshake headers and websocket frames at TRACE, which
+    // can contain the paired mail credential and mailbox contents.
+    !((target.starts_with("async_imap") || target.starts_with("tungstenite"))
+        && level == &tracing::Level::TRACE)
 }
 
 #[cfg(test)]
 mod tracing_tests {
-    use super::safe_dependency_log;
+    use super::{safe_dependency_log, safe_dependency_metadata};
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[derive(Clone, Default)]
+    struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buffer {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn contents(buffer: &Buffer) -> String {
+        String::from_utf8(buffer.0.lock().unwrap().clone()).expect("valid UTF-8 log output")
+    }
 
     #[test]
-    fn blocks_async_imap_wire_traces_without_hiding_other_logs() {
+    fn blocks_wire_traces_before_both_sinks_without_hiding_safe_logs() {
+        let file = Buffer::default();
+        let stdout = Buffer::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::filter::filter_fn(
+                safe_dependency_metadata,
+            ))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_writer(file.clone())
+                    .with_ansi(false),
+            )
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(stdout.clone())
+                    .with_ansi(false),
+            );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::trace!(target: "tungstenite::handshake::client", credential = "SYNTHETIC_MAIL_SECRET");
+            tracing::trace!(target: "tungstenite::protocol::frame", payload = "SYNTHETIC_MAIL_BODY");
+            tracing::trace!(target: "async_imap::imap_stream", command = "SYNTHETIC_IMAP_SECRET");
+            tracing::trace!(target: "mxr::sync", event = "safe trace");
+            tracing::debug!(target: "tungstenite::handshake::client", event = "safe debug");
+        });
+
+        for output in [contents(&file), contents(&stdout)] {
+            assert!(!output.contains("SYNTHETIC_MAIL_SECRET"));
+            assert!(!output.contains("SYNTHETIC_MAIL_BODY"));
+            assert!(!output.contains("SYNTHETIC_IMAP_SECRET"));
+            assert!(output.contains("safe trace"));
+            assert!(output.contains("safe debug"));
+        }
+
         assert!(!safe_dependency_log(
             "async_imap::imap_stream",
             &tracing::Level::TRACE
         ));
+        assert!(!safe_dependency_log(
+            "tungstenite::handshake::client",
+            &tracing::Level::TRACE
+        ));
+        assert!(!safe_dependency_log(
+            "tungstenite::protocol::frame",
+            &tracing::Level::TRACE
+        ));
         assert!(safe_dependency_log(
             "async_imap::imap_stream",
+            &tracing::Level::DEBUG
+        ));
+        assert!(safe_dependency_log(
+            "tungstenite::handshake::client",
             &tracing::Level::DEBUG
         ));
         assert!(safe_dependency_log("mxr::sync", &tracing::Level::TRACE));

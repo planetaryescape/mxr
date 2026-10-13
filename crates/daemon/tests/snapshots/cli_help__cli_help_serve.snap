@@ -7,7 +7,7 @@ Manage local pairing authority or run the loopback gateway in foreground
 Usage: mxr serve [OPTIONS] [COMMAND]
 
 Commands:
-  status   Inspect local identity; hosting is not yet available
+  status   Inspect local pairing authority; supervised gateway setup is not available
   pair     Inspect or approve local pairing requests
   clients  List registered clients, or preview/revoke one
   help     Print this message or the help of the given subcommand(s)

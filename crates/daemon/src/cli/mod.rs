@@ -112,7 +112,7 @@ pub enum BackupAction {
 
 #[derive(Subcommand)]
 pub enum ServeAction {
-    /// Inspect local identity; hosting is not yet available
+    /// Inspect local pairing authority; supervised gateway setup is not available
     Status,
     /// Inspect or approve local pairing requests
     Pair {

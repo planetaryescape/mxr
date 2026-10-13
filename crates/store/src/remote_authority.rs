@@ -79,7 +79,8 @@ impl crate::Store {
             host_id,
             workspace_id: owner.as_ref().map(|o| o.0.clone()),
             recovery_generation: owner.map(|o| o.1),
-            hosting_available: false,
+            // This reports build capability; gateway liveness belongs to its supervisor.
+            hosting_available: true,
         })
     }
     pub async fn remote_pairings(&self, now: i64) -> Result<Vec<PendingPairing>, sqlx::Error> {

@@ -28,6 +28,7 @@ pub struct HostAuthority {
     pub host_id: Option<String>,
     pub workspace_id: Option<String>,
     pub recovery_generation: Option<String>,
+    /// Whether this build implements host serving; it does not report listener liveness.
     pub hosting_available: bool,
 }
 

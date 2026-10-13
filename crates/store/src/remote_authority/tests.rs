@@ -19,6 +19,7 @@ async fn preview_and_lists_do_not_initialize_or_approve() {
     let before = store.remote_authority_status().await.unwrap();
     assert!(before.host_id.is_none());
     assert!(before.workspace_id.is_none());
+    assert!(before.hosting_available);
     assert!(store.remote_pairings(100).await.unwrap().is_empty());
     assert!(store.remote_clients().await.unwrap().is_empty());
     assert!(store
@@ -163,8 +164,20 @@ async fn limits_expiry_and_invalid_proof_are_enforced() {
         .await
         .is_err());
     assert!(store.remote_pairings(101).await.unwrap().is_empty());
-    for _ in 0..MAX_PENDING_PAIRINGS {
-        start(&store, 101).await;
+    for index in 0..MAX_PENDING_PAIRINGS {
+        let name = format!("fixture-{index}");
+        let mail = RemoteSecret::new(format!("{index:064x}"));
+        let cleanup = RemoteSecret::new(format!("{:064x}", index + MAX_PENDING_PAIRINGS));
+        store
+            .start_remote_pairing(
+                &name,
+                &[RemoteCapability::MailRead],
+                &RemoteSecret::new(verifier(&mail).unwrap()),
+                &RemoteSecret::new(verifier(&cleanup).unwrap()),
+                101,
+            )
+            .await
+            .unwrap();
     }
     assert!(store
         .start_remote_pairing("overflow", &[RemoteCapability::MailRead], &mv, &cv, 101)
@@ -340,6 +353,68 @@ async fn unknown_cleanup_cannot_ack_a_start_that_has_not_arrived() {
         .await
         .is_err());
     assert_eq!(store.remote_pairings(102).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn expired_start_can_be_reestablished_unapproved_then_retired() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let original = start(&store, 100).await;
+    let (_, cleanup, mail_verifier, cleanup_verifier) = secrets();
+    let other_mail = RemoteSecret::new("c".repeat(64));
+    let other_cleanup = RemoteSecret::new("d".repeat(64));
+    store
+        .start_remote_pairing(
+            "other-client",
+            &[RemoteCapability::MailRead],
+            &RemoteSecret::new(verifier(&other_mail).unwrap()),
+            &RemoteSecret::new(verifier(&other_cleanup).unwrap()),
+            original.expires_at + 1,
+        )
+        .await
+        .unwrap();
+
+    // Expiry removes the pending proof row, so cleanup must not acknowledge yet.
+    assert!(store
+        .abandon_remote_pairing(&cleanup, original.expires_at + 1)
+        .await
+        .is_err());
+    assert!(!store
+        .remote_pairings(original.expires_at + 1)
+        .await
+        .unwrap()
+        .iter()
+        .any(|pairing| pairing.request_id == original.request_id));
+
+    // The client can recreate its pending proof from retained cleanup intent.
+    let recreated = store
+        .start_remote_pairing(
+            "fixture",
+            &[RemoteCapability::MailRead],
+            &mail_verifier,
+            &cleanup_verifier,
+            original.expires_at + 1,
+        )
+        .await
+        .unwrap();
+    assert!(!recreated.approved);
+    store
+        .abandon_remote_pairing(&cleanup, original.expires_at + 2)
+        .await
+        .unwrap();
+    assert!(store
+        .approve_remote_pairing(&recreated.request_id, false, original.expires_at + 3)
+        .await
+        .is_err());
+    assert!(store
+        .start_remote_pairing(
+            "fixture",
+            &[RemoteCapability::MailRead],
+            &mail_verifier,
+            &cleanup_verifier,
+            original.expires_at + 4,
+        )
+        .await
+        .is_err());
 }
 
 #[tokio::test]

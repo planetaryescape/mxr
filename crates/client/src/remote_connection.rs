@@ -1,13 +1,22 @@
 //! Shared bounded cleanup retries for CLI, TUI and MCP client use.
 use crate::ClientError;
+use futures::{Stream, StreamExt};
 use mxr_config::connection_state::{self as persistence, ConnectionState};
 use mxr_protocol::{RemoteRequest, Response, ResponseData};
 use sha2::Digest;
+use std::future::Future;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex,
 };
+const CLEANUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+const CLEANUP_CONCURRENCY: usize = 4;
 static CLEANUP_TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
+
+enum CleanupIntent {
+    Pairing(mxr_config::connection_state::RetiredPairing),
+    Registration(mxr_config::connection_state::RetiredRegistration),
+}
 fn error(message: &str) -> ClientError {
     ClientError::Io(std::io::Error::other(message))
 }
@@ -69,18 +78,71 @@ pub async fn authority(
 }
 /// Cleanup never uses the mail credential or targets an inferred registration.
 pub async fn retry_cleanup() -> Result<usize, ClientError> {
+    let deadline = tokio::time::Instant::now() + CLEANUP_BUDGET;
     let snapshot = read().await?;
-    for old in snapshot.retired_pairings {
-        let retire = RemoteRequest::AbandonPairing {
-            cleanup_secret: old.cleanup_secret.clone(),
-        };
-        let retired = match authority(&old.origin, "self/deregister", retire.clone()).await {
-            Ok(_) => true,
-            Err(_) => {
-                // Reestablish only an unapproved proof record when start was lost or expired.
-                let cleanup_verifier = mxr_core::RemoteSecret::new(base16ct::lower::encode_string(
-                    &sha2::Sha256::digest(old.cleanup_secret.expose().as_bytes()),
-                ));
+    let work = futures::stream::iter(
+        snapshot
+            .retired_pairings
+            .into_iter()
+            .map(CleanupIntent::Pairing)
+            .chain(
+                snapshot
+                    .cleanup
+                    .into_iter()
+                    .map(CleanupIntent::Registration),
+            ),
+    )
+    .map(|intent| async move {
+        match intent {
+            CleanupIntent::Pairing(old) => retire_pairing(old, deadline).await,
+            CleanupIntent::Registration(old) => retire_registration(old, deadline).await,
+        }
+    });
+    run_cleanup_tasks(work, deadline).await?;
+    let state = read().await?;
+    Ok(state.cleanup.len() + state.retired_pairings.len())
+}
+
+async fn run_cleanup_tasks<S, F>(work: S, deadline: tokio::time::Instant) -> Result<(), ClientError>
+where
+    S: Stream<Item = F>,
+    F: Future<Output = Result<(), ClientError>>,
+{
+    let mut work = Box::pin(work.buffer_unordered(CLEANUP_CONCURRENCY));
+    loop {
+        match tokio::time::timeout_at(deadline, work.next()).await {
+            Ok(Some(result)) => result?,
+            Ok(None) | Err(_) => break,
+        }
+    }
+    Ok(())
+}
+
+async fn retire_pairing(
+    old: mxr_config::connection_state::RetiredPairing,
+    deadline: tokio::time::Instant,
+) -> Result<(), ClientError> {
+    let retire = RemoteRequest::AbandonPairing {
+        cleanup_secret: old.cleanup_secret.clone(),
+    };
+    let first = match tokio::time::timeout_at(
+        deadline,
+        authority(&old.origin, "self/deregister", retire.clone()),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => return Ok(()),
+    };
+    let retired = match first {
+        Ok(_) => true,
+        Err(_) => {
+            // Reestablish only an unapproved proof record when start was lost or expired.
+            let cleanup_verifier = mxr_core::RemoteSecret::new(base16ct::lower::encode_string(
+                &sha2::Sha256::digest(old.cleanup_secret.expose().as_bytes()),
+            ));
+            let restarted = match tokio::time::timeout_at(
+                deadline,
                 authority(
                     &old.origin,
                     "pairings",
@@ -90,49 +152,72 @@ pub async fn retry_cleanup() -> Result<usize, ClientError> {
                         mail_verifier: old.mail_verifier.clone(),
                         cleanup_verifier,
                     },
+                ),
+            )
+            .await
+            {
+                Ok(result) => result.is_ok(),
+                Err(_) => return Ok(()),
+            };
+            if !restarted {
+                false
+            } else {
+                match tokio::time::timeout_at(
+                    deadline,
+                    authority(&old.origin, "self/deregister", retire),
                 )
                 .await
-                .is_ok()
-                    && authority(&old.origin, "self/deregister", retire)
-                        .await
-                        .is_ok()
+                {
+                    Ok(result) => result.is_ok(),
+                    Err(_) => return Ok(()),
+                }
             }
-        };
-        if retired {
-            update(move |state| {
-                state
-                    .retired_pairings
-                    .retain(|entry| entry.cleanup_secret.expose() != old.cleanup_secret.expose());
-                Ok(())
-            })
-            .await?;
         }
+    };
+    if retired {
+        update(move |state| {
+            state
+                .retired_pairings
+                .retain(|entry| entry.cleanup_secret.expose() != old.cleanup_secret.expose());
+            Ok(())
+        })
+        .await?;
     }
-    for old in snapshot.cleanup {
-        if authority(
+    Ok(())
+}
+
+async fn retire_registration(
+    old: mxr_config::connection_state::RetiredRegistration,
+    deadline: tokio::time::Instant,
+) -> Result<(), ClientError> {
+    let acknowledged = match tokio::time::timeout_at(
+        deadline,
+        authority(
             &old.origin,
             "self/deregister",
             RemoteRequest::Cleanup {
                 client_id: old.client_id.clone(),
                 cleanup_secret: old.cleanup_secret,
             },
-        )
-        .await
-        .is_ok()
-        {
-            let origin = old.origin;
-            let id = old.client_id;
-            update(move |state| {
-                state
-                    .cleanup
-                    .retain(|entry| entry.client_id != id || entry.origin != origin);
-                Ok(())
-            })
-            .await?;
-        }
+        ),
+    )
+    .await
+    {
+        Ok(result) => result.is_ok(),
+        Err(_) => false,
+    };
+    if acknowledged {
+        let origin = old.origin;
+        let id = old.client_id;
+        update(move |state| {
+            state
+                .cleanup
+                .retain(|entry| entry.client_id != id || entry.origin != origin);
+            Ok(())
+        })
+        .await?;
     }
-    let state = read().await?;
-    Ok(state.cleanup.len() + state.retired_pairings.len())
+    Ok(())
 }
 
 /// Retired credentials are independent of current selection, including environment overrides.
@@ -166,5 +251,32 @@ pub async fn finish_cleanup() {
         .take();
     if let Some(task) = task {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), task).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::stream;
+    use std::sync::{atomic::AtomicBool, Arc};
+
+    #[tokio::test]
+    async fn unreachable_cleanup_does_not_starve_a_later_reachable_intent() {
+        let reachable_ran = Arc::new(AtomicBool::new(false));
+        let unreachable: futures::future::BoxFuture<'static, Result<(), ClientError>> =
+            Box::pin(async { std::future::pending().await });
+        let reachable_flag = reachable_ran.clone();
+        let reachable: futures::future::BoxFuture<'static, Result<(), ClientError>> =
+            Box::pin(async move {
+                reachable_flag.store(true, Ordering::SeqCst);
+                Ok(())
+            });
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(50);
+
+        run_cleanup_tasks(stream::iter([unreachable, reachable]), deadline)
+            .await
+            .unwrap();
+
+        assert!(reachable_ran.load(Ordering::SeqCst));
     }
 }

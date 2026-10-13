@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.95](https://github.com/planetaryescape/mxr/compare/v0.6.94...v0.6.95) (2026-10-13)
+
+
+### Features
+
+* read a paired remote mailbox from native clients ([#446](https://github.com/planetaryescape/mxr/issues/446)) ([b2ceb47](https://github.com/planetaryescape/mxr/commit/b2ceb47ffbe0ea8839384d94945ed28810e95f04))
+
+
+### Documentation
+
+* record released pairing authority foundation ([#445](https://github.com/planetaryescape/mxr/issues/445)) ([4b2a544](https://github.com/planetaryescape/mxr/commit/4b2a5443cbb43128fadf8f2cc7a90b3d1aee1ccf))
+
 ## [0.6.94](https://github.com/planetaryescape/mxr/compare/v0.6.93...v0.6.94) (2026-10-12)
 
 

@@ -36,6 +36,10 @@ mod peer;
 mod tcp;
 mod uds;
 
+#[cfg(test)]
+pub(crate) static SUBPROCESS_FD_TEST_LOCK: tokio::sync::Mutex<()> =
+    tokio::sync::Mutex::const_new(());
+
 #[cfg(feature = "test-util")]
 mod memory;
 

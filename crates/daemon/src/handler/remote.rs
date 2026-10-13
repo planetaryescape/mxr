@@ -172,7 +172,7 @@ mod tests {
             .await
             .unwrap();
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("hosting_available\":false"));
+        assert!(json.contains("hosting_available\":true"));
         assert!(!json.contains("secret"));
         assert!(!json.contains("verifier"));
     }

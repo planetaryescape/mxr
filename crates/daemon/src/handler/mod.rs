@@ -68,6 +68,8 @@ pub(crate) mod records;
 mod recovery;
 mod relationship_profile;
 mod remote;
+#[cfg(test)]
+mod remote_tests;
 pub(crate) mod reply_later;
 pub(crate) mod rule_treatment;
 mod rules;

@@ -24,6 +24,8 @@ mod promise_routes;
 mod reading_routes;
 mod record_routes;
 pub mod remote_gateway;
+#[cfg(test)]
+mod remote_gateway_tests;
 mod request_types;
 mod routes_v6;
 mod row_labels;

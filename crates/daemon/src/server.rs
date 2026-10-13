@@ -589,9 +589,14 @@ pub(crate) fn resolve_daemon_addr() -> anyhow::Result<mxr_transport::TransportAd
 }
 
 /// Resolve the daemon socket for a Unix-only client surface (the standalone
-/// `mxr web` bridge). The bridge stays beside its daemon and rejects
-/// `tcp://` / `cmd://` instead of dialing an unrelated default socket.
+/// `mxr web` bridge). It rejects paired remotes and `tcp://` / `cmd://` rather
+/// than dialing an unrelated local socket.
 pub(crate) fn resolve_daemon_socket_unix_only() -> anyhow::Result<PathBuf> {
+    if selected_daemon_target()?.is_paired_remote() {
+        anyhow::bail!(
+            "`mxr web` is unavailable for a paired remote connection; use the CLI, TUI, or MCP client"
+        );
+    }
     match resolve_daemon_addr()? {
         mxr_transport::TransportAddr::Unix(path) => Ok(path),
         mxr_transport::TransportAddr::Tcp(_) | mxr_transport::TransportAddr::Cmd(_) => {
@@ -617,15 +622,10 @@ pub(crate) fn selected_daemon_target() -> anyhow::Result<mxr_client::SelectedDae
 }
 
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
-    // Autostart, the stale-socket probe, and pid-file recovery are all
-    // Unix-socket, same-machine lifecycle. A `tcp://` / `cmd://` client address
-    // manages its own reachability (a loopback TCP daemon the user started, or
-    // an SSH/container process the `cmd://` spawns), so skip local lifecycle
-    // management entirely and let the connect attempt speak for itself.
-    if !matches!(
-        resolve_daemon_addr()?,
-        mxr_transport::TransportAddr::Unix(_)
-    ) {
+    // Autostart, stale-socket probes, and pid-file recovery manage only local
+    // daemons. TCP/cmd targets and saved paired remotes own their own
+    // reachability, so skip local lifecycle management for those selections.
+    if selected_daemon_target()?.is_remote() {
         return Ok(());
     }
     let sock_path = resolve_daemon_socket()?;
@@ -2085,6 +2085,7 @@ mod tests {
     use mxr_core::{
         id::{AccountId, MessageId, ThreadId},
         types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
+        RemoteSecret,
     };
     use mxr_protocol::{
         AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
@@ -2101,6 +2102,71 @@ mod tests {
             evidence: super::DaemonEvidence::PidFile,
             started_at: Some("Wed Aug 20 00:11:22 2026".to_string()),
         }
+    }
+
+    #[test]
+    fn saved_remote_selection_child_does_not_fall_back_to_local_web_or_daemon() {
+        let Ok(socket) = std::env::var("MXR_TEST_SAVED_REMOTE_SOCKET") else {
+            return;
+        };
+        let target = super::selected_daemon_target().unwrap();
+        assert!(target.is_paired_remote());
+        assert!(super::resolve_daemon_socket_unix_only().is_err());
+        assert!(crate::ensure_web_target_supported(None, None).is_err());
+        assert!(crate::ensure_web_target_supported(Some("https://legacy.example"), None).is_ok());
+        assert!(
+            crate::ensure_web_target_supported(None, Some(&crate::cli::WebAction::Stop)).is_ok()
+        );
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(super::ensure_daemon_running())
+            .unwrap();
+        assert!(!std::path::Path::new(&socket).exists());
+    }
+
+    #[test]
+    fn saved_remote_selection_never_starts_a_local_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_dir = directory.path().join("config");
+        let socket = directory.path().join("should-not-be-created.sock");
+        let state_path = config_dir.join("client-connection.json");
+        mxr_config::connection_state::update(&state_path, None, |state| {
+            state.generation = 1;
+            state.selected = Some(mxr_config::connection_state::ConnectionRegistration {
+                origin: "https://fixture.example".into(),
+                client_id: "fixture-client".into(),
+                host_id: "fixture-host".into(),
+                workspace_id: "fixture-workspace".into(),
+                recovery_generation: "fixture-generation".into(),
+                mail_secret: RemoteSecret::new("a".repeat(64)),
+                cleanup_secret: RemoteSecret::new("b".repeat(64)),
+            });
+            Ok(())
+        })
+        .unwrap();
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "server::tests::saved_remote_selection_child_does_not_fall_back_to_local_web_or_daemon",
+                "--exact",
+            ])
+            .env("MXR_CONFIG_DIR", &config_dir)
+            .env("MXR_SOCKET_PATH", &socket)
+            .env("MXR_DAEMON_AUTOSTART", "off")
+            .env("MXR_TEST_SAVED_REMOTE_SOCKET", &socket)
+            .env_remove("MXR_DAEMON_ADDR")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child failed: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!socket.exists());
     }
 
     #[test]

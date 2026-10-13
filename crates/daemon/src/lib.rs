@@ -43,6 +43,21 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     run_parsed_cli(cli).await
 }
 
+fn ensure_web_target_supported(
+    remote_host: Option<&str>,
+    action: Option<&cli::WebAction>,
+) -> anyhow::Result<()> {
+    if remote_host.is_none()
+        && !matches!(action, Some(cli::WebAction::Stop))
+        && server::selected_daemon_target()?.is_paired_remote()
+    {
+        anyhow::bail!(
+            "`mxr web` is unavailable for a paired remote connection; use the CLI, TUI, or MCP client"
+        );
+    }
+    Ok(())
+}
+
 // Keep Clap's command construction outside the large debug dispatch poll frame.
 async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
@@ -940,6 +955,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             foreground,
             detached_child,
         }) => {
+            ensure_web_target_supported(remote_host.as_deref(), action.as_ref())?;
             if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
                 crate::server::ensure_daemon_running().await?;
             }

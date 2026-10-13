@@ -8,6 +8,10 @@ use rustls::pki_types::PrivatePkcs8KeyDer;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
+use tokio_tungstenite::tungstenite::protocol::frame::{
+    coding::{Data, OpCode},
+    Frame,
+};
 
 async fn fixture() -> (TcpListener, TlsAcceptor, WssConnector) {
     let certificate = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
@@ -89,6 +93,107 @@ async fn partial_and_coalesced_binary_messages_preserve_bytes_and_drop_closes_so
     io.read_exact(&mut received).await.unwrap();
     assert_eq!(&received, b"abcdef");
     drop(io);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn fragmented_binary_messages_are_reassembled_as_one_byte_stream() {
+    let (listener, tls, connector) = fixture().await;
+    let server = tokio::spawn(async move {
+        let (tcp, _) = listener.accept().await.unwrap();
+        let tls = tls.accept(tcp).await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(tls).await.unwrap();
+        ws.send(Message::Frame(Frame::message(
+            b"frag".to_vec(),
+            OpCode::Data(Data::Binary),
+            false,
+        )))
+        .await
+        .unwrap();
+        ws.send(Message::Frame(Frame::message(
+            b"mented".to_vec(),
+            OpCode::Data(Data::Continue),
+            true,
+        )))
+        .await
+        .unwrap();
+    });
+    let mut io = connector.connect().await.unwrap();
+    let mut received = [0; 10];
+    io.read_exact(&mut received).await.unwrap();
+    assert_eq!(&received, b"fragmented");
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn large_binary_response_drains_through_small_reads() {
+    let (listener, tls, connector) = fixture().await;
+    let payload = vec![42; 1024 * 1024];
+    let server_payload = payload.clone();
+    let server = tokio::spawn(async move {
+        let (tcp, _) = listener.accept().await.unwrap();
+        let tls = tls.accept(tcp).await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(tls).await.unwrap();
+        ws.send(Message::Binary(server_payload.into()))
+            .await
+            .unwrap();
+    });
+    let mut io = connector.connect().await.unwrap();
+    let mut received = Vec::with_capacity(payload.len());
+    let mut chunk = [0; 512];
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while received.len() < payload.len() {
+            let remaining = payload.len() - received.len();
+            let size = chunk.len().min(remaining);
+            io.read_exact(&mut chunk[..size]).await.unwrap();
+            received.extend_from_slice(&chunk[..size]);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(received, payload);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelling_a_pending_websocket_handshake_closes_its_tls_stream() {
+    let (listener, tls, connector) = fixture().await;
+    let (handshake_sent, handshake_received) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (tcp, _) = listener.accept().await.unwrap();
+        let mut tls = tls.accept(tcp).await.unwrap();
+        let mut request = Vec::new();
+        let mut byte = [0];
+        while !request.ends_with(b"\r\n\r\n") {
+            tls.read_exact(&mut byte).await.unwrap();
+            request.push(byte[0]);
+        }
+        handshake_sent.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), tls.read(&mut byte))
+            .await
+            .unwrap()
+    });
+    let connecting = tokio::spawn(async move { connector.connect().await });
+    handshake_received.await.unwrap();
+    connecting.abort();
+    let result = server.await.unwrap();
+    assert!(result.is_err() || result.unwrap() == 0);
+}
+
+#[tokio::test]
+async fn text_messages_close_the_binary_byte_stream() {
+    let (listener, tls, connector) = fixture().await;
+    let server = tokio::spawn(async move {
+        let (tcp, _) = listener.accept().await.unwrap();
+        let tls = tls.accept(tcp).await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(tls).await.unwrap();
+        ws.send(Message::Text("not an IPC frame".into()))
+            .await
+            .unwrap();
+    });
+    let mut io = connector.connect().await.unwrap();
+    let mut byte = [0];
+    assert_eq!(io.read(&mut byte).await.unwrap(), 0);
     server.await.unwrap();
 }
 

@@ -57,6 +57,8 @@ type = "fake"
                        MXR_CONFIG_DIR=str(root / 'config'), MXR_DATA_DIR=str(root / 'data'),
                        MXR_SOCKET_PATH=self.sock + '-' + name, MXR_INSTANCE='remote-read-' + name)
             env.pop('MXR_FAKE_DATASET', None)
+            # A remote-selection regression must be able to start a local daemon.
+            env.pop('MXR_DAEMON_AUTOSTART', None)
             (root / 'config/config.toml').write_text('[bridge]\nenabled = false\n')
             self.clients[name] = env
 

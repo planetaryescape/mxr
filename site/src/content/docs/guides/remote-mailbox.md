@@ -24,6 +24,8 @@ mxr serve --foreground --listen 127.0.0.1:18741
 
 The gateway binds only to loopback and uses this computer's local daemon. A saved remote selection does not change which daemon it serves. Keep both terminals open. Use the same mxr version on host and clients; this connection requires IPC protocol 14.
 
+`mxr daemon` and `mxr restart` manage the current computer's local daemon even when a saved remote connection is selected. Run host lifecycle commands on the host computer.
+
 ## Forward private HTTPS to the gateway
 
 Connect the host and clients to the same Tailscale network. With MagicDNS and HTTPS certificates enabled, run Tailscale Serve in another host terminal:

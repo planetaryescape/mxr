@@ -136,6 +136,9 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             listen,
             dry_run,
         }) => {
+            if dry_run && action.is_some() {
+                anyhow::bail!("`mxr serve --dry-run` previews only the foreground gateway; put `--dry-run` after the serve action to preview pairing or client changes (for example, `mxr serve pair approve <request-id> --dry-run`)");
+            }
             if foreground {
                 if action.is_some() {
                     anyhow::bail!("--foreground cannot be combined with a serve action");

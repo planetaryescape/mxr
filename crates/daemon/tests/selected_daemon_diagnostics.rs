@@ -115,6 +115,45 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                             .unwrap();
                             ResponseData::DoctorReport { report }
                         }
+                        IpcPayload::Request(Request::RemoteAuthority { request }) => {
+                            let response = match request {
+                                mxr_protocol::RemoteRequest::ApprovePairing {
+                                    request_id,
+                                    dry_run,
+                                } => serde_json::from_value(serde_json::json!({
+                                    "result": "Pairing",
+                                    "pairing": {
+                                        "capabilities": [],
+                                        "request_id": request_id,
+                                        "name": "fixture",
+                                        "challenge": "fixture-challenge",
+                                        "expires_at": 0,
+                                        "approved": false,
+                                        "failed_attempts": 0
+                                    },
+                                    "dry_run": dry_run
+                                }))
+                                .unwrap(),
+                                mxr_protocol::RemoteRequest::RevokeClient {
+                                    client_id,
+                                    dry_run,
+                                } => serde_json::from_value(serde_json::json!({
+                                    "result": "Client",
+                                    "client": {
+                                        "capabilities": [],
+                                        "client_id": client_id,
+                                        "name": "fixture",
+                                        "created_at": 0,
+                                        "expires_at": 0,
+                                        "revoked_at": null
+                                    },
+                                    "dry_run": dry_run
+                                }))
+                                .unwrap(),
+                                other => panic!("unexpected remote authority request: {other:?}"),
+                            };
+                            ResponseData::RemoteAuthority { response }
+                        }
                         other => panic!("unexpected request in fixture: {other:?}"),
                     };
                     let response = IpcMessage {
@@ -282,6 +321,87 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
         status["client_local"]["socket_path"],
         unix_target.display().to_string()
     );
+}
+
+#[tokio::test]
+async fn serve_root_dry_run_cannot_confirm_pairing_and_leaf_previews_work() {
+    let root = tempfile::tempdir().unwrap();
+    let socket = root.path().join("authority.sock");
+    let (_server, requests) = spawn_fake_daemon(&socket);
+    let mut envs = isolated_env(root.path());
+    envs[3].1 = socket.display().to_string();
+
+    let invalid = run_mxr(
+        &envs,
+        &[
+            "serve",
+            "--dry-run",
+            "pair",
+            "approve",
+            "request-unsafe",
+            "--confirm",
+        ],
+        "unused",
+    )
+    .await;
+    assert!(!invalid.status.success());
+    let error = String::from_utf8(invalid.stderr).unwrap();
+    assert!(
+        error.contains("put `--dry-run` after the serve action"),
+        "{error}"
+    );
+    assert_eq!(
+        requests.load(Ordering::Relaxed),
+        0,
+        "invalid invocation reached IPC"
+    );
+
+    let foreground_preview = run_mxr(
+        &envs,
+        &[
+            "serve",
+            "--foreground",
+            "--dry-run",
+            "--listen",
+            "127.0.0.1:0",
+            "--format",
+            "json",
+        ],
+        "unused",
+    )
+    .await;
+    assert!(foreground_preview.status.success());
+    let output: serde_json::Value = serde_json::from_slice(&foreground_preview.stdout).unwrap();
+    assert_eq!(output["foreground"], true);
+    assert_eq!(output["dry_run"], true);
+    assert_eq!(
+        requests.load(Ordering::Relaxed),
+        0,
+        "foreground preview reached IPC"
+    );
+
+    for args in [
+        vec![
+            "serve",
+            "--format",
+            "json",
+            "pair",
+            "approve",
+            "request-preview",
+            "--dry-run",
+        ],
+        vec!["serve", "clients", "revoke", "client-preview", "--dry-run"],
+    ] {
+        let preview = run_mxr(&envs, &args, "unused").await;
+        assert!(
+            preview.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preview.stderr)
+        );
+        let output: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+        assert_eq!(output["response"]["dry_run"], true, "{output}");
+    }
+    assert_eq!(requests.load(Ordering::Relaxed), 4);
 }
 
 #[tokio::test]

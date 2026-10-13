@@ -486,7 +486,13 @@ async fn serve_old_local_daemon_reports_upgrade_before_new_request_or_remote_ove
     .await;
     assert!(!output.status.success());
     let error = String::from_utf8_lossy(&output.stderr);
-    assert!(error.contains("requires IPC protocol 13"), "{error}");
+    assert!(
+        error.contains(&format!(
+            "requires IPC protocol {}",
+            mxr_protocol::IPC_PROTOCOL_VERSION
+        )),
+        "{error}"
+    );
     assert!(error.contains("local daemon uses 12"), "{error}");
     server.await.unwrap();
     assert!(!Path::new(&envs[2].1).join("mxr.db").exists());

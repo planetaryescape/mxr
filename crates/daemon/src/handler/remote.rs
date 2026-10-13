@@ -273,6 +273,12 @@ pub(super) async fn read_owned(
     .await;
     match response {
         Response::Ok { mut data } => {
+            if let ResponseData::Accounts { accounts } = &mut data {
+                for account in accounts {
+                    account.sync = None;
+                    account.send = None;
+                }
+            }
             if let ResponseData::Bodies { failures, .. } = &mut data {
                 for failure in failures {
                     failure.error = "Body unavailable on the remote host".into();

@@ -129,7 +129,11 @@ async fn body_reads_remove_host_paths_from_bodies_and_failure_details() {
 #[tokio::test]
 async fn remote_admission_rejects_writes_private_diagnostics_and_nested_wrappers() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
-    let mail = RemoteSecret::new("a".repeat(64));
+    let (client_id, mail) = registered_client(&state).await;
+    assert!(remote::read(&state, &client_id, &mail, &Request::Ping)
+        .await
+        .is_ok());
+
     for request in [
         Request::GetStatus,
         Request::GetDoctorReport,
@@ -150,7 +154,7 @@ async fn remote_admission_rejects_writes_private_diagnostics_and_nested_wrappers
             request: Box::new(Request::Ping),
         },
     ] {
-        assert!(remote::read(&state, "forged", &mail, &request)
+        assert!(remote::read(&state, &client_id, &mail, &request)
             .await
             .is_err());
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.96](https://github.com/planetaryescape/mxr/compare/v0.6.95...v0.6.96) (2026-10-13)
+
+
+### Features
+
+* enable host-approved remote replies and send recovery ([#450](https://github.com/planetaryescape/mxr/issues/450)) ([f4d02b6](https://github.com/planetaryescape/mxr/commit/f4d02b6405cf7414e457004e24d870056a303c0f))
+
+
+### Documentation
+
+* close out remote mailbox release ([#449](https://github.com/planetaryescape/mxr/issues/449)) ([2508dcf](https://github.com/planetaryescape/mxr/commit/2508dcfefb412f25e74fb934170fa332e4eb0490))
+
 ## [0.6.95](https://github.com/planetaryescape/mxr/compare/v0.6.94...v0.6.95) (2026-10-13)
 
 

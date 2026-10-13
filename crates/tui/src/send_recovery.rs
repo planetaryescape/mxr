@@ -129,7 +129,12 @@ pub(crate) async fn prepare_reviewed_send(
             Response::Ok {
                 data: ResponseData::Draft { draft },
             } => {
-                let selected = SendIdentity::for_draft(&draft);
+                let mut selected = SendIdentity::for_draft(&draft);
+                if reviewed != identity {
+                    selected
+                        .operation_id
+                        .push_str(&format!(":retry:{}", DraftId::new()));
+                }
                 Ok((draft, selected))
             }
             Response::Error { message, .. } => Err(MxrError::Ipc(message)),
@@ -324,6 +329,65 @@ mod tests {
             inline_calendar_reply: None,
             created_at: now,
             updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn send_recreates_missing_draft_without_reusing_rejected_operation() {
+        for rejected in [false, true] {
+            let draft = reviewed_fixture();
+            let identity = SendIdentity::for_draft(&draft);
+            let proof = rejected.then(|| DraftSendOutcome {
+                identity: identity.clone(),
+                draft_id: draft.id.clone(),
+                account_id: draft.account_id.clone(),
+                state: SendOutcomeState::NotAccepted,
+                local_message_id: None,
+                provider_message_id: None,
+                rfc2822_message_id: None,
+            });
+            let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
+            let server = tokio::spawn(async move {
+                let query = next_owned_request(&mut rx).await;
+                assert!(matches!(query.request, Request::GetSendOutcome { .. }));
+                query
+                    .reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::SendOutcome { outcome: proof },
+                    }))
+                    .unwrap();
+                let get = next_owned_request(&mut rx).await;
+                assert!(matches!(get.request, Request::GetDraft { .. }));
+                get.reply
+                    .send(Ok(Response::error_kinded(
+                        "Draft missing",
+                        mxr_protocol::IpcErrorKind::NotFound,
+                    )))
+                    .unwrap();
+                let save = next_owned_request(&mut rx).await;
+                let Request::SaveDraft { draft } = save.request else {
+                    panic!("expected draft recreation");
+                };
+                save.reply
+                    .send(Ok(Response::Ok {
+                        data: ResponseData::Draft { draft },
+                    }))
+                    .unwrap();
+                assert!(rx.try_recv().is_err());
+            });
+            let (saved, operation) = prepare_reviewed_send(&tx, draft, identity.clone())
+                .await
+                .unwrap();
+            assert_eq!(operation.expected_revision, saved.revision.unwrap());
+            if rejected {
+                assert_ne!(operation.operation_id, identity.operation_id);
+                assert!(operation
+                    .operation_id
+                    .starts_with(&format!("{}:retry:", identity.operation_id)));
+            } else {
+                assert_eq!(operation, identity);
+            }
+            server.await.unwrap();
         }
     }
 

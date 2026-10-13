@@ -487,6 +487,7 @@ impl IpcConnection {
                 )
                 .await?;
             match status {
+                Response::Ok { data: ResponseData::RemoteReady { .. } } => return Ok(Response::error_kinded("Category rules are unavailable on paired remote hosts", IpcErrorKind::Unsupported)),
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => {},
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} => return Ok(Response::error_kinded(format!("Category rules require daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",mxr_protocol::IPC_PROTOCOL_VERSION),IpcErrorKind::Unsupported)),
                 error @ Response::Error {..} => return Ok(error),
@@ -527,6 +528,10 @@ impl IpcConnection {
                         ResponseData::Status {
                             attachment_transfer_supported: false,
                             ..
+                        }
+                        | ResponseData::RemoteReady {
+                            attachment_transfer_supported: false,
+                            ..
                         },
                 } => {
                     return Ok(Response::error_kinded(
@@ -561,6 +566,14 @@ impl IpcConnection {
                 .await?;
             match status {
                 error @ Response::Error { .. } => return Ok(error),
+                Response::Ok {
+                    data: ResponseData::RemoteReady { .. },
+                } => {
+                    return Ok(Response::error_kinded(
+                        "Recoverable Archive is unavailable on paired remote hosts",
+                        IpcErrorKind::Unsupported,
+                    ));
+                }
                 Response::Ok {
                     data:
                         ResponseData::Status {
@@ -1424,6 +1437,76 @@ mod tests {
                 assert_eq!(code, "provider");
             }
             other => panic!("expected verbatim Error response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_preflights_return_unsupported_without_dispatching_the_operation() {
+        for request in [
+            Request::ExplainCategoryMembership {
+                message_id: mxr_core::MessageId::new(),
+                category_id: mxr_core::CategoryId::new(),
+            },
+            Request::GetArchiveOperation {
+                identity: mxr_protocol::ArchiveIdentityData {
+                    operation_id: "fixture-operation".into(),
+                    caller_id: "fixture-caller".into(),
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "fixture-workspace".into(),
+                        recovery_generation: "fixture-generation".into(),
+                    },
+                },
+            },
+            Request::GetAttachmentTransferMetadata {
+                message_id: mxr_core::MessageId::new(),
+                attachment_id: mxr_core::AttachmentId::new(),
+            },
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("mxr.sock");
+            let calls = Arc::new(AtomicU64::new(0));
+            let server_calls = calls.clone();
+            let server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+                assert!(matches!(
+                    message.payload,
+                    IpcPayload::Request(Request::GetRemoteReady)
+                ));
+                server_calls.fetch_add(1, Ordering::SeqCst);
+                Some(Response::Ok {
+                    data: ResponseData::RemoteReady {
+                        attachment_transfer_supported: false,
+                        capabilities: vec![mxr_core::RemoteCapability::MailRead],
+                        draft_attachment_upload_supported: false,
+                        draft_revision_supported: false,
+                        send_outcome_supported: false,
+                        protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                        host_id: "fixture-host".into(),
+                        client_id: "fixture-client".into(),
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "fixture-workspace".into(),
+                            recovery_generation: "fixture-generation".into(),
+                        },
+                    },
+                })
+            })
+            .await;
+            let mut connection = IpcConnection::connect(&sock, ClientKind::Cli)
+                .await
+                .unwrap();
+            connection.selected_remote = true;
+            let response = connection
+                .request_response(request, |_| {}, None)
+                .await
+                .unwrap();
+            assert!(matches!(
+                response,
+                Response::Error {
+                    kind: IpcErrorKind::Unsupported,
+                    ..
+                }
+            ));
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
         }
     }
 

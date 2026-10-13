@@ -471,3 +471,135 @@ async fn approved_send_grant_does_not_bypass_the_hosts_read_only_policy() {
         .unwrap()
         .is_none());
 }
+
+struct DiagnosticSendFailure {
+    known_rejection: bool,
+}
+
+#[async_trait::async_trait]
+impl mxr_core::MailSendProvider for DiagnosticSendFailure {
+    fn name(&self) -> &str {
+        "diagnostic-failure"
+    }
+
+    async fn send(
+        &self,
+        _draft: &mxr_core::Draft,
+        _from: &mxr_core::Address,
+        _message_id: &str,
+    ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
+        Err(mxr_core::MxrError::Provider(
+            "Cannot read /private/host/smtp.toml; run mxr accounts repair for consulting-smtp"
+                .into(),
+        ))
+    }
+
+    async fn send_classified(
+        &self,
+        draft: &mxr_core::Draft,
+        from: &mxr_core::Address,
+        message_id: &str,
+    ) -> Result<mxr_core::SendReceipt, mxr_core::SendFailure> {
+        self.send(draft, from, message_id).await.map_err(|error| {
+            if self.known_rejection {
+                mxr_core::SendFailure::NotAccepted(error)
+            } else {
+                mxr_core::SendFailure::Unknown(error)
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
+    for (known_rejection, expected_state, expected_code) in [
+        (
+            true,
+            mxr_core::SendOutcomeState::NotAccepted,
+            "send_not_accepted",
+        ),
+        (
+            false,
+            mxr_core::SendOutcomeState::Unknown,
+            "send_outcome_unknown",
+        ),
+    ] {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let sync = Arc::new(mxr_provider_fake::FakeProvider::new(account_id));
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(
+                account,
+                sync,
+                Some(Arc::new(DiagnosticSendFailure { known_rejection })),
+            )
+            .await
+            .unwrap(),
+        );
+        let (client_id, mail) = send_registration(&state).await;
+        let owner = owner(&state).await;
+        let saved = remote::read_owned(
+            &state,
+            &client_id,
+            &mail,
+            &Request::SaveDraft {
+                draft: portable_draft(&state),
+            },
+            Some(&owner),
+        )
+        .await
+        .unwrap();
+        let ResponseData::Draft { draft } = saved else {
+            panic!("expected saved draft");
+        };
+        let identity = mxr_core::SendIdentity::for_draft(&draft);
+        let response = remote::read_owned(
+            &state,
+            &client_id,
+            &mail,
+            &Request::SendStoredDraft {
+                draft_id: draft.id,
+                send_identity: Some(identity.clone()),
+                override_safety_token: None,
+                managed_attachments_reviewed: true,
+            },
+            Some(&owner),
+        )
+        .await
+        .unwrap_err()
+        .into_response();
+        let wire = serde_json::to_string(&response).unwrap();
+        for private_detail in [
+            "/private/host/smtp.toml",
+            "mxr accounts repair",
+            "consulting-smtp",
+        ] {
+            assert!(!wire.contains(private_detail), "leaked {private_detail}");
+        }
+        let mxr_protocol::Response::Error {
+            code,
+            details: Some(details),
+            retryable,
+            ..
+        } = response
+        else {
+            panic!("expected typed send outcome");
+        };
+        assert_eq!(code, expected_code);
+        assert!(!retryable);
+        let outcome: mxr_core::DraftSendOutcome =
+            serde_json::from_value(details["outcome"].clone()).unwrap();
+        assert_eq!(outcome.state, expected_state);
+        assert_eq!(outcome.identity, identity);
+        let (stored, _) = state
+            .store
+            .get_send_outcome(&identity.operation_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(outcome).unwrap(),
+            serde_json::to_value(stored).unwrap()
+        );
+    }
+}

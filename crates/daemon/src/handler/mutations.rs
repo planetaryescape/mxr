@@ -3753,6 +3753,13 @@ async fn send_stored_draft_locked(
         Ok(receipt) => receipt,
         Err(mxr_core::SendFailure::NotAccepted(error)) => {
             state.store.reject_draft_send(identity).await?;
+            if !portable {
+                return Err(format!(
+                    "Provider did not accept send operation {}: {error}",
+                    identity.operation_id
+                )
+                .into());
+            }
             tracing::warn!(operation_id = %identity.operation_id, "provider rejected send: {error}");
             let (outcome, _) = state
                 .store
@@ -3763,6 +3770,9 @@ async fn send_stored_draft_locked(
         }
         Err(mxr_core::SendFailure::Unknown(error)) => {
             tracing::warn!(operation_id = %identity.operation_id, "provider acceptance is uncertain: {error}");
+            if !portable {
+                return Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}. Provider error: {error}", identity.operation_id, draft.account_id).into());
+            }
             let (outcome, _) = state
                 .store
                 .get_send_outcome(&identity.operation_id)

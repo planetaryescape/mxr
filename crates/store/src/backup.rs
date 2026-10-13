@@ -254,6 +254,13 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if (83..85).contains(&manifest.schema_version) {
+        sqlx::raw_sql(
+            "ALTER TABLE remote_pairings DROP COLUMN allow_send; ALTER TABLE remote_clients DROP COLUMN allow_send;",
+        )
+        .execute(expected.writer())
+        .await?;
+    }
     if manifest.schema_version < 84 {
         sqlx::query("DROP TABLE remote_pairing_retirements")
             .execute(expected.writer())

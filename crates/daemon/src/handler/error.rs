@@ -64,7 +64,7 @@ impl HandlerError {
             Self::SendOutcome(outcome) => Response::Error {
                 message: match outcome.state {
                     mxr_core::SendOutcomeState::Unknown => "Send acceptance is uncertain; query the original operation and do not resend".into(),
-                    _ => "Provider did not accept this operation; review before starting a new operation".into(),
+                    _ => "Provider did not accept this operation; review before starting a new send operation".into(),
                 },
                 kind: IpcErrorKind::InvalidRequest,
                 code: match outcome.state { mxr_core::SendOutcomeState::Unknown => "send_outcome_unknown", _ => "send_not_accepted" }.into(),

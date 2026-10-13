@@ -106,6 +106,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_archive_preview`
 - `mxr_archive_submit`
 - `mxr_archive_outcome`
+- `mxr_send_outcome`: recover the original send operation before retrying
 - `mxr_send_draft`
 - `mxr_reading_edition`
 - `mxr_reading_item`

@@ -1,7 +1,11 @@
 //! Client-only state, excluded from portable daemon backups.
 //! Plaintext 0600 matches the established disk-first secret policy. A stable lock
 //! guards the whole selection/credential/cleanup commit across processes.
-use mxr_core::RemoteSecret;
+use mxr_core::{RemoteCapability, RemoteSecret};
+
+fn read_only_grants() -> Vec<RemoteCapability> {
+    vec![RemoteCapability::MailRead]
+}
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::{
@@ -11,6 +15,8 @@ use std::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionRegistration {
+    #[serde(default = "read_only_grants")]
+    pub capabilities: Vec<RemoteCapability>,
     pub origin: String,
     pub client_id: String,
     pub host_id: String,
@@ -21,6 +27,8 @@ pub struct ConnectionRegistration {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingConnection {
+    #[serde(default = "read_only_grants")]
+    pub capabilities: Vec<RemoteCapability>,
     pub origin: String,
     pub name: String,
     pub mail_secret: RemoteSecret,
@@ -103,6 +111,8 @@ impl From<ConnectionRegistration> for RetiredRegistration {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetiredPairing {
+    #[serde(default = "read_only_grants")]
+    pub capabilities: Vec<RemoteCapability>,
     pub origin: String,
     pub name: String,
     pub mail_verifier: RemoteSecret,
@@ -111,6 +121,7 @@ pub struct RetiredPairing {
 impl From<PendingConnection> for RetiredPairing {
     fn from(entry: PendingConnection) -> Self {
         Self {
+            capabilities: entry.capabilities,
             origin: entry.origin,
             name: entry.name,
             mail_verifier: RemoteSecret::new(base16ct::lower::encode_string(
@@ -128,6 +139,21 @@ mod tests {
         reason = "isolated state fixtures assert directly"
     )]
     use super::*;
+    #[test]
+    fn old_registration_and_pending_state_default_to_read_only() {
+        let selected = serde_json::json!({"origin":"https://fixture.example","client_id":"fixture","host_id":"host","workspace_id":"workspace","recovery_generation":"generation","mail_secret":"a","cleanup_secret":"b"});
+        let pending = serde_json::json!({"origin":"https://fixture.example","name":"pending","mail_secret":"c","cleanup_secret":"d","request_id":null});
+        let state: ConnectionState = serde_json::from_value(serde_json::json!({"generation":1,"selected":selected,"pending_pairing":pending,"cleanup":[]})).unwrap();
+        assert_eq!(
+            state.selected.unwrap().capabilities,
+            [RemoteCapability::MailRead]
+        );
+        assert_eq!(
+            state.pending_pairing.unwrap().capabilities,
+            [RemoteCapability::MailRead]
+        );
+    }
+
     #[test]
     fn stale_generation_cannot_overwrite_switch_or_drop_cleanup() {
         let directory = tempfile::tempdir().unwrap();

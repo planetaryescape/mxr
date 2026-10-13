@@ -28,9 +28,16 @@ fn verifier(secret: &RemoteSecret) -> Result<String, sqlx::Error> {
 fn matches(expected: &str, presented: &str) -> bool {
     constant_time_eq::constant_time_eq(expected.as_bytes(), presented.as_bytes())
 }
+fn capabilities(row: &sqlx::sqlite::SqliteRow) -> Vec<RemoteCapability> {
+    let mut grants = vec![RemoteCapability::MailRead];
+    if row.get::<bool, _>("allow_send") {
+        grants.push(RemoteCapability::MailSend);
+    }
+    grants
+}
 fn pairing(row: &sqlx::sqlite::SqliteRow) -> PendingPairing {
     PendingPairing {
-        capabilities: vec![RemoteCapability::MailRead],
+        capabilities: capabilities(row),
         request_id: row.get("request_id"),
         name: row.get("name"),
         challenge: row.get("challenge"),
@@ -41,7 +48,7 @@ fn pairing(row: &sqlx::sqlite::SqliteRow) -> PendingPairing {
 }
 fn client(row: &sqlx::sqlite::SqliteRow) -> RegisteredClient {
     RegisteredClient {
-        capabilities: vec![RemoteCapability::MailRead],
+        capabilities: capabilities(row),
         client_id: row.get("client_id"),
         name: row.get("name"),
         created_at: row.get("created_at"),
@@ -101,7 +108,9 @@ impl crate::Store {
         cleanup: &RemoteSecret,
         now: i64,
     ) -> Result<PendingPairing, sqlx::Error> {
-        if capabilities != [RemoteCapability::MailRead]
+        let has_read = capabilities.contains(&RemoteCapability::MailRead);
+        let has_send = capabilities.contains(&RemoteCapability::MailSend);
+        if !(has_read && capabilities.len() == if has_send { 2 } else { 1 })
             || name.trim().is_empty()
             || name.len() > 80
             || name.chars().any(char::is_control)
@@ -111,6 +120,11 @@ impl crate::Store {
         {
             return Err(denied());
         }
+        let grants = if has_send {
+            vec![RemoteCapability::MailRead, RemoteCapability::MailSend]
+        } else {
+            vec![RemoteCapability::MailRead]
+        };
         // Identity initialization is a mutation and only happens when a pairing starts.
         self.archive_workspace().await?;
         let mut tx = self.writer().begin().await?;
@@ -149,6 +163,9 @@ impl crate::Store {
         .await?
         {
             let existing = pairing(&row);
+            if existing.capabilities != grants {
+                return Err(denied());
+            }
             tx.commit().await?;
             return Ok(existing);
         }
@@ -187,16 +204,17 @@ impl crate::Store {
         let request_id = uuid::Uuid::now_v7().to_string();
         let challenge = base16ct::lower::encode_string(&Sha256::digest(
             format!(
-                "mxr-pairing-v1:{request_id}:{}:{}",
+                "mxr-pairing-v2:{request_id}:{}:{}:{}",
                 mail.expose(),
-                cleanup.expose()
+                cleanup.expose(),
+                capabilities.contains(&RemoteCapability::MailSend)
             )
             .as_bytes(),
         ));
-        sqlx::query("INSERT INTO remote_pairings(request_id,name,challenge,mail_verifier,cleanup_verifier,expires_at) VALUES(?,?,?,?,?,?)").bind(&request_id).bind(name.trim()).bind(&challenge).bind(mail.expose()).bind(cleanup.expose()).bind(now+PAIRING_TTL_SECONDS).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO remote_pairings(request_id,name,challenge,mail_verifier,cleanup_verifier,expires_at,allow_send) VALUES(?,?,?,?,?,?,?)").bind(&request_id).bind(name.trim()).bind(&challenge).bind(mail.expose()).bind(cleanup.expose()).bind(now+PAIRING_TTL_SECONDS).bind(capabilities.contains(&RemoteCapability::MailSend)).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(PendingPairing {
-            capabilities: vec![RemoteCapability::MailRead],
+            capabilities: grants,
             request_id,
             name: name.trim().into(),
             challenge,
@@ -268,14 +286,14 @@ impl crate::Store {
             return Err(denied());
         }
         let result = RegisteredClient {
-            capabilities: vec![RemoteCapability::MailRead],
+            capabilities: capabilities(&row),
             client_id: uuid::Uuid::now_v7().to_string(),
             name: row.get("name"),
             created_at: now,
             expires_at: now + MAIL_CREDENTIAL_TTL_SECONDS,
             revoked_at: None,
         };
-        sqlx::query("INSERT INTO remote_clients(client_id,pairing_id,name,mail_verifier,cleanup_verifier,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,NULL)").bind(&result.client_id).bind(id).bind(&result.name).bind(mail).bind(cleanup).bind(now).bind(result.expires_at).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO remote_clients(client_id,pairing_id,name,mail_verifier,cleanup_verifier,created_at,expires_at,revoked_at,allow_send) VALUES(?,?,?,?,?,?,?,NULL,?)").bind(&result.client_id).bind(id).bind(&result.name).bind(mail).bind(cleanup).bind(now).bind(result.expires_at).bind(result.capabilities.contains(&RemoteCapability::MailSend)).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM remote_pairings WHERE request_id=?")
             .bind(id)
             .execute(&mut *tx)

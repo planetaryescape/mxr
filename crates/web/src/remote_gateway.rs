@@ -102,6 +102,7 @@ async fn upgrade(
         call(
             &socket,
             Request::RemoteRead {
+                expected_workspace: None,
                 client_id: id.clone(),
                 mail_secret: secret.clone(),
                 request: Box::new(Request::GetRemoteReady),
@@ -146,6 +147,7 @@ async fn session(mut ws: WebSocket, socket: PathBuf, id: String, secret: RemoteS
                         let response = match connection
                             .request_response(
                                 Request::RemoteRead {
+                                    expected_workspace: frame.expected_workspace.clone(),
                                     client_id: id.clone(),
                                     mail_secret: secret.clone(),
                                     request: Box::new(request),

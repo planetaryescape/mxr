@@ -198,14 +198,16 @@ pub async fn connect_registration(
     let setup = async {
         let mut connection = IpcConnection::connect_with(&connector, source).await?;
         match connection.request(Request::GetRemoteReady).await? {
-            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id}
+            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id, capabilities, ..}
                 if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id
+                    && saved.capabilities.iter().all(|grant| capabilities.contains(grant))
                     && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
                         connection.selected_remote = true;
                         connection.remote_workspace = Some(workspace);
                         Ok(connection)
                     }
-            _ => Err(ClientError::Io(std::io::Error::other("Remote host/workspace/protocol identity mismatch; retain work and reconnect explicitly"))),
+            ResponseData::RemoteReady { protocol_version, .. } if protocol_version != IPC_PROTOCOL_VERSION => Err(ClientError::Io(std::io::Error::other(format!("Client supports IPC protocol {IPC_PROTOCOL_VERSION}; remote host reports {protocol_version}. Upgrade host and clients to matching mxr versions; saved selection was preserved")))),
+            _ => Err(ClientError::Io(std::io::Error::other("Remote host/workspace/grant identity mismatch; retain work and reconnect explicitly"))),
         }
     };
     tokio::time::timeout(SETUP_TIMEOUT, setup)

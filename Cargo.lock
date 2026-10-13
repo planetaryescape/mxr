@@ -4744,6 +4744,7 @@ dependencies = [
  "mxr-client",
  "mxr-config",
  "mxr-core",
+ "mxr-mail-parse",
  "mxr-protocol",
  "rmcp",
  "schemars",

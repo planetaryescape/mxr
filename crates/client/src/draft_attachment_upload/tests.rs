@@ -310,3 +310,86 @@ fn workspace() -> mxr_protocol::ArchiveWorkspaceData {
         recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
     }
 }
+
+#[tokio::test]
+async fn remote_preview_uses_declarations_without_upload_and_changed_bytes_fail_before_save() {
+    let directory = tempfile::tempdir().expect("directory");
+    let path = directory.path().join("client.bin");
+    std::fs::write(&path, b"reviewed bytes").expect("write");
+    let transport = MemoryTransport::new();
+    let mut listener = transport.bind().await.expect("listener");
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept");
+        let mut framed = Framed::new(stream, IpcCodec::new());
+        let mut requests = Vec::new();
+        while let Some(Ok(message)) = framed.next().await {
+            assert!(matches!(
+                message.payload,
+                IpcPayload::Request(Request::GetRemoteReady)
+            ));
+            requests.push(message.payload.clone());
+            framed
+                .send(IpcMessage {
+                    expected_workspace: None,
+                    id: message.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(Response::Ok {
+                        data: ResponseData::RemoteReady {
+                            attachment_transfer_supported: true,
+                            capabilities: vec![
+                                mxr_core::RemoteCapability::MailRead,
+                                mxr_core::RemoteCapability::MailSend,
+                            ],
+                            draft_attachment_upload_supported: true,
+                            draft_revision_supported: true,
+                            send_outcome_supported: true,
+                            protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                            host_id: "fixture".into(),
+                            workspace: workspace(),
+                            client_id: "fixture".into(),
+                        },
+                    }),
+                })
+                .await
+                .expect("reply");
+        }
+        requests
+    });
+    let mut connection = IpcConnection::connect_with(&transport.connector(), ClientKind::Tui)
+        .await
+        .expect("connection");
+    connection.selected_remote = true;
+    let draft = draft(&path);
+    let preview = connection
+        .prepare_draft_attachment_request(
+            Request::CheckDraftSafety {
+                draft: draft.clone(),
+                context: Default::default(),
+            },
+            Some(&workspace()),
+        )
+        .await
+        .expect("preview");
+    let Request::PreviewDraft {
+        draft: portable,
+        pending_attachments,
+        ..
+    } = preview
+    else {
+        panic!("portable preview");
+    };
+    assert!(portable.attachments.is_empty());
+    assert_eq!(pending_attachments.len(), 1);
+    assert_eq!(pending_attachments[0].filename, "client.bin");
+    assert!(!serde_json::to_string(&portable)
+        .expect("JSON")
+        .contains(path.to_str().expect("path")));
+    std::fs::write(&path, b"changed bytes").expect("write");
+    let error = connection
+        .prepare_draft_attachment_request(Request::SaveDraft { draft }, Some(&workspace()))
+        .await
+        .expect_err("changed bytes");
+    assert!(error.to_string().contains("changed since preview"));
+    drop(connection);
+    assert_eq!(server.await.expect("server").len(), 1);
+}

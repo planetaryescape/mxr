@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 84);
+    assert_eq!(manifest.schema_version, 85);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))

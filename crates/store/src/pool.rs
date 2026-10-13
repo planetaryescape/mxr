@@ -1169,6 +1169,10 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 82, name: "todo_resolution_queue", kind: MigrationKind::Sql(include_str!("../migrations/082_todo_resolution_queue.sql")) },
     Migration { version: 83, name: "remote_authority", kind: MigrationKind::Sql(include_str!("../migrations/083_remote_authority.sql")) },
     Migration { version: 84, name: "remote_pairing_retirements", kind: MigrationKind::Sql(include_str!("../migrations/084_remote_pairing_retirements.sql")) },
+    Migration { version: 85, name: "remote_send_grant", kind: MigrationKind::Composite(&[
+        MigrationStep::AddColumn { table: "remote_pairings", column: "allow_send", sql: include_str!("../migrations/085_remote_pairing_send.sql") },
+        MigrationStep::AddColumn { table: "remote_clients", column: "allow_send", sql: include_str!("../migrations/085_remote_client_send.sql") },
+    ]) },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

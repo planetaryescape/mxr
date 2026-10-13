@@ -121,6 +121,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
 
     match cli.command {
         Some(Command::Connect {
+            allow_send,
             url,
             local,
             status,
@@ -128,7 +129,19 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             confirm,
             format,
-        }) => commands::connect::run(url, local, status, name, dry_run, confirm, format).await?,
+        }) => {
+            commands::connect::run(commands::connect::ConnectCommand {
+                url,
+                local,
+                status,
+                name,
+                dry_run,
+                confirm,
+                allow_send,
+                format,
+            })
+            .await?;
+        }
         Some(Command::Serve {
             action,
             format,

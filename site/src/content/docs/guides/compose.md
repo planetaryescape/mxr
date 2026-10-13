@@ -35,6 +35,10 @@ mxr send-outcome OPERATION_ID_FROM_PREVIEW --account ACCOUNT_ID \
 Copy the exact `expected_workspace` JSON from the original preview and pass it
 unchanged in single quotes to `--expected-workspace` for send and outcome queries.
 
+## Replies through a paired remote host
+
+Request explicit host approval with `mxr connect HTTPS_ORIGIN --allow-send`; default registrations stay read-only. Reply text and `$EDITOR` remain on the client. Attachments upload as managed bytes, and previews do not stage resources. Save the draft, preview the returned revision, and keep its account, operation ID and original workspace for sending and recovery. Path-backed legacy drafts are refused remotely. Follow [Read and reply from another computer](/guides/remote-mailbox/) for the complete CLI, TUI and MCP journey.
+
 ## Local and linked provider drafts
 
 mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read

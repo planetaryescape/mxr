@@ -22,5 +22,9 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 cd "$REPO_ROOT"
-cargo run --example dump_openapi_spec -p mxr-web --quiet > "$OUT"
+# The queued Cargo wrapper can print scheduler status on stdout. Run the built
+# exporter separately so only the JSON document reaches the generated artifact.
+cargo build --example dump_openapi_spec -p mxr-web --quiet >&2
+target_dir="$(cargo metadata --format-version 1 --no-deps | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).target_directory')"
+"$target_dir/debug/examples/dump_openapi_spec" > "$OUT"
 echo "[dump-openapi-spec] wrote $(wc -c < "$OUT") bytes to $OUT"

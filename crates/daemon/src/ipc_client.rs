@@ -54,6 +54,10 @@ pub struct IpcClient {
 }
 
 impl IpcClient {
+    pub fn is_paired_remote(&self) -> bool {
+        self.conn.is_paired_remote()
+    }
+
     pub async fn transfer_attachment_to(
         &mut self,
         message_id: &mxr_core::MessageId,

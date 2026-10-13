@@ -1015,7 +1015,10 @@ pub fn map_request(
         | Request::GenerateBugReport { .. } => {
             skip_activity!("diagnostics", "diagnostics requests are not activity");
         }
-        Request::RemoteRead { .. } | Request::GetRemoteReady | Request::RemoteAuthority { .. } => {
+        Request::PreviewDraft { .. }
+        | Request::RemoteRead { .. }
+        | Request::GetRemoteReady
+        | Request::RemoteAuthority { .. } => {
             skip_activity!(
                 "remote_authority",
                 "pairing credentials and client inventory are not user activity"

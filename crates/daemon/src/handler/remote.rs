@@ -134,44 +134,135 @@ pub(super) async fn handle(
 }
 
 /// The proof is checked at each admission on the writer, never cached on a socket.
+#[cfg(test)]
 pub(super) async fn read(
     state: &std::sync::Arc<AppState>,
     client_id: &str,
     mail_secret: &mxr_core::RemoteSecret,
     request: &mxr_protocol::Request,
 ) -> HandlerResult {
+    read_owned(state, client_id, mail_secret, request, None).await
+}
+
+pub(super) async fn read_owned(
+    state: &std::sync::Arc<AppState>,
+    client_id: &str,
+    mail_secret: &mxr_core::RemoteSecret,
+    request: &mxr_protocol::Request,
+    owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
+) -> HandlerResult {
     use mxr_protocol::{Request, Response};
-    if !mxr_protocol::remote_read_allowed(request) {
-        return Err(super::HandlerError::RemoteAuthorityDenied(
-            "Unsupported remote operation; R1 supports mailbox reading and search".into(),
-        ));
-    }
-    state
+    let client = state
         .store
         .authenticate_remote_client(client_id, mail_secret, chrono::Utc::now().timestamp())
         .await
         .map_err(authority_error)?;
-    if matches!(request, Request::GetRemoteReady) {
+    if !mxr_protocol::remote_read_allowed(request)
+        && !(client
+            .capabilities
+            .contains(&mxr_core::RemoteCapability::MailSend)
+            && mxr_protocol::remote_send_allowed(request))
+    {
+        return Err(super::HandlerError::RemoteAuthorityDenied("Remote operation requires explicit host-approved send access or is unsupported; use mxr connect --allow-send and host approval".into()));
+    }
+    // Validate the original envelope owner after authentication, never infer it from the selected host.
+    super::workspace_owner::validate(state, request, owner).await.map_err(|response| {
+        if matches!(&*response, Response::Error { code, .. } if code == "workspace_owner_unavailable") {
+            sanitize_error(*response)
+        } else { super::HandlerError::RemoteResponse(response) }
+    })?;
+    if matches!(
+        request,
+        Request::GetRemoteReady | Request::GetArchiveWorkspace
+    ) {
         let authority = state
             .store
             .remote_authority_status()
             .await
             .map_err(authority_error)?;
         let (workspace_id, recovery_generation) = state.store.archive_workspace().await?;
-        let host_id = authority.host_id.ok_or_else(|| {
-            super::HandlerError::RemoteAuthorityDenied("Host authority unavailable".into())
-        })?;
+        let workspace = mxr_protocol::ArchiveWorkspaceData {
+            workspace_id,
+            recovery_generation,
+        };
+        if matches!(request, Request::GetArchiveWorkspace) {
+            return Ok(ResponseData::ArchiveWorkspace { workspace });
+        }
         return Ok(ResponseData::RemoteReady {
+            attachment_transfer_supported: true,
+            capabilities: client.capabilities,
+            draft_attachment_upload_supported: true,
+            draft_revision_supported: true,
+            send_outcome_supported: true,
             protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
-            host_id,
-            workspace: mxr_protocol::ArchiveWorkspaceData {
-                workspace_id,
-                recovery_generation,
-            },
+            host_id: authority.host_id.ok_or_else(|| {
+                super::HandlerError::RemoteAuthorityDenied("Host authority unavailable".into())
+            })?,
+            workspace,
             client_id: client_id.into(),
         });
     }
-    match Box::pin(super::dispatch(
+    match request {
+        Request::SaveDraft { draft }
+        | Request::UpdateDraft { draft }
+        | Request::SendDraft { draft, .. }
+        | Request::CheckDraftSafety { draft, .. }
+        | Request::PreviewDraft { draft, .. } => super::draft_preview::require_portable(draft)?,
+        _ => (),
+    }
+    if let Err(message) =
+        super::enforce_safety_policy(state.config_snapshot().general.safety_policy, request)
+    {
+        return Err(super::HandlerError::RemoteResponse(Box::new(
+            Response::error(message),
+        )));
+    }
+    if let Request::CheckDraftSafety { draft, context } = request {
+        let ResponseData::DraftPreview { report, .. } =
+            sanitize_result(super::draft_preview::preview(state, draft, context, &[]).await)?
+        else {
+            return Err("Unexpected draft preview".into());
+        };
+        return Ok(ResponseData::DraftSafetyReportResponse { report });
+    }
+    if let Request::SendDraft {
+        draft,
+        send_identity,
+        override_safety_token,
+    } = request
+    {
+        return sanitize_result(
+            super::mutations::send_draft_remote(
+                state,
+                draft,
+                send_identity.as_ref(),
+                override_safety_token.as_deref(),
+            )
+            .await,
+        );
+    }
+    if let Request::SendStoredDraft {
+        draft_id,
+        send_identity,
+        override_safety_token,
+        managed_attachments_reviewed,
+    } = request
+    {
+        if !managed_attachments_reviewed {
+            return Err(super::HandlerError::InvalidRequest(
+                "Review portable attachments before sending".into(),
+            ));
+        }
+        let result = super::mutations::send_stored_draft_remote(
+            state,
+            draft_id,
+            send_identity.as_ref(),
+            override_safety_token.as_deref(),
+        )
+        .await;
+        return sanitize_result(result);
+    }
+    let response = Box::pin(super::dispatch(
         state,
         mxr_protocol::ClientKind::Cli,
         &PeerInfo {
@@ -179,8 +270,8 @@ pub(super) async fn read(
         },
         request,
     ))
-    .await
-    {
+    .await;
+    match response {
         Response::Ok { mut data } => {
             if let ResponseData::Bodies { failures, .. } = &mut data {
                 for failure in failures {
@@ -197,12 +288,44 @@ pub(super) async fn read(
                     attachment.local_path = None;
                 }
             }
+            match &data {
+                ResponseData::Draft { draft } => super::draft_preview::require_portable(draft)?,
+                ResponseData::Drafts { drafts } => {
+                    for draft in drafts {
+                        super::draft_preview::require_portable(draft)?;
+                    }
+                }
+                _ => (),
+            }
             Ok(data)
         }
-        Response::Error { .. } => Err(super::HandlerError::RemoteAuthorityDenied(
-            "Remote mailbox read failed".into(),
-        )),
+        error => Err(sanitize_error(error)),
     }
+}
+
+fn sanitize_result(result: HandlerResult) -> HandlerResult {
+    result.map_err(|error| sanitize_error(error.into_response()))
+}
+fn sanitize_error(response: mxr_protocol::Response) -> super::HandlerError {
+    use mxr_protocol::{IpcErrorKind, Response};
+    if let Response::Error { code, kind, .. } = &response {
+        if matches!(
+            code.as_str(),
+            "remote_path_backed_draft"
+                | "draft_revision_conflict"
+                | "send_outcome_unknown"
+                | "send_not_accepted"
+        ) {
+            return super::HandlerError::RemoteResponse(Box::new(response));
+        }
+        if *kind == IpcErrorKind::NotFound {
+            return super::HandlerError::RemoteResponse(Box::new(Response::error_kinded(
+                "Requested remote mail or draft was not found",
+                IpcErrorKind::NotFound,
+            )));
+        }
+    }
+    super::HandlerError::RemoteResponse(Box::new(Response::error_kinded("Remote operation failed; retain the original workspace and operation identity, query its outcome before retrying a send, and inspect host diagnostics", IpcErrorKind::InvalidRequest)))
 }
 
 #[cfg(test)]

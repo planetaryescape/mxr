@@ -161,6 +161,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     validate_compose_draft(&frontmatter, draft.content.analysis_text(), sending)?;
 
     if options.dry_run {
+        if client.is_paired_remote() {
+            return print_remote_draft_preview(&mut client, &draft, sending, options.format).await;
+        }
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
         print_draft_preview(
@@ -173,7 +176,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if sending && !draft.attachments.is_empty() {
+    if sending && (client.is_paired_remote() || !draft.attachments.is_empty()) {
         draft = expect_saved_draft(client.request(Request::SaveDraft { draft }).await?)?;
     }
     if sending {
@@ -661,6 +664,9 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     validate_compose_draft(&frontmatter, outgoing.content.analysis_text(), sending)?;
 
     if dry_run {
+        if client.is_paired_remote() {
+            return print_remote_draft_preview(client, &outgoing, sending, format).await;
+        }
         let effective_from =
             resolve_effective_from(client, &outgoing.account_id, outgoing.from.as_ref()).await?;
         print_draft_preview(
@@ -680,7 +686,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     // stop the send, not surface after the mail has already gone.
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
-    if sending && !outgoing.attachments.is_empty() {
+    if sending && (client.is_paired_remote() || !outgoing.attachments.is_empty()) {
         outgoing = expect_saved_draft(
             client
                 .request(Request::SaveDraft { draft: outgoing })
@@ -1288,6 +1294,9 @@ pub async fn send_draft(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if dry_run {
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
+        if client.is_paired_remote() {
+            return print_remote_draft_preview(&mut client, &draft, true, format).await;
+        }
         let effective_from =
             resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
         print_draft_preview(
@@ -1309,6 +1318,35 @@ pub async fn send_draft(
         expected_revision: reviewed_revision,
     };
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
+    if let Some(account_id) = &account_id {
+        if let Response::Ok {
+            data: ResponseData::SendOutcome {
+                outcome: Some(outcome),
+            },
+        } = client
+            .request(Request::GetSendOutcome {
+                account_id: account_id.clone(),
+                operation_id: identity.operation_id.clone(),
+            })
+            .await?
+        {
+            if outcome.identity != identity || outcome.draft_id != draft_id {
+                anyhow::bail!("Send identity conflicts with the retained reviewed command");
+            }
+            match outcome.state {
+                mxr_core::SendOutcomeState::Accepted => {
+                    return crate::output::print_json(
+                        &serde_json::json!({"operation_id": identity.operation_id, "draft_id": draft_id, "state": "accepted", "local_message_id": outcome.local_message_id}),
+                        format.unwrap_or(OutputFormat::Json),
+                    );
+                }
+                mxr_core::SendOutcomeState::Unknown => anyhow::bail!(
+                    "Acceptance is uncertain; query the original operation and do not resend"
+                ),
+                mxr_core::SendOutcomeState::NotAccepted => (),
+            }
+        }
+    }
     let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     if draft.revision != Some(reviewed_revision) {
         anyhow::bail!("Reviewed draft revision is stale; review again before sending");
@@ -2314,6 +2352,41 @@ async fn resolve_effective_from(
         } => Ok(from),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response from ResolveSendFrom"),
+    }
+}
+
+async fn print_remote_draft_preview(
+    client: &mut IpcClient,
+    draft: &Draft,
+    sending: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let context = build_check_context(draft, true, chrono::Utc::now());
+    let response = client
+        .request(Request::PreviewDraft {
+            draft: draft.clone(),
+            context,
+            pending_attachments: Vec::new(),
+        })
+        .await?;
+    match response {
+        Response::Ok {
+            data:
+                ResponseData::DraftPreview {
+                    requires_save,
+                    draft,
+                    from,
+                    workspace,
+                    send_identity,
+                    pending_attachments,
+                    report,
+                },
+        } => crate::output::print_json(
+            &serde_json::json!({"action": if sending { "send" } else { "save draft" }, "dry_run": true, "expected_workspace": workspace, "draft": draft, "from": from, "send_identity": send_identity, "pending_attachments": pending_attachments, "safety_report": report,"requires_save":requires_save}),
+            format.unwrap_or(OutputFormat::Json),
+        ),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected portable preview response"),
     }
 }
 

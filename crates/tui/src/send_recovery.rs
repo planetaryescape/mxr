@@ -125,23 +125,18 @@ pub(crate) async fn prepare_reviewed_send(
         Response::Error {
             kind: mxr_protocol::IpcErrorKind::NotFound,
             ..
-        } => {
-            if draft.attachments.is_empty() {
-                return Ok((draft, reviewed));
+        } => match ipc_call(bg, Request::SaveDraft { draft }).await? {
+            Response::Ok {
+                data: ResponseData::Draft { draft },
+            } => {
+                let selected = SendIdentity::for_draft(&draft);
+                Ok((draft, selected))
             }
-            match ipc_call(bg, Request::SaveDraft { draft }).await? {
-                Response::Ok {
-                    data: ResponseData::Draft { draft },
-                } => {
-                    let selected = SendIdentity::for_draft(&draft);
-                    Ok((draft, selected))
-                }
-                Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-                _ => Err(MxrError::Ipc(
-                    "Unexpected portable attachment save response".into(),
-                )),
-            }
-        }
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+            _ => Err(MxrError::Ipc(
+                "Unexpected portable attachment save response".into(),
+            )),
+        },
         Response::Error { message, .. } => Err(MxrError::Ipc(message)),
         _ => Err(MxrError::Ipc("Unexpected reviewed draft response".into())),
     }

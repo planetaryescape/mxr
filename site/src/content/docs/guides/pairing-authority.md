@@ -21,7 +21,7 @@ Inspect the current computer's pairing authority through its local Unix socket. 
 
 `hosting_available` reports whether the installed build supports serving remote clients. It does not report whether a foreground gateway is running or reachable.
 
-Pairing and revocation authority first shipped in version 0.6.94. The [remote mailbox guide](/guides/remote-mailbox/) adds a foreground gateway and saved client connections for reading and search. Service installation remains separate work. Use `mxr serve --foreground` to run the gateway; bare `mxr serve` does not start it.
+Pairing and revocation authority first shipped in version 0.6.94. The [remote mailbox guide](/guides/remote-mailbox/) adds a foreground gateway and saved client connections for reading, downloads and explicitly approved replies. Service installation remains separate work. Use `mxr serve --foreground` to run the gateway; bare `mxr serve` does not start it.
 
 ## Approval previews the exact request
 
@@ -30,7 +30,7 @@ mxr serve pair approve REQUEST_ID --dry-run --format json
 mxr serve pair approve REQUEST_ID --confirm --format json
 ```
 
-Compare the full `challenge` with the requesting client's displayed challenge before confirming. The preview includes the request ID, display name, requested `capabilities`, expiry, approval state and failed-attempt count. The supported grant is `mail_read`. A later write capability requires a new explicit approval.
+Compare the full `challenge` with the requesting client's displayed challenge before confirming. The preview includes the request ID, display name, requested `capabilities`, expiry, approval state and failed-attempt count. Default requests contain `mail_read`. Requests made with `mxr connect HTTPS_ORIGIN --allow-send` also contain `mail_send`, which includes draft preparation, portable uploads, previews and reviewed sending. Review both the challenge and grants before approving; an existing read-only registration cannot upgrade itself.
 
 Omitting `--confirm` also previews. `--dry-run` and `--confirm` are mutually exclusive. A request expires after ten minutes; up to sixteen pending requests may exist, and five failed possession proofs lock a request. Clients create requests with `mxr connect HTTPS_ORIGIN --confirm`; approval stays on the host's local socket.
 
@@ -52,6 +52,6 @@ Mail credentials last ninety days. A separate cleanup credential can only revoke
 
 A daemon restart preserves its host identity, pending approvals until their expiry, and unexpired registrations. A portable backup excludes host authority, pending pairings and registration verifiers. Restore clears remote authority and rotates the workspace recovery generation while keeping the existing paused-owner recovery protections. Pair again after restore.
 
-CLI JSON, logs and activity records do not contain client secrets or verifiers. The server stores only SHA-256 verifiers. The foreground gateway and saved connections require protocol 14; upgrade the local binary and daemon together. Remote transports reject incompatible protocols without restarting the foreign host.
+CLI JSON, logs and activity records do not contain client secrets or verifiers. The server stores only SHA-256 verifiers. The foreground gateway and saved connections require protocol 15; upgrade the local binary and daemon together. Remote transports reject incompatible protocols without restarting the foreign host.
 
 See the [CLI reference](/reference/cli/serve/) for command arguments and the [backup and recovery guide](/guides/backup-recovery/) for restored workspace activation.

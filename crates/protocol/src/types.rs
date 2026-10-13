@@ -598,12 +598,20 @@ pub enum IpcPayload {
 pub enum Request {
     /// Every forwarded operation authenticates independently; nested wrappers are denied.
     RemoteRead {
+        #[serde(default)]
+        expected_workspace: Option<ArchiveWorkspaceData>,
         client_id: String,
         mail_secret: mxr_core::RemoteSecret,
         #[cfg_attr(feature = "openapi", schema(no_recursion))]
         request: Box<Self>,
     },
     GetRemoteReady,
+    /// Portable compose preview. Declarations are unpersisted; no upload, audit or token is written.
+    PreviewDraft {
+        draft: Draft,
+        context: DraftSafetyContextData,
+        pending_attachments: Vec<mxr_core::DraftAttachment>,
+    },
     RemoteAuthority {
         request: crate::RemoteRequest,
     },
@@ -2537,7 +2545,8 @@ impl Request {
     pub fn requires_workspace_owner(&self) -> bool {
         matches!(
             self,
-            Self::SaveDraft { .. }
+            Self::PreviewDraft { .. }
+                | Self::SaveDraft { .. }
                 | Self::UpdateDraft { .. }
                 | Self::SaveDraftToServer { .. }
                 | Self::DeleteDraft { .. }
@@ -2838,7 +2847,8 @@ impl Request {
             | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. }
             | Self::ResolveTime { .. } => IpcCategory::MxrPlatform,
-            Self::RemoteRead { .. }
+            Self::PreviewDraft { .. }
+            | Self::RemoteRead { .. }
             | Self::GetRemoteReady
             | Self::RemoteAuthority { .. }
             | Self::ListEvents { .. }
@@ -3180,7 +3190,26 @@ fn error_looks_retryable(message: &str) -> bool {
     reason = "ResponseData is the tagged IPC contract; large variants are preserved inline to keep serde JSON compatibility obvious"
 )]
 pub enum ResponseData {
+    DraftPreview {
+        requires_save: bool,
+        draft: Draft,
+        from: mxr_core::Address,
+        workspace: ArchiveWorkspaceData,
+        send_identity: mxr_core::SendIdentity,
+        pending_attachments: Vec<mxr_core::DraftAttachment>,
+        report: mxr_core::DraftSafetyReport,
+    },
     RemoteReady {
+        #[serde(default)]
+        attachment_transfer_supported: bool,
+        #[serde(default)]
+        capabilities: Vec<mxr_core::RemoteCapability>,
+        #[serde(default)]
+        draft_attachment_upload_supported: bool,
+        #[serde(default)]
+        draft_revision_supported: bool,
+        #[serde(default)]
+        send_outcome_supported: bool,
         protocol_version: u32,
         host_id: String,
         workspace: ArchiveWorkspaceData,
@@ -4299,7 +4328,8 @@ impl ResponseData {
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. }
             | Self::ResolvedTime { .. } => IpcCategory::MxrPlatform,
-            Self::RemoteReady { .. }
+            Self::DraftPreview { .. }
+            | Self::RemoteReady { .. }
             | Self::RemoteAuthority { .. }
             | Self::EventLogEntries { .. }
             | Self::LogLines { .. }

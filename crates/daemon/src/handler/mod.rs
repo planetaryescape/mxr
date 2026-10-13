@@ -36,6 +36,7 @@ mod draft_compose;
 mod draft_context;
 mod draft_eval;
 mod draft_output;
+mod draft_preview;
 mod draft_prompt;
 mod draft_provenance;
 mod draft_refine;
@@ -580,10 +581,25 @@ async fn dispatch(
         .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
         Request::RemoteRead {
+            expected_workspace,
             client_id,
             mail_secret,
             request,
-        } => remote::read(state, client_id, mail_secret, request).await,
+        } => {
+            remote::read_owned(
+                state,
+                client_id,
+                mail_secret,
+                request,
+                expected_workspace.as_ref(),
+            )
+            .await
+        }
+        Request::PreviewDraft {
+            draft,
+            context,
+            pending_attachments,
+        } => draft_preview::preview(state, draft, context, pending_attachments).await,
         Request::GetRemoteReady => Err(HandlerError::RemoteAuthorityDenied(
             "Remote readiness requires authenticated admission".into(),
         )),
@@ -2247,7 +2263,7 @@ enum RequestClass {
 fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
-        Request::RemoteRead { .. } | Request::GetRemoteReady => Read,
+        Request::RemoteRead { .. } | Request::GetRemoteReady | Request::PreviewDraft { .. } => Read,
         Request::RemoteAuthority { request } if request.is_read_only() => Read,
         Request::RemoteAuthority { .. } => Admin,
         Request::GetRecoveryStatus
@@ -2879,6 +2895,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::Shutdown => "shutdown",
         Request::RemoteRead { .. } => "remote_read",
         Request::GetRemoteReady => "remote_ready",
+        Request::PreviewDraft { .. } => "preview_draft",
         Request::RemoteAuthority { .. } => "remote_authority",
         Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",
@@ -2995,6 +3012,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SaveDraft { draft }
         | Request::UpdateDraft { draft }
         | Request::SaveDraftToServer { draft }
+        | Request::PreviewDraft { draft, .. }
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Some(&draft.account_id),

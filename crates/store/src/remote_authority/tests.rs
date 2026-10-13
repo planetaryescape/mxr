@@ -486,3 +486,115 @@ async fn start_result(store: &crate::Store, now: i64) -> Result<PendingPairing, 
         .start_remote_pairing("fixture", &[RemoteCapability::MailRead], &mv, &cv, now)
         .await
 }
+
+#[tokio::test]
+async fn send_grant_requires_approval_is_persisted_and_cannot_upgrade_existing_proofs() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let (mail, cleanup, mv, cv) = secrets();
+    let grants = [RemoteCapability::MailRead, RemoteCapability::MailSend];
+    let p = store
+        .start_remote_pairing("send client", &grants, &mv, &cv, 100)
+        .await
+        .unwrap();
+    assert_eq!(p.capabilities, grants);
+    let reordered = store
+        .start_remote_pairing(
+            "send client",
+            &[RemoteCapability::MailSend, RemoteCapability::MailRead],
+            &mv,
+            &cv,
+            100,
+        )
+        .await
+        .unwrap();
+    assert_eq!(reordered.request_id, p.request_id);
+    assert_eq!(reordered.capabilities, grants);
+    assert!(store
+        .claim_remote_pairing(&p.request_id, &mail, &cleanup, 101)
+        .await
+        .is_err());
+    let preview = store
+        .approve_remote_pairing(&p.request_id, true, 102)
+        .await
+        .unwrap();
+    assert_eq!(preview.capabilities, grants);
+    assert!(!preview.approved);
+    assert!(store
+        .start_remote_pairing("send client", &[RemoteCapability::MailRead], &mv, &cv, 102)
+        .await
+        .is_err());
+    store
+        .approve_remote_pairing(&p.request_id, false, 103)
+        .await
+        .unwrap();
+    let client = store
+        .claim_remote_pairing(&p.request_id, &mail, &cleanup, 104)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .authenticate_remote_client(&client.client_id, &mail, 105)
+            .await
+            .unwrap()
+            .capabilities,
+        grants
+    );
+    assert_eq!(
+        store
+            .claim_remote_pairing(&p.request_id, &mail, &cleanup, 105)
+            .await
+            .unwrap()
+            .client_id,
+        client.client_id
+    );
+    assert!(store
+        .authenticate_remote_client(&client.client_id, &mail, client.expires_at)
+        .await
+        .is_err());
+    store
+        .revoke_remote_client(&client.client_id, false, 106)
+        .await
+        .unwrap();
+    assert!(store
+        .authenticate_remote_client(&client.client_id, &mail, 107)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn legacy_read_grant_remains_read_only_and_rejects_send_only_or_duplicate_grants() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let (_, _, mv, cv) = secrets();
+    for grants in [
+        vec![RemoteCapability::MailSend],
+        vec![
+            RemoteCapability::MailRead,
+            RemoteCapability::MailSend,
+            RemoteCapability::MailSend,
+        ],
+    ] {
+        assert!(store
+            .start_remote_pairing("invalid", &grants, &mv, &cv, 100)
+            .await
+            .is_err());
+    }
+    let p = start(&store, 100).await;
+    assert_eq!(p.capabilities, [RemoteCapability::MailRead]);
+    assert!(store
+        .start_remote_pairing(
+            "fixture",
+            &[RemoteCapability::MailRead, RemoteCapability::MailSend],
+            &mv,
+            &cv,
+            101
+        )
+        .await
+        .is_err());
+    let allowed: bool =
+        sqlx::query_scalar("SELECT allow_send FROM remote_pairings WHERE request_id=?")
+            .bind(&p.request_id)
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+    assert!(!allowed);
+}

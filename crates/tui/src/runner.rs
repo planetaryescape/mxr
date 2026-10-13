@@ -421,7 +421,7 @@ pub async fn run() -> anyhow::Result<()> {
         // explain, the first time it is needed (blueprint 22, D118).
         if session.target.is_paired_remote() {
             app.apply(crate::action::Action::OpenMailboxScreen);
-            app.status_message = Some("Remote mailbox: reading and search are available; other operations require the host".into());
+            app.status_message = Some("Remote mailbox: reading and downloads are available; replies require host-approved send access".into());
         } else {
             app.apply(crate::action::Action::OpenNow);
         }

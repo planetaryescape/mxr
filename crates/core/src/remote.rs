@@ -61,4 +61,6 @@ pub struct RegisteredClient {
 #[serde(rename_all = "snake_case")]
 pub enum RemoteCapability {
     MailRead,
+    /// Draft, portable attachment and reviewed send operations explicitly approved by the host.
+    MailSend,
 }

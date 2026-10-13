@@ -8533,7 +8533,7 @@ export interface components {
             note?: string | null;
         };
         /** @enum {string} */
-        RemoteCapability: "mail_read";
+        RemoteCapability: "mail_read" | "mail_send";
         RemoteRequest:
             | {
                   /** @enum {string} */
@@ -8667,12 +8667,21 @@ export interface components {
                   client_id: string;
                   /** @enum {string} */
                   cmd: "RemoteRead";
+                  expected_workspace?:
+                      components["schemas"]["ArchiveWorkspaceData"] | null;
                   mail_secret: components["schemas"]["RemoteSecret"];
                   request: components["schemas"]["Request"];
               }
             | {
                   /** @enum {string} */
                   cmd: "GetRemoteReady";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "PreviewDraft";
+                  context: components["schemas"]["DraftSafetyContextData"];
+                  draft: components["schemas"]["Draft"];
+                  pending_attachments: components["schemas"]["DraftAttachment"][];
               }
             | {
                   /** @enum {string} */
@@ -10655,12 +10664,28 @@ export interface components {
               };
         ResponseData:
             | {
+                  draft: components["schemas"]["Draft"];
+                  from: components["schemas"]["Address"];
+                  /** @enum {string} */
+                  kind: "DraftPreview";
+                  pending_attachments: components["schemas"]["DraftAttachment"][];
+                  report: components["schemas"]["DraftSafetyReport"];
+                  requires_save: boolean;
+                  send_identity: components["schemas"]["SendIdentity"];
+                  workspace: components["schemas"]["ArchiveWorkspaceData"];
+              }
+            | {
+                  attachment_transfer_supported?: boolean;
+                  capabilities?: components["schemas"]["RemoteCapability"][];
                   client_id: string;
+                  draft_attachment_upload_supported?: boolean;
+                  draft_revision_supported?: boolean;
                   host_id: string;
                   /** @enum {string} */
                   kind: "RemoteReady";
                   /** Format: int32 */
                   protocol_version: number;
+                  send_outcome_supported?: boolean;
                   workspace: components["schemas"]["ArchiveWorkspaceData"];
               }
             | {

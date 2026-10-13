@@ -215,11 +215,17 @@ pub struct IpcConnection {
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
     selected_remote: bool,
+    preview_attachment_declarations:
+        std::collections::HashMap<mxr_core::DraftId, Vec<mxr_core::DraftAttachment>>,
     remote_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     selection_generation: Option<u64>,
 }
 
 impl IpcConnection {
+    pub fn is_paired_remote(&self) -> bool {
+        self.selected_remote
+    }
+
     pub(crate) fn with_selection_generation(mut self, generation: u64) -> Self {
         self.selection_generation = Some(generation);
         self
@@ -306,6 +312,7 @@ impl IpcConnection {
             default_timeout: None,
             attachment_transfer_supported: None,
             selected_remote: false,
+            preview_attachment_declarations: std::collections::HashMap::new(),
             remote_workspace: None,
             selection_generation: None,
         };
@@ -407,6 +414,12 @@ impl IpcConnection {
     {
         remote_connection::schedule_cleanup();
         self.verify_selection().await?;
+        if self.selected_remote && matches!(request, Request::GetArchiveWorkspace) {
+            let workspace = self.capture_workspace_with_events(&mut on_event).await?;
+            return Ok(Response::Ok {
+                data: ResponseData::ArchiveWorkspace { workspace },
+            });
+        }
         if self.selected_remote && selected_daemon::requires_local_account_setup(&request) {
             return Err(ClientError::Io(std::io::Error::other(
                 "Account provisioning and credential/config maintenance are unsupported through a selected remote daemon; run account setup on the daemon host",
@@ -425,6 +438,8 @@ impl IpcConnection {
             self.verify_workspace_with_events(workspace, &mut on_event)
                 .await?;
         }
+        let safety_preview =
+            self.selected_remote && matches!(request, Request::CheckDraftSafety { .. });
         let request = match self
             .prepare_draft_attachment_request(request, expected_workspace)
             .await
@@ -461,7 +476,15 @@ impl IpcConnection {
             Request::RuleCategories { .. } | Request::ExplainCategoryMembership { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.selected_remote {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => {},
@@ -476,13 +499,25 @@ impl IpcConnection {
         ) && self.attachment_transfer_supported != Some(true)
         {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.selected_remote {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
                 error @ Response::Error { .. } => return Ok(error),
                 Response::Ok {
                     data:
                         ResponseData::Status {
+                            attachment_transfer_supported: true,
+                            ..
+                        }
+                        | ResponseData::RemoteReady {
                             attachment_transfer_supported: true,
                             ..
                         },
@@ -514,7 +549,15 @@ impl IpcConnection {
                 | Request::GetArchiveOperation { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.selected_remote {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             match status {
                 error @ Response::Error { .. } => return Ok(error),
@@ -552,12 +595,23 @@ impl IpcConnection {
                 | Request::GetSendOutcome { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.selected_remote {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             if !matches!(
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
+                        send_outcome_supported: true,
+                        ..
+                    } | ResponseData::RemoteReady {
                         send_outcome_supported: true,
                         ..
                     }
@@ -577,12 +631,24 @@ impl IpcConnection {
                 | Request::SaveDraftToServer { .. }
         ) {
             let status = self
-                .request_response_unchecked(Request::GetStatus, &mut on_event, request_timeout)
+                .request_response_unchecked(
+                    if self.selected_remote {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
                 .await?;
             if !matches!(
                 status,
                 Response::Ok {
                     data: ResponseData::Status {
+                        draft_revision_supported: true,
+                        send_outcome_supported: true,
+                        ..
+                    } | ResponseData::RemoteReady {
                         draft_revision_supported: true,
                         send_outcome_supported: true,
                         ..
@@ -601,6 +667,16 @@ impl IpcConnection {
             )
             .await?;
         self.verify_selection().await?;
+        if safety_preview {
+            if let Response::Ok {
+                data: ResponseData::DraftPreview { report, .. },
+            } = response
+            {
+                return Ok(Response::Ok {
+                    data: ResponseData::DraftSafetyReportResponse { report },
+                });
+            }
+        }
         Ok(response)
     }
 

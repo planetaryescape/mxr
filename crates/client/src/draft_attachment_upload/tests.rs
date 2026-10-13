@@ -38,6 +38,122 @@ fn draft(path: &std::path::Path) -> Draft {
     }
 }
 
+fn declaration(filename: &str, bytes: &[u8]) -> DraftAttachment {
+    DraftAttachment {
+        id: DraftAttachmentId::new(),
+        draft_id: mxr_core::DraftId::new(),
+        account_id: mxr_core::AccountId::new(),
+        filename: filename.into(),
+        mime_type: "application/octet-stream".into(),
+        length_bytes: bytes.len() as u64,
+        sha256: base16ct::lower::encode_string(&Sha256::digest(bytes)),
+    }
+}
+
+#[test]
+fn preview_attachment_comparison_preserves_set_multiplicity_and_managed_bytes() {
+    let a = declaration("same.bin", b"original A");
+    let b = declaration("same.bin", b"original B");
+    let reviewed = [a.clone(), b.clone()];
+    assert!(check_preview_attachments(
+        &reviewed,
+        &[],
+        &[
+            ("same.bin".into(), b"original B".to_vec()),
+            ("same.bin".into(), b"original A".to_vec()),
+        ]
+    )
+    .is_ok());
+    assert!(check_preview_attachments(
+        &reviewed,
+        &[],
+        &[
+            ("same.bin".into(), b"original B".to_vec()),
+            ("same.bin".into(), b"original B".to_vec()),
+        ]
+    )
+    .is_err());
+    assert!(check_preview_attachments(&reviewed, &[a.clone()], &[]).is_err());
+    assert!(check_preview_attachments(&reviewed, &[], &[]).is_err());
+    assert!(check_preview_attachments(&[a.clone()], &[a.clone(), a.clone()], &[]).is_err());
+    let mut uploaded_a = a.clone();
+    uploaded_a.id = DraftAttachmentId::new();
+    assert!(check_preview_attachments(&reviewed, &[uploaded_a, b], &[]).is_ok());
+    assert!(check_preview_attachments(&[a.clone(), a.clone()], &[a.clone(), a], &[]).is_ok());
+}
+
+#[tokio::test]
+async fn preview_transfer_rejects_changed_session_without_consuming_original_review() {
+    let transport = MemoryTransport::new();
+    let _listener = transport.bind().await.expect("listener");
+    let mut previous = IpcConnection::connect_with(&transport.connector(), ClientKind::Tui)
+        .await
+        .expect("connection");
+    previous.selected_remote = true;
+    previous.remote_workspace = Some(workspace());
+    previous.remote_registration_identity = Some(("host".into(), "client".into()));
+    previous.selection_generation = Some(7);
+    let draft_id = mxr_core::DraftId::new();
+    previous
+        .preview_attachment_declarations
+        .insert(draft_id.clone(), vec![declaration("a.bin", b"reviewed")]);
+    for mismatch in 0..5 {
+        let mut replacement = IpcConnection::connect_with(&transport.connector(), ClientKind::Tui)
+            .await
+            .expect("connection");
+        replacement.selected_remote = true;
+        replacement.remote_workspace = previous.remote_workspace.clone();
+        replacement.remote_registration_identity = previous.remote_registration_identity.clone();
+        replacement.selection_generation = previous.selection_generation;
+        match mismatch {
+            0 => {
+                replacement
+                    .remote_registration_identity
+                    .as_mut()
+                    .expect("identity")
+                    .0 = "other host".into();
+            }
+            1 => {
+                replacement
+                    .remote_registration_identity
+                    .as_mut()
+                    .expect("identity")
+                    .1 = "other client".into();
+            }
+            2 => {
+                replacement
+                    .remote_workspace
+                    .as_mut()
+                    .expect("owner")
+                    .recovery_generation = "restored".into();
+            }
+            3 => replacement.selection_generation = Some(8),
+            _ => replacement.selected_remote = false,
+        }
+        assert!(replacement
+            .retain_draft_attachment_previews_from(&mut previous)
+            .is_err());
+        assert!(previous
+            .preview_attachment_declarations
+            .contains_key(&draft_id));
+        assert!(replacement.preview_attachment_declarations.is_empty());
+    }
+    let mut replacement = IpcConnection::connect_with(&transport.connector(), ClientKind::Tui)
+        .await
+        .expect("connection");
+    replacement.selected_remote = true;
+    replacement.remote_workspace = previous.remote_workspace.clone();
+    replacement.remote_registration_identity = previous.remote_registration_identity.clone();
+    replacement.selection_generation = previous.selection_generation;
+    replacement
+        .retain_draft_attachment_previews_from(&mut previous)
+        .expect("same session");
+    assert!(previous.preview_attachment_declarations.is_empty());
+    assert!(replacement
+        .preview_attachment_declarations
+        .contains_key(&draft_id));
+}
+
 #[tokio::test]
 async fn portable_upload_rejects_old_daemon_before_opening_client_file() {
     let transport = MemoryTransport::new();

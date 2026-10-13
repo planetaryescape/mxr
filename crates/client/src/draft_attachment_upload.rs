@@ -37,6 +37,43 @@ fn read_client_attachment(path: &std::path::Path) -> Result<(String, Vec<u8>), C
     Ok((filename, bytes))
 }
 
+fn check_preview_attachments(
+    reviewed: &[DraftAttachment],
+    managed: &[DraftAttachment],
+    files: &[(String, Vec<u8>)],
+) -> Result<(), ClientError> {
+    let mut remaining = std::collections::HashMap::new();
+    for metadata in reviewed {
+        *remaining
+            .entry((
+                metadata.filename.clone(),
+                metadata.length_bytes,
+                metadata.sha256.clone(),
+            ))
+            .or_insert(0_usize) += 1;
+    }
+    let attachments = managed
+        .iter()
+        .map(|m| (m.filename.clone(), m.length_bytes, m.sha256.clone()))
+        .chain(files.iter().map(|(filename, bytes)| {
+            (
+                filename.clone(),
+                bytes.len() as u64,
+                base16ct::lower::encode_string(&Sha256::digest(bytes)),
+            )
+        }));
+    for key in attachments {
+        match remaining.get_mut(&key) {
+            Some(count) if *count > 0 => *count -= 1,
+            _ => return Err(error("Attachment bytes or selection changed since preview; reopen and review before saving or sending")),
+        }
+    }
+    if remaining.values().any(|count| *count != 0) {
+        return Err(error("Attachment bytes or selection changed since preview; reopen and review before saving or sending"));
+    }
+    Ok(())
+}
+
 impl IpcConnection {
     async fn upload_request(
         &mut self,
@@ -249,8 +286,10 @@ impl IpcConnection {
                     });
                 }
             }
+            let mut declarations = pending_attachments.clone();
+            declarations.extend(draft.managed_attachments.iter().flatten().cloned());
             self.preview_attachment_declarations
-                .insert(draft.id.clone(), pending_attachments.clone());
+                .insert(draft.id.clone(), declarations);
             return Ok(request);
         }
         let preview_only = matches!(request, Request::CheckDraftSafety { .. });
@@ -264,6 +303,15 @@ impl IpcConnection {
             _ => return Ok(request),
         };
         if draft.attachments.is_empty() {
+            if self.selected_remote {
+                if let Some(reviewed) = self.preview_attachment_declarations.get(&draft.id) {
+                    check_preview_attachments(
+                        reviewed,
+                        draft.managed_attachments.as_deref().unwrap_or_default(),
+                        &[],
+                    )?;
+                }
+            }
             return Ok(request);
         }
         if preview_only
@@ -363,22 +411,12 @@ impl IpcConnection {
                     return Err(error("Save portable draft attachments and review the returned revision before sending"));
                 }
                 let (filename, bytes) = read_client_attachment(&path)?;
-                if self.selected_remote {
-                    if let Some(reviewed) = &reviewed {
-                        let digest: String = Sha256::digest(&bytes)
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect();
-                        if !reviewed.iter().any(|m| {
-                            m.filename == filename
-                                && m.length_bytes == bytes.len() as u64
-                                && m.sha256 == digest
-                        }) {
-                            return Err(error("Attachment bytes changed since preview; reopen and review before saving or sending"));
-                        }
-                    }
-                }
                 files.push((filename, bytes));
+            }
+        }
+        if self.selected_remote {
+            if let Some(reviewed) = &reviewed {
+                check_preview_attachments(reviewed, &managed, &files)?;
             }
         }
         draft.managed_attachments = Some(managed);

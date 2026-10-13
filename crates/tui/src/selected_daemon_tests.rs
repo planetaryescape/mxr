@@ -27,6 +27,154 @@ fn status() -> ResponseData {
 }
 
 #[tokio::test]
+async fn worker_reconnect_preserves_remote_preview_before_any_save_or_upload() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("reviewed.bin");
+    std::fs::write(&path, b"reviewed bytes").unwrap();
+    let draft: mxr_core::Draft = serde_json::from_value(serde_json::json!({
+        "id":mxr_core::DraftId::new(), "account_id":mxr_core::AccountId::new(), "revision":null,
+        "intent":"new", "to":[], "cc":[], "bcc":[], "subject":"preview",
+        "body_markdown":"synthetic", "attachments":[path], "managed_attachments":[], "inline_assets":[],
+        "created_at":chrono::Utc::now(), "updated_at":chrono::Utc::now()
+    })).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target = mxr_client::SelectedDaemonTarget::new(
+        mxr_client::TransportAddr::Tcp(listener.local_addr().unwrap()),
+        None,
+    );
+    let writes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let server_writes = writes.clone();
+    let server = tokio::spawn(async move {
+        for connection in 0..2 {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            while let Some(Ok(message)) = framed.next().await {
+                let IpcPayload::Request(request) = message.payload else {
+                    panic!("request")
+                };
+                let mut close = false;
+                let response = match request {
+                    Request::GetStatus => Response::Ok { data: status() },
+                    Request::GetArchiveWorkspace => Response::Ok {
+                        data: ResponseData::ArchiveWorkspace {
+                            workspace: owner("original"),
+                        },
+                    },
+                    Request::GetRemoteReady => Response::Ok {
+                        data: ResponseData::RemoteReady {
+                            attachment_transfer_supported: true,
+                            capabilities: vec![
+                                mxr_core::RemoteCapability::MailRead,
+                                mxr_core::RemoteCapability::MailSend,
+                            ],
+                            draft_attachment_upload_supported: true,
+                            draft_revision_supported: true,
+                            send_outcome_supported: true,
+                            protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                            host_id: "fixture".into(),
+                            client_id: "fixture".into(),
+                            workspace: owner("original"),
+                        },
+                    },
+                    Request::PreviewDraft {
+                        draft,
+                        pending_attachments,
+                        ..
+                    } => {
+                        // CheckDraftSafety must have taken the selected_remote branch.
+                        assert_eq!(connection, 0);
+                        assert!(draft.attachments.is_empty());
+                        assert_eq!(pending_attachments.len(), 1);
+                        close = true;
+                        Response::Ok {
+                            data: ResponseData::Ack,
+                        }
+                    }
+                    Request::CheckDraftSafety { .. } => {
+                        panic!("worker did not use remote preview semantics")
+                    }
+                    _ => {
+                        server_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        Response::error_kinded(
+                            "Unexpected write",
+                            mxr_protocol::IpcErrorKind::InvalidRequest,
+                        )
+                    }
+                };
+                framed
+                    .send(IpcMessage {
+                        id: message.id,
+                        expected_workspace: None,
+                        source: ClientKind::Daemon,
+                        payload: IpcPayload::Response(response),
+                    })
+                    .await
+                    .unwrap();
+                if close {
+                    break;
+                }
+            }
+        }
+    });
+    let (result_tx, mut results) = tokio::sync::mpsc::unbounded_channel();
+    let worker = spawn_ipc_worker_for_session(
+        DaemonSession {
+            target,
+            owner: Some(owner("original")),
+        },
+        result_tx,
+    );
+    for connection in 0..2 {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(result) = results.recv().await {
+                if matches!(
+                    result,
+                    crate::async_result::AsyncResult::ConnectionState(
+                        crate::app::ConnectionState::Connected
+                    )
+                ) {
+                    return;
+                }
+            }
+            panic!("worker stopped");
+        })
+        .await
+        .unwrap();
+        if connection == 0 {
+            assert!(matches!(
+                ipc_call(
+                    &worker,
+                    Request::CheckDraftSafety {
+                        draft: draft.clone(),
+                        context: Default::default()
+                    }
+                )
+                .await
+                .unwrap(),
+                Response::Ok {
+                    data: ResponseData::Ack
+                }
+            ));
+        }
+    }
+    std::fs::write(&path, b"changed bytes").unwrap();
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        ipc_call(&worker, Request::SaveDraft { draft }),
+    )
+    .await
+    .unwrap()
+    .expect_err("changed bytes must stop before any write");
+    assert!(response.to_string().contains("changed since preview"));
+    assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 0);
+    drop(worker);
+    tokio::time::timeout(std::time::Duration::from_secs(5), server)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
 async fn safe_retry_stays_on_selected_target_and_refuses_replacement_owner() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let target = mxr_client::SelectedDaemonTarget::new(

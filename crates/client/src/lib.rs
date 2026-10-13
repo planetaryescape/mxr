@@ -218,12 +218,37 @@ pub struct IpcConnection {
     preview_attachment_declarations:
         std::collections::HashMap<mxr_core::DraftId, Vec<mxr_core::DraftAttachment>>,
     remote_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+    remote_registration_identity: Option<(String, String)>,
     selection_generation: Option<u64>,
 }
 
 impl IpcConnection {
     pub fn is_paired_remote(&self) -> bool {
         self.selected_remote
+    }
+
+    /// Carry byte reviews only across reconnection of the same selected session.
+    /// A refused replacement leaves the original review intact for another attempt.
+    pub fn retain_draft_attachment_previews_from(
+        &mut self,
+        previous: &mut Self,
+    ) -> Result<(), ClientError> {
+        if self.selected_remote != previous.selected_remote
+            || self.remote_workspace != previous.remote_workspace
+            || self.remote_registration_identity != previous.remote_registration_identity
+            || self.selection_generation != previous.selection_generation
+        {
+            return Err(workspace_error(
+                "workspace_conflict",
+                "Connection changed; reopen and review the draft on its original workspace",
+            ));
+        }
+        for (draft, declarations) in std::mem::take(&mut previous.preview_attachment_declarations) {
+            self.preview_attachment_declarations
+                .entry(draft)
+                .or_insert(declarations);
+        }
+        Ok(())
     }
 
     pub(crate) fn with_selection_generation(mut self, generation: u64) -> Self {
@@ -314,6 +339,7 @@ impl IpcConnection {
             selected_remote: false,
             preview_attachment_declarations: std::collections::HashMap::new(),
             remote_workspace: None,
+            remote_registration_identity: None,
             selection_generation: None,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate

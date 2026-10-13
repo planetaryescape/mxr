@@ -19,6 +19,15 @@ pub struct Client {
 }
 
 impl Client {
+    pub(crate) fn replace_connection(&mut self, mut replacement: Self) -> Result<(), MxrError> {
+        replacement
+            .conn
+            .retain_draft_attachment_previews_from(&mut self.conn)
+            .map_err(|error| MxrError::Ipc(error.to_string()))?;
+        *self = replacement;
+        Ok(())
+    }
+
     pub async fn transfer_attachment_to(
         &mut self,
         message_id: &MessageId,

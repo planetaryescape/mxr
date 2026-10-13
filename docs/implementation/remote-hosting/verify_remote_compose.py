@@ -168,7 +168,7 @@ class RemoteComposeFixture(RemoteReadFixture):
                 process.terminate()
             process.wait(timeout=10)
 
-    def tui_reply(self, name):
+    def tui_reply(self, name, reconnect=False):
         attachment = self.root / ('client-' + name) / 'tui-attachment.bin'
         attachment.write_bytes(b'TUI client attachment bytes')
         editor = self.root / ('client-' + name) / 'fixture-editor.py'
@@ -212,6 +212,19 @@ class RemoteComposeFixture(RemoteReadFixture):
             os.write(master, b'r')
             self.check('TUI local editor reaches explicit send preview', rendered('[s] send'))
             self.check('TUI preview has not delivered mail', len(self.spool_records()) == before)
+            if reconnect:
+                counts = self.host_counts()
+                self.gateway_stop()
+                self.gateway_start()
+                # The worker retries failed reconnects every two seconds; the
+                # modal obscures its connection status while confirmation stays open.
+                time.sleep(3)
+                attachment.write_bytes(b'Changed after preview and reconnect')
+                os.write(master, b's')
+                self.check('Reconnected TUI refuses changed attachment before saving', rendered('changed since preview', timeout=20))
+                self.check('Reconnected preview refusal writes no host draft or upload', self.host_counts() == counts)
+                self.check('Reconnected preview refusal has no provider effect', len(self.spool_records()) == before)
+                return
             os.write(master, b's')
             self.check('TUI confirmed send completes', rendered('Sent!', timeout=30))
             self.check('Actual TUI send delivered exactly once', len(self.spool_records()) == before + 1)
@@ -221,7 +234,7 @@ class RemoteComposeFixture(RemoteReadFixture):
                 process.terminate()
             process.wait(timeout=10)
             os.close(master)
-            (self.root / ('tui-compose-' + name + '.log')).write_bytes(transcript)
+            (self.root / ('tui-compose-' + name + ('-reconnect' if reconnect else '') + '.log')).write_bytes(transcript)
 
     def run_remote(self):
         ids = {name: self.pair(name) for name in self.clients}
@@ -256,6 +269,7 @@ class RemoteComposeFixture(RemoteReadFixture):
         self.check('CLI accepted operation replay survives deleted draft without delivery', replay['state'] == 'accepted' and len(self.spool_records()) == 1)
         # Outcome recovery works after successful send deletes its draft.
         self.mcp_reply('a')
+        self.tui_reply('a', reconnect=True)
         self.tui_reply('a')
         uncertain = self.reply_draft('a', 'Uncertain synthetic reply.')
         self.spool_control('send-uncertain', True)

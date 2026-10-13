@@ -204,6 +204,7 @@ pub async fn connect_registration(
                     && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
                         connection.selected_remote = true;
                         connection.remote_workspace = Some(workspace);
+                        connection.remote_registration_identity = Some((host_id, client_id));
                         Ok(connection)
                     }
             ResponseData::RemoteReady { protocol_version, .. } if protocol_version != IPC_PROTOCOL_VERSION => Err(ClientError::Io(std::io::Error::other(format!("Client supports IPC protocol {IPC_PROTOCOL_VERSION}; remote host reports {protocol_version}. Upgrade host and clients to matching mxr versions; saved selection was preserved")))),

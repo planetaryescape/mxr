@@ -41,8 +41,15 @@ const dump = spawnSync(resolve(repoRoot, "target-cli/debug/examples/dump_openapi
   cwd: repoRoot,
   encoding: "utf8",
   stdio: ["ignore", "pipe", "inherit"],
+  // The spec is past spawnSync's 1 MiB default.
+  maxBuffer: 64 * 1024 * 1024,
 });
-if (dump.status !== 0) process.exit(dump.status ?? 1);
+if (dump.status !== 0) {
+  console.error(
+    `[gen:types] dumping the spec failed: ${dump.error?.message ?? `exit ${dump.status}`}`,
+  );
+  process.exit(dump.status ?? 1);
+}
 
 mkdirSync(dirname(target), { recursive: true });
 

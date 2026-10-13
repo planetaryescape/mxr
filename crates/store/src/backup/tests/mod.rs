@@ -571,3 +571,52 @@ async fn exact_schema_82_backup_remains_restorable() {
         .is_none());
     assert!(restored.restore_pending().await.unwrap());
 }
+
+#[tokio::test]
+async fn exact_schema_83_backup_remains_restorable_before_migrations() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "DROP TABLE remote_pairing_retirements; DELETE FROM schema_migrations WHERE version>=84;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+    manifest.schema_version = 83;
+    *manifest
+        .files
+        .iter_mut()
+        .find(|file| file.path == "mxr.db")
+        .unwrap() = file_metadata(stage.path(), "mxr.db").unwrap();
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    inspect(stage.path()).await.unwrap();
+
+    // Restore retirement runs before Store::new applies schema 84.
+    retire_restored(&stage.path().join("mxr.db")).await.unwrap();
+    let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
+    assert!(restored
+        .remote_authority_status()
+        .await
+        .unwrap()
+        .host_id
+        .is_none());
+    assert!(restored.restore_pending().await.unwrap());
+}

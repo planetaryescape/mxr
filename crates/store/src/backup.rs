@@ -470,11 +470,17 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
             .fetch_one(&mut *tx)
             .await?;
     if remote_tables {
-        sqlx::raw_sql(
-            "DELETE FROM remote_pairing_retirements; DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;",
+        let retirement_table: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='remote_pairing_retirements')",
         )
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
+        let sql = if retirement_table {
+            "DELETE FROM remote_pairing_retirements; DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;"
+        } else {
+            "DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;"
+        };
+        sqlx::raw_sql(sql).execute(&mut *tx).await?;
     }
     sqlx::query("INSERT INTO restore_recovery VALUES(1,1,0) ON CONFLICT(singleton) DO UPDATE SET pending=1,source_owner_stopped=0").execute(&mut *tx).await?;
     sqlx::query("UPDATE archive_workspace SET recovery_generation=? WHERE singleton=1")

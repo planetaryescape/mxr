@@ -1057,6 +1057,22 @@ fn onboarding_blocks_mailbox_screen_until_account_exists() {
 }
 
 #[test]
+fn paired_remote_empty_config_opens_mailbox_and_search_without_onboarding() {
+    let config = mxr_config::MxrConfig::default();
+    let mut app = App::from_config(&config);
+    app.enable_paired_remote_read_only_session();
+
+    app.apply(Action::OpenMailboxScreen);
+    assert_eq!(app.screen, Screen::Mailbox);
+    assert!(!app.accounts.page.onboarding_required);
+    assert!(!app.accounts.page.onboarding_modal_open);
+
+    app.apply(Action::OpenGlobalSearch);
+    assert_eq!(app.screen, Screen::Search);
+    assert!(app.search.page.editing);
+}
+
+#[test]
 fn account_form_h_and_l_switch_modes_from_any_field() {
     let mut app = App::new();
     app.apply(Action::OpenAccountFormNew);

@@ -238,13 +238,14 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
     first_ping_rx.await.unwrap();
     tokio::time::pause();
     tokio::time::advance(crate::ipc::IPC_REQUEST_TIMEOUT + std::time::Duration::from_secs(1)).await;
+    // Let the real TCP reconnect handshake run on wall-clock time.
+    tokio::time::resume();
     assert!(first
         .await
         .unwrap()
         .unwrap_err()
         .to_string()
         .contains("may or may not have been applied"));
-    tokio::time::resume();
 
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("private-reply.md");
@@ -293,7 +294,7 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
     assert!(matches!(
         tokio::time::timeout(
             std::time::Duration::from_secs(5),
-            ipc_call(&worker, Request::Ping)
+            ipc_call(&worker, Request::Ping),
         )
         .await
         .unwrap()

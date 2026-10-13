@@ -396,6 +396,9 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    if session.target.is_paired_remote() {
+        app.enable_paired_remote_read_only_session();
+    }
     app.compose.workspace_owner = session.owner.clone();
     match crate::send_recovery_state::last() {
         Ok(identity) => {

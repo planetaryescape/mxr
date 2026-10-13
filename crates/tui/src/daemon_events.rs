@@ -248,6 +248,12 @@ pub(crate) fn refresh_after_event_gap(app: &mut App) {
     app.row_gists.invalidate_all();
     app.mailbox.pending_labels_refresh = true;
     app.mailbox.pending_all_envelopes_refresh = true;
+    if app.is_paired_remote_read_only() {
+        if let Some(label_id) = app.mailbox.active_label.clone() {
+            app.mailbox.pending_label_fetch = Some(label_id);
+        }
+        return;
+    }
     app.mailbox.pending_subscriptions_refresh = true;
     app.refresh_places();
     app.diagnostics.pending_status_refresh = true;
@@ -620,6 +626,23 @@ mod tests {
             arrivals: vec![],
         });
         app
+    }
+
+    #[test]
+    fn paired_remote_reconnect_refreshes_only_mailbox_reads() {
+        let mut app = App::from_config(&mxr_config::MxrConfig::default());
+        app.enable_paired_remote_read_only_session();
+        let inbox_id = mxr_core::LabelId::new();
+        app.mailbox.active_label = Some(inbox_id.clone());
+
+        refresh_after_event_gap(&mut app);
+
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
+        assert_eq!(app.mailbox.pending_label_fetch, Some(inbox_id));
+        assert!(!app.mailbox.pending_subscriptions_refresh);
+        assert!(!app.mailbox.pending_desk_refresh);
+        assert!(!app.diagnostics.pending_status_refresh);
     }
 
     #[test]

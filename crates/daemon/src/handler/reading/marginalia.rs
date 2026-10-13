@@ -271,7 +271,7 @@ pub(in crate::handler) async fn send(state: &AppState, key: &str, dry_run: bool)
                     .filter(|title| !title.trim().is_empty())
                     .unwrap_or_else(|| row.title.clone()),
                 html: saved.html.clone().unwrap_or_default(),
-                url: Some(saved.final_url.clone().unwrap_or(saved.url.clone())),
+                url: Some(saved.final_url.clone().unwrap_or_else(|| saved.url.clone())),
                 author: saved.byline.clone().or_else(|| saved.site_name.clone()),
                 published_at: None,
             },

@@ -7,7 +7,7 @@ Connect Marginalia: its address, and a personal token from its Account page, Con
 Usage: mxr reading marginalia connect [OPTIONS] --url <URL>
 
 Options:
-      --url <URL>          Marginalia's address, such as https://reader.example.com
+      --url <URL>          Marginalia's address, such as `https://reader.example.com`
       --account <ACCOUNT>  Limit to one account; the default covers every account
       --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

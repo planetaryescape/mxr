@@ -3143,7 +3143,7 @@ pub enum MarginaliaAction {
     /// (or asked for), checked with Marginalia, then kept in the secrets
     /// file.
     Connect {
-        /// Marginalia's address, such as https://reader.example.com.
+        /// Marginalia's address, such as `https://reader.example.com`.
         #[arg(long)]
         url: String,
     },

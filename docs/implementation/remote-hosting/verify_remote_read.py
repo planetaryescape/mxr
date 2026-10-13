@@ -263,7 +263,10 @@ type = "fake"
         try:
             self.check('TUI opens the remote mailbox', rendered('Remote mailbox'))
             os.write(master, b'/subject:"Q1 Report review"\r')
-            self.check('TUI searches hosted mail', rendered('Q1 Report review'))
+            self.check(
+                'TUI renders hosted search results',
+                rendered('Search Results / lexical / showing 1 of'),
+            )
             os.write(master, b'\r')
             self.check('TUI opens the hosted message body', rendered('Q1 report body text'))
         finally:

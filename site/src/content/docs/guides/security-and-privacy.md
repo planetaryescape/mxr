@@ -28,7 +28,7 @@ There is no mxr-operated service in that list. Six other things can reach the ne
 - The semantic search model weights, downloaded once from Hugging Face unless `search.semantic.auto_download_models = false`. Embedding runs on your CPU after that.
 - Remote images in HTML mail, unless `render.html_remote_content = false` (the web app has its own Remote images toggle).
 - The unsubscribe endpoint a sender chose, when you run `mxr unsubscribe`.
-- [Marginalia](/guides/marginalia/), once you connect it. `M` on an item, or `mxr reading marginalia send`, sends the item's text there and to the AI provider your Marginalia account uses. Sync then reads highlights back from it. Nothing is sent until you press `M` or run `send`.
+- [Marginalia](/guides/marginalia/), once you connect it. `M` on an item, or `mxr reading marginalia send`, sends the item's text there. Marginalia may embed its opening text with the embedding provider your library is set up with. Sync then reads highlights back from it. Nothing is sent until you press `M` or run `send`.
 - The site a newsletter links to, when you fetch its article in [Reading](/guides/reading/#fetch-the-linked-article-only-when-you-ask) (`L`, the reader's Article tab, `b` on a link, `M` on a digest link whose article isn't saved, or `mxr reading open ITEM --article`). The client names the site first. The fetch refuses this machine and private networks by name and by every resolved address, checks each redirect, uses no proxy and stops at 5 MB. Nothing fetches an article on its own.
 
 The daemon also downloads one kind of attachment before you open it: the PDFs of

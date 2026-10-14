@@ -4,28 +4,42 @@ import {
   canLetGoSource,
   cutLine,
   digestRows,
+  numberNotInFact,
   openableLink,
-  ROUTINE_SHOWN,
+  routineLine,
+  splitSourceName,
+  trackLabel,
+  trailingItem,
   tuneToast,
 } from "./digestView";
 import { digestFixture, lineFixture } from "./testing";
 
 describe("the digest's layout", () => {
-  test("sections keep their order and Routine folds after a few sources", () => {
+  test("Routine has no rows until opened, and its totals still count", () => {
     const digest = digestFixture();
-    const folded = digestRows(digest, { routineOpen: false });
-    expect(folded.rows.map((row) => row.section)).toEqual([
-      "needs_a_look",
-      "changed",
-      ...Array<string>(ROUTINE_SHOWN).fill("routine"),
-    ]);
-    expect(folded.rows.map((row) => row.index)).toEqual(folded.rows.map((_, at) => at));
-    // Sources 4 and 5 hold 5 and 6 messages.
-    expect(folded.quieter).toEqual({ sources: 2, messages: 11 });
+    const collapsed = digestRows(digest, { routineOpen: false });
+    expect(collapsed.rows.map((row) => row.section)).toEqual(["needs_a_look", "changed"]);
+    expect(collapsed.rows.map((row) => row.index)).toEqual([0, 1]);
+    // Six sources holding 1 to 6 messages.
+    expect(collapsed.routine).toEqual({ sources: 6, messages: 21 });
 
     const open = digestRows(digest, { routineOpen: true });
     expect(open.bySection.routine).toHaveLength(6);
-    expect(open.quieter).toEqual({ sources: 0, messages: 0 });
+    expect(open.routine).toEqual({ sources: 6, messages: 21 });
+  });
+
+  test("the collapsed Routine line counts updates and sources in the daemon's words", () => {
+    expect(routineLine({ sources: 16, messages: 31 })).toBe("Routine · 31 updates from 16 sources");
+    expect(routineLine({ sources: 1, messages: 1 })).toBe("Routine · 1 update from 1 source");
+  });
+
+  test("hidden lines leave the Routine totals too", () => {
+    const digest = digestFixture();
+    const rows = digestRows(digest, {
+      routineOpen: false,
+      hidden: new Set([digest.routine[0]!.id]),
+    });
+    expect(rows.routine).toEqual({ sources: 5, messages: 20 });
   });
 
   test("lines being let go leave the cursor's order", () => {
@@ -75,5 +89,103 @@ describe("what a line offers", () => {
     expect(tuneToast("Vercel", "muted")).toBe(
       "Vercel: muted, its mail stays in Archive and search.",
     );
+  });
+});
+
+describe("a row's facts", () => {
+  test("a parcel's track says where it is and what comes next", () => {
+    const steps = ["ordered", "shipped", "out for delivery", "delivered"];
+    const parcel = (step: number | null | undefined) =>
+      lineFixture({
+        tracker: { kind: "parcel", state: "x", state_label: "x", outcome: "progress", steps, step },
+      });
+    expect(trackLabel(parcel(1))).toBe("Shipped · next: out for delivery");
+    expect(trackLabel(parcel(0))).toBe("Ordered · next: shipped");
+    // At the last step the fact already says it arrived.
+    expect(trackLabel(parcel(3))).toBeNull();
+    expect(trackLabel(parcel(null))).toBeNull();
+    expect(trackLabel(parcel(undefined))).toBeNull();
+    // A step the daemon sent outside the track shows nothing rather than a wrong one.
+    expect(trackLabel(parcel(9))).toBeNull();
+    expect(trackLabel(parcel(-1))).toBeNull();
+    expect(trackLabel(parcel(1.5))).toBeNull();
+    expect(trackLabel(lineFixture())).toBeNull();
+  });
+
+  test("the sending host splits off a Needs a look name only when it is the sender's", () => {
+    const google = lineFixture({
+      source_name: "Google (accounts.google.com)",
+      sender_email: "no-reply@accounts.google.com",
+    });
+    expect(splitSourceName(google)).toEqual({ name: "Google", host: "accounts.google.com" });
+    // A casing difference in the daemon's copy still splits; a mismatched host does not.
+    expect(
+      splitSourceName(
+        lineFixture({
+          source_name: "Google (Accounts.Google.com)",
+          sender_email: "a@accounts.google.com",
+        }),
+      ),
+    ).toEqual({ name: "Google", host: "accounts.google.com" });
+    expect(
+      splitSourceName(
+        lineFixture({
+          source_name: "Google (evil.example)",
+          sender_email: "a@accounts.google.com",
+        }),
+      ),
+    ).toEqual({ name: "Google (evil.example)", host: null });
+    expect(
+      splitSourceName(lineFixture({ source_name: "Strava", sender_email: undefined })),
+    ).toEqual({
+      name: "Strava",
+      host: null,
+    });
+  });
+
+  test("the amount shown is the first one the fact leaves out", () => {
+    const line = lineFixture({
+      fact: "Your scheduled payment of £33.33 is due",
+      numbers: [
+        { raw: "£33.33", value: 33.33, unit: "GBP" },
+        { raw: "£1,204.33", value: 1204.33, unit: "GBP" },
+      ],
+    });
+    expect(numberNotInFact(line)?.raw).toBe("£1,204.33");
+    expect(
+      numberNotInFact(lineFixture({ fact: "Your statement", numbers: undefined })),
+    ).toBeUndefined();
+  });
+
+  test("one trailing item, in precedence order", () => {
+    const delta = {
+      raw: "21.3 km",
+      previous_raw: "19.0 km",
+      change: 12.1,
+      text: "up 12%",
+      against: "2026-09-30T05:00:00Z",
+    };
+    const amount = { raw: "£4.20", value: 4.2, unit: "GBP" };
+    const everything = lineFixture({
+      in_todo: "already in To do",
+      todo_suggestion: "Suggested to-do",
+      delta,
+      numbers: [amount],
+      section: "routine",
+      count: 5,
+    });
+    expect(trailingItem(everything)).toEqual({ kind: "in_todo", text: "already in To do" });
+    expect(trailingItem({ ...everything, in_todo: null })).toEqual({ kind: "todo_suggestion" });
+    expect(trailingItem({ ...everything, in_todo: null, todo_suggestion: null })).toEqual({
+      kind: "delta",
+      text: "up 12%",
+      title: "Computed from 21.3 km and 19.0 km",
+    });
+    const noDelta = { ...everything, in_todo: null, todo_suggestion: null, delta: null };
+    expect(trailingItem(noDelta)).toEqual({ kind: "amount", text: "£4.20" });
+    expect(trailingItem({ ...noDelta, numbers: [] })).toEqual({ kind: "count", text: "5 emails" });
+    // A count is a routine thing and a single message needs no count.
+    expect(trailingItem({ ...noDelta, numbers: [], count: 1 })).toBeNull();
+    expect(trailingItem({ ...noDelta, numbers: [], section: "changed" })).toBeNull();
   });
 });

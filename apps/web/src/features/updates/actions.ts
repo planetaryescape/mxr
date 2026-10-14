@@ -30,8 +30,8 @@ export const updatesActions: Action[] = [
     aliases: ["ArrowUp"],
     hideInPalette: true,
   }),
-  key("updates.expand", "expand", "Show quieter sources", "Enter", {
-    shortLabel: "Expand",
+  key("updates.expand", "expand", "Show routine", "Enter", {
+    shortLabel: "Routine",
     group: "Move",
   }),
   key("updates.let-go-all", "letGoAll", "Let go of the digest…", "A", {
@@ -54,6 +54,9 @@ export const updatesActions: Action[] = [
   key("updates.open-email", "openEmail", "Open the email", "o", {
     shortLabel: "Email",
     icon: Mail,
+  }),
+  key("updates.peek", "peek", "Show details under this line", "Space", {
+    shortLabel: "Details",
   }),
   key("updates.pin", "pin", "Pin or unpin this source's latest email", "p", {
     shortLabel: "Pin",

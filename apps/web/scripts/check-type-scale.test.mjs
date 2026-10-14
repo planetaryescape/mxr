@@ -45,7 +45,8 @@ describe("check-type-scale: allowlist", () => {
   });
 
   test("a directory entry covers files below it, not files that share a prefix", () => {
-    expect(allowed("features/updates/UpdateLineRow.tsx")).toBe(true);
-    expect(allowed("features/updates-old/Thing.tsx")).toBe(false);
+    const directory = new Map([["features/updates", "a folder under migration"]]);
+    expect(allowed("features/updates/UpdateLineRow.tsx", directory)).toBe(true);
+    expect(allowed("features/updates-old/Thing.tsx", directory)).toBe(false);
   });
 });

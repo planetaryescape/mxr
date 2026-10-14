@@ -1,15 +1,12 @@
 /*
  * How the digest is laid out: three sections in a fixed order, Routine
- * folded after a few sources, and the cursor's order through all of it.
- * Pure, so the route and its tests read the same rows.
+ * collapsed to one line until opened, and the cursor's order through all of
+ * it. Pure, so the route and its tests read the same rows.
  */
 
 import { plural } from "@/lib/format";
 
 import type { UpdateLine, UpdateLink, UpdateSection, UpdateSetting, UpdatesDigest } from "./api";
-
-/** Routine sources shown before "+ N quieter sources". */
-export const ROUTINE_SHOWN = 4;
 
 export const SECTION_TITLE: Record<UpdateSection, string> = {
   needs_a_look: "Needs a look",
@@ -27,11 +24,14 @@ export interface DigestRow {
 export interface DigestRows {
   rows: DigestRow[];
   bySection: Record<UpdateSection, DigestRow[]>;
-  /** Routine lines folded away: sources and the messages they hold. */
-  quieter: { sources: number; messages: number };
+  /**
+   * Routine's totals, shown on its one collapsed line. The digest carries no
+   * routine total of its own; the daemon's headline sums the same lines.
+   */
+  routine: { sources: number; messages: number };
 }
 
-/** The rows on screen, minus lines being let go, with Routine folded. */
+/** The rows on screen, minus lines being let go. Routine has no rows until opened. */
 export function digestRows(
   digest: UpdatesDigest,
   options: { routineOpen: boolean; hidden?: ReadonlySet<string> },
@@ -39,12 +39,10 @@ export function digestRows(
   const hidden = options.hidden ?? new Set<string>();
   const visible = (lines: UpdateLine[]) => lines.filter((line) => !hidden.has(line.id));
   const routine = visible(digest.routine);
-  const shownRoutine = options.routineOpen ? routine : routine.slice(0, ROUTINE_SHOWN);
-  const folded = routine.slice(shownRoutine.length);
   const sections: [UpdateSection, UpdateLine[]][] = [
     ["needs_a_look", visible(digest.needs_a_look)],
     ["changed", visible(digest.changed)],
-    ["routine", shownRoutine],
+    ["routine", options.routineOpen ? routine : []],
   ];
   const rows: DigestRow[] = [];
   const bySection: DigestRows["bySection"] = { needs_a_look: [], changed: [], routine: [] };
@@ -58,11 +56,16 @@ export function digestRows(
   return {
     rows,
     bySection,
-    quieter: {
-      sources: folded.length,
-      messages: folded.reduce((sum, line) => sum + line.count, 0),
+    routine: {
+      sources: routine.length,
+      messages: routine.reduce((sum, line) => sum + line.count, 0),
     },
   };
+}
+
+/** "Routine · 31 updates from 16 sources", the one line Routine collapses to. */
+export function routineLine(routine: DigestRows["routine"]): string {
+  return `${SECTION_TITLE.routine} · ${plural(routine.messages, "update")} from ${plural(routine.sources, "source")}`;
 }
 
 /** "This morning's digest · 08:00 · 31 updates from 12 sources". */
@@ -157,9 +160,115 @@ export function tuneToast(sourceName: string, setting: UpdateSetting): string {
   return `${sourceName}: ${effect[setting]}.`;
 }
 
+/** A parcel's track: its steps and the index of the step it is at. */
+export interface TrackState {
+  steps: string[];
+  step: number | null;
+}
+
 /** Where a parcel stands on its track, 0 to 1, for the dots. */
-export function trackStep(line: UpdateLine): { steps: string[]; step: number | null } {
+export function trackStep(line: UpdateLine): TrackState {
   const tracker = line.tracker;
-  if (!tracker?.steps?.length) return { steps: [], step: null };
-  return { steps: tracker.steps, step: tracker.step ?? null };
+  const steps = tracker?.steps;
+  // A payload whose steps aren't a list shows no track, rather than one read character by character.
+  if (!Array.isArray(steps) || steps.length === 0) return { steps: [], step: null };
+  return { steps, step: tracker?.step ?? null };
+}
+
+/**
+ * The track may stand in for a parcel's fact only when the fact is the
+ * daemon's own generic rule line ("Parcel on its way"), outside Needs a look,
+ * and not "went quiet", which the track cannot say. A subject-derived fact
+ * ("Delayed to Fri 17 Oct") or a delivery problem always shows as written.
+ */
+export function trackReplacesFact(line: UpdateLine, track: string | null): boolean {
+  return (
+    track !== null &&
+    line.fact_source === "rule" &&
+    line.section !== "needs_a_look" &&
+    line.tracker?.outcome !== "quiet"
+  );
+}
+
+/**
+ * A parcel's track as one muted line: where it is and what comes next, as
+ * "Shipped · next: out for delivery". Nothing at the last step, since the
+ * fact already says it arrived.
+ */
+export function trackLabel(line: UpdateLine): string | null {
+  const { steps, step } = trackStep(line);
+  // The daemon's step is an index it computed; a value outside the steps
+  // (or not an integer) shows no track rather than a wrong one.
+  if (step === null || !Number.isInteger(step) || step < 0 || step >= steps.length) return null;
+  const next = steps[step + 1];
+  if (next === undefined) return null;
+  const here = steps[step] ?? "";
+  return `${here.charAt(0).toUpperCase()}${here.slice(1)} · next: ${next}`;
+}
+
+/** The sending host the daemon may append to a Needs a look name, lowercased. */
+function senderHost(line: UpdateLine): string | null {
+  const host = line.sender_email?.split("@")[1]?.trim().toLowerCase();
+  return host ? host : null;
+}
+
+/**
+ * "Google (accounts.google.com)" comes from the daemon with the sending host
+ * beside a display name anyone can choose (crates/updates/src/fact.rs,
+ * branded_name). Split it so the name stays whole and the host can be muted.
+ * A name without that exact suffix is shown as it came.
+ */
+export interface SourceName {
+  name: string;
+  host: string | null;
+}
+
+export function splitSourceName(line: UpdateLine): SourceName {
+  const host = senderHost(line);
+  if (host) {
+    const suffix = ` (${host})`;
+    if (line.source_name.toLowerCase().endsWith(suffix)) {
+      return { name: line.source_name.slice(0, -suffix.length), host };
+    }
+  }
+  return { name: line.source_name, host: null };
+}
+
+/**
+ * The first amount the mail quoted that the fact doesn't already say: the
+ * amount a "Your scheduled payment" line is missing.
+ */
+export function numberNotInFact(line: UpdateLine) {
+  return (line.numbers ?? []).find((number) => !line.fact.includes(number.raw));
+}
+
+/** The one value a row's trailing slot can show, in precedence order. */
+export type TrailingItem =
+  | { kind: "in_todo"; text: string }
+  | { kind: "todo_suggestion" }
+  | { kind: "delta"; text: string; title: string }
+  | { kind: "amount"; text: string }
+  | { kind: "count"; text: string };
+
+/**
+ * Only one item trails a row: already in To do, then the to-do affordance,
+ * then the computed delta, then the first amount the fact leaves out, then a
+ * routine count with its unit. Anything else waits for the peek.
+ */
+export function trailingItem(line: UpdateLine): TrailingItem | null {
+  if (line.in_todo) return { kind: "in_todo", text: line.in_todo };
+  if (line.todo_suggestion) return { kind: "todo_suggestion" };
+  if (line.delta) {
+    return {
+      kind: "delta",
+      text: line.delta.text,
+      title: `Computed from ${line.delta.raw} and ${line.delta.previous_raw}`,
+    };
+  }
+  const amount = numberNotInFact(line);
+  if (amount) return { kind: "amount", text: amount.raw };
+  if (line.section === "routine" && line.count > 1) {
+    return { kind: "count", text: plural(line.count, "email") };
+  }
+  return null;
 }

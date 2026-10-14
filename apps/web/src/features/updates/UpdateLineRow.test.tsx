@@ -1,12 +1,12 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
 import { UpdateLineRow } from "./UpdateLineRow";
 
-function renderLine(line: UpdateLine) {
-  const handlers = {
+function makeHandlers() {
+  return {
     onSelect: vi.fn<(line: UpdateLine) => void>(),
     onLetGo: vi.fn<(line: UpdateLine) => void>(),
     onNeedsMe: vi.fn<(line: UpdateLine) => void>(),
@@ -15,54 +15,124 @@ function renderLine(line: UpdateLine) {
     onTuneTo: vi.fn<(line: UpdateLine, setting: "muted" | "changes_only") => void>(),
     onSweep: vi.fn<(line: UpdateLine) => void>(),
     onPin: vi.fn<(line: UpdateLine) => void>(),
+    onTogglePeek: vi.fn<(line: UpdateLine) => void>(),
   };
-  render(
-    <ul>
-      <UpdateLineRow line={line} index={0} focused {...handlers} />
-    </ul>,
-  );
-  return { handlers, row: screen.getByTestId("update-line") };
 }
 
-describe("UpdateLineRow", () => {
-  test("reads as a source and its fact, with the computed delta and disclosed why", () => {
-    const { row, handlers } = renderLine(lineFixture());
+function renderLine(line: UpdateLine, options: { focused?: boolean; peeked?: boolean } = {}) {
+  const h = makeHandlers();
+  render(
+    <ul>
+      <UpdateLineRow
+        line={line}
+        index={0}
+        focused={options.focused ?? true}
+        peeked={options.peeked ?? false}
+        {...h}
+      />
+    </ul>,
+  );
+  return { handlers: h, row: screen.getByTestId("update-line") };
+}
+
+function openMenu(row: HTMLElement, name: string) {
+  fireEvent.pointerDown(within(row).getByRole("button", { name }), { button: 0, ctrlKey: false });
+}
+
+describe("UpdateLineRow at rest", () => {
+  test("a row is its source, its fact and one trailing value, with no buttons in the way", () => {
+    const { row } = renderLine(lineFixture(), { focused: false });
     const view = within(row);
     expect(view.getByTestId("update-source")).toHaveTextContent("Strava");
-    expect(view.getByTestId("update-fact")).toHaveTextContent("21.3 km over 3 runs");
+    expect(view.getByTestId("update-fact")).toHaveTextContent(
+      "Your week in running: 21.3 km over 3 runs",
+    );
     expect(view.getByTestId("update-delta")).toHaveTextContent("up 12% on last week");
     expect(view.getByTestId("update-delta")).toHaveAttribute(
       "title",
       "Computed from 21.3 km and 19.0 km",
     );
-    const why = view.getByText("Why this update?");
-    expect(why.parentElement).not.toHaveAttribute("open");
-    why.focus();
-    fireEvent.click(why);
-    expect(view.getByTestId("update-why")).toHaveTextContent("In the 08:00 digest.");
-    expect(view.getByRole("link", { name: "Open strava.com" })).toHaveAttribute(
-      "href",
-      "https://www.strava.com/athlete/training",
+    // The only control a resting row shows is its more menu.
+    expect(view.getAllByRole("button")).toHaveLength(1);
+    expect(view.getByRole("button", { name: "More actions for Strava" })).toBeInTheDocument();
+    expect(view.queryByText("Why this update?")).toBeNull();
+    expect(view.queryByRole("link")).toBeNull();
+    expect(view.queryByTestId("update-peek")).toBeNull();
+  });
+
+  test("the fact truncates at rest and wraps when the row is focused", () => {
+    const { row } = renderLine(lineFixture(), { focused: false });
+    expect(within(row).getByTestId("update-fact")).toHaveClass("truncate");
+    expect(within(row).getByTestId("update-fact")).not.toHaveClass("break-words");
+    expect(within(row).getByTestId("update-fact")).toHaveAttribute("title", lineFixture().fact);
+  });
+
+  test("the delta is neutral, not cyan", () => {
+    const { row } = renderLine(lineFixture());
+    expect(within(row).getByTestId("update-delta")).toHaveClass("text-muted-foreground");
+    expect(within(row).getByTestId("update-delta")).not.toHaveClass("text-primary");
+  });
+
+  test("a clock time is not shown at rest", () => {
+    const { row } = renderLine(
+      lineFixture({
+        section: "needs_a_look",
+        signal: "needs_you",
+        fact: "Security alert: New sign-in",
+        delta: undefined,
+        link: undefined,
+        time_label: "06:12",
+      }),
     );
-    fireEvent.click(view.getByRole("button", { name: "This needs me" }));
-    expect(handlers.onNeedsMe).toHaveBeenCalledTimes(1);
-    fireEvent.click(view.getByRole("button", { name: "Let go" }));
-    expect(handlers.onLetGo).toHaveBeenCalledTimes(1);
+    expect(row).not.toHaveTextContent("06:12");
   });
 
-  test("a suggested to-do has one task action and pin state comes from the digest", () => {
-    const { row, handlers } = renderLine(lineFixture({
-      todo_suggestion: "Suggested to-do: failed payment (rule). t adds it.",
-      latest_message_pinned: true,
-    }));
-    const view = within(row);
-    expect(view.getByRole("button", { name: "Add to To do" })).toBeInTheDocument();
-    expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
-    expect(view.getByRole("button", { name: "Unpin" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(view.getByRole("button", { name: "Add to To do" }));
-    expect(handlers.onNeedsMe).toHaveBeenCalledTimes(1);
+  test("a routine count carries its unit, and a single message shows none", () => {
+    const { row } = renderLine(
+      lineFixture({ section: "routine", delta: undefined, numbers: [], count: 5 }),
+    );
+    expect(within(row).getByTestId("update-count")).toHaveTextContent(/^5 emails$/);
+    cleanup();
+    const single = renderLine(
+      lineFixture({ section: "routine", delta: undefined, numbers: [], count: 1 }),
+    );
+    expect(within(single.row).queryByTestId("update-count")).toBeNull();
   });
 
+  test("an amount the fact leaves out trails it; one the fact already says does not", () => {
+    const amounts = [{ raw: "£33.33", value: 33.33, unit: "GBP" }];
+    const { row } = renderLine(
+      lineFixture({ fact: "Your scheduled payment", delta: undefined, numbers: amounts }),
+    );
+    expect(within(row).getByTestId("update-amount")).toHaveTextContent("£33.33");
+    cleanup();
+    const said = renderLine(
+      lineFixture({ fact: "Paid £33.33 today", delta: undefined, numbers: amounts }),
+    );
+    expect(within(said.row).queryByTestId("update-amount")).toBeNull();
+  });
+
+  test("a wrong-shaped payload renders without throwing", () => {
+    const { row } = renderLine(
+      lineFixture({
+        numbers: undefined,
+        delta: undefined,
+        tracker: {
+          kind: "parcel",
+          state: "x",
+          state_label: "x",
+          outcome: "progress",
+          steps: undefined,
+          step: null,
+        },
+      }),
+    );
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Your week in running");
+    expect(within(row).queryByTestId("parcel-track")).toBeNull();
+  });
+});
+
+describe("UpdateLineRow's trailing slot", () => {
   test("a sign-in already in To do says so and opens no link", () => {
     const { row } = renderLine(
       lineFixture({
@@ -74,234 +144,367 @@ describe("UpdateLineRow", () => {
         link: { url: "https://myaccount.google.com/", domain: "google.com" },
         in_todo: "already in To do",
         todo_id: "todo_1",
-        time_label: "06:12",
       }),
     );
     const view = within(row);
     expect(view.getByTestId("update-in-todo")).toHaveTextContent("already in To do");
     expect(view.queryByRole("link")).toBeNull();
-    expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
-    expect(row).toHaveTextContent("06:12");
+    expect(view.queryByTestId("update-todo-suggestion")).toBeNull();
+    openMenu(row, "More actions for Google");
+    expect(screen.queryByRole("menuitem", { name: /This needs me|Add to To do/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /google\.com/ })).toBeNull();
   });
 
-  test("a parcel leads with status and identity, with full references in keyboard-accessible details", () => {
-    const { row, handlers } = renderLine(
+  test("a suggested to-do is one compact affordance that adds the to-do", () => {
+    const { row, handlers: h } = renderLine(
       lineFixture({
-        source_key: "parcel:1",
-        source_name: "Bookshop",
-        fact: "Parcel out for delivery",
-        latest_thread_id: "thread-1",
-        message_ids: [],
+        section: "needs_a_look",
+        signal: "needs_you",
+        todo_suggestion: "Suggested to-do: failed payment (rule). t adds it.",
+        todo_title: "Check failed payment from Stripe",
         delta: undefined,
-        link: undefined,
-        latest_message_id: undefined,
-        tracker: {
-          kind: "parcel",
-          state: "out_for_delivery",
-          state_label: "out for delivery",
-          outcome: "progress",
-          steps: ["ordered", "shipped", "out for delivery", "delivered"],
-          step: 2,
-          detail: "Expected by Thu 8 Oct · DHL",
-          items: [
-            { name: "Blue notebook", quantity: 1 },
-            { name: "Pen set", quantity: 2 },
-          ],
-          tracking_number: "A-VERY-LONG-TRACKING-REFERENCE-1234567890",
-          order_number: "ORDER-987",
-        },
+        latest_message_pinned: true,
       }),
     );
     const view = within(row);
-    expect(view.queryByTestId("parcel-track")).toBeNull();
-    expect(row).toHaveTextContent("Expected by Thu 8 Oct · DHL");
-    expect(view.getByTestId("parcel-identity")).toHaveTextContent("Blue notebook +1 more");
-    expect(view.getByTestId("parcel-identity")).toHaveTextContent(
-      "A-VERY-LONG-TRACKING-REFERENCE-1234567890",
-    );
-    expect(view.getByTestId("update-why").closest("details")).not.toHaveAttribute("open");
-    const details = view.getByText("Details");
-    expect(details).toHaveAttribute(
-      "aria-label",
-      "Details for Bookshop parcel with reference A-VERY-LONG-TRACKING-REFERENCE-1234567890",
-    );
-    expect(details.parentElement).toHaveClass("open:basis-full");
-    expect(details.parentElement?.parentElement).toContainElement(
-      view.getByRole("button", { name: "From email" }),
-    );
-    details.focus();
-    expect(handlers.onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ source_name: "Bookshop" }),
-    );
-    fireEvent.click(details);
-    expect(view.getByTestId("update-why")).toHaveTextContent("Here because");
-    expect(view.getByRole("list", { name: "Available parcel items" })).toHaveTextContent(
-      "Pen set · quantity 2",
-    );
-    expect(view.getByText("Order reference: ORDER-987")).toBeInTheDocument();
-    fireEvent.click(view.getByRole("button", { name: "From email" }));
-    expect(handlers.onOpenEmail).toHaveBeenCalledTimes(1);
-    expect(view.queryByRole("button", { name: "Let go" })).toBeNull();
-    expect(view.queryByRole("button", { name: "Tune" })).toBeNull();
+    const affordance = view.getByTestId("update-todo-suggestion");
+    expect(affordance).toHaveAccessibleName("Add to To do: Check failed payment from Stripe");
+    expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
+    fireEvent.click(affordance);
+    expect(h.onNeedsMe).toHaveBeenCalledTimes(1);
   });
 
-  test("parcel identity falls back cleanly for an old payload", () => {
-    const oldPayload = lineFixture({
+  test("the to-do affordance replaces the other trailing values", () => {
+    const { row } = renderLine(
+      lineFixture({
+        section: "needs_a_look",
+        todo_suggestion: "Suggested to-do: x",
+        todo_title: "x",
+        numbers: [{ raw: "21.3 km", value: 21.3, unit: "km" }],
+        fact: "Something else",
+      }),
+    );
+    expect(within(row).getByTestId("update-todo-suggestion")).toBeInTheDocument();
+    expect(within(row).queryByTestId("update-delta")).toBeNull();
+    expect(within(row).queryByTestId("update-amount")).toBeNull();
+  });
+});
+
+describe("UpdateLineRow's source", () => {
+  test("a Needs a look name keeps its sending host, muted, and the name stays whole", () => {
+    const { row } = renderLine(
+      lineFixture({
+        section: "needs_a_look",
+        source_name: "Google (accounts.google.com)",
+        sender_email: "no-reply@accounts.google.com",
+        delta: undefined,
+      }),
+    );
+    const source = within(row).getByTestId("update-source");
+    expect(source).toHaveTextContent("Google (accounts.google.com)");
+    expect(within(row).getByTestId("update-host")).toHaveClass("text-2xs", "text-muted-foreground");
+    expect(source.firstElementChild).toHaveTextContent("Google");
+    expect(source.firstElementChild).toHaveClass("shrink-0");
+    expect(source).toHaveClass("text-foreground", "font-normal");
+  });
+
+  test("a changed source is regular weight and carries no host", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava" }));
+    expect(within(row).getByTestId("update-source")).toHaveClass("text-fg-2", "font-normal");
+    expect(within(row).queryByTestId("update-host")).toBeNull();
+  });
+});
+
+describe("UpdateLineRow's track", () => {
+  const parcel = (overrides: Partial<UpdateLine> = {}) =>
+    lineFixture({
+      source_key: "parcel:1",
       source_name: "Bookshop",
       fact: "Parcel on its way",
+      // The daemon's own generic parcel line is a rule fact, not a subject.
+      fact_source: "rule",
+      message_ids: [],
+      latest_message_id: undefined,
+      delta: undefined,
+      link: undefined,
       tracker: {
         kind: "parcel",
-        state: "in_transit",
-        state_label: "on its way",
+        state: "out_for_delivery",
+        state_label: "out for delivery",
         outcome: "progress",
+        steps: ["ordered", "shipped", "out for delivery", "delivered"],
+        step: 1,
+        detail: "Expected by Thu 8 Oct · DHL",
+        items: [
+          { name: "Blue notebook", quantity: 1 },
+          { name: "Pen set", quantity: 2 },
+        ],
+        tracking_number: "A-VERY-LONG-TRACKING-REFERENCE-1234567890",
+        order_number: "ORDER-987",
       },
+      ...overrides,
     });
-    const { row } = renderLine(oldPayload);
+
+  test("a parcel's track stands in the fact column for its generic fact; the fact waits in the peek", () => {
+    const { row } = renderLine(parcel(), { focused: false });
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Shipped · next: out for delivery",
+    );
+    expect(within(row).queryByText("Parcel on its way")).toBeNull();
+    // The references and the items wait for the peek.
     expect(within(row).queryByTestId("parcel-identity")).toBeNull();
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel on its way");
+    expect(row).not.toHaveTextContent("A-VERY-LONG-TRACKING-REFERENCE");
   });
 
-  test("details render repeated item records without duplicate React keys", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const { row } = renderLine(
-        lineFixture({
-          source_name: "Bookshop",
-          fact: "Parcel on its way",
-          tracker: {
-            kind: "parcel",
-            state: "in_transit",
-            state_label: "on its way",
-            outcome: "progress",
-            items: [
-              { name: "Blue notebook", quantity: 1 },
-              { name: "Blue notebook", quantity: 1 },
-            ],
-          },
-        }),
-      );
-      fireEvent.click(within(row).getByText("Details"));
-      expect(within(row).getAllByRole("listitem")).toHaveLength(2);
-      expect(consoleError.mock.calls.flat().join(" ")).not.toContain("same key");
-    } finally {
-      consoleError.mockRestore();
+  test("a subject-derived parcel fact shows as written, with the track after it", () => {
+    const { row } = renderLine(parcel({ fact: "Delayed to Fri 17 Oct", fact_source: "subject" }), {
+      focused: false,
+    });
+    const fact = within(row).getByTestId("update-fact");
+    expect(fact).toHaveTextContent("Delayed to Fri 17 Oct");
+    expect(fact).toHaveTextContent("Shipped · next: out for delivery");
+    expect(within(fact).getByText("Shipped · next: out for delivery")).toHaveClass(
+      "text-muted-foreground",
+    );
+    expect(within(row).queryByTestId("update-fact-full")).toBeNull();
+  });
+
+  test("a parcel in Needs a look shows its fact even when the fact is generic", () => {
+    const { row } = renderLine(parcel({ section: "needs_a_look", signal: "needs_you" }), {
+      focused: false,
+    });
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel on its way");
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Shipped · next: out for delivery",
+    );
+  });
+
+  test("a parcel that went quiet keeps the fact that says so", () => {
+    const quiet = parcel({ fact: "Parcel from Bookshop went quiet" });
+    const { row } = renderLine(
+      { ...quiet, tracker: { ...quiet.tracker!, outcome: "quiet" } },
+      {
+        focused: false,
+      },
+    );
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Parcel from Bookshop went quiet",
+    );
+  });
+
+  test("the peek keeps the full fact when the track stands in for it", () => {
+    const { row } = renderLine(parcel(), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-fact-full")).toHaveTextContent("Parcel on its way");
+  });
+
+  test("a delivered parcel keeps its own fact, since there is no track left", () => {
+    const { row } = renderLine(
+      parcel({
+        fact: "Parcel delivered",
+        tracker: { ...parcel().tracker!, state: "delivered", step: 3 },
+      }),
+      { focused: false },
+    );
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel delivered");
+  });
+
+  test("a parcel's references and items are in its peek", () => {
+    const { row } = renderLine(parcel(), { peeked: true });
+    expect(within(row).getByTestId("parcel-identity")).toHaveTextContent(
+      "Tracking reference: A-VERY-LONG-TRACKING-REFERENCE-1234567890 · Order reference: ORDER-987",
+    );
+    expect(within(row).getByRole("list", { name: "Available parcel items" })).toHaveTextContent(
+      "Blue notebook",
+    );
+    expect(within(row).getByRole("list", { name: "Available parcel items" })).toHaveTextContent(
+      "Pen set · quantity 2",
+    );
+    expect(within(row).getByText("Expected by Thu 8 Oct · DHL")).toBeInTheDocument();
+    expect(within(row).getByTestId("update-fact-full")).toHaveTextContent("Parcel on its way");
+  });
+
+  test("a parcel has no sender's mail to sweep, pin or let go", () => {
+    const { row } = renderLine(parcel());
+    openMenu(row, "More actions for Bookshop");
+    expect(screen.queryByRole("menuitem", { name: "Sweep sender" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Pin" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Let go" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Tune…" })).toBeNull();
+  });
+});
+
+describe("UpdateLineRow's keys and focus", () => {
+  test("a focused row names its two most useful keys and Space", () => {
+    const { row } = renderLine(lineFixture());
+    const keys = within(row).getByTestId("update-keys");
+    expect(keys).toHaveTextContent("e");
+    expect(keys).toHaveTextContent("Let go");
+    expect(keys).toHaveTextContent("o");
+    expect(keys).toHaveTextContent("Space");
+    expect(keys).toHaveTextContent("Details");
+    expect(keys).toHaveAttribute("aria-hidden", "true");
+  });
+
+  test("a focused row shows the fact in full", () => {
+    const { row } = renderLine(lineFixture(), { focused: true });
+    expect(within(row).getByTestId("update-fact")).toHaveClass("break-words");
+    expect(within(row).getByTestId("update-fact")).not.toHaveClass("truncate");
+  });
+});
+
+describe("UpdateLineRow's more menu", () => {
+  test("it holds every verb the row has, and gates them as before", () => {
+    const { row } = renderLine(
+      lineFixture({
+        suggestion: "You've let go of Strava 8 digests in a row without opening it.",
+      }),
+    );
+    openMenu(row, "More actions for Strava");
+    for (const name of [
+      "This needs me",
+      "Open strava.com",
+      "Open email",
+      "Pin",
+      "Sweep sender",
+      "Let go",
+      "Tune…",
+      "Mute",
+      "Changes only",
+    ]) {
+      expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
   });
 
-  test("same-merchant parcels remain distinguishable by their full references", () => {
-    const first = lineFixture({
-      id: "parcel-1",
-      source_name: "Bookshop",
-      source_key: "parcel:1",
-      fact: "Parcel on its way",
-      tracker: {
-        kind: "parcel",
-        state: "in_transit",
-        state_label: "on its way",
-        outcome: "progress",
-        tracking_number: "TRACK-12345678901234567890-A",
-      },
-    });
-    const second = lineFixture({
-      ...first,
-      id: "parcel-2",
-      source_key: "parcel:2",
-      tracker: { ...first.tracker!, tracking_number: "TRACK-12345678901234567890-B" },
-    });
-    const handlers = {
-      onSelect: vi.fn<(line: UpdateLine) => void>(),
-      onLetGo: vi.fn<(line: UpdateLine) => void>(),
-      onNeedsMe: vi.fn<(line: UpdateLine) => void>(),
-      onTune: vi.fn<(line: UpdateLine) => void>(),
-      onOpenEmail: vi.fn<(line: UpdateLine) => void>(),
-      onTuneTo: vi.fn<(line: UpdateLine, setting: "muted" | "changes_only") => void>(),
-      onSweep: vi.fn<(line: UpdateLine) => void>(),
-      onPin: vi.fn<(line: UpdateLine) => void>(),
-    };
+  test("a suggested to-do reads Add to To do in the menu", () => {
+    const { row } = renderLine(
+      lineFixture({
+        todo_suggestion: "Suggested to-do: x",
+        todo_title: "x",
+        section: "needs_a_look",
+      }),
+    );
+    openMenu(row, "More actions for Strava");
+    expect(screen.getByRole("menuitem", { name: "Add to To do" })).toBeInTheDocument();
+  });
+
+  test("a link that needs you is not in the menu", () => {
+    const { row } = renderLine(
+      lineFixture({
+        section: "needs_a_look",
+        signal: "needs_you",
+        link: { url: "https://myaccount.google.com/", domain: "google.com" },
+        delta: undefined,
+      }),
+    );
+    openMenu(row, "More actions for Strava");
+    expect(screen.queryByRole("menuitem", { name: "Open google.com" })).toBeNull();
+  });
+
+  test("closing the menu returns focus to the row, not its More trigger", async () => {
+    const { row } = renderLine(lineFixture(), { focused: false });
+    openMenu(row, "More actions for Strava");
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(row).toHaveFocus();
+  });
+
+  test("an action that opens a dialog leaves focus to the dialog", async () => {
+    const { row, handlers: h } = renderLine(lineFixture(), { focused: false });
+    openMenu(row, "More actions for Strava");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Let go" }));
+    expect(h.onLetGo).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(row).not.toHaveFocus();
+  });
+
+  test("each action acts on the line its row was rendered with", () => {
+    const first = lineFixture({ id: "a", source_key: "a.example", source_name: "Alpha" });
+    const second = lineFixture({ id: "b", source_key: "b.example", source_name: "Beta" });
+    const h = makeHandlers();
     render(
       <ul>
         {[first, second].map((line, index) => (
-          <UpdateLineRow key={line.id} line={line} index={index} focused={false} {...handlers} />
+          <UpdateLineRow
+            key={line.id}
+            line={line}
+            index={index}
+            focused={false}
+            peeked={false}
+            {...h}
+          />
         ))}
       </ul>,
     );
-    const identities = screen.getAllByTestId("parcel-identity");
-    expect(identities).toHaveLength(2);
-    expect(identities[0]).toHaveTextContent("TRACK-12345678901234567890-A");
-    expect(identities[1]).toHaveTextContent("TRACK-12345678901234567890-B");
+    const rows = screen.getAllByTestId("update-line");
+    openMenu(rows[1]!, "More actions for Beta");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Let go" }));
+    expect(h.onLetGo).toHaveBeenCalledWith(expect.objectContaining({ id: "b" }));
+    expect(h.onLetGo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("UpdateLineRow's peek", () => {
+  test("it holds the why, the numbers, the suggestion with its answers, and the links", () => {
+    const { row, handlers: h } = renderLine(
+      lineFixture({
+        time_label: "06:12",
+        numbers: [{ raw: "21.3 km", value: 21.3, unit: "km" }],
+        suggestion: "You've let go of Strava 8 digests in a row. Mute it, or changes only?",
+      }),
+      { peeked: true },
+    );
+    const peek = within(row).getByRole("region", { name: "Details for Strava" });
+    expect(within(peek).getByTestId("update-why")).toHaveTextContent("In the 08:00 digest.");
+    expect(within(peek).getByTestId("update-numbers")).toHaveTextContent("Numbers: 21.3 km");
+    expect(peek).toHaveTextContent("At 06:12");
+    fireEvent.click(within(peek).getByRole("button", { name: "Changes only" }));
+    expect(h.onTuneTo).toHaveBeenCalledWith(expect.anything(), "changes_only");
+    fireEvent.click(within(peek).getByRole("button", { name: "Mute" }));
+    expect(h.onTuneTo).toHaveBeenCalledWith(expect.anything(), "muted");
+    expect(within(peek).getByRole("link", { name: "Open strava.com" })).toHaveAttribute(
+      "href",
+      "https://www.strava.com/athlete/training",
+    );
+    fireEvent.click(within(peek).getByRole("button", { name: "Open email" }));
+    expect(h.onOpenEmail).toHaveBeenCalledTimes(1);
   });
 
-  test.each([
-    ["available_for_pickup", "ready to collect"],
-    ["attempt_fail", "delivery attempt failed"],
-    ["exception", "delivery problem"],
-  ])("a %s parcel keeps its action clear in text", (state, label) => {
-    const { row } = renderLine(lineFixture({
-      fact: `Parcel ${label.toLowerCase()}`,
-      tracker: {
-        kind: "parcel",
-        state,
-        state_label: label.toLowerCase(),
-        outcome: state === "available_for_pickup" ? "progress" : "bad",
-      },
-    }));
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent(label);
-  });
-
-  test("a delivered parcel keeps a quiet fact and does not repeat the state", () => {
-    const { row } = renderLine(lineFixture({
-      fact: "Parcel delivered",
-      tracker: {
-        kind: "parcel",
-        state: "delivered",
-        state_label: "delivered",
-        outcome: "good",
-      },
-    }));
-    const fact = within(row).getByTestId("update-fact");
-    expect(fact).toHaveTextContent("Parcel delivered");
-    expect(fact).toHaveClass("text-muted-foreground");
-    expect(row.querySelector("svg")).toHaveClass("text-muted-foreground/50");
-    expect(within(row).queryByText("delivered ·", { exact: false })).toBeNull();
-  });
-
-  test("a source's sender can be swept and its latest email pinned", () => {
-    const { row, handlers } = renderLine(lineFixture());
-    const view = within(row);
-    fireEvent.click(view.getByRole("button", { name: "Sweep sender" }));
-    expect(handlers.onSweep).toHaveBeenCalledTimes(1);
-    fireEvent.click(view.getByRole("button", { name: "Pin" }));
-    expect(handlers.onPin).toHaveBeenCalledTimes(1);
-  });
-
-  test("a parcel has no sender's mail to sweep", () => {
+  test("a line that needs you opens no link in its peek", () => {
     const { row } = renderLine(
       lineFixture({
-        sender_email: undefined,
-        latest_message_id: undefined,
-        tracker: {
-          kind: "parcel",
-          state: "shipped",
-          state_label: "shipped",
-          outcome: "progress",
-          steps: ["ordered", "shipped"],
-          step: 1,
-          detail: "DHL",
-        },
+        section: "needs_a_look",
+        signal: "needs_you",
+        link: { url: "https://myaccount.google.com/", domain: "google.com" },
+        delta: undefined,
       }),
+      { peeked: true },
     );
-    expect(within(row).queryByRole("button", { name: "Sweep sender" })).toBeNull();
-    expect(within(row).queryByRole("button", { name: "Pin" })).toBeNull();
+    const peek = within(row).getByRole("region", { name: "Details for Strava" });
+    expect(within(peek).queryByRole("link")).toBeNull();
+    expect(within(peek).getByRole("button", { name: "Open email" })).toBeInTheDocument();
   });
 
-  test("the mute question offers its two answers", () => {
-    const { row, handlers } = renderLine(
+  test("clicking the row body toggles the peek; its controls and text do not", () => {
+    const { row, handlers: h } = renderLine(
       lineFixture({
-        suggestion:
-          "You've let go of Strava 8 digests in a row without opening it. Mute it, or changes only?",
+        todo_suggestion: "Suggested to-do: x",
+        todo_title: "x",
+        section: "needs_a_look",
       }),
+      { focused: false, peeked: true },
     );
-    fireEvent.click(within(row).getByRole("button", { name: "Changes only" }));
-    expect(handlers.onTuneTo).toHaveBeenCalledWith(expect.anything(), "changes_only");
+    fireEvent.click(within(row).getByTestId("update-fact"));
+    expect(h.onTogglePeek).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(row).getByTestId("update-todo-suggestion"));
+    expect(h.onTogglePeek).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(row).getByTestId("update-why"));
+    expect(h.onTogglePeek).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(row).getByRole("region", { name: "Details for Strava" }));
+    expect(h.onTogglePeek).toHaveBeenCalledTimes(1);
+  });
+
+  test("a peeked row's fact wraps", () => {
+    const { row } = renderLine(lineFixture(), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-fact")).toHaveClass("break-words");
   });
 });

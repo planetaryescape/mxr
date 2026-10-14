@@ -337,6 +337,11 @@ function updateLine(page: Page, lineId: string) {
   return page.locator(`[data-testid='update-line'][data-line-id=${JSON.stringify(lineId)}]`);
 }
 
+/** A row's verbs live in its more menu. */
+async function openMoreMenu(line: ReturnType<typeof updateLine>) {
+  await line.getByRole("button", { name: /^More actions for / }).click();
+}
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
   "mode-move": modeMove,
   archive: rowVerb("archive", ["e"], { leaves: true }),
@@ -635,7 +640,8 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     }
     if (!target) throw new Error("the demo has no Updates sender with mail to sweep");
     await openApp(page, "/updates");
-    await updateLine(page, target.id).getByRole("button", { name: "Sweep sender" }).click();
+    await openMoreMenu(updateLine(page, target.id));
+    await page.getByRole("menuitem", { name: "Sweep sender" }).click();
     const dialog = page.getByTestId("sweep-dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: /^Archive \d/ }).click();
@@ -655,12 +661,20 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     try {
       await openApp(page, "/updates");
       const line = updateLine(page, target.id);
-      await line.getByRole("button", { name: "Pin", exact: true }).click();
+      await openMoreMenu(line);
+      await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
       await expectToast(page, "pin");
-      await expect(line.getByRole("button", { name: "Unpin", exact: true })).toBeVisible();
+      await openMoreMenu(line);
+      await expect(page.getByRole("menuitem", { name: "Unpin", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      // A closing menu still owns the keyboard until its exit ends.
+      await expect(page.getByRole("menu")).toHaveCount(0);
       await page.keyboard.press("u");
       await expectUndone(page);
-      await expect(line.getByRole("button", { name: "Pin", exact: true })).toBeVisible();
+      await openMoreMenu(line);
+      await expect(page.getByRole("menuitem", { name: "Pin", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
     } finally {
       await unpin();
     }

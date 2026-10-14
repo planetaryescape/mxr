@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.99](https://github.com/planetaryescape/mxr/compare/v0.6.98...v0.6.99) (2026-10-14)
+
+
+### Features
+
+* route Claude models through Anthropic first with OpenRouter fallback ([#458](https://github.com/planetaryescape/mxr/issues/458)) ([adfad63](https://github.com/planetaryescape/mxr/commit/adfad63c170fb4a29ebff6dd91a5676fa738ef8c))
+
+
+### Bug Fixes
+
+* update rustls to 0.23.46 for RUSTSEC-2026-0346 to 0349 ([#460](https://github.com/planetaryescape/mxr/issues/460)) ([dabed70](https://github.com/planetaryescape/mxr/commit/dabed707082fbd9a48c614d024d9a98f8472ca88))
+
 ## [0.6.98](https://github.com/planetaryescape/mxr/compare/v0.6.97...v0.6.98) (2026-10-14)
 
 

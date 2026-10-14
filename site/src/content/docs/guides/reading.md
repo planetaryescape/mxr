@@ -96,7 +96,9 @@ left open overnight can't skew it.
 
 A digest link or a teaser points at an article on someone else's site. The
 reader's **Article** tab, `L`, or `mxr reading open ITEM --article` fetches
-it, and nothing else ever does. The client names the site before it
+it. So does `M` (or `mxr reading marginalia send`) on a digest link whose
+article isn't saved, because Marginalia needs the article first. Nothing else
+fetches one. The client names the site before it
 contacts it ("Fetching from sqlite.org"), because the fetch tells that site
 you clicked. Many newsletter links go through a click tracker; those show
 "via substack.com" until the article is fetched, and the reader then lists

@@ -161,8 +161,9 @@ email stays in your inbox and in search.
 its count is the only one Reading shows. `b` in the apps, `mxr reading
 later` on the command line.
 
-**Highlight**: a passage saved from the reader with `h`, found by search
-and exported with `mxr reading export --markdown`.
+**Highlight**: a passage saved from the reader with `h`, or made in
+[Marginalia](/guides/marginalia/) and read back. Found by search and
+exported with `mxr reading export --markdown`.
 
 **Archive** (mode): records such as receipts, orders and bookings, with an
 answer box that returns the field you asked for (`mxr records`, `g e`). Not

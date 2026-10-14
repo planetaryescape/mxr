@@ -212,7 +212,7 @@ for motion), implement the command in the view's controller, done.
   thread ids). Pure helpers live in `readingView.ts`.
 - The reader renders the daemon's paragraphs as text, never the email's
   HTML in the app page; the sender's layout stays in the sandboxed iframe.
-- The article is fetched only on `L` or the Article tab, after the toast
+- The article is fetched only on `L` or the Article tab, or on `M` for a digest link whose article isn't saved (Marginalia needs it first), after the toast
   names the site; `b` on a link saves it and then fetches it so it reads
   offline.
 - Scopes `reading` and `reading-reader` in `lib/actions`; swipe right is

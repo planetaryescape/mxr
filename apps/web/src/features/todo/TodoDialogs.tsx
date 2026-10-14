@@ -131,7 +131,7 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
         </DialogHeader>
         <form className="grid gap-3" onSubmit={submit}>
           {EDIT_FIELDS.map(({ field, label, hint }, index) => (
-            <label key={field} className="grid gap-1 text-[13px]">
+            <label key={field} className="grid gap-1 text-sm">
               <span className="font-medium">{label}</span>
               <Input
                 autoFocus={index === 0}
@@ -185,11 +185,11 @@ export function MakeTodoDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={submit}>
-          <label className="grid gap-1 text-[13px]">
+          <label className="grid gap-1 text-sm">
             <span className="font-medium">What to do</span>
             <Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
-          <label className="grid gap-1 text-[13px]">
+          <label className="grid gap-1 text-sm">
             <span className="font-medium">Due (optional)</span>
             <Input
               value={due}
@@ -251,7 +251,7 @@ export function LetGoAllDialog({
         ) : rows.length > 0 ? (
           <ul
             aria-label="To-dos to let go of"
-            className="grid max-h-64 gap-0.5 overflow-y-auto border-l border-border pl-3 text-[13px] text-muted-foreground"
+            className="grid max-h-64 gap-0.5 overflow-y-auto border-l border-border pl-3 text-sm text-muted-foreground"
           >
             {rows.map((todo) => (
               <li

@@ -15,7 +15,7 @@ export function TokenSection() {
 
   return (
     <div>
-      <p className="mb-5 max-w-prose text-[13px] text-muted-foreground">
+      <p className="mb-5 max-w-prose text-sm text-muted-foreground">
         mxr web needs local access to connect to your mail app. Most local launches set this up
         automatically. If access expires, paste the token from your active mxr profile here.
       </p>

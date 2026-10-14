@@ -61,7 +61,7 @@ export function SweepDialog({
         {preview.isLoading ? (
           <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" />
         ) : data && data.count > 0 ? (
-          <div className="grid gap-3 text-[13px]">
+          <div className="grid gap-3 text-sm">
             {!senderLabel && senders.length > 0 ? (
               <ul aria-label="Senders" className="grid gap-0.5">
                 {senders.slice(0, 5).map((sender) => (

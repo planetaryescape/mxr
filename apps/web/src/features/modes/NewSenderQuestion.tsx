@@ -28,7 +28,7 @@ export function NewSenderQuestion({
       data-testid="new-sender-question"
       role={inOption ? undefined : "group"}
       aria-label={inOption ? undefined : question.question}
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
     >
       <span className="text-foreground/85">{question.question}</span>
       {question.choices.map((choice, position) => (

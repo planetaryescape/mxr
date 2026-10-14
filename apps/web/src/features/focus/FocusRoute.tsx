@@ -145,10 +145,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
             Focus & reply
           </span>
           {current ? (
-            <span
-              className="min-w-0 truncate text-[13px] tabular-nums"
-              data-testid="focus-progress"
-            >
+            <span className="min-w-0 truncate text-sm tabular-nums" data-testid="focus-progress">
               <span className="text-foreground">
                 {progress.position} of {progress.total}
               </span>
@@ -197,7 +194,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
           <h2 className="text-balance text-xl font-semibold tracking-tight">
             Couldn't load who you owe a reply.
           </h2>
-          <p className="mt-2 text-[14px] text-muted-foreground">{focus.error?.message}</p>
+          <p className="mt-2 text-base text-muted-foreground">{focus.error?.message}</p>
           <div className="mt-6 flex gap-2">
             <Button size="sm" onClick={focus.refetch}>
               Try again
@@ -223,7 +220,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
             {current ? (
               <>
                 <div className="px-5 pt-4">
-                  <h1 className="text-balance text-[17px] font-semibold leading-snug tracking-tight">
+                  <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
                     {current.subject || "(no subject)"}
                   </h1>
                   <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
@@ -251,7 +248,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
                 <button
                   type="button"
                   onClick={focus.reopenReply}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-3 text-left text-[13.5px] text-muted-foreground hover:border-border-strong"
+                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-3 text-left text-sm text-muted-foreground hover:border-border-strong"
                 >
                   <MessageSquareReply className="size-4" aria-hidden />
                   Reply to {current.sender}…<KeyChip className="ml-auto">r</KeyChip>
@@ -298,7 +295,7 @@ function FocusKeys({
           type="button"
           disabled={disabled}
           onClick={() => run(command)}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-2xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
           <KeyChip className="h-4 px-1">{key}</KeyChip>
           {label}

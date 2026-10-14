@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import type { MessagesData, MessagesRow } from "./api";
 import { initials, rowTime, type Arrival } from "./messagesView";
+import { SectionHeading } from "@/components/SectionHeading";
 
 /**
  * The people, in the daemon's bands: Your turn (closest first, then most
@@ -60,12 +61,9 @@ export function MessagesList({
       ) : null}
       {data.pinned.length > 0 ? (
         <section aria-labelledby="band-pinned" data-testid="band-pinned" className="mt-3">
-          <h2
-            id="band-pinned"
-            className="px-5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-          >
+          <SectionHeading id="band-pinned" className="px-5 pb-1">
             Pinned
-          </h2>
+          </SectionHeading>
           <ul className="flex flex-wrap gap-2 px-4">
             {data.pinned.map((row) => (
               <li key={row.id}>
@@ -79,7 +77,7 @@ export function MessagesList({
                   className="relative flex flex-col items-center gap-1 rounded-md px-1.5 py-1 hover:bg-accent"
                 >
                   <Face title={row.title} />
-                  <span className="max-w-[4.5rem] truncate text-[11.5px] text-foreground/85">
+                  <span className="max-w-[4.5rem] truncate text-2xs text-foreground/85">
                     {row.title.split(/\s+/)[0]}
                   </span>
                   {row.your_turn ? (
@@ -108,7 +106,7 @@ export function MessagesList({
             />
           ))}
           {data.recent_total > data.recent.length ? (
-            <li className="px-5 py-1 text-[12px] text-muted-foreground">
+            <li className="px-5 py-1 text-xs text-muted-foreground">
               and {data.recent_total - data.recent.length} more
             </li>
           ) : null}
@@ -120,7 +118,7 @@ export function MessagesList({
             type="button"
             onClick={onToggleQuiet}
             aria-expanded={quietOpen}
-            className="flex w-full items-center gap-1 px-5 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+            className="flex w-full items-center gap-1 px-5 py-1 text-left text-2xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
           >
             {quietOpen ? (
               <ChevronDown className="size-3" aria-hidden />
@@ -163,12 +161,9 @@ function Band({
 }) {
   return (
     <section aria-labelledby={id} data-testid={testId} className="mt-1">
-      <h2
-        id={id}
-        className="px-5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-      >
+      <SectionHeading id={id} className="px-5 pb-1 pt-2">
         {title}
-      </h2>
+      </SectionHeading>
       <ul className="grid grid-cols-[minmax(0,1fr)]">{children}</ul>
     </section>
   );
@@ -178,7 +173,7 @@ function Face({ title, group = false }: { title: string; group?: boolean }) {
   return (
     <span
       aria-hidden
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-[11.5px] font-medium text-foreground/80"
+      className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-2xs font-medium text-foreground/80"
     >
       {group ? <Users className="size-3.5" /> : initials(title)}
     </span>
@@ -228,7 +223,7 @@ function PersonRow({
             <span
               data-testid="row-title"
               className={cn(
-                "min-w-0 flex-1 truncate text-[13.5px]",
+                "min-w-0 flex-1 truncate text-sm",
                 row.your_turn ? "font-semibold" : "font-medium",
               )}
             >
@@ -237,12 +232,12 @@ function PersonRow({
             {topicCount > 1 ? (
               <span
                 data-testid="row-topic-count"
-                className="shrink-0 text-[12px] tabular-nums text-muted-foreground"
+                className="shrink-0 text-xs tabular-nums text-muted-foreground"
               >
                 {topicCount} topics
               </span>
             ) : null}
-            <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {rowTime(row)}
             </span>
             {row.your_turn ? (
@@ -253,7 +248,7 @@ function PersonRow({
             ) : null}
           </span>
           {subject ? (
-            <span className="block truncate text-[12.5px] text-muted-foreground">{subject}</span>
+            <span className="block truncate text-xs text-muted-foreground">{subject}</span>
           ) : null}
           {preview ? (
             <span
@@ -264,7 +259,7 @@ function PersonRow({
                   ? `The ask, from a summary by ${preview.model}`
                   : undefined
               }
-              className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground"
+              className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
             >
               {preview.kind === "ask" ? `“${preview.text}”` : preview.text}
             </span>

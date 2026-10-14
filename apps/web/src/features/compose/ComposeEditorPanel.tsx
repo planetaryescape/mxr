@@ -94,7 +94,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
     >
       {folded ? (
         <div className="shrink-0 border-b border-border" data-testid="compose-summary">
-          <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 px-5 py-1.5 text-[12.5px]">
+          <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 px-5 py-1.5 text-xs">
             <span className="text-muted-foreground">To</span>
             <span className="min-w-0 truncate text-foreground">{draft.frontmatter.to}</span>
             <span aria-hidden className="text-muted-foreground">

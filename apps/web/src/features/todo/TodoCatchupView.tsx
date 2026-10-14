@@ -39,7 +39,7 @@ function useScrollIntoView(index: number) {
 
 function BackLink() {
   return (
-    <Link to="/todo" className="text-[12px] text-muted-foreground hover:text-foreground">
+    <Link to="/todo" className="text-xs text-muted-foreground hover:text-foreground">
       Back to To do <KeyChip className="ml-1 h-4 px-1">Esc</KeyChip>
     </Link>
   );
@@ -81,14 +81,14 @@ function PlainRow({
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-3">
-          <span className="text-[14px] font-medium text-foreground">{todo.title}</span>
-          {party ? <span className="text-[13px] text-muted-foreground">{party}</span> : null}
+          <span className="text-base font-medium text-foreground">{todo.title}</span>
+          {party ? <span className="text-sm text-muted-foreground">{party}</span> : null}
           {todo.amount ? (
-            <span className="font-mono text-[13px] tabular-nums">{todo.amount.display}</span>
+            <span className="font-mono text-sm tabular-nums">{todo.amount.display}</span>
           ) : null}
         </div>
         <p className="mt-0.5 font-mono text-2xs text-foreground/80">{todo.when_label}</p>
-        <p className="mt-0.5 text-[12px] text-fg-2">{todo.why}</p>
+        <p className="mt-0.5 text-xs text-fg-2">{todo.why}</p>
       </div>
       <div className="flex shrink-0 gap-2">{children}</div>
     </li>
@@ -128,8 +128,8 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
           aria-label="Your last two weeks, sorted"
           className="mx-5 mt-4 border-l-2 border-primary bg-surface px-4 py-3"
         >
-          <h2 className="text-[15px] font-semibold">Your last two weeks, sorted</h2>
-          <p className="mt-1 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 text-[13px] @2xl:grid-cols-[5rem_minmax(0,16rem)_minmax(0,1fr)]">
+          <h2 className="text-md font-semibold">Your last two weeks, sorted</h2>
+          <p className="mt-1 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 text-sm @2xl:grid-cols-[5rem_minmax(0,16rem)_minmax(0,1fr)]">
             <span className="font-medium">To do</span>
             <span data-testid="first-run-counts">
               {plural(open, "thing")}, {now} to act on now
@@ -139,18 +139,16 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
             </span>
           </p>
           {catchup.data?.already_over_line ? (
-            <p className="mt-1 text-[12.5px] text-muted-foreground">
-              {catchup.data.already_over_line}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{catchup.data.already_over_line}</p>
           ) : null}
         </section>
         <header className="mx-5 mt-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold" data-testid="catchup-title">
+            <h2 className="text-md font-semibold" data-testid="catchup-title">
               {catchup.data?.title ?? "Catch up"}
             </h2>
             {catchup.data && catchup.data.todos.length > 0 ? (
-              <p className="mt-0.5 max-w-[62ch] text-[12.5px] text-muted-foreground">
+              <p className="mt-0.5 max-w-[62ch] text-xs text-muted-foreground">
                 {catchup.data.why}
               </p>
             ) : null}
@@ -167,7 +165,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
           <BackLink />
         </header>
         {catchup.isError ? (
-          <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+          <p className="mx-5 mt-4 text-sm text-muted-foreground">
             Couldn't load the catch-up: {catchup.error.message}
           </p>
         ) : null}
@@ -204,7 +202,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
           ))}
         </ul>
         {catchup.data && catchup.data.overflow_count > 0 ? (
-          <p className="mx-5 pb-4 text-[12.5px] text-muted-foreground">
+          <p className="mx-5 pb-4 text-xs text-muted-foreground">
             {plural(catchup.data.overflow_count, "more")} didn't fit and{" "}
             <Link to="/todo" search={{ view: "expired" }} className="underline underline-offset-4">
               are in the Expired list
@@ -238,8 +236,8 @@ export function TodoExpiredView() {
       <ModeFrame>
         <header className="mx-5 mt-4 flex flex-wrap items-baseline gap-x-4">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold">Expired</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+            <h2 className="text-md font-semibold">Expired</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Past their window, or let go in the catch-up. Restore puts one back in To do, and it
               stays until you act.
             </p>
@@ -247,7 +245,7 @@ export function TodoExpiredView() {
           <BackLink />
         </header>
         {expired.data && rows.length === 0 ? (
-          <p className="mx-5 mt-6 text-[13px] text-muted-foreground">Nothing has expired.</p>
+          <p className="mx-5 mt-6 text-sm text-muted-foreground">Nothing has expired.</p>
         ) : null}
         <ul ref={listRef} aria-label="Expired to-dos" className="max-w-[64rem] py-2">
           {rows.map((todo, position) => (

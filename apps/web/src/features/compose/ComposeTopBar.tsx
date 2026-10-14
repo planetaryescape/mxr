@@ -56,7 +56,7 @@ export function ComposeTopBar({
     // is the From line, aligned with To and Subject below it.
     <header className="shrink-0 border-b border-border" aria-label={title}>
       <div className="mx-auto flex h-11 w-full max-w-[860px] items-center gap-3 px-5">
-        <span className="w-12 shrink-0 text-right text-[12.5px] text-muted-foreground">From</span>
+        <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">From</span>
         <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
           <FromControl
             accounts={accounts}

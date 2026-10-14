@@ -95,11 +95,11 @@ export function SoundSection() {
   );
 
   if (settings.isLoading) {
-    return <p className="py-3 text-[13px] text-muted-foreground">Loading the sound setting…</p>;
+    return <p className="py-3 text-sm text-muted-foreground">Loading the sound setting…</p>;
   }
   if (!config) {
     return (
-      <p className="py-3 text-[13px] text-muted-foreground">
+      <p className="py-3 text-sm text-muted-foreground">
         Couldn't read the sound setting from the daemon.{" "}
         <button type="button" className="underline" onClick={() => void settings.refetch()}>
           Try again

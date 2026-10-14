@@ -2,7 +2,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
 import { ModeColumns, ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
@@ -33,7 +32,9 @@ import {
   type PickItem,
   type TodoItem,
 } from "./nowItems";
-import { PersonRow, ReadingRow, SectionHeading, TodoRow, UpdatesCard } from "./NowRows";
+import { PersonRow, ReadingRow, TodoRow, UpdatesCard } from "./NowRows";
+import { SectionHeading } from "@/components/SectionHeading";
+import { KeyLine } from "@/components/KeyLine";
 
 /**
  * Now: the front page. At most ten things in four fixed sections (People,
@@ -42,6 +43,9 @@ import { PersonRow, ReadingRow, SectionHeading, TodoRow, UpdatesCard } from "./N
  * Now. Acting on a row does it in that row's own mode: Enter opens it
  * there, `e` is done here.
  */
+/** The "more in Messages" style link on a section heading. */
+const MORE_LINK = "text-xs text-muted-foreground hover:text-foreground hover:underline";
+
 export function NowRoute() {
   const now = useNowQuery();
   const guide = useModeGuide("now");
@@ -80,15 +84,9 @@ export function NowRoute() {
 /** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
   return (
-    <ModeHeader width="wide">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Now</h1>
-        <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
-          {guide?.header ?? now?.header}
-        </p>
-      </div>
+    <ModeHeader width="wide" title="Now" subtitle={guide?.header ?? now?.header}>
       {now && now.item_count > 0 ? (
-        <p data-testid="now-headline" className="mt-1.5 text-balance text-[15px] text-foreground">
+        <p data-testid="now-headline" className="mt-1.5 text-balance text-md text-foreground">
           {now.headline}
         </p>
       ) : null}
@@ -230,7 +228,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
       <ModeFrame width="wide">
         {!now.first_run.complete ? (
-          <p data-testid="now-first-run" className="mx-5 mt-3 text-[13px] text-muted-foreground">
+          <p data-testid="now-first-run" className="mx-5 mt-3 text-sm text-muted-foreground">
             Sorting your mail, newest first. Now fills in within a few minutes.
           </p>
         ) : null}
@@ -238,14 +236,21 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           <div className="min-w-0">
             {people.length > 0 ? (
               <section aria-labelledby="now-people" data-testid="now-section-people">
-                <SectionHeading id="now-people" more={now.people.more_line} to="/messages">
+                <SectionHeading
+                  id="now-people"
+                  className="mx-5 mb-1 mt-4"
+                  actions={
+                    now.people.more_line ? (
+                      <Link to="/messages" data-testid="now-more" className={MORE_LINK}>
+                        {now.people.more_line}
+                      </Link>
+                    ) : null
+                  }
+                >
                   People
                 </SectionHeading>
                 {now.people.overload_line ? (
-                  <p
-                    data-testid="now-overload"
-                    className="mx-5 mb-1 text-[13px] text-foreground/90"
-                  >
+                  <p data-testid="now-overload" className="mx-5 mb-1 text-sm text-foreground/90">
                     {now.people.overload_line}
                   </p>
                 ) : null}
@@ -264,7 +269,17 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
             ) : null}
             {due.length > 0 ? (
               <section aria-labelledby="now-due" data-testid="now-section-due">
-                <SectionHeading id="now-due" more={now.due_soon.more_line} to="/todo">
+                <SectionHeading
+                  id="now-due"
+                  className="mx-5 mb-1 mt-4"
+                  actions={
+                    now.due_soon.more_line ? (
+                      <Link to="/todo" data-testid="now-more" className={MORE_LINK}>
+                        {now.due_soon.more_line}
+                      </Link>
+                    ) : null
+                  }
+                >
                   Due soon
                 </SectionHeading>
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
@@ -284,7 +299,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
             {card ? <UpdatesCard item={card} onLetGo={letGoDigest} {...rowState(card)} /> : null}
             {pick ? (
               <section aria-labelledby="now-reading" data-testid="now-section-reading">
-                <SectionHeading id="now-reading" to="/reading">
+                <SectionHeading id="now-reading" className="mx-5 mb-1 mt-4">
                   For tonight
                 </SectionHeading>
                 <ul className="grid grid-cols-[minmax(0,1fr)]">
@@ -299,13 +314,18 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           </div>
         </ModeColumns>
         {now.not_now ? (
-          <p data-testid="now-not-now" className="mx-5 mt-5 text-[12.5px] text-muted-foreground">
+          <p data-testid="now-not-now" className="mx-5 mt-5 text-xs text-muted-foreground">
             <Link to="/reading" className="hover:text-foreground hover:underline">
               {now.not_now}
             </Link>
           </p>
         ) : null}
-        {guide ? <KeyLine guide={guide} /> : null}
+        {guide ? (
+          <KeyLine
+            keys={guide.keys.filter((key) => key.key !== "?" && key.key !== "u" && key.key !== "t")}
+            className="lg:hidden"
+          />
+        ) : null}
       </ModeFrame>
       {now.updates ? (
         <LetGoDigestDialog card={now.updates} open={letGo} onOpenChange={setLetGo} />
@@ -337,19 +357,5 @@ function NowEmpty({ now }: { now: Now }) {
         </p>
       </LowTide>
     </div>
-  );
-}
-
-/** Keys with their verbs at the point of use, from Now's own guide. */
-function KeyLine({ guide }: { guide: ModeGuide }) {
-  const keys = guide.keys.filter((key) => key.key !== "?" && key.key !== "u" && key.key !== "t");
-  return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex lg:hidden">
-      {keys.map((key) => (
-        <span key={key.key} className="inline-flex items-center gap-1">
-          <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}
-        </span>
-      ))}
-    </p>
   );
 }

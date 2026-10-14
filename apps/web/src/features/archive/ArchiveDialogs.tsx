@@ -111,7 +111,7 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
           <DialogDescription>What you set here is yours: mxr won't read over it.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={submit}>
-          <label className="grid gap-1 text-[13px]">
+          <label className="grid gap-1 text-sm">
             <span className="font-medium">Field</span>
             <select
               value={field}
@@ -121,7 +121,7 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
                 setField(next);
                 setValue(current(next));
               }}
-              className="h-9 rounded-md border border-border bg-background px-2 text-[13px]"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
             >
               {FIXABLE.map((name) => (
                 <option key={name} value={name}>
@@ -130,7 +130,7 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-[13px]">
+          <label className="grid gap-1 text-sm">
             <span className="font-medium">{FIELD_LABELS[field]}</span>
             <Input
               autoFocus
@@ -146,17 +146,17 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
             />
           </label>
           {changed && after ? (
-            <p data-testid="record-edit-preview" className="text-[12.5px] text-muted-foreground">
+            <p data-testid="record-edit-preview" className="text-xs text-muted-foreground">
               Saves as <span className="font-mono text-foreground">{after.value}</span>, from you,
               checked.
             </p>
           ) : changed && preview.isError ? (
-            <p className="text-[12.5px] text-destructive">{preview.error.message}</p>
+            <p className="text-xs text-destructive">{preview.error.message}</p>
           ) : existing ? (
             <Provenance field={existing} />
           ) : null}
           {field === "issuer" ? (
-            <label className="flex items-center gap-2 text-[13px]">
+            <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={toSender}
@@ -241,9 +241,9 @@ export function ExportDialog({
         {preview.isLoading ? (
           <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" />
         ) : preview.isError ? (
-          <p className="text-[13px] text-destructive">Preview failed: {preview.error.message}</p>
+          <p className="text-sm text-destructive">Preview failed: {preview.error.message}</p>
         ) : data ? (
-          <div className="grid gap-2 text-[13px]" data-testid="export-preview">
+          <div className="grid gap-2 text-sm" data-testid="export-preview">
             <p className="text-foreground">{data.summary}</p>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-muted-foreground">
               <dt>Rows</dt>
@@ -266,7 +266,7 @@ export function ExportDialog({
               ))}
             </dl>
             {data.unchecked > 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Rows with an unchecked amount or date say so in the CSV's checked column.
               </p>
             ) : null}
@@ -330,10 +330,10 @@ export function PassToModeDialog({
         {preview.isLoading ? (
           <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" />
         ) : preview.isError ? (
-          <p className="text-[13px] text-destructive">Preview failed: {preview.error.message}</p>
+          <p className="text-sm text-destructive">Preview failed: {preview.error.message}</p>
         ) : record ? (
           <div
-            className="grid gap-1 border-l-2 border-primary pl-3 text-[13px]"
+            className="grid gap-1 border-l-2 border-primary pl-3 text-sm"
             data-testid="file-preview"
           >
             <p className="font-medium">
@@ -347,7 +347,7 @@ export function PassToModeDialog({
                 {record.reference_label} {record.reference}
               </p>
             ) : null}
-            <p className="text-[12.5px] text-muted-foreground">{preview.data?.message}</p>
+            <p className="text-xs text-muted-foreground">{preview.data?.message}</p>
           </div>
         ) : null}
         <DialogFooter>

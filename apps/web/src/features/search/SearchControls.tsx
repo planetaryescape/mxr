@@ -34,7 +34,7 @@ export function Segmented({
           aria-checked={value === id}
           onClick={() => onChange(id)}
           className={cn(
-            "rounded px-2 py-0.5 text-[12.5px]",
+            "rounded px-2 py-0.5 text-xs",
             value === id
               ? "bg-accent font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -62,7 +62,7 @@ export function CompactSelect({
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         aria-label={label}
-        className="h-7 w-auto shrink-0 gap-1.5 border-border px-2 text-[12.5px]"
+        className="h-7 w-auto shrink-0 gap-1.5 border-border px-2 text-xs"
       >
         <span className="text-muted-foreground">{label}:</span>
         <SelectValue />

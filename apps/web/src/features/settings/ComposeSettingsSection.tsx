@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
 import { useUiPrefs, type ComposeEditor, type UndoSendSeconds } from "@/state/uiPrefsStore";
+import { SectionHeading } from "@/components/SectionHeading";
 
 interface Signature {
   id: string;
@@ -126,9 +127,7 @@ export function ComposeSettingsSection() {
 
         <section className="space-y-3 border-b border-border/60 pb-6">
           <div>
-            <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Default account
-            </h2>
+            <SectionHeading>Default account</SectionHeading>
             <p className="mt-1 text-xs text-muted-foreground">
               Used for new drafts unless a reply or sender choice overrides it.
             </p>
@@ -174,9 +173,7 @@ export function ComposeSettingsSection() {
 
         <section className="space-y-4">
           <div>
-            <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Signatures
-            </h2>
+            <SectionHeading>Signatures</SectionHeading>
             <p className="mt-1 text-xs text-muted-foreground">
               Signature blocks are stored in the daemon and shared with CLI compose.
             </p>

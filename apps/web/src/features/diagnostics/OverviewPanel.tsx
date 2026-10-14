@@ -106,7 +106,7 @@ export function OverviewPanel({
         {status.isPending ? (
           <PageSkeleton rows={2} label="Loading sync status" />
         ) : syncRows.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">No accounts are syncing.</p>
+          <p className="text-sm text-muted-foreground">No accounts are syncing.</p>
         ) : (
           <RuledList label="Sync status by account">
             {syncRows.map((row) => (
@@ -146,7 +146,7 @@ export function OverviewPanel({
         ) : status.isPending || doctor.isPending ? (
           <PageSkeleton rows={4} label="Loading feature health" />
         ) : (
-          <p className="text-[13px] text-muted-foreground">No feature health reported.</p>
+          <p className="text-sm text-muted-foreground">No feature health reported.</p>
         )}
       </PageSection>
 

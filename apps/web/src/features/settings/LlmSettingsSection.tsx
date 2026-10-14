@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { SectionHeading } from "@/components/SectionHeading";
 
 interface LlmConfig {
   enabled: boolean;
@@ -143,9 +144,7 @@ export function LlmSettingsSection() {
         <section className="border-b border-border/60 pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-                Thread summaries and draft assist
-              </h2>
+              <SectionHeading>Thread summaries and draft assist</SectionHeading>
               <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
                 mxr stores an environment variable name, not the API key. Leave it empty for Ollama
                 or LM Studio.

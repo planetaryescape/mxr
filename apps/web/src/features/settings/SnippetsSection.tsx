@@ -78,7 +78,7 @@ export function SnippetsSection() {
             id="snippet-body"
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            className="min-h-24 text-[13px]"
+            className="min-h-24 text-sm"
             placeholder="Thanks for the quick reply."
           />
         </Field>
@@ -98,7 +98,7 @@ export function SnippetsSection() {
           onRetry={() => void snippets.refetch()}
         />
       ) : rows.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           No snippets yet. Type ;name in compose to expand one.
         </p>
       ) : (
@@ -110,7 +110,7 @@ export function SnippetsSection() {
             >
               <div className="min-w-0">
                 <div className="font-mono text-xs text-primary">;{snippet.name}</div>
-                <p className="mt-1 whitespace-pre-wrap text-[13px] text-muted-foreground">
+                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
                   {snippet.body}
                 </p>
               </div>

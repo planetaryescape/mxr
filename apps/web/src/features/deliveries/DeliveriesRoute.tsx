@@ -157,7 +157,7 @@ export function DeliveriesRoute() {
                 <Package className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[13px] font-medium">{title}</span>
+                    <span className="text-sm font-medium">{title}</span>
                     <span
                       className={cn(
                         "font-mono text-2xs",
@@ -170,14 +170,10 @@ export function DeliveriesRoute() {
                     >
                       {STATUS_LABELS[delivery.status] ?? delivery.status}
                     </span>
-                    {eta ? (
-                      <span className="text-[12.5px] text-muted-foreground">{eta}</span>
-                    ) : null}
+                    {eta ? <span className="text-xs text-muted-foreground">{eta}</span> : null}
                   </div>
                   {items ? (
-                    <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                      {items}
-                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{items}</div>
                   ) : null}
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-2xs text-muted-foreground">
                     {delivery.carrier && delivery.merchant ? (

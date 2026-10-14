@@ -39,6 +39,9 @@ import {
   putOnLater,
   rememberLayout,
 } from "./readingVerbs";
+import { KeyLine } from "@/components/KeyLine";
+import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { SectionHeading } from "@/components/SectionHeading";
 
 export const EDITION_KEY = (scope: string) => [...READING_KEY, "edition", scope] as const;
 
@@ -162,38 +165,38 @@ function EditionHeader({
   const later = edition?.later_count ?? 0;
   const anything = (edition?.bands.length ?? 0) > 0;
   return (
-    <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-5 pb-3 pt-4">
-      <h1 className="text-[17px] font-semibold tracking-tight text-foreground">
-        {view === "later" ? "Later" : "Reading"}
-      </h1>
-      <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
-        {view === "later"
+    <ModeHeader
+      title={view === "later" ? "Later" : "Reading"}
+      subtitle={
+        view === "later"
           ? "What you kept to read. It never fades."
-          : (guide?.header ?? edition?.header ?? "")}
-      </p>
-      <div className="ml-auto flex items-center gap-3">
-        {view === "later" ? (
-          <Link to="/reading" className="text-[12.5px] text-muted-foreground hover:text-foreground">
-            Back to the edition
-          </Link>
-        ) : (
-          <Link
-            to="/reading"
-            search={{ view: "later" }}
-            data-testid="later-count"
-            className="inline-flex items-center gap-1.5 text-[12.5px] text-foreground/90 hover:text-foreground"
-          >
-            <Bookmark aria-hidden className="size-3.5" /> Later{" "}
-            <span className="tabular-nums">{later}</span>
-          </Link>
-        )}
-        {view !== "later" && anything ? (
-          <Button variant="outline" size="xs" onClick={onLetGoAll}>
-            Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
-          </Button>
-        ) : null}
-      </div>
-    </header>
+          : (guide?.header ?? edition?.header ?? "")
+      }
+      actions={
+        <>
+          {view === "later" ? (
+            <Link to="/reading" className="text-xs text-muted-foreground hover:text-foreground">
+              Back to the edition
+            </Link>
+          ) : (
+            <Link
+              to="/reading"
+              search={{ view: "later" }}
+              data-testid="later-count"
+              className="inline-flex items-center gap-1.5 text-xs text-foreground/90 hover:text-foreground"
+            >
+              <Bookmark aria-hidden className="size-3.5" /> Later{" "}
+              <span className="tabular-nums">{later}</span>
+            </Link>
+          )}
+          {view !== "later" && anything ? (
+            <Button variant="outline" size="xs" onClick={onLetGoAll}>
+              Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
+            </Button>
+          ) : null}
+        </>
+      }
+    />
   );
 }
 
@@ -432,7 +435,7 @@ function Bands({
               <Link
                 to="/reading"
                 search={{ view: "later" }}
-                className="text-[13px] underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+                className="text-sm underline decoration-border-strong underline-offset-4 hover:decoration-primary"
               >
                 Open Later
               </Link>
@@ -452,17 +455,17 @@ function Bands({
     >
       <SwipeLayer ref={swipeLayer} />
       {edition.empty && view !== "later" ? (
-        <p data-testid="reading-clear" className="mx-5 mt-3 text-[13px] text-foreground/90">
+        <p data-testid="reading-clear" className="mx-5 mt-3 text-sm text-foreground/90">
           {edition.empty.line}
         </p>
       ) : null}
-      <div className="max-w-[60rem]">
+      <ModeFrame>
         {bands.map((band, bandIndex) => (
           <section key={band.band} aria-label={band.label} data-testid={`band-${band.band}`}>
             {bandIndex === 1 && sinceFirst && edition.left_off_here && view !== "later" ? (
               <p
                 data-testid="left-off-here"
-                className="mx-5 mt-5 flex items-center gap-3 text-[11.5px] text-muted-foreground"
+                className="mx-5 mt-5 flex items-center gap-3 text-2xs text-muted-foreground"
               >
                 <span aria-hidden className="h-px flex-1 bg-border" />
                 You left off here
@@ -470,12 +473,12 @@ function Bands({
               </p>
             ) : null}
             {view !== "later" ? (
-              <h2 className="mx-5 mb-1 mt-5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+              <SectionHeading className="mx-5 mb-1 mt-5">
                 {band.label}
                 {band.note ? (
                   <span className="ml-2 normal-case tracking-normal">{band.note}</span>
                 ) : null}
-              </h2>
+              </SectionHeading>
             ) : null}
             {band.band === "fading" && fadingHint.hint ? (
               <AnchoredHint
@@ -507,7 +510,7 @@ function Bands({
                 {view === "later" && item.still_want_it ? (
                   <p
                     data-testid="still-want-it"
-                    className="mx-9 -mt-1 mb-2 flex items-center gap-3 text-[12.5px] text-muted-foreground"
+                    className="mx-9 -mt-1 mb-2 flex items-center gap-3 text-xs text-muted-foreground"
                   >
                     Saved over a month ago. Still want it?
                     <Button
@@ -530,25 +533,16 @@ function Bands({
             ))}
           </section>
         ))}
-        {guide && view !== "later" ? <KeyLine guide={guide} /> : null}
-      </div>
+        {guide && view !== "later" ? (
+          <KeyLine
+            keys={[
+              ...guide.keys.filter((key) => !["?", "u", "h", "o"].includes(key.key)),
+              { key: "B", verb: "the Later shelf" },
+            ]}
+            className="mt-8"
+          />
+        ) : null}
+      </ModeFrame>
     </div>
-  );
-}
-
-/** Keys with their verbs at the point of use, from the mode's own table. */
-function KeyLine({ guide }: { guide: ModeGuide }) {
-  const keys = guide.keys.filter((key) => !["?", "u", "h", "o"].includes(key.key));
-  return (
-    <p className="mx-5 mt-8 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
-      {keys.map((key) => (
-        <span key={key.key} className="inline-flex items-center gap-1">
-          <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}
-        </span>
-      ))}
-      <span className="inline-flex items-center gap-1">
-        <KeyChip>B</KeyChip> the Later shelf
-      </span>
-    </p>
   );
 }

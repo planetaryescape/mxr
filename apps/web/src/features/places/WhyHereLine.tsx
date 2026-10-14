@@ -30,7 +30,7 @@ export function WhyHereLine({
   return (
     <p
       data-testid="reader-why-here"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-4 text-[12px] text-muted-foreground"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-4 text-xs text-muted-foreground"
     >
       <span className="inline-flex items-center gap-1.5">
         <Icon aria-hidden className="size-3.5 shrink-0" />

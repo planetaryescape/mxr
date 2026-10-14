@@ -106,14 +106,11 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         >
           <Avatar name={name} small />
           <span
-            className={cn(
-              "truncate text-[13.5px]",
-              message.unread ? "font-semibold" : "font-medium",
-            )}
+            className={cn("truncate text-sm", message.unread ? "font-semibold" : "font-medium")}
           >
             {name}
           </span>
-          <span className="truncate text-[13px] text-fg-2">{message.snippet}</span>
+          <span className="truncate text-sm text-fg-2">{message.snippet}</span>
           <time
             dateTime={message.date}
             title={message.date_full}
@@ -145,7 +142,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         <div className="min-w-0 flex-1">
           <button type="button" onClick={onToggle} aria-expanded className="block w-full text-left">
             <span className="flex flex-wrap items-baseline gap-x-2">
-              <span className={cn("text-[14px]", message.unread ? "font-semibold" : "font-medium")}>
+              <span className={cn("text-base", message.unread ? "font-semibold" : "font-medium")}>
                 {name}
               </span>
               {email && email !== name ? (
@@ -277,7 +274,7 @@ export function MessageContent({
 
   if (!body) {
     return (
-      <p className="text-[13px] italic text-muted-foreground">
+      <p className="text-sm italic text-muted-foreground">
         {message.snippet || "Loading message…"}
       </p>
     );
@@ -349,12 +346,12 @@ export function MessageContent({
       : (body.reader_text ?? body.text_plain ?? "");
   if (!text.trim()) {
     return html ? (
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         This message has no text version. Press <span className="font-mono">H</span> for the
         formatted view.
       </p>
     ) : (
-      <p className="text-[13px] italic text-muted-foreground">No readable body.</p>
+      <p className="text-sm italic text-muted-foreground">No readable body.</p>
     );
   }
   return (
@@ -459,7 +456,7 @@ function Recipients({
     all.length === 0 ? "undisclosed recipients" : all.slice(0, 3).map(shortName).join(", ");
   const more = all.length > 3 ? ` and ${all.length - 3} more` : "";
   return (
-    <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
+    <span className="mt-0.5 block text-xs text-muted-foreground">
       <button
         type="button"
         aria-expanded={open}
@@ -543,7 +540,7 @@ function Avatar({ name, small = false }: { name: string; small?: boolean }) {
       aria-hidden
       className={cn(
         "grid shrink-0 place-items-center rounded-full font-mono font-semibold",
-        small ? "size-7 text-[11px]" : "size-8 text-[12px]",
+        small ? "size-7 text-2xs" : "size-8 text-xs",
         avatarTone(name),
       )}
     >

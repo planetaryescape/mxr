@@ -142,9 +142,7 @@ export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: 
               >
                 <LinkIcon className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  {link.text ? (
-                    <span className="block truncate text-[13px]">{link.text}</span>
-                  ) : null}
+                  {link.text ? <span className="block truncate text-sm">{link.text}</span> : null}
                   <span className="block truncate font-mono text-2xs text-muted-foreground">
                     {link.href}
                   </span>

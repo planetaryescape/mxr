@@ -64,7 +64,7 @@ export function MarginaliaSection() {
   const current = status.data;
   return (
     <div>
-      <p className="mb-5 max-w-prose text-[13px] text-muted-foreground">
+      <p className="mb-5 max-w-prose text-sm text-muted-foreground">
         Press <kbd>M</kbd> on a Reading item to open it in Marginalia, with its themes, margin notes
         and companion. The first time, mxr sends the item's text there; highlights you make in
         Marginalia come back to the item here. Nothing is sent until you press <kbd>M</kbd>.
@@ -94,7 +94,7 @@ export function MarginaliaSection() {
               </Button>
             </div>
           </SettingRow>
-          <p className="mt-3 text-[12.5px] text-muted-foreground">
+          <p className="mt-3 text-xs text-muted-foreground">
             Disconnecting removes the token. Items already sent stay in Marginalia.
           </p>
         </>
@@ -123,7 +123,7 @@ export function MarginaliaSection() {
               onChange={(event) => setToken(event.target.value)}
             />
           </Field>
-          <p className="text-[12.5px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Create a token in Marginalia under Account, Connected apps. mxr checks it with
             Marginalia, then keeps it in its secrets file.
           </p>

@@ -159,7 +159,7 @@ export function SettingsRoute() {
         aria-label="Settings sections"
         className="hidden w-52 shrink-0 overflow-y-auto border-r border-border px-2 py-5 md:block"
       >
-        <div className="mb-2 px-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+        <div className="mb-2 px-2 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
           Settings
         </div>
         <ul className="space-y-0.5">
@@ -172,7 +172,7 @@ export function SettingsRoute() {
                   params={{ section: id }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active
                       ? "bg-primary-muted text-foreground"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",

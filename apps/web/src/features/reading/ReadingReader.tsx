@@ -195,7 +195,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
       <header className="shrink-0 border-b border-border">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-[12.5px] text-muted-foreground sm:px-5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs text-muted-foreground sm:px-5">
           <button
             type="button"
             onClick={back}
@@ -292,10 +292,10 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             ref={textRef}
             className="reading-page mx-auto w-full max-w-[66ch] px-4 pb-16 pt-8 sm:px-6"
           >
-            <h1 className="text-balance text-[24px] font-semibold leading-tight tracking-tight sm:text-[28px]">
+            <h1 className="text-balance text-2xl font-semibold leading-tight tracking-tight sm:text-[28px]">
               {showingArticle && article.title ? article.title : item.title}
             </h1>
-            <p className="mt-2 text-[13px] text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               {showingArticle
                 ? [article.site_name ?? domainLabel(item.domain), article.byline]
                     .filter(Boolean)
@@ -317,24 +317,20 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             ) : null}
             {highlights.length > 0 ? (
               <section aria-label="Your highlights" className="mt-10 border-t border-border pt-4">
-                <h2 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Your highlights
                 </h2>
                 <ul className="mt-2 grid gap-2" data-testid="reading-highlights">
                   {highlights.map((h) => (
                     <li
                       key={h.id}
-                      className="border-l-2 border-primary pl-3 text-[14px] text-foreground/90"
+                      className="border-l-2 border-primary pl-3 text-base text-foreground/90"
                     >
                       {h.quote}
                       {h.origin === "marginalia" ? (
-                        <span className="ml-2 text-[11.5px] text-muted-foreground">
-                          from Marginalia
-                        </span>
+                        <span className="ml-2 text-2xs text-muted-foreground">from Marginalia</span>
                       ) : null}
-                      {h.note ? (
-                        <p className="text-[12.5px] text-muted-foreground">{h.note}</p>
-                      ) : null}
+                      {h.note ? <p className="text-xs text-muted-foreground">{h.note}</p> : null}
                     </li>
                   ))}
                 </ul>
@@ -342,7 +338,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             ) : null}
             <footer
               data-testid="end-of-issue"
-              className="mt-12 border-t border-border pt-4 text-[13px] text-muted-foreground"
+              className="mt-12 border-t border-border pt-4 text-sm text-muted-foreground"
             >
               <p>From this source: {source.evidence}.</p>
               <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -405,7 +401,7 @@ function ArticleStatus({
     return (
       <p
         data-testid="article-status"
-        className="mt-6 inline-flex items-center gap-2 text-[14px] text-muted-foreground"
+        className="mt-6 inline-flex items-center gap-2 text-base text-muted-foreground"
       >
         <Loader2 className="size-4 animate-spin" /> Fetching from {site}…
       </p>
@@ -414,7 +410,7 @@ function ArticleStatus({
   if (article) {
     const hosts = article.contacted;
     return (
-      <p data-testid="article-status" className="mt-3 text-[12.5px] text-muted-foreground">
+      <p data-testid="article-status" className="mt-3 text-xs text-muted-foreground">
         {hosts.length > 0 ? `Fetched from ${hosts.join(", ")}` : "Saved copy"} on{" "}
         {formatLongDate(article.fetched_at)}. It reads offline.
       </p>
@@ -422,7 +418,7 @@ function ArticleStatus({
   }
   if (error) {
     return (
-      <div data-testid="article-status" className="mt-6 text-[14px]">
+      <div data-testid="article-status" className="mt-6 text-base">
         <p className="text-foreground/90">The article couldn't be read here: {error}.</p>
         {item.url ? (
           <a
@@ -438,7 +434,7 @@ function ArticleStatus({
     );
   }
   return (
-    <div data-testid="article-status" className="mt-6 text-[14px] text-foreground/90">
+    <div data-testid="article-status" className="mt-6 text-base text-foreground/90">
       <p>
         The article is on {site}. Fetching it tells that site you clicked, so mxr only does it when
         you ask.
@@ -454,7 +450,7 @@ function ArticleStatus({
 function Paragraphs({ paragraphs, marks }: { paragraphs: ReadingParagraph[]; marks: string[] }) {
   return (
     <div
-      className="mt-6 grid gap-4 text-[17px] leading-[1.65] text-foreground sm:text-[18px]"
+      className="mt-6 grid gap-4 text-lg leading-[1.65] text-foreground sm:text-lg"
       data-testid="reader-text"
     >
       {paragraphs.map((paragraph, index) => {
@@ -463,7 +459,7 @@ function Paragraphs({ paragraphs, marks }: { paragraphs: ReadingParagraph[]; mar
         switch (paragraph.kind) {
           case "heading":
             return (
-              <h2 key={key} className="mt-4 text-[19px] font-semibold leading-snug">
+              <h2 key={key} className="mt-4 text-xl font-semibold leading-snug">
                 {content}
               </h2>
             );
@@ -510,12 +506,12 @@ function IssueLinks({ detail }: { detail: ReadingDetail }) {
   const links = detail.item.links ?? [];
   return (
     <section aria-label="Links in this issue" className="mt-10 border-t border-border pt-4">
-      <h2 className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Links in this issue
       </h2>
       <ul className="mt-2 grid gap-1.5">
         {links.map((link) => (
-          <li key={link.item_key} className="text-[15px]">
+          <li key={link.item_key} className="text-md">
             <button
               type="button"
               onClick={() =>
@@ -555,7 +551,7 @@ function OriginalLayout({
   const row = thread.data?.messages.find((candidate) => candidate.id === messageId);
   if (thread.isError) {
     return (
-      <p className="p-6 text-[13px] text-muted-foreground">
+      <p className="p-6 text-sm text-muted-foreground">
         Couldn't load the original: {thread.error.message}
       </p>
     );

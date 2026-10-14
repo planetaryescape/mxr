@@ -140,7 +140,7 @@ export function CadenceDashboard() {
             onRetry={() => void watchlist.refetch()}
           />
         ) : watchlist.data.entries.length === 0 ? (
-          <p className="py-2 text-[13px] text-muted-foreground">No watched contacts yet.</p>
+          <p className="py-2 text-sm text-muted-foreground">No watched contacts yet.</p>
         ) : (
           <RuledList label="Watched contacts">
             {watchlist.data.entries.map((entry) => (

@@ -27,7 +27,7 @@ function OutcomeRow({ reference }: { reference: SendReference }) {
   return (
     <li className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium">Send {reference.draftId}</div>
+        <div className="truncate text-sm font-medium">Send {reference.draftId}</div>
         <div className="text-2xs text-muted-foreground">{description}</div>
         <div className="truncate font-mono text-2xs">
           {outcome.data?.outcome?.identity.operation_id ?? reference.operationId}
@@ -66,7 +66,7 @@ export function OrphanedDrafts() {
         <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" />
         <h2
           id="orphaned-drafts-heading"
-          className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning"
+          className="font-mono text-2xs uppercase tracking-[0.12em] text-warning"
         >
           Send outcomes
         </h2>

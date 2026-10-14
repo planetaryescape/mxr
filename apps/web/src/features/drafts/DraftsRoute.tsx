@@ -105,7 +105,7 @@ function DraftRow({
       >
         <FileText className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium">{subject}</div>
+          <div className="truncate text-sm font-medium">{subject}</div>
           <div className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
             {draft.recipients || "No recipients"}
           </div>

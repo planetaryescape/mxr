@@ -125,7 +125,7 @@ export function ThreadHeader({
           <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
             {data.thread.subject || "(no subject)"}
           </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>{plural(data.thread.message_count, "message")}</span>
             {people.length > 0 ? (
               <>
@@ -204,7 +204,7 @@ function ViewSwitch({ view }: { view: ReaderView }) {
             if (view !== option.id) runPointerCommand("reader", option.command);
           }}
           className={cn(
-            "rounded px-2 py-0.5 text-[12px]",
+            "rounded px-2 py-0.5 text-xs",
             view === option.id
               ? "bg-accent font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",

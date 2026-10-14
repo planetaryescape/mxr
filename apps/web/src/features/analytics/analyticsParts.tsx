@@ -61,7 +61,7 @@ export function BarList({
         const body = (
           <>
             <div className="flex items-baseline gap-3">
-              <span className="min-w-0 flex-1 truncate text-[13px]">{row.label}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">{row.label}</span>
               {row.meta ? (
                 <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                   {row.meta}
@@ -112,11 +112,11 @@ export function Figure({
 }) {
   return (
     <div className="min-w-0">
-      <div className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
       <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
-      {caption ? <div className="mt-0.5 text-[12.5px] text-muted-foreground">{caption}</div> : null}
+      {caption ? <div className="mt-0.5 text-xs text-muted-foreground">{caption}</div> : null}
     </div>
   );
 }

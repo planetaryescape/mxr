@@ -80,7 +80,7 @@ export function SearchToolbar({
               }
             }}
             placeholder="from:ada has:attachment invoice"
-            className="h-10 pl-9 text-[14px]"
+            className="h-10 pl-9 text-base"
           />
         </div>
         <SyntaxHelp />
@@ -113,7 +113,7 @@ export function SearchToolbar({
               type="button"
               onClick={() => update({ q: removeSearchToken(q, token) })}
               className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11.5px]",
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-2xs",
                 token.kind === "operator"
                   ? "border-primary/40 bg-primary-muted/50 text-foreground"
                   : "border-border text-muted-foreground",
@@ -213,7 +213,7 @@ export function SearchToolbar({
                   q: `${q} ${facetOperator(groupBy)}:${quoteIfNeeded(facetValue(row.key, row.label))}`.trim(),
                 })
               }
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-[12px] hover:border-primary/60 hover:bg-accent"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs hover:border-primary/60 hover:bg-accent"
             >
               <span className="max-w-[16ch] truncate">{shortFacet(row.label)}</span>
               <span className="font-mono text-2xs text-muted-foreground">{row.count}</span>

@@ -250,8 +250,8 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
           />
         ) : (
           <div className="overflow-x-auto border-y border-border/60">
-            <table className="w-full text-[13px]">
-              <thead className="border-b border-border/60 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border/60 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">
                 <tr>
                   <th className="w-8 px-2 py-2 text-left">
                     <Checkbox
@@ -368,7 +368,7 @@ export function ActivityRoute() {
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <fieldset>
-      <legend className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+      <legend className="mb-1.5 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </legend>
       <div className="flex flex-wrap gap-1">{children}</div>

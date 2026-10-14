@@ -151,7 +151,7 @@ export function DiagnosticsRoute() {
           <EventsPanel />
         ) : (
           <>
-            <p className="mb-4 max-w-[65ch] text-[12.5px] text-muted-foreground">
+            <p className="mb-4 max-w-[65ch] text-xs text-muted-foreground">
               A local record of what you did in the TUI, CLI and web. It never leaves this machine.
             </p>
             <ActivityBrowser embedded />

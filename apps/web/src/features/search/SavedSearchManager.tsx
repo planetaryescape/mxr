@@ -57,7 +57,7 @@ export function SavedSearchManager({
 
   if (searches.length === 0) {
     return (
-      <p className="px-4 py-6 text-[13px] text-muted-foreground">
+      <p className="px-4 py-6 text-sm text-muted-foreground">
         No saved searches yet. Run a search and press Save to keep it in the sidebar.
       </p>
     );
@@ -89,7 +89,7 @@ export function SavedSearchManager({
                 onClick={() => onRun(search)}
                 className="min-w-0 flex-1 text-left"
               >
-                <span className="block truncate text-[13px] font-medium">{search.name}</span>
+                <span className="block truncate text-sm font-medium">{search.name}</span>
                 <span className="block truncate font-mono text-2xs text-muted-foreground">
                   {search.query}
                 </span>
@@ -205,7 +205,7 @@ function EditSavedSearch({
         aria-label="Query"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        className="h-8 font-mono text-[12.5px]"
+        className="h-8 font-mono text-xs"
       />
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

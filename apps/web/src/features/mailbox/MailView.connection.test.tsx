@@ -52,7 +52,10 @@ vi.mock("@/hooks/useAdvanceOnRemoval", () => ({
 }));
 vi.mock("@/lib/keys/focusPane", () => ({ focusActivePane: vi.fn<() => void>() }));
 vi.mock("@/components/ModeFrame", () => {
-  return { ModeFrame: ({ children }: { children: ReactNode }) => children };
+  return {
+    ModeFrame: ({ children }: { children: ReactNode }) => children,
+    PageTitle: ({ children }: { children: string }) => <h1>{children}</h1>,
+  };
 });
 vi.mock("@/components/ui/resizable", async () => {
   const React = await import("react");

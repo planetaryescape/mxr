@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 import type { RecordAnswer, RecordAnswerList, RecordData, RecordField } from "./api";
 import { amountUnchecked, longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
+import { SectionHeading } from "@/components/SectionHeading";
 
 /** An unchecked money or date field: an open dot, never red. */
 export function OpenDot({ label = "unchecked" }: { label?: string }) {
@@ -28,7 +29,7 @@ export function Provenance({ field }: { field: RecordField }) {
     <span
       data-testid="record-provenance"
       title={evidence ? `Read from: "${evidence}"` : undefined}
-      className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
     >
       {field.checked ? null : <OpenDot />}
       {provenanceLine(field.source_label, field.checked)}
@@ -62,7 +63,7 @@ export const LedgerRow = memo(function LedgerRow({
       data-best={best ? "true" : undefined}
       aria-current={focused ? "true" : undefined}
       className={cn(
-        "group mx-2 cursor-default rounded-md border-l-2 px-3 py-2 text-[13px]",
+        "group mx-2 cursor-default rounded-md border-l-2 px-3 py-2 text-sm",
         best ? "border-primary" : "border-transparent",
         focused ? "bg-accent" : "hover:bg-accent/60",
       )}
@@ -70,7 +71,7 @@ export const LedgerRow = memo(function LedgerRow({
       onDoubleClick={() => onOpen(record)}
     >
       <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 @2xl:grid-cols-[3.25rem_minmax(0,9rem)_minmax(0,1fr)_7.5rem_6.5rem_2.5rem]">
-        <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {shortDate(record.date)}
         </span>
         <span className="min-w-0 truncate font-medium text-foreground @2xl:order-none">
@@ -86,15 +87,15 @@ export const LedgerRow = memo(function LedgerRow({
           {record.amount && amountUnchecked(record) ? <OpenDot label="amount unchecked" /> : null}
           {record.amount?.display ?? ""}
         </span>
-        <span className="hidden min-w-0 truncate font-mono text-[12px] text-muted-foreground @2xl:block">
+        <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground @2xl:block">
           {record.reference ?? ""}
         </span>
-        <span className="hidden text-right font-mono text-[11px] text-muted-foreground @2xl:block">
+        <span className="hidden text-right font-mono text-2xs text-muted-foreground @2xl:block">
           {record.pdf ? "PDF" : "-"}
         </span>
       </div>
       {record.stage_line || record.detail_line ? (
-        <p className="ml-[4rem] mt-0.5 truncate text-[12px] text-muted-foreground">
+        <p className="ml-[4rem] mt-0.5 truncate text-xs text-muted-foreground">
           {[record.stage_line, record.detail_line].filter(Boolean).join(" · ")}
         </p>
       ) : null}
@@ -130,7 +131,7 @@ export function cardFields(record: RecordData): RecordField[] {
 function CardLine({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-3 py-1">
-      <dt className="text-[12px] text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </div>
   );
@@ -157,16 +158,16 @@ export function RecordCard({
   return (
     <article aria-label="Record" data-testid="record-card" className="grid gap-3 px-5 py-4">
       <header>
-        <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
           {record.kind_label}
           {record.source_count > 1 ? ` · ${record.source_count} emails` : ""}
         </p>
-        <h2 className="mt-1 text-[16px] font-semibold text-foreground">
+        <h2 className="mt-1 text-md font-semibold text-foreground">
           {record.issuer ?? record.kind_label}
         </h2>
-        {record.title ? <p className="text-[14px] text-foreground/90">{record.title}</p> : null}
+        {record.title ? <p className="text-base text-foreground/90">{record.title}</p> : null}
       </header>
-      <dl className="text-[13px]">
+      <dl className="text-sm">
         {fields.map((field) => (
           <CardLine key={field.field} label={field.label}>
             <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -176,7 +177,7 @@ export function RecordCard({
                   type="button"
                   onClick={() => onCopy(field)}
                   aria-label={`Copy ${field.label.toLowerCase()} (${field.field === "amount" ? "Y" : "y"})`}
-                  className="inline-flex items-center gap-1 rounded px-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="inline-flex items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   <Copy aria-hidden className="size-3" />
                   <KeyChip className="h-4 px-1">{field.field === "amount" ? "Y" : "y"}</KeyChip>
@@ -188,10 +189,10 @@ export function RecordCard({
         ))}
       </dl>
       {record.stage_line ? (
-        <p className="text-[12.5px] text-muted-foreground">{record.stage_line}</p>
+        <p className="text-xs text-muted-foreground">{record.stage_line}</p>
       ) : null}
       {record.group ? (
-        <p data-testid="record-group" className="text-[12.5px] text-foreground/90">
+        <p data-testid="record-group" className="text-xs text-foreground/90">
           Part of {record.group.kind} "{record.group.title}" ({record.group.count})
         </p>
       ) : null}
@@ -201,7 +202,7 @@ export function RecordCard({
             type="button"
             onClick={onOpenDocument}
             data-testid="record-pdf"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-[13px] font-medium hover:bg-accent"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent"
           >
             <FileText aria-hidden className="size-4" />
             {record.pdf.filename}
@@ -211,7 +212,7 @@ export function RecordCard({
         <button
           type="button"
           onClick={onOpenEmail}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-[13px] hover:bg-accent"
+          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm hover:bg-accent"
         >
           <Mail aria-hidden className="size-4" />
           The email
@@ -219,7 +220,7 @@ export function RecordCard({
         </button>
       </div>
       {record.documents && record.documents.length > 1 ? (
-        <ul aria-label="Documents" className="grid gap-0.5 text-[12.5px] text-muted-foreground">
+        <ul aria-label="Documents" className="grid gap-0.5 text-xs text-muted-foreground">
           {record.documents.map((document) => (
             <li key={document.attachment_id} className="truncate">
               {document.filename} · {Math.max(1, Math.round(document.size_bytes / 1024))} KB
@@ -230,10 +231,10 @@ export function RecordCard({
       ) : null}
       {record.sources && record.sources.length > 0 ? (
         <section aria-label="From these emails">
-          <h3 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+          <SectionHeading as="h3">
             From {record.sources.length === 1 ? "1 email" : `${record.sources.length} emails`}
-          </h3>
-          <ul className="mt-1 grid gap-0.5 text-[12.5px]">
+          </SectionHeading>
+          <ul className="mt-1 grid gap-0.5 text-xs">
             {record.sources.map((source) => (
               <li key={source.message_id} className="flex min-w-0 gap-2">
                 <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
@@ -250,13 +251,13 @@ export function RecordCard({
         <button
           type="button"
           onClick={onIssuer}
-          className="w-fit text-left text-[12.5px] text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+          className="w-fit text-left text-xs text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
         >
           Also from {record.issuer}: {record.issuer_records} more{" "}
           <KeyChip className="h-4 px-1">p</KeyChip>
         </button>
       ) : null}
-      <p data-testid="record-why" className="text-[12.5px] text-fg-2">
+      <p data-testid="record-why" className="text-xs text-fg-2">
         {record.why}
       </p>
     </article>
@@ -288,18 +289,16 @@ export function AnswerCard({
     if (!fallback) return null;
     return (
       <section aria-label="Answer" data-testid="answer-fallback" className="mx-5 mt-3 grid gap-2">
-        <p className="text-[13px] text-foreground/90">{fallback.note}</p>
+        <p className="text-sm text-foreground/90">{fallback.note}</p>
         {!fallback.answer && !fallback.error ? (
-          <p className="text-[12.5px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Press <KeyChip>Enter</KeyChip> to search all mail.
           </p>
         ) : null}
         {fallback.answer ? (
           <div className="border-l-2 border-border pl-3">
-            <p className="text-pretty text-[13px] italic text-foreground/90">
-              {fallback.answer.text}
-            </p>
-            <ul className="mt-1 grid gap-0.5 text-[12.5px] text-muted-foreground">
+            <p className="text-pretty text-sm italic text-foreground/90">{fallback.answer.text}</p>
+            <ul className="mt-1 grid gap-0.5 text-xs text-muted-foreground">
               {fallback.answer.citations.map((citation) => (
                 <li key={citation.message_id} className="truncate">
                   {shortDate(citation.date)} · {citation.subject}
@@ -309,7 +308,7 @@ export function AnswerCard({
           </div>
         ) : null}
         {fallback.error ? (
-          <p className="text-[12.5px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Searching all mail failed: {fallback.error}
           </p>
         ) : null}
@@ -323,14 +322,12 @@ export function AnswerCard({
       data-testid="answer-card"
       className="mx-5 mt-3 border-l-2 border-primary bg-surface px-4 py-3"
     >
-      <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-        Answer
-      </p>
+      <p className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">Answer</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[13px] text-muted-foreground">{card.label}</span>
+        <span className="text-sm text-muted-foreground">{card.label}</span>
         <span
           data-testid="answer-value"
-          className="font-mono text-[20px] font-semibold tracking-tight text-foreground"
+          className="font-mono text-xl font-semibold tracking-tight text-foreground"
         >
           {card.value}
         </span>
@@ -338,19 +335,19 @@ export function AnswerCard({
           <button
             type="button"
             onClick={() => onCopy(card.copy)}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Copy aria-hidden className="size-3" /> copy <KeyChip className="h-4 px-1">y</KeyChip>
           </button>
         ) : null}
       </div>
-      <p className="mt-1 text-[13px] text-foreground/90">
+      <p className="mt-1 text-sm text-foreground/90">
         {[record.issuer, record.title, longDate(record.span_start ?? record.date)]
           .filter(Boolean)
           .join(" · ")}
       </p>
       {record.group ? (
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Part of {record.group.kind} "{record.group.title}" ({record.group.count})
         </p>
       ) : null}
@@ -360,7 +357,7 @@ export function AnswerCard({
           <button
             type="button"
             onClick={() => onOpenDocument(record)}
-            className="inline-flex items-center gap-1 text-[12.5px] text-foreground hover:underline"
+            className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
           >
             <KeyChip className="h-4 px-1">↵</KeyChip> {record.pdf.filename}
           </button>
@@ -368,7 +365,7 @@ export function AnswerCard({
         <button
           type="button"
           onClick={() => onOpenEmail(record)}
-          className="inline-flex items-center gap-1 text-[12.5px] text-foreground hover:underline"
+          className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
         >
           <KeyChip className="h-4 px-1">o</KeyChip> email
         </button>
@@ -378,7 +375,7 @@ export function AnswerCard({
           type="button"
           data-testid="answer-show-all"
           onClick={onShowAll}
-          className="mt-2 min-h-8 text-[12.5px] text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+          className="mt-2 min-h-8 text-xs text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
         >
           Show all {answer.matching} matches
         </button>
@@ -406,14 +403,14 @@ export function MatchesHeader({
   return (
     <section aria-label="Matches" data-testid="answer-list" className="mx-5 mt-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 data-testid="answer-list-header" className="text-[15px] font-semibold">
+        <h2 data-testid="answer-list-header" className="text-md font-semibold">
           {list.header}
         </h2>
         <Button variant="outline" size="sm" className="ml-auto" onClick={onClear}>
           <X aria-hidden className="size-3.5" /> Clear search
         </Button>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[12.5px] text-muted-foreground">
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
         {span ? <span data-testid="answer-list-span">{span}</span> : null}
         {issuer ? (
           <button

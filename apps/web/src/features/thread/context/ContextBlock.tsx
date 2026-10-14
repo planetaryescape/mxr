@@ -60,7 +60,7 @@ export function ContextBlock({
       {facts.length > 0 ? (
         <p
           data-testid="thread-context-facts"
-          className="text-pretty text-[12.5px] leading-5 text-muted-foreground tabular-nums"
+          className="text-pretty text-xs leading-5 text-muted-foreground tabular-nums"
         >
           {facts.map((part, index) => (
             <span key={part}>
@@ -75,7 +75,7 @@ export function ContextBlock({
           {promises.map((promise) => (
             <li
               key={promise.id}
-              className="group flex items-start gap-1.5 text-[12.5px] leading-5 text-foreground/90"
+              className="group flex items-start gap-1.5 text-xs leading-5 text-foreground/90"
             >
               <span className="min-w-0 text-pretty">{promise.text}</span>
               <button
@@ -165,7 +165,7 @@ function GistSlot({
               data-clamp
               data-testid="thread-gist-text"
               className={cn(
-                "text-pretty text-[15px] leading-6 text-foreground",
+                "text-pretty text-md leading-6 text-foreground",
                 !expanded && "line-clamp-3 @xl:line-clamp-2",
               )}
             >
@@ -175,7 +175,7 @@ function GistSlot({
               data-clamp
               data-testid="thread-ask"
               className={cn(
-                "mt-1.5 text-pretty text-[13.5px] leading-[1.375rem]",
+                "mt-1.5 text-pretty text-sm leading-[1.375rem]",
                 !expanded && "line-clamp-2",
               )}
             >
@@ -202,7 +202,7 @@ function GistSlot({
             </p>
           </>
         ) : !gist.loading ? (
-          <p className="text-pretty text-[13.5px] leading-[1.375rem] text-muted-foreground">
+          <p className="text-pretty text-sm leading-[1.375rem] text-muted-foreground">
             {unavailableCopy(data, gist.error)}{" "}
             {data?.status !== "blocked" ? (
               <button

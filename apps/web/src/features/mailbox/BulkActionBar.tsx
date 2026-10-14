@@ -68,7 +68,7 @@ export function BulkActionBar({
       aria-label="Selected conversations"
       className="absolute inset-x-3 bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-border-strong bg-popover p-1.5 shadow-xl"
     >
-      <span className="px-2 text-[13px]">
+      <span className="px-2 text-sm">
         <span className="font-semibold">{plural(selected.length, "conversation")}</span>
         {messageCount > selected.length ? (
           <span className="ml-1 text-muted-foreground">({plural(messageCount, "message")})</span>
@@ -85,7 +85,7 @@ export function BulkActionBar({
           key={button.command}
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 px-2 text-[13px]"
+          className="h-8 gap-1.5 px-2 text-sm"
           title={`${button.label} (${button.keys})`}
           onClick={() => {
             verbs[button.command]?.();

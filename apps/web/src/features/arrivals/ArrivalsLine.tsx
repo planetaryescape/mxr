@@ -30,7 +30,7 @@ export function ArrivalsView({
     <details data-testid="arrivals" className="shrink-0 border-b border-border px-5 py-2">
       <summary
         data-testid="arrivals-summary"
-        className="cursor-pointer text-[12.5px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="cursor-pointer text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span>
           Since {arrivals.since_label}: {arrivals.total} arrived
@@ -45,7 +45,7 @@ export function ArrivalsView({
       <div className="space-y-1 pb-1 pt-2">
         <ArrivalsLine arrivals={arrivals} nowWaiting={nowWaiting} />
         {arrivals.track_record ? (
-          <p data-testid="arrivals-track-record" className="text-[12px] text-muted-foreground">
+          <p data-testid="arrivals-track-record" className="text-xs text-muted-foreground">
             {arrivals.track_record}
           </p>
         ) : null}
@@ -72,7 +72,7 @@ export function ArrivalsLine({
   return (
     <p
       data-testid="arrivals-line"
-      className="flex flex-wrap items-baseline gap-x-1 text-[12.5px] text-muted-foreground"
+      className="flex flex-wrap items-baseline gap-x-1 text-xs text-muted-foreground"
     >
       <span>
         {parts.map((part) =>
@@ -101,7 +101,7 @@ export function ArrivalsLine({
         <PopoverContent
           align="start"
           data-testid="arrivals-never-bury"
-          className="text-[12.5px] leading-snug"
+          className="text-xs leading-snug"
         >
           {arrivals.never_bury}
         </PopoverContent>

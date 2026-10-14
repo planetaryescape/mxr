@@ -118,11 +118,11 @@ export function AccountSyncDetails({
     account?.last_sync_ok_at ? ago(account.last_sync_ok_at, now) : "never",
   );
   const reason = useClockLabel((now) => (account ? (plainReason(account, now) ?? "") : ""));
-  if (!account) return <p className="text-[13px] text-muted-foreground">No sync reading yet.</p>;
+  if (!account) return <p className="text-sm text-muted-foreground">No sync reading yet.</p>;
   const tone = healthTone(health);
   const retry = account.last_sync_error?.retry_at;
   return (
-    <div className="space-y-2 text-[13px]" data-testid="account-sync-details">
+    <div className="space-y-2 text-sm" data-testid="account-sync-details">
       <p className={cn("flex items-center gap-2", TEXT_TONE[tone])} role="status">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT_TONE[tone])} />
         {words}

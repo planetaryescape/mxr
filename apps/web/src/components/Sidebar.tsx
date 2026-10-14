@@ -393,7 +393,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={!isFolded}
-                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
+                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
                 >
                   <ChevronRight
                     className={cn("size-3 transition-transform", !isFolded && "rotate-90")}
@@ -496,7 +496,7 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? `${entry.label}${count ? `, ${count}` : ""}` : undefined}
       className={cn(
-        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px]",
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-sm",
         collapsed && "justify-center px-0",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -519,7 +519,7 @@ function SidebarLink({
           {entry.early ? (
             <span
               data-testid="rail-early"
-              className="ml-1.5 font-mono text-[9.5px] uppercase tracking-wide text-muted-foreground"
+              className="ml-1.5 font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               early
             </span>

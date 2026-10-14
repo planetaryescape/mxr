@@ -58,7 +58,7 @@ function JobRow({ job }: { job: JobData }) {
   return (
     <li className="border-b border-border/60 px-2 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[13px] font-medium">{job.kind.replace(/_/g, " ")}</span>
+        <span className="text-sm font-medium">{job.kind.replace(/_/g, " ")}</span>
         <span className={cn("font-mono text-2xs", STATUS_TONE[job.status])}>{job.status}</span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
@@ -79,7 +79,7 @@ function JobRow({ job }: { job: JobData }) {
         <span>started {formatRelative(new Date(job.started_at))}</span>
         {job.undo_ids.length > 0 ? <span>{plural(job.undo_ids.length, "undo id")}</span> : null}
       </div>
-      {job.error ? <p className="mt-1.5 text-[12.5px] text-destructive">{job.error}</p> : null}
+      {job.error ? <p className="mt-1.5 text-xs text-destructive">{job.error}</p> : null}
     </li>
   );
 }

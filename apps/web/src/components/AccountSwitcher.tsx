@@ -72,15 +72,13 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           )}
           aria-label={`Account: ${title}. Switch account`}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-muted font-mono text-[11px] font-semibold text-primary">
+          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-muted font-mono text-2xs font-semibold text-primary">
             {scoped || rows.length === 1 ? initials(title) : <Layers className="size-3.5" />}
           </span>
           {!collapsed && (
             <>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold leading-tight">
-                  {title}
-                </span>
+                <span className="block truncate text-sm font-semibold leading-tight">{title}</span>
                 {subtitle ? (
                   <span className="block truncate font-mono text-2xs text-muted-foreground">
                     {subtitle}
@@ -108,7 +106,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         ) : null}
         {rows.map((row) => (
           <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
-            <span className="grid size-5 place-items-center rounded bg-muted font-mono text-[10px]">
+            <span className="grid size-5 place-items-center rounded bg-muted font-mono text-2xs">
               {initials(row.name || row.email)}
             </span>
             <span className="min-w-0 flex-1">

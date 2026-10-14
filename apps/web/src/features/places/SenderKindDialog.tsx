@@ -74,7 +74,7 @@ export function SenderKindDialog({
                 )}
               >
                 <span className="flex-1">
-                  <span className="block text-[13px] font-medium">{option.label}</span>
+                  <span className="block text-sm font-medium">{option.label}</span>
                   <span className="block text-2xs text-muted-foreground">{option.hint}</span>
                 </span>
                 {isCurrent(option) ? (

@@ -42,13 +42,13 @@ export function LowTide({
         <p
           className={cn(
             "text-balance text-foreground",
-            size === "full" ? "text-[17px] font-semibold tracking-tight" : "text-[15px]",
+            size === "full" ? "text-lg font-semibold tracking-tight" : "text-md",
           )}
         >
           {line}
         </p>
         {children ? (
-          <div className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground tabular-nums">
+          <div className="mt-1 text-pretty text-sm leading-5 text-muted-foreground tabular-nums">
             {children}
           </div>
         ) : null}

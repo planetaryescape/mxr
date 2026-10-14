@@ -100,8 +100,8 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
           <span
             className={
               cancelled
-                ? "truncate text-[13px] font-medium line-through text-muted-foreground"
-                : "truncate text-[13px] font-medium"
+                ? "truncate text-sm font-medium line-through text-muted-foreground"
+                : "truncate text-sm font-medium"
             }
           >
             {metadata.summary || "(no title)"}

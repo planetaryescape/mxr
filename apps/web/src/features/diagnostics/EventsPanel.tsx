@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { fetchEventCategories, fetchEventCount, fetchEvents, type EventLogEntry } from "./api";
 import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
+import { SectionHeading } from "@/components/SectionHeading";
 
 const LEVELS = ["all", "trace", "debug", "info", "warn", "error"] as const;
 const WINDOWS = [
@@ -102,9 +103,7 @@ export function EventsPanel() {
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-            Event log
-          </h2>
+          <SectionHeading>Event log</SectionHeading>
           <p className="text-2xs text-muted-foreground">
             Showing {entries.length} of {total} · page {page + 1} of {totalPages}
           </p>
@@ -176,7 +175,7 @@ export function EventsPanel() {
       )}
 
       {events.isSuccess && entries.length === 0 && (
-        <div className="border-y border-border/60 py-6 text-center text-[13px] text-muted-foreground">
+        <div className="border-y border-border/60 py-6 text-center text-sm text-muted-foreground">
           No events match the current filters. Try a wider window or clear the search.
         </div>
       )}
@@ -209,7 +208,7 @@ export function EventsPanel() {
                     </td>
                     <td className="px-2 py-1.5">
                       <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${levelClasses(entry.level)}`}
+                        className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold uppercase ${levelClasses(entry.level)}`}
                       >
                         {entry.level}
                       </span>

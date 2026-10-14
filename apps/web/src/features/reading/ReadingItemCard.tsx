@@ -78,7 +78,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       <h3
         className={cn(
           "text-balance font-semibold leading-snug tracking-tight text-foreground",
-          lead ? "text-[19px]" : "text-[15.5px]",
+          lead ? "text-xl" : "text-md",
         )}
       >
         <a
@@ -92,7 +92,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
           {item.title}
         </a>
       </h3>
-      <p className="mt-0.5 text-[12.5px] text-muted-foreground" data-testid="reading-meta">
+      <p className="mt-0.5 text-xs text-muted-foreground" data-testid="reading-meta">
         {meta.join(" · ")}
         {item.on_later ? (
           <span className="ml-2 inline-flex items-center gap-1 text-foreground/80">
@@ -103,7 +103,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       {item.standfirst ? (
         <p
           className={cn(
-            "mt-1.5 max-w-[66ch] text-pretty text-[13.5px] leading-6 text-foreground/85",
+            "mt-1.5 max-w-[66ch] text-pretty text-sm leading-6 text-foreground/85",
             !lead && "line-clamp-2",
           )}
         >
@@ -128,7 +128,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
               <button
                 type="button"
                 onClick={() => handlers.onToggleLinks(item.item_key)}
-                className="pl-4 text-[12.5px] text-muted-foreground hover:text-foreground"
+                className="pl-4 text-xs text-muted-foreground hover:text-foreground"
               >
                 + {more} more
               </button>
@@ -137,7 +137,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
         </ul>
       ) : null}
       {item.unsubscribe_offer && !shelf ? (
-        <p data-testid="unsubscribe-offer" className="mt-2 text-[12.5px] text-muted-foreground">
+        <p data-testid="unsubscribe-offer" className="mt-2 text-xs text-muted-foreground">
           {item.unsubscribe_offer}.{" "}
           <button
             type="button"
@@ -149,11 +149,11 @@ export const ReadingItemCard = memo(function ReadingItemCard({
           <KeyChip className="h-4 px-1">D</KeyChip>
         </p>
       ) : null}
-      <p data-testid="why-here" className="mt-1.5 text-[12px] text-fg-2">
+      <p data-testid="why-here" className="mt-1.5 text-xs text-fg-2">
         {item.why}
       </p>
       {lead ? (
-        <p className="mt-2 hidden flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground sm:flex">
+        <p className="mt-2 hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:flex">
           <button
             type="button"
             onClick={() => handlers.onRead(item.item_key)}
@@ -203,7 +203,7 @@ function LinkRow({
         handlers.onFocus(link.item_key);
       }}
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 rounded px-2 py-0.5 text-[13.5px]",
+        "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 rounded px-2 py-0.5 text-sm",
         focused && "bg-accent",
       )}
     >

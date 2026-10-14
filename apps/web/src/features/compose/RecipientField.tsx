@@ -205,7 +205,7 @@ export function RecipientField({
                 >
                   <span
                     className={cn(
-                      "flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary",
+                      "flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-2xs font-semibold text-primary",
                       invalid && "bg-destructive/20 text-destructive",
                     )}
                   >
@@ -284,7 +284,7 @@ export function RecipientField({
                   }}
                   onMouseEnter={() => setHighlight(index)}
                 >
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-2xs font-semibold text-primary">
                     {initials(suggestion.display_name || suggestion.email)}
                   </span>
                   <span className="min-w-0">

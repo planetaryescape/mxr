@@ -4443,6 +4443,7 @@ dependencies = [
  "lettre",
  "mail-parser",
  "mime_guess",
+ "mxr-assistant",
  "mxr-async-imap",
  "mxr-client",
  "mxr-compose",
@@ -4520,6 +4521,19 @@ dependencies = [
  "wiremock",
  "yup-oauth2",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "mxr-assistant"
+version = "0.6.101"
+dependencies = [
+ "async-trait",
+ "mxr-llm",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

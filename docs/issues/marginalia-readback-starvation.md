@@ -1,6 +1,6 @@
 # Failing Marginalia items can starve the background highlight read-back
 
-**Status:** open, not fixed · **Found:** 2026-10-14 in review of PR #447 ·
+**Status:** resolved 2026-10-14 on `fix/marginalia-readback-starvation` · **Found:** 2026-10-14 in review of PR #447 ·
 **Severity:** low; highlights stop arriving on their own, and `mxr reading
 marginalia sync` and opening the item still work
 
@@ -19,10 +19,17 @@ article that answers oddly) never writes `highlights_synced_at`. Its row
 keeps sorting first. With 20 or more such rows, every batch is those same
 20 and the healthy items behind them are never read in the background.
 
-## Fix to consider
+## Fix
 
-Record the attempt separately from the success (for example
-`highlights_attempted_at`, used for ordering and the half-hour gate), or
-write `highlights_synced_at` on a non-stop failure too and keep the error
-on the result. Add a test with 20 persistently failing rows ahead of one
-healthy row.
+`after_sync` now remembers, in memory, which items failed their background
+read-back and when. Its batch is the due items minus those that failed in
+the last half hour, so the same failing items can't fill every batch. A
+success clears the item; entries older than half an hour are dropped. The
+memory goes with a restart, so after one each failing item is tried once
+more before it waits again. That cost is one extra request per failing
+item per restart, and it avoids a migration and a backup schema bump.
+`highlights_synced_at` still means "last read successfully", so the time
+clients show stays true.
+
+`background_tests::failing_items_dont_starve_the_ones_behind_them` covers
+20 failing items ahead of one healthy item.

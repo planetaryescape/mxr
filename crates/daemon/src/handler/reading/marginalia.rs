@@ -22,6 +22,8 @@ use mxr_reading::marginalia::{
     normalize_base_url, paragraphs_html, ArticleIn, MarginaliaClient, MarginaliaError,
 };
 use mxr_store::{MarginaliaHighlightIn, ReadingArticleRow, ReadingMarginaliaRow};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 const SECRET_SERVICE: &str = "mxr/marginalia";
 const SECRET_ACCOUNT: &str = "api-token";
@@ -30,6 +32,54 @@ const SECRET_ACCOUNT: &str = "api-token";
 const BACKGROUND_WINDOW: Duration = Duration::days(60);
 const BACKGROUND_EVERY: Duration = Duration::minutes(30);
 const BACKGROUND_BATCH: u32 = 20;
+/// Items whose background read-back failed, and when. A failure never
+/// sets `highlights_synced_at`, so without this the same failing items
+/// would sort first and fill every batch. Kept in memory: after a restart
+/// each is tried once more before it waits again.
+type FailedAt = HashMap<(MessageId, i64), DateTime<Utc>>;
+
+fn background_failures() -> &'static Mutex<FailedAt> {
+    static FAILED: OnceLock<Mutex<FailedAt>> = OnceLock::new();
+    FAILED.get_or_init(Mutex::default)
+}
+
+/// The next background batch: due rows, minus those that failed within
+/// the last `BACKGROUND_EVERY`, in the store's order.
+fn background_batch(
+    due: Vec<ReadingMarginaliaRow>,
+    failed: &FailedAt,
+    now: DateTime<Utc>,
+) -> Vec<ReadingMarginaliaRow> {
+    due.into_iter()
+        .filter(|row| {
+            failed
+                .get(&(row.message_id.clone(), row.idx))
+                .is_none_or(|at| *at <= now - BACKGROUND_EVERY)
+        })
+        .take(usize::try_from(BACKGROUND_BATCH).unwrap_or(usize::MAX))
+        .collect()
+}
+
+/// Remembers which of `batch` failed and forgets the rest, dropping
+/// entries old enough to be retried anyway.
+fn note_background_failures(
+    failed: &mut FailedAt,
+    batch: &[ReadingMarginaliaRow],
+    sync: &MarginaliaSyncData,
+    now: DateTime<Utc>,
+) {
+    failed.retain(|_, at| *at > now - BACKGROUND_EVERY);
+    for row in batch {
+        let key = (row.message_id.clone(), row.idx);
+        let item = item_key(&row.message_id, row.idx);
+        if sync.failed.iter().any(|f| f.item_key == item) {
+            failed.insert(key, now);
+        } else {
+            failed.remove(&key);
+        }
+    }
+}
+
 /// Reading back every sent item, on request.
 const SYNC_ALL_LIMIT: u32 = 500;
 
@@ -427,19 +477,34 @@ pub(super) async fn after_sync(state: &AppState, account_id: &AccountId) {
     };
     let now = Utc::now();
     let result = async {
-        let rows = state
+        let due = state
             .store
             .reading_marginalia_due(
                 Some(account_id),
                 now - BACKGROUND_EVERY,
                 now - BACKGROUND_WINDOW,
-                BACKGROUND_BATCH,
+                u32::MAX,
             )
             .await?;
+        let rows = {
+            let failed = background_failures()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            background_batch(due, &failed, now)
+        };
         if rows.is_empty() {
             return Ok(None);
         }
-        read_back(state, &client, &rows).await.map(Some)
+        let sync = read_back(state, &client, &rows).await?;
+        note_background_failures(
+            &mut background_failures()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            &rows,
+            &sync,
+            Utc::now(),
+        );
+        Ok::<_, HandlerError>(Some(sync))
     }
     .await;
     match result {
@@ -455,5 +520,79 @@ pub(super) async fn after_sync(state: &AppState, account_id: &AccountId) {
         Err(error) => {
             tracing::warn!(account = %account_id, %error, "Marginalia highlight read-back failed");
         }
+    }
+}
+
+#[cfg(test)]
+mod background_tests {
+    use super::*;
+
+    fn row(n: i64, sent_at: DateTime<Utc>) -> ReadingMarginaliaRow {
+        ReadingMarginaliaRow {
+            message_id: MessageId::from_uuid(uuid::Uuid::from_u128(n as u128 + 1)),
+            idx: 0,
+            account_id: AccountId::from_uuid(uuid::Uuid::from_u128(1)),
+            article_id: format!("a{n}"),
+            read_url: format!("https://m.test/read/a{n}"),
+            view: "issue".into(),
+            sent_at,
+            highlights_synced_at: None,
+        }
+    }
+
+    fn failed_sync(rows: &[ReadingMarginaliaRow]) -> MarginaliaSyncData {
+        MarginaliaSyncData {
+            failed: rows
+                .iter()
+                .map(|r| MarginaliaSyncFailureData {
+                    item_key: item_key(&r.message_id, r.idx),
+                    error: "Marginalia answered 502".into(),
+                })
+                .collect(),
+            ..MarginaliaSyncData::default()
+        }
+    }
+
+    #[test]
+    fn failing_items_dont_starve_the_ones_behind_them() {
+        let now = Utc::now();
+        // 20 items that keep failing sort ahead of one healthy item.
+        let due: Vec<_> = (0..21)
+            .map(|n| row(n, now - Duration::days(30) + Duration::minutes(n)))
+            .collect();
+        let mut failed = FailedAt::new();
+
+        let first = background_batch(due.clone(), &failed, now);
+        assert_eq!(first.len(), 20);
+        assert!(!first.iter().any(|r| r.article_id == "a20"));
+        note_background_failures(&mut failed, &first, &failed_sync(&first), now);
+
+        let next = background_batch(due.clone(), &failed, now + Duration::minutes(5));
+        assert_eq!(
+            next.iter()
+                .map(|r| r.article_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a20"]
+        );
+
+        // Half an hour on, the failing items get another try.
+        let later = background_batch(due, &failed, now + BACKGROUND_EVERY);
+        assert_eq!(later.len(), 20);
+    }
+
+    #[test]
+    fn a_success_clears_an_earlier_failure() {
+        let now = Utc::now();
+        let due = vec![row(0, now), row(1, now)];
+        let mut failed = FailedAt::new();
+        note_background_failures(&mut failed, &due, &failed_sync(&due[..1]), now);
+        assert_eq!(failed.len(), 1);
+        note_background_failures(
+            &mut failed,
+            &due,
+            &MarginaliaSyncData::default(),
+            now + BACKGROUND_EVERY + Duration::minutes(1),
+        );
+        assert!(failed.is_empty());
     }
 }

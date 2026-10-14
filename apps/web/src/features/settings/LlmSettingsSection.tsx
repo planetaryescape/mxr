@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { LlmRoutesPanel, type LlmFeatureStatus, type LlmKeyStatus } from "./LlmRoutesPanel";
 import { Field } from "./settingsParts";
 import { apiFetch } from "@/api/client";
 import { isGistQuery } from "@/features/thread/context/api";
@@ -61,6 +62,9 @@ interface LlmStatus {
   context_window: number;
   supports_streaming: boolean;
   request_timeout_secs: number;
+  /** Absent from daemons that predate model routing. */
+  features?: LlmFeatureStatus[];
+  keys?: LlmKeyStatus[];
 }
 
 const defaultLlmConfig: LlmConfig = {
@@ -147,7 +151,8 @@ export function LlmSettingsSection() {
               <SectionHeading>Thread summaries and draft assist</SectionHeading>
               <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
                 mxr stores an environment variable name, not the API key. Leave it empty for Ollama
-                or LM Studio.
+                or LM Studio. A model named claude-... ignores the base URL and key variable: it
+                uses the keys stored with mxr llm key set.
               </p>
             </div>
             {currentStatus ? (
@@ -157,6 +162,8 @@ export function LlmSettingsSection() {
             ) : null}
           </div>
         </section>
+
+        <LlmRoutesPanel features={currentStatus?.features} keys={currentStatus?.keys} />
 
         {configUnsupported ? (
           <Alert variant="warning" className="text-xs">
@@ -340,9 +347,11 @@ export function LlmSettingsSection() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div className="text-2xs text-muted-foreground">
-                {currentStatus?.api_key_env
-                  ? `API key env ${currentStatus.api_key_env}: ${currentStatus.api_key_present ? "present" : "missing"}`
-                  : "No API key env configured."}
+                {currentStatus?.provider === "routed"
+                  ? `Claude keys: ${currentStatus.api_key_present ? "at least one present" : "none present"}`
+                  : currentStatus?.api_key_env
+                    ? `API key env ${currentStatus.api_key_env}: ${currentStatus.api_key_present ? "present" : "missing"}`
+                    : "No API key env configured."}
               </div>
               <Button
                 onClick={() => draft && save.mutate(draft)}

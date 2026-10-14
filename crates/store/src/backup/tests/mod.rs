@@ -703,12 +703,11 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         )
         .await
         .unwrap();
-        let row: (String, String, Option<String>) = sqlx::query_as(
-            "SELECT quote, origin, origin_id FROM reading_highlights WHERE id='h1'",
-        )
-        .fetch_one(&mut copied)
-        .await
-        .unwrap();
+        let row: (String, String, Option<String>) =
+            sqlx::query_as("SELECT quote, origin, origin_id FROM reading_highlights WHERE id='h1'")
+                .fetch_one(&mut copied)
+                .await
+                .unwrap();
         assert_eq!(
             row,
             ("kept quote".to_string(), "mxr".to_string(), None),

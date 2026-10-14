@@ -1925,6 +1925,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn marginalia_migration_upgrades_83_and_85_keeping_highlights_as_made_in_mxr() {
+        // 83 also crosses the two remote migrations that precede it on main.
+        for from in [83, 85] {
+            let temp = tempdir().unwrap();
+            let db_path = temp.path().join(format!("version-{from}.db"));
+            {
+                let store = store_at_version(&db_path, from).await;
+                // Only the upgrade is under test, so skip the parent rows.
+                sqlx::query("PRAGMA foreign_keys = OFF")
+                    .execute(store.writer())
+                    .await
+                    .unwrap();
+                sqlx::query(
+                    "INSERT INTO reading_highlights
+                     (id, account_id, message_id, idx, view, quote, note, created_at)
+                     VALUES ('h1', 'a', 'm', 0, 'issue', 'kept quote', NULL, 1)",
+                )
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+
+            let store = Store::new(&db_path).await.unwrap();
+            let versions: Vec<(i64,)> = sqlx::query_as(
+                "SELECT version FROM schema_migrations WHERE version >= 83 ORDER BY version",
+            )
+            .fetch_all(store.writer())
+            .await
+            .unwrap();
+            assert_eq!(
+                versions.iter().map(|v| v.0).collect::<Vec<_>>(),
+                (83..=86).collect::<Vec<_>>(),
+                "from {from}"
+            );
+            assert!(test_table_exists(store.writer(), "reading_marginalia").await);
+            let row: (String, String, Option<String>) = sqlx::query_as(
+                "SELECT quote, origin, origin_id FROM reading_highlights WHERE id = 'h1'",
+            )
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+            assert_eq!(
+                row,
+                ("kept quote".into(), "mxr".into(), None),
+                "from {from}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn pre_versioning_db_is_backfilled_into_schema_migrations() {
         // Simulates a user who ran an older daemon that applied every migration
         // imperatively without recording versions. On next launch the new code

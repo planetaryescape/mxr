@@ -160,13 +160,34 @@ export function tuneToast(sourceName: string, setting: UpdateSetting): string {
   return `${sourceName}: ${effect[setting]}.`;
 }
 
+/** A parcel's track: its steps and the index of the step it is at. */
+export interface TrackState {
+  steps: string[];
+  step: number | null;
+}
+
 /** Where a parcel stands on its track, 0 to 1, for the dots. */
-export function trackStep(line: UpdateLine): { steps: string[]; step: number | null } {
+export function trackStep(line: UpdateLine): TrackState {
   const tracker = line.tracker;
   const steps = tracker?.steps;
   // A payload whose steps aren't a list shows no track, rather than one read character by character.
   if (!Array.isArray(steps) || steps.length === 0) return { steps: [], step: null };
   return { steps, step: tracker?.step ?? null };
+}
+
+/**
+ * The track may stand in for a parcel's fact only when the fact is the
+ * daemon's own generic rule line ("Parcel on its way"), outside Needs a look,
+ * and not "went quiet", which the track cannot say. A subject-derived fact
+ * ("Delayed to Fri 17 Oct") or a delivery problem always shows as written.
+ */
+export function trackReplacesFact(line: UpdateLine, track: string | null): boolean {
+  return (
+    track !== null &&
+    line.fact_source === "rule" &&
+    line.section !== "needs_a_look" &&
+    line.tracker?.outcome !== "quiet"
+  );
 }
 
 /**
@@ -197,7 +218,12 @@ function senderHost(line: UpdateLine): string | null {
  * branded_name). Split it so the name stays whole and the host can be muted.
  * A name without that exact suffix is shown as it came.
  */
-export function splitSourceName(line: UpdateLine): { name: string; host: string | null } {
+export interface SourceName {
+  name: string;
+  host: string | null;
+}
+
+export function splitSourceName(line: UpdateLine): SourceName {
   const host = senderHost(line);
   if (host) {
     const suffix = ` (${host})`;

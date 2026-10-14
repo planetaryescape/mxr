@@ -22,8 +22,10 @@ import {
   splitSourceName,
   trackerStatus,
   trackLabel,
+  trackReplacesFact,
   trailingItem,
   type SuggestedSetting,
+  type TrailingItem,
 } from "./digestView";
 import { useUpdatesHidden } from "./updatesVerbs";
 
@@ -87,8 +89,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const parcel = line.tracker?.kind === "parcel";
   const delivered = parcel && line.tracker?.state === "delivered";
   const trailing = trailingItem(line);
-  // A parcel's track is its state, so it stands in the fact column for the generic fact.
   const track = parcel ? trackLabel(line) : null;
+  const trackStands = trackReplacesFact(line, track);
   const expanded = focused || peeked;
   const canToDo = !line.in_todo && Boolean(line.todo_suggestion || line.latest_message_id);
   // The keys worth naming on hover or focus, after the verbs the row already shows.
@@ -159,7 +161,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             parcel && !delivered && "font-medium",
           )}
         >
-          {track ?? line.fact}
+          {trackStands ? track : line.fact}
+          {track && !trackStands ? (
+            <span className="ml-2 text-xs text-muted-foreground">{track}</span>
+          ) : null}
         </span>
         <span className="order-2 ml-auto flex shrink-0 items-center gap-2 text-xs tabular-nums @xl:order-3">
           {trailing ? (
@@ -258,7 +263,9 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {peeked ? <Peek line={line} onOpenEmail={onOpenEmail} onTuneTo={onTuneTo} /> : null}
+      {peeked ? (
+        <Peek line={line} trackStands={trackStands} onOpenEmail={onOpenEmail} onTuneTo={onTuneTo} />
+      ) : null}
       {hint}
     </li>
   );
@@ -274,7 +281,7 @@ function TrailingValue({
   todoTitle,
   onNeedsMe,
 }: {
-  item: NonNullable<ReturnType<typeof trailingItem>>;
+  item: TrailingItem;
   focused: boolean;
   todoTitle: string;
   onNeedsMe: () => void;
@@ -344,18 +351,19 @@ function TrailingValue({
  */
 function Peek({
   line,
+  trackStands,
   onOpenEmail,
   onTuneTo,
 }: {
   line: UpdateLine;
+  /** The track is in the fact column, so the peek holds the fact it replaced. */
+  trackStands: boolean;
   onOpenEmail: (line: UpdateLine) => void;
   onTuneTo: (line: UpdateLine, setting: SuggestedSetting) => void;
 }) {
   const { name } = splitSourceName(line);
   const link = openableLink(line);
   const tracker = line.tracker;
-  // The track stands in the fact column, so the peek holds the fact it replaced.
-  const trackShown = tracker?.kind === "parcel" && trackLabel(line) !== null;
   const parcelItems = (tracker?.items ?? []).filter((item) => item.name.trim());
   const trackingNumber = tracker?.tracking_number?.trim() || undefined;
   const orderNumber = tracker?.order_number?.trim() || undefined;
@@ -368,7 +376,7 @@ function Peek({
       data-testid="update-peek"
       className="mt-2 min-w-0 space-y-1.5 border-l-2 border-border pl-3 text-xs break-words text-fg-2"
     >
-      {trackShown ? <p data-testid="update-fact-full">{line.fact}</p> : null}
+      {trackStands ? <p data-testid="update-fact-full">{line.fact}</p> : null}
       <p data-testid="update-why">{line.why}</p>
       {numbers.length > 0 ? (
         <p data-testid="update-numbers">

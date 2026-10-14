@@ -221,6 +221,8 @@ describe("UpdateLineRow's track", () => {
       source_key: "parcel:1",
       source_name: "Bookshop",
       fact: "Parcel on its way",
+      // The daemon's own generic parcel line is a rule fact, not a subject.
+      fact_source: "rule",
       message_ids: [],
       latest_message_id: undefined,
       delta: undefined,
@@ -252,6 +254,47 @@ describe("UpdateLineRow's track", () => {
     // The references and the items wait for the peek.
     expect(within(row).queryByTestId("parcel-identity")).toBeNull();
     expect(row).not.toHaveTextContent("A-VERY-LONG-TRACKING-REFERENCE");
+  });
+
+  test("a subject-derived parcel fact shows as written, with the track after it", () => {
+    const { row } = renderLine(parcel({ fact: "Delayed to Fri 17 Oct", fact_source: "subject" }), {
+      focused: false,
+    });
+    const fact = within(row).getByTestId("update-fact");
+    expect(fact).toHaveTextContent("Delayed to Fri 17 Oct");
+    expect(fact).toHaveTextContent("Shipped · next: out for delivery");
+    expect(within(fact).getByText("Shipped · next: out for delivery")).toHaveClass(
+      "text-muted-foreground",
+    );
+    expect(within(row).queryByTestId("update-fact-full")).toBeNull();
+  });
+
+  test("a parcel in Needs a look shows its fact even when the fact is generic", () => {
+    const { row } = renderLine(parcel({ section: "needs_a_look", signal: "needs_you" }), {
+      focused: false,
+    });
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel on its way");
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Shipped · next: out for delivery",
+    );
+  });
+
+  test("a parcel that went quiet keeps the fact that says so", () => {
+    const quiet = parcel({ fact: "Parcel from Bookshop went quiet" });
+    const { row } = renderLine(
+      { ...quiet, tracker: { ...quiet.tracker!, outcome: "quiet" } },
+      {
+        focused: false,
+      },
+    );
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Parcel from Bookshop went quiet",
+    );
+  });
+
+  test("the peek keeps the full fact when the track stands in for it", () => {
+    const { row } = renderLine(parcel(), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-fact-full")).toHaveTextContent("Parcel on its way");
   });
 
   test("a delivered parcel keeps its own fact, since there is no track left", () => {

@@ -5,8 +5,12 @@
 use crate::failure::{classify_status, parse_retry_after, AttemptError};
 use crate::health::{FailureReason, RouteFailure};
 use crate::route::ApiKey;
+use crate::tool_chat::{
+    ProviderTurn, TokenUsage, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse,
+};
 use crate::{endpoint, ChatRole, CompletionRequest, CompletionResponse, LlmError};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::time::Duration;
 
 pub(crate) const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
@@ -20,6 +24,13 @@ const ERROR_MESSAGE_LIMIT: usize = 200;
 /// `max_tokens`. mxr's features are short extractions and summaries, so
 /// thinking is kept at the lowest effort.
 const EFFORT: &str = "low";
+/// The assistant plans multi-step tool use for a person who is waiting:
+/// more thought than an extraction, less than a coding agent.
+const ASSISTANT_EFFORT: &str = "medium";
+/// Room for thinking plus a long answer in one non-streamed reply.
+const ASSISTANT_MAX_TOKENS: u32 = 16_000;
+/// Provider tag on replayed turns.
+pub(crate) const PROVIDER_TAG: &str = "anthropic";
 
 #[derive(Serialize)]
 struct MessagesRequest<'a> {
@@ -104,6 +115,30 @@ impl AnthropicClient {
         timeout: Option<Duration>,
     ) -> Result<CompletionResponse, AttemptError> {
         let body = build_request(model, req)?;
+        let reply: MessagesResponse = self.post(key, &body, timeout).await?;
+        interpret(reply, model)
+    }
+
+    /// One tool-calling turn. The reply's content blocks are kept whole so
+    /// they can be replayed unchanged (thinking blocks must be).
+    pub(crate) async fn chat(
+        &self,
+        key: &ApiKey,
+        model: &str,
+        req: &ToolChatRequest,
+        timeout: Option<Duration>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        let body = build_tool_request(model, req)?;
+        let reply: ToolMessagesResponse = self.post(key, &body, timeout).await?;
+        interpret_tool_reply(reply, model)
+    }
+
+    async fn post<B: Serialize, R: serde::de::DeserializeOwned>(
+        &self,
+        key: &ApiKey,
+        body: &B,
+        timeout: Option<Duration>,
+    ) -> Result<R, AttemptError> {
         let client = self
             .client
             .as_ref()
@@ -125,7 +160,7 @@ impl AnthropicClient {
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", key_header)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .json(&body);
+            .json(body);
         let budget = timeout.map_or(self.request_timeout, |t| t.min(self.request_timeout));
         request = request.timeout(budget);
 
@@ -171,7 +206,7 @@ impl AnthropicClient {
             return Err(AttemptError { error, class });
         }
 
-        let reply = response.json::<MessagesResponse>().await.map_err(|error| {
+        response.json::<R>().await.map_err(|error| {
             AttemptError::route(
                 LlmError::Other(format!("Anthropic reply could not be read: {error}")),
                 RouteFailure::Cooling {
@@ -179,8 +214,7 @@ impl AnthropicClient {
                     retry_after: None,
                 },
             )
-        })?;
-        interpret(reply, model)
+        })
     }
 }
 
@@ -260,6 +294,172 @@ fn interpret(
             reply.model
         },
         finish_reason: reply.stop_reason,
+    })
+}
+
+#[derive(Serialize)]
+struct ToolMessagesRequest<'a> {
+    model: &'a str,
+    max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
+    messages: Vec<Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Value>,
+    output_config: OutputConfig,
+    /// Automatic caching: the breakpoint follows the end of the history, so
+    /// the tools, system prompt and earlier turns are read from cache.
+    cache_control: Value,
+}
+
+#[derive(Deserialize)]
+struct ToolMessagesResponse {
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    content: Vec<Value>,
+    stop_reason: Option<String>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
+}
+
+/// History must reach the API append-only: an assistant turn this provider
+/// produced goes back exactly as it came, and tool results for one turn
+/// share one user message.
+fn build_tool_request<'a>(
+    model: &'a str,
+    req: &ToolChatRequest,
+) -> Result<ToolMessagesRequest<'a>, AttemptError> {
+    let mut system = Vec::new();
+    let mut messages: Vec<Value> = Vec::new();
+    let push_user_blocks = |messages: &mut Vec<Value>, blocks: Vec<Value>| {
+        if let Some(last) = messages.last_mut() {
+            if last["role"] == "user" {
+                if let Some(content) = last["content"].as_array_mut() {
+                    content.extend(blocks);
+                    return;
+                }
+            }
+        }
+        messages.push(json!({"role": "user", "content": blocks}));
+    };
+    for message in &req.messages {
+        match message {
+            ToolChatMessage::System { content } => system.push(content.as_str()),
+            ToolChatMessage::User { content } => {
+                push_user_blocks(
+                    &mut messages,
+                    vec![json!({"type": "text", "text": content})],
+                );
+            }
+            ToolChatMessage::Tool {
+                call_id,
+                content,
+                is_error,
+            } => push_user_blocks(
+                &mut messages,
+                vec![json!({
+                    "type": "tool_result",
+                    "tool_use_id": call_id,
+                    "content": content,
+                    "is_error": is_error,
+                })],
+            ),
+            ToolChatMessage::Assistant {
+                text,
+                tool_calls,
+                provider_turn,
+            } => {
+                let content = match provider_turn {
+                    Some(turn) if turn.provider == PROVIDER_TAG => turn.content.clone(),
+                    _ => {
+                        let mut blocks = Vec::new();
+                        if !text.is_empty() {
+                            blocks.push(json!({"type": "text", "text": text}));
+                        }
+                        for call in tool_calls {
+                            blocks.push(json!({
+                                "type": "tool_use",
+                                "id": call.id,
+                                "name": call.name,
+                                "input": call.arguments,
+                            }));
+                        }
+                        Value::Array(blocks)
+                    }
+                };
+                messages.push(json!({"role": "assistant", "content": content}));
+            }
+        }
+    }
+    if !messages.iter().any(|message| message["role"] == "user") {
+        return Err(AttemptError::request(LlmError::Other(
+            "the request has no user message".to_string(),
+        )));
+    }
+    let tools = req
+        .tools
+        .iter()
+        .map(|tool| {
+            json!({
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.input_schema,
+            })
+        })
+        .collect();
+    Ok(ToolMessagesRequest {
+        model,
+        max_tokens: req.max_tokens.unwrap_or(ASSISTANT_MAX_TOKENS),
+        system: (!system.is_empty()).then(|| system.join("\n\n")),
+        messages,
+        tools,
+        output_config: OutputConfig {
+            effort: ASSISTANT_EFFORT,
+        },
+        cache_control: json!({"type": "ephemeral"}),
+    })
+}
+
+fn interpret_tool_reply(
+    reply: ToolMessagesResponse,
+    requested_model: &str,
+) -> Result<ToolChatResponse, AttemptError> {
+    if reply.stop_reason.as_deref() == Some("refusal") {
+        return Err(AttemptError::request(LlmError::Other(
+            "the model declined to answer this request".to_string(),
+        )));
+    }
+    let mut text = String::new();
+    let mut tool_calls = Vec::new();
+    for block in &reply.content {
+        match block["type"].as_str() {
+            Some("text") => text.push_str(block["text"].as_str().unwrap_or_default()),
+            Some("tool_use") => tool_calls.push(ToolCall {
+                id: block["id"].as_str().unwrap_or_default().to_string(),
+                name: block["name"].as_str().unwrap_or_default().to_string(),
+                arguments: block["input"].clone(),
+            }),
+            _ => {}
+        }
+    }
+    if text.trim().is_empty() && tool_calls.is_empty() {
+        return Err(AttemptError::request(LlmError::Empty));
+    }
+    Ok(ToolChatResponse {
+        text,
+        tool_calls,
+        model: if reply.model.trim().is_empty() {
+            requested_model.to_string()
+        } else {
+            reply.model
+        },
+        finish_reason: reply.stop_reason,
+        usage: reply.usage,
+        provider_turn: Some(ProviderTurn {
+            provider: PROVIDER_TAG.to_string(),
+            content: Value::Array(reply.content),
+        }),
     })
 }
 
@@ -427,6 +627,127 @@ mod tests {
             describe_error("<html>proxy page with a prompt</html>"),
             "no error details"
         );
+    }
+
+    fn tool_request(messages: Vec<ToolChatMessage>) -> serde_json::Value {
+        let req = ToolChatRequest {
+            messages,
+            tools: vec![crate::ToolSpec {
+                name: "mxr_search".into(),
+                description: "Search mail".into(),
+                input_schema: json!({"type": "object"}),
+            }],
+            max_tokens: None,
+        };
+        serde_json::to_value(build_tool_request("claude-opus-5-5", &req).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_turn_anthropic_produced_is_replayed_byte_for_byte() {
+        let raw = json!([
+            {"type": "thinking", "thinking": "", "signature": "sig"},
+            {"type": "tool_use", "id": "t1", "name": "mxr_search", "input": {"query": "x"}},
+        ]);
+        let body = tool_request(vec![
+            ToolChatMessage::User {
+                content: "find x".into(),
+            },
+            ToolChatMessage::Assistant {
+                text: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: "t1".into(),
+                    name: "mxr_search".into(),
+                    arguments: json!({"query": "x"}),
+                }],
+                provider_turn: Some(ProviderTurn {
+                    provider: PROVIDER_TAG.into(),
+                    content: raw.clone(),
+                }),
+            },
+            ToolChatMessage::Tool {
+                call_id: "t1".into(),
+                content: "[]".into(),
+                is_error: false,
+            },
+        ]);
+        assert_eq!(body["messages"][1]["content"], raw);
+    }
+
+    #[test]
+    fn parallel_tool_results_and_a_following_user_turn_share_one_user_message() {
+        let body = tool_request(vec![
+            ToolChatMessage::System {
+                content: "sys".into(),
+            },
+            ToolChatMessage::User {
+                content: "go".into(),
+            },
+            ToolChatMessage::Assistant {
+                text: "Looking.".into(),
+                tool_calls: vec![
+                    ToolCall {
+                        id: "a".into(),
+                        name: "mxr_search".into(),
+                        arguments: json!({}),
+                    },
+                    ToolCall {
+                        id: "b".into(),
+                        name: "mxr_search".into(),
+                        arguments: json!({}),
+                    },
+                ],
+                provider_turn: None,
+            },
+            ToolChatMessage::Tool {
+                call_id: "a".into(),
+                content: "1".into(),
+                is_error: false,
+            },
+            ToolChatMessage::Tool {
+                call_id: "b".into(),
+                content: "no".into(),
+                is_error: true,
+            },
+            ToolChatMessage::User {
+                content: "and then?".into(),
+            },
+        ]);
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(
+            messages[1]["content"][0],
+            json!({"type": "text", "text": "Looking."})
+        );
+        assert_eq!(messages[1]["content"][2]["id"], "b");
+        let results = messages[2]["content"].as_array().unwrap();
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[1]["is_error"], true);
+        assert_eq!(results[2]["text"], "and then?");
+        assert_eq!(body["system"], "sys");
+        assert_eq!(body["cache_control"], json!({"type": "ephemeral"}));
+        assert_eq!(body["output_config"], json!({"effort": ASSISTANT_EFFORT}));
+        assert_eq!(body["tools"][0]["input_schema"], json!({"type": "object"}));
+    }
+
+    #[test]
+    fn a_tool_reply_keeps_its_raw_content_for_replay() {
+        let reply: ToolMessagesResponse = serde_json::from_value(json!({
+            "model": "claude-opus-5-5",
+            "content": [
+                {"type": "thinking", "thinking": "", "signature": "s"},
+                {"type": "text", "text": "Checking."},
+                {"type": "tool_use", "id": "t", "name": "mxr_status", "input": {}},
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 7}
+        }))
+        .unwrap();
+        let response = interpret_tool_reply(reply, "claude-opus-5-5").unwrap();
+        assert_eq!(response.text, "Checking.");
+        assert_eq!(response.tool_calls[0].name, "mxr_status");
+        assert_eq!(response.usage.unwrap().cache_read_input_tokens, 7);
+        let turn = response.provider_turn.unwrap();
+        assert_eq!(turn.content.as_array().unwrap().len(), 3);
     }
 
     #[test]

@@ -49,11 +49,11 @@ impl CompletionObservations {
         result
     }
 
-    pub(crate) fn record(
+    pub(crate) fn record<T>(
         &self,
         generation: u64,
         feature: Option<LlmFeature>,
-        result: &Result<super::CompletionResponse, LlmError>,
+        result: &Result<T, LlmError>,
     ) {
         let current = self
             .generation

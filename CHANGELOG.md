@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.97](https://github.com/planetaryescape/mxr/compare/v0.6.96...v0.6.97) (2026-10-14)
+
+
+### Features
+
+* open Reading items in Marginalia and read their highlights back ([#447](https://github.com/planetaryescape/mxr/issues/447)) ([3262b30](https://github.com/planetaryescape/mxr/commit/3262b304adcc7da9dacc1a9ccc2340b52b93e851))
+
 ## [0.6.96](https://github.com/planetaryescape/mxr/compare/v0.6.95...v0.6.96) (2026-10-13)
 
 

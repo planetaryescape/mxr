@@ -151,6 +151,25 @@ export function highlightPayload(
   return { itemKey, view, quote: quote.slice(0, MAX_QUOTE_CHARS) };
 }
 
+const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * The saved highlight a selection is exactly, comparing words not spacing,
+ * or undefined. Clicking a drawn highlight selects its text, so this is
+ * how a click finds the highlight to edit.
+ */
+export function highlightMatching<H extends { quote: string }>(
+  selection: string,
+  highlights: readonly H[],
+): H | undefined {
+  const wanted = squash(selection);
+  if (!wanted) return undefined;
+  return highlights.find((h) => squash(h.quote) === wanted);
+}
+
+/** Highlights made elsewhere (Marginalia) are mirrored here, so mxr only shows them. */
+export const isOwnHighlight = (h: { origin?: string | null }) => (h.origin ?? "mxr") === "mxr";
+
 /** What "let go of all" covers: every conversation the edition shows, once. */
 export function letGoAllPlan(bands: readonly ReadingBand[]) {
   const threadIds: string[] = [];

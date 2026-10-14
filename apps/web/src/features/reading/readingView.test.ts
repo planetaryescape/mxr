@@ -8,7 +8,9 @@ type UnsubscribeMethod = components["schemas"]["UnsubscribeMethod"];
 import {
   domainLabel,
   editionEntries,
+  highlightMatching,
   highlightPayload,
+  isOwnHighlight,
   LINKS_SHOWN,
   letGoAllPlan,
   minutesLeft,
@@ -192,5 +194,23 @@ describe("unsubscribe", () => {
     ).toBeNull();
     expect(unsubscribePreview({ status: "success", data: purgePreview("None") })).toBeNull();
     expect(unsubscribePreview({ status: "success", data: { ok: false } })).toBeNull();
+  });
+});
+
+describe("highlightMatching", () => {
+  const saved = [{ quote: "A delete is\nthe absence" }, { quote: "other" }];
+  test("finds the highlight a selection is, whatever the spacing", () => {
+    expect(highlightMatching("  A delete   is the absence ", saved)).toBe(saved[0]);
+    expect(highlightMatching("other", saved)).toBe(saved[1]);
+  });
+  test("a part of a highlight, or nothing, is not one", () => {
+    expect(highlightMatching("A delete", saved)).toBeUndefined();
+    expect(highlightMatching("   ", saved)).toBeUndefined();
+  });
+  test("only mxr's own highlights are editable", () => {
+    expect(isOwnHighlight({ origin: "mxr" })).toBe(true);
+    expect(isOwnHighlight({})).toBe(true);
+    expect(isOwnHighlight({ origin: "marginalia" })).toBe(false);
+    expect(isOwnHighlight({ origin: "anything-else" })).toBe(false);
   });
 });

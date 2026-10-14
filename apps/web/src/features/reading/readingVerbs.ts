@@ -7,7 +7,7 @@
 
 import { toast } from "sonner";
 
-import { claimUndo, offerUndo } from "@/features/mail-actions/mailUndo";
+import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { markModeDone } from "@/features/modes/modeDone";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -15,6 +15,8 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 import {
   fetchArticle,
   READING_KEY,
+  removeHighlightRequest,
+  updateHighlightNote,
   saveHighlight,
   sendToMarginalia,
   setLater,
@@ -147,6 +149,7 @@ export async function highlightSelection(
   selection: string,
   itemKey: string,
   view: "issue" | "article",
+  note?: string,
 ): Promise<boolean> {
   const payload = highlightPayload(selection, itemKey, view);
   if (!payload) {
@@ -154,7 +157,7 @@ export async function highlightSelection(
     return false;
   }
   try {
-    await saveHighlight(payload);
+    await saveHighlight({ ...payload, note: note?.trim() || undefined });
     toast.success("Highlight saved", {
       description: "Search finds it, and mxr reading export --markdown lists it.",
     });
@@ -166,6 +169,59 @@ export async function highlightSelection(
     toast.error("Couldn't save the highlight", { description: errorText(error) });
     return false;
   }
+}
+
+/**
+ * Changes a highlight (note or removal) and offers the daemon's undo, which
+ * puts the old note or the whole highlight back.
+ */
+async function changeHighlight(
+  itemKey: string,
+  message: string,
+  change: () => Promise<{ mutation_id?: string | null; undo_unavailable?: boolean }>,
+): Promise<boolean> {
+  const refresh = () =>
+    getActiveQueryClient()?.invalidateQueries({ queryKey: [...READING_KEY, "item", itemKey] });
+  const claim = claimUndo();
+  try {
+    const result = await change();
+    const mutationId = result.mutation_id ?? null;
+    const reverse = mutationId
+      ? async () => {
+          const undone = await performUndo(mutationId);
+          if (undone) await refresh();
+          return undone;
+        }
+      : null;
+    claim.settle(
+      offerUndo(
+        "mode-done",
+        message,
+        `highlight-${mutationId ?? itemKey}`,
+        reverse,
+        claim.run,
+        mutationId ?? undefined,
+      ),
+    );
+    if (result.undo_unavailable) toast.warning("Done, but its undo couldn't be saved");
+    await refresh();
+    return true;
+  } catch (error) {
+    claim.settle(null);
+    toast.error("Couldn't change the highlight", { description: errorText(error) });
+    return false;
+  }
+}
+
+/** Replaces a highlight's note; a blank note clears it. */
+export function editHighlightNote(itemKey: string, id: string, note: string) {
+  return changeHighlight(itemKey, note.trim() ? "Note saved" : "Note cleared", () =>
+    updateHighlightNote(id, note),
+  );
+}
+
+export function removeHighlight(itemKey: string, id: string) {
+  return changeHighlight(itemKey, "Highlight removed", () => removeHighlightRequest(id));
 }
 
 /** `R`: remember the sender's own layout for this source. */

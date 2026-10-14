@@ -2034,6 +2034,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/reading/highlights/{id}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change a highlight's note; a blank note clears it. Highlights made in Marginalia are refused. The run returns a mutation id for undo */
+        post: operations["mail_reading_highlight_note"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/highlights/{id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a highlight, or with `dry_run` name what it would remove. Highlights made in Marginalia are refused. The run returns a mutation id for undo */
+        post: operations["mail_reading_highlight_remove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/reading/items/{item_key}": {
         parameters: {
             query?: never;
@@ -7825,6 +7859,23 @@ export interface components {
             /** @description `issue` (default) or `article`. */
             view?: string | null;
         };
+        /**
+         * @description What `UpdateHighlight` or `RemoveHighlight` did to one highlight, or
+         *     would do.
+         */
+        ReadingHighlightChangeData: {
+            /** @description `note` or `remove`. */
+            action: string;
+            dry_run: boolean;
+            /** @description The highlight as it is after the change (a removed one, as it was). */
+            highlight: components["schemas"]["ReadingHighlightData"];
+            /** @description For `UndoMutation`; absent on a dry run. */
+            mutation_id?: string | null;
+            /** @description The note before a `note` change. */
+            previous_note?: string | null;
+            /** @description It changed but its undo could not be saved. */
+            undo_unavailable?: boolean;
+        };
         /** @description A saved passage. */
         ReadingHighlightData: {
             account_id: components["schemas"]["AccountId"];
@@ -7843,6 +7894,21 @@ export interface components {
             url?: string | null;
             /** @description `issue` or `article`: which text it was taken from. */
             view: string;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/highlights/{id}/note`. */
+        ReadingHighlightNoteBody: {
+            /** @description Name the highlight it would change without changing it. */
+            dry_run?: boolean;
+            /**
+             * @description The whole note. Required: an empty or blank string clears it, and
+             *     `null` or a missing field is refused rather than read as a clear.
+             */
+            note: string;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/highlights/{id}/remove`. */
+        ReadingHighlightRemoveBody: {
+            /** @description Name the highlight it would remove without removing it. */
+            dry_run?: boolean;
         };
         /** @description One readable item in the edition or on Later. */
         ReadingItemData: {
@@ -10777,6 +10843,19 @@ export interface components {
                   view?: string | null;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "UpdateHighlight";
+                  dry_run?: boolean;
+                  highlight_id: string;
+                  note: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "RemoveHighlight";
+                  dry_run?: boolean;
+                  highlight_id: string;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "ExportReadingHighlights";
@@ -12064,6 +12143,11 @@ export interface components {
                   highlight: components["schemas"]["ReadingHighlightData"];
                   /** @enum {string} */
                   kind: "ReadingHighlight";
+              }
+            | {
+                  change: components["schemas"]["ReadingHighlightChangeData"];
+                  /** @enum {string} */
+                  kind: "ReadingHighlightChanged";
               }
             | {
                   /** @enum {string} */
@@ -18330,6 +18414,75 @@ export interface operations {
         };
         responses: {
             /** @description The `ReadingHighlight` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_highlight_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The highlight's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingHighlightNoteBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingHighlightChanged` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_highlight_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The highlight's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Optional; omitted removes */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingHighlightRemoveBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingHighlightChanged` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

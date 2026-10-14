@@ -3933,6 +3933,93 @@
         }
       }
     },
+    "/api/v1/mail/reading/highlights/{id}/note": {
+      "post": {
+        "tags": [],
+        "summary": "Change a highlight's note; a blank note clears it. Highlights made in Marginalia are refused. The run returns a mutation id for undo",
+        "operationId": "mail_reading_highlight_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The highlight's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingHighlightNoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingHighlightChanged` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/highlights/{id}/remove": {
+      "post": {
+        "tags": [],
+        "summary": "Remove a highlight, or with `dry_run` name what it would remove. Highlights made in Marginalia are refused. The run returns a mutation id for undo",
+        "operationId": "mail_reading_highlight_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The highlight's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Optional; omitted removes",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingHighlightRemoveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingHighlightChanged` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/reading/items/{item_key}": {
       "get": {
         "tags": [],
@@ -17830,6 +17917,46 @@
           }
         }
       },
+      "ReadingHighlightChangeData": {
+        "type": "object",
+        "description": "What `UpdateHighlight` or `RemoveHighlight` did to one highlight, or\nwould do.",
+        "required": [
+          "action",
+          "highlight",
+          "dry_run"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "`note` or `remove`."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "highlight": {
+            "$ref": "#/components/schemas/ReadingHighlightData",
+            "description": "The highlight as it is after the change (a removed one, as it was)."
+          },
+          "mutation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For `UndoMutation`; absent on a dry run."
+          },
+          "previous_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The note before a `note` change."
+          },
+          "undo_unavailable": {
+            "type": "boolean",
+            "description": "It changed but its undo could not be saved."
+          }
+        }
+      },
       "ReadingHighlightData": {
         "type": "object",
         "description": "A saved passage.",
@@ -17890,6 +18017,33 @@
           "view": {
             "type": "string",
             "description": "`issue` or `article`: which text it was taken from."
+          }
+        }
+      },
+      "ReadingHighlightNoteBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/highlights/{id}/note`.",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Name the highlight it would change without changing it."
+          },
+          "note": {
+            "type": "string",
+            "description": "The whole note. Required: an empty or blank string clears it, and\n`null` or a missing field is refused rather than read as a clear."
+          }
+        }
+      },
+      "ReadingHighlightRemoveBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/highlights/{id}/remove`.",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Name the highlight it would remove without removing it."
           }
         }
       },
@@ -28229,6 +28383,54 @@
           },
           {
             "type": "object",
+            "description": "Change a highlight's note. An empty note (after trimming) clears it;\nthe field is required, so a missing or null note is an error rather\nthan a quiet clear. Refused for a highlight made elsewhere\n(`origin` other than `mxr`, such as Marginalia's). `dry_run` names\nthe highlight it would change without changing it. The real run\nreturns a `mutation_id` for `UndoMutation`, which brings the old\nnote back. Returns `ResponseData::ReadingHighlightChanged`.",
+            "required": [
+              "highlight_id",
+              "note",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateHighlight"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "highlight_id": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Remove a highlight. Refused for one made elsewhere, as for\n`UpdateHighlight`. `dry_run` names the highlight it would remove\nwithout removing it, by the same lookup. The real run returns a\n`mutation_id` for `UndoMutation`, which puts it back. Returns\n`ResponseData::ReadingHighlightChanged`.",
+            "required": [
+              "highlight_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RemoveHighlight"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "highlight_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Every highlight, oldest first, with the same as one Markdown\ndocument. Returns `ResponseData::ReadingHighlights`.",
             "required": [
               "cmd"
@@ -33123,6 +33325,25 @@
                 "type": "string",
                 "enum": [
                   "ReadingHighlight"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::UpdateHighlight` and `Request::RemoveHighlight`.",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/ReadingHighlightChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingHighlightChanged"
                 ]
               }
             }

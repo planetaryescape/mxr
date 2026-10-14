@@ -675,10 +675,13 @@ mod tests {
                 }
             }));
         }
-        let mut probes = 0;
+        // Keep every ticket alive until all callers have asked: dropping an
+        // unsettled probe frees it, so a caller still asking could then get a
+        // second one, which is correct but not what this test measures.
+        let mut held = Vec::new();
         for task in tasks {
-            probes += usize::from(task.await.unwrap().is_some());
+            held.push(task.await.unwrap());
         }
-        assert_eq!(probes, 1);
+        assert_eq!(held.iter().filter(|ticket| ticket.is_some()).count(), 1);
     }
 }

@@ -24,8 +24,8 @@ managing two apps:
   **public** under `planetaryescape`.
 - Sending to Marginalia is **manual only**: the user presses the button. No
   automatic mirroring of sources.
-- The shared reader package will live at **github.com/planetaryescape/reader**
-  (not created yet).
+- The shared reader package lives at **github.com/planetaryescape/reader**
+  (public, MIT OR Apache-2.0), consumed as a git tag dependency.
 - **mxr knows about Marginalia; Marginalia does not know about mxr.**
   Marginalia exposes a general API for any app with a token; mxr pulls
   highlights back. Marginalia never calls mxr.
@@ -38,13 +38,17 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
 |---|---|---|
 | 0 | Licence Marginalia, scrub a leaked key from its history, push it public | DONE |
 | 1 | Marginalia: personal API tokens plus the ingest and highlights API | DONE, deployed |
-| 2 | mxr: `M` sends or opens an item; highlights are read back | DONE: squash-merged as **3262b304a** (PR #447, tree 2462952f) on 2026-10-14. Live check passed the same day. Release pending via release-please |
-| 3 | Extract Marginalia's reader UI into `planetaryescape/reader` (React package) | NEXT, rung 2. Git tag dependency (BK decided 2026-10-14). Repo not created yet |
-| 4 | Rebuild mxr's web reader on that package (render the cleaned HTML, themes, typography, ranged highlights, notes and so on) | NEXT, rung 2, after step 3. Ranged highlights and notes are rungs 3 and 4 |
+| 2 | mxr: `M` sends or opens an item; highlights are read back | DONE: PR #447 (3262b304a), released in **v0.6.97**. Live check passed 2026-10-14 |
+| 3 | Extract Marginalia's reader UI into `planetaryescape/reader` | DONE: package **v0.1.2** (0d9e13d). Marginalia renders through it (marginalia `0d2f75d`, Vercel prod `marginalia-b6vgi1y0q`, 2026-10-14) |
+| 4 | Rebuild mxr's web reader on that package | DONE: PR #457 (1c87564ba), released in **v0.6.98**. Sanitized article HTML, themes, typography, quote highlights drawn on the article |
+| 5 | Manage highlights: selection toolbar, edit notes, remove with dry run and undo, in every client | DONE: PR #461 (5d359cc81), released in **v0.6.100**. Protocol 18. Marginalia-origin highlights are read-only in mxr |
+| 6 | Anchored highlights (mark the exact occurrence, not the first match) | GATED: build only if BK hits wrong-occurrence marks while dogfooding. Needs a migration and protocol fields |
 
 The rung ladder, with each rung's promise, demo and tier, is in the orchestrator's
 `plan.md` at `~/code/planetaryescape/.orchestrate/reading-marginalia-20261014/plan.md`.
-Rung 1 is step 2 above. Rung 2 is steps 3 and 4.
+Rung 1 is step 2, rung 2 is steps 3 and 4, rung 3 is step 5 and rung 4 is step 6.
+
+The independent cross-model review was waived by BK for rungs 1 to 3 while Codex was out of credits (until 2026-10-20). Run it retroactively on the shipped diffs (#447, #457, #461) once a verifier is available.
 
 Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemon
 (Marginalia prod, a demo item):
@@ -162,46 +166,31 @@ Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemo
 
 ## Next actions, in order
 
-1. **Release.** Release-please owns it. Find its release PR for the `feat:`
-   commit on main, and merge it once it's green. Don't tag by hand.
-2. **Rung 2: mxr's web reader renders the article through the shared package.**
-   Decided 2026-10-14: the package is consumed as a git tag dependency
-   (`github:planetaryescape/reader#vX`), not npm. Steps 3 and 4 below are
-   this rung, in that order. Marginalia's prod app consumes the same package,
-   with no behaviour change, so its prod render stays the same. Existing
-   quote-only mxr highlights keep working through quote matching.
-3. **Step 3: the shared reader package**, `planetaryescape/reader`. Create the
-   repo (public, MIT OR Apache-2.0). Candidates, all in Marginalia's
-   `apps/web/src/`:
-   - `lib/text-range.ts`: anchors text across DOM nodes; no framework
-   - `lib/paragraphs.ts`: paragraph tagging and drop caps
-   - `lib/highlights.ts`, `lib/saved-passages.ts`: CSS Custom Highlight API
-     hooks. Untie them from Convex `Doc` types; they only need
-     `{text, kind, paragraphIndex}`
-   - `lib/reader-settings.ts`, `components/reader-settings-panel.tsx`,
-     `lib/use-reader-theme.ts`, plus the `--reader-*` tokens in
-     `app/globals.css`: themes and typography
-   - `lib/shortcuts.ts`, `lib/sanitize.ts` (DOMPurify)
-   - `components/article-renderer.tsx`: remove its one
-     `useMutation(api.annotations.markViewed)` and pass a callback in instead
-   - `components/selection-toolbar.tsx`
+1. **BK dogfoods Reading** on v0.6.100 and Marginalia. Open items for BK:
+   check that Marginalia's reader looks unchanged since `0d2f75d`, delete
+   the live-check test article, and revoke the demo token.
+2. **Retroactive cross-model review** of #447, #457 and #461 once a verifier
+   is available (Codex after 2026-10-20, or an approved substitute).
+3. **Rung 4 (anchored highlights)** only if BK sees a highlight marked on the
+   wrong occurrence. Today a quote marks its first match in the article.
+4. Package follow-ups (small, in `planetaryescape/reader`): make the outer
+   `reader-article` wrapper class configurable (it collided with a Marginalia
+   page class, renamed to `article-column` there), and scope the package's
+   `code` font-family.
 
-   Marginalia then consumes the package, with no behaviour change, and its
-   `bun run check` must stay green. Both apps are React 19. Marginalia uses
-   Next 16 and Tailwind 3; mxr uses Vite, TanStack Router and Tailwind, so
-   check the Tailwind major version and the CSS-token strategy before
-   choosing how the package ships its styles.
-4. **Step 4: mxr's web reader on the package.**
-   - The daemon already sends untrusted cleaned HTML in
-     `ReadingItemDetailData.html` and `ReadingArticleData.html`. Neither client
-     renders it today; both show plain `paragraphs`.
-   - Render that HTML, sanitized, through the shared renderer.
-   - Add themes and typography, ranged highlights and notes on highlights.
-   - mxr highlights currently store only the quote. Ranges or offsets need a
-     migration and protocol fields; check `docs/blueprint/22-email-modes.md`
-     and `docs/research/email-modes/reading.md`.
-   - Keep client parity: anything daemon-backed needs CLI, TUI and MCP too.
-   - The TUI can't use React, so it gets the daemon features only.
+## Reader package rules
+
+- Never define `build`, `prepare`, `prepack`, `install`, `preinstall` or
+  `postinstall` scripts. npm's git fetcher runs a nested install in the clone
+  when any of them exists (`pacote/lib/git.js`), and that install fails under
+  npm 11 with `EALLOWSCRIPTS`. The build script is `build:dist`.
+- `dist/` is committed. Rebuild and commit it with every source change;
+  `bun run check:dist` fails when it's stale.
+- Validate `package.json` with npm, not only bun: bun accepted a trailing
+  comma that made v0.1.0 uninstallable with npm.
+- Each app injects its own `sanitize`. mxr renders inline, so
+  `sanitizeReaderHtml` drops `style`, `class`, `id` and `name` and keeps only
+  http(s) and mailto links and http(s) or `data:image` images.
 
 ## Known issues and gotchas
 

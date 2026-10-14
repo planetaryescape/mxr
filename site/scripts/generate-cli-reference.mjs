@@ -287,7 +287,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   reading: {
-    use: 'Newsletters as an edition: since your last visit, earlier this week and fading, ranked by what you read, with a Later shelf. See [Read newsletters as an edition](/guides/reading/).',
+    use: 'Newsletters as an edition: since your last visit, earlier this week and fading, ranked by what you read, with a Later shelf. See [Read newsletters as an edition](/guides/reading/). Items can also be read in [Marginalia](/guides/marginalia/), which sends each item the first time and reads its highlights back.',
     examples: [
       "mxr reading",
       "mxr reading edition --peek --format json",
@@ -295,6 +295,9 @@ const COMMAND_EXAMPLES = {
       "mxr reading later --add ITEM",
       "mxr reading let-go --all --dry-run",
       "mxr reading export --markdown",
+      "mxr reading marginalia connect --url https://reader.example.com   # asks for the token, or reads it from stdin",
+      "mxr reading marginalia send ITEM --dry-run",
+      "mxr reading marginalia sync",
     ],
   },
   'paper-trail': {

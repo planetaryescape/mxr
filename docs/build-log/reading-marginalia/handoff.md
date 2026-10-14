@@ -38,9 +38,22 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
 |---|---|---|
 | 0 | Licence Marginalia, scrub a leaked key from its history, push it public | DONE |
 | 1 | Marginalia: personal API tokens plus the ingest and highlights API | DONE, deployed |
-| 2 | mxr: `M` sends or opens an item; highlights are read back | DONE in draft **PR #447**, not merged or released |
-| 3 | Extract Marginalia's reader UI into `planetaryescape/reader` (React package) | TODO |
-| 4 | Rebuild mxr's web reader on that package (render the cleaned HTML, themes, typography, ranged highlights, notes and so on) | TODO |
+| 2 | mxr: `M` sends or opens an item; highlights are read back | DONE: squash-merged as **3262b304a** (PR #447, tree 2462952f) on 2026-10-14. Live check passed the same day. Release pending via release-please |
+| 3 | Extract Marginalia's reader UI into `planetaryescape/reader` (React package) | NEXT, rung 2. Git tag dependency (BK decided 2026-10-14). Repo not created yet |
+| 4 | Rebuild mxr's web reader on that package (render the cleaned HTML, themes, typography, ranged highlights, notes and so on) | NEXT, rung 2, after step 3. Ranged highlights and notes are rungs 3 and 4 |
+
+The rung ladder, with each rung's promise, demo and tier, is in the orchestrator's
+`plan.md` at `~/code/planetaryescape/.orchestrate/reading-marginalia-20261014/plan.md`.
+Rung 1 is step 2 above. Rung 2 is steps 3 and 4.
+
+Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemon
+(Marginalia prod, a demo item):
+
+- `connect` worked. The token went to the secrets file (0600) and config holds only `marginalia_url`.
+- `send --dry-run` printed 178 bytes and contacted nothing.
+- `send` created the Marginalia article, and its `read_url` is same-origin. A second send answered "Already in Marginalia".
+- BK highlighted one passage. `sync` added 1 highlight with origin `marginalia`. A second sync added 0. The mxr highlight survived sync.
+- Left for BK: delete the test article in Marginalia, and revoke the demo token.
 
 ### Step 0 and step 1: Marginalia (done)
 
@@ -73,7 +86,7 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
     and a backup first. Follow that.
 - Check it: `bun run check` in the repo root (lint, types, about 294 tests).
 
-### Step 2: mxr (PR #447, draft)
+### Step 2: mxr (PR #447, merged as 3262b304a)
 
 - Branch `feat/reading-open-in-marginalia`, worktree
   `~/code/planetaryescape/.worktrees/reading-marginalia`.
@@ -143,27 +156,20 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
   - Web vitest (1008 tests) and lint.
   - The end-to-end daemon test (`handler::tests::reading::marginalia`) runs
     against wiremock.
-- CI on the draft: everything green except **Secret Scan** (see "Known
-  issues").
+- Secret Scan was red on the draft because of commit `5194eb4a` on another
+  branch. The PR's `.gitleaksignore` entry for that fingerprint fixed it.
+- Squash-merged. The commit on main is 3262b304a, with tree 2462952f.
 
 ## Next actions, in order
 
-1. **Live check with BK's real token** (not done: it needs his token, and it
-   puts a real article in his library). With a daemon built from this
-   branch:
-   - BK creates a token in Marginalia → Account → Connected apps.
-   - `mxr reading marginalia connect --url https://reader.bhekani.com`
-   - `mxr reading --format ids`, pick an item, then
-     `mxr reading marginalia send ITEM --dry-run` and
-     `mxr reading marginalia send ITEM --open`
-   - Highlight something in Marginalia, then `mxr reading marginalia sync ITEM`
-     and `mxr reading open ITEM --format json | jq .item.highlights`.
-
-   Build in the queue and run that worktree's daemon outside it (AGENTS.md).
-   Never stop other mxr daemons.
-2. **Mark PR #447 ready** (`gh pr ready 447`) so the full suite and Web E2E
-   run. Fix anything red, then merge with `gh pr merge 447 --squash --admin`.
-   Release through release-please per the `mxr-development` skill ("ship it").
+1. **Release.** Release-please owns it. Find its release PR for the `feat:`
+   commit on main, and merge it once it's green. Don't tag by hand.
+2. **Rung 2: mxr's web reader renders the article through the shared package.**
+   Decided 2026-10-14: the package is consumed as a git tag dependency
+   (`github:planetaryescape/reader#vX`), not npm. Steps 3 and 4 below are
+   this rung, in that order. Marginalia's prod app consumes the same package,
+   with no behaviour change, so its prod render stays the same. Existing
+   quote-only mxr highlights keep working through quote matching.
 3. **Step 3: the shared reader package**, `planetaryescape/reader`. Create the
    repo (public, MIT OR Apache-2.0). Candidates, all in Marginalia's
    `apps/web/src/`:
@@ -199,11 +205,6 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
 
 ## Known issues and gotchas
 
-- **Secret Scan fails on PR #447 because of another branch.** It flags commit
-  `5194eb4a` on `codex/remote-mailbox-read`, file
-  `crates/web/src/remote_gateway_tests.rs:25`: RFC 6455's sample WebSocket key.
-  CI's checkout scans every fetched branch. Fix it there (or with a
-  `.gitleaksignore` entry), not in this PR.
 - **Flaky TUI test, also on `main`.**
   `selected_daemon_tests::failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_views`
   failed 3 of 4 runs on `main`.

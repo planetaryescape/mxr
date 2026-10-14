@@ -141,9 +141,9 @@ pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
 pub use pool::Store;
 pub use reading::{
-    MarginaliaHighlightIn, MarginaliaMirror, ReadingArticleRow, ReadingEngagementReport,
+    HighlightEdit, MarginaliaHighlightIn, MarginaliaMirror, ReadingArticleRow, ReadingEngagementReport,
     ReadingHighlightRow, ReadingItemRow, ReadingMarginaliaRow, ReadingSourcePrefs, ReadingStateRow,
-    ReadingVisitRow, SourceIssue,
+    ReadingVisitRow, SourceIssue, LOCAL_HIGHLIGHT_ORIGIN,
 };
 pub use record_subscriptions::SenderMessage;
 pub use records::{
@@ -225,7 +225,7 @@ pub use thread_context::CounterpartyExchange;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{
-    CommitmentPrior, DeskUndo, TodoTickPrior, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+    CommitmentPrior, DeskUndo, HighlightPrior, TodoTickPrior, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
 };
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,

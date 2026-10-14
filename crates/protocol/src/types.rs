@@ -2396,6 +2396,29 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         view: Option<String>,
     },
+    /// Change a highlight's note. An empty note (after trimming) clears it;
+    /// the field is required, so a missing or null note is an error rather
+    /// than a quiet clear. Refused for a highlight made elsewhere
+    /// (`origin` other than `mxr`, such as Marginalia's). `dry_run` names
+    /// the highlight it would change without changing it. The real run
+    /// returns a `mutation_id` for `UndoMutation`, which brings the old
+    /// note back. Returns `ResponseData::ReadingHighlightChanged`.
+    UpdateHighlight {
+        highlight_id: String,
+        note: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Remove a highlight. Refused for one made elsewhere, as for
+    /// `UpdateHighlight`. `dry_run` names the highlight it would remove
+    /// without removing it, by the same lookup. The real run returns a
+    /// `mutation_id` for `UndoMutation`, which puts it back. Returns
+    /// `ResponseData::ReadingHighlightChanged`.
+    RemoveHighlight {
+        highlight_id: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Every highlight, oldest first, with the same as one Markdown
     /// document. Returns `ResponseData::ReadingHighlights`.
     ExportReadingHighlights {
@@ -2824,6 +2847,8 @@ impl Request {
             | Self::RecordReadingEngagement { .. }
             | Self::FetchArticle { .. }
             | Self::SaveHighlight { .. }
+            | Self::UpdateHighlight { .. }
+            | Self::RemoveHighlight { .. }
             | Self::ExportReadingHighlights { .. }
             | Self::SetReadingSource { .. }
             | Self::GetMarginaliaStatus
@@ -4092,6 +4117,10 @@ pub enum ResponseData {
     ReadingHighlight {
         highlight: ReadingHighlightData,
     },
+    /// Returned by `Request::UpdateHighlight` and `Request::RemoveHighlight`.
+    ReadingHighlightChanged {
+        change: ReadingHighlightChangeData,
+    },
     /// Returned by `Request::GetMarginaliaStatus` and
     /// `Request::SetMarginaliaConnection`.
     MarginaliaStatus {
@@ -4365,6 +4394,7 @@ impl ResponseData {
             | Self::ReadingEngagement { .. }
             | Self::ReadingArticle { .. }
             | Self::ReadingHighlight { .. }
+            | Self::ReadingHighlightChanged { .. }
             | Self::ReadingHighlights { .. }
             | Self::ReadingSource { .. }
             | Self::MarginaliaStatus { .. }

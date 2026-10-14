@@ -990,6 +990,8 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
     assert_eq!(item.item.account_id, fx.account);
 }
 
+mod highlights;
+
 mod marginalia {
     //! Sending an item to Marginalia and reading its highlights back,
     //! against a stand-in Marginalia, with config and secrets in a temp dir.

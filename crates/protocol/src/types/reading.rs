@@ -319,6 +319,27 @@ pub struct ReadingHighlightData {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// What `UpdateHighlight` or `RemoveHighlight` did to one highlight, or
+/// would do.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReadingHighlightChangeData {
+    /// `note` or `remove`.
+    pub action: String,
+    /// The highlight as it is after the change (a removed one, as it was).
+    pub highlight: ReadingHighlightData,
+    /// The note before a `note` change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_note: Option<String>,
+    pub dry_run: bool,
+    /// For `UndoMutation`; absent on a dry run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_id: Option<String>,
+    /// It changed but its undo could not be saved.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub undo_unavailable: bool,
+}
+
 /// Returned by `Request::GetReadingItem`: the reader's page.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

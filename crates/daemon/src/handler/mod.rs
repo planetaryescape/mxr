@@ -1781,6 +1781,8 @@ async fn dispatch(
         | Request::RecordReadingEngagement { .. }
         | Request::FetchArticle { .. }
         | Request::SaveHighlight { .. }
+        | Request::UpdateHighlight { .. }
+        | Request::RemoveHighlight { .. }
         | Request::ExportReadingHighlights { .. }
         | Request::SetReadingSource { .. }
         | Request::GetMarginaliaStatus
@@ -2387,6 +2389,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ExportReadingHighlights { .. }
         | Request::GetMarginaliaStatus
         | Request::SendReadingToMarginalia { dry_run: true, .. }
+        | Request::UpdateHighlight { dry_run: true, .. }
+        | Request::RemoveHighlight { dry_run: true, .. }
         | Request::GetUpdatesDigest { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
@@ -2601,6 +2605,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RecordReadingEngagement { .. }
         | Request::FetchArticle { .. }
         | Request::SaveHighlight { .. }
+        | Request::UpdateHighlight { dry_run: false, .. }
+        | Request::RemoveHighlight { dry_run: false, .. }
         | Request::SetReadingSource { .. }
         // Decides where Reading items may be sent.
         | Request::SetMarginaliaConnection { .. }
@@ -2879,6 +2885,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RecordReadingEngagement { .. } => "record_reading_engagement",
         Request::FetchArticle { .. } => "fetch_article",
         Request::SaveHighlight { .. } => "save_highlight",
+        Request::UpdateHighlight { .. } => "update_highlight",
+        Request::RemoveHighlight { .. } => "remove_highlight",
         Request::ExportReadingHighlights { .. } => "export_reading_highlights",
         Request::SetReadingSource { .. } => "set_reading_source",
         Request::GetMarginaliaStatus => "get_marginalia_status",

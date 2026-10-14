@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.102](https://github.com/planetaryescape/mxr/compare/v0.6.101...v0.6.102) (2026-10-14)
+
+
+### Features
+
+* calm the other modes' rows and use one chip ([#468](https://github.com/planetaryescape/mxr/issues/468)) ([5871b39](https://github.com/planetaryescape/mxr/commit/5871b391e830ae3f9f6ae7946016196818409e4a))
+
+
+### Documentation
+
+* record BK's waiver of the Reading cross-model review ([#469](https://github.com/planetaryescape/mxr/issues/469)) ([ceb9b60](https://github.com/planetaryescape/mxr/commit/ceb9b6060194edb79ff6cf443ff67a91be78f240))
+
 ## [0.6.101](https://github.com/planetaryescape/mxr/compare/v0.6.100...v0.6.101) (2026-10-14)
 
 

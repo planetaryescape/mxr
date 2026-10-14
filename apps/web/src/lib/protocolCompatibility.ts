@@ -1,4 +1,4 @@
-export const EXPECTED_IPC_PROTOCOL_VERSION = 17;
+export const EXPECTED_IPC_PROTOCOL_VERSION = 18;
 
 export interface BridgeHealthResponse {
   status?: string;

@@ -48,7 +48,7 @@ The rung ladder, with each rung's promise, demo and tier, is in the orchestrator
 `plan.md` at `~/code/planetaryescape/.orchestrate/reading-marginalia-20261014/plan.md`.
 Rung 1 is step 2, rung 2 is steps 3 and 4, rung 3 is step 5 and rung 4 is step 6.
 
-The independent cross-model review was waived by BK for rungs 1 to 3 while Codex was out of credits (until 2026-10-20). Run it retroactively on the shipped diffs (#447, #457, #461) once a verifier is available.
+The independent cross-model review was waived by BK for rungs 1 to 3 while Codex was out of credits, and on 2026-10-15 BK waived it for good for #447, #457, #461 and the follow-up fix #466. No retroactive review is planned.
 
 Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemon
 (Marginalia prod, a demo item):
@@ -166,14 +166,12 @@ Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemo
 
 ## Next actions, in order
 
-1. **BK dogfoods Reading** on v0.6.100 and Marginalia. Open items for BK:
+1. **BK dogfoods Reading** on v0.6.101 and Marginalia. Open items for BK:
    check that Marginalia's reader looks unchanged since `0d2f75d`, delete
    the live-check test article, and revoke the demo token.
-2. **Retroactive cross-model review** of #447, #457 and #461 once a verifier
-   is available (Codex after 2026-10-20, or an approved substitute).
-3. **Rung 4 (anchored highlights)** only if BK sees a highlight marked on the
+2. **Rung 4 (anchored highlights)** only if BK sees a highlight marked on the
    wrong occurrence. Today a quote marks its first match in the article.
-4. Package follow-ups (small, in `planetaryescape/reader`): make the outer
+3. Package follow-ups (small, in `planetaryescape/reader`): make the outer
    `reader-article` wrapper class configurable (it collided with a Marginalia
    page class, renamed to `article-column` there), and scope the package's
    `code` font-family.

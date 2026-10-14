@@ -2068,6 +2068,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/reading/items/{item_key}/marginalia": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a Reading item to Marginalia, or find it there if sent before; dry_run contacts nothing */
+        post: operations["mail_reading_marginalia_send"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/reading/later": {
         parameters: {
             query?: never;
@@ -2079,6 +2096,41 @@ export interface paths {
         put?: never;
         /** Put Reading items on Later or take them off (dry_run previews) */
         post: operations["mail_reading_later"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/marginalia": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether Marginalia is connected, where, and how many items were sent */
+        get: operations["mail_reading_marginalia_get"];
+        put?: never;
+        /** Connect Marginalia with its site and a personal token (checked first), or disconnect with null */
+        post: operations["mail_reading_marginalia_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/marginalia/highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read back highlights made in Marginalia on one sent item, or every sent item */
+        post: operations["mail_reading_marginalia_sync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6591,6 +6643,94 @@ export interface components {
          * @enum {string}
          */
         MailPlaceData: "reading" | "paper_trail";
+        /** @description Body of `POST /api/v1/mail/reading/marginalia`. */
+        MarginaliaConnectionBody: {
+            connection?:
+                components["schemas"]["MarginaliaConnectionData"] | null;
+        };
+        /** @description The site and the personal token to connect Marginalia with. */
+        MarginaliaConnectionData: {
+            /**
+             * @description `mrg_…`, from Marginalia's Account, Connected apps. Kept in the
+             *     secrets file, never in config or logs.
+             */
+            token: string;
+            url: string;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/items/{item_key}/marginalia`. */
+        MarginaliaSendBody: {
+            /** @description Name what would be sent and where; contact nothing. */
+            dry_run?: boolean;
+        };
+        /** @description What `SendReadingToMarginalia` did, or would do. */
+        MarginaliaSendData: {
+            /** @description It was sent before: nothing is sent, and it opens where it went. */
+            already_sent: boolean;
+            /**
+             * Format: int64
+             * @description Size of the text sent, in bytes; 0 when it was sent before.
+             */
+            bytes: number;
+            /** @description "Sent to Marginalia." or "Already in Marginalia." */
+            copy: string;
+            dry_run: boolean;
+            /**
+             * @description The article's site, contacted first to fetch it for a digest link
+             *     whose article isn't saved yet.
+             */
+            fetch_first?: string | null;
+            /** @description The Marginalia site the item goes to. */
+            host: string;
+            item_key: string;
+            marginalia?: components["schemas"]["ReadingMarginaliaData"] | null;
+            title: string;
+            /** @description `issue` or `article`: the text that is sent. */
+            view: string;
+        };
+        /** @description Marginalia, the reading app items can be sent to. */
+        MarginaliaStatusData: {
+            /** @description A site and a token are saved. */
+            connected: boolean;
+            host?: string | null;
+            /**
+             * Format: int32
+             * @description Items sent so far, whose highlights are read back.
+             */
+            sent: number;
+            /** @description The site, such as `https://reader.example.com/`. */
+            url?: string | null;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/marginalia/highlights`. */
+        MarginaliaSyncBody: {
+            /** @description One sent item; omitted reads back every sent item. */
+            item_key?: string | null;
+        };
+        /** @description What `SyncMarginaliaHighlights` read back. */
+        MarginaliaSyncData: {
+            /** Format: int32 */
+            added: number;
+            failed?: components["schemas"]["MarginaliaSyncFailureData"][];
+            /**
+             * Format: int32
+             * @description Items Marginalia no longer has: sending them again makes a new one.
+             */
+            forgotten: number;
+            /**
+             * Format: int32
+             * @description Items whose highlights were read.
+             */
+            items: number;
+            /**
+             * Format: int32
+             * @description Deleted in Marginalia, so removed here too.
+             */
+            removed: number;
+        };
+        /** @description One item whose highlights couldn't be read back. */
+        MarginaliaSyncFailureData: {
+            error: string;
+            item_key: string;
+        };
         /** @description Body of `POST /api/v1/mail/people/merge`. */
         MergeBody: {
             account_id: string;
@@ -7617,6 +7757,8 @@ export interface components {
             item_key: string;
             message_id: components["schemas"]["MessageId"];
             note?: string | null;
+            /** @description `mxr`, or `marginalia` for one made there and read back. */
+            origin?: string;
             quote: string;
             source: string;
             /** @description The item's title and source, as of saving. */
@@ -7706,6 +7848,7 @@ export interface components {
              */
             html?: string | null;
             item: components["schemas"]["ReadingItemData"];
+            marginalia?: components["schemas"]["ReadingMarginaliaData"] | null;
             /**
              * Format: int32
              * @description Minutes left at your pace, from your progress.
@@ -7755,6 +7898,19 @@ export interface components {
              */
             tracked: boolean;
             url: string;
+        };
+        /** @description The Marginalia article an item became. */
+        ReadingMarginaliaData: {
+            article_id: string;
+            /**
+             * Format: date-time
+             * @description When its highlights were last read back.
+             */
+            highlights_synced_at?: string | null;
+            /** @description Where it opens in Marginalia. */
+            read_url: string;
+            /** Format: date-time */
+            sent_at: string;
         };
         /** @description One paragraph of reader text. */
         ReadingParagraphData: {
@@ -10540,6 +10696,27 @@ export interface components {
                   sender_email: string;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "GetMarginaliaStatus";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetMarginaliaConnection";
+                  connection?:
+                      components["schemas"]["MarginaliaConnectionData"] | null;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SendReadingToMarginalia";
+                  dry_run?: boolean;
+                  item_key: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SyncMarginaliaHighlights";
+                  item_key?: string | null;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetUpdatesDigest";
@@ -11788,6 +11965,21 @@ export interface components {
                   highlight: components["schemas"]["ReadingHighlightData"];
                   /** @enum {string} */
                   kind: "ReadingHighlight";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MarginaliaStatus";
+                  status: components["schemas"]["MarginaliaStatusData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MarginaliaSend";
+                  send: components["schemas"]["MarginaliaSendData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MarginaliaSync";
+                  sync: components["schemas"]["MarginaliaSyncData"];
               }
             | {
                   highlights: components["schemas"]["ReadingHighlightData"][];
@@ -18120,6 +18312,40 @@ export interface operations {
             };
         };
     };
+    mail_reading_marginalia_send: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `<message id>:<index>` */
+                item_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarginaliaSendBody"];
+            };
+        };
+        responses: {
+            /** @description The `MarginaliaSend` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_reading_later: {
         parameters: {
             query?: never;
@@ -18134,6 +18360,95 @@ export interface operations {
         };
         responses: {
             /** @description The `ReadingLater` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_marginalia_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `MarginaliaStatus` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_marginalia_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarginaliaConnectionBody"];
+            };
+        };
+        responses: {
+            /** @description The `MarginaliaStatus` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_marginalia_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarginaliaSyncBody"];
+            };
+        };
+        responses: {
+            /** @description The `MarginaliaSync` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

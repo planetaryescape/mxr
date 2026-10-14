@@ -36,6 +36,7 @@ pub struct MxrConfig {
     pub messages: MessagesConfig,
     pub records: RecordsConfig,
     pub updates: UpdatesConfig,
+    pub reading: ReadingConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -139,6 +140,17 @@ impl Default for MessagesConfig {
             recent_days: 30,
         }
     }
+}
+
+/// Reading (blueprint 22, phase 5).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ReadingConfig {
+    /// Marginalia, the reading app items can be sent to, such as
+    /// `https://reader.example.com`. Unset until connected; the token is
+    /// kept in the secrets file, never here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marginalia_url: Option<String>,
 }
 
 /// Updates' digest (blueprint 22, phase 4).

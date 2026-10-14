@@ -112,6 +112,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_reading_item`
 - `mxr_reading_later`
 - `mxr_reading_highlights`
+- `mxr_reading_marginalia`
 
 ## Keep private drafts with their original workspace
 
@@ -204,7 +205,11 @@ reader text, saved article and highlights; with `fetch_article = true` it
 fetches the linked article, which tells that site the user clicked, so it
 also needs `confirm = true`. `mxr_reading_later` puts items on Later or
 takes them off (`dry_run = true` previews). `mxr_reading_highlights` returns
-every highlight and the same as Markdown.
+every highlight and the same as Markdown. `mxr_reading_marginalia` sends an
+item to [Marginalia](/guides/marginalia/) (`action = "send"`), which gives the
+email's text to that app, so without `confirm = true` it is a dry run; it also
+reports the connection (`status`) and reads highlights back (`sync`).
+Connecting takes the user's token, so it happens in the CLI or web app.
 `mxr_arrivals` returns Now's arrivals line: every inbound email first seen
 since the user last opened Now (at most 24 hours back), counted once by the
 mode it is in, Spam and screened-out senders included, so the counts sum to

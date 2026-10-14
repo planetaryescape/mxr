@@ -23,6 +23,7 @@ import {
   fetchEdition,
   READING_KEY,
   useAccountScope,
+  useMarginaliaStatus,
   type ReadingEdition,
   type ReadingItem,
   type ReadingSource,
@@ -30,7 +31,14 @@ import {
 import { LetGoAllDialog, ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import { ReadingItemCard, type CardHandlers } from "./ReadingItemCard";
 import { editionEntries, letGoAllPlan, visibleBands, type EditionEntry } from "./readingView";
-import { answerLater, fetchLinked, letGo, putOnLater, rememberLayout } from "./readingVerbs";
+import {
+  answerLater,
+  fetchLinked,
+  letGo,
+  openInMarginalia,
+  putOnLater,
+  rememberLayout,
+} from "./readingVerbs";
 
 export const EDITION_KEY = (scope: string) => [...READING_KEY, "edition", scope] as const;
 
@@ -201,6 +209,7 @@ function Bands({
   setDialog: (dialog: Dialog) => void;
 }) {
   const navigate = useNavigate();
+  const marginalia = useMarginaliaStatus();
   const params = useParams({ strict: false }) as { threadId?: string };
   const activePane = useMailboxPane((s) => s.activePane);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
@@ -383,6 +392,15 @@ function Bands({
     },
     laterShelf: () =>
       void navigate({ to: "/reading", search: view === "later" ? {} : { view: "later" } }),
+    // The daemon knows whether it was sent before; then it only opens.
+    marginalia: () => {
+      if (!current) return;
+      void openInMarginalia(current.key, null, {
+        connected: marginalia.data?.connected ?? false,
+        onConnect: () =>
+          void navigate({ to: "/settings/$section", params: { section: "marginalia" } }),
+      });
+    },
     closeHint,
   });
 

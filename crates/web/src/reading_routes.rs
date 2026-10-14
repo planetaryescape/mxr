@@ -245,6 +245,95 @@ async fn set_source(
     passthrough(response)
 }
 
+async fn marginalia_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetMarginaliaStatus,
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/reading/marginalia`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct MarginaliaConnectionBody {
+    /// The site and a personal token to connect; null disconnects.
+    #[serde(default)]
+    connection: Option<mxr_protocol::MarginaliaConnectionData>,
+}
+
+async fn marginalia_connection(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<MarginaliaConnectionBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SetMarginaliaConnection {
+            connection: body.connection,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/reading/items/{item_key}/marginalia`.
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
+pub(crate) struct MarginaliaSendBody {
+    /// Name what would be sent and where; contact nothing.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn marginalia_send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(item_key): AxumPath<String>,
+    body: Option<Json<MarginaliaSendBody>>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let dry_run = body.is_some_and(|Json(body)| body.dry_run);
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SendReadingToMarginalia { item_key, dry_run },
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/reading/marginalia/highlights`.
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
+pub(crate) struct MarginaliaSyncBody {
+    /// One sent item; omitted reads back every sent item.
+    #[serde(default)]
+    item_key: Option<String>,
+}
+
+async fn marginalia_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Option<Json<MarginaliaSyncBody>>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let item_key = body.and_then(|Json(body)| body.item_key);
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SyncMarginaliaHighlights { item_key },
+    )
+    .await?;
+    passthrough(response)
+}
+
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/reading", get(edition))
@@ -254,4 +343,13 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/reading/sources", post(set_source))
         .route("/reading/items/{item_key}", get(item))
         .route("/reading/items/{item_key}/article", post(article))
+        .route(
+            "/reading/marginalia",
+            get(marginalia_status).post(marginalia_connection),
+        )
+        .route("/reading/marginalia/highlights", post(marginalia_sync))
+        .route(
+            "/reading/items/{item_key}/marginalia",
+            post(marginalia_send),
+        )
 }

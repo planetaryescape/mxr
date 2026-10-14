@@ -171,7 +171,8 @@ impl App {
             | Action::ReadingHighlight
             | Action::ReadingOpenEmail
             | Action::ReadingBack
-            | Action::ReadingLaterShelf => self.apply_reading_action(action),
+            | Action::ReadingLaterShelf
+            | Action::ReadingMarginalia => self.apply_reading_action(action),
             Action::OpenMoveMenu
             | Action::OpenSenderMoveMenu
             | Action::MoveEmailTo { .. }

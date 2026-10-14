@@ -2928,6 +2928,20 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::ReadingSource { .. }
                             | ResponseData::ReadingHighlight { .. },
                     }) => Ok(effect),
+                    // `M`: Marginalia answers with where the item opens.
+                    Ok(Response::Ok {
+                        data: ResponseData::MarginaliaSend { send },
+                    }) => Ok(app::MutationEffect::ModeDone(
+                        match send.marginalia.as_ref().map(|m| open::that(&m.read_url)) {
+                            Some(Ok(())) => format!("{} Opened in your browser.", send.copy),
+                            Some(Err(_)) => format!(
+                                "{} Open it at {}",
+                                send.copy,
+                                send.marginalia.map(|m| m.read_url).unwrap_or_default()
+                            ),
+                            None => send.copy,
+                        },
+                    )),
                     Ok(Response::Ok {
                         data: ResponseData::UnsubscribePurgeResult { result },
                     }) => match result.error {

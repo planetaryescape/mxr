@@ -1772,7 +1772,11 @@ async fn dispatch(
         | Request::FetchArticle { .. }
         | Request::SaveHighlight { .. }
         | Request::ExportReadingHighlights { .. }
-        | Request::SetReadingSource { .. } => {
+        | Request::SetReadingSource { .. }
+        | Request::GetMarginaliaStatus
+        | Request::SetMarginaliaConnection { .. }
+        | Request::SendReadingToMarginalia { .. }
+        | Request::SyncMarginaliaHighlights { .. } => {
             Box::pin(reading::handle(state, scoped_profile, req)).await
         }
         Request::SetModeDone {
@@ -2371,6 +2375,8 @@ fn classify_request(req: &Request) -> RequestClass {
         }
         | Request::GetReadingItem { .. }
         | Request::ExportReadingHighlights { .. }
+        | Request::GetMarginaliaStatus
+        | Request::SendReadingToMarginalia { dry_run: true, .. }
         | Request::GetUpdatesDigest { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
@@ -2445,7 +2451,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SendStoredDraft { .. }
         | Request::ScheduleSend { .. }
         | Request::RespondInvite { dry_run: false, .. }
-        | Request::AckMessage { dry_run: false, .. } => Send,
+        | Request::AckMessage { dry_run: false, .. }
+        // Sends an email's text to a third-party app.
+        | Request::SendReadingToMarginalia { dry_run: false, .. } => Send,
 
         // --- Destructive: irreversible / provider-destructive ---
         Request::RuleCategories {
@@ -2581,6 +2589,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::FetchArticle { .. }
         | Request::SaveHighlight { .. }
         | Request::SetReadingSource { .. }
+        // Decides where Reading items may be sent.
+        | Request::SetMarginaliaConnection { .. }
+        // Contacts Marginalia and writes highlights read back.
+        | Request::SyncMarginaliaHighlights { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2853,6 +2865,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SaveHighlight { .. } => "save_highlight",
         Request::ExportReadingHighlights { .. } => "export_reading_highlights",
         Request::SetReadingSource { .. } => "set_reading_source",
+        Request::GetMarginaliaStatus => "get_marginalia_status",
+        Request::SetMarginaliaConnection { .. } => "set_marginalia_connection",
+        Request::SendReadingToMarginalia { .. } => "send_reading_to_marginalia",
+        Request::SyncMarginaliaHighlights { .. } => "sync_marginalia_highlights",
         Request::GetUpdatesDigest { .. } => "get_updates_digest",
         Request::LetGoDigest { .. } => "let_go_digest",
         Request::SetUpdateSource { .. } => "set_update_source",

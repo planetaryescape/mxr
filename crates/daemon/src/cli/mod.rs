@@ -3111,6 +3111,12 @@ pub enum ReadingAction {
     /// Every source in Reading, best read first, with its fade window and
     /// the evidence for unsubscribing.
     Sources,
+    /// Marginalia, a reading app: send an item there to read it with
+    /// Marginalia's tools, and read the highlights made there back.
+    Marginalia {
+        #[command(subcommand)]
+        action: MarginaliaAction,
+    },
     /// Reading's inbox mail grouped by sender, as before the edition.
     Senders {
         /// Only this sender's bundle.
@@ -3126,6 +3132,37 @@ pub enum ReadingAction {
         #[arg(long, default_value_t = 3)]
         messages: u32,
     },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum MarginaliaAction {
+    /// Whether Marginalia is connected, where, and how many items were sent.
+    Status,
+    /// Connect Marginalia: its address, and a personal token from its
+    /// Account page, Connected apps. The token is read from standard input
+    /// (or asked for), checked with Marginalia, then kept in the secrets
+    /// file.
+    Connect {
+        /// Marginalia's address, such as `https://reader.example.com`.
+        #[arg(long)]
+        url: String,
+    },
+    /// Forget Marginalia and remove its token. What was sent stays there.
+    Disconnect,
+    /// Send an item to Marginalia, or find it there if it was sent before.
+    /// A digest link's article is fetched first when it isn't saved.
+    /// --dry-run names what would be sent and where, and contacts nothing.
+    Send {
+        item: String,
+        #[arg(long)]
+        dry_run: bool,
+        /// Open it in Marginalia afterwards.
+        #[arg(long, conflicts_with = "dry_run")]
+        open: bool,
+    },
+    /// Read back the highlights made in Marginalia, on one item or on
+    /// every item sent there. Highlights made in mxr are never changed.
+    Sync { item: Option<String> },
 }
 
 /// Listing options shared by `mxr reading` and `mxr paper-trail`.

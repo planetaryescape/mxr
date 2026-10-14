@@ -179,6 +179,13 @@ mxr reading export --markdown > reading-highlights.md
 Highlights are stored with the email they came from. Deleting the email
 deletes them, so export what you want to keep elsewhere.
 
+## Read it in Marginalia
+
+`M` opens the item in [Marginalia](/guides/marginalia/), a reading app with
+themes, margin notes and a reading companion, once you have connected it.
+The first press sends the item's text there; the highlights you make in
+Marginalia come back to the item here.
+
 ## What it learns about you, and how to turn it off
 
 To rank sources and back the unsubscribe evidence, Reading keeps a little
@@ -201,6 +208,7 @@ makes no unsubscribe offers.
 | `A` | Let go of everything shown, with a preview |
 | `h` | Highlight the selection |
 | `o` | Open the email itself |
+| `M` | Open in Marginalia, sending it the first time |
 | `?` | Help, starting with Reading |
 
 On a phone, swipe a card right to put it on Later and left to let it go.

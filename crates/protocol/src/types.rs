@@ -2386,6 +2386,34 @@ pub enum Request {
         #[serde(default)]
         dismiss_unsubscribe_offer: bool,
     },
+    /// Whether Marginalia is connected, and where. Returns
+    /// `ResponseData::MarginaliaStatus`.
+    GetMarginaliaStatus,
+    /// Connect Marginalia with its site and a personal token, checked with
+    /// Marginalia before it is saved, or disconnect with `None`. The token
+    /// goes to the secrets file, the site to config. Returns
+    /// `ResponseData::MarginaliaStatus`.
+    SetMarginaliaConnection {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        connection: Option<MarginaliaConnectionData>,
+    },
+    /// Send an item to Marginalia: the saved article when there is one
+    /// (fetching a digest link's first), else the issue. An item sent
+    /// before isn't sent again. `dry_run` names what would be sent and
+    /// where, and contacts nothing. Returns `ResponseData::MarginaliaSend`.
+    SendReadingToMarginalia {
+        item_key: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Read back the highlights made in Marginalia on one sent item, or on
+    /// every sent item: new ones are added, ones deleted there are
+    /// removed, and highlights made in mxr are never touched. Returns
+    /// `ResponseData::MarginaliaSync`.
+    SyncMarginaliaHighlights {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        item_key: Option<String>,
+    },
     // ----- Updates -----
     /// The Updates briefing (blueprint 22, phase 4): everything that
     /// arrived by the cut (`cut`, else the latest one) and wasn't let go,
@@ -2772,6 +2800,10 @@ impl Request {
             | Self::SaveHighlight { .. }
             | Self::ExportReadingHighlights { .. }
             | Self::SetReadingSource { .. }
+            | Self::GetMarginaliaStatus
+            | Self::SetMarginaliaConnection { .. }
+            | Self::SendReadingToMarginalia { .. }
+            | Self::SyncMarginaliaHighlights { .. }
             | Self::GetUpdatesDigest { .. }
             | Self::LetGoDigest { .. }
             | Self::SetUpdateSource { .. }
@@ -4028,6 +4060,19 @@ pub enum ResponseData {
     ReadingHighlight {
         highlight: ReadingHighlightData,
     },
+    /// Returned by `Request::GetMarginaliaStatus` and
+    /// `Request::SetMarginaliaConnection`.
+    MarginaliaStatus {
+        status: MarginaliaStatusData,
+    },
+    /// Returned by `Request::SendReadingToMarginalia`.
+    MarginaliaSend {
+        send: MarginaliaSendData,
+    },
+    /// Returned by `Request::SyncMarginaliaHighlights`.
+    MarginaliaSync {
+        sync: MarginaliaSyncData,
+    },
     /// Returned by `Request::ExportReadingHighlights`.
     ReadingHighlights {
         highlights: Vec<ReadingHighlightData>,
@@ -4290,6 +4335,9 @@ impl ResponseData {
             | Self::ReadingHighlight { .. }
             | Self::ReadingHighlights { .. }
             | Self::ReadingSource { .. }
+            | Self::MarginaliaStatus { .. }
+            | Self::MarginaliaSend { .. }
+            | Self::MarginaliaSync { .. }
             | Self::UpdatesDigest { .. }
             | Self::UpdatesLetGo { .. }
             | Self::UpdateSource { .. }

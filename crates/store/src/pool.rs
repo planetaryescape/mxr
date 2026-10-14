@@ -1173,6 +1173,21 @@ const MIGRATIONS: &[Migration] = &[
         MigrationStep::AddColumn { table: "remote_pairings", column: "allow_send", sql: include_str!("../migrations/085_remote_pairing_send.sql") },
         MigrationStep::AddColumn { table: "remote_clients", column: "allow_send", sql: include_str!("../migrations/085_remote_client_send.sql") },
     ]) },
+    Migration { version: 86, name: "reading_marginalia", kind: MigrationKind::Composite(READING_MARGINALIA_STEPS) },
+];
+
+const READING_MARGINALIA_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "reading_highlights",
+        column: "origin",
+        sql: "ALTER TABLE reading_highlights ADD COLUMN origin TEXT NOT NULL DEFAULT 'mxr'",
+    },
+    MigrationStep::AddColumn {
+        table: "reading_highlights",
+        column: "origin_id",
+        sql: "ALTER TABLE reading_highlights ADD COLUMN origin_id TEXT",
+    },
+    MigrationStep::Sql(include_str!("../migrations/086_reading_marginalia.sql")),
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -1907,6 +1922,56 @@ mod tests {
                 1,
             )
         );
+    }
+
+    #[tokio::test]
+    async fn marginalia_migration_upgrades_83_and_85_keeping_highlights_as_made_in_mxr() {
+        // 83 also crosses the two remote migrations that precede it on main.
+        for from in [83, 85] {
+            let temp = tempdir().unwrap();
+            let db_path = temp.path().join(format!("version-{from}.db"));
+            {
+                let store = store_at_version(&db_path, from).await;
+                // Only the upgrade is under test, so skip the parent rows.
+                sqlx::query("PRAGMA foreign_keys = OFF")
+                    .execute(store.writer())
+                    .await
+                    .unwrap();
+                sqlx::query(
+                    "INSERT INTO reading_highlights
+                     (id, account_id, message_id, idx, view, quote, note, created_at)
+                     VALUES ('h1', 'a', 'm', 0, 'issue', 'kept quote', NULL, 1)",
+                )
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+
+            let store = Store::new(&db_path).await.unwrap();
+            let versions: Vec<(i64,)> = sqlx::query_as(
+                "SELECT version FROM schema_migrations WHERE version >= 83 ORDER BY version",
+            )
+            .fetch_all(store.writer())
+            .await
+            .unwrap();
+            assert_eq!(
+                versions.iter().map(|v| v.0).collect::<Vec<_>>(),
+                (83..=86).collect::<Vec<_>>(),
+                "from {from}"
+            );
+            assert!(test_table_exists(store.writer(), "reading_marginalia").await);
+            let row: (String, String, Option<String>) = sqlx::query_as(
+                "SELECT quote, origin, origin_id FROM reading_highlights WHERE id = 'h1'",
+            )
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+            assert_eq!(
+                row,
+                ("kept quote".into(), "mxr".into(), None),
+                "from {from}"
+            );
+        }
     }
 
     #[tokio::test]

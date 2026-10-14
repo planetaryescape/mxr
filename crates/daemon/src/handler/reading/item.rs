@@ -145,6 +145,7 @@ pub(in crate::handler) async fn get_item(state: &AppState, key: &str) -> Handler
         .map(|row| highlight_data(&row, &item.title, &item.source, item.url.clone()))
         .collect();
     let words = article.as_ref().map_or(item.words, |a| a.words);
+    let marginalia = super::marginalia::item_marginalia(state, &issue.id, idx).await?;
     Ok(ResponseData::ReadingItem {
         item: ReadingItemDetailData {
             minutes_left: pace::minutes_left(words, item.progress, ctx.wpm),
@@ -156,6 +157,7 @@ pub(in crate::handler) async fn get_item(state: &AppState, key: &str) -> Handler
             article,
             article_error,
             highlights,
+            marginalia,
         },
     })
 }
@@ -174,6 +176,7 @@ fn highlight_data(
         view: row.view.clone(),
         quote: row.quote.clone(),
         note: row.note.clone(),
+        origin: row.origin.clone(),
         title: title.to_string(),
         source: source.to_string(),
         url,
@@ -333,6 +336,8 @@ pub(in crate::handler) async fn save_highlight(
         quote: quote.to_string(),
         note: note.map(str::to_string),
         created_at: Utc::now(),
+        origin: "mxr".to_string(),
+        origin_id: None,
     };
     state.store.insert_reading_highlight(&row).await?;
     // Search finds highlights through the message's semantic chunks.

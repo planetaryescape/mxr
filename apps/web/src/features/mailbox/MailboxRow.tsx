@@ -14,6 +14,7 @@ import {
 import { memo, type MouseEvent, type ReactNode } from "react";
 
 import type { MessageRowView } from "./types";
+import { Chip } from "@/components/Chip";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
@@ -367,11 +368,7 @@ function Avatar({ name }: { name: string }) {
 }
 
 function LabelChip({ name }: { name: string }) {
-  return (
-    <span className="hidden shrink-0 rounded-sm border border-border px-1 font-mono text-2xs leading-4 text-muted-foreground @3xl:inline">
-      {name}
-    </span>
-  );
+  return <Chip className="hidden @3xl:inline">{name}</Chip>;
 }
 
 function TriageChip({ verdict, reason }: { verdict: string; reason?: string | null }) {

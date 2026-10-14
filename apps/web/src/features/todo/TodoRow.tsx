@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Mail, Reply } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { Chip } from "@/components/Chip";
 import { KeyChip } from "@/components/KeyChip";
 import { useWhen } from "@/components/When";
 import { Button } from "@/components/ui/button";
@@ -28,8 +29,9 @@ import { useTodoHidden } from "./todoVerbs";
 
 /**
  * The runway bar: how much of the time between showing up and the
- * deadline has gone. One colour, the accent, never red; a row past its
- * deadline has no bar and says "was due" instead.
+ * deadline has gone. Neutral grey, not the accent: the bar is a reading,
+ * and cyan is reserved for focus, selection, the primary action and unread.
+ * A row past its deadline has no bar and says "was due" instead.
  */
 export function RunwayBar({ fill, className }: { fill: number; className?: string }) {
   return (
@@ -38,12 +40,12 @@ export function RunwayBar({ fill, className }: { fill: number; className?: strin
       data-testid="runway-bar"
       data-fill={fill.toFixed(2)}
       className={cn(
-        "relative inline-block h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-primary/15",
+        "relative inline-block h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-border",
         className,
       )}
     >
       <span
-        className="absolute inset-0 origin-left rounded-full bg-primary"
+        className="absolute inset-0 origin-left rounded-full bg-muted-foreground"
         style={{ transform: `scaleX(${fill})` }}
       />
     </span>
@@ -67,9 +69,12 @@ export function ActionButton({
   focused: boolean;
 }) {
   const Icon = ACTION_ICONS[action.kind];
+  // Same size and variant as the Open email button in Updates' peek.
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="sm"
       data-testid="todo-action"
       data-kind={action.kind}
       onClick={(event) => {
@@ -79,7 +84,7 @@ export function ActionButton({
       title={
         action.kind === "email" && action.domain ? `The link goes to ${action.domain}` : undefined
       }
-      className="inline-flex min-h-8 w-full min-w-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-accent @2xl:w-auto @2xl:justify-start"
+      className="w-full min-w-0 justify-center @2xl:w-auto @2xl:justify-start"
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{action.label}</span>
@@ -92,7 +97,7 @@ export function ActionButton({
         </span>
       ) : null}
       {focused ? <KeyChip className="ml-1 hidden h-4 px-1 @2xl:inline-flex">↵</KeyChip> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -105,10 +110,12 @@ export function ProvenanceChip({
   todo,
   expanded,
   onToggle,
+  className,
 }: {
   todo: Todo;
   expanded: boolean;
   onToggle: () => void;
+  className?: string;
 }) {
   const { source, unchecked } = provenanceSummary(todo.fields);
   const detail = orderedFields(todo.fields)
@@ -118,28 +125,30 @@ export function ProvenanceChip({
     )
     .join("\n");
   return (
-    <button
-      type="button"
-      data-testid="todo-provenance"
-      aria-expanded={expanded}
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-      title={detail}
-      className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
-    >
-      {unchecked > 0 ? (
-        <span
-          aria-label={`${unchecked} to check`}
-          className="inline-block size-1.5 rounded-full border border-current"
-        />
-      ) : (
-        <span aria-hidden className="inline-block size-1.5 rounded-full bg-current" />
-      )}
-      from {source}
-      {unchecked > 0 ? `, ${unchecked} to check` : ""}
-    </button>
+    <Chip asChild className={className}>
+      <button
+        type="button"
+        data-testid="todo-provenance"
+        aria-expanded={expanded}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+        title={detail}
+        className="cursor-pointer hover:text-foreground"
+      >
+        {unchecked > 0 ? (
+          <span
+            aria-label={`${unchecked} to check`}
+            className="inline-block size-1.5 rounded-full border border-current"
+          />
+        ) : (
+          <span aria-hidden className="inline-block size-1.5 rounded-full bg-current" />
+        )}
+        from {source}
+        {unchecked > 0 ? `, ${unchecked} to check` : ""}
+      </button>
+    </Chip>
   );
 }
 
@@ -373,10 +382,18 @@ export const TodoRow = memo(function TodoRow({
               >
                 {todo.when_label}
               </span>
+              {/*
+                At rest on a wide row the chip waits for focus or hover; its
+                sources stay one `o` away in the expanded detail. A narrow row
+                has no hover, so it always shows.
+              */}
               <ProvenanceChip
                 todo={todo}
                 expanded={expanded}
                 onToggle={() => onToggleSource(todo)}
+                className={
+                  focused || expanded ? undefined : "@2xl:hidden @2xl:group-hover/todo:inline-flex"
+                }
               />
             </div>
             {todo.looks_done ? (

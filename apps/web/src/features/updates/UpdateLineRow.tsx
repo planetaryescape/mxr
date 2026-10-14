@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { memo, useRef, useState, type ReactNode } from "react";
 
+import { Chip } from "@/components/Chip";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import {
@@ -312,15 +313,9 @@ function TrailingValue({
   switch (item.kind) {
     case "in_todo":
       return (
-        <span
-          data-testid="update-in-todo"
-          className={cn(
-            "whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-2xs text-muted-foreground",
-            hide,
-          )}
-        >
+        <Chip data-testid="update-in-todo" className={hide}>
           {item.text}
-        </span>
+        </Chip>
       );
     case "todo_suggestion":
       return (

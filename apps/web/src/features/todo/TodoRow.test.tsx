@@ -190,13 +190,27 @@ describe("TodoRow", () => {
     expect(within(row).getByTestId("todo-action")).toHaveAttribute("data-kind", "email");
   });
 
+  test("a resting wide row hides the provenance chip until focus, hover or the detail", () => {
+    const { row } = renderRow(todoFixture(), "now", { focused: false });
+    expect(within(row).getByTestId("todo-provenance").className).toContain("@2xl:hidden");
+  });
+
+  test("a focused row shows the provenance chip", () => {
+    const { row } = renderRow(todoFixture(), "now", { focused: true });
+    expect(within(row).getByTestId("todo-provenance").className).not.toContain("@2xl:hidden");
+  });
+
   test("overdue reads 'was due' with no bar and nothing in red", () => {
     const { row } = renderRow(
       todoFixture({ overdue: true, when_label: "was due Fri 2 Oct", runway: 1 }),
     );
     expect(within(row).getByTestId("todo-when")).toHaveTextContent("was due Fri 2 Oct");
     expect(within(row).queryByTestId("runway-bar")).toBeNull();
-    expect(row.innerHTML).not.toMatch(/destructive|text-red|bg-red|warning/);
+    // Button's variants carry inert `aria-invalid:` and `dark:aria-invalid:` classes;
+    // only a colour class applied to the row itself counts as red.
+    expect(row.innerHTML).not.toMatch(
+      /(?<![\w-])(?<!aria-invalid:)(text|bg|border)-(destructive|red|warning)/,
+    );
   });
 
   test("Coming up rows say when they show up, without a primary action", () => {

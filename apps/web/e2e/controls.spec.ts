@@ -37,6 +37,7 @@ const INVENTORY = {
   ],
   readingHeader: ["Let go of all"],
   updatesHeader: [],
+  updatesHeaderWithDigest: ["Let go of all"],
 } as const;
 
 async function names(locator: Locator, role: "button" | "radio" = "button"): Promise<string[]> {
@@ -128,7 +129,12 @@ test("focus mode and the places keep exactly their inventoried controls", async 
     .toEqual(INVENTORY.readingHeader);
   await openApp(page, "/updates");
   await expect(page.getByRole("heading", { level: 1, name: "Updates", exact: true })).toBeVisible();
-  expect(
-    await names(page.getByRole("region", { name: "Updates" }).locator("header").first()),
-  ).toEqual(INVENTORY.updatesHeader);
+  // "Let go of all" belongs to a served digest; whether the fake mail has one
+  // yet depends on the clock, so the inventory allows it only alongside one.
+  const updatesHeader = page.getByRole("region", { name: "Updates" }).locator("header").first();
+  await expect(page.getByTestId("updates-cut")).toBeVisible();
+  const hasDigest = (await page.getByTestId("updates-let-go-all").count()) > 0;
+  expect(await names(updatesHeader)).toEqual(
+    hasDigest ? INVENTORY.updatesHeaderWithDigest : INVENTORY.updatesHeader,
+  );
 });

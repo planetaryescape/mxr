@@ -1,4 +1,5 @@
 import { correctSender } from "@/features/places/senderKind";
+import { cn } from "@/lib/utils";
 
 import type { ScreenerQuestion } from "./membership";
 
@@ -43,11 +44,10 @@ export function NewSenderQuestion({
               choice.kind,
             );
           }}
-          className={
-            position === 0
-              ? "cursor-pointer rounded border border-primary/60 px-1.5 py-0.5 text-foreground hover:bg-accent"
-              : "cursor-pointer rounded border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          }
+          className={cn(
+            "cursor-pointer underline decoration-border-strong underline-offset-4 hover:decoration-foreground",
+            position === 0 ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
         >
           {choice.label}
         </Answer>

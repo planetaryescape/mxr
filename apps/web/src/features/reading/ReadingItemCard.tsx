@@ -1,5 +1,5 @@
 import { Bookmark, Check, ExternalLink, MailX } from "lucide-react";
-import { Fragment, memo, type ReactNode } from "react";
+import { Fragment, memo, useId, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
 }) {
   const focused = focusedKey === item.item_key;
   const lead = Boolean(item.lead) && !shelf;
+  const whyId = useId();
   const { shown, more } = shownLinks(item.links ?? [], expanded);
   const meta = [item.source, minutesLabel(item.minutes), item.engagement].filter(Boolean);
   return (
@@ -61,9 +62,10 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       data-lead={lead ? "true" : undefined}
       aria-current={focused ? "true" : undefined}
       aria-label={`${item.source}: ${item.title}`}
+      aria-describedby={whyId}
       onMouseDown={() => handlers.onFocus(item.item_key)}
       className={cn(
-        "relative mx-4 my-1.5 rounded-md px-4 py-3 sm:mx-5",
+        "group/card relative mx-4 my-1.5 rounded-md px-4 py-3 sm:mx-5",
         lead ? "border border-border bg-surface py-4" : "border border-transparent",
         focused && "border-border-strong",
         fading && "reading-fading",
@@ -149,11 +151,33 @@ export const ReadingItemCard = memo(function ReadingItemCard({
           <KeyChip className="h-4 px-1">D</KeyChip>
         </p>
       ) : null}
-      <p data-testid="why-here" className="mt-1.5 text-xs text-fg-2">
-        {item.why}
+      {item.fades ? (
+        <p data-testid="reading-fades" className="mt-1.5 text-xs text-muted-foreground">
+          {item.fades}
+        </p>
+      ) : null}
+      {/*
+        The reason is the detail: at rest it waits for focus or hover on a wide
+        screen, where a narrow one (no hover) always shows it. The article
+        names it in aria-describedby, so a screen reader hears it on the card.
+      */}
+      <p
+        id={whyId}
+        data-testid="why-here"
+        className={cn(
+          "mt-1.5 text-xs text-fg-2",
+          !focused && "sm:hidden sm:group-hover/card:block",
+        )}
+      >
+        {becauseLine(item)}
       </p>
       {lead ? (
-        <p className="mt-2 hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:flex">
+        <p
+          className={cn(
+            "mt-2 hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground",
+            focused ? "sm:flex" : "sm:group-hover/card:flex",
+          )}
+        >
           <button
             type="button"
             onClick={() => handlers.onRead(item.item_key)}
@@ -180,6 +204,17 @@ export const ReadingItemCard = memo(function ReadingItemCard({
     </article>
   );
 });
+
+/**
+ * The daemon's why line ends with the fade date when the item has one, and
+ * the card shows that date on its own line. Dropping the repeat keeps the
+ * hover reveal to the reason.
+ */
+function becauseLine(item: ReadingItem): string {
+  const fades = item.fades?.trim();
+  if (fades && item.why.endsWith(fades)) return item.why.slice(0, -fades.length).trimEnd();
+  return item.why;
+}
 
 function LinkRow({
   link,

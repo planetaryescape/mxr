@@ -79,6 +79,8 @@ for (const width of [390, 1440, 1920, 2560]) {
       expect(count).toBeGreaterThan(0);
       for (let at = 0; at < count; at += 1) {
         const row = rows.nth(at);
+        // At rest a wide row shows its date; the check takes the slot on hover.
+        await row.hover();
         const done = await box(row.getByTestId("now-done"));
         const rowBox = await box(row);
         // Inside the row, which is inside the column.

@@ -688,7 +688,7 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
     // A second undo of the removal is a no-op, not a duplicate.
     assert_eq!(
         fx.store
-            .put_back_reading_highlights(&[remove.clone()])
+            .put_back_reading_highlights(std::slice::from_ref(&remove))
             .await
             .unwrap(),
         0

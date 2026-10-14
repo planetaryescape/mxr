@@ -59,8 +59,8 @@ pub use modals::{
 };
 pub use now::{NowPageState, NowRow};
 pub use reading::{
-    HighlightStep, HighlightsPanel, ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
-    READING_LINKS_SHOWN,
+    HighlightStep, HighlightsPanel, ReadingConfirm, ReadingPageState, ReadingRow,
+    ReadingUnsubscribeTarget, ReadingView, READING_LINKS_SHOWN,
 };
 pub use records::{
     PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS, SUBSCRIPTIONS_CHIP,

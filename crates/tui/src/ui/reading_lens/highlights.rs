@@ -52,7 +52,10 @@ pub(super) fn draw(
         lines.push(Line::from(Span::styled(
             format!(
                 "{marker}{}{origin}",
-                truncate(&one_line(&highlight.quote), width.saturating_sub(origin.len()))
+                truncate(
+                    &one_line(&highlight.quote),
+                    width.saturating_sub(origin.len())
+                )
             ),
             quote_style,
         )));

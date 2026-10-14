@@ -477,7 +477,11 @@ fn a_highlight_made_in_marginalia_is_not_edited_or_removed_here() {
             Some("Made in Marginalia; change it there")
         );
         assert_eq!(
-            app.mailbox.reading_page.highlights.as_ref().map(|p| &p.step),
+            app.mailbox
+                .reading_page
+                .highlights
+                .as_ref()
+                .map(|p| &p.step),
             Some(&crate::app::HighlightStep::Browse)
         );
     }

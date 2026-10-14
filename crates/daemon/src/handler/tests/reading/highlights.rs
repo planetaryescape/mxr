@@ -103,13 +103,25 @@ async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
     let preview = changed(request(&fx, remove(true)).await).await;
     assert!(preview.dry_run && preview.mutation_id.is_none());
     assert_eq!(preview.highlight.id, id);
-    assert_eq!(stored(&fx, &id).await, Some(before.clone()), "a preview changes nothing");
+    assert_eq!(
+        stored(&fx, &id).await,
+        Some(before.clone()),
+        "a preview changes nothing"
+    );
 
     let done = changed(request(&fx, remove(false)).await).await;
     assert!(!done.dry_run);
     assert_eq!(
-        (&done.highlight.id, &done.highlight.quote, &done.highlight.note),
-        (&preview.highlight.id, &preview.highlight.quote, &preview.highlight.note),
+        (
+            &done.highlight.id,
+            &done.highlight.quote,
+            &done.highlight.note
+        ),
+        (
+            &preview.highlight.id,
+            &preview.highlight.quote,
+            &preview.highlight.note
+        ),
         "the run removed exactly what the preview named"
     );
     assert_eq!(stored(&fx, &id).await, None);
@@ -139,8 +151,15 @@ async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
     .await;
     let mutation_id = done.mutation_id.expect("undoable");
     undo(&fx, &mutation_id).await.expect("undo");
-    assert_eq!(stored(&fx, &id).await, Some(before), "id, note and time as they were");
-    assert!(undo(&fx, &mutation_id).await.is_err(), "an undo is spent once");
+    assert_eq!(
+        stored(&fx, &id).await,
+        Some(before),
+        "id, note and time as they were"
+    );
+    assert!(
+        undo(&fx, &mutation_id).await.is_err(),
+        "an undo is spent once"
+    );
 }
 
 #[tokio::test]
@@ -156,7 +175,10 @@ async fn a_note_edit_previews_clears_on_empty_and_undoes() {
 
     let preview = changed(request(&fx, edit("second", true)).await).await;
     assert_eq!(preview.highlight.note.as_deref(), Some("second"));
-    assert_eq!(preview.previous_note, None, "a preview records no previous note");
+    assert_eq!(
+        preview.previous_note, None,
+        "a preview records no previous note"
+    );
     assert_eq!(
         stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
         Some("first")
@@ -169,7 +191,9 @@ async fn a_note_edit_previews_clears_on_empty_and_undoes() {
         stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
         Some("second")
     );
-    undo(&fx, &done.mutation_id.expect("undoable")).await.expect("undo");
+    undo(&fx, &done.mutation_id.expect("undoable"))
+        .await
+        .expect("undo");
     assert_eq!(
         stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
         Some("first")
@@ -181,7 +205,9 @@ async fn a_note_edit_previews_clears_on_empty_and_undoes() {
     assert_eq!(stored(&fx, &id).await.expect("kept").note, None);
 
     let long = "x".repeat(2001);
-    assert!(failure(&fx, edit(&long, false)).await.contains("note keeps at most"));
+    assert!(failure(&fx, edit(&long, false))
+        .await
+        .contains("note keeps at most"));
 }
 
 #[tokio::test]
@@ -239,7 +265,11 @@ async fn a_scoped_agent_cannot_change_or_undo_another_accounts_highlight() {
         send_backend: None,
         enabled: true,
     };
-    fx.state.store.insert_account(&other).await.expect("account");
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
     let (theirs, _) = issue_in(
         &fx,
         &other.id,

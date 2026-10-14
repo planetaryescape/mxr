@@ -414,20 +414,21 @@ fn the_later_shelf_lists_what_you_kept_and_asks_once_about_old_things() {
 fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
     let mut reading = page();
     let mut reader = detail(false);
-    let template = |id: &str, origin: &str, note: Option<&str>| mxr_protocol::ReadingHighlightData {
-        id: id.into(),
-        item_key: reader.item.item_key.clone(),
-        account_id: reader.item.account_id.clone(),
-        message_id: reader.item.message_id.clone(),
-        view: "issue".into(),
-        quote: format!("A delete is the absence of a row ({id})"),
-        note: note.map(str::to_string),
-        origin: origin.into(),
-        title: reader.item.title.clone(),
-        source: reader.item.source.clone(),
-        url: None,
-        created_at: at(),
-    };
+    let template =
+        |id: &str, origin: &str, note: Option<&str>| mxr_protocol::ReadingHighlightData {
+            id: id.into(),
+            item_key: reader.item.item_key.clone(),
+            account_id: reader.item.account_id.clone(),
+            message_id: reader.item.message_id.clone(),
+            view: "issue".into(),
+            quote: format!("A delete is the absence of a row ({id})"),
+            note: note.map(str::to_string),
+            origin: origin.into(),
+            title: reader.item.title.clone(),
+            source: reader.item.source.clone(),
+            url: None,
+            created_at: at(),
+        };
     reader.highlights = vec![
         template("own", "mxr", Some("for the talk")),
         template("theirs", "marginalia", None),

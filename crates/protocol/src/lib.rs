@@ -234,7 +234,6 @@ mod tests {
             source_owner_stopped: true,
             dry_run: false,
         };
-        assert!(IPC_PROTOCOL_VERSION >= 16);
         assert!(activate.requires_workspace_owner());
         let encoded = serde_json::to_value(&activate).unwrap();
         assert_eq!(encoded["cmd"], "ActivateRecovery");

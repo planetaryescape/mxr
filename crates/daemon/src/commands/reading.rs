@@ -12,9 +12,9 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
     reading_copy, MailPlaceData, MarginaliaConnectionData, MarginaliaSendData,
     MarginaliaStatusData, MarginaliaSyncData, ModeDoneOutcomeData, ModeKindData,
-    ReadingBandGroupData, ReadingEditionData, ReadingFetchData, ReadingHighlightChangeData, ReadingItemData,
-    ReadingItemDetailData, ReadingLaterOutcomeData, ReadingParagraphData, Request, Response,
-    ResponseData,
+    ReadingBandGroupData, ReadingEditionData, ReadingFetchData, ReadingHighlightChangeData,
+    ReadingItemData, ReadingItemDetailData, ReadingLaterOutcomeData, ReadingParagraphData, Request,
+    Response, ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -896,7 +896,11 @@ mod tests {
     use mxr_core::id::{AccountId, MessageId};
     use mxr_protocol::{ReadingHighlightChangeData, ReadingHighlightData};
 
-    fn change(action: &str, dry_run: bool, mutation_id: Option<&str>) -> ReadingHighlightChangeData {
+    fn change(
+        action: &str,
+        dry_run: bool,
+        mutation_id: Option<&str>,
+    ) -> ReadingHighlightChangeData {
         ReadingHighlightChangeData {
             action: action.into(),
             highlight: ReadingHighlightData {
@@ -923,7 +927,10 @@ mod tests {
     #[test]
     fn a_preview_says_what_would_go_and_a_run_says_how_to_undo_it() {
         let preview_text = highlight_change_text(&change("remove", true, None));
-        assert!(preview_text.starts_with("Would remove \"A delete"), "{preview_text}");
+        assert!(
+            preview_text.starts_with("Would remove \"A delete"),
+            "{preview_text}"
+        );
         assert!(!preview_text.contains("Undo"));
         let run_text = highlight_change_text(&change("remove", false, Some("mut-1")));
         assert!(run_text.starts_with("Removed "), "{run_text}");

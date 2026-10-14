@@ -19,7 +19,8 @@ impl App {
             return;
         };
         if reader.highlights.is_empty() {
-            self.status_message = Some("No highlights yet: h saves the paragraph at the top".into());
+            self.status_message =
+                Some("No highlights yet: h saves the paragraph at the top".into());
             return;
         }
         page.highlights = Some(HighlightsPanel::default());

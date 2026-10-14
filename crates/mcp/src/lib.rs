@@ -1513,9 +1513,9 @@ impl MxrMcpServer {
         let dry_run = !input.confirm.unwrap_or(false);
         match input.action.as_str() {
             "note" => {
-                let note = input
-                    .note
-                    .ok_or_else(|| ErrorData::invalid_params("note needs note (\"\" clears it)", None))?;
+                let note = input.note.ok_or_else(|| {
+                    ErrorData::invalid_params("note needs note (\"\" clears it)", None)
+                })?;
                 self.daemon_json(Request::UpdateHighlight {
                     highlight_id: input.highlight_id,
                     note,

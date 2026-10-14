@@ -296,7 +296,11 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetReadingItem { item_key }
         | Request::RecordReadingEngagement { item_key, .. }
         | Request::FetchArticle { item_key, .. }
-        | Request::SaveHighlight { item_key, .. } => Targets(vec![T::ReadingItem(item_key)]),
+        | Request::SaveHighlight { item_key, .. }
+        | Request::SendReadingToMarginalia { item_key, .. }
+        | Request::SyncMarginaliaHighlights {
+            item_key: Some(item_key),
+        } => Targets(vec![T::ReadingItem(item_key)]),
         Request::SetReadingLater { item_keys, .. } => Targets(
             item_keys
                 .iter()
@@ -471,6 +475,11 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::RecomputeLinkCounts
         // Decides which model every account's mail is sent to.
         | Request::UpdateLlmConfig { .. }
+        // Decides where every account's Reading items may be sent, and
+        // reads back highlights on every account's sent items.
+        | Request::GetMarginaliaStatus
+        | Request::SetMarginaliaConnection { .. }
+        | Request::SyncMarginaliaHighlights { item_key: None }
         | Request::EnableSemantic { .. }
         | Request::InstallSemanticProfile { .. }
         | Request::UseSemanticProfile { .. }

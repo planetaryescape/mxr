@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.95"
+    "version": "0.6.96"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -4009,6 +4009,49 @@
         }
       }
     },
+    "/api/v1/mail/reading/items/{item_key}/marginalia": {
+      "post": {
+        "tags": [],
+        "summary": "Send a Reading item to Marginalia, or find it there if sent before; dry_run contacts nothing",
+        "operationId": "mail_reading_marginalia_send",
+        "parameters": [
+          {
+            "name": "item_key",
+            "in": "path",
+            "description": "`<message id>:<index>`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarginaliaSendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MarginaliaSend` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/reading/later": {
       "post": {
         "tags": [],
@@ -4027,6 +4070,90 @@
         "responses": {
           "200": {
             "description": "The `ReadingLater` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/marginalia": {
+      "get": {
+        "tags": [],
+        "summary": "Whether Marginalia is connected, where, and how many items were sent",
+        "operationId": "mail_reading_marginalia_get",
+        "responses": {
+          "200": {
+            "description": "The `MarginaliaStatus` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Connect Marginalia with its site and a personal token (checked first), or disconnect with null",
+        "operationId": "mail_reading_marginalia_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarginaliaConnectionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MarginaliaStatus` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/marginalia/highlights": {
+      "post": {
+        "tags": [],
+        "summary": "Read back highlights made in Marginalia on one sent item, or every sent item",
+        "operationId": "mail_reading_marginalia_sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarginaliaSyncBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MarginaliaSync` variant",
             "content": {
               "application/json": {
                 "schema": {
@@ -14502,6 +14629,217 @@
           "paper_trail"
         ]
       },
+      "MarginaliaConnectionBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/marginalia`.",
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MarginaliaConnectionData",
+                "description": "The site and a personal token to connect; null disconnects."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "MarginaliaConnectionData": {
+        "type": "object",
+        "description": "The site and the personal token to connect Marginalia with.",
+        "required": [
+          "url",
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "`mrg_…`, from Marginalia's Account, Connected apps. Kept in the\nsecrets file, never in config or logs."
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "MarginaliaSendBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/items/{item_key}/marginalia`.",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Name what would be sent and where; contact nothing."
+          }
+        }
+      },
+      "MarginaliaSendData": {
+        "type": "object",
+        "description": "What `SendReadingToMarginalia` did, or would do.",
+        "required": [
+          "item_key",
+          "dry_run",
+          "host",
+          "title",
+          "view",
+          "bytes",
+          "already_sent",
+          "copy"
+        ],
+        "properties": {
+          "already_sent": {
+            "type": "boolean",
+            "description": "It was sent before: nothing is sent, and it opens where it went."
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the text sent, in bytes; 0 when it was sent before.",
+            "minimum": 0
+          },
+          "copy": {
+            "type": "string",
+            "description": "\"Sent to Marginalia.\" or \"Already in Marginalia.\""
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "fetch_first": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The article's site, contacted first to fetch it for a digest link\nwhose article isn't saved yet."
+          },
+          "host": {
+            "type": "string",
+            "description": "The Marginalia site the item goes to."
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "marginalia": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReadingMarginaliaData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "view": {
+            "type": "string",
+            "description": "`issue` or `article`: the text that is sent."
+          }
+        }
+      },
+      "MarginaliaStatusData": {
+        "type": "object",
+        "description": "Marginalia, the reading app items can be sent to.",
+        "required": [
+          "connected",
+          "sent"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "A site and a token are saved."
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items sent so far, whose highlights are read back.",
+            "minimum": 0
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The site, such as `https://reader.example.com/`."
+          }
+        }
+      },
+      "MarginaliaSyncBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/marginalia/highlights`.",
+        "properties": {
+          "item_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One sent item; omitted reads back every sent item."
+          }
+        }
+      },
+      "MarginaliaSyncData": {
+        "type": "object",
+        "description": "What `SyncMarginaliaHighlights` read back.",
+        "required": [
+          "items",
+          "added",
+          "removed",
+          "forgotten"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarginaliaSyncFailureData"
+            }
+          },
+          "forgotten": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items Marginalia no longer has: sending them again makes a new one.",
+            "minimum": 0
+          },
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items whose highlights were read.",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deleted in Marginalia, so removed here too.",
+            "minimum": 0
+          }
+        }
+      },
+      "MarginaliaSyncFailureData": {
+        "type": "object",
+        "description": "One item whose highlights couldn't be read back.",
+        "required": [
+          "item_key",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "item_key": {
+            "type": "string"
+          }
+        }
+      },
       "MergeBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/people/merge`.",
@@ -17328,6 +17666,10 @@
               "null"
             ]
           },
+          "origin": {
+            "type": "string",
+            "description": "`mxr`, or `marginalia` for one made there and read back."
+          },
           "quote": {
             "type": "string"
           },
@@ -17563,6 +17905,17 @@
           "item": {
             "$ref": "#/components/schemas/ReadingItemData"
           },
+          "marginalia": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReadingMarginaliaData",
+                "description": "The Marginalia article it became, when it was sent there."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "minutes_left": {
             "type": "integer",
             "format": "int32",
@@ -17692,6 +18045,36 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "ReadingMarginaliaData": {
+        "type": "object",
+        "description": "The Marginalia article an item became.",
+        "required": [
+          "article_id",
+          "read_url",
+          "sent_at"
+        ],
+        "properties": {
+          "article_id": {
+            "type": "string"
+          },
+          "highlights_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When its highlights were last read back."
+          },
+          "read_url": {
+            "type": "string",
+            "description": "Where it opens in Marginalia."
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -27639,6 +28022,89 @@
           },
           {
             "type": "object",
+            "description": "Whether Marginalia is connected, and where. Returns\n`ResponseData::MarginaliaStatus`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetMarginaliaStatus"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Connect Marginalia with its site and a personal token, checked with\nMarginalia before it is saved, or disconnect with `None`. The token\ngoes to the secrets file, the site to config. Returns\n`ResponseData::MarginaliaStatus`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetMarginaliaConnection"
+                ]
+              },
+              "connection": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MarginaliaConnectionData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Send an item to Marginalia: the saved article when there is one\n(fetching a digest link's first), else the issue. An item sent\nbefore isn't sent again. `dry_run` names what would be sent and\nwhere, and contacts nothing. Returns `ResponseData::MarginaliaSend`.",
+            "required": [
+              "item_key",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SendReadingToMarginalia"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "item_key": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Read back the highlights made in Marginalia on one sent item, or on\nevery sent item: new ones are added, ones deleted there are\nremoved, and highlights made in mxr are never touched. Returns\n`ResponseData::MarginaliaSync`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SyncMarginaliaHighlights"
+                ]
+              },
+              "item_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "The Updates briefing (blueprint 22, phase 4): everything that\narrived by the cut (`cut`, else the latest one) and wasn't let go,\none line per source in Needs a look, Changed and Routine, plus what\narrived since. Rules only; deltas are computed, never written by a\nmodel. `mark_seen` records that Updates was opened, so the expired\ncount starts again and the mute question counts as asked;\n`expired` lists every update past its window. Returns\n`ResponseData::UpdatesDigest`.",
             "required": [
               "cmd"
@@ -32376,6 +32842,63 @@
                 "enum": [
                   "ReadingHighlight"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetMarginaliaStatus` and\n`Request::SetMarginaliaConnection`.",
+            "required": [
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MarginaliaStatus"
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/MarginaliaStatusData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SendReadingToMarginalia`.",
+            "required": [
+              "send",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MarginaliaSend"
+                ]
+              },
+              "send": {
+                "$ref": "#/components/schemas/MarginaliaSendData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SyncMarginaliaHighlights`.",
+            "required": [
+              "sync",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MarginaliaSync"
+                ]
+              },
+              "sync": {
+                "$ref": "#/components/schemas/MarginaliaSyncData"
               }
             }
           },

@@ -89,6 +89,7 @@ const TABLES: &[&str] = &[
     "reading_highlights",
     "reading_sources",
     "reading_visit",
+    "reading_marginalia",
     "record_groups",
     "records",
     "record_messages",
@@ -197,7 +198,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=85).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=86).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -254,6 +255,15 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 86 {
+        sqlx::raw_sql(
+            "DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
+             ALTER TABLE reading_highlights DROP COLUMN origin_id;
+             ALTER TABLE reading_highlights DROP COLUMN origin;",
+        )
+        .execute(expected.writer())
+        .await?;
+    }
     if (83..85).contains(&manifest.schema_version) {
         sqlx::raw_sql(
             "ALTER TABLE remote_pairings DROP COLUMN allow_send; ALTER TABLE remote_clients DROP COLUMN allow_send;",
@@ -392,7 +402,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=85).contains(&version) {
+    if !(80..=86).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -423,13 +433,24 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
             continue;
         }
         // Identifiers come only from this allowlist and the freshly migrated main schema.
+        // Columns an older source lacks keep their defaults.
+        let source_columns: BTreeSet<String> = sqlx::query(AssertSqlSafe(format!(
+            "PRAGMA source.table_info(\"{table}\")"
+        )))
+        .fetch_all(&mut *connection)
+        .await?
+        .into_iter()
+        .map(|r| r.get::<String, _>("name"))
+        .collect();
         let columns = sqlx::query(AssertSqlSafe(format!(
             "PRAGMA main.table_info(\"{table}\")"
         )))
         .fetch_all(&mut *connection)
         .await?
         .into_iter()
-        .map(|r| format!("\"{}\"", r.get::<String, _>("name")))
+        .map(|r| r.get::<String, _>("name"))
+        .filter(|name| source_columns.contains(name))
+        .map(|name| format!("\"{name}\""))
         .collect::<Vec<_>>()
         .join(",");
         sqlx::query(AssertSqlSafe(format!("DELETE FROM main.\"{table}\"")))
@@ -463,7 +484,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:85, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:86, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into()] })
 }
 

@@ -4,15 +4,17 @@
 //! prints them for people, or passes the JSON through for scripts and
 //! agents.
 
-use crate::cli::{OutputFormat, PlaceArgs, ReadingAction};
+use crate::cli::{MarginaliaAction, OutputFormat, PlaceArgs, ReadingAction};
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format, terminal_block};
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
-    reading_copy, MailPlaceData, ModeDoneOutcomeData, ModeKindData, ReadingBandGroupData,
-    ReadingEditionData, ReadingFetchData, ReadingItemData, ReadingItemDetailData,
-    ReadingLaterOutcomeData, ReadingParagraphData, Request, Response, ResponseData,
+    reading_copy, MailPlaceData, MarginaliaConnectionData, MarginaliaSendData,
+    MarginaliaStatusData, MarginaliaSyncData, ModeDoneOutcomeData, ModeKindData,
+    ReadingBandGroupData, ReadingEditionData, ReadingFetchData, ReadingItemData,
+    ReadingItemDetailData, ReadingLaterOutcomeData, ReadingParagraphData, Request, Response,
+    ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -142,6 +144,7 @@ pub async fn run(
                 _ => print!("{}", sources_text(&edition)),
             }
         }
+        ReadingAction::Marginalia { action } => marginalia(&mut client, action, format).await?,
         ReadingAction::Senders { .. } => unreachable!("handled above"),
     }
     Ok(())
@@ -647,6 +650,149 @@ fn let_go_text(
         let _ = writeln!(out, "Undo with: mxr undo {id}");
     }
     terminal_block(&out)
+}
+
+/// The token, from a hidden prompt or from standard input when piped.
+fn read_token() -> anyhow::Result<String> {
+    use std::io::IsTerminal as _;
+    let token = if std::io::stdin().is_terminal() {
+        inquire::Password::new("Marginalia token (mrg_…):")
+            .without_confirmation()
+            .prompt()?
+    } else {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        line
+    };
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        anyhow::bail!("no token given; create one in Marginalia under Account, Connected apps");
+    }
+    Ok(token)
+}
+
+fn status_text(status: &MarginaliaStatusData) -> String {
+    match (&status.url, status.connected) {
+        (Some(url), true) => format!(
+            "Marginalia is connected at {url}. {} item(s) sent.\n",
+            status.sent
+        ),
+        _ => "Marginalia isn't connected. mxr reading marginalia connect --url https://…\n"
+            .to_string(),
+    }
+}
+
+async fn marginalia(
+    client: &mut IpcClient,
+    action: MarginaliaAction,
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    let json = matches!(format, OutputFormat::Json | OutputFormat::Jsonl);
+    let status_request = match &action {
+        MarginaliaAction::Status => Some(Request::GetMarginaliaStatus),
+        MarginaliaAction::Disconnect => Some(Request::SetMarginaliaConnection { connection: None }),
+        MarginaliaAction::Connect { url } => Some(Request::SetMarginaliaConnection {
+            connection: Some(MarginaliaConnectionData {
+                url: url.clone(),
+                token: read_token()?,
+            }),
+        }),
+        MarginaliaAction::Send { .. } | MarginaliaAction::Sync { .. } => None,
+    };
+    if let Some(request) = status_request {
+        let status = expect_data!(client.request(request).await?, MarginaliaStatus { status });
+        if json {
+            println!("{}", serde_json::to_string_pretty(&status)?);
+        } else {
+            print!("{}", status_text(&status));
+        }
+        return Ok(());
+    }
+    match action {
+        MarginaliaAction::Status
+        | MarginaliaAction::Disconnect
+        | MarginaliaAction::Connect { .. } => {}
+        MarginaliaAction::Send {
+            item,
+            dry_run,
+            open,
+        } => {
+            let send = expect_data!(
+                client
+                    .request(Request::SendReadingToMarginalia {
+                        item_key: item,
+                        dry_run,
+                    })
+                    .await?,
+                MarginaliaSend { send }
+            );
+            if json {
+                println!("{}", serde_json::to_string_pretty(&send)?);
+            } else {
+                print!("{}", send_text(&send));
+            }
+            if open {
+                if let Some(sent) = &send.marginalia {
+                    open::that(&sent.read_url)?;
+                }
+            }
+        }
+        MarginaliaAction::Sync { item } => {
+            let sync = expect_data!(
+                client
+                    .request(Request::SyncMarginaliaHighlights { item_key: item })
+                    .await?,
+                MarginaliaSync { sync }
+            );
+            if json {
+                println!("{}", serde_json::to_string_pretty(&sync)?);
+            } else {
+                print!("{}", sync_text(&sync));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn send_text(send: &MarginaliaSendData) -> String {
+    let mut out = String::new();
+    let title = terminal_block(&send.title);
+    if send.dry_run && !send.already_sent {
+        if let Some(site) = &send.fetch_first {
+            let _ = writeln!(out, "Would fetch the article from {site} first.");
+        }
+        let _ = writeln!(
+            out,
+            "Would send \"{title}\" ({}, {} KB) to {}.",
+            send.view,
+            send.bytes.div_ceil(1024),
+            send.host
+        );
+        return out;
+    }
+    let _ = writeln!(out, "{} \"{title}\"", send.copy);
+    if let Some(sent) = &send.marginalia {
+        let _ = writeln!(out, "Open it: {}", sent.read_url);
+    }
+    out
+}
+
+fn sync_text(sync: &MarginaliaSyncData) -> String {
+    let mut out = format!(
+        "Read highlights on {} item(s): {} new, {} removed.\n",
+        sync.items, sync.added, sync.removed
+    );
+    if sync.forgotten > 0 {
+        let _ = writeln!(
+            out,
+            "{} item(s) are no longer in Marginalia; sending again makes a new copy.",
+            sync.forgotten
+        );
+    }
+    for failure in &sync.failed {
+        let _ = writeln!(out, "{}: {}", failure.item_key, failure.error);
+    }
+    out
 }
 
 #[cfg(test)]

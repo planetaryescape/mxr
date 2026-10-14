@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Marginalia, a reading app: send an item there to read it with Marginalia's tools, and read the highlights made there back
+
+Usage: mxr reading marginalia [OPTIONS] <COMMAND>
+
+Commands:
+  status      Whether Marginalia is connected, where, and how many items were sent
+  connect     Connect Marginalia: its address, and a personal token from its Account page, Connected apps. The token is read from standard input (or asked for), checked with Marginalia, then kept in the secrets file
+  disconnect  Forget Marginalia and remove its token. What was sent stays there
+  send        Send an item to Marginalia, or find it there if it was sent before. A digest link's article is fetched first when it isn't saved. --dry-run names what would be sent and where, and contacts nothing
+  sync        Read back the highlights made in Marginalia, on one item or on every item sent there. Highlights made in mxr are never changed
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

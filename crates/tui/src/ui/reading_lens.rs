@@ -34,8 +34,8 @@ const TWO_PANE_MIN_WIDTH: u16 = 100;
 const PROGRESS_CELLS: usize = 20;
 const DEFAULT_WPM: u32 = 230;
 
-const LIST_KEYS: &str = "Enter read \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} A let go all \u{b7} B Later shelf \u{b7} ? help";
-const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} o email";
+const LIST_KEYS: &str = "Enter read \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} A let go all \u{b7} B Later shelf \u{b7} M Marginalia \u{b7} ? help";
+const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} M Marginalia \u{b7} o email";
 
 /// As many whole "key verb" items as fit in `width`.
 fn fit_keys(keys: &str, width: usize) -> String {

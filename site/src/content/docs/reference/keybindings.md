@@ -307,6 +307,7 @@ cursor.
 | `S` | Sweep this sender's bundle (previews first) |
 | `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
 | `>` / `+` | More senders / more from this sender |
+| `M` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
 
 ## Archive
 
@@ -725,6 +726,7 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `o` | Open the email as sent |  |
 | `K` | This sender here: move to… |  |
 | `B` | Open Later |  |
+| `M` | Open in Marginalia |  |
 | `Esc` | Dismiss the hint |  |
 
 ### Reading reader
@@ -744,6 +746,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `h` | Highlight the selection |  |
 | `D` | Unsubscribe… |  |
 | `o` | Open the email as sent |  |
+| `M` | Open in Marginalia |  |
 | `Esc` | Back to the edition |  |
 
 <!-- web-keys:end -->

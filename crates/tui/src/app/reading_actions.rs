@@ -1,8 +1,9 @@
 //! Reading in the TUI: open the edition, read an item beside it, fetch its
 //! article only on `L`, keep it on Later, let go of one or everything
 //! shown after a preview, unsubscribe after a preview with the evidence,
-//! switch to the source's own text, and highlight a paragraph. The daemon
-//! owns every band, rank and preview; this turns keys into requests.
+//! switch to the source's own text, highlight a paragraph, and open it in
+//! Marginalia. The daemon owns every band, rank and preview; this turns
+//! keys into requests.
 
 use super::input::plain_or_shift;
 use super::*;
@@ -63,6 +64,7 @@ impl App {
             Action::ReadingOpenEmail => self.reading_open_email(),
             Action::ReadingBack => self.reading_back(),
             Action::ReadingLaterShelf => self.toggle_later_shelf(),
+            Action::ReadingMarginalia => self.reading_marginalia(),
             _ => {}
         }
     }
@@ -588,6 +590,29 @@ impl App {
         );
     }
 
+    /// `M`: open the item in Marginalia. The daemon sends its text the
+    /// first time and only finds it after that; the runner opens the
+    /// browser at the address it answers with.
+    fn reading_marginalia(&mut self) {
+        let key = match &self.mailbox.reading_page.reader {
+            Some(reader) if self.mailbox.reading_page.reader_focused => {
+                reader.item.item_key.clone()
+            }
+            _ => match self.reading_target() {
+                Some(target) => target.key,
+                None => return,
+            },
+        };
+        self.queue_mutation(
+            Request::SendReadingToMarginalia {
+                item_key: key,
+                dry_run: false,
+            },
+            MutationEffect::ModeDone(String::new()),
+            "Sending to Marginalia...".into(),
+        );
+    }
+
     fn reading_open_email(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
@@ -678,6 +703,7 @@ impl App {
             KeyCode::Char('A') if shifted => Some(Action::ReadingLetGoAll),
             KeyCode::Char('D') if shifted => Some(Action::ReadingUnsubscribe),
             KeyCode::Char('R') if shifted => Some(Action::ReadingOriginal),
+            KeyCode::Char('M') if shifted => Some(Action::ReadingMarginalia),
             KeyCode::Char('o') if plain => Some(Action::ReadingOpenEmail),
             KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),

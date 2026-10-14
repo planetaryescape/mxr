@@ -1,11 +1,20 @@
 /*
  * Reading's keys, per blueprint 22's one key map: Enter read, L the linked
  * article, b later, e let go, D unsubscribe, R the sender's layout, A let
- * go of everything shown. The mounted edition and reader register what each
- * command does (`useScopeController`); `g r` opens Reading from anywhere.
+ * go of everything shown, M open in Marginalia. The mounted edition and
+ * reader register what each command does (`useScopeController`); `g r`
+ * opens Reading from anywhere.
  */
 
-import { Bookmark, Check, ExternalLink, Highlighter, Layout, MailX } from "lucide-react";
+import {
+  Bookmark,
+  BookOpenText,
+  Check,
+  ExternalLink,
+  Highlighter,
+  Layout,
+  MailX,
+} from "lucide-react";
 
 import type { Action, ActionScope, CommandAction } from "@/lib/actions/types";
 
@@ -69,6 +78,11 @@ export const readingActions: Action[] = [
   key("reading", "reading.later-shelf", "laterShelf", "Open Later", "B", {
     shortLabel: "Later shelf",
   }),
+  key("reading", "reading.marginalia", "marginalia", "Open in Marginalia", "M", {
+    shortLabel: "Marginalia",
+    icon: BookOpenText,
+    description: "Sends the item's text to Marginalia the first time, then opens it there",
+  }),
   key("reading", "reading.close-hint", "closeHint", "Dismiss the hint", "Escape", {
     hideInPalette: true,
   }),
@@ -113,6 +127,11 @@ export const readingActions: Action[] = [
   }),
   key("reading-reader", "reading.reader-open-email", "openEmail", "Open the email as sent", "o", {
     shortLabel: "Email",
+  }),
+  key("reading-reader", "reading.reader-marginalia", "marginalia", "Open in Marginalia", "M", {
+    shortLabel: "Marginalia",
+    icon: BookOpenText,
+    description: "Sends the item's text to Marginalia the first time, then opens it there",
   }),
   key("reading-reader", "reading.reader-back", "back", "Back to the edition", "Escape", {
     hideInPalette: true,

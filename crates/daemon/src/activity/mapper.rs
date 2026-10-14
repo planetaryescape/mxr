@@ -959,15 +959,28 @@ pub fn map_request(
                 "has_note": note.is_some(),
             })),
         ),
+        Request::SendReadingToMarginalia {
+            item_key,
+            dry_run: false,
+        } => (
+            "reading.marginalia_send",
+            Some("reading_item"),
+            Some(item_key.clone()),
+            None,
+        ),
         Request::GetReadingEdition { .. }
         | Request::GetReadingItem { .. }
         | Request::RecordReadingEngagement { .. }
         | Request::SetReadingLater { .. }
         | Request::ExportReadingHighlights { .. }
-        | Request::SetReadingSource { .. } => {
+        | Request::SetReadingSource { .. }
+        | Request::GetMarginaliaStatus
+        | Request::SetMarginaliaConnection { .. }
+        | Request::SendReadingToMarginalia { .. }
+        | Request::SyncMarginaliaHighlights { .. } => {
             skip_activity!(
                 "reading",
-                "reading views, dwell reports, previews and per-source settings are not activity"
+                "reading views, dwell reports, previews, per-source settings, the Marginalia connection and highlight read-back are not activity"
             );
         }
         Request::GetModeGuide { .. } | Request::SetHintSeen { .. } => {

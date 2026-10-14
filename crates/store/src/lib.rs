@@ -141,8 +141,9 @@ pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
 pub use pool::Store;
 pub use reading::{
-    ReadingArticleRow, ReadingEngagementReport, ReadingHighlightRow, ReadingItemRow,
-    ReadingSourcePrefs, ReadingStateRow, ReadingVisitRow, SourceIssue,
+    MarginaliaHighlightIn, MarginaliaMirror, ReadingArticleRow, ReadingEngagementReport,
+    ReadingHighlightRow, ReadingItemRow, ReadingMarginaliaRow, ReadingSourcePrefs, ReadingStateRow,
+    ReadingVisitRow, SourceIssue,
 };
 pub use record_subscriptions::SenderMessage;
 pub use records::{

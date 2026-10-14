@@ -484,6 +484,22 @@ fn cli_help_snapshots_cover_all_commands() {
             "cli_help_reading_senders",
             &["reading", "senders", "--help"],
         ),
+        (
+            "cli_help_reading_marginalia",
+            &["reading", "marginalia", "--help"],
+        ),
+        (
+            "cli_help_reading_marginalia_connect",
+            &["reading", "marginalia", "connect", "--help"],
+        ),
+        (
+            "cli_help_reading_marginalia_send",
+            &["reading", "marginalia", "send", "--help"],
+        ),
+        (
+            "cli_help_reading_marginalia_sync",
+            &["reading", "marginalia", "sync", "--help"],
+        ),
         ("cli_help_paper_trail", &["paper-trail", "--help"]),
         ("cli_help_sweep", &["sweep", "--help"]),
         ("cli_help_pin", &["pin", "--help"]),
@@ -524,7 +540,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 282);
+    assert_eq!(cases.len(), 286);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

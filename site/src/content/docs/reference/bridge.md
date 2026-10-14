@@ -353,6 +353,10 @@ The existing `/mail/actions/unsubscribe-purge` commit retains its clear-mail beh
 | `GET` | `/mail/reading/highlights` | Every highlight, plus the same as Markdown |
 | `POST` | `/mail/reading/highlights` | Save a passage (`{item_key, quote, note?, view?}`) |
 | `POST` | `/mail/reading/sources` | Per-source settings (`{account_id, sender_email, original_layout?, dismiss_unsubscribe_offer?}`) |
+| `GET` | `/mail/reading/marginalia` | Whether [Marginalia](/guides/marginalia/) is connected, its address and how many items were sent |
+| `POST` | `/mail/reading/marginalia` | Connect (`{connection: {url, token}}`, the token checked with Marginalia first) or disconnect (`{connection: null}`) |
+| `POST` | `/mail/reading/items/{item_key}/marginalia` | Send the item to Marginalia, or find it there if sent before (`{dry_run}`); the dry run contacts nothing |
+| `POST` | `/mail/reading/marginalia/highlights` | Read back highlights made in Marginalia (`{item_key?}`; omitted reads every sent item) |
 
 ### Reply-later queue
 

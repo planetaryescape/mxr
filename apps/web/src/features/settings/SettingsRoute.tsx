@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import {
   Bell,
   BookOpen,
+  BookOpenText,
   Bot,
   Code2,
   Info,
@@ -21,6 +22,7 @@ import { AppearanceSection } from "./AppearanceSection";
 import { ComposeSettingsSection } from "./ComposeSettingsSection";
 import { KeybindingsSection } from "./KeybindingsSection";
 import { LlmSettingsSection } from "./LlmSettingsSection";
+import { MarginaliaSection } from "./MarginaliaSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { SoundSection } from "./SoundSection";
 import { ReaderSection } from "./ReaderSection";
@@ -58,6 +60,13 @@ const SECTIONS: SectionDef[] = [
     description: "How mail lists and conversations open and render.",
     icon: BookOpen,
     render: () => <ReaderSection />,
+  },
+  {
+    id: "marginalia",
+    label: "Marginalia",
+    description: "The reading app Reading items open in with M.",
+    icon: BookOpenText,
+    render: () => <MarginaliaSection />,
   },
   {
     id: "keybindings",

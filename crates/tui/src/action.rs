@@ -283,6 +283,9 @@ pub enum Action {
     ReadingBack,
     /// `B`: the Later shelf, or back to the edition from it.
     ReadingLaterShelf,
+    /// `M`: open the item in Marginalia, sending its text there the first
+    /// time (`Request::SendReadingToMarginalia`).
+    ReadingMarginalia,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

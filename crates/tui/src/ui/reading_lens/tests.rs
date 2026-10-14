@@ -220,6 +220,7 @@ fn detail(article: bool) -> ReadingItemDetailData {
         }),
         article_error: None,
         highlights: Vec::new(),
+        marginalia: None,
         minutes_left: 2,
         pace_wpm: 230,
         item: teaser,

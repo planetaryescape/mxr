@@ -16,8 +16,10 @@ import {
   fetchArticle,
   READING_KEY,
   saveHighlight,
+  sendToMarginalia,
   setLater,
   setSource,
+  syncMarginaliaHighlights,
   type ReadingFetch,
 } from "./api";
 import { domainLabel, highlightPayload } from "./readingView";
@@ -188,5 +190,88 @@ export async function dismissUnsubscribeOffer(accountId: string, senderEmail: st
     await refreshReading();
   } catch (error) {
     toast.error("Couldn't change this source", { description: errorText(error) });
+  }
+}
+
+/**
+ * Only web addresses are opened. The daemon already refuses read URLs off
+ * the connected site; this keeps a `javascript:` URL from ever reaching
+ * an about:blank tab, which shares mxr's origin.
+ */
+export function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/** Opens a page in a new tab that can't reach back into mxr. */
+function openTab(url: string): void {
+  if (!isWebUrl(url)) {
+    toast.error("Marginalia gave an address mxr won't open");
+    return;
+  }
+  const tab = window.open(url, "_blank", "noopener,noreferrer");
+  if (!tab) toast.message("Your browser blocked the new tab", { description: url });
+}
+
+/**
+ * `M`: open the item in Marginalia, sending it first if it hasn't been.
+ * Sending gives the email's text to Marginalia, so it only happens on
+ * this key or button. The tab opens on the keypress, before the send
+ * finishes, so the browser doesn't block it.
+ */
+export async function openInMarginalia(
+  itemKey: string,
+  sentUrl: string | null | undefined,
+  options: { connected: boolean; onConnect: () => void },
+): Promise<boolean> {
+  if (sentUrl) {
+    openTab(sentUrl);
+    return true;
+  }
+  if (!options.connected) {
+    toast.message("Marginalia isn't connected", {
+      description: "Connect it once in Settings, with a token from its Account page.",
+      action: { label: "Connect", onClick: options.onConnect },
+    });
+    return false;
+  }
+  if (refuseWhileDaemonDown("send it to Marginalia")) return false;
+  const tab = window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  const id = `reading-marginalia-${itemKey}`;
+  toast.loading("Sending to Marginalia…", { id });
+  try {
+    const sent = await sendToMarginalia(itemKey);
+    const url = sent.marginalia?.read_url;
+    if (url && tab && isWebUrl(url)) tab.location.href = url;
+    else if (url && !tab) openTab(url);
+    else {
+      tab?.close();
+      if (url) toast.error("Marginalia gave an address mxr won't open");
+    }
+    toast.success(sent.copy, {
+      id,
+      description: "Highlights you make there come back to this item.",
+    });
+    await refreshReading();
+    return true;
+  } catch (error) {
+    tab?.close();
+    toast.error("Couldn't send it to Marginalia", { id, description: errorText(error) });
+    return false;
+  }
+}
+
+/** Reads back the item's Marginalia highlights, quietly, when it opens. */
+export async function refreshMarginaliaHighlights(itemKey: string): Promise<void> {
+  try {
+    const sync = await syncMarginaliaHighlights(itemKey);
+    if (sync.added + sync.removed + sync.forgotten > 0) await refreshReading();
+  } catch {
+    // Offline or Marginalia unavailable: the saved highlights still show.
   }
 }

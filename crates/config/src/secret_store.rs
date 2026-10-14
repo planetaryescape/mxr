@@ -180,6 +180,30 @@ impl SecretStore {
         write_secrets_atomic(&self.path, contents.as_bytes())
     }
 
+    /// Delete the secret for `(service, account)`, persisting atomically at
+    /// `0600`. Absent is fine. Same single-writer invariant as [`Self::set`].
+    pub fn remove(&self, service: &str, account: &str) -> io::Result<()> {
+        let _guard = write_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(mut file) = self.read_file()? else {
+            return Ok(());
+        };
+        let before = file.secrets.len();
+        file.secrets
+            .retain(|entry| !(entry.service == service && entry.account == account));
+        if file.secrets.len() == before {
+            return Ok(());
+        }
+        let contents = toml::to_string_pretty(&file).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "failed to serialize secrets file",
+            )
+        })?;
+        write_secrets_atomic(&self.path, contents.as_bytes())
+    }
+
     fn read_file(&self) -> io::Result<Option<SecretsFile>> {
         let Some(contents) = read_secrets_file(&self.path)? else {
             return Ok(None);
@@ -360,6 +384,22 @@ mod tests {
                 .as_deref(),
             Some("app-pw")
         );
+    }
+
+    #[test]
+    fn remove_deletes_only_that_entry_and_tolerates_absence() {
+        let dir = TempDir::new().unwrap();
+        let store = store_in(&dir);
+        store.remove("mxr/x", "u").unwrap();
+        store.set("mxr/x", "u", "gone").unwrap();
+        store.set("mxr/y", "u", "kept").unwrap();
+        store.remove("mxr/x", "u").unwrap();
+        store.remove("mxr/x", "u").unwrap();
+        assert!(store.get("mxr/x", "u").unwrap().is_none());
+        assert_eq!(store.get("mxr/y", "u").unwrap().as_deref(), Some("kept"));
+        assert!(!std::fs::read_to_string(dir.path().join("secrets.toml"))
+            .unwrap()
+            .contains("gone"));
     }
 
     #[test]

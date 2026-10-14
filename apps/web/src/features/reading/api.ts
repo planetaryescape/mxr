@@ -23,6 +23,9 @@ export type ReadingHighlight = Schemas["ReadingHighlightData"];
 export type ReadingSource = Schemas["ReadingSourceData"];
 export type ReadingParagraph = Schemas["ReadingParagraphData"];
 export type ReadingUnsubscribe = Schemas["ReadingUnsubscribeData"];
+export type MarginaliaStatus = Schemas["MarginaliaStatusData"];
+export type MarginaliaSend = Schemas["MarginaliaSendData"];
+export type MarginaliaSync = Schemas["MarginaliaSyncData"];
 
 type Edition = Extract<Schemas["ResponseData"], { kind: "ReadingEdition" }>;
 type Item = Extract<Schemas["ResponseData"], { kind: "ReadingItem" }>;
@@ -32,6 +35,9 @@ type ArticleResponse = Extract<Schemas["ResponseData"], { kind: "ReadingArticle"
 type HighlightResponse = Extract<Schemas["ResponseData"], { kind: "ReadingHighlight" }>;
 type Highlights = Extract<Schemas["ResponseData"], { kind: "ReadingHighlights" }>;
 type SourceResponse = Extract<Schemas["ResponseData"], { kind: "ReadingSource" }>;
+type StatusResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaStatus" }>;
+type SendResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaSend" }>;
+type SyncResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaSync" }>;
 
 /** Every Reading query starts with this, so one invalidation refreshes them. */
 export const READING_KEY = ["reading"] as const;
@@ -118,6 +124,48 @@ export async function setSource(input: {
     },
   });
   return answer.source;
+}
+
+export const MARGINALIA_KEY = [...READING_KEY, "marginalia"] as const;
+
+export async function fetchMarginaliaStatus(): Promise<MarginaliaStatus> {
+  return (await apiFetch<StatusResponse>("/api/v1/mail/reading/marginalia")).status;
+}
+
+/** Connect with a site and a token (checked by Marginalia first), or disconnect with null. */
+export async function setMarginaliaConnection(
+  connection: { url: string; token: string } | null,
+): Promise<MarginaliaStatus> {
+  const answer = await apiFetch<StatusResponse>("/api/v1/mail/reading/marginalia", {
+    method: "POST",
+    body: { connection },
+  });
+  return answer.status;
+}
+
+/** Gives the item's text to Marginalia: only on an explicit key or button. */
+export async function sendToMarginalia(key: string, dryRun = false): Promise<MarginaliaSend> {
+  const answer = await apiFetch<SendResponse>(`${itemPath(key)}/marginalia`, {
+    method: "POST",
+    body: { dry_run: dryRun },
+  });
+  return answer.send;
+}
+
+export async function syncMarginaliaHighlights(key?: string): Promise<MarginaliaSync> {
+  const answer = await apiFetch<SyncResponse>("/api/v1/mail/reading/marginalia/highlights", {
+    method: "POST",
+    body: key ? { item_key: key } : {},
+  });
+  return answer.sync;
+}
+
+export function useMarginaliaStatus() {
+  return useQuery({
+    queryKey: MARGINALIA_KEY,
+    queryFn: fetchMarginaliaStatus,
+    staleTime: 60_000,
+  });
 }
 
 export function useItemQuery(key: string | undefined) {

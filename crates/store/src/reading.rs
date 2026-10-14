@@ -89,6 +89,39 @@ pub struct ReadingHighlightRow {
     pub quote: String,
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// `mxr`, or `marginalia` for one read back from Marginalia.
+    pub origin: String,
+    /// The highlight's id where it came from; set for `marginalia`.
+    pub origin_id: Option<String>,
+}
+
+/// A Reading item sent to Marginalia (`086_reading_marginalia.sql`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadingMarginaliaRow {
+    pub message_id: MessageId,
+    pub idx: i64,
+    pub account_id: AccountId,
+    pub article_id: String,
+    pub read_url: String,
+    /// `issue` or `article`: the text that was sent.
+    pub view: String,
+    pub sent_at: DateTime<Utc>,
+    pub highlights_synced_at: Option<DateTime<Utc>>,
+}
+
+/// One highlight as Marginalia has it, to mirror locally.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarginaliaHighlightIn {
+    pub origin_id: String,
+    pub quote: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// What mirroring one item's Marginalia highlights changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MarginaliaMirror {
+    pub added: u32,
+    pub removed: u32,
 }
 
 /// Per-source choices.
@@ -188,6 +221,21 @@ fn highlight_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingHighlightR
         quote: row.try_get("quote")?,
         note: row.try_get("note")?,
         created_at: decode_timestamp(row.try_get("created_at")?)?,
+        origin: row.try_get("origin")?,
+        origin_id: row.try_get("origin_id")?,
+    })
+}
+
+fn marginalia_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingMarginaliaRow, sqlx::Error> {
+    Ok(ReadingMarginaliaRow {
+        message_id: decode_id(&row.try_get::<String, _>("message_id")?)?,
+        idx: row.try_get("idx")?,
+        account_id: decode_id(&row.try_get::<String, _>("account_id")?)?,
+        article_id: row.try_get("article_id")?,
+        read_url: row.try_get("read_url")?,
+        view: row.try_get("view")?,
+        sent_at: decode_timestamp(row.try_get("sent_at")?)?,
+        highlights_synced_at: decode_optional_timestamp(row.try_get("highlights_synced_at")?)?,
     })
 }
 
@@ -568,8 +616,8 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO reading_highlights
-                 (id, account_id, message_id, idx, view, quote, note, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 (id, account_id, message_id, idx, view, quote, note, created_at, origin, origin_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )
         .bind(&row.id)
         .bind(row.account_id.as_str())
@@ -579,6 +627,8 @@ impl super::Store {
         .bind(&row.quote)
         .bind(&row.note)
         .bind(row.created_at.timestamp())
+        .bind(&row.origin)
+        .bind(&row.origin_id)
         .execute(self.writer())
         .await?;
         Ok(())
@@ -620,6 +670,181 @@ impl super::Store {
             .iter()
             .map(highlight_from_row)
             .collect()
+    }
+
+    /// The Marginalia article an item became, if it was sent.
+    pub async fn reading_marginalia(
+        &self,
+        message_id: &MessageId,
+        idx: i64,
+    ) -> Result<Option<ReadingMarginaliaRow>, sqlx::Error> {
+        sqlx::query("SELECT * FROM reading_marginalia WHERE message_id = ? AND idx = ?")
+            .bind(message_id.as_str())
+            .bind(idx)
+            .fetch_optional(self.reader())
+            .await?
+            .as_ref()
+            .map(marginalia_from_row)
+            .transpose()
+    }
+
+    /// Items sent to Marginalia whose highlights were last read before
+    /// `synced_before` (or never), sent since `sent_after`, least recently
+    /// read first: one account's, or every account's.
+    pub async fn reading_marginalia_due(
+        &self,
+        account_id: Option<&AccountId>,
+        synced_before: DateTime<Utc>,
+        sent_after: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<ReadingMarginaliaRow>, sqlx::Error> {
+        sqlx::query(
+            "SELECT * FROM reading_marginalia
+             WHERE (?1 IS NULL OR account_id = ?1)
+               AND (highlights_synced_at IS NULL OR highlights_synced_at < ?2)
+               AND sent_at >= ?3
+             ORDER BY COALESCE(highlights_synced_at, 0), sent_at
+             LIMIT ?4",
+        )
+        .bind(account_id.map(AccountId::as_str))
+        .bind(synced_before.timestamp())
+        .bind(sent_after.timestamp())
+        .bind(i64::from(limit))
+        .fetch_all(self.reader())
+        .await?
+        .iter()
+        .map(marginalia_from_row)
+        .collect()
+    }
+
+    /// Records the article an item became, replacing an earlier one.
+    pub async fn upsert_reading_marginalia(
+        &self,
+        row: &ReadingMarginaliaRow,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO reading_marginalia
+                 (message_id, idx, account_id, article_id, read_url, view, sent_at,
+                  highlights_synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT (message_id, idx) DO UPDATE SET
+                 article_id = excluded.article_id,
+                 read_url = excluded.read_url,
+                 view = excluded.view,
+                 sent_at = excluded.sent_at,
+                 highlights_synced_at = excluded.highlights_synced_at",
+        )
+        .bind(row.message_id.as_str())
+        .bind(row.idx)
+        .bind(row.account_id.as_str())
+        .bind(&row.article_id)
+        .bind(&row.read_url)
+        .bind(&row.view)
+        .bind(row.sent_at.timestamp())
+        .bind(row.highlights_synced_at.map(|at| at.timestamp()))
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Forgets that an item was sent, when Marginalia no longer has the
+    /// article. Highlights already read back stay.
+    pub async fn delete_reading_marginalia(
+        &self,
+        message_id: &MessageId,
+        idx: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM reading_marginalia WHERE message_id = ? AND idx = ?")
+            .bind(message_id.as_str())
+            .bind(idx)
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    /// Makes an item's Marginalia highlights match `highlights`: new ones
+    /// are added, changed text is updated, and ones no longer there are
+    /// removed. Highlights made in mxr are never touched.
+    pub async fn mirror_marginalia_highlights(
+        &self,
+        sent: &ReadingMarginaliaRow,
+        highlights: &[MarginaliaHighlightIn],
+        synced_at: DateTime<Utc>,
+    ) -> Result<MarginaliaMirror, sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        let existing: Vec<(String, String, String)> = sqlx::query(
+            "SELECT id, origin_id, quote FROM reading_highlights
+             WHERE message_id = ? AND idx = ? AND origin = 'marginalia'",
+        )
+        .bind(sent.message_id.as_str())
+        .bind(sent.idx)
+        .fetch_all(&mut *tx)
+        .await?
+        .iter()
+        .map(|row| {
+            Ok((
+                row.try_get("id")?,
+                row.try_get::<Option<String>, _>("origin_id")?
+                    .unwrap_or_default(),
+                row.try_get("quote")?,
+            ))
+        })
+        .collect::<Result<_, sqlx::Error>>()?;
+        let mut mirror = MarginaliaMirror::default();
+        for (id, origin_id, _) in &existing {
+            if !highlights.iter().any(|h| &h.origin_id == origin_id) {
+                sqlx::query("DELETE FROM reading_highlights WHERE id = ?")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                mirror.removed += 1;
+            }
+        }
+        for highlight in highlights {
+            match existing
+                .iter()
+                .find(|(_, origin_id, _)| *origin_id == highlight.origin_id)
+            {
+                Some((id, _, quote)) if *quote != highlight.quote => {
+                    sqlx::query("UPDATE reading_highlights SET quote = ? WHERE id = ?")
+                        .bind(&highlight.quote)
+                        .bind(id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                Some(_) => {}
+                None => {
+                    sqlx::query(
+                        "INSERT INTO reading_highlights
+                             (id, account_id, message_id, idx, view, quote, note, created_at,
+                              origin, origin_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 'marginalia', ?8)",
+                    )
+                    .bind(uuid::Uuid::now_v7().to_string())
+                    .bind(sent.account_id.as_str())
+                    .bind(sent.message_id.as_str())
+                    .bind(sent.idx)
+                    .bind(&sent.view)
+                    .bind(&highlight.quote)
+                    .bind(highlight.created_at.timestamp())
+                    .bind(&highlight.origin_id)
+                    .execute(&mut *tx)
+                    .await?;
+                    mirror.added += 1;
+                }
+            }
+        }
+        sqlx::query(
+            "UPDATE reading_marginalia SET highlights_synced_at = ?
+             WHERE message_id = ? AND idx = ?",
+        )
+        .bind(synced_at.timestamp())
+        .bind(sent.message_id.as_str())
+        .bind(sent.idx)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(mirror)
     }
 
     /// Per-source choices for these senders, by lowercase address.

@@ -11,6 +11,8 @@
 //! - [`article`] and [`fetch`]: the linked article, fetched only on request,
 //!   through the same guards as a remote LLM endpoint.
 //! - [`export`]: highlights as Markdown.
+//! - [`marginalia`]: send an item to Marginalia and read its highlights back,
+//!   only once the user connected it and asked.
 
 pub mod article;
 pub mod edition;
@@ -19,6 +21,7 @@ pub mod extract;
 pub mod fade;
 pub mod fetch;
 pub mod headline;
+pub mod marginalia;
 pub mod pace;
 pub mod urls;
 

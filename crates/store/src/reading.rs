@@ -95,7 +95,7 @@ pub struct ReadingHighlightRow {
     pub origin_id: Option<String>,
 }
 
-/// A Reading item sent to Marginalia (`084_reading_marginalia.sql`).
+/// A Reading item sent to Marginalia (`086_reading_marginalia.sql`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadingMarginaliaRow {
     pub message_id: MessageId,

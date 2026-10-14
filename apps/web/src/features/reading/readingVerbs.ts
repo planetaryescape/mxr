@@ -193,8 +193,26 @@ export async function dismissUnsubscribeOffer(accountId: string, senderEmail: st
   }
 }
 
+/**
+ * Only web addresses are opened. The daemon already refuses read URLs off
+ * the connected site; this keeps a `javascript:` URL from ever reaching
+ * an about:blank tab, which shares mxr's origin.
+ */
+export function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 /** Opens a page in a new tab that can't reach back into mxr. */
 function openTab(url: string): void {
+  if (!isWebUrl(url)) {
+    toast.error("Marginalia gave an address mxr won't open");
+    return;
+  }
   const tab = window.open(url, "_blank", "noopener,noreferrer");
   if (!tab) toast.message("Your browser blocked the new tab", { description: url });
 }
@@ -229,9 +247,12 @@ export async function openInMarginalia(
   try {
     const sent = await sendToMarginalia(itemKey);
     const url = sent.marginalia?.read_url;
-    if (url && tab) tab.location.href = url;
-    else if (url) openTab(url);
-    else tab?.close();
+    if (url && tab && isWebUrl(url)) tab.location.href = url;
+    else if (url && !tab) openTab(url);
+    else {
+      tab?.close();
+      if (url) toast.error("Marginalia gave an address mxr won't open");
+    }
     toast.success(sent.copy, {
       id,
       description: "Highlights you make there come back to this item.",

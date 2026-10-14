@@ -1131,7 +1131,7 @@ mod marginalia {
             .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "articleId": "k57",
-                "readUrl": "https://reader.example.com/read/k57",
+                "readUrl": format!("{}/read/k57", server.uri()),
                 "created": true,
             })))
             .expect(1)
@@ -1170,7 +1170,7 @@ mod marginalia {
         assert_eq!(send.copy, "Sent to Marginalia.");
         assert_eq!(
             send.marginalia.as_ref().map(|m| m.read_url.as_str()),
-            Some("https://reader.example.com/read/k57")
+            Some(format!("{}/read/k57", server.uri()).as_str())
         );
         let sent_body: serde_json::Value = server
             .received_requests()

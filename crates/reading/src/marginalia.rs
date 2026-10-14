@@ -211,10 +211,29 @@ impl MarginaliaClient {
         if !response.status().is_success() {
             return Err(Self::status_error(response).await);
         }
-        response
+        let sent = response
             .json::<SentArticle>()
             .await
-            .map_err(|error| MarginaliaError::Decode(error.without_url().to_string()))
+            .map_err(|error| MarginaliaError::Decode(error.without_url().to_string()))?;
+        self.check_read_url(&sent.read_url)?;
+        Ok(sent)
+    }
+
+    /// The read URL is opened in the user's browser or desktop, so a wrong
+    /// or compromised server must not be able to hand back a `javascript:`,
+    /// `file:` or other-site address. `Url::origin` compares scheme, host
+    /// and port with case and default ports normalised.
+    fn check_read_url(&self, read_url: &str) -> Result<(), MarginaliaError> {
+        let same_site = Url::parse(read_url).is_ok_and(|url| {
+            matches!(url.scheme(), "http" | "https") && url.origin() == self.base.origin()
+        });
+        if same_site {
+            Ok(())
+        } else {
+            Err(MarginaliaError::Decode(
+                "the reading address isn't on the connected Marginalia site".into(),
+            ))
+        }
     }
 
     pub async fn highlights(&self, article_id: &str) -> Result<Vec<Highlight>, MarginaliaError> {
@@ -336,7 +355,7 @@ mod tests {
             })))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "articleId": "k57",
-                "readUrl": "https://reader.example.com/read/k57",
+                "readUrl": format!("{}/read/k57", server.uri()),
                 "created": true,
             })))
             .expect(1)
@@ -347,10 +366,91 @@ mod tests {
             client.send(&article()).await.unwrap(),
             SentArticle {
                 article_id: "k57".into(),
-                read_url: "https://reader.example.com/read/k57".into(),
+                read_url: format!("{}/read/k57", server.uri()),
                 created: true,
             }
         );
+    }
+
+    async fn send_answering(
+        read_url: &str,
+        server: &MockServer,
+    ) -> Result<SentArticle, MarginaliaError> {
+        Mock::given(method("POST"))
+            .and(path("/api/v1/articles"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "articleId": "k57",
+                "readUrl": read_url,
+                "created": true,
+            })))
+            .mount(server)
+            .await;
+        MarginaliaClient::new(&server.uri(), "mrg_test")
+            .unwrap()
+            .send(&article())
+            .await
+    }
+
+    #[tokio::test]
+    async fn a_read_url_off_the_connected_site_is_refused() {
+        // One fresh server per case: the mock answers whatever was mounted first.
+        for case in 0..10 {
+            let server = MockServer::start().await;
+            let port = Url::parse(&server.uri()).unwrap().port().unwrap();
+            let bad = match case {
+                0 => "javascript:alert(1)".to_string(),
+                1 => "data:text/html,hi".to_string(),
+                2 => "file:///etc/passwd".to_string(),
+                3 => "https://evil.example/read/x".to_string(),
+                // Same host, other scheme or port: a different origin.
+                4 => format!("https://127.0.0.1:{port}/read/x"),
+                5 => format!("http://127.0.0.1:{}/read/x", port.wrapping_add(1)),
+                // Lookalikes that string-prefix checks would let through.
+                6 => format!("http://127.0.0.1:{port}@evil.example/read/x"),
+                7 => format!("http://127.0.0.1.evil.example:{port}/read/x"),
+                8 => "/read/x".to_string(),
+                _ => String::new(),
+            };
+            assert!(
+                matches!(
+                    send_answering(&bad, &server).await,
+                    Err(MarginaliaError::Decode(_))
+                ),
+                "{bad}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_read_url_on_the_connected_origin_is_accepted_however_it_is_spelled() {
+        let server = MockServer::start().await;
+        let port = Url::parse(&server.uri()).unwrap().port().unwrap();
+        let sent = send_answering(&format!("HTTP://127.0.0.1:{port}/read/x?a=1#b"), &server)
+            .await
+            .unwrap();
+        assert_eq!(sent.article_id, "k57");
+    }
+
+    #[test]
+    fn origins_ignore_case_and_default_ports_but_not_trailing_dots() {
+        let client = MarginaliaClient::new("https://Reader.Example.com", "t").unwrap();
+        assert!(client
+            .check_read_url("https://reader.example.com/r/1")
+            .is_ok());
+        assert!(client
+            .check_read_url("HTTPS://READER.EXAMPLE.COM:443/r/1")
+            .is_ok());
+        assert!(client
+            .check_read_url("https://reader.example.com:8443/r/1")
+            .is_err());
+        assert!(client
+            .check_read_url("http://reader.example.com/r/1")
+            .is_err());
+        // Strict: a rooted spelling is a different string the server could
+        // not need, so refuse it rather than reason about DNS.
+        assert!(client
+            .check_read_url("https://reader.example.com./r/1")
+            .is_err());
     }
 
     #[tokio::test]

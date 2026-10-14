@@ -12,8 +12,9 @@ job 116061119998) after 6375 ms with `Unable to find an element with the text:
 Inbox zero`. The same tree passed on PR #461, and a rerun of the job passed.
 Nothing in that commit touched the mailbox.
 
-## Likely direction
+## Next step
 
-The test waits for recovery after a 503 with real timers; under CI load the
-recovery takes longer than the find timeout. Check whether it uses fake timers
-or a bounded `findBy` timeout, and make the recovery deterministic.
+The cause isn't established. Run the test in a loop under CPU load
+(`npx vitest run src/features/mailbox/MailView.connection.test.tsx --repeat 50`)
+and read how it waits for recovery after the 503 (real or fake timers, `findBy`
+timeout) before changing it.

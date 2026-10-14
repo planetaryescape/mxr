@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.98](https://github.com/planetaryescape/mxr/compare/v0.6.97...v0.6.98) (2026-10-14)
+
+
+### Features
+
+* calm Updates into a notification reel ([#454](https://github.com/planetaryescape/mxr/issues/454)) ([b825001](https://github.com/planetaryescape/mxr/commit/b82500172829d599415fc3d0ed92db647d3e989d))
+* give every mode one header, heading and type scale ([#452](https://github.com/planetaryescape/mxr/issues/452)) ([795c0d1](https://github.com/planetaryescape/mxr/commit/795c0d1b0fb827257c17fe4149ef3ffc378b84cb))
+* render Reading articles from their HTML with reader themes and settings ([#457](https://github.com/planetaryescape/mxr/issues/457)) ([1c87564](https://github.com/planetaryescape/mxr/commit/1c87564bafc4a6c667d88f2288c38d4e2288f3f3))
+
+
+### Documentation
+
+* add the reading CLI reference and close out the Marginalia handoff ([#455](https://github.com/planetaryescape/mxr/issues/455)) ([04f564f](https://github.com/planetaryescape/mxr/commit/04f564f0a7b6f6bd2e583a6f7e9159e57704252c))
+
 ## [0.6.97](https://github.com/planetaryescape/mxr/compare/v0.6.96...v0.6.97) (2026-10-14)
 
 

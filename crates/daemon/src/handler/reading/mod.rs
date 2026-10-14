@@ -13,11 +13,13 @@
 //! lets go in its mode"); Later never expires.
 
 mod article;
+mod highlights;
 mod item;
 mod marginalia;
 mod sources;
 
 pub(super) use article::fetch_article;
+pub(super) use highlights::{remove_highlight, restore_highlights, update_highlight};
 pub(super) use item::{
     export_highlights, get_item, record_engagement, save_highlight, set_later, set_source,
 };
@@ -770,6 +772,15 @@ pub(super) async fn handle(
             ))
             .await
         }
+        Request::UpdateHighlight {
+            highlight_id,
+            note,
+            dry_run,
+        } => Box::pin(update_highlight(state, highlight_id, note, *dry_run)).await,
+        Request::RemoveHighlight {
+            highlight_id,
+            dry_run,
+        } => Box::pin(remove_highlight(state, highlight_id, *dry_run)).await,
         Request::ExportReadingHighlights { account_id } => {
             let accounts = accounts(state, scoped_profile, account_id.as_ref()).await?;
             export_highlights(state, &accounts).await

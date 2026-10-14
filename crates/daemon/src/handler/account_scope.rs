@@ -63,6 +63,8 @@ enum ScopeTarget<'a> {
     Record(&'a str),
     /// A Reading item key; it belongs to its message's account.
     ReadingItem(&'a str),
+    /// A Reading highlight id; it belongs to its own account.
+    ReadingHighlight(&'a str),
     Delivery(&'a DeliveryId),
     Commitment(&'a str),
     Decision(&'a str),
@@ -301,6 +303,10 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SyncMarginaliaHighlights {
             item_key: Some(item_key),
         } => Targets(vec![T::ReadingItem(item_key)]),
+        Request::UpdateHighlight { highlight_id, .. }
+        | Request::RemoveHighlight { highlight_id, .. } => {
+            Targets(vec![T::ReadingHighlight(highlight_id)])
+        }
         Request::SetReadingLater { item_keys, .. } => Targets(
             item_keys
                 .iter()
@@ -640,6 +646,15 @@ async fn resolve_targets(
                     reading::parse_item_key(key).map_err(|error| error.to_string())?;
                 resolved.push(message_account(state, &message_id).await?);
             }
+            T::ReadingHighlight(id) => {
+                let highlight = state
+                    .store
+                    .reading_highlight(id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("No highlight {id}; it may already be removed"))?;
+                resolved.push(highlight.account_id);
+            }
             T::Thread(thread_id) => thread_ids.push((*thread_id).clone()),
             T::Draft(draft_id) => {
                 let draft = state
@@ -846,6 +861,9 @@ async fn resolve_undo(
     };
     for dismissal in desk.dismissals {
         resolved.push(dismissal.account_id);
+    }
+    for prior in desk.highlights {
+        resolved.push(prior.row.account_id);
     }
     for commitment in desk.commitments {
         resolved.push(commitment.account_id);

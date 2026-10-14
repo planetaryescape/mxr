@@ -962,6 +962,27 @@ pub fn map_request(
                 "has_note": note.is_some(),
             })),
         ),
+        // The note and the quote stay out of the context (privacy
+        // invariant); the id says which highlight.
+        Request::UpdateHighlight {
+            highlight_id,
+            note,
+            dry_run: false,
+        } => (
+            "reading.highlight_note",
+            Some("reading_highlight"),
+            Some(highlight_id.clone()),
+            Some(serde_json::json!({ "has_note": !note.trim().is_empty() })),
+        ),
+        Request::RemoveHighlight {
+            highlight_id,
+            dry_run: false,
+        } => (
+            "reading.highlight_remove",
+            Some("reading_highlight"),
+            Some(highlight_id.clone()),
+            None,
+        ),
         Request::SendReadingToMarginalia {
             item_key,
             dry_run: false,
@@ -976,6 +997,8 @@ pub fn map_request(
         | Request::RecordReadingEngagement { .. }
         | Request::SetReadingLater { .. }
         | Request::ExportReadingHighlights { .. }
+        | Request::UpdateHighlight { dry_run: true, .. }
+        | Request::RemoveHighlight { dry_run: true, .. }
         | Request::SetReadingSource { .. }
         | Request::GetMarginaliaStatus
         | Request::SetMarginaliaConnection { .. }

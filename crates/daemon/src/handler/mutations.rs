@@ -1325,6 +1325,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     // The desk's Done also dismissed conversations and resolved promises.
     // Those are local rows: put them back first, and only once.
     let mut restored = 0u32;
+    let mut last_error: Option<String> = None;
     if let Some(desk) = entry.desk.as_ref() {
         super::desk_done::restore_desk_state(state, desk, entry.applied_at).await?;
         restored += (desk.dismissals.len()
@@ -1333,12 +1334,18 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             + desk.reminder_priors.len()
             + desk.mode_done.len()
             + desk.todos_ticked.len()) as u32;
+        if !desk.highlights.is_empty() {
+            let back = super::reading::restore_highlights(state, &desk.highlights).await?;
+            restored += back;
+            if (back as usize) < desk.highlights.len() {
+                last_error = Some("a highlight's mail was deleted, or it was changed again".into());
+            }
+        }
     }
     let mut irreversible = 0u32;
     // Failures a retry can fix (a provider or account hiccup), kept so the
     // same id undoes just those next time.
     let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
-    let mut last_error: Option<String> = None;
     let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
@@ -1649,11 +1656,12 @@ fn uncertain_label_changes(
         UndoableMutationKind::Spam => (inbox(), added("SPAM")),
         // A move or label edit may have removed any of them.
         UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
-        // A deferral changes no message, so it has no snapshots to reverse.
-        // A star is restored before labels are looked at.
+        // A deferral or a highlight change touches no message, so it has no
+        // snapshots to reverse. A star is restored before labels are looked at.
         UndoableMutationKind::SetRead
         | UndoableMutationKind::Star
-        | UndoableMutationKind::Deferral => (Vec::new(), Vec::new()),
+        | UndoableMutationKind::Deferral
+        | UndoableMutationKind::Highlight => (Vec::new(), Vec::new()),
     }
 }
 

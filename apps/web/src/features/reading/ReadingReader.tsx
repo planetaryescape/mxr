@@ -21,20 +21,24 @@ import {
   useItemQuery,
   useMarginaliaStatus,
   type ReadingDetail,
+  type ReadingHighlight,
   type ReadingParagraph,
 } from "./api";
+import { HighlightToolbar, NoteComposer } from "./HighlightToolbar";
 import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
 import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
 import { readingRootProps, useAppTheme } from "./readerAppearance";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
+  isOwnHighlight,
   minutesLeft,
   scrollProgress,
   visibleBands,
   domainLabel,
 } from "./readingView";
 import {
+  editHighlightNote,
   fetchLinked,
   highlightSelection,
   letGo,
@@ -42,6 +46,7 @@ import {
   putOnLater,
   refreshMarginaliaHighlights,
   rememberLayout,
+  removeHighlight,
 } from "./readingVerbs";
 import type { ReadingEdition } from "./api";
 
@@ -97,6 +102,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const [progress, setProgress] = useState(item.progress);
   const columnRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
+  // The article's own text: only a selection inside it offers to highlight.
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const article = detail.article ?? null;
   const showingArticle = view === "article" && article !== null;
@@ -331,9 +338,9 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 onFetch={() => void openArticle()}
               />
             ) : null}
-            {view === "article" && !article ? null : articleHtml ? (
+            {view === "article" && !article ? null : (
               <>
-                {rawHtml ? (
+                {articleHtml && rawHtml ? (
                   <PrivacyLine
                     html={rawHtml}
                     imagesAllowed={imagesAllowed}
@@ -343,15 +350,26 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                     showImagesKey={null}
                   />
                 ) : null}
-                <ReaderArticle
-                  html={articleHtml}
-                  paragraphs={paragraphs}
-                  marks={marks}
-                  allowRemoteImages={imagesAllowed}
+                <div ref={bodyRef}>
+                  {articleHtml ? (
+                    <ReaderArticle
+                      html={articleHtml}
+                      paragraphs={paragraphs}
+                      marks={marks}
+                      allowRemoteImages={imagesAllowed}
+                    />
+                  ) : (
+                    <Paragraphs paragraphs={paragraphs} marks={marks} />
+                  )}
+                </div>
+                <HighlightToolbar
+                  containerRef={bodyRef}
+                  itemKey={item.item_key}
+                  view={showingArticle ? "article" : "issue"}
+                  highlights={highlights}
+                  onOpenMarginalia={openMarginalia}
                 />
               </>
-            ) : (
-              <Paragraphs paragraphs={paragraphs} marks={marks} />
             )}
             {view === "issue" && (item.links?.length ?? 0) > 0 ? (
               <IssueLinks detail={detail} />
@@ -363,16 +381,12 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 </h2>
                 <ul className="mt-2 grid gap-2" data-testid="reading-highlights">
                   {highlights.map((h) => (
-                    <li
+                    <HighlightRow
                       key={h.id}
-                      className="border-l-2 border-primary pl-3 text-base text-foreground/90"
-                    >
-                      {h.quote}
-                      {h.origin === "marginalia" ? (
-                        <span className="ml-2 text-2xs text-muted-foreground">from Marginalia</span>
-                      ) : null}
-                      {h.note ? <p className="text-xs text-muted-foreground">{h.note}</p> : null}
-                    </li>
+                      highlight={h}
+                      itemKey={item.item_key}
+                      onOpenMarginalia={openMarginalia}
+                    />
                   ))}
                 </ul>
               </section>
@@ -487,6 +501,75 @@ function ArticleStatus({
   );
 }
 
+/** One saved highlight: its note, and edit and remove (or where to change it, if made in Marginalia). */
+function HighlightRow({
+  highlight: h,
+  itemKey,
+  onOpenMarginalia,
+}: {
+  highlight: ReadingHighlight;
+  itemKey: string;
+  onOpenMarginalia: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const own = isOwnHighlight(h);
+  return (
+    <li
+      data-testid="reading-highlight"
+      className="border-l-2 border-primary pl-3 text-base text-foreground/90"
+    >
+      {h.quote}
+      {h.note ? <p className="text-xs text-muted-foreground">{h.note}</p> : null}
+      {editing ? (
+        <div className="mt-1.5 max-w-sm">
+          <NoteComposer
+            initial={h.note ?? ""}
+            onCancel={() => setEditing(false)}
+            onSave={async (note) => {
+              if (await editHighlightNote(itemKey, h.id, note)) setEditing(false);
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+          {own ? (
+            <>
+              <button
+                type="button"
+                data-testid="highlight-edit-note"
+                onClick={() => setEditing(true)}
+                className="hover:text-foreground"
+              >
+                {h.note ? "Edit note" : "Add note"}
+              </button>
+              <button
+                type="button"
+                data-testid="highlight-remove"
+                onClick={() => void removeHighlight(itemKey, h.id)}
+                className="hover:text-foreground"
+              >
+                Remove
+              </button>
+            </>
+          ) : (
+            <>
+              <span>Made in Marginalia; change it there</span>
+              <button
+                type="button"
+                data-testid="highlight-open-marginalia"
+                onClick={onOpenMarginalia}
+                className="hover:text-foreground"
+              >
+                Open in Marginalia
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 /** The text, paragraph by paragraph, with your highlights marked. */
 function Paragraphs({ paragraphs, marks }: { paragraphs: ReadingParagraph[]; marks: string[] }) {
   return (
@@ -535,7 +618,13 @@ function Marked({ text, marks }: { text: string; marks: string[] }) {
   return (
     <>
       {text.slice(0, hit.at)}
-      <mark className="reading-mark">{hit.mark}</mark>
+      <mark
+        className="reading-mark cursor-pointer"
+        // Selecting it is how the toolbar finds the highlight to edit.
+        onClick={(event) => window.getSelection()?.selectAllChildren(event.currentTarget)}
+      >
+        {hit.mark}
+      </mark>
       <Marked text={text.slice(hit.at + hit.mark.length)} marks={marks} />
     </>
   );

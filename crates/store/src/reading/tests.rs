@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
-use crate::Store;
+use crate::{HighlightPrior, Store};
 use chrono::{Duration, TimeZone};
 use mxr_core::id::ThreadId;
 use mxr_core::types::{Address, MessageDirection};
@@ -474,5 +474,237 @@ async fn marginalia_highlights_mirror_without_touching_your_own() {
     assert_eq!(
         fx.store.reading_marginalia(&issue, 0).await.expect("gone"),
         None
+    );
+}
+
+fn highlight(fx: &Fx, issue: &MessageId, id: &str, origin: &str) -> ReadingHighlightRow {
+    ReadingHighlightRow {
+        id: id.into(),
+        account_id: fx.account.clone(),
+        message_id: issue.clone(),
+        idx: 0,
+        view: "issue".into(),
+        quote: format!("quote {id}"),
+        note: Some("first thought".into()),
+        created_at: at(1),
+        origin: origin.into(),
+        origin_id: (origin != "mxr").then(|| format!("remote-{id}")),
+    }
+}
+
+#[tokio::test]
+async fn only_your_own_highlights_can_be_edited_or_removed() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = highlight(&fx, &issue, "own", "mxr");
+    let theirs = highlight(&fx, &issue, "theirs", "marginalia");
+    fx.store.insert_reading_highlight(&own).await.expect("own");
+    fx.store
+        .insert_reading_highlight(&theirs)
+        .await
+        .expect("theirs");
+
+    // Anything that isn't mxr's own is refused, whatever its name.
+    for id in ["theirs"] {
+        assert_eq!(
+            fx.store.set_reading_highlight_note(id, None).await.unwrap(),
+            HighlightEdit::ReadOnly("marginalia".into())
+        );
+        assert_eq!(
+            fx.store.remove_reading_highlight(id).await.unwrap(),
+            HighlightEdit::ReadOnly("marginalia".into())
+        );
+    }
+    assert_eq!(
+        fx.store.reading_highlight("theirs").await.unwrap(),
+        Some(theirs)
+    );
+
+    assert_eq!(
+        fx.store
+            .set_reading_highlight_note("own", Some("second thought"))
+            .await
+            .unwrap(),
+        HighlightEdit::Done(own.clone())
+    );
+    assert_eq!(
+        fx.store
+            .reading_highlight("own")
+            .await
+            .unwrap()
+            .and_then(|row| row.note),
+        Some("second thought".into())
+    );
+    fx.store
+        .set_reading_highlight_note("own", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .reading_highlight("own")
+            .await
+            .unwrap()
+            .unwrap()
+            .note,
+        None,
+        "no note clears it"
+    );
+    assert_eq!(
+        fx.store.remove_reading_highlight("own").await.unwrap(),
+        HighlightEdit::Done(ReadingHighlightRow {
+            note: None,
+            ..own.clone()
+        })
+    );
+    assert_eq!(
+        fx.store.remove_reading_highlight("own").await.unwrap(),
+        HighlightEdit::Missing,
+        "removing twice finds nothing the second time"
+    );
+}
+
+#[tokio::test]
+async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = highlight(&fx, &issue, "own", "mxr");
+    fx.store.insert_reading_highlight(&own).await.expect("own");
+    let sent = ReadingMarginaliaRow {
+        message_id: issue.clone(),
+        idx: 0,
+        account_id: fx.account.clone(),
+        article_id: "k57".into(),
+        read_url: "https://reader.example.com/read/k57".into(),
+        view: "issue".into(),
+        sent_at: at(2),
+        highlights_synced_at: None,
+    };
+    fx.store.upsert_reading_marginalia(&sent).await.unwrap();
+    let remote = MarginaliaHighlightIn {
+        origin_id: "a".into(),
+        quote: "one".into(),
+        created_at: at(3),
+    };
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(4))
+        .await
+        .unwrap();
+
+    // The mirror leaves your removal alone, and the removal leaves the
+    // mirrored row to the mirror.
+    fx.store.remove_reading_highlight("own").await.unwrap();
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
+        .await
+        .unwrap();
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].origin, "marginalia");
+    assert_eq!(
+        fx.store
+            .remove_reading_highlight(&rows[0].id)
+            .await
+            .unwrap(),
+        HighlightEdit::ReadOnly("marginalia".into())
+    );
+}
+
+#[tokio::test]
+async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = highlight(&fx, &issue, "own", "mxr");
+    fx.store.insert_reading_highlight(&own).await.unwrap();
+
+    let HighlightEdit::Done(before_edit) = fx
+        .store
+        .set_reading_highlight_note("own", Some("changed"))
+        .await
+        .unwrap()
+    else {
+        panic!("edit should land");
+    };
+    let HighlightEdit::Done(before_remove) =
+        fx.store.remove_reading_highlight("own").await.unwrap()
+    else {
+        panic!("remove should land");
+    };
+    let remove = HighlightPrior {
+        row: before_remove,
+        removed: true,
+    };
+    let edit = HighlightPrior {
+        row: before_edit.clone(),
+        removed: false,
+    };
+    // Undoing the edit after the removal must not bring the highlight back.
+    assert_eq!(
+        fx.store
+            .put_back_reading_highlights(std::slice::from_ref(&edit))
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(fx.store.reading_highlight("own").await.unwrap(), None);
+    assert_eq!(
+        fx.store
+            .put_back_reading_highlights(std::slice::from_ref(&remove))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        fx.store
+            .reading_highlight("own")
+            .await
+            .unwrap()
+            .and_then(|row| row.note),
+        Some("changed".into())
+    );
+    assert_eq!(
+        fx.store.put_back_reading_highlights(&[edit]).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        fx.store.reading_highlight("own").await.unwrap(),
+        Some(before_edit)
+    );
+    // A second undo of the removal is a no-op, not a duplicate.
+    assert_eq!(
+        fx.store
+            .put_back_reading_highlights(std::slice::from_ref(&remove))
+            .await
+            .unwrap(),
+        0
+    );
+
+    // Its message gone: nothing to put it back on.
+    fx.store.remove_reading_highlight("own").await.unwrap();
+    fx.store
+        .delete_messages_and_derived(&fx.account, &["p1".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .put_back_reading_highlights(&[remove])
+            .await
+            .unwrap(),
+        0
     );
 }

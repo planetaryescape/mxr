@@ -78,7 +78,7 @@ pub struct ReadingArticleRow {
     pub fetched_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReadingHighlightRow {
     pub id: String,
     pub account_id: AccountId,
@@ -116,6 +116,22 @@ pub struct MarginaliaHighlightIn {
     pub quote: String,
     pub created_at: DateTime<Utc>,
 }
+
+/// What a note edit or removal did to one highlight.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HighlightEdit {
+    /// It changed; this is the highlight as it was.
+    Done(ReadingHighlightRow),
+    /// No such highlight (already removed, say).
+    Missing,
+    /// It was made elsewhere (carries its origin) and is read back, so a
+    /// local change would be undone or fought by the next read-back.
+    ReadOnly(String),
+}
+
+/// The only origin mxr may change: its own. Anything else is mirrored from
+/// elsewhere, so this is an allowlist of one, not a refusal of `marginalia`.
+pub const LOCAL_HIGHLIGHT_ORIGIN: &str = "mxr";
 
 /// What mirroring one item's Marginalia highlights changed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -223,6 +239,28 @@ fn highlight_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingHighlightR
         created_at: decode_timestamp(row.try_get("created_at")?)?,
         origin: row.try_get("origin")?,
         origin_id: row.try_get("origin_id")?,
+    })
+}
+
+/// The highlight, read inside the transaction that will change it, unless
+/// it is missing or not mxr's own (then the refusal to hand back).
+async fn own_highlight_in(
+    tx: &mut sqlx::SqliteConnection,
+    id: &str,
+) -> Result<Result<ReadingHighlightRow, HighlightEdit>, sqlx::Error> {
+    let row = sqlx::query("SELECT * FROM reading_highlights WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .as_ref()
+        .map(highlight_from_row)
+        .transpose()?;
+    Ok(match row {
+        None => Err(HighlightEdit::Missing),
+        Some(prior) if prior.origin != LOCAL_HIGHLIGHT_ORIGIN => {
+            Err(HighlightEdit::ReadOnly(prior.origin))
+        }
+        Some(prior) => Ok(prior),
     })
 }
 
@@ -656,6 +694,123 @@ impl super::Store {
             }
         };
         rows.iter().map(highlight_from_row).collect()
+    }
+
+    /// One highlight by id.
+    pub async fn reading_highlight(
+        &self,
+        id: &str,
+    ) -> Result<Option<ReadingHighlightRow>, sqlx::Error> {
+        sqlx::query("SELECT * FROM reading_highlights WHERE id = ?")
+            .bind(id)
+            .fetch_optional(self.reader())
+            .await?
+            .as_ref()
+            .map(highlight_from_row)
+            .transpose()
+    }
+
+    /// Sets (or with `None` clears) a highlight's note. The read, the
+    /// origin check and the write share one transaction on the writer, and
+    /// the UPDATE repeats the origin test, so a read-back mirroring the
+    /// same item can't interleave with it.
+    pub async fn set_reading_highlight_note(
+        &self,
+        id: &str,
+        note: Option<&str>,
+    ) -> Result<HighlightEdit, sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        let prior = match own_highlight_in(&mut tx, id).await? {
+            Ok(prior) => prior,
+            Err(refusal) => return Ok(refusal),
+        };
+        let changed =
+            sqlx::query("UPDATE reading_highlights SET note = ?1 WHERE id = ?2 AND origin = ?3")
+                .bind(note)
+                .bind(id)
+                .bind(LOCAL_HIGHLIGHT_ORIGIN)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+        tx.commit().await?;
+        Ok(if changed == 0 {
+            HighlightEdit::Missing
+        } else {
+            HighlightEdit::Done(prior)
+        })
+    }
+
+    /// Removes a highlight, with the same guarantees as
+    /// `set_reading_highlight_note`.
+    pub async fn remove_reading_highlight(&self, id: &str) -> Result<HighlightEdit, sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        let prior = match own_highlight_in(&mut tx, id).await? {
+            Ok(prior) => prior,
+            Err(refusal) => return Ok(refusal),
+        };
+        let removed = sqlx::query("DELETE FROM reading_highlights WHERE id = ?1 AND origin = ?2")
+            .bind(id)
+            .bind(LOCAL_HIGHLIGHT_ORIGIN)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        tx.commit().await?;
+        Ok(if removed == 0 {
+            HighlightEdit::Missing
+        } else {
+            HighlightEdit::Done(prior)
+        })
+    }
+
+    /// Undo for the two edits above. A removed highlight is inserted again
+    /// as it was (skipped if its message has since been deleted, and left
+    /// alone if something already has its id); an edited one gets its old
+    /// note back, only while it still exists. Returns how many are back.
+    pub async fn put_back_reading_highlights(
+        &self,
+        priors: &[crate::HighlightPrior],
+    ) -> Result<u32, sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        let mut back = 0;
+        for prior in priors {
+            let row = &prior.row;
+            let affected = if prior.removed {
+                sqlx::query(
+                    "INSERT INTO reading_highlights
+                         (id, account_id, message_id, idx, view, quote, note, created_at,
+                          origin, origin_id)
+                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+                     WHERE EXISTS (SELECT 1 FROM messages WHERE id = ?3)
+                     ON CONFLICT(id) DO NOTHING",
+                )
+                .bind(&row.id)
+                .bind(row.account_id.as_str())
+                .bind(row.message_id.as_str())
+                .bind(row.idx)
+                .bind(&row.view)
+                .bind(&row.quote)
+                .bind(&row.note)
+                .bind(row.created_at.timestamp())
+                .bind(&row.origin)
+                .bind(&row.origin_id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected()
+            } else {
+                sqlx::query("UPDATE reading_highlights SET note = ?1 WHERE id = ?2 AND origin = ?3")
+                    .bind(&row.note)
+                    .bind(&row.id)
+                    .bind(LOCAL_HIGHLIGHT_ORIGIN)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected()
+            };
+            if affected > 0 {
+                back += 1;
+            }
+        }
+        tx.commit().await?;
+        Ok(back)
     }
 
     /// One message's highlights, oldest first.

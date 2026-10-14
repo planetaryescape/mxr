@@ -12,9 +12,9 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
     reading_copy, MailPlaceData, MarginaliaConnectionData, MarginaliaSendData,
     MarginaliaStatusData, MarginaliaSyncData, ModeDoneOutcomeData, ModeKindData,
-    ReadingBandGroupData, ReadingEditionData, ReadingFetchData, ReadingItemData,
-    ReadingItemDetailData, ReadingLaterOutcomeData, ReadingParagraphData, Request, Response,
-    ResponseData,
+    ReadingBandGroupData, ReadingEditionData, ReadingFetchData, ReadingHighlightChangeData,
+    ReadingItemData, ReadingItemDetailData, ReadingLaterOutcomeData, ReadingParagraphData, Request,
+    Response, ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -108,10 +108,40 @@ pub async fn run(
                     println!("{}", serde_json::to_string_pretty(&highlight)?);
                 }
                 _ => println!(
-                    "Saved a highlight from {}.",
-                    terminal_block(&highlight.title)
+                    "Saved a highlight from {} ({}).",
+                    terminal_block(&highlight.title),
+                    highlight.id
                 ),
             }
+        }
+        ReadingAction::Note {
+            highlight,
+            text,
+            dry_run,
+        } => {
+            let change = expect_data!(
+                client
+                    .request(Request::UpdateHighlight {
+                        highlight_id: highlight,
+                        note: text,
+                        dry_run,
+                    })
+                    .await?,
+                ReadingHighlightChanged { change }
+            );
+            print_highlight_change(&change, format)?;
+        }
+        ReadingAction::Unhighlight { highlight, dry_run } => {
+            let change = expect_data!(
+                client
+                    .request(Request::RemoveHighlight {
+                        highlight_id: highlight,
+                        dry_run,
+                    })
+                    .await?,
+                ReadingHighlightChanged { change }
+            );
+            print_highlight_change(&change, format)?;
         }
         ReadingAction::Export { markdown } => {
             let (highlights, text) = expect_data!(
@@ -550,7 +580,72 @@ fn reader_text(
     let _ = writeln!(out, "── end ──");
     let _ = writeln!(out, "From this source: {}.", detail.source_data.evidence);
     if !detail.highlights.is_empty() {
-        let _ = writeln!(out, "{} highlight(s) saved.", detail.highlights.len());
+        let _ = writeln!(out, "{} highlight(s) saved:", detail.highlights.len());
+        for highlight in &detail.highlights {
+            let _ = writeln!(
+                out,
+                "  {}  {}{}",
+                highlight.id,
+                preview(&highlight.quote),
+                if highlight.origin == "mxr" {
+                    ""
+                } else {
+                    "  (made in Marginalia)"
+                }
+            );
+        }
+    }
+    terminal_block(&out)
+}
+
+/// The start of a passage, on one line.
+fn preview(quote: &str) -> String {
+    const SHOWN: usize = 60;
+    let line = quote.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= SHOWN {
+        format!("\"{line}\"")
+    } else {
+        format!("\"{}…\"", line.chars().take(SHOWN).collect::<String>())
+    }
+}
+
+fn print_highlight_change(
+    change: &ReadingHighlightChangeData,
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    match format {
+        OutputFormat::Json | OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string_pretty(change)?);
+        }
+        _ => print!("{}", highlight_change_text(change)),
+    }
+    Ok(())
+}
+
+fn highlight_change_text(change: &ReadingHighlightChangeData) -> String {
+    let highlight = &change.highlight;
+    let what = format!(
+        "{} from {} ({})",
+        preview(&highlight.quote),
+        highlight.title,
+        highlight.id
+    );
+    let mut out = match (change.action.as_str(), change.dry_run) {
+        ("remove", true) => format!("Would remove {what}.\n"),
+        ("remove", false) => format!("Removed {what}.\n"),
+        (_, dry_run) => {
+            let now = highlight
+                .note
+                .as_deref()
+                .map_or_else(|| "no note".to_string(), |note| format!("\"{note}\""));
+            let verb = if dry_run { "Would set" } else { "Set" };
+            format!("{verb} the note on {what} to {now}.\n")
+        }
+    };
+    if let Some(id) = &change.mutation_id {
+        let _ = writeln!(out, "Undo with: mxr undo {id}");
+    } else if change.undo_unavailable {
+        out.push_str("It can't be undone: the undo couldn't be saved.\n");
     }
     terminal_block(&out)
 }
@@ -797,7 +892,59 @@ fn sync_text(sync: &MarginaliaSyncData) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::wrap;
+    use super::{highlight_change_text, preview, wrap};
+    use mxr_core::id::{AccountId, MessageId};
+    use mxr_protocol::{ReadingHighlightChangeData, ReadingHighlightData};
+
+    fn change(
+        action: &str,
+        dry_run: bool,
+        mutation_id: Option<&str>,
+    ) -> ReadingHighlightChangeData {
+        ReadingHighlightChangeData {
+            action: action.into(),
+            highlight: ReadingHighlightData {
+                id: "h-1".into(),
+                item_key: "m:0".into(),
+                account_id: AccountId::new(),
+                message_id: MessageId::new(),
+                view: "issue".into(),
+                quote: "A delete is the absence of a row".into(),
+                note: None,
+                origin: "mxr".into(),
+                title: "Tombstones".into(),
+                source: "Weekly".into(),
+                url: None,
+                created_at: chrono::Utc::now(),
+            },
+            previous_note: None,
+            dry_run,
+            mutation_id: mutation_id.map(str::to_string),
+            undo_unavailable: false,
+        }
+    }
+
+    #[test]
+    fn a_preview_says_what_would_go_and_a_run_says_how_to_undo_it() {
+        let preview_text = highlight_change_text(&change("remove", true, None));
+        assert!(
+            preview_text.starts_with("Would remove \"A delete"),
+            "{preview_text}"
+        );
+        assert!(!preview_text.contains("Undo"));
+        let run_text = highlight_change_text(&change("remove", false, Some("mut-1")));
+        assert!(run_text.starts_with("Removed "), "{run_text}");
+        assert!(run_text.contains("mxr undo mut-1"));
+        let cleared = highlight_change_text(&change("note", false, Some("mut-2")));
+        assert!(cleared.contains("to no note"), "{cleared}");
+    }
+
+    #[test]
+    fn a_long_passage_is_cut_on_one_line() {
+        let long = format!("{}\n{}", "word ".repeat(30), "more");
+        let shown = preview(&long);
+        assert!(!shown.contains('\n') && shown.ends_with("…\""), "{shown}");
+    }
 
     #[test]
     fn wrap_keeps_lines_within_the_measure() {

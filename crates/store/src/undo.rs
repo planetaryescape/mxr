@@ -33,6 +33,9 @@ pub enum UndoableMutationKind {
     /// (`DeskUndo`), plus labels and read state when the last mode let go
     /// and the thread was archived.
     ModeDone,
+    /// A Reading highlight removed or re-noted (`DeskUndo::highlights`);
+    /// no message changes.
+    Highlight,
 }
 
 /// Snapshot of a single envelope's state right before a mutation was
@@ -82,6 +85,17 @@ pub struct DeskUndo {
     /// To-dos a mode's done ticked off, to reopen as they were.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub todos_ticked: Vec<TodoTickPrior>,
+    /// Reading highlights removed, or whose note was edited.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub highlights: Vec<HighlightPrior>,
+}
+
+/// A Reading highlight before a removal or note edit, to put back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HighlightPrior {
+    pub row: crate::ReadingHighlightRow,
+    /// Removed (insert it again) rather than edited (restore its note).
+    pub removed: bool,
 }
 
 /// A to-do before a mode's done ticked it off.
@@ -102,6 +116,7 @@ impl DeskUndo {
             && self.reminder_priors.is_empty()
             && self.mode_done.is_empty()
             && self.todos_ticked.is_empty()
+            && self.highlights.is_empty()
     }
 }
 

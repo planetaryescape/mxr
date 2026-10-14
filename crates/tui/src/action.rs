@@ -277,6 +277,8 @@ pub enum Action {
     ReadingOriginal,
     /// `h`: save the paragraph at the top of the reader as a highlight.
     ReadingHighlight,
+    /// `H`: the item's highlights, to edit a note or remove one.
+    ReadingHighlights,
     /// `o`: open the email itself.
     ReadingOpenEmail,
     /// Esc in the reader: back to the edition.

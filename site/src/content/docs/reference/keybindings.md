@@ -308,6 +308,7 @@ cursor.
 | `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
 | `>` / `+` | More senders / more from this sender |
 | `M` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
+| `H` | In the reader: list the item's highlights; `e` edits a note, `x` removes one (it asks first), `u` undoes |
 
 ## Archive
 

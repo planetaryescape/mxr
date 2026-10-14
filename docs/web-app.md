@@ -206,7 +206,12 @@ for motion), implement the command in the view's controller, done.
   here, lead cards, digest links, Later via `?view=later`), the reader
   (`ReadingReader.tsx`: 66ch column, minutes left, progress line,
   Issue/Article, `R` original layout through the sanitized message view,
-  engagement every 10 s and on leave, `h` highlights) and the previews
+  engagement every 10 s and on leave, `h` highlights, and `HighlightToolbar.tsx`:
+  a selection inside the article text offers Highlight and Highlight with note,
+  and a selection equal to a saved highlight's words, which is what clicking a
+  drawn highlight selects, offers its note and removal; Marginalia's are
+  read-only. Notes and removals go over `/mail/reading/highlights/{id}/note`
+  and `/remove`, with the daemon's undo) and the previews
   (`ReadingDialogs.tsx`: unsubscribe with evidence over the purge dry run,
   let go of all over the `SetModeDone` dry run, committing the same
   thread ids). Pure helpers live in `readingView.ts`.

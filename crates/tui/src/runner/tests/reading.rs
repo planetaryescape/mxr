@@ -378,6 +378,123 @@ fn h_in_the_reader_highlights_the_top_paragraph() {
     )));
 }
 
+fn highlight(id: &str, origin: &str, note: Option<&str>) -> mxr_protocol::ReadingHighlightData {
+    let item = edition().bands[0].items[0].clone();
+    mxr_protocol::ReadingHighlightData {
+        id: id.into(),
+        item_key: item.item_key,
+        account_id: item.account_id,
+        message_id: item.message_id,
+        view: "issue".into(),
+        quote: format!("quote {id}"),
+        note: note.map(str::to_string),
+        origin: origin.into(),
+        title: item.title,
+        source: item.source,
+        url: None,
+        created_at: chrono::Utc::now(),
+    }
+}
+
+/// The reader open on an item with an mxr highlight and a Marginalia one.
+fn highlights_app() -> App {
+    let mut app = reading_app();
+    let mut detail_item = edition().bands[0].items[0].clone();
+    detail_item.words = 50;
+    app.set_reading_item(
+        &detail_item.item_key.clone(),
+        mxr_protocol::ReadingItemDetailData {
+            source_data: edition().sources[0].clone(),
+            paragraphs: vec![mxr_protocol::ReadingParagraphData {
+                kind: "text".into(),
+                text: "Every reader since 2002 shipped the same window.".into(),
+            }],
+            html: None,
+            article: None,
+            article_error: None,
+            highlights: vec![
+                highlight("own", "mxr", Some("first")),
+                highlight("theirs", "marginalia", None),
+            ],
+            marginalia: None,
+            minutes_left: 1,
+            pace_wpm: 230,
+            item: detail_item,
+        },
+    );
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    app.pending_mutation_queue.clear();
+    key(&mut app, 'H');
+    assert!(app.mailbox.reading_page.highlights.is_some());
+    app
+}
+
+#[test]
+fn shift_h_edits_a_note_and_a_blank_one_clears_it() {
+    let mut app = highlights_app();
+    key(&mut app, 'e');
+    for _ in 0.."first".len() {
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    }
+    // Esc leaves the note as it was and asks nothing of the daemon.
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(queued(&app).is_empty());
+    key(&mut app, 'e');
+    for _ in 0.."first".len() {
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+    }
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::UpdateHighlight { highlight_id, note, dry_run: false }]
+            if highlight_id == "own" && note.is_empty()
+    ));
+}
+
+#[test]
+fn shift_h_removes_the_selected_highlight_only_after_asking() {
+    let mut app = highlights_app();
+    key(&mut app, 'x');
+    assert!(queued(&app).is_empty(), "x asks first");
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(queued(&app).is_empty());
+    key(&mut app, 'x');
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::RemoveHighlight { highlight_id, dry_run: false }] if highlight_id == "own"
+    ));
+}
+
+#[test]
+fn a_highlight_made_in_marginalia_is_not_edited_or_removed_here() {
+    let mut app = highlights_app();
+    key(&mut app, 'j');
+    for c in ['e', 'x'] {
+        key(&mut app, c);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Made in Marginalia; change it there")
+        );
+        assert_eq!(
+            app.mailbox
+                .reading_page
+                .highlights
+                .as_ref()
+                .map(|p| &p.step),
+            Some(&crate::app::HighlightStep::Browse)
+        );
+    }
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn shift_h_with_no_highlights_says_how_to_make_one() {
+    let mut app = reading_app();
+    key(&mut app, 'H');
+    assert!(app.mailbox.reading_page.highlights.is_none());
+}
+
 #[test]
 fn shift_m_sends_the_item_under_the_cursor_to_marginalia() {
     let mut app = reading_app();

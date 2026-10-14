@@ -73,6 +73,9 @@ fn mutation_can_auto_retry(request: &Request) -> bool {
         Request::SendDraft { .. }
             | Request::SendStoredDraft { .. }
             | Request::SubmitArchive { .. }
+            // A retry after the daemon applied it would find nothing to
+            // remove and bury the undo it made.
+            | Request::RemoveHighlight { .. }
             | Request::Mutation {
                 mutation: mxr_protocol::MutationCommand::Archive { .. },
                 ..
@@ -2928,6 +2931,30 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::ReadingSource { .. }
                             | ResponseData::ReadingHighlight { .. },
                     }) => Ok(effect),
+                    // Changing a highlight: the daemon's undo, offered with `u`.
+                    Ok(Response::Ok {
+                        data: ResponseData::ReadingHighlightChanged { change },
+                    }) if !change.dry_run => {
+                        let removed = change.action == "remove";
+                        let mut copy = if removed {
+                            "Highlight removed".to_string()
+                        } else {
+                            "Note saved".to_string()
+                        };
+                        if let Some(daemon_mutation_id) = change.mutation_id {
+                            copy.push_str(". u to undo");
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
+                                    verb_past: if removed { "Removed" } else { "Edited" }.into(),
+                                    count: 1,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        } else if change.undo_unavailable {
+                            copy.push_str(". Its undo couldn't be saved");
+                        }
+                        Ok(app::MutationEffect::ModeDone(copy))
+                    }
                     // `M`: Marginalia answers with where the item opens.
                     Ok(Response::Ok {
                         data: ResponseData::MarginaliaSend { send },

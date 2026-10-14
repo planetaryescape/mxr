@@ -162,7 +162,7 @@ pub(in crate::handler) async fn get_item(state: &AppState, key: &str) -> Handler
     })
 }
 
-fn highlight_data(
+pub(super) fn highlight_data(
     row: &ReadingHighlightRow,
     title: &str,
     source: &str,
@@ -293,6 +293,17 @@ pub(in crate::handler) async fn record_engagement(
     })
 }
 
+/// A note as kept: trimmed, and none at all when nothing is left.
+pub(super) fn clean_note(note: Option<&str>) -> Result<Option<&str>, HandlerError> {
+    let note = note.map(str::trim).filter(|n| !n.is_empty());
+    if note.is_some_and(|n| n.chars().count() > MAX_NOTE_CHARS) {
+        return Err(HandlerError::InvalidRequest(format!(
+            "a note keeps at most {MAX_NOTE_CHARS} characters"
+        )));
+    }
+    Ok(note)
+}
+
 pub(in crate::handler) async fn save_highlight(
     state: &AppState,
     key: &str,
@@ -311,12 +322,7 @@ pub(in crate::handler) async fn save_highlight(
             "a highlight keeps at most {MAX_QUOTE_CHARS} characters"
         )));
     }
-    let note = note.map(str::trim).filter(|n| !n.is_empty());
-    if note.is_some_and(|n| n.chars().count() > MAX_NOTE_CHARS) {
-        return Err(HandlerError::InvalidRequest(format!(
-            "a note keeps at most {MAX_NOTE_CHARS} characters"
-        )));
-    }
+    let note = clean_note(note)?;
     let view = match view.unwrap_or("issue") {
         "issue" => "issue",
         "article" => "article",

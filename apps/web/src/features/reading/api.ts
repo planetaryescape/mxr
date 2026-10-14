@@ -34,6 +34,8 @@ type Engagement = Extract<Schemas["ResponseData"], { kind: "ReadingEngagement" }
 type ArticleResponse = Extract<Schemas["ResponseData"], { kind: "ReadingArticle" }>;
 type HighlightResponse = Extract<Schemas["ResponseData"], { kind: "ReadingHighlight" }>;
 type Highlights = Extract<Schemas["ResponseData"], { kind: "ReadingHighlights" }>;
+type ChangedResponse = Extract<Schemas["ResponseData"], { kind: "ReadingHighlightChanged" }>;
+export type ReadingHighlightChange = ChangedResponse["change"];
 type SourceResponse = Extract<Schemas["ResponseData"], { kind: "ReadingSource" }>;
 type StatusResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaStatus" }>;
 type SendResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaSend" }>;
@@ -101,6 +103,36 @@ export async function saveHighlight(input: {
     body: { item_key: input.itemKey, quote: input.quote, view: input.view, note: input.note },
   });
   return answer.highlight;
+}
+
+const highlightPath = (id: string) => `/api/v1/mail/reading/highlights/${encodeURIComponent(id)}`;
+
+/**
+ * Replaces a highlight's note. Always sends a string: blank clears it, and
+ * the bridge refuses null rather than guessing. Refused for a highlight
+ * made in Marginalia.
+ */
+export async function updateHighlightNote(
+  id: string,
+  note: string,
+  dryRun = false,
+): Promise<ReadingHighlightChange> {
+  const answer = await apiFetch<ChangedResponse>(`${highlightPath(id)}/note`, {
+    method: "POST",
+    body: { note, dry_run: dryRun },
+  });
+  return answer.change;
+}
+
+export async function removeHighlightRequest(
+  id: string,
+  dryRun = false,
+): Promise<ReadingHighlightChange> {
+  const answer = await apiFetch<ChangedResponse>(`${highlightPath(id)}/remove`, {
+    method: "POST",
+    body: { dry_run: dryRun },
+  });
+  return answer.change;
 }
 
 export function fetchHighlights(account: string | null) {

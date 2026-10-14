@@ -174,7 +174,11 @@ beforeEach(() => {
       const requestUrl = input;
       const path = new URL(requestUrl).pathname;
       if (path === "/api/v1/admin/status") {
+        // Hold only the first probe. A later one (the backoff retry) held the
+        // same way would never settle, and every probe after it would wait on
+        // it, so recovery could never be seen.
         if (daemonDown && holdProbe) {
+          holdProbe = false;
           return new Promise<Response>((resolve) => {
             releaseProbe = () => resolve(daemonConnectError());
           });
@@ -209,7 +213,6 @@ describe("cold mailbox connection state", () => {
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
 
     daemonDown = false;
-    holdProbe = false;
     window.dispatchEvent(new Event("focus"));
 
     expect(await screen.findByText("Inbox zero", {}, { timeout: 5_000 })).toBeVisible();

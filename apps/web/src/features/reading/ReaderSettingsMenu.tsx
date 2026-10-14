@@ -37,7 +37,7 @@ export function ReaderSettingsMenu() {
           <Type aria-hidden className="size-3.5" /> Aa
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 space-y-3 p-3 text-[12.5px]">
+      <PopoverContent align="start" className="w-72 space-y-3 p-3 text-xs">
         <Group label="Theme">
           {READER_THEMES.map((theme) => (
             <Choice

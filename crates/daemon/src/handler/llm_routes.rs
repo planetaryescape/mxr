@@ -5,7 +5,7 @@
 //! Key values never leave this module in a response, a log line or an error.
 
 use super::HandlerResult;
-use crate::llm_keys::{clean_key, provider_data, provider_from_data, LlmKeys};
+use crate::llm_keys::{clean_key, provider_data, provider_from_data, status_of, LlmKeys};
 use crate::state::{effective_llm_config, llm_model_routes, AppState};
 use mxr_llm::{LlmFeature, RouteProvider, RouteState};
 use mxr_protocol::{
@@ -28,13 +28,7 @@ pub(super) async fn set_llm_key(
     let provider = provider_from_data(provider);
     if dry_run {
         let keys = LlmKeys::at_default_path();
-        let after = LlmKeyStatusData {
-            provider: provider_data(provider),
-            present: true,
-            source: Some(LlmKeySourceData::Stored),
-            location: Some(keys.path().display().to_string()),
-            env_var: provider.env_var().to_string(),
-        };
+        let after = status_of(provider, Some(keys.path()));
         return Ok(change(provider, true, true, after));
     }
     // fsync-ing the secrets file blocks.

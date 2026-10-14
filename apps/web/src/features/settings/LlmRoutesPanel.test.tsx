@@ -46,8 +46,8 @@ describe("LlmRoutesPanel", () => {
   test("shows each route in order with its health and the one in use", () => {
     render(<LlmRoutesPanel features={[routed]} keys={keys} />);
     const row = screen.getByText("Relationship summary").closest("li");
-    expect(row).not.toBeNull();
-    const scoped = within(row as HTMLElement);
+    if (!row) throw new Error("the feature row is missing");
+    const scoped = within(row);
     expect(scoped.getByText("claude-haiku-5-5")).toBeVisible();
     expect(scoped.getByText(/Anthropic: broken: 401 invalid key/)).toBeVisible();
     expect(scoped.getByText(/OpenRouter: ok \(in use\)/)).toBeVisible();

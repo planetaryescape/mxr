@@ -16,14 +16,14 @@ type LlmRouteStatus = components["schemas"]["LlmRouteStatusData"];
 
 type BadgeVariant = "success" | "warning" | "destructive" | "secondary" | "outline";
 
-const routeVariants: Record<LlmRouteStatus["state"], BadgeVariant> = {
+const routeVariants = {
   ok: "success",
   cooling: "warning",
   broken: "destructive",
   recovering: "outline",
   probing: "outline",
   no_key: "secondary",
-};
+} as const satisfies Record<LlmRouteStatus["state"], BadgeVariant>;
 
 export function LlmRoutesPanel({
   features,

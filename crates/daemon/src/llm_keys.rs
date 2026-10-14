@@ -74,38 +74,38 @@ impl LlmKeys {
     }
 
     pub(crate) fn status(&self, provider: RouteProvider) -> LlmKeyStatusData {
-        let (source, location) = if self.stored(provider).is_some() {
-            (
-                Some(LlmKeySourceData::Stored),
-                Some(self.path().display().to_string()),
-            )
-        } else if Self::from_env(provider).is_some() {
-            (
-                Some(LlmKeySourceData::Env),
-                Some(provider.env_var().to_string()),
-            )
-        } else {
-            (None, None)
-        };
-        LlmKeyStatusData {
-            provider: provider_data(provider),
-            present: source.is_some(),
-            source,
-            location,
-            env_var: provider.env_var().to_string(),
-        }
+        let stored = self.stored(provider).is_some().then(|| self.path());
+        status_of(provider, stored)
     }
 
     /// What `status` would report with the stored key gone.
     pub(crate) fn status_without_stored(provider: RouteProvider) -> LlmKeyStatusData {
-        let env = Self::from_env(provider).is_some();
-        LlmKeyStatusData {
-            provider: provider_data(provider),
-            present: env,
-            source: env.then_some(LlmKeySourceData::Env),
-            location: env.then(|| provider.env_var().to_string()),
-            env_var: provider.env_var().to_string(),
-        }
+        status_of(provider, None)
+    }
+}
+
+/// A provider's key status: the stored key at `stored_at` wins, then the
+/// environment variable.
+pub(crate) fn status_of(provider: RouteProvider, stored_at: Option<&Path>) -> LlmKeyStatusData {
+    let (source, location) = if let Some(path) = stored_at {
+        (
+            Some(LlmKeySourceData::Stored),
+            Some(path.display().to_string()),
+        )
+    } else if LlmKeys::from_env(provider).is_some() {
+        (
+            Some(LlmKeySourceData::Env),
+            Some(provider.env_var().to_string()),
+        )
+    } else {
+        (None, None)
+    };
+    LlmKeyStatusData {
+        provider: provider_data(provider),
+        present: source.is_some(),
+        source,
+        location,
+        env_var: provider.env_var().to_string(),
     }
 }
 

@@ -7,7 +7,8 @@ Inspect local/cloud LLM provider status
 Usage: mxr llm [OPTIONS] [COMMAND]
 
 Commands:
-  status  Show LLM provider status
+  status  Show each AI feature's model, the providers it goes through and their health
+  key     Manage the Anthropic and OpenRouter API keys used for Claude models
   help    Print this message or the help of the given subcommand(s)
 
 Options:

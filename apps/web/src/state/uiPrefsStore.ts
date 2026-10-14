@@ -4,6 +4,7 @@
  * before render so the theme doesn't flash.
  */
 
+import { parseReaderSettings, type ReaderSettings } from "@planetaryescape/reader";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
@@ -25,6 +26,26 @@ export type ReaderView = "formatted" | "reader" | "plain";
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
 /** Where `/` lands: what needs you, or what arrived. */
 export type HomeView = "now" | "inbox";
+
+/** How the Reading reader draws an article: the reader theme, typeface, size and line spacing. */
+export type ReadingDisplay = Pick<ReaderSettings, "theme" | "typeface" | "size" | "spacing">;
+
+export const DEFAULT_READING_DISPLAY: ReadingDisplay = {
+  theme: "auto",
+  typeface: "serif",
+  size: 20,
+  spacing: "even",
+};
+
+/** Stored prefs may be hand-edited or from another version; repair them field by field. */
+export function readReadingDisplay(value: unknown): ReadingDisplay {
+  const saved = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const { theme, typeface, size, spacing } = parseReaderSettings({
+    ...DEFAULT_READING_DISPLAY,
+    ...saved,
+  });
+  return { theme, typeface, size, spacing };
+}
 
 export interface UiPrefsState {
   home: HomeView;
@@ -51,6 +72,9 @@ export interface UiPrefsState {
   readerView: ReaderView;
   /** Senders whose remote images load without asking. */
   remoteImageSenders: string[];
+  /** Reading reader appearance; a client preference like the theme, not daemon state. */
+  readingDisplay: ReadingDisplay;
+  setReadingDisplay: (patch: Partial<ReadingDisplay>) => void;
   setHome: (home: HomeView) => void;
   setReaderView: (view: ReaderView) => void;
   allowRemoteImagesFrom: (sender: string) => void;
@@ -102,6 +126,9 @@ export const useUiPrefs = create<UiPrefsState>()(
       listMode: "threads",
       readerView: "formatted",
       remoteImageSenders: [],
+      readingDisplay: DEFAULT_READING_DISPLAY,
+      setReadingDisplay: (patch) =>
+        set((s) => ({ readingDisplay: readReadingDisplay({ ...s.readingDisplay, ...patch }) })),
       setHome: (home) => set({ home }),
       setReaderView: (readerView) => set({ readerView }),
       allowRemoteImagesFrom: (sender) =>
@@ -256,6 +283,7 @@ function mergeUiPrefs(persisted: unknown, current: UiPrefsState): UiPrefsState {
       ? state.emailHtmlTheme
       : current.emailHtmlTheme,
     emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(state.emailHtmlSenderOverrides),
+    readingDisplay: readReadingDisplay(state.readingDisplay),
   };
 }
 

@@ -33,6 +33,13 @@ function parseRemote(src: string): URL | null {
 
 interface SanitizeOpts {
   allowRemoteImages?: boolean;
+  /**
+   * Markup that will sit in the app's own DOM rather than a sandboxed frame:
+   * no style, class, id or name attributes (they could restyle or shadow the
+   * app), links only to web and mail addresses, images only from the web or
+   * inline.
+   */
+  inline?: boolean;
   stripLightBackgrounds?: boolean;
   stripDarkTextColors?: boolean;
 }
@@ -53,6 +60,17 @@ interface SanitizedEmailHtml {
 
 export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
   return sanitizeHtmlWithDesign(html, opts).html;
+}
+
+/**
+ * The cleaned article HTML for the Reading reader, which renders it inline
+ * (not in a frame) so highlights can be drawn on it. Same tag allowlist, remote
+ * image gate and tracker removal as email, minus everything that could affect
+ * the page around it.
+ */
+export function sanitizeReaderHtml(html: string, opts: { allowRemoteImages: boolean }): string {
+  return sanitizeHtmlWithDesign(html, { allowRemoteImages: opts.allowRemoteImages, inline: true })
+    .html;
 }
 
 export function prepareEmailHtml(
@@ -85,6 +103,18 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
     if (node.tagName === "A") {
       node.setAttribute("rel", "noopener noreferrer");
       node.setAttribute("target", "_blank");
+      if (opts.inline && !isWebOrMailHref(node.getAttribute("href") ?? "")) {
+        // A relative or fragment link would navigate the app itself.
+        node.removeAttribute("href");
+      }
+    }
+    if (
+      opts.inline &&
+      node.tagName === "IMG" &&
+      !isWebOrInlineImageSrc(node.getAttribute("src") ?? "")
+    ) {
+      node.remove();
+      return;
     }
     if (node.hasAttribute("style")) {
       const style = sanitizeInlineStyle(node.getAttribute("style") ?? "", opts);
@@ -115,8 +145,19 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
       node.replaceWith(note);
     }
   };
+  // Inline markup keeps no classes of its own, but the "Image blocked" note needs its class.
+  // DOMPurify visits the note after the hook creates it, so allow that exact value.
+  const keepBlockedNoteClass = (
+    _node: Element,
+    data: { attrName: string; attrValue: string; forceKeepAttr?: boolean },
+  ) => {
+    if (opts.inline && data.attrName === "class" && data.attrValue === BLOCKED_IMAGE_CLASS) {
+      data.forceKeepAttr = true;
+    }
+  };
   dom.addHook("beforeSanitizeAttributes", beforeSanitizeAttributes);
   dom.addHook("afterSanitizeAttributes", hook);
+  dom.addHook("uponSanitizeAttribute", keepBlockedNoteClass);
   let clean: string;
   try {
     const sanitized = dom.sanitize(html, {
@@ -187,27 +228,7 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
         "var",
         "wbr",
       ],
-      ALLOWED_ATTR: [
-        "href",
-        "title",
-        "alt",
-        "src",
-        "width",
-        "height",
-        "rel",
-        "target",
-        "name",
-        "colspan",
-        "rowspan",
-        "scope",
-        "datetime",
-        "cite",
-        "lang",
-        "dir",
-        "id",
-        "class",
-        "style",
-      ],
+      ALLOWED_ATTR: opts.inline ? INLINE_ATTRS : FRAME_ATTRS,
       ALLOW_DATA_ATTR: false,
       FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "link", "meta", "form"],
       FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"],
@@ -218,8 +239,35 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
   } finally {
     dom.removeHook("beforeSanitizeAttributes");
     dom.removeHook("afterSanitizeAttributes");
+    dom.removeHook("uponSanitizeAttribute");
   }
   return { html: clean, designed };
+}
+
+const INLINE_ATTRS = [
+  "href",
+  "title",
+  "alt",
+  "src",
+  "width",
+  "height",
+  "colspan",
+  "rowspan",
+  "scope",
+  "datetime",
+  "cite",
+  "lang",
+  "dir",
+];
+
+const FRAME_ATTRS = [...INLINE_ATTRS, "rel", "target", "name", "id", "class", "style"];
+
+function isWebOrMailHref(href: string): boolean {
+  return /^(https?:|mailto:)/i.test(href.trim());
+}
+
+function isWebOrInlineImageSrc(src: string): boolean {
+  return /^(https?:\/\/|data:image\/)/i.test(src.trim());
 }
 
 function hasDesignSignal(node: Element): boolean {

@@ -210,8 +210,19 @@ for motion), implement the command in the view's controller, done.
   (`ReadingDialogs.tsx`: unsubscribe with evidence over the purge dry run,
   let go of all over the `SetModeDone` dry run, committing the same
   thread ids). Pure helpers live in `readingView.ts`.
-- The reader renders the daemon's paragraphs as text, never the email's
-  HTML in the app page; the sender's layout stays in the sandboxed iframe.
+- The reader renders the daemon's cleaned HTML (`ReadingItemDetailData.html`,
+  or the article's) inline through `@planetaryescape/reader`, after
+  `sanitizeReaderHtml` (`lib/sanitizeHtml.ts`): the email tag allowlist and
+  tracker removal, remote images held until "Show images" or a trusted
+  sender, and no `style`, `class`, `id`, relative links or relative images,
+  so it can't restyle or navigate the app. With no HTML, or nothing left
+  after sanitizing, it falls back to the daemon's paragraphs as text. The
+  sender's layout (`R`) stays in the sandboxed iframe.
+- Reader display (`ReaderSettingsMenu.tsx`, the **Aa** button): theme
+  (Match app maps midnight, eclipse, light and paper to Ink, Night, Snow
+  and Paper), font, size and line spacing, kept in `uiPrefsStore`
+  (`readingDisplay`) as a client preference. Quote highlights are placed by
+  matching their text in the rendered article.
 - The article is fetched only on `L` or the Article tab, or on `M` for a digest link whose article isn't saved (Marginalia needs it first), after the toast
   names the site; `b` on a link saves it and then fetches it so it reads
   offline.

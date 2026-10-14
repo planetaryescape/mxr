@@ -17,12 +17,15 @@ export function PrivacyLine({
   onShowImages,
   senderEmail,
   onAlwaysAllowSender,
+  showImagesKey = "M",
 }: {
   html: string;
   imagesAllowed: boolean;
   onShowImages: () => void;
   senderEmail: string | null;
   onAlwaysAllowSender: (email: string) => void;
+  /** The shortcut shown beside "Show images"; null where that key does something else. */
+  showImagesKey?: string | null;
 }) {
   const content = useMemo(() => analyzeBlockedContent(html), [html]);
   const sentence = blockedSentence(content, imagesAllowed);
@@ -43,7 +46,8 @@ export function PrivacyLine({
           onClick={onShowImages}
           className="inline-flex items-center gap-1.5 text-primary hover:underline"
         >
-          Show images <KeyChip className="h-4 px-1">M</KeyChip>
+          Show images{" "}
+          {showImagesKey ? <KeyChip className="h-4 px-1">{showImagesKey}</KeyChip> : null}
         </button>
       ) : null}
       {canShow && senderEmail ? (

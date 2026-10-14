@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import { MessageContent } from "@/features/thread/MessageCard";
+import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import {
   READING_KEY,
@@ -21,6 +23,9 @@ import {
   type ReadingDetail,
   type ReadingParagraph,
 } from "./api";
+import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
+import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
+import { readingRootProps, useAppTheme } from "./readerAppearance";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
@@ -97,6 +102,16 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const showingArticle = view === "article" && article !== null;
   const words = showingArticle ? article.words : item.words;
   const paragraphs = showingArticle ? article.paragraphs : detail.paragraphs;
+  // Remote images follow email: held back until asked for, or the sender is trusted.
+  const [remoteAllowed, setRemoteAllowed] = useState(false);
+  const trustedSenders = useUiPrefs((state) => state.remoteImageSenders);
+  const allowSender = useUiPrefs((state) => state.allowRemoteImagesFrom);
+  const imagesAllowed =
+    remoteAllowed || trustedSenders.includes(item.sender_email.trim().toLowerCase());
+  const rawHtml = showingArticle ? article.html : detail.html;
+  const articleHtml = useReaderHtml(rawHtml, imagesAllowed);
+  const display = useUiPrefs((state) => state.readingDisplay);
+  const rootProps = readingRootProps(display, useAppTheme());
   const left = minutesLeft(words, progress, detail.pace_wpm);
   useEngagement(item.item_key, columnRef, setProgress);
 
@@ -235,6 +250,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               {left > 0 ? `${left} min left` : "Read to the end"}
             </span>
           )}
+          <ReaderSettingsMenu />
           <button
             type="button"
             data-testid="reader-unsubscribe"
@@ -280,7 +296,12 @@ function Reader({ detail }: { detail: ReadingDetail }) {
           />
         </div>
       </header>
-      <div ref={columnRef} className="min-h-0 flex-1 overflow-y-auto" data-testid="reader-column">
+      <div
+        ref={columnRef}
+        className="reader-root reading-themed min-h-0 flex-1 overflow-y-auto"
+        data-testid="reader-column"
+        {...rootProps}
+      >
         {original && view === "issue" ? (
           <OriginalLayout
             threadId={item.thread_id}
@@ -291,6 +312,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
           <article
             ref={textRef}
             className="reading-page mx-auto w-full max-w-[66ch] px-4 pb-16 pt-8 sm:px-6"
+            style={articleHtml ? { maxWidth: "var(--reader-max-width)" } : undefined}
           >
             <h1 className="text-balance text-2xl font-semibold leading-tight tracking-tight sm:text-[28px]">
               {showingArticle && article.title ? article.title : item.title}
@@ -309,7 +331,26 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 onFetch={() => void openArticle()}
               />
             ) : null}
-            {view === "article" && !article ? null : (
+            {view === "article" && !article ? null : articleHtml ? (
+              <>
+                {rawHtml ? (
+                  <PrivacyLine
+                    html={rawHtml}
+                    imagesAllowed={imagesAllowed}
+                    onShowImages={() => setRemoteAllowed(true)}
+                    senderEmail={item.sender_email}
+                    onAlwaysAllowSender={allowSender}
+                    showImagesKey={null}
+                  />
+                ) : null}
+                <ReaderArticle
+                  html={articleHtml}
+                  paragraphs={paragraphs}
+                  marks={marks}
+                  allowRemoteImages={imagesAllowed}
+                />
+              </>
+            ) : (
               <Paragraphs paragraphs={paragraphs} marks={marks} />
             )}
             {view === "issue" && (item.links?.length ?? 0) > 0 ? (

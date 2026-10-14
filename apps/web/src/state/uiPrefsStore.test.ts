@@ -3,6 +3,8 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DEFAULT_READING_DISPLAY,
+  readReadingDisplay,
   emailHtmlThemeForSender,
   applyContrastAttribute,
   migrateUiPrefs,
@@ -10,6 +12,7 @@ import {
   watchSystemContrast,
   readEmailHtmlSenderOverrides,
   useUiPrefs,
+  type UiPrefsState,
 } from "./uiPrefsStore";
 
 describe("compose editor preference", () => {
@@ -196,5 +199,63 @@ describe("home and sidebar prefs", () => {
   test("v6 prefs pass through untouched", () => {
     const saved = { home: "now", collapsedSections: [] };
     expect(migrateUiPrefs(saved, 6)).toBe(saved);
+  });
+});
+
+describe("reading display preference", () => {
+  test("defaults to following the app theme in a serif at 20px", () => {
+    expect(useUiPrefs.getInitialState().readingDisplay).toEqual({
+      theme: "auto",
+      typeface: "serif",
+      size: 20,
+      spacing: "even",
+    });
+  });
+
+  test("repairs stored values field by field", () => {
+    expect(readReadingDisplay(null)).toEqual(DEFAULT_READING_DISPLAY);
+    expect(readReadingDisplay([])).toEqual(DEFAULT_READING_DISPLAY);
+    expect(
+      readReadingDisplay({
+        theme: "sepia",
+        typeface: "removed",
+        size: 999,
+        spacing: "airy",
+        pen: "x",
+      }),
+    ).toEqual({ theme: "sepia", typeface: "serif", size: 20, spacing: "airy" });
+  });
+
+  test("a change is written to storage", async () => {
+    useUiPrefs.getState().setReadingDisplay({ theme: "ink", size: 24, spacing: "snug" });
+    // Through the store's own storage: it falls back to memory where localStorage is disabled.
+    const saved = await useUiPrefs.persist.getOptions().storage?.getItem("mxr.uiPrefs");
+    // SAFETY: the store wrote this state itself in the line above.
+    const state = (saved?.state ?? {}) as Partial<UiPrefsState>;
+    expect(state.readingDisplay).toEqual({
+      theme: "ink",
+      typeface: "serif",
+      size: 24,
+      spacing: "snug",
+    });
+  });
+
+  test("saved settings come back after a reload, repaired", async () => {
+    await useUiPrefs.persist.getOptions().storage?.setItem("mxr.uiPrefs", {
+      state: { readingDisplay: { theme: "dusk", typeface: "sans", size: "huge", spacing: "airy" } },
+      version: 6,
+    });
+    await useUiPrefs.persist.rehydrate();
+    expect(useUiPrefs.getState().readingDisplay).toEqual({
+      theme: "dusk",
+      typeface: "sans",
+      size: 20,
+      spacing: "airy",
+    });
+  });
+
+  test("a bad size from the settings control is clamped back to something valid", () => {
+    useUiPrefs.getState().setReadingDisplay({ size: 500 });
+    expect(useUiPrefs.getState().readingDisplay.size).toBe(20);
   });
 });

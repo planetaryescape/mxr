@@ -1,6 +1,6 @@
 ---
 title: Read newsletters as an edition
-description: Reading turns your newsletters into an edition you visit, a reader with a 66-character column, and a Later shelf. Nothing in it is owed.
+description: Reading turns your newsletters into an edition you visit, a reader set like a book page, and a Later shelf. Nothing in it is owed.
 ---
 
 Reading is where newsletters, digests and posts you subscribed to land. It
@@ -82,11 +82,23 @@ Press `Enter` on an item, or from the command line:
 mxr reading open ITEM
 ```
 
-The reader is a single column about 66 characters wide, the width a book
-uses, with the time left at your pace and a thin progress line. The
-masthead, share buttons and footer are gone. `R` switches to the sender's
-own layout and remembers it for that source, for the newsletters whose
-design is the point.
+The reader is a single column about the width of a book page, with the time
+left at your pace and a thin progress line. The masthead, share buttons and
+footer are gone. `R` switches to the sender's own layout and remembers it for
+that source, for the newsletters whose design is the point.
+
+The web reader shows the article itself: the headings, links, lists, tables
+and images of the cleaned issue, set in the reader's typography. Links open in
+a new tab. Remote images stay blocked until you press **Show images** (or
+choose "Always" for that sender), the same as in a message, and tracking
+pixels are always dropped. Colours, fonts and layout from the sender are
+removed so the page reads the same everywhere. An item with no usable HTML
+falls back to its plain text.
+
+The **Aa** button beside the title sets the theme, font, size and line
+spacing. The theme is **Match app** until you pick Paper, Sepia, Snow, Dusk,
+Night or Ink. The choices are kept in this browser. The terminal reader shows
+text only.
 
 Minutes start at 230 words a minute. Once you have read three issues to the
 end, mxr uses your own pace instead, measured from them and clamped so a tab
@@ -170,7 +182,8 @@ issue as opened.
 ## Highlight what you want to keep
 
 Select text in the reader and press `h` (the TUI saves the paragraph at the
-top of the reader). Highlights are found by [search](/guides/semantic-search/)
+top of the reader). In the web reader, saved highlights are marked on the
+article wherever their text appears. Highlights are found by [search](/guides/semantic-search/)
 and exported as Markdown, grouped by item with the source and the link:
 
 ```bash

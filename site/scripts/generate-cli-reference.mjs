@@ -418,7 +418,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   config: { use: 'Inspect or edit resolved config without hunting for the file.', examples: ["mxr config path", "mxr config show --format json"] },
-  llm: { use: 'Check which LLM provider the daemon is using.', examples: ["mxr llm status", "mxr llm status --format json"] },
+  llm: { use: 'Check which LLM provider and model each feature uses, and manage the Anthropic and OpenRouter keys for Claude models. See [LLM features](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback).', examples: ["mxr llm status", "mxr llm status --format json", "op read \"op://<vault>/<item>/credential\" | mxr llm key set anthropic", "mxr llm key status", "mxr llm key remove anthropic --dry-run"] },
   semantic: {
     use: 'Manage local semantic search profiles and indexing. `reindex` is resumable and skips what is already embedded; `reindex --force` re-embeds everything.',
     examples: [

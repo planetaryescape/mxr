@@ -474,7 +474,10 @@ mxr draft-assist --search "from:sales@acme.com" --first --instruct "schedule a c
 ```
 
 ### `mxr llm status [--format <FMT>]`
-Show configured LLM provider, model, reachability.
+Show configured LLM provider, model and, per feature, the model, route order and route health (`ok`, `cooling until`, `broken`, `no key`). Never probes the endpoint.
+
+### `mxr llm key status|set <anthropic|openrouter>|remove <provider> [--dry-run] [--format <FMT>]`
+Manage the API keys behind `claude-*` models (Anthropic first, OpenRouter as fallback). `set` reads the key from stdin only (`printf %s "$KEY" | mxr llm key set anthropic`); `status` shows presence and source, never the key.
 
 ---
 

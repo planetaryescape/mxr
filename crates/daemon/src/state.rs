@@ -212,21 +212,38 @@ impl RuntimeTasks {
 }
 
 /// Build the configured LLM provider. Returns a `NoopProvider` when
-/// LLM is disabled in config, or an `OpenAiCompatibleProvider`
-/// pointed at the configured `base_url` (Ollama / LM Studio / OpenAI
-/// / etc.) when enabled. The API key is read from `api_key_env` —
-/// keeping the secret out of the config file itself.
+/// LLM is disabled in config; a `RoutedProvider` when the model is one mxr
+/// routes itself (`claude-*` through Anthropic then OpenRouter, using the
+/// keys stored with `mxr llm key set`); otherwise an
+/// `OpenAiCompatibleProvider` pointed at the configured `base_url`
+/// (Ollama / LM Studio / OpenAI / etc.). That one reads its API key from
+/// `api_key_env` — keeping the secret out of the config file itself.
 ///
 /// When the daemon is bound to the demo instance, every feature is routed
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
-fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
+fn build_llm_provider(
+    config: &mxr_config::EffectiveLlmConfig,
+    health: &mxr_llm::RouteHealth,
+) -> Arc<dyn mxr_llm::LlmProvider> {
     if mxr_config::is_demo_instance() {
         return Arc::new(mxr_llm::DemoLlmProvider::new());
     }
     if !config.enabled {
         return Arc::new(mxr_llm::NoopProvider);
+    }
+    if let Some(routes) = llm_model_routes(config) {
+        return Arc::new(mxr_llm::RoutedProvider::new(
+            mxr_llm::RoutedProviderConfig::new(
+                config.model.trim().to_string(),
+                routes,
+                config.context_window,
+                std::time::Duration::from_secs(config.request_timeout_secs),
+                Arc::new(crate::llm_keys::LlmKeys::at_default_path()),
+                health.clone(),
+            ),
+        ));
     }
     let api_key = if config.api_key_env.is_empty() {
         None
@@ -246,7 +263,19 @@ fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_ll
     ))
 }
 
-fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
+/// The providers a model goes through when mxr routes it itself, or `None`
+/// when `llm.base_url` serves it. A `base_url` other than the default is the
+/// user's own server, whose model names are theirs.
+pub(crate) fn llm_model_routes(
+    config: &mxr_config::EffectiveLlmConfig,
+) -> Option<Vec<mxr_llm::Route>> {
+    let default_url = mxr_config::LlmConfig::default().base_url;
+    let url = config.base_url.trim().trim_end_matches('/');
+    let custom_endpoint = !url.is_empty() && url != default_url.trim_end_matches('/');
+    mxr_llm::routes_for_model(&config.model, custom_endpoint)
+}
+
+pub(crate) fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
     mxr_config::EffectiveLlmConfig {
         enabled: config.enabled,
         base_url: config.base_url.clone(),
@@ -258,15 +287,18 @@ fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmCo
 }
 
 fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime> {
-    let runtime = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(
-        &base_llm_config(config),
-    )));
+    let health = mxr_llm::RouteHealth::default();
+    let runtime = Arc::new(mxr_llm::LlmRuntime::with_route_health(
+        build_llm_provider(&base_llm_config(config), &health),
+        health,
+    ));
     apply_llm_config_to_runtime(&runtime, config);
     runtime
 }
 
 fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_config::LlmConfig) {
-    runtime.replace(build_llm_provider(&base_llm_config(config)));
+    let health = runtime.route_health().clone();
+    runtime.replace(build_llm_provider(&base_llm_config(config), &health));
     runtime.set_background_timeout(std::time::Duration::from_secs(
         config.background_request_timeout_secs,
     ));
@@ -278,7 +310,7 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
             blocked.insert(feature, reason);
             continue;
         }
-        providers.insert(feature, build_llm_provider(&effective));
+        providers.insert(feature, build_llm_provider(&effective, &health));
     }
     for feature in relationship_data_features() {
         if providers.contains_key(&feature) || blocked.contains_key(&feature) {
@@ -290,6 +322,21 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
         }
     }
     runtime.replace_feature_providers(providers, blocked);
+}
+
+/// The settings a feature runs with: its `[llm.overrides.<feature>]` section
+/// over the base `[llm]`.
+pub(crate) fn effective_llm_config(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> mxr_config::EffectiveLlmConfig {
+    llm_override_entries(&config.overrides)
+        .into_iter()
+        .find(|(overridden, _)| *overridden == feature)
+        .map_or_else(
+            || base_llm_config(config),
+            |(_, override_config)| config.effective_override(override_config),
+        )
 }
 
 fn llm_override_entries(
@@ -364,11 +411,17 @@ fn relationship_data_block_reason(
     if relationship_data_feature(feature)
         && effective.enabled
         && !config.allow_cloud_relationship_data
-        && !mxr_llm::is_loopback_endpoint(&effective.base_url)
+        && (llm_model_routes(effective).is_some()
+            || !mxr_llm::is_loopback_endpoint(&effective.base_url))
     {
+        // Routed models go to Anthropic and OpenRouter, whatever base_url says.
+        let endpoint = if llm_model_routes(effective).is_some() {
+            format!("hosted provider (model {})", effective.model)
+        } else {
+            format!("endpoint {}", effective.base_url)
+        };
         return Some(format!(
-            "{feature:?} points at non-local endpoint {}; set llm.allow_cloud_relationship_data=true to permit relationship data",
-            effective.base_url
+            "{feature:?} points at non-local {endpoint}; set llm.allow_cloud_relationship_data=true to permit relationship data"
         ));
     }
     None
@@ -385,14 +438,15 @@ pub(crate) fn relationship_data_allowed(
     config: &mxr_config::LlmConfig,
     llm: &mxr_llm::PinnedLlm,
 ) -> bool {
-    config.allow_cloud_relationship_data || llm_endpoint_is_local(llm.base_url())
+    config.allow_cloud_relationship_data || llm_endpoint_is_local(llm)
 }
 
-/// Whether a provider's endpoint is on this machine, for what model-written
-/// text may carry and how it is labelled. No endpoint (disabled, demo,
-/// tests) means nothing leaves the machine.
-pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
-    mxr_config::is_demo_instance() || base_url.is_none_or(mxr_llm::is_loopback_endpoint)
+/// Whether the pinned provider answers on this machine, for what
+/// model-written text may carry and how it is labelled. No endpoint
+/// (disabled, demo, tests) means nothing leaves the machine; a provider that
+/// chooses among hosted APIs has no URL to inspect and still leaves it.
+pub(crate) fn llm_endpoint_is_local(llm: &mxr_llm::PinnedLlm) -> bool {
+    mxr_config::is_demo_instance() || !llm.leaves_machine()
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
@@ -1719,6 +1773,20 @@ impl AppState {
             .acquire_owned()
             .await
             .map_err(|_| "admin blocking executor unavailable".to_string())
+    }
+
+    /// Apply `[llm]` as it is on disk to the running daemon, for edits made
+    /// outside it (`mxr config set llm.*`, a text editor). What was learned
+    /// about the routes is forgotten with the old providers.
+    pub async fn reload_llm_config_from_disk(&self) -> std::result::Result<(), String> {
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        if self.is_restore_pending() {
+            config.llm.enabled = false;
+            config.llm.overrides = Default::default();
+        }
+        apply_llm_config_to_runtime(&self.llm, &config.llm);
+        self.config.write().llm = config.llm;
+        Ok(())
     }
 
     pub async fn mutate_config<F>(

@@ -475,6 +475,9 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::RecomputeLinkCounts
         // Decides which model every account's mail is sent to.
         | Request::UpdateLlmConfig { .. }
+        | Request::ReloadLlmConfig
+        | Request::SetLlmKey { .. }
+        | Request::RemoveLlmKey { .. }
         // Decides where every account's Reading items may be sent, and
         // reads back highlights on every account's sent items.
         | Request::GetMarginaliaStatus

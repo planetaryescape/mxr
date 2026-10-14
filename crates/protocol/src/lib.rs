@@ -38,7 +38,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 16;
+pub const IPC_PROTOCOL_VERSION: u32 = 17;
 
 #[cfg(test)]
 mod tests {
@@ -50,6 +50,28 @@ mod tests {
 
     use super::*;
     use bytes::BytesMut;
+
+    #[test]
+    fn a_provider_key_in_a_request_never_shows_in_debug_output_and_roundtrips() {
+        let request = Request::SetLlmKey {
+            provider: LlmProviderData::Anthropic,
+            key: LlmKeySecret::new("sk-ant-do-not-log".into()),
+            dry_run: false,
+        };
+        assert!(!format!("{request:?}").contains("sk-ant"));
+        let json = serde_json::to_string(&request).unwrap();
+        match serde_json::from_str::<Request>(&json).unwrap() {
+            Request::SetLlmKey { provider, key, .. } => {
+                assert_eq!(provider, LlmProviderData::Anthropic);
+                assert_eq!(key.expose(), "sk-ant-do-not-log");
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        // The remote policy is an allow-list: a key can't be set from a
+        // paired remote client.
+        assert!(!remote::remote_read_allowed(&request));
+        assert!(!remote::remote_send_allowed(&request));
+    }
 
     #[test]
     fn unsubscribe_preview_commit_requires_token_and_choice() {
@@ -212,7 +234,7 @@ mod tests {
             source_owner_stopped: true,
             dry_run: false,
         };
-        assert_eq!(IPC_PROTOCOL_VERSION, 16);
+        assert_eq!(IPC_PROTOCOL_VERSION, 17);
         assert!(activate.requires_workspace_owner());
         let encoded = serde_json::to_value(&activate).unwrap();
         assert_eq!(encoded["cmd"], "ActivateRecovery");
@@ -533,6 +555,22 @@ mod tests {
                         allow_cloud_relationship_data: false,
                         overrides: Some(LlmOverridesData::default()),
                     }),
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (Request::ReloadLlmConfig, IpcCategory::MxrPlatform),
+            (
+                Request::SetLlmKey {
+                    provider: LlmProviderData::Anthropic,
+                    key: LlmKeySecret::new("sk-test".into()),
+                    dry_run: true,
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::RemoveLlmKey {
+                    provider: LlmProviderData::Openrouter,
+                    dry_run: true,
                 },
                 IpcCategory::MxrPlatform,
             ),
@@ -970,6 +1008,25 @@ mod tests {
                         request_timeout_secs: 120,
                         allow_cloud_relationship_data: false,
                         observations: Vec::new(),
+                        features: Vec::new(),
+                        keys: Vec::new(),
+                    },
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::LlmKeyChange {
+                    change: LlmKeyChangeData {
+                        provider: LlmProviderData::Anthropic,
+                        dry_run: true,
+                        changed: false,
+                        after: LlmKeyStatusData {
+                            provider: LlmProviderData::Anthropic,
+                            present: false,
+                            source: None,
+                            location: None,
+                            env_var: "ANTHROPIC_API_KEY".into(),
+                        },
                     },
                 },
                 IpcCategory::MxrPlatform,

@@ -229,6 +229,27 @@ pub(super) async fn update_llm_config(
     diagnostics_impl::update_llm_config(state, config).await
 }
 
+pub(super) async fn reload_llm_config(state: &AppState) -> HandlerResult {
+    super::llm_routes::reload_llm_config(state).await
+}
+
+pub(super) async fn set_llm_key(
+    state: &AppState,
+    provider: mxr_protocol::LlmProviderData,
+    key: &mxr_protocol::LlmKeySecret,
+    dry_run: bool,
+) -> HandlerResult {
+    super::llm_routes::set_llm_key(state, provider, key, dry_run).await
+}
+
+pub(super) async fn remove_llm_key(
+    state: &AppState,
+    provider: mxr_protocol::LlmProviderData,
+    dry_run: bool,
+) -> HandlerResult {
+    super::llm_routes::remove_llm_key(state, provider, dry_run).await
+}
+
 pub(super) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
     diagnostics_impl::enable_semantic(state, enabled).await
 }

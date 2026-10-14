@@ -1,7 +1,7 @@
 use crate::cli::{ConfigAction, OutputFormat};
 use crate::output::resolve_format;
 
-pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
+pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
     match action.unwrap_or(ConfigAction::Show { format: None }) {
         ConfigAction::Show { format } => {
             let config = mxr_config::load_config().unwrap_or_default();
@@ -43,9 +43,34 @@ pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
             set_config_value(&mut config, &key, &value)?;
             mxr_config::save_config(&config)?;
             println!("Set {key} = {value}");
+            if key.starts_with("llm.") {
+                apply_llm_change_to_running_daemon().await;
+            }
         }
     }
     Ok(())
+}
+
+/// The daemon keeps `[llm]` in memory, so a change written to config.toml
+/// reaches it only when told. Only a daemon already running is asked: a
+/// stopped one reads the file when it starts, and a config command must not
+/// start one. If the daemon can't apply it, say how to.
+async fn apply_llm_change_to_running_daemon() {
+    use mxr_protocol::{Request, Response};
+
+    let Ok(mut client) = crate::ipc_client::IpcClient::connect_to(&mxr_config::socket_path()).await
+    else {
+        return;
+    };
+    match client.request(Request::ReloadLlmConfig).await {
+        Ok(Response::Ok { .. }) => println!("Applied to the running daemon."),
+        Ok(Response::Error { message, .. }) => println!(
+            "Saved, but the running daemon did not apply it ({message}). Restart the daemon to apply: mxr restart"
+        ),
+        Err(_) => println!(
+            "Saved, but the running daemon did not answer. Restart the daemon to apply: mxr restart"
+        ),
+    }
 }
 
 fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result<String> {

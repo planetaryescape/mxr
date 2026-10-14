@@ -22,7 +22,7 @@ impl DraftPolicy {
     pub fn pin(state: &AppState, feature: LlmFeature) -> Self {
         let llm = state.llm.for_feature(feature).pin();
         let share_history = relationship_data_allowed(&state.config_snapshot().llm, &llm);
-        let locality = if llm_endpoint_is_local(llm.base_url()) {
+        let locality = if llm_endpoint_is_local(&llm) {
             AiLocalityData::Local
         } else {
             AiLocalityData::Cloud

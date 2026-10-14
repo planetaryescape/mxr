@@ -46,6 +46,7 @@ mod expert;
 mod freshness;
 mod helpers;
 mod humanizer;
+mod llm_routes;
 mod mail_kind;
 mod mailbox;
 mod messages;
@@ -1009,6 +1010,15 @@ async fn dispatch(
         Request::GetLlmConfig => platform::llm_config(state).await,
         Request::UpdateLlmConfig { config } => {
             platform::update_llm_config(state, config.as_ref().clone()).await
+        }
+        Request::ReloadLlmConfig => platform::reload_llm_config(state).await,
+        Request::SetLlmKey {
+            provider,
+            key,
+            dry_run,
+        } => platform::set_llm_key(state, *provider, key, *dry_run).await,
+        Request::RemoveLlmKey { provider, dry_run } => {
+            platform::remove_llm_key(state, *provider, *dry_run).await
         }
         Request::GetNotificationChimes => notifications::get_notification_chimes(state).await,
         Request::ResolveTime {
@@ -2529,6 +2539,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RemoveAccountAddress { .. }
         | Request::SetPrimaryAccountAddress { .. }
         | Request::UpdateLlmConfig { .. }
+        | Request::ReloadLlmConfig
+        | Request::SetLlmKey { .. }
+        | Request::RemoveLlmKey { .. }
         | Request::UpdateNotificationChimes { .. }
         | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }
@@ -2731,6 +2744,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetLlmStatus => "get_llm_status",
         Request::GetLlmConfig => "get_llm_config",
         Request::UpdateLlmConfig { .. } => "update_llm_config",
+        Request::ReloadLlmConfig => "reload_llm_config",
+        Request::SetLlmKey { .. } => "set_llm_key",
+        Request::RemoveLlmKey { .. } => "remove_llm_key",
         Request::GetNotificationChimes => "get_notification_chimes",
         Request::ResolveTime { .. } => "resolve_time",
         Request::UpdateNotificationChimes { .. } => "update_notification_chimes",

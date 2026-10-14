@@ -714,6 +714,7 @@ mod draft_revisions;
 mod freshness;
 mod html_drafts;
 mod legacy_transport;
+mod llm_routes;
 mod messages;
 mod messages_report;
 mod modes;

@@ -9,6 +9,10 @@
 //! * **OpenRouter** (`https://openrouter.ai/api/v1`)
 //! * **Together AI**, **Mistral La Plateforme**, **Anthropic via proxy**, etc.
 //!
+//! Claude models (`claude-*`) are the exception: they go to Anthropic's own
+//! API first and to OpenRouter when Anthropic isn't working, with the keys
+//! mxr stores, not `llm.base_url`. See [`RoutedProvider`].
+//!
 //! mxr stays local-first by default: the recommended config points at
 //! a local Ollama or LM Studio instance, and no completions ever leave
 //! the user's machine. Cloud endpoints are an explicit opt-in via
@@ -23,7 +27,8 @@
     test,
     expect(
         clippy::unwrap_used,
-        reason = "unit tests unwrap fake LLM responses for direct fixture failures"
+        clippy::panic,
+        reason = "unit tests unwrap fake LLM responses and panic on the wrong variant for direct fixture failures"
     )
 )]
 
@@ -35,20 +40,30 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tokio::time::Instant;
 
+mod anthropic;
 mod background;
 mod demo;
 mod endpoint;
+mod failure;
+mod health;
 mod observations;
+mod route;
+mod routed;
 
 #[cfg(test)]
 mod observation_tests;
 
 use background::{AttemptLedger, BackgroundBreaker};
+use failure::{classify_status, parse_retry_after, AttemptError};
+use health::RouteFailure;
 
 pub use demo::DemoLlmProvider;
 pub use endpoint::is_loopback_endpoint;
+pub use health::{FailureReason, RouteHealth, RouteState, RouteView};
 use observations::CompletionObservations;
 pub use observations::{CompletionObservation, LlmFailureKind};
+pub use route::{is_claude_model, routes_for_model, ApiKey, ApiKeySource, Route, RouteProvider};
+pub use routed::{route_statuses, RouteStatus, RoutedProvider, RoutedProviderConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +93,24 @@ pub enum LlmFeature {
 }
 
 impl LlmFeature {
+    /// Every feature, in the order status lists them.
+    pub const ALL: [Self; 14] = [
+        Self::Summarize,
+        Self::RelationshipSummary,
+        Self::Commitments,
+        Self::DraftAssist,
+        Self::DraftNew,
+        Self::DraftRefine,
+        Self::VoiceMatch,
+        Self::HumanizeRewrite,
+        Self::AnswerCoverage,
+        Self::ArchiveAsk,
+        Self::DecisionLog,
+        Self::Briefing,
+        Self::Expert,
+        Self::DeliveryExtraction,
+    ];
+
     pub const fn key(self) -> &'static str {
         match self {
             Self::Summarize => "summarize",
@@ -238,16 +271,51 @@ pub enum LlmError {
     Other(String),
 }
 
+/// Who is asking, which decides what a provider with several routes does
+/// when all of them are out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallKind {
+    /// A person is waiting: try the soonest-recovering route once rather
+    /// than fail without a request.
+    Foreground,
+    /// Background work with this much time: fail fast without a request
+    /// when nothing is worth trying, and finish within the time.
+    Background { budget: Duration },
+}
+
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError>;
+    /// [`Self::complete`] for a caller of the given kind. Providers with a
+    /// single endpoint have nothing to decide differently.
+    async fn complete_as(
+        &self,
+        req: CompletionRequest,
+        _kind: CallKind,
+    ) -> Result<CompletionResponse, LlmError> {
+        self.complete(req).await
+    }
     fn capabilities(&self) -> LlmCapabilities;
     fn model_name(&self) -> &str;
     /// The HTTP endpoint requests go to, or `None` when the provider answers
-    /// on this machine without one (disabled, demo, tests). Callers use it to
-    /// say where model text came from and what may be sent.
+    /// on this machine without one (disabled, demo, tests), or chooses among
+    /// several (see [`Self::leaves_machine`]). Callers use it to say where
+    /// model text came from and what may be sent.
     fn base_url(&self) -> Option<&str> {
         None
+    }
+    /// Whether requests can leave this machine. This, not [`Self::base_url`],
+    /// decides what may be sent: a provider with no single endpoint (the
+    /// Claude routes) has no URL to inspect and is still a cloud service.
+    fn leaves_machine(&self) -> bool {
+        self.base_url()
+            .is_some_and(|url| !is_loopback_endpoint(url))
+    }
+    /// The provider keeps its own record of which routes work, so the
+    /// runtime's endpoint-wide background breaker steps aside: a refusal or
+    /// an empty answer is no reason to pause every feature.
+    fn tracks_route_health(&self) -> bool {
+        false
     }
     /// False only for the stand-in used when no model is configured, so
     /// callers can tell "no model" from "a model that failed" before
@@ -272,6 +340,9 @@ pub struct LlmRuntime {
     background_breaker: Mutex<BackgroundBreaker>,
     background_attempts: Mutex<AttemptLedger>,
     observations: CompletionObservations,
+    /// What mxr remembers about each provider route. Shared with the routed
+    /// providers built for this runtime.
+    route_health: RouteHealth,
 }
 
 pub struct FeatureLlmRuntime {
@@ -281,7 +352,13 @@ pub struct FeatureLlmRuntime {
 
 impl LlmRuntime {
     pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
+        Self::with_route_health(provider, RouteHealth::default())
+    }
+
+    /// A runtime whose routed providers report into `route_health`.
+    pub fn with_route_health(provider: Arc<dyn LlmProvider>, route_health: RouteHealth) -> Self {
         Self {
+            route_health,
             provider: RwLock::new(provider),
             feature_providers: RwLock::new(HashMap::new()),
             blocked_features: RwLock::new(HashMap::new()),
@@ -290,6 +367,10 @@ impl LlmRuntime {
             background_attempts: Mutex::new(AttemptLedger::default()),
             observations: CompletionObservations::default(),
         }
+    }
+
+    pub fn route_health(&self) -> &RouteHealth {
+        &self.route_health
     }
 
     /// Override the background-work timeout (from `[llm]
@@ -308,8 +389,10 @@ impl LlmRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Also resets the background breaker and attempt ledger: a new
-    /// provider (config reload) deserves a fresh attempt at everything.
+    /// Also resets the background breaker, the attempt ledger and what was
+    /// learned about each route: a new provider (config reload) deserves a
+    /// fresh attempt at everything, and an old verdict (model not found, bad
+    /// base URL) may be exactly what the change fixed.
     pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
         self.observations.replace(|| {
             *self
@@ -318,6 +401,7 @@ impl LlmRuntime {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
             *self.breaker() = BackgroundBreaker::default();
             *self.attempts() = AttemptLedger::default();
+            self.route_health.reset();
         });
     }
 
@@ -376,31 +460,42 @@ impl LlmRuntime {
 
     /// The background budget and breaker around one call: refuse while the
     /// breaker is open, cut the call at the background timeout, and count
-    /// real endpoint failures toward opening it.
-    async fn guard_background(
+    /// real endpoint failures toward opening it. A provider that tracks its
+    /// own route health (`tracks_route_health`) skips the breaker: it already
+    /// fails fast when no route is worth trying, and failures of single
+    /// requests say nothing about the routes.
+    async fn guard_background<F>(
         &self,
         generation: u64,
         feature: Option<LlmFeature>,
-        call: impl std::future::Future<Output = Result<CompletionResponse, LlmError>>,
-    ) -> Result<CompletionResponse, LlmError> {
-        let open_for = self.breaker().remaining(Instant::now());
-        if let Some(remaining) = open_for {
-            return Err(LlmError::CircuitOpen {
-                retry_after_secs: remaining.as_secs().max(1),
-            });
+        tracks_route_health: bool,
+        call: impl FnOnce(Duration) -> F,
+    ) -> Result<CompletionResponse, LlmError>
+    where
+        F: std::future::Future<Output = Result<CompletionResponse, LlmError>>,
+    {
+        if !tracks_route_health {
+            let open_for = self.breaker().remaining(Instant::now());
+            if let Some(remaining) = open_for {
+                return Err(LlmError::CircuitOpen {
+                    retry_after_secs: remaining.as_secs().max(1),
+                });
+            }
         }
         let budget = self.background_timeout();
-        let result = match tokio::time::timeout(budget, call).await {
+        let result = match tokio::time::timeout(budget, call(budget)).await {
             Ok(result) => result,
             Err(_elapsed) => Err(LlmError::Timeout(budget)),
         };
-        match &result {
-            Ok(_) => self.breaker().record_success(),
-            // Not endpoint failures: no request was made.
-            Err(
-                LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
-            ) => {}
-            Err(error) => self.breaker().record_failure(Instant::now(), error),
+        if !tracks_route_health {
+            match &result {
+                Ok(_) => self.breaker().record_success(),
+                // Not endpoint failures: no request was made.
+                Err(
+                    LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
+                ) => {}
+                Err(error) => self.breaker().record_failure(Instant::now(), error),
+            }
         }
         self.observations.record(generation, feature, &result);
         result
@@ -536,10 +631,18 @@ pub struct PinnedLlm {
 
 impl PinnedLlm {
     pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        self.complete_as(req, CallKind::Foreground).await
+    }
+
+    async fn complete_as(
+        &self,
+        req: CompletionRequest,
+        kind: CallKind,
+    ) -> Result<CompletionResponse, LlmError> {
         if let Some(reason) = &self.blocked {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
-        let result = self.provider.complete(req).await;
+        let result = self.provider.complete_as(req, kind).await;
         self.runtime
             .observations
             .record(self.generation, Some(self.feature), &result);
@@ -553,7 +656,12 @@ impl PinnedLlm {
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
         self.runtime
-            .guard_background(self.generation, Some(self.feature), self.complete(req))
+            .guard_background(
+                self.generation,
+                Some(self.feature),
+                self.provider.tracks_route_health(),
+                |budget| self.complete_as(req, CallKind::Background { budget }),
+            )
             .await
     }
 
@@ -574,6 +682,12 @@ impl PinnedLlm {
 
     pub fn base_url(&self) -> Option<&str> {
         self.provider.base_url()
+    }
+
+    /// Whether this request can leave the machine. Decided from the pinned
+    /// provider, like everything else about the request.
+    pub fn leaves_machine(&self) -> bool {
+        self.provider.leaves_machine()
     }
 }
 
@@ -674,11 +788,16 @@ pub struct OpenAiCompatibleConfig {
 }
 
 impl OpenAiCompatibleProvider {
+    /// One request. `api_key` is passed in, not read from `self`, so routed
+    /// callers use the key as it is now; `timeout` bounds this attempt when
+    /// shorter than the client's own.
     async fn send(
         &self,
         req: &CompletionRequest,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
         disable_reasoning: bool,
-    ) -> Result<ChatCompletion, LlmError> {
+    ) -> Result<ChatCompletion, AttemptError> {
         let url = format!("{}/chat/completions", self.base_url);
         let body = ChatCompletionsRequestBody {
             model: &self.model,
@@ -692,19 +811,29 @@ impl OpenAiCompatibleProvider {
         let client = self
             .client
             .as_ref()
-            .map_err(|error| LlmError::Other(error.clone()))?;
+            .map_err(|error| AttemptError::request(LlmError::Other(error.clone())))?;
         let mut request = client.post(&url).json(&body);
-        if let Some(key) = self.api_key.as_deref() {
+        let budget = timeout.map_or(self.request_timeout, |t| t.min(self.request_timeout));
+        if budget < self.request_timeout {
+            request = request.timeout(budget);
+        }
+        if let Some(key) = api_key {
             request = request.bearer_auth(key);
         }
 
         let response = request.send().await.map_err(|e| {
             if e.is_timeout() {
-                LlmError::Timeout(self.request_timeout)
+                AttemptError::timed_out(budget)
             } else if e.is_connect() {
-                LlmError::Unreachable(redact_key(e.to_string(), self.api_key.as_deref()))
+                AttemptError::unreachable(redact_key(e.to_string(), api_key))
             } else {
-                LlmError::Other(redact_key(e.to_string(), self.api_key.as_deref()))
+                AttemptError::route(
+                    LlmError::Other(redact_key(e.to_string(), api_key)),
+                    RouteFailure::Cooling {
+                        reason: FailureReason::plain("unreachable"),
+                        retry_after: None,
+                    },
+                )
             }
         })?;
 
@@ -715,41 +844,68 @@ impl OpenAiCompatibleProvider {
                 .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or("another address");
-            return Err(LlmError::Other(format!(
-                "the LLM endpoint redirected to {location} ({status}); mxr doesn't follow LLM \
-                 redirects, so the prompt was not resent. Set llm.base_url to the final address"
-            )));
+            return Err(AttemptError::route(
+                LlmError::Other(format!(
+                    "the LLM endpoint redirected to {location} ({status}); mxr doesn't follow LLM \
+                     redirects, so the prompt was not resent. Set llm.base_url to the final address"
+                )),
+                RouteFailure::Broken {
+                    reason: FailureReason::plain("unexpected redirect"),
+                },
+            ));
         }
-        if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(LlmError::Unauthorized);
-        }
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after = response
+        let retry_after = parse_retry_after(
+            response
                 .headers()
                 .get(reqwest::header::RETRY_AFTER)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(30);
-            return Err(LlmError::RateLimited {
-                retry_after_secs: retry_after,
+                .and_then(|v| v.to_str().ok()),
+        );
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AttemptError {
+                error: LlmError::Unauthorized,
+                class: classify_status(status.as_u16(), retry_after, ""),
+            });
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(AttemptError {
+                error: LlmError::RateLimited {
+                    retry_after_secs: retry_after.map_or(30, |after| after.as_secs()),
+                },
+                class: classify_status(status.as_u16(), retry_after, ""),
             });
         }
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(LlmError::Other(format!(
-                "{} {}: {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                redact_key(body, self.api_key.as_deref())
-            )));
+            let class = classify_status(status.as_u16(), retry_after, &body);
+            return Err(AttemptError {
+                error: LlmError::Other(format!(
+                    "{} {}: {}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or(""),
+                    redact_key(body, api_key)
+                )),
+                class,
+            });
         }
 
         let raw = response
             .json::<ChatCompletionsResponseBody>()
             .await
-            .map_err(|e| LlmError::Other(format!("response parse error: {e}")))?;
+            .map_err(|e| {
+                AttemptError::route(
+                    LlmError::Other(format!("response parse error: {e}")),
+                    RouteFailure::Cooling {
+                        reason: FailureReason::plain("unreadable reply"),
+                        retry_after: None,
+                    },
+                )
+            })?;
 
-        let choice = raw.choices.into_iter().next().ok_or(LlmError::Empty)?;
+        let choice = raw
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
         let reasoned = [choice.message.reasoning, choice.message.reasoning_content]
             .iter()
             .flatten()
@@ -763,6 +919,38 @@ impl OpenAiCompatibleProvider {
             reasoned,
         })
     }
+
+    /// A full completion, including the one retry with reasoning off for
+    /// thinking models that spend the whole budget on hidden reasoning.
+    pub(crate) async fn attempt(
+        &self,
+        req: &CompletionRequest,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<CompletionResponse, AttemptError> {
+        let reasoning_disabled = self.disable_reasoning.load(Ordering::Relaxed);
+        let first = self.send(req, api_key, timeout, reasoning_disabled).await?;
+        if !first.response.content.trim().is_empty() {
+            return Ok(first.response);
+        }
+        if reasoning_disabled || !first.reasoned {
+            return Err(AttemptError::request(LlmError::Empty));
+        }
+        // Thinking models (gemma4, qwen3, deepseek-r1 via Ollama) can spend the
+        // whole max_tokens budget on reasoning and return empty `content` with
+        // finish_reason "length". Ask once more with reasoning off, and keep it
+        // off only if this endpoint honours the switch.
+        let retry = self.send(req, api_key, timeout, true).await?;
+        if retry.response.content.trim().is_empty() {
+            return Err(AttemptError::request(LlmError::Empty));
+        }
+        self.disable_reasoning.store(true, Ordering::Relaxed);
+        tracing::info!(
+            model = %self.model,
+            "LLM spent its token budget on reasoning; sending reasoning_effort=none from now on"
+        );
+        Ok(retry.response)
+    }
 }
 
 /// One parsed chat-completions choice, before the empty-content check.
@@ -775,28 +963,9 @@ struct ChatCompletion {
 #[async_trait]
 impl LlmProvider for OpenAiCompatibleProvider {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        let reasoning_disabled = self.disable_reasoning.load(Ordering::Relaxed);
-        let first = self.send(&req, reasoning_disabled).await?;
-        if !first.response.content.trim().is_empty() {
-            return Ok(first.response);
-        }
-        if reasoning_disabled || !first.reasoned {
-            return Err(LlmError::Empty);
-        }
-        // Thinking models (gemma4, qwen3, deepseek-r1 via Ollama) can spend the
-        // whole max_tokens budget on reasoning and return empty `content` with
-        // finish_reason "length". Ask once more with reasoning off, and keep it
-        // off only if this endpoint honours the switch.
-        let retry = self.send(&req, true).await?;
-        if retry.response.content.trim().is_empty() {
-            return Err(LlmError::Empty);
-        }
-        self.disable_reasoning.store(true, Ordering::Relaxed);
-        tracing::info!(
-            model = %self.model,
-            "LLM spent its token budget on reasoning; sending reasoning_effort=none from now on"
-        );
-        Ok(retry.response)
+        self.attempt(&req, self.api_key.as_deref(), None)
+            .await
+            .map_err(AttemptError::into_error)
     }
 
     fn capabilities(&self) -> LlmCapabilities {

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.96"
+    "version": "0.6.97"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -14286,6 +14286,134 @@
           "other"
         ]
       },
+      "LlmFeatureStatusData": {
+        "type": "object",
+        "description": "One AI feature's model and where its requests go.",
+        "required": [
+          "feature",
+          "enabled",
+          "model",
+          "routed",
+          "cloud"
+        ],
+        "properties": {
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The endpoint for a model that isn't routed."
+          },
+          "blocked": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Privacy settings keep this feature from its model."
+          },
+          "cloud": {
+            "type": "boolean",
+            "description": "Requests can leave this machine."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature's name, e.g. `summarize`."
+          },
+          "model": {
+            "type": "string"
+          },
+          "routed": {
+            "type": "boolean",
+            "description": "The model goes through Anthropic and/or OpenRouter with stored keys\nrather than `llm.base_url`."
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmRouteStatusData"
+            },
+            "description": "Routes in the order they are tried. Empty when not routed."
+          }
+        }
+      },
+      "LlmKeyChangeData": {
+        "type": "object",
+        "description": "The outcome of storing or removing a provider key.",
+        "required": [
+          "provider",
+          "dry_run",
+          "changed",
+          "after"
+        ],
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/LlmKeyStatusData",
+            "description": "What the key status is after the change (or would be)."
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "The store changed (or would have): a key was written or deleted."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "This was a preview: nothing was stored or removed."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/LlmProviderData"
+          }
+        }
+      },
+      "LlmKeySecret": {
+        "type": "string",
+        "description": "An LLM provider key on its way to the daemon. `Debug` never shows it, so\na logged request can't leak it."
+      },
+      "LlmKeySourceData": {
+        "type": "string",
+        "enum": [
+          "stored",
+          "env"
+        ]
+      },
+      "LlmKeyStatusData": {
+        "type": "object",
+        "description": "Whether a provider has a key and where it comes from.",
+        "required": [
+          "provider",
+          "present",
+          "env_var"
+        ],
+        "properties": {
+          "env_var": {
+            "type": "string",
+            "description": "The environment variable that is read when no key is stored."
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file holding a stored key, or the environment variable name."
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/LlmProviderData"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LlmKeySourceData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "LlmObservationData": {
         "type": "object",
         "required": [
@@ -14529,6 +14657,65 @@
           }
         }
       },
+      "LlmProviderData": {
+        "type": "string",
+        "description": "A hosted provider mxr can hold a key for.",
+        "enum": [
+          "anthropic",
+          "openrouter"
+        ]
+      },
+      "LlmRouteStateData": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "cooling",
+          "broken",
+          "recovering",
+          "probing",
+          "no_key"
+        ]
+      },
+      "LlmRouteStatusData": {
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "state",
+          "next"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "The id this provider knows the model by."
+          },
+          "next": {
+            "type": "boolean",
+            "description": "A request would go here now."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/LlmProviderData"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is out, e.g. `429 rate limited`. Fixed phrases, never text\nfrom the provider's reply."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a cooling or broken route may be tried again."
+          },
+          "state": {
+            "$ref": "#/components/schemas/LlmRouteStateData"
+          }
+        }
+      },
       "LlmStatusSnapshot": {
         "type": "object",
         "required": [
@@ -14571,6 +14758,20 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmFeatureStatusData"
+            },
+            "description": "Each AI feature's model, providers and their health."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmKeyStatusData"
+            },
+            "description": "Which providers have a key. Presence only, never the key."
           },
           "model": {
             "type": "string"
@@ -22874,6 +23075,69 @@
           },
           {
             "type": "object",
+            "description": "Re-read `[llm]` from config.toml and apply it to the running daemon,\nfor edits made outside it (`mxr config set llm.*`, a text editor).",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ReloadLlmConfig"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Store (or replace) a provider key, written by the daemon alone. With\n`dry_run` nothing is stored; the reply says what would change.",
+            "required": [
+              "provider",
+              "key",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetLlmKey"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "key": {
+                "$ref": "#/components/schemas/LlmKeySecret"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/LlmProviderData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Delete the stored key for a provider. With `dry_run` nothing is\nremoved; the reply says what would change.",
+            "required": [
+              "provider",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RemoveLlmKey"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/LlmProviderData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "cmd"
             ],
@@ -30920,6 +31184,24 @@
                 "type": "string",
                 "enum": [
                   "LlmConfig"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/LlmKeyChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "LlmKeyChange"
                 ]
               }
             }

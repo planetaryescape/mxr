@@ -789,6 +789,9 @@ pub fn map_request(
         | Request::RemoveAccountAddress { .. }
         | Request::SetPrimaryAccountAddress { .. }
         | Request::UpdateLlmConfig { .. }
+        | Request::ReloadLlmConfig
+        | Request::SetLlmKey { .. }
+        | Request::RemoveLlmKey { .. }
         | Request::UpdateNotificationChimes { .. }
         | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }

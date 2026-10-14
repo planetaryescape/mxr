@@ -93,6 +93,9 @@ pub struct ReadingHighlightRow {
     pub origin: String,
     /// The highlight's id where it came from; set for `marginalia`.
     pub origin_id: Option<String>,
+    /// The paragraph it was made in (`087_reading_highlight_paragraph.sql`);
+    /// `None` for older highlights, which mark the first match.
+    pub paragraph: Option<u32>,
 }
 
 /// A Reading item sent to Marginalia (`086_reading_marginalia.sql`).
@@ -114,6 +117,7 @@ pub struct ReadingMarginaliaRow {
 pub struct MarginaliaHighlightIn {
     pub origin_id: String,
     pub quote: String,
+    pub paragraph: Option<u32>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -239,6 +243,9 @@ fn highlight_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingHighlightR
         created_at: decode_timestamp(row.try_get("created_at")?)?,
         origin: row.try_get("origin")?,
         origin_id: row.try_get("origin_id")?,
+        paragraph: row
+            .try_get::<Option<i64>, _>("paragraph_index")?
+            .and_then(|p| u32::try_from(p).ok()),
     })
 }
 
@@ -654,8 +661,9 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO reading_highlights
-                 (id, account_id, message_id, idx, view, quote, note, created_at, origin, origin_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 (id, account_id, message_id, idx, view, quote, note, created_at, origin, origin_id,
+                  paragraph_index)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .bind(&row.id)
         .bind(row.account_id.as_str())
@@ -667,6 +675,7 @@ impl super::Store {
         .bind(row.created_at.timestamp())
         .bind(&row.origin)
         .bind(&row.origin_id)
+        .bind(row.paragraph.map(i64::from))
         .execute(self.writer())
         .await?;
         Ok(())
@@ -778,8 +787,8 @@ impl super::Store {
                 sqlx::query(
                     "INSERT INTO reading_highlights
                          (id, account_id, message_id, idx, view, quote, note, created_at,
-                          origin, origin_id)
-                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+                          origin, origin_id, paragraph_index)
+                     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
                      WHERE EXISTS (SELECT 1 FROM messages WHERE id = ?3)
                      ON CONFLICT(id) DO NOTHING",
                 )
@@ -793,6 +802,7 @@ impl super::Store {
                 .bind(row.created_at.timestamp())
                 .bind(&row.origin)
                 .bind(&row.origin_id)
+                .bind(row.paragraph.map(i64::from))
                 .execute(&mut *tx)
                 .await?
                 .rows_affected()
@@ -927,8 +937,8 @@ impl super::Store {
         synced_at: DateTime<Utc>,
     ) -> Result<MarginaliaMirror, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let existing: Vec<(String, String, String)> = sqlx::query(
-            "SELECT id, origin_id, quote FROM reading_highlights
+        let existing: Vec<(String, String, String, Option<i64>)> = sqlx::query(
+            "SELECT id, origin_id, quote, paragraph_index FROM reading_highlights
              WHERE message_id = ? AND idx = ? AND origin = 'marginalia'",
         )
         .bind(sent.message_id.as_str())
@@ -942,11 +952,12 @@ impl super::Store {
                 row.try_get::<Option<String>, _>("origin_id")?
                     .unwrap_or_default(),
                 row.try_get("quote")?,
+                row.try_get("paragraph_index")?,
             ))
         })
         .collect::<Result<_, sqlx::Error>>()?;
         let mut mirror = MarginaliaMirror::default();
-        for (id, origin_id, _) in &existing {
+        for (id, origin_id, ..) in &existing {
             if !highlights.iter().any(|h| &h.origin_id == origin_id) {
                 sqlx::query("DELETE FROM reading_highlights WHERE id = ?")
                     .bind(id)
@@ -958,22 +969,28 @@ impl super::Store {
         for highlight in highlights {
             match existing
                 .iter()
-                .find(|(_, origin_id, _)| *origin_id == highlight.origin_id)
+                .find(|(_, origin_id, ..)| *origin_id == highlight.origin_id)
             {
-                Some((id, _, quote)) if *quote != highlight.quote => {
-                    sqlx::query("UPDATE reading_highlights SET quote = ? WHERE id = ?")
-                        .bind(&highlight.quote)
-                        .bind(id)
-                        .execute(&mut *tx)
-                        .await?;
+                Some((id, _, quote, paragraph))
+                    if *quote != highlight.quote
+                        || *paragraph != highlight.paragraph.map(i64::from) =>
+                {
+                    sqlx::query(
+                        "UPDATE reading_highlights SET quote = ?, paragraph_index = ? WHERE id = ?",
+                    )
+                    .bind(&highlight.quote)
+                    .bind(highlight.paragraph.map(i64::from))
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 Some(_) => {}
                 None => {
                     sqlx::query(
                         "INSERT INTO reading_highlights
                              (id, account_id, message_id, idx, view, quote, note, created_at,
-                              origin, origin_id)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 'marginalia', ?8)",
+                              origin, origin_id, paragraph_index)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 'marginalia', ?8, ?9)",
                     )
                     .bind(uuid::Uuid::now_v7().to_string())
                     .bind(sent.account_id.as_str())
@@ -983,6 +1000,7 @@ impl super::Store {
                     .bind(&highlight.quote)
                     .bind(highlight.created_at.timestamp())
                     .bind(&highlight.origin_id)
+                    .bind(highlight.paragraph.map(i64::from))
                     .execute(&mut *tx)
                     .await?;
                     mirror.added += 1;

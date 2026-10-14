@@ -150,6 +150,7 @@ export async function highlightSelection(
   itemKey: string,
   view: "issue" | "article",
   note?: string,
+  paragraph?: number | null,
 ): Promise<boolean> {
   const payload = highlightPayload(selection, itemKey, view);
   if (!payload) {
@@ -157,7 +158,7 @@ export async function highlightSelection(
     return false;
   }
   try {
-    await saveHighlight({ ...payload, note: note?.trim() || undefined });
+    await saveHighlight({ ...payload, note: note?.trim() || undefined, paragraph });
     toast.success("Highlight saved", {
       description: "Search finds it, and mxr reading export --markdown lists it.",
     });

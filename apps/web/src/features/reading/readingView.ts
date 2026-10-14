@@ -167,6 +167,41 @@ export function highlightMatching<H extends { quote: string }>(
   return highlights.find((h) => squash(h.quote) === wanted);
 }
 
+/** A saved highlight as the reader draws it: its words and, if known, its paragraph. */
+export interface AnchoredMark {
+  quote: string;
+  paragraph?: number | null;
+}
+
+/** A quote to draw, and whether only its first match in the paragraph is. */
+export interface ParagraphMark {
+  quote: string;
+  once: boolean;
+}
+
+/**
+ * The quotes to draw in paragraph `index`. A highlight saved with a
+ * paragraph is drawn there, at its first match, and nowhere else. One saved
+ * without (older ones, or Marginalia's without one) is drawn wherever its
+ * words appear, as before; so is one whose paragraph no longer holds its
+ * words, rather than vanishing.
+ */
+export function marksForParagraph(
+  paragraphs: readonly { text: string }[],
+  marks: readonly AnchoredMark[],
+  index: number,
+): ParagraphMark[] {
+  return marks.flatMap(({ quote, paragraph }): ParagraphMark[] => {
+    if (!quote) return [];
+    const anchored =
+      typeof paragraph === "number" && paragraphs[paragraph]?.text.includes(quote)
+        ? paragraph
+        : null;
+    if (anchored === null) return [{ quote, once: false }];
+    return anchored === index ? [{ quote, once: true }] : [];
+  });
+}
+
 /** Highlights made elsewhere (Marginalia) are mirrored here, so mxr only shows them. */
 export const isOwnHighlight = (h: { origin?: string | null }) => (h.origin ?? "mxr") === "mxr";
 

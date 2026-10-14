@@ -392,6 +392,7 @@ async fn read_back(
                     .map(|h| MarginaliaHighlightIn {
                         origin_id: h.id,
                         quote: h.text,
+                        paragraph: h.paragraph_index,
                         created_at: DateTime::from_timestamp_millis(h.created_at).unwrap_or(now),
                     })
                     .collect();

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 
 import type { ReadingHighlight } from "./api";
+import { paragraphOfRangeStart } from "./paragraphAnchor";
 import { highlightMatching, isOwnHighlight } from "./readingView";
 import { editHighlightNote, highlightSelection, removeHighlight } from "./readingVerbs";
 
@@ -12,6 +13,8 @@ interface Picked {
   text: string;
   /** Where the selection is on screen. */
   rect: DOMRect;
+  /** The paragraph it starts in, for anchoring the highlight. */
+  paragraph: number | null;
 }
 
 /**
@@ -34,7 +37,11 @@ function useSelectionIn(containerRef: RefObject<HTMLElement | null>, paused: boo
       setPicked(null);
       return;
     }
-    setPicked({ text, rect: range.getBoundingClientRect() });
+    setPicked({
+      text,
+      rect: range.getBoundingClientRect(),
+      paragraph: paragraphOfRangeStart(range),
+    });
   }, [containerRef]);
   useEffect(() => {
     // While a note is typed the textarea takes the selection; the toolbar keeps the picked text.
@@ -111,7 +118,13 @@ export function HighlightToolbar({
         <NoteComposer
           onCancel={() => setComposing(null)}
           onSave={async (note) => {
-            const saved = await highlightSelection(composing.text, itemKey, view, note);
+            const saved = await highlightSelection(
+              composing.text,
+              itemKey,
+              view,
+              note,
+              composing.paragraph,
+            );
             if (saved) {
               setComposing(null);
               window.getSelection()?.removeAllRanges();
@@ -125,7 +138,9 @@ export function HighlightToolbar({
             variant="ghost"
             data-testid="toolbar-highlight"
             onClick={async () => {
-              if (await highlightSelection(target.text, itemKey, view)) {
+              if (
+                await highlightSelection(target.text, itemKey, view, undefined, target.paragraph)
+              ) {
                 window.getSelection()?.removeAllRanges();
               }
             }}

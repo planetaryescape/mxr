@@ -3101,6 +3101,10 @@ pub enum ReadingAction {
         /// Taken from the fetched article rather than the issue.
         #[arg(long)]
         article: bool,
+        /// The paragraph (counting from 0) the passage is in, so the
+        /// highlight marks that one and not the first match.
+        #[arg(long)]
+        paragraph: Option<u32>,
     },
     /// Change the note on a highlight you made, by its id (shown by
     /// `reading open` and in `reading export --format json`). A blank TEXT

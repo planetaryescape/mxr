@@ -184,8 +184,11 @@ issue as opened.
 In the web reader, select text and a small toolbar appears over the
 selection: **Highlight**, or **Highlight with note**. `h` still highlights
 the selection without the toolbar. The TUI saves the paragraph at the top of
-the reader with `h`. Saved highlights are marked on the article wherever their
-text appears, and listed under the article with their notes.
+the reader with `h`. A highlight is marked on the passage you selected: the
+reader remembers which paragraph you were in, so selecting the second of two
+identical phrases marks the second. Highlights saved before that carry no
+paragraph and are marked wherever their text first appears. Highlights are
+listed under the article with their notes.
 
 To change one, click it in the article or use its row in the list: edit
 its note (a blank note clears it) or remove it. Removing a highlight, or
@@ -203,6 +206,7 @@ that `reading open` and `reading export --format json` show names a highlight:
 
 ```bash
 mxr reading highlight ITEM "A delete is the absence of a row" --note "for the talk"
+mxr reading highlight ITEM "the same words" --paragraph 4   # the paragraph to mark, counting from 0
 mxr reading note HIGHLIGHT_ID "for the essay"          # a blank note clears it
 mxr reading unhighlight HIGHLIGHT_ID --dry-run          # names what it would remove
 mxr reading unhighlight HIGHLIGHT_ID                    # then `mxr undo ID` restores it

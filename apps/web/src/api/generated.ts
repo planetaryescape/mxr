@@ -7855,6 +7855,11 @@ export interface components {
         ReadingHighlightBody: {
             item_key: string;
             note?: string | null;
+            /**
+             * Format: int32
+             * @description The paragraph (from 0) it was selected in; absent marks the first match.
+             */
+            paragraph?: number | null;
             quote: string;
             /** @description `issue` (default) or `article`. */
             view?: string | null;
@@ -7887,6 +7892,12 @@ export interface components {
             note?: string | null;
             /** @description `mxr`, or `marginalia` for one made there and read back. */
             origin?: string;
+            /**
+             * Format: int32
+             * @description The paragraph it was made in; absent for older highlights, which
+             *     mark the first match.
+             */
+            paragraph?: number | null;
             quote: string;
             source: string;
             /** @description The item's title and source, as of saving. */
@@ -10838,6 +10849,13 @@ export interface components {
                   cmd: "SaveHighlight";
                   item_key: string;
                   note?: string | null;
+                  /**
+                   * Format: int32
+                   * @description The paragraph it was selected in (0-based, in the view's own
+                   *     paragraph list), so it marks that passage and not the first
+                   *     match. Absent: the first match.
+                   */
+                  paragraph?: number | null;
                   quote: string;
                   /** @description `issue` (default) or `article`. */
                   view?: string | null;

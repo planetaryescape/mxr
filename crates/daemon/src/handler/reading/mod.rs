@@ -762,6 +762,7 @@ pub(super) async fn handle(
             quote,
             note,
             view,
+            paragraph,
         } => {
             Box::pin(save_highlight(
                 state,
@@ -769,6 +770,7 @@ pub(super) async fn handle(
                 quote,
                 note.as_deref(),
                 view.as_deref(),
+                *paragraph,
             ))
             .await
         }

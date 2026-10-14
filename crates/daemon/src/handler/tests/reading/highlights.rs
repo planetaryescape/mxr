@@ -17,6 +17,7 @@ async fn save(fx: &Fixture, item_key: &str, note: Option<&str>) -> String {
             quote: QUOTE.to_string(),
             note: note.map(str::to_string),
             view: None,
+            paragraph: None,
         },
     )
     .await
@@ -79,6 +80,7 @@ async fn marginalia_highlight(fx: &Fixture, message: &MessageId) -> String {
         created_at: Utc::now(),
         origin: "marginalia".into(),
         origin_id: Some("h1".into()),
+        paragraph: None,
     };
     fx.state
         .store
@@ -348,4 +350,40 @@ async fn a_scoped_agent_cannot_change_or_undo_another_accounts_highlight() {
     };
     assert_eq!(stored(&fx, &my_id).await, None);
     assert!(change.mutation_id.is_some());
+}
+
+#[tokio::test]
+async fn a_highlight_saved_with_a_paragraph_returns_and_keeps_it() {
+    let fx = Fixture::new().await;
+    let (message, _) = issue(&fx, WEEKLY, "Tombstones", &essay(200), Utc::now()).await;
+    let key = format!("{message}:0");
+    let save_in = |paragraph| Request::SaveHighlight {
+        item_key: key.clone(),
+        quote: QUOTE.to_string(),
+        note: None,
+        view: None,
+        paragraph,
+    };
+
+    let ResponseData::ReadingHighlight { highlight } = request(&fx, save_in(Some(2))).await else {
+        panic!("highlight");
+    };
+    assert_eq!(highlight.paragraph, Some(2));
+    assert_eq!(
+        stored(&fx, &highlight.id).await.expect("saved").paragraph,
+        Some(2)
+    );
+
+    let ResponseData::ReadingHighlight { highlight } = request(&fx, save_in(None)).await else {
+        panic!("highlight");
+    };
+    assert_eq!(
+        highlight.paragraph, None,
+        "no anchor keeps the first-match behaviour"
+    );
+    let wire = serde_json::to_value(&highlight).expect("json");
+    assert!(
+        wire.get("paragraph").is_none(),
+        "an unanchored highlight omits the field"
+    );
 }

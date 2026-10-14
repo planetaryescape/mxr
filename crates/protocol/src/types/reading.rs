@@ -311,6 +311,10 @@ pub struct ReadingHighlightData {
     /// `mxr`, or `marginalia` for one made there and read back.
     #[serde(default = "mxr_origin")]
     pub origin: String,
+    /// The paragraph it was made in; absent for older highlights, which
+    /// mark the first match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<u32>,
     /// The item's title and source, as of saving.
     pub title: String,
     pub source: String,

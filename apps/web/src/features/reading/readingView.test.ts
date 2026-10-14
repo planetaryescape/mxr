@@ -13,6 +13,7 @@ import {
   isOwnHighlight,
   LINKS_SHOWN,
   letGoAllPlan,
+  marksForParagraph,
   minutesLeft,
   scrollProgress,
   shownLinks,
@@ -143,6 +144,39 @@ describe("h", () => {
     });
     expect(highlightPayload("   \n ", "m:0", "article")).toBeNull();
     expect(highlightPayload("x".repeat(5000), "m:0", "article")?.quote).toHaveLength(4000);
+  });
+});
+
+describe("marksForParagraph", () => {
+  const paragraphs = [{ text: "Same words." }, { text: "Other. Same words." }];
+
+  test("an anchored highlight is drawn once, in its own paragraph only", () => {
+    const marks = [{ quote: "Same words", paragraph: 1 }];
+    expect(marksForParagraph(paragraphs, marks, 0)).toEqual([]);
+    expect(marksForParagraph(paragraphs, marks, 1)).toEqual([{ quote: "Same words", once: true }]);
+  });
+
+  test("a highlight without a paragraph keeps drawing everywhere its words appear", () => {
+    for (const paragraph of [undefined, null]) {
+      const marks = [{ quote: "Same words", paragraph }];
+      expect(marksForParagraph(paragraphs, marks, 0)).toEqual([
+        { quote: "Same words", once: false },
+      ]);
+      expect(marksForParagraph(paragraphs, marks, 1)).toEqual([
+        { quote: "Same words", once: false },
+      ]);
+    }
+  });
+
+  test("an anchor that no longer holds the words falls back to drawing them wherever they are", () => {
+    for (const paragraph of [0, 9]) {
+      expect(marksForParagraph(paragraphs, [{ quote: "Other", paragraph }], 1)).toEqual([
+        { quote: "Other", once: paragraph === 1 },
+      ]);
+    }
+    expect(marksForParagraph(paragraphs, [{ quote: "Other", paragraph: 0 }], 1)).toEqual([
+      { quote: "Other", once: false },
+    ]);
   });
 });
 

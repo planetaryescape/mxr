@@ -2395,6 +2395,11 @@ pub enum Request {
         /// `issue` (default) or `article`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         view: Option<String>,
+        /// The paragraph it was selected in (0-based, in the view's own
+        /// paragraph list), so it marks that passage and not the first
+        /// match. Absent: the first match.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        paragraph: Option<u32>,
     },
     /// Change a highlight's note. An empty note (after trimming) clears it;
     /// the field is required, so a missing or null note is an error rather

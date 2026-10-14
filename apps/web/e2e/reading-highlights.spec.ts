@@ -9,7 +9,9 @@ interface Edition {
   bands: { items: { item_key: string }[] }[];
 }
 interface Detail {
-  item: { highlights: { id: string; quote: string; note?: string | null }[] };
+  item: {
+    highlights: { id: string; quote: string; note?: string | null; paragraph?: number | null }[];
+  };
 }
 
 async function firstItemKey(page: Page): Promise<string> {
@@ -99,6 +101,52 @@ test("select, highlight with a note, edit it, remove it, and undo brings it back
   await page.keyboard.press("u");
   await expect.poll(async () => (await highlightsOf(page, key)).length).toBe(before + 1);
   expect((await highlightsOf(page, key)).at(-1)?.id).toBe(saved.id);
+});
+
+/**
+ * Selects the start of the last text paragraph and returns its index as the
+ * reader numbers it (`data-paragraph` in the plain text, one-based
+ * `data-para` in the HTML article).
+ */
+async function selectInLastParagraph(page: Page): Promise<{ text: string; index: number }> {
+  return page.getByTestId("reader-text").evaluate((root) => {
+    const tagged = [...root.querySelectorAll<HTMLElement>("[data-paragraph], [data-para]")].filter(
+      (el) => (el.textContent ?? "").trim().length > 20,
+    );
+    const last = tagged.at(-1);
+    if (!last) throw new Error("no paragraph");
+    const index =
+      last.dataset.paragraph !== undefined
+        ? Number(last.dataset.paragraph)
+        : Number(last.dataset.para) - 1;
+    const walker = document.createTreeWalker(last, NodeFilter.SHOW_TEXT);
+    const node = walker.nextNode() as Text;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, Math.min(node.data.length, 20));
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return { text: selection.toString(), index };
+  });
+}
+
+test("a highlight remembers the paragraph it was selected in", async ({ page }) => {
+  const key = await firstItemKey(page);
+  await openApp(page, `/reading/item/${encodeURIComponent(key)}`);
+  await expect(page.getByTestId("reader-text")).toBeVisible();
+  const before = (await highlightsOf(page, key)).length;
+
+  const { index } = await selectInLastParagraph(page);
+  await page.getByTestId("toolbar-highlight").click();
+  await expect.poll(async () => (await highlightsOf(page, key)).length).toBe(before + 1);
+  expect((await highlightsOf(page, key)).at(-1)?.paragraph).toBe(index);
+
+  // Reloaded, the mark is drawn once, in the paragraph that was selected.
+  await page.reload();
+  await expect(page.getByTestId("reader-text")).toBeVisible();
+  const saved = (await highlightsOf(page, key)).at(-1)!;
+  expect(saved.paragraph).toBe(index);
 });
 
 test("a selection in the highlights list does not show the toolbar", async ({ page }) => {

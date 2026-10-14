@@ -91,6 +91,7 @@ pub async fn run(
             quote,
             note,
             article,
+            paragraph,
         } => {
             let highlight = expect_data!(
                 client
@@ -99,6 +100,7 @@ pub async fn run(
                         quote,
                         note,
                         view: Some(if article { "article" } else { "issue" }.to_string()),
+                        paragraph,
                     })
                     .await?,
                 ReadingHighlight { highlight }
@@ -912,6 +914,7 @@ mod tests {
                 quote: "A delete is the absence of a row".into(),
                 note: None,
                 origin: "mxr".into(),
+                paragraph: None,
                 title: "Tombstones".into(),
                 source: "Weekly".into(),
                 url: None,

@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 86);
+    assert_eq!(manifest.schema_version, 87);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -305,7 +305,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     .await
     .unwrap();
     sqlx::raw_sql(
-        "DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
+        "DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
     )
     .execute(&mut db)
     .await
@@ -547,7 +547,7 @@ async fn exact_schema_82_backup_remains_restorable() {
     )
     .await
     .unwrap();
-    sqlx::raw_sql("DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version>=83;").execute(&mut db).await.unwrap();
+    sqlx::raw_sql("DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version>=83;").execute(&mut db).await.unwrap();
     db.close().await.unwrap();
     manifest.schema_version = 82;
     *manifest
@@ -591,7 +591,7 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
         .await
         .unwrap();
         // Rebuild authority from the immutable migration, without today's added columns.
-        sqlx::raw_sql("DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;")
+        sqlx::raw_sql("DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;")
         .execute(&mut db).await.unwrap();
         sqlx::raw_sql(include_str!("../../../migrations/083_remote_authority.sql"))
             .execute(&mut db)
@@ -672,6 +672,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         .unwrap();
         sqlx::raw_sql(
             "DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
+             ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
              ALTER TABLE reading_highlights DROP COLUMN origin_id;
              ALTER TABLE reading_highlights DROP COLUMN origin;",
         )
@@ -695,7 +696,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 86, "source {source_version}");
+        assert_eq!(manifest.schema_version, 87, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -728,8 +729,8 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    // Written at 86: the bundle keeps the Marginalia schema and inspects as-is.
-    assert_eq!(manifest.schema_version, 86);
+    // Written at 87: the bundle keeps the Marginalia and paragraph schema and inspects as-is.
+    assert_eq!(manifest.schema_version, 87);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -739,6 +740,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     .unwrap();
     sqlx::raw_sql(
         "DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
+         ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
          ALTER TABLE reading_highlights DROP COLUMN origin_id;
          ALTER TABLE reading_highlights DROP COLUMN origin;
          DELETE FROM schema_migrations WHERE version>=86;",
@@ -768,6 +770,56 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .unwrap();
     assert!(inspect(stage.path()).await.is_err());
+    manifest.schema_version = 88;
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert!(inspect(stage.path()).await.is_err());
+}
+
+#[tokio::test]
+async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_reverted() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 87);
+
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
+         DELETE FROM schema_migrations WHERE version>=87;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+    manifest.schema_version = 86;
+    *manifest
+        .files
+        .iter_mut()
+        .find(|f| f.path == "mxr.db")
+        .unwrap() = file_metadata(stage.path(), "mxr.db").unwrap();
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    inspect(stage.path()).await.unwrap();
+
+    // A bundle claiming 87 but missing the column must not pass.
     manifest.schema_version = 87;
     std::fs::write(
         stage.path().join("manifest.json"),

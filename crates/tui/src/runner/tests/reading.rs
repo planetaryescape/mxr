@@ -389,6 +389,7 @@ fn highlight(id: &str, origin: &str, note: Option<&str>) -> mxr_protocol::Readin
         quote: format!("quote {id}"),
         note: note.map(str::to_string),
         origin: origin.into(),
+        paragraph: None,
         title: item.title,
         source: item.source,
         url: None,

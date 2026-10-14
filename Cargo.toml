@@ -121,6 +121,7 @@ web-ui = ["mxr-web/web-ui"]
 resolver = "2"
 members = [
     ".",
+    "crates/assistant",
     "crates/client",
     "crates/compose",
     "crates/config",
@@ -209,6 +210,7 @@ mxr-updates = { path = "crates/updates", version = "0.6.0" }
 mxr-export = { path = "crates/export", version = "0.6.0" }
 mxr-keychain = { path = "crates/keychain", version = "0.6.0" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.6.0" }
+mxr-assistant = { path = "crates/assistant", version = "0.6.0" }
 mxr-llm = { path = "crates/llm", version = "0.6.0" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.6.0" }
 mxr-mcp = { path = "crates/mcp", version = "0.6.0" }
@@ -385,6 +387,7 @@ mxr-updates = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }
+mxr-assistant = { workspace = true }
 mxr-llm = { workspace = true }
 mxr-mail-parse = { workspace = true }
 mxr-mcp = { workspace = true }

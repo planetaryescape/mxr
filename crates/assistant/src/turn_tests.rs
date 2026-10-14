@@ -1,0 +1,432 @@
+use super::*;
+use async_trait::async_trait;
+use mxr_llm::{LlmError, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse, ToolSpec};
+use serde_json::{json, Value};
+use std::collections::{HashMap, VecDeque};
+use std::sync::Mutex;
+use tokio_util::sync::CancellationToken;
+
+/// Replies in order and records every request it was sent.
+struct ScriptedModel {
+    replies: Mutex<VecDeque<ToolChatResponse>>,
+    requests: Mutex<Vec<ToolChatRequest>>,
+}
+
+impl ScriptedModel {
+    fn new(replies: Vec<ToolChatResponse>) -> Self {
+        Self {
+            replies: Mutex::new(replies.into()),
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+    fn requests(&self) -> Vec<ToolChatRequest> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl ChatModel for ScriptedModel {
+    async fn chat(&self, request: ToolChatRequest) -> Result<ToolChatResponse, LlmError> {
+        self.requests.lock().unwrap().push(request);
+        self.replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .ok_or_else(|| LlmError::Other("script ran out".into()))
+    }
+}
+
+struct RecordingHost {
+    tools: Vec<ToolSpec>,
+    calls: Mutex<Vec<(String, Value)>>,
+}
+
+impl RecordingHost {
+    fn new() -> Self {
+        let tool = |name: &str| ToolSpec {
+            name: name.into(),
+            description: name.into(),
+            input_schema: json!({"type": "object"}),
+        };
+        Self {
+            tools: vec![
+                tool("mxr_search"),
+                tool("mxr_mutate"),
+                tool("mxr_brand_new"),
+            ],
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+    fn calls(&self) -> Vec<(String, Value)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl ToolHost for RecordingHost {
+    fn tools(&self) -> &[ToolSpec] {
+        &self.tools
+    }
+    async fn call(&self, name: &str, arguments: Value) -> ToolOutput {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((name.to_string(), arguments.clone()));
+        ToolOutput {
+            content: json!({"tool": name, "ok": true}).to_string(),
+            is_error: false,
+        }
+    }
+}
+
+#[derive(Default)]
+struct MemorySink {
+    appended: Mutex<Vec<ToolChatMessage>>,
+}
+
+#[async_trait]
+impl TurnSink for MemorySink {
+    async fn append(&self, message: &ToolChatMessage, _meta: &MessageMeta) -> Result<(), String> {
+        self.appended.lock().unwrap().push(message.clone());
+        Ok(())
+    }
+    async fn progress(&self, _progress: Progress) {}
+}
+
+fn calls(calls: &[(&str, &str, Value)]) -> ToolChatResponse {
+    ToolChatResponse {
+        text: String::new(),
+        tool_calls: calls
+            .iter()
+            .map(|(id, name, arguments)| ToolCall {
+                id: (*id).into(),
+                name: (*name).into(),
+                arguments: arguments.clone(),
+            })
+            .collect(),
+        model: "m".into(),
+        finish_reason: None,
+        usage: None,
+        provider_turn: None,
+    }
+}
+
+fn answer(text: &str) -> ToolChatResponse {
+    ToolChatResponse {
+        text: text.into(),
+        ..calls(&[])
+    }
+}
+
+fn agent<'a>(model: &'a ScriptedModel, host: &'a RecordingHost, sink: &'a MemorySink) -> Agent<'a> {
+    Agent {
+        model,
+        host,
+        sink,
+        cancel: CancellationToken::new(),
+        limits: Limits::default(),
+    }
+}
+
+fn tool_result(history: &[ToolChatMessage], id: &str) -> (String, bool) {
+    history
+        .iter()
+        .find_map(|message| match message {
+            ToolChatMessage::Tool {
+                call_id,
+                content,
+                is_error,
+            } if call_id == id => Some((content.clone(), *is_error)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no result for {id}"))
+}
+
+#[tokio::test]
+async fn reads_run_at_once_and_their_results_are_fenced() {
+    let model = ScriptedModel::new(vec![
+        calls(&[(
+            "c1",
+            "mxr_search",
+            json!({"query": "bank", "reason": "Find bank mail."}),
+        )]),
+        answer("You have one."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let outcome = agent(&model, &host, &sink)
+        .send(&mut history, &[], "any bank mail?".into())
+        .await;
+    assert_eq!(outcome, TurnOutcome::Finished);
+    assert_eq!(
+        host.calls(),
+        vec![("mxr_search".into(), json!({"query": "bank"}))]
+    );
+    let (content, _) = tool_result(&history, "c1");
+    assert!(content.starts_with(mxr_llm::UNTRUSTED_MAIL_BEGIN));
+    // The tool list the model saw includes ask_user and requires a reason.
+    let tools = &model.requests()[0].tools;
+    assert!(tools.iter().any(|tool| tool.name == ASK_USER_TOOL));
+    assert!(tools.iter().all(|tool| tool.input_schema["required"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("reason"))));
+    assert_eq!(*sink.appended.lock().unwrap(), history);
+}
+
+#[tokio::test]
+async fn a_change_waits_with_its_preview_and_approval_runs_the_stored_arguments() {
+    let commit = json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": true, "reason": "Archive them."});
+    let model = ScriptedModel::new(vec![
+        calls(&[("c1", "mxr_mutate", commit)]),
+        answer("Archived 2."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = agent(&model, &host, &sink);
+    let outcome = assistant
+        .send(&mut history, &[], "archive those".into())
+        .await;
+    let TurnOutcome::AwaitingUser(pending) = outcome else {
+        panic!("expected a wait, got {outcome:?}");
+    };
+    // Only the preview ran: the same call with confirm=false.
+    assert_eq!(
+        host.calls(),
+        vec![(
+            "mxr_mutate".into(),
+            json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": false})
+        )]
+    );
+    let PendingKind::Approval {
+        preview, reason, ..
+    } = &pending[0].kind
+    else {
+        panic!("expected an approval");
+    };
+    assert_eq!(reason, "Archive them.");
+    assert!(preview.is_some());
+
+    let outcome = assistant
+        .resume(
+            &mut history,
+            pending,
+            HashMap::from([("c1".to_string(), Decision::Approve)]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome, TurnOutcome::Finished);
+    assert_eq!(
+        host.calls()[1],
+        (
+            "mxr_mutate".into(),
+            json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": true})
+        )
+    );
+    assert!(tool_result(&history, "c1")
+        .0
+        .starts_with("The user approved this call."));
+}
+
+#[tokio::test]
+async fn a_rejected_change_never_runs_and_the_model_hears_why() {
+    let model = ScriptedModel::new(vec![
+        calls(&[(
+            "c1",
+            "mxr_mutate",
+            json!({"action": "trash", "message_ids": ["m1"], "confirm": true}),
+        )]),
+        answer("Okay, left it."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = agent(&model, &host, &sink);
+    let TurnOutcome::AwaitingUser(pending) =
+        assistant.send(&mut history, &[], "trash it".into()).await
+    else {
+        panic!("expected a wait");
+    };
+    let decision = Decision::Reject {
+        reason: Some("archive instead".into()),
+    };
+    assistant
+        .resume(
+            &mut history,
+            pending,
+            HashMap::from([("c1".into(), decision)]),
+        )
+        .await
+        .unwrap();
+    assert!(host
+        .calls()
+        .iter()
+        .all(|(_, args)| args["confirm"] != json!(true)));
+    let (content, is_error) = tool_result(&history, "c1");
+    assert!(is_error);
+    assert!(content.contains("archive instead"));
+}
+
+#[tokio::test]
+async fn writing_instead_of_answering_declines_what_was_waiting() {
+    let model = ScriptedModel::new(vec![
+        calls(&[("c1", "mxr_brand_new", json!({}))]),
+        answer("Sure."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = agent(&model, &host, &sink);
+    let TurnOutcome::AwaitingUser(pending) = assistant
+        .send(&mut history, &[], "do the new thing".into())
+        .await
+    else {
+        panic!("an unclassified tool must wait");
+    };
+    assert!(
+        host.calls().is_empty(),
+        "no preview exists for an unknown tool"
+    );
+    let outcome = assistant
+        .send(&mut history, &pending, "never mind".into())
+        .await;
+    assert_eq!(outcome, TurnOutcome::Finished);
+    assert!(host.calls().is_empty());
+    assert!(tool_result(&history, "c1").0.contains("not_answered"));
+}
+
+#[tokio::test]
+async fn ask_user_pauses_and_only_a_valid_answer_resumes() {
+    let question = json!({"questions": [{"question": "Which account?", "options": [{"label": "Work"}, {"label": "Home"}], "allow_other": false}], "reason": "Two accounts match."});
+    let model = ScriptedModel::new(vec![
+        calls(&[("q1", ASK_USER_TOOL, question)]),
+        answer("Using Work."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = agent(&model, &host, &sink);
+    let TurnOutcome::AwaitingUser(pending) =
+        assistant.send(&mut history, &[], "clean up".into()).await
+    else {
+        panic!("expected a question");
+    };
+    assert!(matches!(pending[0].kind, PendingKind::Question { .. }));
+
+    let bad = Decision::Answer {
+        answers: vec![Answer {
+            selected: vec!["Both".into()],
+            other: None,
+        }],
+    };
+    assert!(assistant
+        .resume(
+            &mut history,
+            pending.clone(),
+            HashMap::from([("q1".into(), bad)])
+        )
+        .await
+        .is_err());
+    assert!(assistant
+        .resume(
+            &mut history,
+            pending.clone(),
+            HashMap::from([("q1".into(), Decision::Approve)])
+        )
+        .await
+        .is_err());
+
+    let good = Decision::Answer {
+        answers: vec![Answer {
+            selected: vec!["Work".into()],
+            other: None,
+        }],
+    };
+    let outcome = assistant
+        .resume(&mut history, pending, HashMap::from([("q1".into(), good)]))
+        .await
+        .unwrap();
+    assert_eq!(outcome, TurnOutcome::Finished);
+    let (content, _) = tool_result(&history, "q1");
+    assert!(content.contains("\"selected\":[\"Work\"]"));
+}
+
+#[tokio::test]
+async fn decisions_for_calls_that_are_not_waiting_are_refused() {
+    let model = ScriptedModel::new(vec![]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let result = agent(&model, &host, &sink)
+        .resume(
+            &mut history,
+            vec![],
+            HashMap::from([("ghost".into(), Decision::Approve)]),
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(host.calls().is_empty());
+}
+
+#[tokio::test]
+async fn a_turn_stops_at_its_step_limit() {
+    let replies = (0..3)
+        .map(|n| calls(&[(&*format!("c{n}"), "mxr_search", json!({}))]))
+        .collect();
+    let model = ScriptedModel::new(replies);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let mut assistant = agent(&model, &host, &sink);
+    assistant.limits.max_steps = 2;
+    let outcome = assistant.send(&mut history, &[], "loop".into()).await;
+    assert_eq!(outcome, TurnOutcome::StepLimit);
+    assert_eq!(model.requests().len(), 2);
+}
+
+#[test]
+fn an_interrupted_call_is_closed_in_model_input_but_not_in_history() {
+    let history = vec![
+        ToolChatMessage::User {
+            content: "go".into(),
+        },
+        ToolChatMessage::Assistant {
+            text: String::new(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "a".into(),
+                    name: "mxr_search".into(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "b".into(),
+                    name: "mxr_search".into(),
+                    arguments: json!({}),
+                },
+            ],
+            provider_turn: None,
+        },
+        ToolChatMessage::Tool {
+            call_id: "a".into(),
+            content: "{}".into(),
+            is_error: false,
+        },
+        ToolChatMessage::User {
+            content: "still there?".into(),
+        },
+    ];
+    let input = model_input(&history);
+    assert!(matches!(input[0], ToolChatMessage::System { .. }));
+    let ids: Vec<&str> = input
+        .iter()
+        .filter_map(|message| match message {
+            ToolChatMessage::Tool { call_id, .. } => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, vec!["a", "b"]);
+    assert!(matches!(input.last(), Some(ToolChatMessage::User { .. })));
+    assert_eq!(model_input(&history), input, "the repair is deterministic");
+}

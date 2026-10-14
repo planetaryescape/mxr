@@ -565,7 +565,13 @@ backends works:
 - **OpenAI**: `https://api.openai.com/v1`, `OPENAI_API_KEY`
 - **Groq**: `https://api.groq.com/openai/v1`, `GROQ_API_KEY`
 - **OpenRouter**: `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`
-- **Together AI**, **Mistral La Plateforme**, **Anthropic via OpenAI proxy**, etc.
+- **Together AI**, **Mistral La Plateforme**, etc.
+
+A `claude-*` model name is the exception: `base_url` and `api_key_env` don't
+apply. It goes to Anthropic's own API with the key from
+`mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), and to OpenRouter with
+`mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) when Anthropic isn't
+working. See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback).
 
 ```toml
 [llm]
@@ -591,9 +597,14 @@ from being sent to non-local LLM endpoints. Set it to `true` only when you want
 cloud providers to receive that context for relationship-aware summaries,
 briefings, and draft assistance.
 
+`mxr config set llm.<key> <value>` applies to a running daemon without a
+restart. If the daemon can't apply it, the command says `Restart the daemon to
+apply: mxr restart`.
+
 Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
-is present. It also reports process-local model request outcomes by provider
+is present. It also lists each feature's model and, for Claude models, the
+providers in order with their health. It also reports process-local model request outcomes by provider
 route: initially no observation, then a typed success or failure. A successful
 request on one feature route does not clear another route's failure, and a
 provider reload clears the old outcomes. Status never probes the model endpoint.

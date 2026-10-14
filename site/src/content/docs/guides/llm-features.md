@@ -1,6 +1,6 @@
 ---
 title: LLM features (summarize, draft assist)
-description: Configure Ollama, LM Studio, OpenAI, or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
+description: Configure Ollama, LM Studio, Claude through Anthropic with OpenRouter as fallback, or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
 ---
 
 ## Every model feature uses the backend you configure here
@@ -46,7 +46,7 @@ every major option:
 | **OpenRouter** | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | Single key, many models. |
 | **Together AI** | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | |
 | **Mistral La Plateforme** | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | |
-| **Anthropic via OpenAI-compatible proxy** | depends | depends | |
+| **Claude** (`claude-*` models) | _not used_ | _not used_ | Anthropic's own API, with OpenRouter as fallback. See [Use Claude](#use-claude-through-anthropic-with-openrouter-as-fallback). |
 
 mxr's local-first stance: model features are off until you set
 `[llm] enabled = true`, and the default endpoint is Ollama on
@@ -54,6 +54,80 @@ mxr's local-first stance: model features are off until you set
 opt-in through the same config block, with an API key you supply. mxr ships
 no key and runs no relay: requests go straight from the daemon to the
 endpoint you name.
+
+## Use Claude through Anthropic, with OpenRouter as fallback
+
+A model whose name starts with `claude-` does not use `base_url` or
+`api_key_env`. mxr sends it to Anthropic's own API first and to OpenRouter
+only when Anthropic isn't working. Store a key for each, then point every AI
+feature at the model:
+
+```bash
+op read "op://<vault>/<item>/credential" | mxr llm key set anthropic
+op read "op://<vault>/<other-item>/credential" | mxr llm key set openrouter
+mxr config set llm.enabled true
+mxr config set llm.model claude-haiku-5-5
+mxr llm status
+```
+
+The key is read from stdin, so it never appears in your shell history or a
+process listing, and `mxr llm key set` refuses to read from a terminal. It
+goes into `secrets.toml` next to your account passwords (readable only by
+you, written only by the daemon), never into `config.toml`. If no key is
+stored, mxr reads `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY`; a stored key
+wins. A new key applies to the next request without a restart.
+
+```bash
+mxr llm key status                   # which providers have a key, and from where; never the key
+mxr llm key set anthropic --dry-run  # check a piped key without storing it
+mxr llm key remove anthropic --dry-run
+mxr llm key remove anthropic
+```
+
+`mxr config set llm.*` applies to a running daemon straight away. If the
+daemon can't apply it, the command prints `Restart the daemon to apply: mxr
+restart`. A hand edit of `config.toml` needs that restart.
+
+OpenRouter's name for the model is derived from the id: `claude-haiku-5-5`
+becomes `anthropic/claude-haiku-5.5`. A model written as `anthropic/...` goes
+to OpenRouter only. Other OpenRouter-style names (`openai/...`, `google/...`)
+go to OpenRouter too, but only while `llm.base_url` is still the default;
+once you point it at a server of your own, those names are your server's.
+Per-feature overrides route the same way.
+
+### What mxr remembers about each provider
+
+Every request goes to the first working provider. When one fails, mxr
+remembers it for all callers, so a batch of row gists makes one failed
+attempt, not one per row:
+
+| Failure | What mxr does |
+|---|---|
+| 401, 402 or 403 (bad key, billing) | Skips the provider for an hour, or until you store a new key |
+| 404, or a 400 naming an unknown model | Skips it for an hour, or until `[llm]` changes |
+| 429, 529, 5xx, timeout, no connection | Skips it for 1 minute, doubling to 30 minutes on each further failure. A `retry-after` from the provider replaces the wait |
+| A refusal, or an answer that ran out of tokens | Nothing: that request fails, the provider stays in use |
+
+When the wait is over, one request tries the provider again while everything
+else keeps using the fallback; if it works, traffic returns. If every
+provider is out, background work stops without sending anything, and a
+command you run still makes one attempt on whichever recovers soonest and
+names each provider's state in its error. This memory is in the daemon only;
+a restart forgets it.
+
+`mxr llm status` shows each feature's model, the providers in order with
+their state (`ok`, `cooling until 14:32 (429 rate limited)`,
+`broken: 401 invalid key`, `no key`), and `[now: ...]` for where a request
+would go. `--format json` carries the same under `features`, and the web
+app's **Settings > LLM** shows it read-only. The web app cannot take a key;
+keys go in only through the CLI.
+
+Claude 5 models reject temperature and similar settings, so mxr sends none.
+Both providers are cloud services: everything under [Know what each request
+sends](#know-what-each-request-sends-and-where) applies, including the
+`llm.allow_cloud_relationship_data` rule, and drafts and gists are labelled
+as written by a cloud model, with the provider that answered
+(`claude-haiku-5-5 via Anthropic`).
 
 ## Configuration
 
@@ -89,9 +163,10 @@ mxr llm status
 mxr llm status --format json
 ```
 
-Config reloads rebuild the runtime provider, so changing `[llm]` and
-reloading the daemon account/config runtime switches the model without
-restarting the process.
+Config reloads rebuild the runtime provider, so changing `[llm]` switches
+the model without restarting the process. `mxr config set llm.<key> <value>`
+tells a running daemon to reload; a hand edit of `config.toml` reaches it on
+the next account reload or restart.
 
 ## Know what each request sends, and where
 
@@ -119,7 +194,8 @@ mxr llm status --format json
 ```
 
 `base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
-local; anything else is cloud.
+local; anything else is cloud. A `claude-*` model has no `base_url` and is
+always cloud.
 
 ## Send one feature to a different model
 

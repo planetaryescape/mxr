@@ -112,7 +112,7 @@ export function UnsubscribeDialog({
           >
             <MailX className="size-4 text-muted-foreground" />
             <span className="flex-1">
-              <span className="block text-[13px] font-medium">Unsubscribe</span>
+              <span className="block text-sm font-medium">Unsubscribe</span>
               <span className="block text-2xs text-muted-foreground">
                 {how ? `${how}. ` : ""}Keep the mail you already have
               </span>
@@ -131,7 +131,7 @@ export function UnsubscribeDialog({
               <Archive className="size-4 text-muted-foreground" />
             )}
             <span className="flex-1">
-              <span className="block text-[13px] font-medium">
+              <span className="block text-sm font-medium">
                 Unsubscribe and archive{" "}
                 {preview.isLoading ? "their mail" : plural(count, "message")}
               </span>

@@ -131,7 +131,7 @@ function HelpRow({ hint }: { hint: ShortcutHint }) {
           <KeyChip key={key}>{key}</KeyChip>
         ))}
       </span>
-      <span className="min-w-0 text-[13px] leading-5">
+      <span className="min-w-0 text-sm leading-5">
         {/* Keys that don't apply here step back in colour, not opacity: a
             faded muted note would fall below 4.5:1. */}
         <span className={hint.live ? "text-foreground" : "text-muted-foreground"}>

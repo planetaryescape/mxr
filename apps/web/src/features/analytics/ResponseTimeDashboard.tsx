@@ -7,6 +7,7 @@ import { BarList, Segmented, formatDuration } from "./analyticsParts";
 import { PageSection } from "@/components/Page";
 import { FactList, PageEmpty, PageError, PageNote, PageSkeleton } from "@/components/PageParts";
 import { plural } from "@/lib/format";
+import { SectionHeading } from "@/components/SectionHeading";
 
 const DIRECTIONS: { id: ResponseDirection; label: string }[] = [
   { id: "they_replied", label: "Their replies" },
@@ -75,9 +76,9 @@ export function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
           />
           {histogram.length > 0 ? (
             <div>
-              <h3 className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+              <SectionHeading as="h3" className="mb-2">
                 Distribution
-              </h3>
+              </SectionHeading>
               <BarList
                 label="Reply latency distribution"
                 rows={histogram.map((bucket, index) => ({

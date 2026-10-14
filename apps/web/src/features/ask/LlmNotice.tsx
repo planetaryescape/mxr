@@ -7,7 +7,7 @@ import { Info } from "lucide-react";
  */
 export function LlmNotice({ children }: { children: string }) {
   return (
-    <p className="flex gap-1.5 text-[12.5px] text-muted-foreground">
+    <p className="flex gap-1.5 text-xs text-muted-foreground">
       <Info className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
       <span>
         {children}{" "}

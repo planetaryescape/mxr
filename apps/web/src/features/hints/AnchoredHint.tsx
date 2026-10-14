@@ -25,7 +25,7 @@ export function AnchoredHint({
       data-testid="hint"
       data-hint={hint.id}
       className={cn(
-        "relative mt-1.5 flex max-w-[60ch] items-start gap-2 rounded-md border border-primary/40 bg-primary-muted py-1.5 pl-3 pr-1.5 text-[12.5px] leading-5 text-foreground animate-in fade-in-0 slide-in-from-top-1 duration-fast",
+        "relative mt-1.5 flex max-w-[60ch] items-start gap-2 rounded-md border border-primary/40 bg-primary-muted py-1.5 pl-3 pr-1.5 text-xs leading-5 text-foreground animate-in fade-in-0 slide-in-from-top-1 duration-fast",
         className,
       )}
     >

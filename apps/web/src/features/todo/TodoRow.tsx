@@ -79,7 +79,7 @@ export function ActionButton({
       title={
         action.kind === "email" && action.domain ? `The link goes to ${action.domain}` : undefined
       }
-      className="inline-flex min-h-8 w-full min-w-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-[12.5px] font-medium text-foreground hover:bg-accent @2xl:w-auto @2xl:justify-start"
+      className="inline-flex min-h-8 w-full min-w-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-accent @2xl:w-auto @2xl:justify-start"
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{action.label}</span>
@@ -157,10 +157,7 @@ function SourcePanel({ todo, onOpenEmail }: { todo: Todo; onOpenEmail: () => voi
     thread.data?.messages.at(-1);
   const gate = linkLine(todo);
   return (
-    <div
-      data-testid="todo-source"
-      className="mt-2 grid gap-2 border-l border-border pl-3 text-[12px]"
-    >
+    <div data-testid="todo-source" className="mt-2 grid gap-2 border-l border-border pl-3 text-xs">
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
         {todo.source_date ? (
           <FieldLine label="Arrived">
@@ -351,18 +348,18 @@ export const TodoRow = memo(function TodoRow({
               <span
                 data-testid="todo-title"
                 className={cn(
-                  "text-[15px] text-foreground",
+                  "text-md text-foreground",
                   dimmed ? "font-normal" : "font-medium",
                   done && "text-muted-foreground line-through decoration-border-strong",
                 )}
               >
                 {todo.title}
               </span>
-              {party ? <span className="text-[13px] text-muted-foreground">{party}</span> : null}
+              {party ? <span className="text-sm text-muted-foreground">{party}</span> : null}
               {todo.amount ? (
                 <span
                   data-testid="todo-amount"
-                  className="font-mono text-[13px] tabular-nums text-foreground/90"
+                  className="font-mono text-sm tabular-nums text-foreground/90"
                 >
                   {todo.amount.display}
                 </span>
@@ -372,7 +369,7 @@ export const TodoRow = memo(function TodoRow({
               {fill !== null && !done ? <RunwayBar fill={fill} /> : null}
               <span
                 data-testid="todo-when"
-                className="text-[12.5px] font-medium tabular-nums text-foreground/90"
+                className="text-xs font-medium tabular-nums text-foreground/90"
               >
                 {todo.when_label}
               </span>
@@ -383,14 +380,14 @@ export const TodoRow = memo(function TodoRow({
               />
             </div>
             {todo.looks_done ? (
-              <p className="mt-1 text-[12px] text-foreground/85">
+              <p className="mt-1 text-xs text-foreground/85">
                 Looks done: {todo.looks_done.reason}
               </p>
             ) : null}
             {resolution?.status === "pending" ? (
               <div
                 data-testid="todo-resolution"
-                className="mt-2 grid gap-2 rounded-md border border-border bg-background/70 p-2 text-[12px]"
+                className="mt-2 grid gap-2 rounded-md border border-border bg-background/70 p-2 text-xs"
               >
                 <p className={cn("text-foreground/90", preview ? "" : "line-clamp-2")}>
                   Later email: “{resolution.quote}”
@@ -449,7 +446,7 @@ export const TodoRow = memo(function TodoRow({
               </div>
             ) : null}
             {resolution?.status === "accepted" ? (
-              <p className="mt-2 text-[12px] text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 Applied from “{resolution.quote}”.{" "}
                 <Button
                   type="button"

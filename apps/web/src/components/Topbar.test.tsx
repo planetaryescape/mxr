@@ -15,6 +15,7 @@ import { describe, expect, test, vi } from "vitest";
 import { Topbar } from "./Topbar";
 import { shellKey } from "@/features/mailbox/api";
 import { useModals } from "@/state/modalStore";
+import { usePageTitleStore } from "@/state/pageTitleStore";
 
 describe("Topbar route changes", () => {
   test("exposes the existing keyboard help dialog from phone chrome", async () => {
@@ -92,5 +93,33 @@ describe("Topbar route changes", () => {
     await act(async () => history.push("/now"));
     await waitFor(() => expect(breadcrumb).toHaveTextContent("Now"));
     scrollTo.mockRestore();
+  });
+
+  test("a lone crumb is dropped while the page publishes the same title", async () => {
+    const rootRoute = createRootRoute({ component: () => <Topbar /> });
+    const route = createRoute({ getParentRoute: () => rootRoute, path: "/now" });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([route]),
+      history: createMemoryHistory({ initialEntries: ["/now"] }),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(shellKey, {});
+    queryClient.setQueryData(["admin-status-is-demo"], { is_demo: false });
+    await router.load();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(breadcrumb).toHaveTextContent("Now"));
+
+    act(() => usePageTitleStore.getState().setTitle("Now"));
+    expect(breadcrumb).not.toHaveTextContent("Now");
+
+    act(() => usePageTitleStore.getState().setTitle("Messages"));
+    expect(breadcrumb).toHaveTextContent("Now");
+    act(() => usePageTitleStore.getState().setTitle(null));
   });
 });

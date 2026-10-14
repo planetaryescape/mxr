@@ -263,10 +263,10 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
             role="status"
             className={
               authStatus.tone === "error"
-                ? "text-[13px] text-destructive"
+                ? "text-sm text-destructive"
                 : authStatus.tone === "ready"
-                  ? "text-[13px] text-success"
-                  : "text-[13px] text-muted-foreground"
+                  ? "text-sm text-success"
+                  : "text-sm text-muted-foreground"
             }
           >
             {authStatus.text}
@@ -316,7 +316,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       </PageSection>
 
       <PageSection title="Connection">
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {account.enabled ? "This mailbox is enabled." : "This mailbox is paused."}
         </p>
         <details className="mt-3 text-xs text-muted-foreground">
@@ -379,7 +379,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
             onRetry={() => void addresses.refetch()}
           />
         ) : (addresses.data?.addresses ?? []).length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Only {account.email}.</p>
+          <p className="text-sm text-muted-foreground">Only {account.email}.</p>
         ) : (
           <RuledList label="Send-as addresses">
             {(addresses.data?.addresses ?? []).map((address) => (
@@ -455,13 +455,13 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
                   machine too.
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <div className="flex items-center gap-2 text-[13px]">
+              <div className="flex items-center gap-2 text-sm">
                 <Checkbox
                   id="purge-local-data"
                   checked={purgeLocalData}
                   onCheckedChange={(checked) => setPurgeLocalData(checked === true)}
                 />
-                <Label htmlFor="purge-local-data" className="text-[13px] font-normal">
+                <Label htmlFor="purge-local-data" className="text-sm font-normal">
                   Also delete this account's local mail
                 </Label>
               </div>

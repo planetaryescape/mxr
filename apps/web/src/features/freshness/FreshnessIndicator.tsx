@@ -178,7 +178,7 @@ function ArrivalsPanel({
   const calm = isCalm(sync.health);
   const signInAgain = useSignInAgain();
   return (
-    <div className="font-sans text-[12.5px]">
+    <div className="font-sans text-xs">
       <p className="border-b border-border px-3 py-2 text-2xs font-medium text-muted-foreground">
         Last arrivals
       </p>

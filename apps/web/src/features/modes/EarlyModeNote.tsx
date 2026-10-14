@@ -12,14 +12,14 @@ export function EarlyModeNote({ mode }: { mode: string }) {
   return (
     <div
       data-testid="early-mode-note"
-      className="mode-frame px-5 pt-3 text-[12.5px] text-muted-foreground"
+      className="mode-frame px-5 pt-3 text-xs text-muted-foreground"
     >
       {entry.header ? <p data-testid="mode-header">{entry.header}</p> : null}
       {entry.status === "early" ? (
         <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
           <span
             data-testid="early-version"
-            className="rounded border border-border px-1 font-mono text-[10px] uppercase tracking-wide"
+            className="rounded border border-border px-1 font-mono text-2xs uppercase tracking-wide"
           >
             early version
           </span>

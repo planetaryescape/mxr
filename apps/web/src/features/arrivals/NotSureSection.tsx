@@ -79,7 +79,7 @@ export function NotSureSection({
   return (
     <section aria-labelledby="not-sure-heading" data-testid="not-sure" className="mt-2">
       {shown.length > 0 && heading ? (
-        <h2 id="not-sure-heading" className="text-[12.5px] text-foreground/90">
+        <h2 id="not-sure-heading" className="text-xs text-foreground/90">
           {heading}
         </h2>
       ) : null}
@@ -91,7 +91,7 @@ export function NotSureSection({
               <p
                 role="note"
                 data-testid="not-sure-hint"
-                className="mt-1 flex items-start gap-2 text-[12px] text-muted-foreground"
+                className="mt-1 flex items-start gap-2 text-xs text-muted-foreground"
                 onKeyDown={(event) => event.key === "Escape" && firstHint.dismiss()}
               >
                 <span className="flex-1">{firstHint.text}</span>
@@ -136,7 +136,7 @@ function NotSureRow({
       onKeyDown={onKeyDown}
       className="rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <p className="text-[13px] text-foreground">{question.line}</p>
+      <p className="text-sm text-foreground">{question.line}</p>
       <div className="mt-1 flex flex-wrap gap-1">
         {question.choices.map((choice) => (
           <Button
@@ -147,7 +147,7 @@ function NotSureRow({
             aria-current={choice.mode === question.mode ? "true" : undefined}
             onClick={() => onAnswer(question, choice.mode)}
             className={cn(
-              "h-7 gap-1.5 px-2 text-[12px]",
+              "h-7 gap-1.5 px-2 text-xs",
               choice.mode === question.mode && "text-muted-foreground",
             )}
           >
@@ -184,7 +184,7 @@ function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
           onDone();
         }
       }}
-      className="mt-1 flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="mt-1 flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span>Always for {who}?</span>
       <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2" onClick={yes}>

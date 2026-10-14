@@ -308,7 +308,7 @@ export function RowActionChip({ action, row }: { action: RowAction; row: Message
         action.run(row);
         notePointerUse("list.row-action", action.label);
       }}
-      className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       <Icon className="size-3" /> {action.label}
     </span>
@@ -356,8 +356,8 @@ function Avatar({ name }: { name: string }) {
   return (
     <span
       className={cn(
-        "grid size-7 place-items-center rounded-full font-mono text-[11px] font-semibold",
-        "[[data-density=compact]_&]:size-6 [[data-density=compact]_&]:text-[10px]",
+        "grid size-7 place-items-center rounded-full font-mono text-2xs font-semibold",
+        "[[data-density=compact]_&]:size-6 [[data-density=compact]_&]:text-2xs",
         avatarTone(name),
       )}
     >
@@ -368,7 +368,7 @@ function Avatar({ name }: { name: string }) {
 
 function LabelChip({ name }: { name: string }) {
   return (
-    <span className="hidden shrink-0 rounded-sm border border-border px-1 font-mono text-[10px] leading-4 text-muted-foreground @3xl:inline">
+    <span className="hidden shrink-0 rounded-sm border border-border px-1 font-mono text-2xs leading-4 text-muted-foreground @3xl:inline">
       {name}
     </span>
   );
@@ -380,7 +380,7 @@ function TriageChip({ verdict, reason }: { verdict: string; reason?: string | nu
     <span
       title={reason ?? `Triage: ${normalized}`}
       className={cn(
-        "shrink-0 rounded-sm px-1 font-mono text-[10px] font-semibold leading-4",
+        "shrink-0 rounded-sm px-1 font-mono text-2xs font-semibold leading-4",
         normalized === "ACTION" && "bg-destructive/15 text-destructive",
         normalized === "FYI" && "bg-primary-muted text-primary",
         normalized === "ROUTINE" && "bg-muted text-muted-foreground",

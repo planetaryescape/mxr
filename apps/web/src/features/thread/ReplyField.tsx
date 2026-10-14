@@ -34,7 +34,7 @@ export function ReplyField({
           type="button"
           onClick={run("reply")}
           onFocus={run("reply")}
-          className="min-w-0 flex-1 truncate px-4 py-3 text-left text-[13.5px] text-muted-foreground outline-none"
+          className="min-w-0 flex-1 truncate px-4 py-3 text-left text-sm text-muted-foreground outline-none"
         >
           {name ? `Reply to ${name}…` : "Reply…"}
         </button>
@@ -44,7 +44,7 @@ export function ReplyField({
             onClick={onDraftInVoice}
             aria-label="Draft in your voice"
             title="Draft in your voice"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Sparkles className="size-3.5" aria-hidden />
             {/* Icon only in a narrow reader, so the name of who you reply to fits. */}
@@ -53,7 +53,7 @@ export function ReplyField({
         ) : null}
         <KeyChip className="shrink-0">r</KeyChip>
       </div>
-      <p className="mt-2 flex gap-4 pl-1 text-[12px] text-muted-foreground">
+      <p className="mt-2 flex gap-4 pl-1 text-xs text-muted-foreground">
         {canReplyAll ? (
           <button
             type="button"

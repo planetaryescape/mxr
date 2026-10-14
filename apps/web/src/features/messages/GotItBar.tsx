@@ -26,21 +26,21 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
       className="mx-4 mb-3 rounded-lg border border-primary/50 bg-surface px-4 py-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Got it to <span className="text-foreground">{to}</span>
         </p>
         <p
           data-testid="got-it-countdown"
           role="timer"
           aria-live="off"
-          className="font-mono text-[12px] tabular-nums text-muted-foreground"
+          className="font-mono text-xs tabular-nums text-muted-foreground"
         >
           {countdownLabel(pending.endsAt, now)}
         </p>
       </div>
       <p
         data-testid="got-it-text"
-        className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-6 text-foreground"
+        className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-foreground"
       >
         {pending.plan.text}
       </p>
@@ -51,12 +51,12 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
         />
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12px] text-muted-foreground">{pending.plan.built_from}</p>
+        <p className="text-xs text-muted-foreground">{pending.plan.built_from}</p>
         <button
           type="button"
           onClick={onUndo}
           data-testid="got-it-undo"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12.5px] text-foreground hover:bg-accent"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent"
         >
           <Undo2 className="size-3.5" aria-hidden /> Undo <KeyChip className="h-4 px-1">u</KeyChip>
         </button>

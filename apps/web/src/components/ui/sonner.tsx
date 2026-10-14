@@ -46,7 +46,7 @@ export function Toaster({ position = "bottom-right" }: { position?: ToastPositio
         icons={ICONS}
         toastOptions={{
           classNames: {
-            title: "text-[13px] font-medium",
+            title: "text-sm font-medium",
             description: "text-2xs",
           },
         }}
@@ -107,7 +107,7 @@ export function UndoLabel() {
   return (
     <span className="inline-flex items-center gap-1.5">
       Undo
-      <kbd aria-hidden className="font-mono text-[10.5px]">
+      <kbd aria-hidden className="font-mono text-2xs">
         u
       </kbd>
     </span>

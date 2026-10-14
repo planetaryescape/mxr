@@ -77,7 +77,7 @@ export function MoveToModeDialog({
                 type="button"
                 data-testid={`move-choice-${mode}`}
                 onClick={() => choose(mode, sender)}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[13px] hover:bg-accent"
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <span className="flex-1 font-medium">{MODE_NAMES[mode]}</span>
                 <KeyChip>{sender ? key.toUpperCase() : key}</KeyChip>

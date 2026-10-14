@@ -65,9 +65,7 @@ export function SemanticPanel({
         loading ? (
           <PageSkeleton rows={3} label="Loading semantic status" />
         ) : (
-          <p className="text-[13px] text-muted-foreground">
-            The daemon reported no semantic status.
-          </p>
+          <p className="text-sm text-muted-foreground">The daemon reported no semantic status.</p>
         )
       ) : (
         <div className="space-y-3">

@@ -35,10 +35,7 @@ export function AlsoInLine({
   return (
     <p
       data-testid="also-in"
-      className={cn(
-        "flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground",
-        className,
-      )}
+      className={cn("flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground", className)}
     >
       {others.map((entry) => (
         <span key={entry.mode} className="inline-flex min-w-0 items-center gap-1">

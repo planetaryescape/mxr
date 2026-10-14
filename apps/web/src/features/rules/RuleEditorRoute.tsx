@@ -363,7 +363,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 value={form.name}
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
                 placeholder="Archive newsletters"
-                className="h-8 text-[13px]"
+                className="h-8 text-sm"
               />
             </Field>
             <Field
@@ -386,7 +386,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
             <Field label="Local category" htmlFor="rule-category">
               <select
                 id="rule-category"
-                className="h-8 w-full rounded-md border border-input bg-background px-3 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value=""
                 onChange={(event) => {
                   if (event.target.value)
@@ -443,7 +443,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
               />
             </Field>
             <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-3">
-              <Label htmlFor="rule-enabled" className="text-[13px] font-normal">
+              <Label htmlFor="rule-enabled" className="text-sm font-normal">
                 Run during sync
               </Label>
               <Switch
@@ -546,7 +546,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                   onRetry={() => void history.refetch()}
                 />
               ) : history.data.entries.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No action history recorded.</p>
+                <p className="text-sm text-muted-foreground">No action history recorded.</p>
               ) : (
                 <RuledList label="Rule history">
                   {history.data.entries.map((entry) => (

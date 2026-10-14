@@ -11,6 +11,7 @@ import { LlmNotice } from "./LlmNotice";
 import { FactList, PageError, PageSkeleton } from "@/components/PageParts";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { formatWhen } from "@/lib/format";
+import { SectionHeading } from "@/components/SectionHeading";
 
 export interface WhoisPayload {
   entity: string;
@@ -62,9 +63,9 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
         <div className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
           {KIND_LABEL[info.kind] ?? info.kind}
         </div>
-        <h3 className="mt-0.5 break-words text-[15px] font-semibold">{info.canonical_name}</h3>
+        <h3 className="mt-0.5 break-words text-md font-semibold">{info.canonical_name}</h3>
       </div>
-      {info.summary ? <p className="text-[13px] leading-relaxed">{info.summary}</p> : null}
+      {info.summary ? <p className="text-sm leading-relaxed">{info.summary}</p> : null}
       {!llm.isPending && !llm.enabled ? (
         <LlmNotice>
           This is what the archive holds. A language model adds a written summary and topics.
@@ -79,9 +80,9 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
       />
       {info.topics.length > 0 ? (
         <section>
-          <h4 className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+          <SectionHeading as="h4" className="mb-1.5">
             Topics
-          </h4>
+          </SectionHeading>
           <ul className="flex flex-wrap gap-1">
             {info.topics.map((topic) => (
               <li key={topic} className="rounded bg-muted px-1.5 py-0.5 text-2xs">
@@ -93,14 +94,14 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
       ) : null}
       {info.candidates.length > 0 ? (
         <section>
-          <h4 className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+          <SectionHeading as="h4" className="mb-1.5">
             Could also be
-          </h4>
+          </SectionHeading>
           <ul>
             {info.candidates.map((candidate) => (
               <li
                 key={`${candidate.kind}:${candidate.value}`}
-                className="border-b border-border/60 py-1.5 text-[12.5px]"
+                className="border-b border-border/60 py-1.5 text-xs"
               >
                 {candidate.display_name ? `${candidate.display_name} ` : ""}
                 <span className="font-mono text-2xs text-muted-foreground">
@@ -113,13 +114,13 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
       ) : null}
       {info.citations.length > 0 ? (
         <section>
-          <h4 className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+          <SectionHeading as="h4" className="mb-1.5">
             From your mail
-          </h4>
+          </SectionHeading>
           <ul className="space-y-2">
             {info.citations.map((citation) => (
               <li key={`${citation.msg_id}:${citation.quote.slice(0, 24)}`}>
-                <blockquote className="border-l border-border pl-2.5 text-[12.5px] text-muted-foreground">
+                <blockquote className="border-l border-border pl-2.5 text-xs text-muted-foreground">
                   {citation.quote}
                 </blockquote>
               </li>

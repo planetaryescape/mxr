@@ -37,14 +37,14 @@ export function ArrivalsRoute({
     >
       <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 id="arrivals-title" className="text-[17px] font-semibold tracking-tight">
+          <h1 id="arrivals-title" className="text-lg font-semibold tracking-tight">
             {list.data ? listTitle(list.data.total, bucket, list.data.since) : "Arrivals"}
           </h1>
-          <Link to="/now" className="text-[12.5px] text-muted-foreground hover:underline">
+          <Link to="/now" className="text-xs text-muted-foreground hover:underline">
             Back to Now
           </Link>
         </div>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           Newest first. <KeyChip>X</KeyChip> moves an email, <KeyChip>K</KeyChip> everything from
           its sender.
         </p>
@@ -65,9 +65,7 @@ export function ArrivalsRoute({
       ) : list.data && list.data.items.length > 0 ? (
         <ArrivalRows items={list.data.items} total={list.data.total} />
       ) : (
-        <p className="px-5 py-6 text-[13px] text-muted-foreground">
-          None arrived here in this window.
-        </p>
+        <p className="px-5 py-6 text-sm text-muted-foreground">None arrived here in this window.</p>
       )}
     </section>
   );
@@ -128,20 +126,20 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
             )}
           >
             <Link to={threadPath(item)} className="min-w-0">
-              <span className={cn("block truncate text-[13px]", item.unread && "font-semibold")}>
+              <span className={cn("block truncate text-sm", item.unread && "font-semibold")}>
                 {item.sender_name || item.sender_email}
               </span>
-              <span className="block truncate text-[13px] text-foreground/90">
+              <span className="block truncate text-sm text-foreground/90">
                 {item.subject || "(no subject)"}
               </span>
-              <span className="block truncate text-[12px] text-muted-foreground">{item.chip}</span>
+              <span className="block truncate text-xs text-muted-foreground">{item.chip}</span>
             </Link>
-            <span className="flex items-center gap-1 text-[12px] text-muted-foreground">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <time dateTime={item.first_seen_at}>{formatTime(new Date(item.first_seen_at))}</time>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 px-2 text-[12px]"
+                className="h-7 px-2 text-xs"
                 aria-label={`Move "${item.subject || "(no subject)"}" to another mode`}
                 onClick={() => openMovePicker(subjectOf(item))}
               >
@@ -152,7 +150,7 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
         ))}
       </ul>
       {total > items.length ? (
-        <p className="px-5 pt-3 text-[12px] text-muted-foreground">
+        <p className="px-5 pt-3 text-xs text-muted-foreground">
           The newest {items.length} of {total}.
         </p>
       ) : null}

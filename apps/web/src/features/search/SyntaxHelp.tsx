@@ -22,10 +22,10 @@ export function SyntaxHelp() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
-        <div className="mb-2 text-[13px] font-semibold">Operators</div>
+        <div className="mb-2 text-sm font-semibold">Operators</div>
         <div className="grid gap-1">
           {searchSyntaxRows.map(([operator, description]) => (
-            <div key={operator} className="flex items-center justify-between gap-3 text-[12px]">
+            <div key={operator} className="flex items-center justify-between gap-3 text-xs">
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{operator}</code>
               <span className="text-muted-foreground">{description}</span>
             </div>

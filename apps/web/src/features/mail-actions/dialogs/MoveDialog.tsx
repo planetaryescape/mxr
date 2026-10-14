@@ -172,7 +172,7 @@ function RoutePreview({
                 } will be labelled ${toLabel}, leave ${fromQueueLabel}, be marked read and archived.`}
         </DialogDescription>
         {accounts.length > 1 ? (
-          <ul className="grid gap-1 text-[13px] text-muted-foreground">
+          <ul className="grid gap-1 text-sm text-muted-foreground">
             {accounts.map((account) => (
               <li key={account.account_id} className="flex justify-between">
                 <span>{account.account_name}</span>

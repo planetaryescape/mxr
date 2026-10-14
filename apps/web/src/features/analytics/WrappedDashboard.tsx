@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { formatBytes } from "@/lib/utils";
+import { SectionHeading } from "@/components/SectionHeading";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -121,7 +122,7 @@ function WrappedSections({ summary }: { summary: WrappedSummary }) {
       </PageSection>
       <PageSection title="People who wrote most">
         {contacts.most_emailed_to_me.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Nobody yet.</p>
+          <p className="text-sm text-muted-foreground">Nobody yet.</p>
         ) : (
           <RuledList label="Top senders">
             {contacts.most_emailed_to_me.map((contact) => (
@@ -159,7 +160,7 @@ function WrappedSections({ summary }: { summary: WrappedSummary }) {
             ]}
           />
         ) : (
-          <p className="text-[13px] text-muted-foreground">No replies sent in this window.</p>
+          <p className="text-sm text-muted-foreground">No replies sent in this window.</p>
         )}
       </PageSection>
       <PageSection title="Storage and newsletters">
@@ -243,11 +244,11 @@ function WrappedStory({ summary }: { summary: WrappedSummary }) {
       >
         {index + 1} of {tiles.length}
       </div>
-      <h3 className="mt-8 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+      <SectionHeading as="h3" className="mt-8">
         {tile.title}
-      </h3>
+      </SectionHeading>
       <div className="mt-2 text-5xl font-semibold tracking-tight">{tile.value}</div>
-      <div className="mt-3 text-[13px] text-muted-foreground">{tile.meta}</div>
+      <div className="mt-3 text-sm text-muted-foreground">{tile.meta}</div>
       <div className="mt-10 flex justify-center gap-2">
         <Button
           size="sm"

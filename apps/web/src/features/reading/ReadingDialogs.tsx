@@ -114,7 +114,7 @@ export function ReadingUnsubscribeDialog({
             {source.evidence}.
           </DialogDescription>
         </DialogHeader>
-        <ul className="grid gap-1.5 text-[13px] text-foreground/90">
+        <ul className="grid gap-1.5 text-sm text-foreground/90">
           <li data-testid="unsubscribe-method">
             {preview.isLoading
               ? "Checking how to unsubscribe…"
@@ -147,7 +147,7 @@ export function ReadingUnsubscribeDialog({
           >
             <MailX className="size-4 text-muted-foreground" />
             <span className="flex-1">
-              <span className="block text-[13px] font-medium">
+              <span className="block text-sm font-medium">
                 Just unsubscribe — keep what you have
               </span>
             </span>
@@ -166,7 +166,7 @@ export function ReadingUnsubscribeDialog({
               <Archive className="size-4 text-muted-foreground" />
             )}
             <span className="flex-1">
-              <span className="block text-[13px] font-medium">{clearLabel}</span>
+              <span className="block text-sm font-medium">{clearLabel}</span>
               <span className="block text-2xs text-muted-foreground">
                 Marks them read and archives them
               </span>
@@ -222,13 +222,13 @@ export function LetGoAllDialog({
           </DialogDescription>
         </DialogHeader>
         {preview.isLoading ? (
-          <p className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" /> Checking what this lets go of…
           </p>
         ) : (
           <ul
             data-testid="let-go-all-preview"
-            className="max-h-64 overflow-y-auto text-[13px] text-foreground/90"
+            className="max-h-64 overflow-y-auto text-sm text-foreground/90"
           >
             {threadIds.map((id, index) => {
               const outcome = items.find((item) => item.thread_id === id);

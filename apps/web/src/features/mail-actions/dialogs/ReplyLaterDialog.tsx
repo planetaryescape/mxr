@@ -109,7 +109,7 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
             void time.commit(setAt);
           }}
         >
-          <label htmlFor="reply-later-time" className="text-[13px] font-medium">
+          <label htmlFor="reply-later-time" className="text-sm font-medium">
             {waiting ? "Bring it back" : "Back"}
           </label>
           <div className="flex items-start gap-2">

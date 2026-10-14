@@ -361,6 +361,9 @@
   --star: oklch(86% 0.13 85);
   --thread-line: oklch(36% 0.016 290);
   --selection: color-mix(in oklab, oklch(80% 0.13 330) 9%, oklch(18% 0.012 290));
+  /* Same recipe as midnight: the star colour at 18% for the mark, 85% for its rule. */
+  --ask-mark: oklch(86% 0.13 85 / 0.18);
+  --ask-mark-rule: oklch(86% 0.13 85 / 0.85);
 
   --sidebar: oklch(12% 0.009 290);
   --sidebar-foreground: oklch(78% 0.01 290);

@@ -54,14 +54,14 @@ export function MobileTabs() {
             to={tab.to}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px]",
+              "relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-2xs",
               active ? "text-sidebar-primary" : "text-muted-foreground",
             )}
           >
             <tab.Icon aria-hidden className="size-5" />
             <span className="truncate">{tab.label}</span>
             {tab.key === "now" && badge > 0 ? (
-              <span className="absolute right-[calc(50%-1.25rem)] top-1 rounded-full bg-primary px-1 font-mono text-[9.5px] leading-4 text-primary-foreground tabular-nums">
+              <span className="absolute right-[calc(50%-1.25rem)] top-1 rounded-full bg-primary px-1 font-mono text-2xs leading-4 text-primary-foreground tabular-nums">
                 <span className="sr-only">, </span>
                 {badge}
               </span>

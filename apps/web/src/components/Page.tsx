@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
+import { PageTitle } from "@/components/ModeFrame";
 import { cn } from "@/lib/utils";
+import { SectionHeading } from "@/components/SectionHeading";
 
 /**
  * Layout for every non-mail page (analytics, rules, accounts, settings,
@@ -34,24 +36,24 @@ export function Page({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <header className="shrink-0 border-b border-border">
-        <div className={cn("mx-auto flex w-full items-end gap-4 px-6 pb-3 pt-5", max)}>
+        <div className={cn("mx-auto flex w-full items-end gap-4 px-5 pb-3 pt-4", max)}>
           <div className="min-w-0 flex-1">
             {eyebrow ? (
-              <div className="mb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="mb-1 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
                 {eyebrow}
               </div>
             ) : null}
-            <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+            <PageTitle>{title}</PageTitle>
             {description ? (
-              <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
             ) : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
-        {tabs ? <div className={cn("mx-auto w-full px-6", max)}>{tabs}</div> : null}
+        {tabs ? <div className={cn("mx-auto w-full px-5", max)}>{tabs}</div> : null}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
-        <div className={cn("mx-auto w-full px-6 py-5", max, className)}>{children}</div>
+        <div className={cn("mx-auto w-full px-5 py-5", max, className)}>{children}</div>
       </div>
     </div>
   );
@@ -75,11 +77,9 @@ export function PageSection({
     <section className={cn("mb-8", className)}>
       <div className="mb-3 flex items-end justify-between gap-4 border-b border-border pb-1.5">
         <div className="min-w-0">
-          <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-            {title}
-          </h2>
+          <SectionHeading>{title}</SectionHeading>
           {description ? (
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">{description}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -111,7 +111,7 @@ export function PageTabs<T extends string>({
           aria-selected={value === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            "border-b-2 pb-2 pt-1 text-[13px]",
+            "border-b-2 pb-2 pt-1 text-sm",
             value === tab.id
               ? "border-primary font-medium text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",

@@ -9,6 +9,7 @@ import type { RecordSubscription, RecordSubscriptions } from "./api";
 import { longDate } from "./ledger";
 import { OpenDot, Provenance } from "./RecordParts";
 import { splitLive, subscriptionAmountUnchecked, whenLabel } from "./subscriptionRows";
+import { SectionHeading } from "@/components/SectionHeading";
 
 /** One subscription: what, amount, how often, the next charge and status. */
 const SubscriptionRow = memo(function SubscriptionRow({
@@ -31,7 +32,7 @@ const SubscriptionRow = memo(function SubscriptionRow({
       data-status={subscription.status}
       aria-current={focused ? "true" : undefined}
       className={cn(
-        "mx-2 cursor-default rounded-md px-3 py-2 text-[13px]",
+        "mx-2 cursor-default rounded-md px-3 py-2 text-sm",
         focused ? "bg-accent" : "hover:bg-accent/60",
       )}
       onClick={() => onSelect(subscription)}
@@ -63,7 +64,7 @@ const SubscriptionRow = memo(function SubscriptionRow({
         <span
           data-testid="subscription-when"
           className={cn(
-            "col-span-2 text-[12.5px] @2xl:col-span-1 @2xl:text-right",
+            "col-span-2 text-xs @2xl:col-span-1 @2xl:text-right",
             subscription.status === "overdue" ? "text-warning" : "text-muted-foreground",
           )}
         >
@@ -104,9 +105,9 @@ export function SubscriptionsList({
   );
   return (
     <section aria-label="Subscriptions" data-testid="subscriptions" className="mt-3">
-      <p className="mx-5 text-[12.5px] text-muted-foreground">{data.header}</p>
+      <p className="mx-5 text-xs text-muted-foreground">{data.header}</p>
       {data.totals.length > 0 ? (
-        <p data-testid="subscription-totals" className="mx-5 mt-2 text-[13px] text-foreground">
+        <p data-testid="subscription-totals" className="mx-5 mt-2 text-sm text-foreground">
           <span className="font-medium">{plural(data.live, "live subscription")}</span>
           {data.totals.map((total) => (
             <span key={total.currency} className="ml-3 font-mono tabular-nums">
@@ -119,7 +120,7 @@ export function SubscriptionsList({
         <ul
           aria-label="Worth a look"
           data-testid="subscription-signals"
-          className="mx-5 mt-2 grid gap-0.5 text-[13px]"
+          className="mx-5 mt-2 grid gap-0.5 text-sm"
         >
           {data.signals.map((signal) => (
             <li key={`${signal.kind}-${signal.subscription_id}`} className="text-foreground">
@@ -129,19 +130,14 @@ export function SubscriptionsList({
         </ul>
       ) : null}
       {data.empty_state ? (
-        <p
-          data-testid="subscriptions-empty"
-          className="mx-5 mt-4 text-[13px] text-muted-foreground"
-        >
+        <p data-testid="subscriptions-empty" className="mx-5 mt-4 text-sm text-muted-foreground">
           {data.empty_state}
         </p>
       ) : null}
       {live.length > 0 ? <div className="mt-3">{rows(live, 0)}</div> : null}
       {ended.length > 0 ? (
         <section aria-label="Ended" className="mt-4">
-          <h2 className="mx-5 mb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-            Ended
-          </h2>
+          <SectionHeading className="mx-5 mb-1">Ended</SectionHeading>
           {rows(ended, live.length)}
         </section>
       ) : null}
@@ -171,13 +167,13 @@ export function SubscriptionCard({
       className="grid gap-3 px-5 py-4"
     >
       <header>
-        <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
           {subscription.cadence_label} · {subscription.status}
         </p>
-        <h2 className="mt-1 text-[16px] font-semibold text-foreground">{subscription.title}</h2>
-        <p className="text-[13px] text-foreground/90">{subscription.status_reason}</p>
+        <h2 className="mt-1 text-md font-semibold text-foreground">{subscription.title}</h2>
+        <p className="text-sm text-foreground/90">{subscription.status_reason}</p>
       </header>
-      <dl className="text-[13px]">
+      <dl className="text-sm">
         {subscription.fields
           .filter((field) => field.field !== "status")
           .map((field) => (
@@ -185,7 +181,7 @@ export function SubscriptionCard({
               key={field.field}
               className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-3 py-1"
             >
-              <dt className="text-[12px] text-muted-foreground">{field.label}</dt>
+              <dt className="text-xs text-muted-foreground">{field.label}</dt>
               <dd className="min-w-0">
                 <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span className="font-mono tabular-nums text-foreground">{field.value}</span>
@@ -194,7 +190,7 @@ export function SubscriptionCard({
                       type="button"
                       onClick={onCopyAmount}
                       aria-label="Copy amount (Y)"
-                      className="inline-flex items-center gap-1 rounded px-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="inline-flex items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                     >
                       <Copy aria-hidden className="size-3" />
                       <KeyChip className="h-4 px-1">Y</KeyChip>
@@ -208,10 +204,8 @@ export function SubscriptionCard({
       </dl>
       {subscription.price_changes && subscription.price_changes.length > 0 ? (
         <section aria-label="Price changes">
-          <h3 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-            Price changes
-          </h3>
-          <ul data-testid="price-changes" className="mt-1 grid gap-0.5 text-[13px]">
+          <SectionHeading as="h3">Price changes</SectionHeading>
+          <ul data-testid="price-changes" className="mt-1 grid gap-0.5 text-sm">
             {subscription.price_changes.map((change) => (
               <li key={change.record_id} className="font-mono tabular-nums">
                 {change.label}
@@ -221,10 +215,8 @@ export function SubscriptionCard({
         </section>
       ) : null}
       <section aria-label="Charges">
-        <h3 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-          {plural(subscription.charge_count, "charge")}
-        </h3>
-        <ul data-testid="subscription-charges" className="mt-1 grid gap-0.5 text-[12.5px]">
+        <SectionHeading as="h3">{plural(subscription.charge_count, "charge")}</SectionHeading>
+        <ul data-testid="subscription-charges" className="mt-1 grid gap-0.5 text-xs">
           {subscription.charges.toReversed().map((charge) => (
             <li key={charge.record_ids[0]} className="flex items-center gap-3">
               <span className="w-24 shrink-0 font-mono tabular-nums text-muted-foreground">
@@ -242,7 +234,7 @@ export function SubscriptionCard({
         <button
           type="button"
           onClick={onOpenEmail}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-[13px] hover:bg-accent"
+          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm hover:bg-accent"
         >
           <Mail aria-hidden className="size-4" />
           The latest email
@@ -252,13 +244,13 @@ export function SubscriptionCard({
       <button
         type="button"
         onClick={onIssuer}
-        className="w-fit text-left text-[12.5px] text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+        className="w-fit text-left text-xs text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
       >
         Every record from {subscription.issuer}
         {subscription.one_offs > 0 ? ` (${subscription.one_offs} not part of this)` : ""}{" "}
         <KeyChip className="h-4 px-1">p</KeyChip>
       </button>
-      <p data-testid="subscription-why" className="text-[12.5px] text-muted-foreground">
+      <p data-testid="subscription-why" className="text-xs text-muted-foreground">
         {subscription.why}
       </p>
     </article>

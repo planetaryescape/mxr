@@ -27,39 +27,6 @@ interface RowState {
   hint?: ReactNode;
 }
 
-/** "PEOPLE                      and 8 more in Messages". */
-export function SectionHeading({
-  id,
-  more,
-  to,
-  children,
-}: {
-  id: string;
-  more?: string | null;
-  to: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="mx-5 mb-1 mt-4 flex items-baseline justify-between gap-3">
-      <h2
-        id={id}
-        className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
-      >
-        {children}
-      </h2>
-      {more ? (
-        <Link
-          to={to}
-          data-testid="now-more"
-          className="text-[12px] text-muted-foreground hover:text-foreground hover:underline"
-        >
-          {more}
-        </Link>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * The row frame every Now item shares: the cursor bar, the row's main text
  * as a real link into the row's own mode (Tab reaches it, Enter follows
@@ -169,7 +136,7 @@ export function PersonRow({
       label={`Open in Messages: ${who}, ${subject}. ${item.person.why}`}
       main={
         <>
-          <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
+          <p className="flex min-w-0 items-baseline gap-2 text-sm">
             <span
               className={cn("shrink-0", row.unread ? "font-semibold" : "text-foreground/90")}
               title={row.counterparty_email}
@@ -233,15 +200,15 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
       label={`Open in To do: ${todo.title}, ${todo.when_label}. ${item.todo.why}`}
       main={
         <>
-          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px]">
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
             <span className="min-w-0 font-medium text-foreground/90">{todo.title}</span>
             {todo.amount ? (
-              <span className="font-mono text-[12px] tabular-nums text-foreground/80">
+              <span className="font-mono text-xs tabular-nums text-foreground/80">
                 {todo.amount.display}
               </span>
             ) : null}
             {todo.person_label ? (
-              <span className="text-[12px] text-muted-foreground">{todo.person_label}</span>
+              <span className="text-xs text-muted-foreground">{todo.person_label}</span>
             ) : null}
           </p>
         </>
@@ -250,7 +217,7 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
       meta={
         <span
           className={cn(
-            "whitespace-nowrap text-[12px]",
+            "whitespace-nowrap text-xs",
             todo.overdue ? "text-warning" : "text-muted-foreground",
           )}
         >
@@ -277,11 +244,11 @@ export function UpdatesCard({
       <div className="mx-5 mb-1 flex items-baseline gap-2">
         <h2
           id="now-updates"
-          className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
+          className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground"
         >
           Updates
         </h2>
-        <span className="text-[12px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {card.cut_label ? `${card.cut_label} digest` : sinceLabel(card.since)}
         </span>
       </div>
@@ -304,7 +271,7 @@ export function UpdatesCard({
             />
           ) : null}
           <div className="min-w-0">
-            <p data-testid="now-updates-line" className="text-[13px] text-foreground/90">
+            <p data-testid="now-updates-line" className="text-sm text-foreground/90">
               {card.headline || card.line}
             </p>
             {card.lines && card.lines.length > 0 ? (
@@ -313,7 +280,7 @@ export function UpdatesCard({
                   <li
                     key={line.id}
                     data-testid="now-updates-item"
-                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[12.5px]"
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs"
                   >
                     <span
                       aria-hidden
@@ -329,14 +296,14 @@ export function UpdatesCard({
                     </span>
                     <span className="min-w-0 break-words text-foreground/80">{line.fact}</span>
                     {line.in_todo ? (
-                      <span className="text-[11.5px] text-muted-foreground">({line.in_todo})</span>
+                      <span className="text-2xs text-muted-foreground">({line.in_todo})</span>
                     ) : null}
                   </li>
                 ))}
               </ul>
             ) : null}
             {card.more_line ? (
-              <p className="mt-1 text-[12px] text-muted-foreground">{card.more_line}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{card.more_line}</p>
             ) : null}
             <p className="mt-1.5 flex flex-wrap items-center gap-2">
               <Button asChild size="sm" variant="outline">
@@ -370,11 +337,11 @@ export function ReadingRow({
       label={`Open in Reading: ${pick.subject}, from ${from}. ${pick.why}`}
       main={
         <>
-          <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
+          <p className="flex min-w-0 items-baseline gap-2 text-sm">
             <span className="min-w-0 truncate font-medium text-foreground/90">{pick.subject}</span>
-            <span className="shrink-0 text-[12px] text-muted-foreground">{from}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{from}</span>
           </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
+          <p data-testid="now-why" className="truncate text-xs text-fg-2">
             {pick.why}
           </p>
         </>

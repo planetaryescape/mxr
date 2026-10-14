@@ -181,7 +181,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
       meta={laneTotal ? plural(laneTotal, "conversation") : null}
       actions={
         lane ? (
-          <Link to={basePath} className="text-[12px] text-muted-foreground hover:text-foreground">
+          <Link to={basePath} className="text-xs text-muted-foreground hover:text-foreground">
             {messages ? "Back to Messages" : "Back to the desk"}
           </Link>
         ) : null
@@ -196,7 +196,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
       }
       toolbar={
         lane && partial ? (
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Showing {partial.shown.toLocaleString()} of {partial.total.toLocaleString()}.{" "}
             <button
               type="button"
@@ -228,7 +228,7 @@ function DeskHeading({ desk, basePath }: { desk: Desk; basePath: string }) {
   const headline = deskHeadline(desk);
   return (
     <div className="px-5 pb-3.5 pt-4">
-      <h1 className="text-balance text-[17px] font-semibold tracking-tight text-foreground">
+      <h1 className="text-balance text-lg font-semibold tracking-tight text-foreground">
         {headline.lead}{" "}
         {headline.counts.length > 0 ? (
           <>
@@ -251,7 +251,7 @@ function DeskHeading({ desk, basePath }: { desk: Desk; basePath: string }) {
         )}
       </h1>
       {headline.sub ? (
-        <p className="mt-1 text-pretty text-[13px] text-muted-foreground">{headline.sub}</p>
+        <p className="mt-1 text-pretty text-sm text-muted-foreground">{headline.sub}</p>
       ) : null}
     </div>
   );
@@ -264,9 +264,9 @@ function Elsewhere({ counts }: { counts: DeskElsewhere }) {
   return (
     <nav
       aria-label="Everything else"
-      className="flex shrink-0 flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-border px-5 py-2.5 text-[12px]"
+      className="flex shrink-0 flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-border px-5 py-2.5 text-xs"
     >
-      <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+      <span className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
         Everything else
       </span>
       {links.map(({ key, label, count, suffix, ...target }) => (
@@ -314,14 +314,14 @@ function ClearDesk({
   }
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-8 py-16 text-center">
-      <p className="text-[15px] text-foreground/90">
+      <p className="text-md text-foreground/90">
         {lane
           ? `Nothing under ${LANE_TITLES[lane]} right now.`
           : messages
             ? "Nobody is waiting on you."
             : "The desk is clear."}
       </p>
-      <p className="max-w-sm text-[13px] text-muted-foreground">
+      <p className="max-w-sm text-sm text-muted-foreground">
         New mail still arrives in the inbox, one key away: <kbd className="font-mono">g</kbd>{" "}
         <kbd className="font-mono">i</kbd>.
       </p>

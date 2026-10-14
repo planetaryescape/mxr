@@ -29,7 +29,7 @@ export function describeRequestError(error: unknown): { summary: string; technic
 export function RequestErrorDetails({ error }: { error: unknown }) {
   const description = describeRequestError(error);
   return (
-    <div className="max-w-md break-words text-[13px] text-muted-foreground">
+    <div className="max-w-md break-words text-sm text-muted-foreground">
       <p>{description.summary}</p>
       <details className="mt-2 text-xs">
         <summary className="w-fit cursor-pointer underline underline-offset-4">

@@ -685,7 +685,7 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
     <div
       role="presentation"
       className={cn(
-        "flex items-end gap-2 bg-background pl-7 pr-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground",
+        "flex items-end gap-2 bg-background pl-7 pr-4 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground",
         airy ? "h-[40px] pl-7 pr-5 pb-1.5" : "h-[30px] border-b border-border/60 pb-1",
       )}
     >

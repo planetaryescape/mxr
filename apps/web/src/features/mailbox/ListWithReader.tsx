@@ -9,7 +9,7 @@ import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRem
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
-import { ModeFrame } from "@/components/ModeFrame";
+import { ModeFrame, PageTitle } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -211,8 +211,8 @@ export function ListWithReader({
             <header className="shrink-0 border-b border-border">
               <ModeFrame>
                 {heading ?? (
-                  <div className="flex h-11 items-center gap-3 pl-7 pr-4">
-                    <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+                  <div className="flex h-11 items-center gap-3 px-5">
+                    <PageTitle>{title}</PageTitle>
                     {meta ? (
                       <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
                         {meta}
@@ -250,7 +250,7 @@ export function ListWithReader({
                         }
                       }}
                       placeholder="Filter loaded conversations by sender, subject or snippet"
-                      className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                     />
                     <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
                       {filter ? `${shownCount} of ${loadedCount}` : ""}
@@ -261,7 +261,7 @@ export function ListWithReader({
                         onClick={() =>
                           void navigate({ to: "/search", search: { q: filter.trim() } })
                         }
-                        className="shrink-0 text-[12px] text-primary hover:underline"
+                        className="shrink-0 text-xs text-primary hover:underline"
                         title="Search all mail (⌘Enter)"
                       >
                         Search all mail

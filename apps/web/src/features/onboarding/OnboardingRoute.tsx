@@ -116,7 +116,7 @@ export function OnboardingRoute() {
     >
       {step === 1 ? (
         <section>
-          <p className="max-w-[60ch] text-[13px] leading-relaxed text-muted-foreground">
+          <p className="max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
             mxr keeps a local copy of your mail so you can read and search it on this computer.
             Connect a mailbox to get started, or try a separate sample inbox first. The sample uses
             made-up mail and does not touch your mailbox. Run{" "}
@@ -186,7 +186,7 @@ export function OnboardingRoute() {
                 }}
               >
                 <tile.Icon className="mb-2 size-4 text-primary" />
-                <div className="text-[13px] font-medium">{tile.label}</div>
+                <div className="text-sm font-medium">{tile.label}</div>
                 <div className="mt-0.5 text-2xs text-muted-foreground">{tile.description}</div>
               </button>
             ))}
@@ -200,7 +200,7 @@ export function OnboardingRoute() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
-              className="h-8 text-[13px]"
+              className="h-8 text-sm"
             />
           </div>
           <Button
@@ -227,7 +227,7 @@ export function OnboardingRoute() {
       ) : null}
       {step === 3 && provider !== "imap" ? (
         <section>
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {session?.user_code
               ? "Enter this code on the verification page to let mxr read and send your mail."
               : `Sign in to ${providerLabel} in a new tab and approve access. mxr picks up the result on its own.`}
@@ -241,7 +241,7 @@ export function OnboardingRoute() {
             <p
               role="status"
               className={cn(
-                "text-[13px]",
+                "text-sm",
                 authStatus.tone === "error"
                   ? "text-destructive"
                   : authStatus.tone === "ready"
@@ -449,11 +449,9 @@ function FirstSync({
     phase === "done" ? 100 : sync ? Math.round((sync.current / Math.max(1, sync.total)) * 100) : 0;
   return (
     <section>
-      <p className="text-[13px] text-muted-foreground">
-        mxr keeps syncing after you leave this page.
-      </p>
+      <p className="text-sm text-muted-foreground">mxr keeps syncing after you leave this page.</p>
       <div className="mt-5 border-y border-border py-5" role="status">
-        <div className="text-[15px] font-semibold">
+        <div className="text-md font-semibold">
           {phase === "running" && sync
             ? `Syncing: ${sync.current.toLocaleString()} of ${plural(sync.total, "message")}`
             : phase === "done"

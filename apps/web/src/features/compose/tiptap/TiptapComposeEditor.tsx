@@ -30,7 +30,7 @@ export function TiptapComposeEditor({
     editorProps: {
       attributes: {
         class:
-          "mx-auto h-full min-h-full w-full max-w-[720px] px-6 py-6 pb-14 text-[15px] leading-[1.65] outline-none",
+          "mx-auto h-full min-h-full w-full max-w-[720px] px-6 py-6 pb-14 text-md leading-[1.65] outline-none",
         role: "textbox",
         "aria-label": "Message body",
       },

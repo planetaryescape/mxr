@@ -464,7 +464,7 @@ export function ThreadReader({
           {link ? (
             <p
               data-testid="todo-link-note"
-              className="mx-5 mt-4 border-l-2 border-primary pl-3 text-[13px] text-foreground/90"
+              className="mx-5 mt-4 border-l-2 border-primary pl-3 text-sm text-foreground/90"
             >
               From To do: {link.title}. The link it is about is marked below
               {link.domain ? `, and goes to ${link.domain}` : ""}. Check it before you follow it.

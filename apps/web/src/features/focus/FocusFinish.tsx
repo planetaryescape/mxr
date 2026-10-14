@@ -54,7 +54,7 @@ export function FocusFinish({
         {cleared ? <LowTideScene sound /> : null}
       </div>
       <h2 className="text-balance text-2xl font-semibold tracking-tight">{title}</h2>
-      <p className="mt-2 text-pretty text-[14px] leading-6 text-muted-foreground tabular-nums">
+      <p className="mt-2 text-pretty text-base leading-6 text-muted-foreground tabular-nums">
         {replied > 0 ? `${plural(replied, "conversation")} handled. ` : null}
         {more > 0 ? `${plural(more, "more conversation")} waiting on a reply. ` : null}
         {next ? (

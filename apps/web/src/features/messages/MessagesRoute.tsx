@@ -3,7 +3,6 @@ import { ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
@@ -55,6 +54,8 @@ import {
 } from "./messagesView";
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
+import { KeyLine } from "@/components/KeyLine";
+import { ModeHeader } from "@/components/ModeFrame";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
@@ -94,12 +95,18 @@ export function MessagesRoute({
     <section aria-label="Messages" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {phase !== "ready" ? (
         <>
-          <MessagesHeader guide={guide.data} turn={search.turn} />
+          <ModeHeader
+            title={search.turn === "theirs" ? "Waiting on" : "Messages"}
+            subtitle={guide.data?.header}
+          />
           <ListSkeleton quiet={phase === "quiet"} />
         </>
       ) : messages.isError ? (
         <>
-          <MessagesHeader guide={guide.data} turn={search.turn} />
+          <ModeHeader
+            title={search.turn === "theirs" ? "Waiting on" : "Messages"}
+            subtitle={guide.data?.header}
+          />
           <Centered
             icon={<RefreshCw className="size-6" />}
             title="Couldn't load Messages"
@@ -118,20 +125,8 @@ export function MessagesRoute({
   );
 }
 
-function MessagesHeader({ guide, turn }: { guide?: ModeGuide; turn?: MessagesTurn }) {
-  return (
-    <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-[17px] font-semibold tracking-tight text-foreground">
-          {turn === "theirs" ? "Waiting on" : "Messages"}
-        </h1>
-        <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
-          {guide?.header}
-        </p>
-      </div>
-    </header>
-  );
-}
+/** The keys the Messages foot line shows, in the mode's own words. */
+const SHOWN_KEYS = new Set(["r", ".", "e", "t", "b", "c"]);
 
 function MessagesBody({
   data,
@@ -515,16 +510,19 @@ function MessagesBody({
         className="flex min-h-0 flex-col"
         elementRef={listRef}
       >
-        <MessagesHeader guide={guide} turn={search.turn} />
+        <ModeHeader
+          title={search.turn === "theirs" ? "Waiting on" : "Messages"}
+          subtitle={guide?.header}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto pb-6">
           {empty && data.empty_state ? (
             <div data-testid="messages-empty" className="mx-5 mt-4">
-              <p className="text-[14px] text-foreground">{data.empty_state}</p>
+              <p className="text-base text-foreground">{data.empty_state}</p>
               {(data.lapsed ?? []).map((lapsed) => (
                 <p
                   key={lapsed.person.id}
                   data-testid="lapsed-line"
-                  className="mt-1 text-[13px] text-muted-foreground"
+                  className="mt-1 text-sm text-muted-foreground"
                 >
                   {lapsed.line}
                 </p>
@@ -541,7 +539,14 @@ function MessagesBody({
             hidden={hiddenDone}
             arrival={arrival}
           />
-          {guide ? <KeyLine guide={guide} /> : null}
+          {guide ? (
+            <KeyLine
+              keys={[
+                ...guide.keys.filter((key) => SHOWN_KEYS.has(key.key)),
+                { key: "?", verb: "what is this" },
+              ]}
+            />
+          ) : null}
         </div>
       </ResizablePanel>
       {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}
@@ -609,24 +614,5 @@ function MessagesBody({
         </ResizablePanel>
       ) : null}
     </ResizablePanelGroup>
-  );
-}
-
-/** Keys with their verbs at the point of use, from Messages' own guide. */
-function KeyLine({ guide }: { guide: ModeGuide }) {
-  const shown = new Set(["r", ".", "e", "t", "b", "c"]);
-  return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
-      {guide.keys
-        .filter((key) => shown.has(key.key))
-        .map((key) => (
-          <span key={key.key} className="inline-flex items-center gap-1">
-            <KeyChip>{key.key}</KeyChip> {key.verb}
-          </span>
-        ))}
-      <span className="inline-flex items-center gap-1">
-        <KeyChip>?</KeyChip> what is this
-      </span>
-    </p>
   );
 }

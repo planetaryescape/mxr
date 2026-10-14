@@ -29,6 +29,8 @@ import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
 import { openCount, primaryAction, runwayFill, runwayItems, type RunwayItem } from "./todoRows";
 import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
+import { KeyLine } from "@/components/KeyLine";
+import { SectionHeading } from "@/components/SectionHeading";
 
 /**
  * The runway for the account scope. The first fetch on each visit records
@@ -124,17 +126,14 @@ function Runway({
 /** The mode's name, its job in one line, and the day's headline. */
 function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide }) {
   return (
-    <ModeHeader>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-[17px] font-semibold tracking-tight text-foreground">To do</h1>
-        <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
-          {guide?.header ??
-            runway?.header ??
-            "Things email asked you to do, ordered by when to act."}
-        </p>
-      </div>
+    <ModeHeader
+      title="To do"
+      subtitle={
+        guide?.header ?? runway?.header ?? "Things email asked you to do, ordered by when to act."
+      }
+    >
       {runway?.headline ? (
-        <p data-testid="todo-headline" className="mt-1.5 text-balance text-[15px] text-foreground">
+        <p data-testid="todo-headline" className="mt-1.5 text-balance text-md text-foreground">
           {runway.headline}
         </p>
       ) : null}
@@ -144,10 +143,9 @@ function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide 
 
 function BandHeading({ children, count }: { children: ReactNode; count?: number }) {
   return (
-    <h2 className="mx-5 mb-1 mt-4 flex items-baseline gap-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+    <SectionHeading className="mx-5 mb-1 mt-4" count={count}>
       {children}
-      {count !== undefined ? <span className="tabular-nums">{count}</span> : null}
-    </h2>
+    </SectionHeading>
   );
 }
 
@@ -171,7 +169,7 @@ function FoldLine({
       data-testid={testId}
       aria-expanded={open}
       onClick={onToggle}
-      className="inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
+      className="inline-flex items-center gap-2 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
     >
       {label} <span className="tabular-nums">{count}</span>
       <ChevronRight aria-hidden className={open ? "size-3 rotate-90" : "size-3"} />
@@ -382,7 +380,7 @@ function Bands({
       <ModeFrame>
         {runway.catchup_count > 0 ? (
           <div className="mx-5 mt-3">
-            <p data-testid="catchup-line" className="text-[13px] text-foreground/90">
+            <p data-testid="catchup-line" className="text-sm text-foreground/90">
               Catch up: {plural(runway.catchup_count, "thing")} from before mxr sorted your mail
               might still need you.{" "}
               <Link
@@ -408,7 +406,7 @@ function Bands({
               {nowItems.map(row)}
             </ul>
           ) : (
-            <p data-testid="todo-empty" className="mx-5 py-2 text-[13px] text-muted-foreground">
+            <p data-testid="todo-empty" className="mx-5 py-2 text-sm text-muted-foreground">
               {runway.empty_state ?? guide?.clear_for_now}
             </p>
           )}
@@ -418,7 +416,7 @@ function Bands({
               <BandHeading>Coming up</BandHeading>
               {groups.map((group) => (
                 <section key={group.label} aria-label={group.label} data-testid="coming-week">
-                  <h3 className="mx-5 mt-2 text-[12px] text-muted-foreground">{group.label}</h3>
+                  <h3 className="mx-5 mt-2 text-xs text-muted-foreground">{group.label}</h3>
                   <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">{group.items.map(row)}</ul>
                 </section>
               ))}
@@ -457,7 +455,7 @@ function Bands({
           ) : null}
 
           {expiredOnOpen > 0 ? (
-            <p data-testid="expired-line" className="mx-5 mt-5 text-[12.5px] text-muted-foreground">
+            <p data-testid="expired-line" className="mx-5 mt-5 text-xs text-muted-foreground">
               {expiredOnOpen} expired since you last looked.{" "}
               <Link
                 to="/todo"
@@ -470,25 +468,15 @@ function Bands({
             </p>
           ) : null}
 
-          {guide ? <KeyLine guide={guide} /> : null}
+          {guide ? (
+            <KeyLine
+              keys={keysForModeGuide(guide).filter(
+                (key) => key.key !== "t" && key.key !== "?" && key.key !== "u",
+              )}
+            />
+          ) : null}
         </div>
       </ModeFrame>
     </div>
-  );
-}
-
-/** Keys with their verbs at the point of use, from the mode's own table. */
-function KeyLine({ guide }: { guide: ModeGuide }) {
-  const keys = keysForModeGuide(guide).filter(
-    (key) => key.key !== "t" && key.key !== "?" && key.key !== "u",
-  );
-  return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex lg:hidden">
-      {keys.map((key) => (
-        <span key={key.key} className="inline-flex items-center gap-1">
-          <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}
-        </span>
-      ))}
-    </p>
   );
 }

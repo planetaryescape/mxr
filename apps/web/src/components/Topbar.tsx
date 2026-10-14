@@ -14,6 +14,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
+import { usePageTitleStore } from "@/state/pageTitleStore";
 
 interface Crumb {
   label: string;
@@ -36,6 +37,7 @@ const PAGE_TITLES: Record<string, string> = {
   snoozed: "Snoozed",
   screener: "Screener",
   reading: "Reading",
+  arrivals: "Arrivals",
   "paper-trail": "Paper trail",
   subscriptions: "Subscriptions",
   analytics: "Analytics",
@@ -144,6 +146,10 @@ export function Topbar() {
   const setSearchOpen = useModals((state) => state.setSearchPaletteOpen);
   const setHelpOpen = useModals((state) => state.setHelpOpen);
   const crumbs = useBreadcrumb(location.pathname, location.searchStr ?? "");
+  // A lone crumb that is the page's own h1 would say the title twice.
+  const pageTitle = usePageTitleStore((s) => s.title);
+  const repeatsTitle = crumbs.length === 1 && crumbs[0]?.label === pageTitle;
+  const visible = repeatsTitle ? [] : crumbs;
   const { data: status } = useQuery({
     queryKey: ["admin-status-is-demo"],
     queryFn: fetchAdminStatus,
@@ -156,9 +162,9 @@ export function Topbar() {
 
   return (
     <div className="flex w-full min-w-0 items-center gap-3">
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-[13px]">
-        {crumbs.map((crumb, index) => {
-          const last = index === crumbs.length - 1;
+      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-sm">
+        {visible.map((crumb, index) => {
+          const last = index === visible.length - 1;
           // Only the last crumb gives way on a narrow bar: a parent crumb
           // that shrinks slides under its neighbour instead of truncating.
           const fit = last ? "min-w-0" : "max-w-[40%] shrink-0";
@@ -203,7 +209,7 @@ export function Topbar() {
       <Button
         type="button"
         variant="outline"
-        className="h-8 w-[min(360px,34vw)] shrink justify-start gap-2 px-2.5 text-left text-[13px] font-normal text-muted-foreground"
+        className="h-8 w-[min(360px,34vw)] shrink justify-start gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
         onClick={() => setSearchOpen(true)}
         aria-label="Search mail"
       >

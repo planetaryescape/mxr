@@ -136,7 +136,7 @@ export function SnoozeDialog({
               >
                 <Clock className="size-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium">{presetLabel(preset)}</span>
+                  <span className="block text-sm font-medium">{presetLabel(preset)}</span>
                   {presetWhen(preset) ? (
                     <span className="block font-mono text-2xs text-muted-foreground">
                       {presetWhen(preset)}
@@ -156,7 +156,7 @@ export function SnoozeDialog({
             void time.commit(snoozeChoice);
           }}
         >
-          <label htmlFor="snooze-custom" className="text-[13px] font-medium">
+          <label htmlFor="snooze-custom" className="text-sm font-medium">
             Or type a time
           </label>
           <div className="flex items-start gap-2">

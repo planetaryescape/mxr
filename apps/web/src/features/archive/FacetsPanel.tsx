@@ -54,7 +54,7 @@ function Choice({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "min-h-8 rounded-full border px-3 text-[12.5px]",
+        "min-h-8 rounded-full border px-3 text-xs",
         pressed
           ? "border-primary bg-primary/10 text-foreground"
           : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -115,7 +115,7 @@ export function FacetsPanel({
           <DialogDescription>Narrow the ledger, then show the records.</DialogDescription>
         </DialogHeader>
         <fieldset className="grid gap-1.5">
-          <legend className="mb-1 text-[13px] font-medium">Kind</legend>
+          <legend className="mb-1 text-sm font-medium">Kind</legend>
           <div className="flex flex-wrap gap-1.5">
             {facets.kinds.flatMap((kind) => {
               const value = KNOWN_KINDS.find((known) => known === kind.value);
@@ -134,7 +134,7 @@ export function FacetsPanel({
           </div>
         </fieldset>
         <fieldset className="grid gap-1.5">
-          <legend className="mb-1 text-[13px] font-medium">Year</legend>
+          <legend className="mb-1 text-sm font-medium">Year</legend>
           <div className="flex flex-wrap gap-1.5">
             <Choice
               pressed={draft.year == null}
@@ -153,12 +153,12 @@ export function FacetsPanel({
             ))}
           </div>
         </fieldset>
-        <label className="grid gap-1 text-[13px]">
+        <label className="grid gap-1 text-sm">
           <span className="font-medium">Issuer</span>
           <select
             value={draft.issuer ?? ""}
             onChange={(event) => setDraft({ ...draft, issuer: event.target.value || undefined })}
-            className="h-9 rounded-md border border-border bg-background px-2 text-[13px]"
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
           >
             <option value="">Any</option>
             {facets.issuers.map((issuer) => (
@@ -168,7 +168,7 @@ export function FacetsPanel({
             ))}
           </select>
         </label>
-        <div className="grid grid-cols-2 gap-2 text-[13px]">
+        <div className="grid grid-cols-2 gap-2 text-sm">
           <label className="grid gap-1">
             <span className="font-medium">Amount from</span>
             <Input

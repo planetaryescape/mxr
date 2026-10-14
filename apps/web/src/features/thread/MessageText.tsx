@@ -38,8 +38,8 @@ export function MessageText({
       data-testid="message-text"
       className={
         plain
-          ? "max-w-[var(--reading-measure)] font-mono text-[13px] leading-6 text-foreground"
-          : "max-w-[var(--reading-measure)] text-[14.5px] leading-[1.65] text-foreground"
+          ? "max-w-[var(--reading-measure)] font-mono text-sm leading-6 text-foreground"
+          : "max-w-[var(--reading-measure)] text-base leading-[1.65] text-foreground"
       }
     >
       {segments.map((segment, index) => (
@@ -105,7 +105,7 @@ function SegmentView({
       className={
         segment.kind === "quote"
           ? "my-2 border-l-2 border-border-strong pl-3 text-muted-foreground"
-          : "mt-3 text-[13px] text-muted-foreground"
+          : "mt-3 text-sm text-muted-foreground"
       }
     >
       <Paragraphs

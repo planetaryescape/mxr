@@ -32,7 +32,7 @@ export function ConversationView({
   return (
     <ol data-testid="conversation" className="flex flex-col gap-4 px-5 py-4">
       {conversation.earlier_count > 0 ? (
-        <li className="text-center text-[12px] text-muted-foreground">
+        <li className="text-center text-xs text-muted-foreground">
           {conversation.earlier_count} earlier messages
         </li>
       ) : null}
@@ -86,7 +86,7 @@ function MessageItem({
       data-from-me={mine ? "true" : "false"}
       className={cn("flex flex-col", compact && mine ? "items-end" : "items-start")}
     >
-      <p className="mb-1 text-[12px] text-muted-foreground">
+      <p className="mb-1 text-xs text-muted-foreground">
         <span className="font-medium text-foreground/90">{who(message)}</span> ·{" "}
         {when(message.date)}
       </p>
@@ -99,14 +99,14 @@ function MessageItem({
       ) : message.only_quoted ? (
         // Nothing new in it: the placeholder says so, and the message as
         // sent (the marker below, or v) is how to read it.
-        <p data-testid="only-quoted" className="text-[13.5px] italic text-muted-foreground">
+        <p data-testid="only-quoted" className="text-sm italic text-muted-foreground">
           {message.text}
         </p>
       ) : (
         <div
           id={bodyId}
           className={cn(
-            "text-[14px] leading-6 text-foreground",
+            "text-base leading-6 text-foreground",
             compact
               ? cn("max-w-[34rem] rounded-md px-3 py-1.5", mine ? "bg-primary/10" : "bg-muted/60")
               : "w-full max-w-[66ch]",
@@ -132,7 +132,7 @@ function MessageItem({
         </div>
       )}
       {!asSent && message.source === "provider_snippet" ? (
-        <p data-testid="provider-preview" className="mt-1 text-[12px] text-muted-foreground">
+        <p data-testid="provider-preview" className="mt-1 text-xs text-muted-foreground">
           {message.text.trim()
             ? "Provider preview only; the full message is unavailable."
             : "No provider preview is available; the full message is unavailable."}{" "}
@@ -145,7 +145,7 @@ function MessageItem({
           </button>
         </p>
       ) : null}
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {!asSent && hidden > 0 ? (
           <button
             type="button"
@@ -201,7 +201,7 @@ function AsSent({
   const body = thread.data?.bodies.find((candidate) => candidate.message_id === messageId);
   if (!body) {
     return (
-      <p data-testid="as-sent" className="text-[13px] text-muted-foreground">
+      <p data-testid="as-sent" className="text-sm text-muted-foreground">
         {thread.isError
           ? "Couldn't load the message as sent."
           : thread.isSuccess
@@ -215,7 +215,7 @@ function AsSent({
       {body.text_html ? (
         <MessageBody html={body.text_html} theme={theme} />
       ) : (
-        <pre className="whitespace-pre-wrap p-3 font-sans text-[13.5px] leading-6">
+        <pre className="whitespace-pre-wrap p-3 font-sans text-sm leading-6">
           {body.text_plain ?? ""}
         </pre>
       )}

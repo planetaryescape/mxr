@@ -195,7 +195,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
 
   return (
     <>
-      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted-foreground">
+      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>{plural(rows.length, "sender")} waiting.</span>
         <span className="inline-flex items-center gap-1">
           <KeyChip>j</KeyChip>

@@ -38,7 +38,7 @@ export function RightRail() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
-        <h2 className="text-[13px] font-semibold">
+        <h2 className="text-sm font-semibold">
           {RAIL_TITLES[rail.kind] ?? rail.kind.replace(/-/g, " ")}
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close panel (Esc)">
@@ -100,9 +100,7 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   if (kind === "ask-archive") {
     return <AskArchivePanel />;
   }
-  return (
-    <p className="py-8 text-center text-[13px] text-muted-foreground">Nothing to show here.</p>
-  );
+  return <p className="py-8 text-center text-sm text-muted-foreground">Nothing to show here.</p>;
 }
 
 const RAIL_TITLES: Record<string, string> = {

@@ -75,21 +75,21 @@ export function PersonPane(props: PersonPaneProps) {
           >
             <ArrowLeft className="size-4" />
           </button>
-          <h2 data-testid="person-name" className="min-w-0 truncate text-[17px] font-semibold">
+          <h2 data-testid="person-name" className="min-w-0 truncate text-lg font-semibold">
             {row.title}
           </h2>
           <p
             data-testid="person-header-line"
-            className="ml-auto shrink-0 text-[12.5px] text-muted-foreground"
+            className="ml-auto shrink-0 text-xs text-muted-foreground"
           >
             {page.header_line}
           </p>
         </div>
-        <p data-testid="relationship-line" className="mt-1 text-[13px] text-muted-foreground">
+        <p data-testid="relationship-line" className="mt-1 text-sm text-muted-foreground">
           {page.relationship_line}
         </p>
         {props.left > 0 ? (
-          <p data-testid="topics-left" className="mt-1 text-[12.5px] text-muted-foreground">
+          <p data-testid="topics-left" className="mt-1 text-xs text-muted-foreground">
             {props.left === 1 ? "1 topic" : `${props.left} topics`} left with {row.title}
           </p>
         ) : null}
@@ -99,7 +99,7 @@ export function PersonPane(props: PersonPaneProps) {
       </ModeHeader>
       <nav aria-label="Topics" className="shrink-0 border-b border-border">
         <ModeFrame width="reader" className="px-3 py-2">
-          <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="px-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
             Topics
           </p>
           <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
@@ -122,7 +122,7 @@ export function PersonPane(props: PersonPaneProps) {
                     aria-current={active ? "true" : undefined}
                     onClick={() => props.onTopic(topic.thread_id)}
                     className={cn(
-                      "relative flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-[13px]",
+                      "relative flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-sm",
                       active
                         ? "bg-accent text-foreground"
                         : "text-foreground/85 hover:bg-accent/60",
@@ -138,7 +138,7 @@ export function PersonPane(props: PersonPaneProps) {
                       ) : null}
                       {topicLabel(topic)}
                     </span>
-                    <span className="shrink-0 text-[12px] text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {topicStateLabel(topic)}
                     </span>
                   </button>
@@ -146,7 +146,7 @@ export function PersonPane(props: PersonPaneProps) {
               );
             })}
           </ul>
-          <p className="hidden px-2 pt-1 text-[11.5px] text-muted-foreground md:block">
+          <p className="hidden px-2 pt-1 text-2xs text-muted-foreground md:block">
             <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
             through topics
           </p>
@@ -165,7 +165,7 @@ export function PersonPane(props: PersonPaneProps) {
             <>
               <h3
                 data-testid="conversation-subject"
-                className="relative mx-3 mt-3 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground"
+                className="relative mx-3 mt-3 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground"
               >
                 {props.arrival &&
                 (props.arrival.thread ?? conversation.thread_id) === conversation.thread_id ? (
@@ -181,7 +181,7 @@ export function PersonPane(props: PersonPaneProps) {
               />
             </>
           ) : (
-            <p className="px-5 py-6 text-[13px] text-muted-foreground">No conversation to show.</p>
+            <p className="px-5 py-6 text-sm text-muted-foreground">No conversation to show.</p>
           )}
           {/* ComposeHost portals the reply here, as it does in the reader. */}
           <div id="inline-composer-slot" className="px-4 pb-4 empty:hidden" />
@@ -197,7 +197,7 @@ export function PersonPane(props: PersonPaneProps) {
                   type="button"
                   data-testid="composer"
                   onClick={props.onReply}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-2.5 text-left text-[13.5px] text-muted-foreground hover:border-border-strong"
+                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-2.5 text-left text-sm text-muted-foreground hover:border-border-strong"
                 >
                   <MessageSquareReply className="size-4 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>
@@ -206,7 +206,7 @@ export function PersonPane(props: PersonPaneProps) {
               </div>
             ) : null}
             {props.gotItHint ? <div className="px-4 pt-2">{props.gotItHint}</div> : null}
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-[12.5px]">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-xs">
               <label className="mr-2 inline-flex items-center gap-1.5 px-1 text-muted-foreground">
                 <input
                   type="checkbox"
@@ -306,7 +306,7 @@ function MergeLine({ suggestion }: { suggestion: MergeSuggestion }) {
   return (
     <p
       data-testid="merge-suggestion"
-      className="mt-2 flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-muted-foreground"
+      className="mt-2 flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground"
     >
       <span>
         Same person? {suggestion.name} ({suggestion.addresses.length} addresses)

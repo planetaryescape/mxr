@@ -43,15 +43,13 @@ export function SettingRow({
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border/60 py-3">
       <div className="min-w-0 flex-1 basis-64">
         {htmlFor ? (
-          <Label htmlFor={htmlFor} className="text-[13px] font-medium">
+          <Label htmlFor={htmlFor} className="text-sm font-medium">
             {label}
           </Label>
         ) : (
-          <div className="text-[13px] font-medium">{label}</div>
+          <div className="text-sm font-medium">{label}</div>
         )}
-        {description ? (
-          <p className="mt-0.5 text-[12.5px] text-muted-foreground">{description}</p>
-        ) : null}
+        {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
       </div>
       <div className="shrink-0">{children}</div>
     </div>

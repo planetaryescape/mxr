@@ -112,7 +112,7 @@ export const SwipeLayer = forwardRef<SwipeLayerHandle>(function SwipeLayer(_prop
       data-action={pending?.action}
       data-armed={pending?.armed ? "true" : undefined}
       className={cn(
-        "swipe-layer flex h-full w-full items-center rounded-md px-5 text-[12.5px]",
+        "swipe-layer flex h-full w-full items-center rounded-md px-5 text-xs",
         pending ? TONES[pending.action] : "bg-muted/40",
         pending?.side === "left" ? "justify-end" : "justify-start",
       )}

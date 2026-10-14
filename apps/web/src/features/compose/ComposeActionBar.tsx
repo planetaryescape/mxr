@@ -68,7 +68,7 @@ export function ComposeActionBar({
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />
           Send
-          <kbd className="ml-0.5 rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-[10px] leading-none">
+          <kbd className="ml-0.5 rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-2xs leading-none">
             ⌘↵
           </kbd>
         </Button>

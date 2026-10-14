@@ -52,7 +52,7 @@ export function ConfirmDialog({
             minute afterwards.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <ul className="max-h-48 overflow-auto rounded-md border border-border text-[13px]">
+        <ul className="max-h-48 overflow-auto rounded-md border border-border text-sm">
           {preview.map((row) => (
             <li
               key={row.id}

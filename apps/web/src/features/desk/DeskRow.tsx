@@ -103,7 +103,7 @@ export const DeskRow = memo(function DeskRow({
       ) : null}
       <span
         className={cn(
-          "min-w-0 truncate text-[13px]",
+          "min-w-0 truncate text-sm",
           desk.unread ? "font-semibold text-foreground" : "text-foreground/90",
         )}
         title={desk.counterparty_email}
@@ -112,7 +112,7 @@ export const DeskRow = memo(function DeskRow({
       </span>
       <span
         className={cn(
-          "col-span-2 col-start-1 row-start-2 min-w-0 text-[13px] text-muted-foreground @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1 @2xl:truncate",
+          "col-span-2 col-start-1 row-start-2 min-w-0 text-sm text-muted-foreground @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1 @2xl:truncate",
           // With a gist line the reason may turn into the ask: one line, so
           // the row keeps its height when it does.
           gistLine ? "truncate" : "line-clamp-2 @2xl:line-clamp-none",
@@ -145,7 +145,7 @@ export const DeskRow = memo(function DeskRow({
           data-testid="desk-gist"
           data-state={gist ? "ready" : "waiting"}
           title={gist ? gistTitle(gist) : undefined}
-          className="col-span-2 col-start-1 row-start-3 h-5 min-w-0 truncate text-[12.5px] leading-5 text-muted-foreground/90 @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-2"
+          className="col-span-2 col-start-1 row-start-3 h-5 min-w-0 truncate text-xs leading-5 text-muted-foreground/90 @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-2"
         >
           {gist?.about ?? ""}
         </span>

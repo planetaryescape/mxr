@@ -31,7 +31,7 @@ export function PrivacyLine({
   return (
     <p
       data-testid="privacy-line"
-      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-5 text-muted-foreground"
+      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-muted-foreground"
     >
       <span className="inline-flex items-center gap-1.5">
         <ShieldCheck className="size-3.5 shrink-0" aria-hidden />

@@ -15,7 +15,7 @@ export function KeybindingsSection() {
   );
   return (
     <div className="space-y-6">
-      <p className="mb-4 text-[13px] text-muted-foreground">
+      <p className="mb-4 text-sm text-muted-foreground">
         Keys follow the mxr TUI. Where the web differs, the note says why. Press ? anywhere for the
         keys that apply to the current view.
       </p>
@@ -27,7 +27,7 @@ export function KeybindingsSection() {
             </h3>
             <ul className="grid gap-x-8 md:grid-cols-2">
               {section.hints.map((hint) => (
-                <li key={hint.id} className="flex items-start gap-3 py-1 text-[13px]">
+                <li key={hint.id} className="flex items-start gap-3 py-1 text-sm">
                   <span className="flex w-28 shrink-0 flex-wrap gap-1">
                     {hint.keys.slice(0, 2).map((key) => (
                       <KeyChip key={key}>{key}</KeyChip>

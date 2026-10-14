@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, FolderArchive, Inbox, Search } from "lucide-react";
 import { useId, useState } from "react";
 
+import { ModeHeader } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -16,12 +17,10 @@ export function FindRoute() {
   const inputId = useId();
   return (
     <section aria-label="Find" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-      <header className="shrink-0 border-b border-border px-4 pb-3 pt-4">
-        <h1 className="text-[17px] font-semibold tracking-tight">Find</h1>
-      </header>
+      <ModeHeader title="Find" />
       <form
         role="search"
-        className="flex gap-2 px-4 pt-4"
+        className="flex gap-2 px-5 pt-4"
         onSubmit={(event) => {
           event.preventDefault();
           const q = query.trim();
@@ -73,8 +72,8 @@ function FindLink({
       <Link to={to} className="flex items-start gap-3 rounded-md px-3 py-2.5 hover:bg-accent">
         <Icon aria-hidden className="mt-0.5 size-4 text-muted-foreground" />
         <span className="min-w-0">
-          <span className="block text-[14px] text-foreground">{label}</span>
-          <span className="block text-[12.5px] text-muted-foreground">{children}</span>
+          <span className="block text-base text-foreground">{label}</span>
+          <span className="block text-xs text-muted-foreground">{children}</span>
         </span>
       </Link>
     </li>

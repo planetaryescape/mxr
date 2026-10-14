@@ -51,8 +51,8 @@ export function Centered({
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 py-16 text-center">
       <div className="mb-1 text-muted-foreground">{icon}</div>
-      <h2 className="text-[15px] font-semibold">{title}</h2>
-      {body ? <p className="max-w-sm text-[13px] text-muted-foreground">{body}</p> : null}
+      <h2 className="text-md font-semibold">{title}</h2>
+      {body ? <p className="max-w-sm text-sm text-muted-foreground">{body}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );

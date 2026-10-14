@@ -49,6 +49,8 @@ import { activeChip, answerList, groupByMonth, KIND_CHIPS, stepYear } from "./le
 import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts";
 import { SubscriptionCard, SubscriptionsList } from "./Subscriptions";
 import { subscriptionAmountCopy } from "./subscriptionRows";
+import { KeyLine } from "@/components/KeyLine";
+import { SectionHeading } from "@/components/SectionHeading";
 
 const PAGE = 200;
 /** The ledger of records, or the subscriptions found in them. */
@@ -171,25 +173,27 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
 /** The mode's name, its job in one line, and how many records it holds. */
 function ArchiveHeader({ ledger, guide }: { ledger?: RecordLedger; guide?: ModeGuide }) {
   return (
-    <ModeHeader width="wide">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Archive</h1>
-        <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
-          {guide?.header ??
-            ledger?.header ??
-            "Receipts, orders, bookings and documents. Ask for what you need."}
-        </p>
-        {ledger && ledger.total > 0 ? (
+    <ModeHeader
+      width="wide"
+      title="Archive"
+      subtitle={
+        guide?.header ??
+        ledger?.header ??
+        "Receipts, orders, bookings and documents. Ask for what you need."
+      }
+      actions={
+        ledger && ledger.total > 0 ? (
           <span
             data-testid="records-total"
-            className="ml-auto font-mono text-[12px] tabular-nums text-muted-foreground"
+            className="font-mono text-xs tabular-nums text-muted-foreground"
           >
             {plural(ledger.total, "record")}
           </span>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {ledger?.first_run ? (
-        <p data-testid="records-first-run" className="mt-1 text-[12.5px] text-muted-foreground">
+        <p data-testid="records-first-run" className="mt-1 text-xs text-muted-foreground">
           {ledger.first_run.line}
         </p>
       ) : null}
@@ -482,7 +486,7 @@ function Ledger({
         <button
           type="button"
           onClick={() => setCardOpen(false)}
-          className="mx-3 mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent"
+          className="mx-3 mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent"
         >
           <ArrowLeft aria-hidden className="size-4" /> Subscriptions
         </button>
@@ -505,7 +509,7 @@ function Ledger({
         <button
           type="button"
           onClick={() => setCardOpen(false)}
-          className="mx-3 mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent"
+          className="mx-3 mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent"
         >
           <ArrowLeft aria-hidden className="size-4" /> Archive
         </button>
@@ -550,7 +554,7 @@ function Ledger({
                 Ask Archive
               </label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[12px] text-muted-foreground">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground">
                   /
                 </span>
                 <Input
@@ -566,7 +570,7 @@ function Ledger({
                     }
                   }}
                   placeholder="What are you looking for?"
-                  className="h-10 pl-7 text-[14px]"
+                  className="h-10 pl-7 text-base"
                   autoComplete="off"
                 />
               </div>
@@ -589,7 +593,7 @@ function Ledger({
                 ) : null}
               </>
             ) : answerPending ? (
-              <p className="mx-5 mt-3 text-[12.5px] text-muted-foreground">Looking…</p>
+              <p className="mx-5 mt-3 text-xs text-muted-foreground">Looking…</p>
             ) : null}
 
             {/* A listed query is not narrowed by the ledger's chips and filters. */}
@@ -597,10 +601,8 @@ function Ledger({
               <>
                 {ledger.coming_up.length > 0 ? (
                   <section aria-label="Coming up" data-testid="coming-up" className="mx-5 mt-4">
-                    <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-                      Coming up
-                    </h2>
-                    <ul className="mt-1 grid gap-0.5 text-[13px]">
+                    <SectionHeading>Coming up</SectionHeading>
+                    <ul className="mt-1 grid gap-0.5 text-sm">
                       {ledger.coming_up.map((moment) => (
                         <li key={`${moment.kind}-${moment.record_id}`}>
                           <button
@@ -643,7 +645,7 @@ function Ledger({
                       aria-pressed={!showingSubscriptions && chip === kindChip.id}
                       onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
                       className={cn(
-                        "min-h-8 rounded-full border px-3 text-[12.5px]",
+                        "min-h-8 rounded-full border px-3 text-xs",
                         !showingSubscriptions && chip === kindChip.id
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -661,7 +663,7 @@ function Ledger({
                       setCardOpen(false);
                     }}
                     className={cn(
-                      "min-h-8 rounded-full border px-3 text-[12.5px]",
+                      "min-h-8 rounded-full border px-3 text-xs",
                       showingSubscriptions
                         ? "border-primary bg-primary/10 text-foreground"
                         : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -672,7 +674,7 @@ function Ledger({
                   <button
                     type="button"
                     onClick={() => setFacetsOpen(true)}
-                    className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                   >
                     <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
                     <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
@@ -686,11 +688,11 @@ function Ledger({
                       onSelect={selectSubscription}
                     />
                   ) : subscriptions.isError ? (
-                    <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+                    <p className="mx-5 mt-4 text-sm text-muted-foreground">
                       Couldn't load subscriptions: {subscriptions.error.message}
                     </p>
                   ) : (
-                    <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+                    <p className="mx-5 mt-4 text-sm text-muted-foreground">
                       Finding subscriptions…
                     </p>
                   )
@@ -705,8 +707,8 @@ function Ledger({
                     data-testid="issuer-page"
                     className="mx-5 mt-3"
                   >
-                    <h2 className="text-[15px] font-semibold">{ledger.issuer.name}</h2>
-                    <p className="text-[12.5px] text-muted-foreground">
+                    <h2 className="text-md font-semibold">{ledger.issuer.name}</h2>
+                    <p className="text-xs text-muted-foreground">
                       {plural(ledger.issuer.count, "record")}
                       {ledger.issuer.totals.length > 0
                         ? ` · ${ledger.issuer.totals.map((total) => total.display).join(" + ")}`
@@ -718,7 +720,7 @@ function Ledger({
                 {!showingSubscriptions && ledger.empty_state && ledger.matching === 0 ? (
                   <p
                     data-testid="records-empty"
-                    className="mx-5 mt-4 text-[13px] text-muted-foreground"
+                    className="mx-5 mt-4 text-sm text-muted-foreground"
                   >
                     {ledger.empty_state}
                   </p>
@@ -733,7 +735,7 @@ function Ledger({
                   aria-label={group.month?.label ?? "Undated"}
                   data-testid="record-month"
                 >
-                  <h2 className="mx-5 mb-1 mt-4 flex items-baseline justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+                  <SectionHeading className="mx-5 mb-1 mt-4 flex items-baseline justify-between gap-3">
                     <span>{group.month?.label ?? "Undated"}</span>
                     {group.month ? (
                       <span
@@ -746,7 +748,7 @@ function Ledger({
                           : "no amounts"}
                       </span>
                     ) : null}
-                  </h2>
+                  </SectionHeading>
                   <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
                     {group.records.map((record) => {
                       const rowIndex = position.get(record.id) ?? 0;
@@ -789,7 +791,9 @@ function Ledger({
                 </Button>
               </div>
             ) : null}
-            {guide ? <KeyLine guide={guide} /> : null}
+            {guide ? (
+              <KeyLine keys={guide.keys.filter((key) => !["?", "e", "t"].includes(key.key))} />
+            ) : null}
           </div>
         </ResizablePanel>
         {(showSideCard && cardRecord) || showSideSubscription ? (
@@ -871,7 +875,7 @@ function ActiveFilters({
     });
   if (parts.length === 0) return null;
   return (
-    <p className="mx-5 mt-2 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
+    <p className="mx-5 mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
       <span>{plural(ledger.matching, "record")}:</span>
       {parts.map((part) => (
         <button
@@ -887,20 +891,6 @@ function ActiveFilters({
       <span className="hidden md:inline">
         <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> year
       </span>
-    </p>
-  );
-}
-
-/** Keys with their verbs at the point of use, from the mode's own table. */
-function KeyLine({ guide }: { guide: ModeGuide }) {
-  const keys = guide.keys.filter((key) => !["?", "e", "t"].includes(key.key));
-  return (
-    <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
-      {keys.map((key) => (
-        <span key={key.key} className="inline-flex items-center gap-1">
-          <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}
-        </span>
-      ))}
     </p>
   );
 }

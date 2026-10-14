@@ -48,7 +48,7 @@ export function PageError({
       className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center"
     >
       <AlertTriangle className="size-5 text-destructive" />
-      <h2 className="text-[15px] font-semibold">{title}</h2>
+      <h2 className="text-md font-semibold">{title}</h2>
       <RequestErrorDetails error={error ?? new Error("The daemon did not answer.")} />
       {onRetry ? (
         <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
@@ -75,8 +75,8 @@ export function PageEmpty({
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
       {icon ? <div className="mb-1 text-muted-foreground">{icon}</div> : null}
-      <h2 className="text-[15px] font-semibold">{title}</h2>
-      {body ? <p className="max-w-sm text-[13px] text-muted-foreground">{body}</p> : null}
+      <h2 className="text-md font-semibold">{title}</h2>
+      {body ? <p className="max-w-sm text-sm text-muted-foreground">{body}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );
@@ -128,7 +128,7 @@ export function RuledRow({
 }) {
   const text = (
     <>
-      <div className="truncate text-[13px] font-medium text-foreground">{title}</div>
+      <div className="truncate text-sm font-medium text-foreground">{title}</div>
       {meta ? (
         <div className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">{meta}</div>
       ) : null}
@@ -184,7 +184,7 @@ export function FactList({
           <dt className="font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">
             {label}
           </dt>
-          <dd className="min-w-0 truncate text-right text-[13px] tabular-nums">{value}</dd>
+          <dd className="min-w-0 truncate text-right text-sm tabular-nums">{value}</dd>
         </div>
       ))}
     </dl>
@@ -194,8 +194,6 @@ export function FactList({
 /** Explanatory prose under a section title; not an alert box. */
 export function PageNote({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-3 max-w-[65ch] text-[12.5px] text-muted-foreground", className)}>
-      {children}
-    </p>
+    <p className={cn("mb-3 max-w-[65ch] text-xs text-muted-foreground", className)}>{children}</p>
   );
 }

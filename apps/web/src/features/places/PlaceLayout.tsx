@@ -1,7 +1,6 @@
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
-import { ModeHeader, type FrameWidth } from "@/components/ModeFrame";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
@@ -117,27 +116,5 @@ export function PlaceLayout({
         </ResizablePanel>
       </ResizablePanelGroup>
     </ReaderNavContext.Provider>
-  );
-}
-
-/** The place's header: title, a quiet meta line and trailing actions. */
-export function PlaceHeader({
-  title,
-  meta,
-  actions,
-  width = "list",
-}: {
-  title: string;
-  meta?: ReactNode;
-  actions?: ReactNode;
-  /** The frame the place's content sits in, so the title lines up with it. */
-  width?: FrameWidth;
-}) {
-  return (
-    <ModeHeader width={width} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <h1 className="text-[17px] font-semibold tracking-tight text-foreground">{title}</h1>
-      {meta ? <p className="min-w-0 text-[12.5px] text-muted-foreground">{meta}</p> : null}
-      {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
-    </ModeHeader>
   );
 }

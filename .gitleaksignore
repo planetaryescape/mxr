@@ -21,3 +21,4 @@ cf38094f63ba4196a08ab048d2eb9936e18103b2:crates/safety/tests/no_raw_secrets.rs:g
 71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-browser/selection-provenance.json:generic-api-key:45
 71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/selection-provenance.json:generic-api-key:85
 71caef8e9da95977556c1a9ecff9f6203eda0b26:docs/build-log/daemon-portability/evidence/s03-installed-v0.6.68-tui/selection-provenance.json:generic-api-key:90
+5194eb4a518a71fe9c8548d76500bf642045dc8a:crates/web/src/remote_gateway_tests.rs:generic-api-key:25

@@ -16,6 +16,7 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
+import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -24,6 +25,7 @@ import {
   cutLine,
   digestRows,
   openableLink,
+  routineLine,
   SECTION_TITLE,
   canLetGoSource,
   canPinSource,
@@ -106,13 +108,16 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   const params = useParams({ strict: false }) as { threadId?: string };
   const activePane = useMailboxPane((s) => s.activePane);
   const hidden = useUpdatesHidden((s) => s.hidden);
+  // Routine stays collapsed to its one line until opened, for this visit.
   const [routineOpen, setRoutineOpen] = useState(false);
   const [cursorId, setCursorId] = useState<string | null>(null);
+  // Space opens the peek under one line at a time; Escape closes it.
+  const [peekId, setPeekId] = useState<string | null>(null);
   const [letGoOpen, setLetGoOpen] = useState(false);
   // `e`: the line whose source the open preview is for.
   const [letGoLineOf, setLetGoLineOf] = useState<UpdateLine | null>(null);
   const [tuning, setTuning] = useState<UpdateLine | null>(null);
-  const { rows, bySection, quieter } = useMemo(
+  const { rows, bySection, routine } = useMemo(
     () => digestRows(digest, { routineOpen, hidden }),
     [digest, routineOpen, hidden],
   );
@@ -121,12 +126,18 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     rows.findIndex((row) => row.line.id === cursorId),
   );
   const current = rows[index]?.line;
+  // A peek belongs to its line: when a refetch, a let go or a tune takes the
+  // line away, the peek goes with it, and an undo does not bring it back open.
+  useEffect(() => {
+    if (peekId !== null && !rows.some((row) => row.line.id === peekId)) setPeekId(null);
+  }, [rows, peekId]);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
-  const hasLines = rows.length > 0;
+  // Routine counts as lines even while it is collapsed.
+  const hasLines = rows.length > 0 || routine.sources > 0;
   // One hint under the first suggested to-do, one under the first line,
   // and the digest's let go under its button.
   const firstSuggestion = rows.find((row) => row.line.todo_suggestion && !row.line.in_todo)?.line;
@@ -216,6 +227,10 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     );
   };
 
+  const togglePeek = useCallback(
+    (line: UpdateLine) => setPeekId((open) => (open === line.id ? null : line.id)),
+    [],
+  );
   const move = (delta: number) => {
     const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))];
     if (next) setCursorId(next.line.id);
@@ -224,7 +239,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   useScopeController("updates", {
     down: () => move(1),
     up: () => move(-1),
-    expand: quieter.sources > 0 ? () => setRoutineOpen(true) : undefined,
+    expand: routine.sources > 0 ? () => setRoutineOpen(true) : undefined,
     letGoAll: digest.let_go_line
       ? () => {
           dismissLetGoHint();
@@ -242,21 +257,49 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
+    peek: () => current && togglePeek(current),
     // `K` stays "tune this source"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? updateMoveSubject(current) : null)).moveToMode,
-    closeHint,
+    // Escape closes an open peek first, then a hint.
+    closeHint: () => {
+      if (peekId !== null) setPeekId(null);
+      else closeHint?.();
+    },
   });
 
+  const headingClass =
+    "mx-5 mb-1 mt-4 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground";
   const section = (name: UpdateSection) => {
     const sectionRows = bySection[name];
+    if (name === "routine") {
+      if (routine.sources === 0) return null;
+      // Routine is one line until opened; once open it stays open for this visit.
+      if (!routineOpen) {
+        return (
+          <button
+            type="button"
+            data-testid="updates-routine-toggle"
+            aria-expanded={false}
+            onClick={() => setRoutineOpen(true)}
+            className={cn(headingClass, "flex items-center gap-2 hover:text-foreground")}
+          >
+            {routineLine(routine)}
+            <ChevronRight aria-hidden className="size-3" />
+          </button>
+        );
+      }
+    }
     if (sectionRows.length === 0) return null;
     return (
       <section key={name} aria-labelledby={`updates-${name}`} data-testid={`updates-${name}`}>
-        <h2
-          id={`updates-${name}`}
-          className="mx-5 mb-1 mt-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
-        >
-          {SECTION_TITLE[name]}
+        <h2 id={`updates-${name}`} className={headingClass}>
+          {name === "routine" ? (
+            routineLine(routine)
+          ) : (
+            <>
+              {SECTION_TITLE[name]} <span className="tabular-nums">{sectionRows.length}</span>
+            </>
+          )}
         </h2>
         <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
           {sectionRows.map((row) => (
@@ -265,6 +308,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
               line={row.line}
               index={row.index}
               focused={row.index === index}
+              peeked={peekId === row.line.id}
               onSelect={select}
               onLetGo={letGoLine}
               onNeedsMe={needs}
@@ -273,6 +317,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
               onTuneTo={tuneTo}
               onSweep={sweep}
               onPin={pin}
+              onTogglePeek={togglePeek}
               hint={hintFor(row.line)}
             />
           ))}
@@ -282,7 +327,11 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   };
 
   return (
-    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
+    <div
+      ref={listRef}
+      // Below the phone bar, the last row scrolls clear of the sticky Let go of all.
+      className={cn("min-h-0 flex-1 overflow-y-auto pb-6", digest.let_go_line && "pb-16 md:pb-6")}
+    >
       <ModeFrame>
         <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <p data-testid="updates-cut" className="min-w-0 text-[13px] text-foreground/90">
@@ -330,18 +379,6 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
             {section("needs_a_look")}
             {section("changed")}
             {section("routine")}
-            {quieter.sources > 0 ? (
-              <button
-                type="button"
-                data-testid="updates-quieter"
-                aria-expanded={routineOpen}
-                onClick={() => setRoutineOpen(true)}
-                className="mx-5 mt-1 inline-flex items-center gap-2 text-[12.5px] text-muted-foreground hover:text-foreground"
-              >
-                + {plural(quieter.sources, "quieter source")} ({quieter.messages})
-                <ChevronRight aria-hidden className="size-3" />
-              </button>
-            ) : null}
           </div>
         )}
 
@@ -382,6 +419,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
         {digest.let_go_line ? (
           <div className="sticky bottom-0 mt-6 bg-background/95 px-4 pb-3 pt-2 md:hidden">
             <Button
+              variant="outline"
               className="w-full"
               data-testid="updates-let-go-all-mobile"
               onClick={() => {

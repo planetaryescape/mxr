@@ -553,6 +553,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
+  {
+    context: "updates",
+    keys: ["Space"],
+    bound: "web",
+    why: "Space opens the details under the focused web line; the TUI's Updates keymap binds no Space",
+  },
   // Reading.
   {
     context: "reading",

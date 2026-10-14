@@ -28,7 +28,7 @@ lines, in three sections that never change order:
 |---|---|
 | **Needs a look** | A new sign-in, a failed payment, a failing build, a parcel with a delivery problem, or words like "failed", "declined" or "suspended" in the subject. One line per kind of message. |
 | **Changed** | A source that is new, a kind of message it hasn't sent before, a number that moved, a build that went green again, an incident that was resolved, a parcel that moved. |
-| **Routine** | Everything else, one line per source with a count. |
+| **Routine** | Everything else, one line per source with a count. In the web app, Routine is one line, "Routine · 31 updates from 16 sources", until you press `Enter` to open it. |
 
 Each line is a fact, not the subject as written. The rules clean the
 subject (they drop "Re:", "[acme/api]" tags and the sender's brand), and
@@ -44,12 +44,13 @@ no change at all rather than a guess.
 Builds and incidents fold into one line with their current state:
 "Run failed: CI - main" for the latest of three failing runs, with how
 long it has been failing. Parcels from [Deliveries](/guides/deliveries/)
-lead with their current state, followed by available item names, tracking
-or order references, and delivery estimates.
+show where the parcel is on its way under the fact, such as "Shipped ·
+next: out for delivery". Their available item names, tracking or order
+references, and delivery estimates sit in the details.
 
-Open **Why this update?** in the web app to read the classification evidence.
-Parcel lines keep that evidence under **Details** alongside their tracking
-and order references.
+In the web app, press `Space` on a line to open its details under it: why
+the update is here, the numbers the mail quoted, a parcel's items and
+references, and the link and the email. `Escape` closes them.
 
 ## The digest is a fixed cut; mail after it waits
 
@@ -102,6 +103,8 @@ The keys:
 
 | Key | What it does |
 |---|---|
+| `Enter` | Open Routine, when it is collapsed (web) |
+| `Space` | Open or close the details under this line (web) |
 | `A` | Let go of the digest, after a preview |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
@@ -131,11 +134,11 @@ they fit; otherwise, it favors the address.
 ## What needs you leads Needs a look as a suggested to-do
 
 A new sign-in alert, a failed payment and a parcel with a delivery problem
-sit at the top of Needs a look, with a highlighted line saying why:
-"Suggested to-do: new sign-in alert from Google (accounts.google.com)
-(rule). t adds it." mxr never adds the to-do for you; `t` does, with the
-title filled in ("Check new sign-in to Google (accounts.google.com)"). The
-line then shows "already in To do".
+sit at the top of Needs a look. The line carries a To do button, and its
+details say why: "Suggested to-do: new sign-in alert from Google
+(accounts.google.com) (rule). t adds it." mxr never adds the to-do for
+you; `t` or the button does, with the title filled in ("Check new sign-in
+to Google (accounts.google.com)"). The line then shows "already in To do".
 
 Anyone can put "New sign-in" in a subject or "Google" in a display name, so
 every line in Needs a look and every title `t` fills in shows the host the

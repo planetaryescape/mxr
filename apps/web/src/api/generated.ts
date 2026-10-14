@@ -10977,6 +10977,7 @@ export interface components {
                   items: components["schemas"]["DeskDoneItemData"][];
               }
             | {
+                  automated?: boolean;
                   /** @enum {string} */
                   cmd: "GetThreadGists";
                   generate?: boolean;

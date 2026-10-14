@@ -547,7 +547,7 @@ where
             ctx,
         ));
     }
-    for (template, group) in needs {
+    for (template, group) in fold_repeats(needs) {
         out.extend(source_line(
             UpdateSectionData::NeedsALook,
             format!("{source}|needs|{template}"),
@@ -565,6 +565,39 @@ where
         out.extend(source_line(section, format!("{source}|source"), &rest, ctx));
     }
     out
+}
+
+/// One source's needs-a-look mail, a group per subject template, folded so
+/// a kind of alert is one line: "Payment failed" and "Payment failed again"
+/// differ as templates but are one failed payment to look at. The fold only
+/// joins whole template groups, so a line's messages are the union of the
+/// lines it replaces and letting go, the to-do and tuning (which act on the
+/// source's messages, not on a line) see the same set. The folded line keeps
+/// the first template's id, so a line that did not fold keeps its id.
+fn fold_repeats<'a>(
+    needs: BTreeMap<&'a str, Vec<&'a Scored<'a>>>,
+) -> Vec<(&'a str, Vec<&'a Scored<'a>>)> {
+    let mut by_kind: BTreeMap<&'static str, (&'a str, Vec<&'a Scored<'a>>)> = BTreeMap::new();
+    let mut lines: Vec<(&'a str, Vec<&'a Scored<'a>>)> = Vec::new();
+    for (template, group) in needs {
+        // The kind of the group's newest message that carries one.
+        let kind = group
+            .iter()
+            .filter_map(|m| Some((m.item.message.date, m.item.fact.needs_you?)))
+            .max_by_key(|(date, _)| *date)
+            .map(|(_, kind)| kind.as_str());
+        match kind {
+            Some(kind) => by_kind
+                .entry(kind)
+                .or_insert_with(|| (template, Vec::new()))
+                .1
+                .extend(group),
+            None => lines.push((template, group)),
+        }
+    }
+    lines.extend(by_kind.into_values());
+    lines.sort_by_key(|(template, _)| *template);
+    lines
 }
 
 /// Scored mail grouped by account and source, in a stable order.

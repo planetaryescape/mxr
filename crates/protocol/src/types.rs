@@ -2591,13 +2591,17 @@ pub enum Request {
     /// model. With `generate`, conversations from people that have none are
     /// queued for a background writer, in the order given (put the rows on
     /// screen first); each gist arrives as `DaemonEvent::ThreadGistReady`.
-    /// A newer request goes ahead of older ones, and asking again for a
-    /// queued conversation never queues it twice. At most 100 ids. Returns
-    /// `ResponseData::ThreadGists`.
+    /// With `automated`, conversations from automated senders (receipts,
+    /// alerts: what Updates shows) are queued too, and written with the
+    /// notification prompt. A newer request goes ahead of older ones, and
+    /// asking again for a queued conversation never queues it twice. At
+    /// most 100 ids. Returns `ResponseData::ThreadGists`.
     GetThreadGists {
         thread_ids: Vec<ThreadId>,
         #[serde(default)]
         generate: bool,
+        #[serde(default)]
+        automated: bool,
     },
     /// Reply later, or wait, until `until`, per conversation by who wrote
     /// last: when they did, reply later (off the desk and out of the reply

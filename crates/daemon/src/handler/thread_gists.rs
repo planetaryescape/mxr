@@ -14,15 +14,15 @@
 //! capped, so requests for rows scrolled past long ago fall off the back.
 
 use super::diagnostics_impl::emit_operation_event;
-use super::mail_kind::{self, SenderKind};
-use super::places::AccountKinds;
+use super::gist_kind::{thread_kinds, GistStyle};
+use super::mail_kind::SenderKind;
 use super::thread_gist::{
     cached_gist, load_and_write_gist, newest_message_id, thread_envelopes, GistCall, GistPolicy,
     GistSetup,
 };
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::{AccountId, ThreadId};
+use mxr_core::id::ThreadId;
 use mxr_core::types::Envelope;
 use mxr_protocol::{
     DaemonEvent, GistModelData, ResponseData, ThreadGistBatchData, ThreadGistData,
@@ -235,6 +235,7 @@ pub(super) async fn get_thread_gists(
     state: &Arc<AppState>,
     thread_ids: &[ThreadId],
     generate: bool,
+    automated: bool,
 ) -> HandlerResult {
     if thread_ids.len() > THREAD_GISTS_MAX_BATCH {
         return Err(HandlerError::from(format!(
@@ -264,53 +265,84 @@ pub(super) async fn get_thread_gists(
 
     state.gist_queue.prune_failed();
     let mut seen = HashSet::new();
-    let mut missing: Vec<Candidate> = Vec::new();
+    let mut found: Vec<Candidate> = Vec::new();
     for thread_id in thread_ids {
         if !seen.insert(thread_id) {
             continue;
         }
         let envelopes = thread_envelopes(state, thread_id).await?;
-        let Some(setup) = GistSetup::new(&policy, thread_id, &envelopes) else {
+        if envelopes.is_empty() {
             batch
                 .skipped
                 .push(skip(thread_id, ThreadGistSkipReasonData::NotFound));
-            continue;
-        };
-        if let Some(gist) = cached_gist(state, thread_id, &setup).await? {
-            batch.gists.push(gist);
-        } else if !generate || model != GistModelData::Available {
-            batch
-                .skipped
-                .push(skip(thread_id, ThreadGistSkipReasonData::NotGenerated));
-        } else if state
-            .gist_queue
-            .recently_failed(thread_id, &setup.content_hash)
-        {
-            batch
-                .skipped
-                .push(skip(thread_id, ThreadGistSkipReasonData::RecentlyFailed));
         } else {
-            missing.push(Candidate {
+            found.push(Candidate {
                 thread_id: thread_id.clone(),
                 envelopes,
             });
         }
     }
+    // The prompt style is part of a gist's cache key, so kinds are read
+    // before the cache is.
+    let kinds = thread_kinds(
+        state,
+        &found
+            .iter()
+            .map(|candidate| (&candidate.thread_id, candidate.envelopes.as_slice()))
+            .collect::<Vec<_>>(),
+    )
+    .await?;
+    let mut missing: Vec<(Candidate, SenderKind)> = Vec::new();
+    for candidate in found {
+        // Absent from the map: the message is gone (trashed since).
+        let Some(kind) = kinds.get(&candidate.thread_id).copied() else {
+            batch.skipped.push(skip(
+                &candidate.thread_id,
+                ThreadGistSkipReasonData::NotFound,
+            ));
+            continue;
+        };
+        let Some(setup) = GistSetup::new(
+            &policy,
+            &candidate.thread_id,
+            &candidate.envelopes,
+            GistStyle::of(kind),
+        ) else {
+            continue;
+        };
+        if let Some(gist) = cached_gist(state, &candidate.thread_id, &setup).await? {
+            batch.gists.push(gist);
+        } else if !generate || model != GistModelData::Available {
+            batch.skipped.push(skip(
+                &candidate.thread_id,
+                ThreadGistSkipReasonData::NotGenerated,
+            ));
+        } else if state
+            .gist_queue
+            .recently_failed(&candidate.thread_id, &setup.content_hash)
+        {
+            batch.skipped.push(skip(
+                &candidate.thread_id,
+                ThreadGistSkipReasonData::RecentlyFailed,
+            ));
+        } else {
+            missing.push((candidate, kind));
+        }
+    }
 
     if !missing.is_empty() {
-        let people = people_threads(state, &missing).await?;
         let mut wanted = Vec::new();
-        for candidate in missing {
-            match people.get(&candidate.thread_id) {
-                Some(true) => wanted.push(candidate.thread_id),
-                Some(false) => batch.skipped.push(skip(
+        for (candidate, kind) in missing {
+            // People's conversations; Updates' notifications too when the
+            // client is showing Updates. Lists, screened-out senders and
+            // the rest stay as they are.
+            if kind == SenderKind::Person || (automated && kind == SenderKind::Automated) {
+                wanted.push(candidate.thread_id);
+            } else {
+                batch.skipped.push(skip(
                     &candidate.thread_id,
                     ThreadGistSkipReasonData::NotPeople,
-                )),
-                None => batch.skipped.push(skip(
-                    &candidate.thread_id,
-                    ThreadGistSkipReasonData::NotFound,
-                )),
+                ));
             }
         }
         let writers = state
@@ -346,52 +378,6 @@ fn skip(thread_id: &ThreadId, reason: ThreadGistSkipReasonData) -> ThreadGistSki
         thread_id: thread_id.clone(),
         reason,
     }
-}
-
-/// Whether each conversation is with a person, by the shared kind rules
-/// (`mail_kind`) applied to its newest message from someone else. A
-/// conversation only you have written in is with the people you wrote to.
-/// Absent from the map: the message is gone (trashed since).
-async fn people_threads(
-    state: &AppState,
-    candidates: &[Candidate],
-) -> Result<HashMap<ThreadId, bool>, HandlerError> {
-    let mut by_account: HashMap<&AccountId, Vec<&Candidate>> = HashMap::new();
-    for candidate in candidates {
-        if let Some(newest) = candidate.envelopes.last() {
-            by_account
-                .entry(&newest.account_id)
-                .or_default()
-                .push(candidate);
-        }
-    }
-    let mut out = HashMap::new();
-    for (account_id, candidates) in by_account {
-        let senders: Vec<String> = candidates
-            .iter()
-            .flat_map(|candidate| &candidate.envelopes)
-            .map(|envelope| envelope.from.email.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        let kinds = AccountKinds::load(state, account_id, &senders).await?;
-        for candidate in candidates {
-            let theirs = candidate
-                .envelopes
-                .iter()
-                .rev()
-                .find(|envelope| !kinds.is_self(&envelope.from.email));
-            let Some(theirs) = theirs else {
-                out.insert(candidate.thread_id.clone(), true);
-                continue;
-            };
-            if let Some(message) = state.store.place_message(&theirs.id).await? {
-                let kind = mail_kind::classify(&kinds.signals(&message)).kind;
-                out.insert(candidate.thread_id.clone(), kind == SenderKind::Person);
-            }
-        }
-    }
-    Ok(out)
 }
 
 /// Drain the queue one conversation at a time, then exit.

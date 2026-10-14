@@ -1153,6 +1153,7 @@ impl MxrMcpServer {
         self.daemon_json(Request::GetThreadGists {
             thread_ids,
             generate: input.generate.unwrap_or(false),
+            automated: input.automated.unwrap_or(false),
         })
         .await
     }
@@ -2234,6 +2235,10 @@ pub struct ThreadGistsInput {
     /// Queue the missing gists for the model (people's conversations only).
     #[serde(default)]
     pub generate: Option<bool>,
+    /// Also queue automated senders' mail (receipts, alerts), written as
+    /// one fact each.
+    #[serde(default)]
+    pub automated: Option<bool>,
 }
 
 /// A place for mail that isn't from people.

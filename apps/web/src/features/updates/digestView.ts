@@ -206,6 +206,20 @@ export function trackLabel(line: UpdateLine): string | null {
   return `${here.charAt(0).toUpperCase()}${here.slice(1)} · next: ${next}`;
 }
 
+/**
+ * The conversation whose gist may stand in for this line's fact: lines whose
+ * fact is only the cleaned subject, from the line's latest email (the gist
+ * describes a conversation's newest message, so a fact taken from an older
+ * one is not asked about). A parcel's track replaces only a rule fact
+ * (`trackReplacesFact`), never a subject one, so no parcel line is excluded
+ * here that the track already covers.
+ */
+export function gistThread(line: UpdateLine): string | null {
+  if (line.fact_source !== "subject" || !line.latest_thread_id) return null;
+  if (line.fact_message_id && line.fact_message_id !== line.latest_message_id) return null;
+  return line.latest_thread_id;
+}
+
 /** The sending host the daemon may append to a Needs a look name, lowercased. */
 function senderHost(line: UpdateLine): string | null {
   const host = line.sender_email?.split("@")[1]?.trim().toLowerCase();
@@ -238,8 +252,8 @@ export function splitSourceName(line: UpdateLine): SourceName {
  * The first amount the mail quoted that the fact doesn't already say: the
  * amount a "Your scheduled payment" line is missing.
  */
-export function numberNotInFact(line: UpdateLine) {
-  return (line.numbers ?? []).find((number) => !line.fact.includes(number.raw));
+export function numberNotInFact(line: UpdateLine, shown = line.fact) {
+  return (line.numbers ?? []).find((number) => !shown.includes(number.raw));
 }
 
 /** The one value a row's trailing slot can show, in precedence order. */
@@ -253,9 +267,10 @@ export type TrailingItem =
 /**
  * Only one item trails a row: already in To do, then the to-do affordance,
  * then the computed delta, then the first amount the fact leaves out, then a
- * routine count with its unit. Anything else waits for the peek.
+ * routine count with its unit. Anything else waits for the peek. `shown` is the
+ * text in the fact column, which a gist may have replaced.
  */
-export function trailingItem(line: UpdateLine): TrailingItem | null {
+export function trailingItem(line: UpdateLine, shown = line.fact): TrailingItem | null {
   if (line.in_todo) return { kind: "in_todo", text: line.in_todo };
   if (line.todo_suggestion) return { kind: "todo_suggestion" };
   if (line.delta) {
@@ -265,7 +280,7 @@ export function trailingItem(line: UpdateLine): TrailingItem | null {
       title: `Computed from ${line.delta.raw} and ${line.delta.previous_raw}`,
     };
   }
-  const amount = numberNotInFact(line);
+  const amount = numberNotInFact(line, shown);
   if (amount) return { kind: "amount", text: amount.raw };
   if (line.section === "routine" && line.count > 1) {
     return { kind: "count", text: plural(line.count, "email") };

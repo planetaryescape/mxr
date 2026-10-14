@@ -12,7 +12,7 @@ use mxr_core::types::{
 use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
 use mxr_protocol::{
     AiLocalityData, AiSourceData, GistModelData, ThreadGistBatchData, ThreadGistData,
-    ThreadGistSkipReasonData,
+    ThreadGistSkipReasonData, ThreadGistStatusData,
 };
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -33,6 +33,8 @@ struct GatedLlm {
     base_url: Option<String>,
     /// Answer with something that isn't a gist.
     junk: std::sync::atomic::AtomicBool,
+    /// Answer with this exact completion instead of the canned gist.
+    answer: StdMutex<Option<String>>,
 }
 
 impl GatedLlm {
@@ -45,6 +47,7 @@ impl GatedLlm {
             prompts: StdMutex::new(Vec::new()),
             base_url: base_url.map(str::to_string),
             junk: std::sync::atomic::AtomicBool::new(false),
+            answer: StdMutex::new(None),
         })
     }
 
@@ -90,6 +93,14 @@ impl LlmProvider for GatedLlm {
                 finish_reason: Some("stop".into()),
             });
         }
+        let fixed = self.answer.lock().unwrap().clone();
+        if let Some(content) = fixed {
+            return Ok(CompletionResponse {
+                content,
+                model: "qwen2.5:7b".into(),
+                finish_reason: Some("stop".into()),
+            });
+        }
         Ok(CompletionResponse {
             content: serde_json::json!({
                 "gist": "Canary stays at 5% until the dashboard is quiet.",
@@ -125,7 +136,9 @@ async fn conversation(fx: &Fixture, from: &str) -> (ThreadId, String) {
         .store
         .insert_body(&MessageBody {
             message_id: envelope.id.clone(),
-            text_plain: Some(format!("Rollout risk: watch sync latency.\n{ASK}\n\nMaya")),
+            text_plain: Some(format!(
+                "Rollout risk: watch sync latency while the canary sits at 5%.\n{ASK}\n\nMaya"
+            )),
             text_html: None,
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
@@ -137,11 +150,21 @@ async fn conversation(fx: &Fixture, from: &str) -> (ThreadId, String) {
 }
 
 async fn gists(fx: &Fixture, thread_ids: &[ThreadId], generate: bool) -> ThreadGistBatchData {
+    gists_for(fx, thread_ids, generate, false).await
+}
+
+async fn gists_for(
+    fx: &Fixture,
+    thread_ids: &[ThreadId],
+    generate: bool,
+    automated: bool,
+) -> ThreadGistBatchData {
     match request(
         fx,
         Request::GetThreadGists {
             thread_ids: thread_ids.to_vec(),
             generate,
+            automated,
         },
     )
     .await
@@ -289,6 +312,110 @@ async fn only_conversations_with_people_go_to_the_model() {
         1,
         "one call, for the person"
     );
+}
+
+#[tokio::test]
+async fn automated_mail_is_queued_only_when_the_client_is_showing_updates() {
+    let fx = Fixture::new().await;
+    let (person, _) = conversation(&fx, MAYA).await;
+    let (receipts, _) = conversation(&fx, "receipts@shop.example.com").await;
+    let (newsletter, _) = conversation(&fx, "digest@news.example.com").await;
+    let llm = GatedLlm::new(true, None);
+    fx.state.llm.replace(llm.clone());
+    let mut events = fx.state.event_tx.subscribe();
+
+    let batch = gists_for(
+        &fx,
+        &[receipts.clone(), person.clone(), newsletter.clone()],
+        true,
+        true,
+    )
+    .await;
+    assert_eq!(batch.queued, vec![receipts.clone(), person.clone()]);
+    assert_eq!(
+        batch
+            .skipped
+            .iter()
+            .map(|skip| (skip.thread_id.clone(), skip.reason))
+            .collect::<Vec<_>>(),
+        vec![(newsletter, ThreadGistSkipReasonData::NotPeople)],
+        "lists stay out even for Updates"
+    );
+    let ready = ready_events(&mut events, 2).await;
+    assert_eq!(ready.len(), 2);
+
+    // Which prompt wrote which: a conversation's for the person, the
+    // notification's for the receipt.
+    let prompts = llm.prompts.lock().unwrap().clone();
+    assert_eq!(prompts.len(), 2);
+    let conversation_prompts = prompts
+        .iter()
+        .filter(|prompt| prompt.contains("one email conversation"))
+        .count();
+    let notification_prompts = prompts
+        .iter()
+        .filter(|prompt| prompt.contains("one automated email"))
+        .count();
+    assert_eq!((conversation_prompts, notification_prompts), (1, 1));
+    // Both prompts carry the untrusted-mail guard and wrap the mail.
+    for prompt in &prompts {
+        assert!(prompt.contains(mxr_llm::UNTRUSTED_MAIL_GUARD));
+        let user = &prompt[prompt.find("Account owner addresses").unwrap()..];
+        let begin = user.find(mxr_llm::UNTRUSTED_MAIL_BEGIN).unwrap();
+        let end = user.find(mxr_llm::UNTRUSTED_MAIL_END).unwrap();
+        let body = user.find(ASK).unwrap();
+        assert!(begin < body && body < end);
+    }
+
+    // The cache answers whoever asks next, Updates or not.
+    let again = gists(&fx, std::slice::from_ref(&receipts), false).await;
+    assert_eq!(again.gists.len(), 1);
+    assert!(again.gists[0].from_cache);
+    assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn without_the_updates_flag_automated_mail_is_still_not_people() {
+    let fx = Fixture::new().await;
+    let (receipts, _) = conversation(&fx, "receipts@shop.example.com").await;
+    fx.state.llm.replace(GatedLlm::new(true, None));
+    let batch = gists(&fx, std::slice::from_ref(&receipts), true).await;
+    assert!(batch.queued.is_empty());
+    assert_eq!(batch.skipped[0].reason, ThreadGistSkipReasonData::NotPeople);
+}
+
+#[tokio::test]
+async fn a_gist_with_a_number_the_mail_does_not_write_is_dropped_not_cached() {
+    let fx = Fixture::new().await;
+    let (thread, _) = conversation(&fx, MAYA).await;
+    let llm = GatedLlm::new(true, None);
+    // The mail says 5%; the model says 7%.
+    *llm.answer.lock().unwrap() =
+        Some(r#"{"gist": "Canary stays at 7% until the dashboard is quiet.", "ask": null}"#.into());
+    fx.state.llm.replace(llm.clone());
+    let read = || async {
+        match request(
+            &fx,
+            Request::GetThreadGist {
+                thread_id: thread.clone(),
+                refresh: false,
+            },
+        )
+        .await
+        {
+            ResponseData::ThreadGist { gist } => gist,
+            other => panic!("expected ThreadGist, got {other:?}"),
+        }
+    };
+    let first = read().await;
+    assert_eq!(first.status, ThreadGistStatusData::Failed);
+    assert!(first.gist.is_none());
+    // Nothing was cached, so the next read asks the model again, and a
+    // faithful answer is kept.
+    *llm.answer.lock().unwrap() = None;
+    let second = read().await;
+    assert_eq!(second.status, ThreadGistStatusData::Ready);
+    assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -444,6 +571,7 @@ async fn a_batch_is_capped() {
         payload: IpcPayload::Request(Request::GetThreadGists {
             thread_ids: ids,
             generate: false,
+            automated: false,
         }),
     };
     match handle_request(&fx.state, &msg).await.payload {

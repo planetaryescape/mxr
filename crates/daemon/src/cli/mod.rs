@@ -3650,13 +3650,19 @@ pub enum BriefingAction {
     ///
     /// Answers from the cache at once. With `--generate`, conversations
     /// from people that have no gist yet are queued for the model in the
-    /// order given; `mxr events --type gist` shows each as it lands.
+    /// order given; `mxr events --type gist` shows each as it lands. With
+    /// `--automated`, receipts, alerts and other automated mail (what
+    /// Updates shows) are queued too, each written as the one fact it
+    /// reports.
     Gists {
         #[arg(required = true, num_args = 1..=100)]
         thread_ids: Vec<String>,
         /// Queue the missing gists for the model.
         #[arg(long)]
         generate: bool,
+        /// With `--generate`, also queue automated senders' mail.
+        #[arg(long, requires = "generate")]
+        automated: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

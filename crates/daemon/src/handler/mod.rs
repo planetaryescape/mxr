@@ -44,6 +44,8 @@ mod draft_voice;
 mod error;
 mod expert;
 mod freshness;
+mod gist_kind;
+mod gist_numbers;
 mod helpers;
 mod humanizer;
 mod llm_routes;
@@ -1560,7 +1562,8 @@ async fn dispatch(
         Request::GetThreadGists {
             thread_ids,
             generate,
-        } => thread_gists::get_thread_gists(state, thread_ids, *generate).await,
+            automated,
+        } => thread_gists::get_thread_gists(state, thread_ids, *generate, *automated).await,
         Request::DetectPromises {
             source,
             now,

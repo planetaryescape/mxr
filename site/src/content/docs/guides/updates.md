@@ -26,14 +26,38 @@ lines, in three sections that never change order:
 
 | Section | What lands there |
 |---|---|
-| **Needs a look** | A new sign-in, a failed payment, a failing build, a parcel with a delivery problem, or words like "failed", "declined" or "suspended" in the subject. One line per kind of message. |
+| **Needs a look** | A new sign-in, a failed payment, a failing build, a parcel with a delivery problem, or words like "failed", "declined" or "suspended" in the subject. One line per kind of message: two failed-payment emails from one source ("Payment failed" and "Payment failed again") are one line that shows the latest and counts both. |
 | **Changed** | A source that is new, a kind of message it hasn't sent before, a number that moved, a build that went green again, an incident that was resolved, a parcel that moved. |
 | **Routine** | Everything else, one line per source with a count. In the web app, Routine is one line, "Routine · 31 updates from 16 sources", until you press `Enter` to open it. |
 
 Each line is a fact, not the subject as written. The rules clean the
 subject (they drop "Re:", "[acme/api]" tags and the sender's brand), and
 when the subject says nothing ("Your weekly update is here") they use the
-first line of the body that does. No model writes any of it.
+first line of the body that does. The rules write the line.
+
+### A model can say what the email says
+
+When the fact is only the subject, "Your receipt from Perplexity", and you
+have a model configured for summaries (`[llm]`, the same one that writes
+the gist in the reader), the line swaps to a one-line gist once it is ready:
+"Receipt: $24.00 for Perplexity Pro, renews 14 Nov". The subject moves to
+the line's hover text and the top of its details. Until the gist arrives,
+with no model, or when it fails, the line shows the rules' fact exactly as
+before. There is no spinner.
+
+A gist is only kept when every number in it appears in the email, in any
+spelling ("24" for "24.00", "1.234,50" for "1,234.50"). A gist with an
+amount, date, count or ID the email does not contain is dropped, and so is
+one with a currency the email never names. The email's text goes to the
+model under the same privacy rule as `mxr summarize`; a cloud model sees it
+only if that is what you configured for summaries.
+
+```bash
+mxr briefing gists THREAD_ID --generate --automated --format json
+```
+
+`--automated` also queues receipts, alerts and other automated mail, which
+`--generate` alone leaves out.
 
 Numbers are quoted from the email. When the previous email of the same
 kind quoted a number with the same unit, the line adds the change,
@@ -48,9 +72,13 @@ show where the parcel is on its way under the fact, such as "Shipped ·
 next: out for delivery". Their available item names, tracking or order
 references, and delivery estimates sit in the details.
 
-In the web app, press `Space` on a line to open its details under it: why
-the update is here, the numbers the mail quoted, a parcel's items and
-references, and the link and the email. `Escape` closes them.
+In the web app, press `Space` on a line to open its details under it: the
+first few lines of the latest email, why the update is here, the numbers
+the mail quoted, a parcel's items and references, and the link and the
+email. When a gist replaced the subject, the details also show the subject,
+what the email asks of you if it does, and which model wrote the line. The
+email's lines load when the details open, as plain text. `Escape` closes
+them.
 
 ## The digest is a fixed cut; mail after it waits
 

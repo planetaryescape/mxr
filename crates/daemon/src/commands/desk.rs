@@ -51,7 +51,7 @@ async fn cached_gists(client: &mut IpcClient, desk: &ResponseData) -> anyhow::Re
     if ids.is_empty() {
         return Ok(Gists::new());
     }
-    let batch = super::thread_gists::fetch(client, ids, false).await?;
+    let batch = super::thread_gists::fetch(client, ids, false, false).await?;
     Ok(batch
         .gists
         .into_iter()

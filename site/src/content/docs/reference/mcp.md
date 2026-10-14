@@ -164,7 +164,8 @@ Keep `allowed_accounts` scoped; `allow_send` can remain false.
 promises) and, with `include_gist = true`, the model's gist and verified ask.
 It has no refresh option, so a cached gist is reused.
 `mxr_thread_gists` returns cached one-line gists for up to 100 threads without
-calling a model; `generate = true` queues the missing ones from people.
+calling a model; `generate = true` queues the missing ones from people, and
+`automated = true` adds automated senders' mail (receipts, alerts).
 `mxr_list_place` lists [Reading or Paper trail](/guides/reading-and-paper-trail/)
 (`place` is `reading` or `paper_trail`) bundled by sender, with the reason for
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's

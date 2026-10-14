@@ -19,6 +19,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { DaemonEvent } from "@/api/events";
 import {
   fetchThreadGists,
+  type AiProvenance,
   type GistModel,
   type ThreadGist,
   type ThreadGistBatch,
@@ -33,6 +34,10 @@ export interface RowGist {
   ask: string | null;
   /** "Local model gemma4 · from this thread": where the words came from. */
   source: string;
+  /** The raw provenance, for lists that word the source in their own nouns. */
+  provenance: AiProvenance | null;
+  /** The message the gist answers for: lists show it only for that message. */
+  newest: string | null;
 }
 
 /** Most ids one request may carry (the daemon's `THREAD_GISTS_MAX_BATCH`). */
@@ -46,7 +51,18 @@ const NO_MODEL_RECHECK_MS = 5 * 60_000;
 
 /** Insertion-ordered maps, so the first key is the oldest. */
 const gists = new Map<string, RowGist>();
+/**
+ * When each row was last asked about, per kind of ask: a conversation list's
+ * request skips automated mail, so Updates asking for the same thread a
+ * moment later is a different question.
+ */
 const requestedAt = new Map<string, number>();
+const askedKey = (threadId: string, automated: boolean) =>
+  `${automated ? "automated" : "people"}:${threadId}`;
+function forgetAsked(threadId: string): void {
+  requestedAt.delete(askedKey(threadId, false));
+  requestedAt.delete(askedKey(threadId, true));
+}
 const listeners = new Map<string, Set<() => void>>();
 let epoch = 0;
 const epochListeners = new Set<() => void>();
@@ -56,13 +72,18 @@ let model: GistModel | undefined;
 const modelListeners = new Set<() => void>();
 let unsubscribeEvents: (() => void) | undefined;
 
+/** Model text and daemon payloads are typed loosely at runtime; only strings are words. */
+const words = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
 export function toRowGist(data: ThreadGist): RowGist | null {
-  const about = data.gist?.trim();
+  const about = words(data.gist);
   if (data.status !== "ready" || !about) return null;
   return {
     about,
-    ask: data.ask?.summary?.trim() || null,
+    ask: words(data.ask?.summary) || null,
     source: data.provenance ? provenanceLabel(data.provenance, null) : "Model summary",
+    provenance: data.provenance ?? null,
+    newest: words(data.newest_message_id) || null,
   };
 }
 
@@ -90,7 +111,10 @@ export function putGist(data: ThreadGist): void {
   if (!gist) return;
   const shown = gists.get(data.thread_id);
   const same =
-    shown?.about === gist.about && shown.ask === gist.ask && shown.source === gist.source;
+    shown?.about === gist.about &&
+    shown.ask === gist.ask &&
+    shown.source === gist.source &&
+    shown.newest === gist.newest;
   for (const evicted of remember(gists, data.thread_id, same ? shown : gist)) notify(evicted);
   // Same words: nothing to redraw.
   if (!same) notify(data.thread_id);
@@ -104,7 +128,7 @@ function bumpEpoch(): void {
 /** New messages changed these conversations: drop their lines; ask again. */
 export function forgetGists(threadIds: Iterable<string>): void {
   for (const threadId of threadIds) {
-    requestedAt.delete(threadId);
+    forgetAsked(threadId);
     if (gists.delete(threadId)) notify(threadId);
   }
   bumpEpoch();
@@ -248,11 +272,13 @@ function listen(): void {
  * Ask for the gists of rows on screen, in the order given (visible rows
  * first). Rows already shown, or asked about a moment ago, are skipped, so
  * calling this on every scroll is cheap. When the daemon says it has no
- * model, nothing is asked for a while.
+ * model, nothing is asked for a while. `automated` also asks for automated
+ * senders' mail (receipts, alerts), which Updates shows.
  */
 export async function requestRowGists(
   threadIds: readonly string[],
   now = Date.now(),
+  { automated = false }: { automated?: boolean } = {},
 ): Promise<void> {
   if (now < noModelUntil) return;
   listen();
@@ -260,27 +286,28 @@ export async function requestRowGists(
   if (isDaemonDown()) return;
   const wanted: string[] = [];
   for (const threadId of new Set(threadIds)) {
-    const asked = now - (requestedAt.get(threadId) ?? -Infinity) < REQUEST_TTL_MS;
+    const asked =
+      now - (requestedAt.get(askedKey(threadId, automated)) ?? -Infinity) < REQUEST_TTL_MS;
     if (gists.has(threadId) || asked) continue;
     wanted.push(threadId);
     if (wanted.length === MAX_BATCH) break;
   }
   if (wanted.length === 0) return;
-  for (const threadId of wanted) remember(requestedAt, threadId, now);
+  for (const threadId of wanted) remember(requestedAt, askedKey(threadId, automated), now);
   const sentIn = epoch;
 
   let batch: ThreadGistBatch;
   try {
-    batch = await fetchThreadGists(wanted, true);
+    batch = await fetchThreadGists(wanted, true, automated);
   } catch {
     // Quiet: rows keep their snippets, and the next scroll asks again.
-    for (const threadId of wanted) requestedAt.delete(threadId);
+    for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
     return;
   }
   if (sentIn !== epoch) {
     // Invalidated while the request was out: this answer may be stale.
     // The list asks again for what is still on screen.
-    for (const threadId of wanted) requestedAt.delete(threadId);
+    for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
     return;
   }
   setModel(batch.model);

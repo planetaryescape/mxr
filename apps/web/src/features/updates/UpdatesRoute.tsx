@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { moveCommands, updateMoveSubject } from "@/features/arrivals/moveSubjects";
+import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
@@ -33,6 +34,7 @@ import {
   canPinSource,
   canSweepSource,
   canTune,
+  gistThread,
   type SuggestedSetting,
 } from "./digestView";
 import { LetGoAllDialog, TuneDialog } from "./UpdatesDialogs";
@@ -67,6 +69,9 @@ export function UpdatesRoute() {
     </PlaceLayout>
   );
 }
+
+/** Rows settle before their gists are asked for, so a quick tour asks for nothing. */
+const GIST_REQUEST_DELAY_MS = 150;
 
 const DEFAULT_SUBTITLE = "Notifications gathered twice a day. Read the digest, then let go.";
 
@@ -133,6 +138,17 @@ function Digest({
     () => digestRows(digest, { routineOpen, hidden }),
     [digest, routineOpen, hidden],
   );
+  // Lines that show only their subject ask the daemon for the email's gist.
+  // Bumped only when every gist was dropped (missed events, a reconnect).
+  const gistEpoch = useGistEpoch();
+  const gistThreads = useMemo(() => rows.flatMap((row) => gistThread(row.line) ?? []), [rows]);
+  useEffect(() => {
+    if (gistThreads.length === 0) return;
+    const handle = window.setTimeout(() => {
+      void requestRowGists(gistThreads, Date.now(), { automated: true });
+    }, GIST_REQUEST_DELAY_MS);
+    return () => window.clearTimeout(handle);
+  }, [gistEpoch, gistThreads]);
   const index = Math.max(
     0,
     rows.findIndex((row) => row.line.id === cursorId),

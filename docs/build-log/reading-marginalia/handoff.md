@@ -88,12 +88,12 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
     account `api-token`), never in config.
   - **Secrets store**: new `SecretStore::remove`. An empty `set` is a no-op,
     which is why disconnect used to leave the token behind.
-  - **Store**: migration **84**
-    (`crates/store/migrations/084_reading_marginalia.sql` plus the steps in
+  - **Store**: migration **86**
+    (`crates/store/migrations/086_reading_marginalia.sql` plus the steps in
     `pool.rs`). It adds the `reading_marginalia` table and `origin` /
-    `origin_id` on `reading_highlights`. Backup now writes schema 84 and still
-    reads 81–83; columns an older source lacks are copied as their defaults.
-  - **Protocol**: version bumped **13 → 14**. New requests:
+    `origin_id` on `reading_highlights`. Backup now writes schema 86 and still
+    reads 81–85; columns an older source lacks are copied as their defaults.
+  - **Protocol**: version bumped **15 → 16** (main was at 15 when this was rebased). New requests:
     - `GetMarginaliaStatus`
     - `SetMarginaliaConnection{connection: Option<{url, token}>}`; its `Debug`
       redacts the token

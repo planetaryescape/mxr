@@ -55,6 +55,15 @@ Rules the gist follows:
   clients can highlight the quote without trusting the model.
 - **Plain text within limits.** The gist is one sentence of at most 240
   characters and the ask at most 160, with no markdown.
+- **The numbers are checked.** Every number in the gist and the ask must
+  be written in the thread's text or subjects, in any spelling ("24" for
+  "24.00"), and a currency must be one the text names. A gist that fails is
+  dropped and reported as `failed`; an ask that fails is dropped and the
+  gist stays.
+- **Automated mail is written as one fact.** For receipts, alerts and
+  other mail the classifier calls automated, the gist is one sentence
+  leading with the number, state or date that matters, at most 160
+  characters.
 - **Cached per newest message.** The answer is kept until a new message
   arrives, the model changes, or the privacy setting changes what the prompt
   may carry. `--refresh` asks again.
@@ -80,11 +89,14 @@ the same data at `GET /api/v1/mail/threads/{id}/context` and
 The one line the desk and inbox rows show, for several conversations.
 Answers from the cache without calling a model; `--generate` queues the
 missing ones from people (in the order given) for a background writer, and
-`mxr events --type gist` prints each as it lands.
+`mxr events --type gist` prints each as it lands. `--generate --automated`
+also queues automated senders' mail, which is what [Updates](/guides/updates/)
+asks for.
 
 ```bash
 mxr briefing gists THREAD_ID THREAD_ID --format json
 mxr briefing gists THREAD_ID --generate
+mxr briefing gists THREAD_ID --generate --automated
 ```
 
 JSON has `model` (`available`, `disabled` or `blocked`), `gists` (each with
@@ -93,7 +105,7 @@ JSON has `model` (`available`, `disabled` or `blocked`), `gists` (each with
 `not_generated` or `queue_full`. A gist that goes stale while the model is
 writing (someone replied) is never announced; the conversation goes to the
 back of the queue, twice at most, then waits a minute. The same
-data is at `POST /api/v1/mail/gists` (`{thread_ids, generate}`, at most 100)
+data is at `POST /api/v1/mail/gists` (`{thread_ids, generate, automated}`, at most 100)
 and in the `mxr_thread_gists` MCP tool.
 
 ## Thread briefing: `mxr briefing thread`

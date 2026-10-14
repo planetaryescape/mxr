@@ -911,3 +911,151 @@ async fn undo_puts_a_let_go_digest_back_line_for_line() {
         .collect();
     assert_eq!(after_lines, before_lines);
 }
+
+/// One source's let go, as the `e` key sends it.
+async fn let_go_source(
+    fx: &Fixture,
+    now: DateTime<Utc>,
+    source_key: &str,
+    token: Option<&str>,
+    dry_run: bool,
+) -> Result<UpdatesLetGoData, String> {
+    updates::let_go_at(
+        &fx.state,
+        &LetGo {
+            account_id: None,
+            cut: None,
+            source_key: Some(source_key),
+            selection_token: token,
+            dry_run,
+        },
+        now,
+        &utc(),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+fn sorted(mut ids: Vec<MessageId>) -> Vec<MessageId> {
+    ids.sort_by_key(MessageId::as_str);
+    ids
+}
+
+#[tokio::test]
+async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_every_message() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    known_source(&fx, "billing@acme.com").await;
+    let first = update(
+        &fx,
+        &ThreadId::new(),
+        "billing@acme.com",
+        "Payment failed for your Acme subscription",
+        cut - Duration::hours(3),
+    )
+    .await;
+    let again = update(
+        &fx,
+        &ThreadId::new(),
+        "billing@acme.com",
+        "Payment failed again for your Acme subscription",
+        cut - Duration::hours(1),
+    )
+    .await;
+    // The same alert from another source is its own line, and the same
+    // source's ordinary mail stays out of the alert line.
+    let other = update(
+        &fx,
+        &ThreadId::new(),
+        "billing@globex.com",
+        "Payment failed for your Globex subscription",
+        cut - Duration::hours(2),
+    )
+    .await;
+    let ordinary = update(
+        &fx,
+        &ThreadId::new(),
+        "billing@acme.com",
+        "Your monthly statement is ready",
+        cut - Duration::minutes(30),
+    )
+    .await;
+
+    let digest = digest(&fx, now).await;
+    let acme: Vec<_> = digest
+        .needs_a_look
+        .iter()
+        .filter(|line| line.source_key == "acme.com")
+        .collect();
+    assert_eq!(acme.len(), 1, "one line for one failed payment: {acme:?}");
+    let line = acme[0];
+    assert_eq!(line.count, 2);
+    assert_eq!(
+        sorted(line.message_ids.clone()),
+        sorted(vec![first.id.clone(), again.id.clone()])
+    );
+    assert_eq!(line.thread_ids.len(), 2, "both threads, merged");
+    assert_eq!(
+        line.fact_message_id.as_ref(),
+        Some(&again.id),
+        "the latest fact leads"
+    );
+    assert_eq!(line.latest_message_id.as_ref(), Some(&again.id));
+    assert_eq!(
+        digest
+            .needs_a_look
+            .iter()
+            .filter(|line| line.source_key == "globex.com")
+            .count(),
+        1
+    );
+    assert!(
+        all_lines(&digest)
+            .iter()
+            .filter(|line| line.message_ids.contains(&ordinary.id))
+            .all(|line| !line.message_ids.contains(&again.id)),
+        "ordinary mail is not folded into the alert"
+    );
+
+    // The whole digest's dry run is exactly the messages its lines hold, so
+    // folding a line never drops a message from the selection.
+    let everything = let_go(&fx, now, None, true).await.unwrap();
+    let in_lines: Vec<MessageId> = all_lines(
+        &updates::digest_at(&fx.state, None, None, false, false, now, &utc())
+            .await
+            .unwrap(),
+    )
+    .iter()
+    .flat_map(|line| line.message_ids.clone())
+    .collect();
+    assert_eq!(sorted(everything.message_ids), sorted(in_lines),);
+
+    // Letting go of the source previews both messages, the run lets go of
+    // exactly those, and both leave the digest.
+    let preview = let_go_source(&fx, now, "acme.com", None, true)
+        .await
+        .unwrap();
+    for id in [&first.id, &again.id, &ordinary.id] {
+        assert!(preview.message_ids.contains(id), "{id:?} is previewed");
+    }
+    assert!(
+        !preview.message_ids.contains(&other.id),
+        "another source's mail is not"
+    );
+    assert!(line
+        .message_ids
+        .iter()
+        .all(|id| preview.message_ids.contains(id)));
+    let run = let_go_source(&fx, now, "acme.com", Some(&preview.selection_token), false)
+        .await
+        .unwrap();
+    assert_eq!(run.message_ids, preview.message_ids);
+    assert_eq!(run.thread_ids, preview.thread_ids);
+    let after = updates::digest_at(&fx.state, None, None, false, false, now, &utc())
+        .await
+        .unwrap();
+    assert!(all_lines(&after)
+        .iter()
+        .all(|line| line.source_key != "acme.com"));
+    assert_eq!(after.needs_a_look.len(), 1, "Globex is untouched");
+}

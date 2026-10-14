@@ -4,6 +4,7 @@ import {
   canLetGoSource,
   cutLine,
   digestRows,
+  gistThread,
   numberNotInFact,
   openableLink,
   routineLine,
@@ -187,5 +188,19 @@ describe("a row's facts", () => {
     // A count is a routine thing and a single message needs no count.
     expect(trailingItem({ ...noDelta, numbers: [], count: 1 })).toBeNull();
     expect(trailingItem({ ...noDelta, numbers: [], section: "changed" })).toBeNull();
+  });
+});
+
+describe("which lines ask for a gist", () => {
+  test("a subject-only fact from the line's latest email asks about that thread", () => {
+    expect(gistThread(lineFixture())).toBe("t1");
+    expect(gistThread(lineFixture({ fact_message_id: "m1", latest_message_id: "m1" }))).toBe("t1");
+  });
+
+  test("a fact the rules took from the body, a fact from an older email, or no thread does not", () => {
+    expect(gistThread(lineFixture({ fact_source: "body" }))).toBeNull();
+    expect(gistThread(lineFixture({ fact_source: "rule" }))).toBeNull();
+    expect(gistThread(lineFixture({ fact_message_id: "m0", latest_message_id: "m1" }))).toBeNull();
+    expect(gistThread(lineFixture({ latest_thread_id: null }))).toBeNull();
   });
 });

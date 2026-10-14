@@ -1234,6 +1234,7 @@ pub async fn run() -> anyhow::Result<()> {
                         Request::GetThreadGists {
                             thread_ids: thread_ids.clone(),
                             generate: true,
+                            automated: false,
                         },
                     )
                     .await;

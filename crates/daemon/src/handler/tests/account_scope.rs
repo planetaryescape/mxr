@@ -707,6 +707,7 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     assert_scoped(&s, |o| Request::GetThreadGists {
         thread_ids: vec![o.thread.clone()],
         generate: false,
+        automated: false,
     })
     .await;
     assert_scoped(&s, |o| Request::GetThreadBriefing {
@@ -1357,6 +1358,7 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
         Request::GetThreadGists {
             thread_ids: vec![shared.clone()],
             generate: false,
+            automated: false,
         },
         Request::ExportThread {
             thread_id: shared.clone(),

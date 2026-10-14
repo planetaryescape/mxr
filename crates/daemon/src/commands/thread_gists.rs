@@ -17,9 +17,10 @@ pub async fn run(
     client: &mut IpcClient,
     thread_ids: Vec<ThreadId>,
     generate: bool,
+    automated: bool,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    let batch = fetch(client, thread_ids.clone(), generate).await?;
+    let batch = fetch(client, thread_ids.clone(), generate, automated).await?;
     print!("{}", render(&thread_ids, &batch, format)?);
     Ok(())
 }
@@ -28,11 +29,13 @@ pub(crate) async fn fetch(
     client: &mut IpcClient,
     thread_ids: Vec<ThreadId>,
     generate: bool,
+    automated: bool,
 ) -> anyhow::Result<ThreadGistBatchData> {
     match client
         .request(Request::GetThreadGists {
             thread_ids,
             generate,
+            automated,
         })
         .await?
     {

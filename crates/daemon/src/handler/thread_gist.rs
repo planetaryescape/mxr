@@ -5,9 +5,12 @@
 //! `SummarizeThread` (the `Summarize` feature). Your history with the
 //! counterparty only rides along when `state::relationship_data_allowed`
 //! says so. The ask's quote is checked against the message text before it
-//! is returned, so a client can highlight it without trusting the model.
-//! Answers are cached per thread and newest message.
+//! is returned, so a client can highlight it without trusting the model,
+//! and every number in the gist must be written in the mail
+//! (`gist_numbers`). Answers are cached per thread and newest message.
 
+use super::gist_kind::{style_of, GistStyle};
+use super::gist_numbers::NumberSource;
 use super::thread_context::{build_thread_context, owned_addresses};
 use super::{HandlerError, HandlerResult};
 use crate::state::{llm_endpoint_is_local, AppState};
@@ -28,10 +31,13 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 
 /// Bump when the prompt or the output rules change, so cached gists
-/// written under the old rules regenerate.
-const GIST_PROMPT_VERSION: &str = "v1";
+/// written under the old rules regenerate. v2: gists are number-checked and
+/// automated mail has its own prompt.
+const GIST_PROMPT_VERSION: &str = "v2";
 /// Model output limits, in characters. Longer text is cut at a word.
 const GIST_MAX_CHARS: usize = 240;
+/// A notification's gist is one fact; a list row has room for little more.
+const NOTIFICATION_GIST_MAX_CHARS: usize = 160;
 const ASK_MAX_CHARS: usize = 160;
 const QUOTE_MAX_CHARS: usize = 400;
 /// Shorter "quotes" ("yes", "ok?") would highlight noise.
@@ -55,6 +61,39 @@ ask: what the other people want the account owner to do (reply, decide, send, co
 - quote: the sentence in that message that makes the ask, copied exactly, character for character. Do not paraphrase, fix typos, shorten or join sentences.
 
 Messages the account owner sent are marked (you)."#;
+
+/// The prompt for mail a machine sent (receipts, alerts, status updates):
+/// the fact it reports, not a conversation. Same output shape as
+/// `SYSTEM_PROMPT`, so one parser, cache and event path serve both.
+pub(crate) const NOTIFICATION_PROMPT: &str = r#"You write the gist of one automated email (a receipt, alert, notification or status update), shown as a line in a list of updates in an email client.
+
+Output STRICT JSON and nothing else:
+{"gist": string, "ask": null or {"summary": string, "msg_id": string, "quote": string}}
+
+gist: one plain sentence of at most 140 characters stating the fact this notification reports, leading with the number, state or date that matters. Use only numbers, amounts and dates that are written in the email; never add, round, convert or work out one. No greeting, no restating the sender, no marketing. If the email reports nothing concrete, say in a few words what it is. No markdown.
+
+ask: null unless the email itself tells the account owner to do something (fix a payment, confirm a sign-in, verify an address).
+- summary: a short imperative clause starting with a verb, at most 120 characters.
+- msg_id: the [msg_id=...] value of the message that makes the ask.
+- quote: the sentence in that message that makes the ask, copied exactly, character for character.
+
+Messages the account owner sent are marked (you)."#;
+
+impl GistStyle {
+    fn system_prompt(self) -> &'static str {
+        match self {
+            Self::Conversation => SYSTEM_PROMPT,
+            Self::Notification => NOTIFICATION_PROMPT,
+        }
+    }
+
+    const fn gist_max_chars(self) -> usize {
+        match self {
+            Self::Conversation => GIST_MAX_CHARS,
+            Self::Notification => NOTIFICATION_GIST_MAX_CHARS,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct RawGist {
@@ -119,7 +158,8 @@ pub(super) async fn load_and_write_gist(
     call: GistCall,
 ) -> Result<(ThreadGistData, String), HandlerError> {
     let envelopes = thread_envelopes(state, thread_id).await?;
-    let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes)
+    let style = style_of(state, thread_id, &envelopes).await?;
+    let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes, style)
         .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
     let gist = thread_gist(state, thread_id, &envelopes, &setup, refresh, call).await?;
     Ok((gist, setup.content_hash))
@@ -171,6 +211,7 @@ impl GistPolicy {
 /// One conversation's gist request: the policy plus its cache key.
 pub(super) struct GistSetup {
     policy: GistPolicy,
+    style: GistStyle,
     account_id: AccountId,
     pub content_hash: String,
     key: String,
@@ -184,11 +225,17 @@ pub(super) struct GistSetup {
 impl GistSetup {
     /// `envelopes` is the whole conversation, oldest first; `None` when it
     /// has no messages.
-    pub fn new(policy: &GistPolicy, thread_id: &ThreadId, envelopes: &[Envelope]) -> Option<Self> {
+    pub fn new(
+        policy: &GistPolicy,
+        thread_id: &ThreadId,
+        envelopes: &[Envelope],
+        style: GistStyle,
+    ) -> Option<Self> {
         let newest = envelopes.last()?;
         Some(Self {
-            content_hash: gist_content_hash(envelopes, policy.share_history, &policy.llm),
+            content_hash: gist_content_hash(envelopes, policy.share_history, &policy.llm, style),
             policy: policy.clone(),
+            style,
             account_id: newest.account_id.clone(),
             key: cache_key(thread_id),
             newest: newest.id.clone(),
@@ -248,7 +295,8 @@ async fn thread_gist(
     }
     let llm = &setup.policy.llm;
     let owned = owned_addresses(state, &setup.account_id).await?;
-    let facts = if setup.policy.share_history {
+    // A notification has no relationship to speak of: no history rides along.
+    let facts = if setup.policy.share_history && setup.style == GistStyle::Conversation {
         Some(build_thread_context(state, thread_id, envelopes, &owned).await?)
     } else {
         None
@@ -263,7 +311,7 @@ async fn thread_gist(
 
     let request = CompletionRequest {
         messages: vec![
-            ChatMessage::system(guarded_system_prompt(SYSTEM_PROMPT)),
+            ChatMessage::system(guarded_system_prompt(setup.style.system_prompt())),
             ChatMessage::user(prompt),
         ],
         max_tokens: Some(400),
@@ -309,7 +357,17 @@ async fn thread_gist(
                 .map(|candidate| (text.id.clone(), candidate))
         })
         .collect();
-    let Some(parsed) = parse_gist(&response.content, &candidates) else {
+    // Every number the gist states must be written in the mail the model
+    // read: the subjects, the message texts and the history line.
+    let numbers = NumberSource::new(
+        envelopes
+            .iter()
+            .filter(|envelope| texts.iter().any(|text| text.id == envelope.id))
+            .map(|envelope| envelope.subject.as_str())
+            .chain(candidates.iter().map(|(_, text)| *text))
+            .chain(history.as_deref()),
+    );
+    let Some(parsed) = parse_gist(&response.content, &candidates, &numbers, setup.style) else {
         tracing::warn!(%thread_id, "thread gist: model answer was not usable");
         return Ok(unavailable(
             thread_id,
@@ -417,13 +475,19 @@ fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str)
     }
 }
 
-/// Changes when a message arrives, the prompt changes, the model or its
+/// Changes when a message arrives, the prompt or its style changes, the model or its
 /// endpoint changes (so a same-named model moved from local to cloud never
 /// serves a gist with the old provenance), or the privacy setting changes
 /// what the prompt may carry.
-fn gist_content_hash(envelopes: &[Envelope], share_history: bool, llm: &PinnedLlm) -> String {
+fn gist_content_hash(
+    envelopes: &[Envelope],
+    share_history: bool,
+    llm: &PinnedLlm,
+    style: GistStyle,
+) -> String {
     let mut hash = Sha256::new();
     hash.update(GIST_PROMPT_VERSION.as_bytes());
+    hash.update(style.as_str().as_bytes());
     hash.update(envelopes.len().to_le_bytes());
     if let Some(newest) = envelopes.last() {
         hash.update(newest.id.as_str().as_bytes());
@@ -570,21 +634,30 @@ fn history_line(facts: &ThreadContextData) -> Option<String> {
     Some(line)
 }
 
-/// Validate the model's JSON: plain text within limits, and a quote only
-/// when it really appears in the cited message (or, when the model cited
-/// the wrong id, in another message of the thread).
+/// Validate the model's JSON: plain text within limits, numbers that the
+/// mail writes, and a quote only when it really appears in the cited message
+/// (or, when the model cited the wrong id, in another message of the thread).
 fn parse_gist(
     content: &str,
     texts: &[(MessageId, &str)],
+    numbers: &NumberSource,
+    style: GistStyle,
 ) -> Option<(String, Option<ThreadAskData>)> {
     let raw: RawGist = serde_json::from_str(json_object(content)).ok()?;
-    let gist = plain_text(&raw.gist, GIST_MAX_CHARS);
+    let gist = plain_text(&raw.gist, style.gist_max_chars());
     if gist.is_empty() {
+        return None;
+    }
+    // A gist with a figure the mail doesn't write is worse than none: the
+    // caller shows the subject instead.
+    if !numbers.verifies(&gist) {
+        tracing::warn!("thread gist: a number in the gist is not in the mail; dropped");
         return None;
     }
     let ask = raw.ask.and_then(|ask| {
         let summary = plain_text(&ask.summary, ASK_MAX_CHARS);
-        if summary.is_empty() {
+        // The same check, but the ask alone goes: the gist stands.
+        if summary.is_empty() || !numbers.verifies(&summary) {
             return None;
         }
         Some(ThreadAskData {
@@ -853,7 +926,9 @@ mod tests {
         let content = format!(
             "```json\n{{\"gist\": \"**Canary** stays at 5% — {long}\", \"ask\": {{\"summary\": \"# confirm the owner\", \"msg_id\": \"{id}\", \"quote\": \"not in the message at all\"}}}}\n```"
         );
-        let (gist, ask) = parse_gist(&content, &texts).expect("fenced JSON parses");
+        let numbers = NumberSource::new(["Canary at 5% for the first hour"]);
+        let parse = |content: &str| parse_gist(content, &texts, &numbers, GistStyle::Conversation);
+        let (gist, ask) = parse(&content).expect("fenced JSON parses");
         assert!(gist.starts_with("Canary stays at 5%, word"), "{gist}");
         assert!(gist.chars().count() <= GIST_MAX_CHARS);
         assert!(gist.ends_with('…'));
@@ -863,8 +938,49 @@ mod tests {
             ask.quote, None,
             "an unverifiable quote is dropped, the ask stays"
         );
-        assert!(parse_gist("not json", &texts).is_none());
-        assert!(parse_gist(r#"{"gist": "   ", "ask": null}"#, &texts).is_none());
+        assert!(parse("not json").is_none());
+        assert!(parse(r#"{"gist": "   ", "ask": null}"#).is_none());
+    }
+
+    #[test]
+    fn odd_typed_or_prototype_keyed_model_json_is_never_a_gist() {
+        let (_, texts) = texts("Canary at 5%");
+        let numbers = NumberSource::new(["Canary at 5%"]);
+        let parse = |content: &str| parse_gist(content, &texts, &numbers, GistStyle::Notification);
+        for content in [
+            r#"{"gist": 5}"#,
+            r#"{"gist": ["Canary at 5%"]}"#,
+            r#"{"gist": {"toString": "Canary at 5%"}}"#,
+            r#"{"gist": null}"#,
+            r#"{"__proto__": {"gist": "Canary at 5%"}}"#,
+            r#"{"constructor": {"gist": "Canary at 5%"}, "ask": null}"#,
+        ] {
+            assert!(parse(content).is_none(), "{content}");
+        }
+        // The object is found inside prose or an array, as with code fences,
+        // and its text is still number-checked like any other.
+        assert!(parse(r#"[{"gist": "Canary at 5%"}]"#).is_some());
+        assert!(parse(r#"[{"gist": "Canary at 9%"}]"#).is_none());
+        // Unknown keys, including prototype names, are ignored beside a real gist.
+        let (gist, ask) = parse(
+            r#"{"__proto__": {"x": 1}, "constructor": 7, "gist": "Canary at 5%.", "ask": null}"#,
+        )
+        .expect("a gist beside odd keys");
+        assert_eq!(gist, "Canary at 5%.");
+        assert!(ask.is_none());
+        // A notification's gist is capped shorter than a conversation's.
+        let long = format!(r#"{{"gist": "{}"}}"#, "word ".repeat(80));
+        let capped = parse(&long).unwrap().0;
+        assert!(
+            capped.chars().count() <= NOTIFICATION_GIST_MAX_CHARS,
+            "{capped}"
+        );
+        // An invented figure in the ask drops the ask and keeps the gist.
+        let kept = parse(
+            r#"{"gist": "Canary at 5%.", "ask": {"summary": "raise it to 9%", "msg_id": "", "quote": ""}}"#,
+        )
+        .unwrap();
+        assert!(kept.1.is_none());
     }
 
     async fn seed_thread(state: &AppState) -> (ThreadId, MessageId) {
@@ -887,7 +1003,7 @@ mod tests {
             .insert_body(&MessageBody {
                 message_id: envelope.id.clone(),
                 text_plain: Some(format!(
-                    "Rollout risk: watch sync latency for the first hour.\n{ASK_SENTENCE}\n\nMaya"
+                    "Rollout risk: watch sync latency for the first hour; the canary is at 5%.\n{ASK_SENTENCE}\n\nMaya"
                 )),
                 text_html: None,
                 attachments: vec![],
@@ -1031,7 +1147,7 @@ mod tests {
             .thread_id(thread_id.clone())
             .provider_id("snippet-1")
             .sender_address("Maya Ortiz", "maya@example.com")
-            .snippet("Can you confirm who owns it?")
+            .snippet("Canary is at 5%. Can you confirm who owns it?")
             .build();
         state
             .store
@@ -1050,7 +1166,7 @@ mod tests {
             .store
             .insert_body(&MessageBody {
                 message_id: envelope.id.clone(),
-                text_plain: Some(format!("Hi Maya here.\n{ASK_SENTENCE}")),
+                text_plain: Some(format!("Hi Maya here. Canary is at 5%.\n{ASK_SENTENCE}")),
                 text_html: None,
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),

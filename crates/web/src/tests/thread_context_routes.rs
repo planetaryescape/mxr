@@ -1,5 +1,5 @@
 //! Bridge tests for the reader's context block and list gists: the routes
-//! forward the thread ids (and `refresh`, `generate`) and pass the daemon
+//! forward the thread ids (and `refresh`, `generate`, `automated`) and pass the daemon
 //! payload through.
 
 use super::*;
@@ -109,6 +109,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
         .json(&serde_json::json!({
             "thread_ids": [thread_id.to_string(), other.to_string()],
             "generate": true,
+            "automated": true,
         }))
         .send()
         .await
@@ -136,7 +137,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
     ));
     assert!(matches!(
         &seen[2],
-        Request::GetThreadGists { thread_ids, generate: true } if thread_ids == &vec![thread_id.clone(), other.clone()]
+        Request::GetThreadGists { thread_ids, generate: true, automated: true } if thread_ids == &vec![thread_id.clone(), other.clone()]
     ));
     assert_eq!(seen.len(), 3, "a bad id never reaches the daemon");
 }

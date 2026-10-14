@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { memo, useRef, useState, type ReactNode } from "react";
 
@@ -10,6 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useRowGist, type RowGist } from "@/features/gists/rowGists";
+import { fetchThread } from "@/features/mailbox/api";
+import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import type { UpdateLine } from "./api";
@@ -18,6 +22,7 @@ import {
   canPinSource,
   canSweepSource,
   canTune,
+  gistThread,
   openableLink,
   splitSourceName,
   trackerStatus,
@@ -27,6 +32,7 @@ import {
   type SuggestedSetting,
   type TrailingItem,
 } from "./digestView";
+import { previewLines, previewSource } from "./emailPreview";
 import { useUpdatesHidden } from "./updatesVerbs";
 
 /**
@@ -88,9 +94,18 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const { name, host } = splitSourceName(line);
   const parcel = line.tracker?.kind === "parcel";
   const delivered = parcel && line.tracker?.state === "delivered";
-  const trailing = trailingItem(line);
   const track = parcel ? trackLabel(line) : null;
   const trackStands = trackReplacesFact(line, track);
+  // The model's one-line gist stands in for a subject-only fact once it has
+  // arrived, and only for the email the line is about. Until then (or with no
+  // model) the subject shows exactly as it did.
+  const gistThreadId = gistThread(line);
+  const stored = useRowGist(gistThreadId ?? "");
+  const gist =
+    stored && stored.newest !== null && stored.newest === line.latest_message_id
+      ? stored
+      : undefined;
+  const trailing = trailingItem(line, gist?.about ?? line.fact);
   const expanded = focused || peeked;
   const canToDo = !line.in_todo && Boolean(line.todo_suggestion || line.latest_message_id);
   // The keys worth naming on hover or focus, after the verbs the row already shows.
@@ -153,6 +168,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
         </span>
         <span
           data-testid="update-fact"
+          data-gist={gist ? "true" : undefined}
           title={line.fact}
           className={cn(
             "order-4 min-w-0 basis-full text-foreground/90 @xl:order-2 @xl:basis-auto @xl:flex-1",
@@ -161,7 +177,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             parcel && !delivered && "font-medium",
           )}
         >
-          {trackStands ? track : line.fact}
+          {trackStands ? track : (gist?.about ?? line.fact)}
           {track && !trackStands ? (
             <span className="ml-2 text-xs text-muted-foreground">{track}</span>
           ) : null}
@@ -264,7 +280,13 @@ export const UpdateLineRow = memo(function UpdateLineRow({
         </DropdownMenu>
       </div>
       {peeked ? (
-        <Peek line={line} trackStands={trackStands} onOpenEmail={onOpenEmail} onTuneTo={onTuneTo} />
+        <Peek
+          line={line}
+          gist={gist}
+          trackStands={trackStands}
+          onOpenEmail={onOpenEmail}
+          onTuneTo={onTuneTo}
+        />
       ) : null}
       {hint}
     </li>
@@ -351,11 +373,14 @@ function TrailingValue({
  */
 function Peek({
   line,
+  gist,
   trackStands,
   onOpenEmail,
   onTuneTo,
 }: {
   line: UpdateLine;
+  /** The gist the row shows in place of the subject, if it does. */
+  gist: RowGist | undefined;
   /** The track is in the fact column, so the peek holds the fact it replaced. */
   trackStands: boolean;
   onOpenEmail: (line: UpdateLine) => void;
@@ -377,6 +402,17 @@ function Peek({
       className="mt-2 min-w-0 space-y-1.5 border-l-2 border-border pl-3 text-xs break-words text-fg-2"
     >
       {trackStands ? <p data-testid="update-fact-full">{line.fact}</p> : null}
+      {gist ? (
+        <>
+          <p data-testid="update-subject">Subject: {line.fact}</p>
+          {gist.ask ? (
+            <p data-testid="update-gist-ask">
+              <span className="font-medium text-warning">Asks:</span> {gist.ask}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      <EmailPreview line={line} />
       <p data-testid="update-why">{line.why}</p>
       {numbers.length > 0 ? (
         <p data-testid="update-numbers">
@@ -384,6 +420,10 @@ function Peek({
         </p>
       ) : null}
       {status ? <p>{status}</p> : null}
+      {/* Repeats of one alert fold into the line; the row shows the latest, the peek says how many. */}
+      {!tracker && line.count > 1 ? (
+        <p data-testid="update-count-folded">{plural(line.count, "email")} in this digest</p>
+      ) : null}
       {parcelItems.length > 0 ? (
         <ul aria-label="Available parcel items" className="list-inside list-disc">
           {parcelItems.map((item, itemIndex) => (
@@ -404,6 +444,7 @@ function Peek({
         </p>
       ) : null}
       {line.time_label ? <p>At {line.time_label}</p> : null}
+      {gist ? <p data-testid="update-gist-source">{emailSourceLabel(gist)}</p> : null}
       {line.suggestion ? (
         <div data-testid="update-suggestion" className="space-y-1.5">
           <p className="text-foreground/90">{line.suggestion}</p>
@@ -439,5 +480,41 @@ function Peek({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** "Local model gemma4 · from this email": where the line's words came from. */
+function emailSourceLabel(gist: RowGist): string {
+  const provenance = gist.provenance;
+  if (!provenance) return `${gist.source}, summarised by the model`;
+  const place = provenance.locality === "local" ? "Local model" : "Cloud model";
+  const scope = provenance.locality === "local" ? "from this email" : "from this email only";
+  return `${place} ${provenance.model} · ${scope}`;
+}
+
+/**
+ * The first lines of the line's latest email. The thread is fetched only
+ * once the peek is open, through the request the reader uses, so opening the
+ * email afterwards finds it cached. Shown as plain text; a failed or empty
+ * fetch shows nothing, since the peek's other lines stand on their own.
+ */
+function EmailPreview({ line }: { line: UpdateLine }) {
+  const threadId = line.latest_thread_id;
+  const thread = useQuery({
+    queryKey: ["thread", threadId],
+    queryFn: () => fetchThread(threadId ?? ""),
+    enabled: Boolean(threadId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const body = thread.data?.bodies?.find(
+    (candidate) => candidate.message_id === line.latest_message_id,
+  );
+  const lines = previewLines(previewSource(body));
+  if (lines.length === 0) return null;
+  return (
+    <p data-testid="update-preview" className="whitespace-pre-line text-foreground/80">
+      {lines.join("\n")}
+    </p>
   );
 }

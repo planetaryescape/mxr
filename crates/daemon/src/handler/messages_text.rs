@@ -3,6 +3,7 @@
 //! ask from a cached gist. Every client reads these words from here, so
 //! the CLI, TUI, web and MCP show the same text and the same "trimmed".
 
+use super::gist_kind::style_of;
 use super::thread_gist::{cached_gist, thread_envelopes, GistPolicy, GistSetup};
 use super::HandlerError;
 use crate::state::AppState;
@@ -167,7 +168,8 @@ pub(super) async fn cached_ask(
     thread_id: &ThreadId,
 ) -> Result<Option<CachedAsk>, HandlerError> {
     let envelopes = thread_envelopes(state, thread_id).await?;
-    let Some(setup) = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes) else {
+    let style = style_of(state, thread_id, &envelopes).await?;
+    let Some(setup) = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes, style) else {
         return Ok(None);
     };
     let Some(gist) = cached_gist(state, thread_id, &setup).await? else {

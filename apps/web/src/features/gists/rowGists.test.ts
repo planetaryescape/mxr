@@ -37,6 +37,7 @@ function gist(threadId: string, ask: string | null = "confirm the owner") {
     ask: ask ? { summary: ask, quote: null } : null,
     provenance: { model: "gemma4", locality: "local" as const, sources: ["this_thread" as const] },
     from_cache: true,
+    newest_message_id: "m1",
   };
 }
 
@@ -63,6 +64,8 @@ describe("row gists", () => {
       about: "Canary stays at 5% until the dashboard is quiet.",
       ask: "confirm the owner",
       source: "Local model gemma4 · from this thread",
+      provenance: { model: "gemma4", locality: "local", sources: ["this_thread"] },
+      newest: "m1",
     });
     expect(getRowGist("a")).toBeUndefined();
 
@@ -167,17 +170,64 @@ describe("row gists", () => {
     const ids = Array.from({ length: STATE_CAP + 100 }, (_, index) => `r${index}`);
     // Sequential on purpose: the cap evicts the oldest asked-about rows, so
     // the batches must land in order.
-    await ids
-      .reduce<Promise<void>>(
-        (chain, _id, index) =>
-          index % 100 === 0
-            ? chain.then(() => requestRowGists(ids.slice(index, index + 100), 1_000))
-            : chain,
-        Promise.resolve(),
-      );
+    await ids.reduce<Promise<void>>(
+      (chain, _id, index) =>
+        index % 100 === 0
+          ? chain.then(() => requestRowGists(ids.slice(index, index + 100), 1_000))
+          : chain,
+      Promise.resolve(),
+    );
     apiFetch.mockClear();
     // The oldest asked-about rows were forgotten, so they are asked again.
     await requestRowGists(["r0", `r${STATE_CAP + 99}`], 2_000);
     expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ body: { thread_ids: ["r0"] } });
+  });
+  test("Updates asks for automated mail too, and a people-only ask earlier does not count", async () => {
+    apiFetch.mockResolvedValue(answer([], "available"));
+    // An inbox list asked about this thread a moment ago and the daemon
+    // skipped it as not from a person.
+    await requestRowGists(["a"], 1_000);
+    await requestRowGists(["a"], 2_000, { automated: true });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(apiFetch.mock.calls[0]?.[1]).toEqual({
+      method: "POST",
+      body: { thread_ids: ["a"], generate: true },
+    });
+    expect(apiFetch.mock.calls[1]?.[1]).toEqual({
+      method: "POST",
+      body: { thread_ids: ["a"], generate: true, automated: true },
+    });
+    // Each kind of ask is remembered on its own.
+    await requestRowGists(["a"], 3_000, { automated: true });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("a new message makes both kinds of ask possible again", async () => {
+    apiFetch.mockResolvedValue(answer([], "available"));
+    await requestRowGists(["a"], 1_000, { automated: true });
+    emit({
+      type: "NewMessages",
+      envelopes: [{ thread_id: "a" }],
+      total: 1,
+    } as unknown as DaemonEvent);
+    await requestRowGists(["a"], 1_500, { automated: true });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("odd-typed values and prototype keys are not words", () => {
+    for (const odd of [{ toString: 1 }, ["x"], 5, true]) {
+      expect(toRowGist({ ...gist("a"), gist: odd } as never)).toBeNull();
+    }
+    expect(
+      toRowGist({ ...gist("a"), ask: { summary: { trim: 1 }, quote: null } } as never)?.ask,
+    ).toBeNull();
+    expect(toRowGist({ ...gist("a"), newest_message_id: { x: 1 } } as never)?.newest).toBeNull();
+    // A thread called after an Object prototype member is just a thread.
+    for (const id of ["__proto__", "constructor", "toString"]) {
+      expect(getRowGist(id)).toBeUndefined();
+      putGist(gist(id));
+      expect(getRowGist(id)?.about).toContain("Canary");
+    }
+    expect(getRowGist("hasOwnProperty")).toBeUndefined();
   });
 });

@@ -62,11 +62,13 @@ struct GistsBody {
     thread_ids: Vec<String>,
     #[serde(default)]
     generate: bool,
+    #[serde(default)]
+    automated: bool,
 }
 
 /// List-row gists for many conversations: cached ones at once, missing
-/// ones (people only) queued when `generate`, each announced on the event
-/// stream as `ThreadGistReady`.
+/// ones (people only, and automated senders when `automated`) queued when
+/// `generate`, each announced on the event stream as `ThreadGistReady`.
 async fn thread_gists(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -85,6 +87,7 @@ async fn thread_gists(
         Request::GetThreadGists {
             thread_ids,
             generate: body.generate,
+            automated: body.automated,
         },
     )
     .await?;

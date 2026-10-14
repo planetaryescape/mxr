@@ -79,17 +79,19 @@ export async function fetchThreadGist(threadId: string, refresh = false): Promis
 
 /**
  * List-row gists for many conversations: cached ones at once; with
- * `generate`, the missing ones from people are queued and arrive as
- * `ThreadGistReady` events. At most 100 ids (the daemon's
- * `THREAD_GISTS_MAX_BATCH`).
+ * `generate`, the missing ones from people (and, with `automated`, from
+ * automated senders: Updates) are queued and arrive as `ThreadGistReady`
+ * events. At most 100 ids (the daemon's `THREAD_GISTS_MAX_BATCH`).
  */
 export async function fetchThreadGists(
   threadIds: string[],
   generate: boolean,
+  automated = false,
 ): Promise<ThreadGistBatch> {
   const response = await apiFetch<GistBatchResponse>("/api/v1/mail/gists", {
     method: "POST",
-    body: { thread_ids: threadIds, generate },
+    // Omitted when false: the request every list sends today stays as it was.
+    body: { thread_ids: threadIds, generate, ...(automated ? { automated } : {}) },
   });
   return response.batch;
 }

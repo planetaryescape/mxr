@@ -1,9 +1,22 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
+import { putGist, resetRowGistsForTest } from "@/features/gists/rowGists";
 
 import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
 import { UpdateLineRow } from "./UpdateLineRow";
+
+const apiFetch = vi.fn<(path: string) => Promise<unknown>>();
+vi.mock("@/api/client", () => ({ apiFetch: (path: string) => apiFetch(path) }));
+
+beforeEach(() => {
+  apiFetch.mockReset();
+  // The peek's preview reads the thread; most tests have no body to show.
+  apiFetch.mockResolvedValue({ thread: {}, messages: [], bodies: [] });
+  resetRowGistsForTest();
+});
 
 function makeHandlers() {
   return {
@@ -22,15 +35,19 @@ function makeHandlers() {
 function renderLine(line: UpdateLine, options: { focused?: boolean; peeked?: boolean } = {}) {
   const h = makeHandlers();
   render(
-    <ul>
-      <UpdateLineRow
-        line={line}
-        index={0}
-        focused={options.focused ?? true}
-        peeked={options.peeked ?? false}
-        {...h}
-      />
-    </ul>,
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ul>
+        <UpdateLineRow
+          line={line}
+          index={0}
+          focused={options.focused ?? true}
+          peeked={options.peeked ?? false}
+          {...h}
+        />
+      </ul>
+    </QueryClientProvider>,
   );
   return { handlers: h, row: screen.getByTestId("update-line") };
 }
@@ -469,6 +486,15 @@ describe("UpdateLineRow's peek", () => {
     expect(h.onOpenEmail).toHaveBeenCalledTimes(1);
   });
 
+  test("a line that folds several emails says how many in its peek", () => {
+    const { row } = renderLine(lineFixture({ section: "needs_a_look", count: 2 }), {
+      peeked: true,
+    });
+    expect(within(row).getByTestId("update-count-folded")).toHaveTextContent(
+      "2 emails in this digest",
+    );
+  });
+
   test("a line that needs you opens no link in its peek", () => {
     const { row } = renderLine(
       lineFixture({
@@ -508,3 +534,178 @@ describe("UpdateLineRow's peek", () => {
     expect(within(row).getByTestId("update-fact")).toHaveClass("break-words");
   });
 });
+
+function receiptGist(overrides: Record<string, unknown> = {}) {
+  return {
+    thread_id: "t1",
+    status: "ready" as const,
+    gist: "Receipt: $24.00 for Perplexity Pro, renews 14 Nov",
+    ask: null,
+    provenance: { model: "gemma4", locality: "local" as const, sources: ["this_thread" as const] },
+    from_cache: false,
+    newest_message_id: "m1",
+    ...overrides,
+  };
+}
+
+describe("UpdateLineRow's gist", () => {
+  const receipt = () =>
+    lineFixture({
+      fact: "Your receipt from Perplexity",
+      fact_source: "subject",
+      delta: undefined,
+      numbers: [],
+    });
+
+  test("the subject shows until the gist arrives, then the gist takes its place", () => {
+    const { row } = renderLine(receipt(), { focused: false });
+    const fact = within(row).getByTestId("update-fact");
+    expect(fact).toHaveTextContent("Your receipt from Perplexity");
+    expect(fact).not.toHaveAttribute("data-gist");
+
+    act(() => putGist(receiptGist()));
+    expect(fact).toHaveTextContent("Receipt: $24.00 for Perplexity Pro, renews 14 Nov");
+    expect(fact).not.toHaveTextContent("Your receipt from Perplexity");
+    expect(fact).toHaveAttribute("data-gist", "true");
+    // The subject is still one hover away.
+    expect(fact).toHaveAttribute("title", "Your receipt from Perplexity");
+    // No spinner and no extra control.
+    expect(within(row).queryByRole("progressbar")).toBeNull();
+    expect(within(row).getAllByRole("button")).toHaveLength(1);
+  });
+
+  test("an amount the gist already says is not repeated in the trailing slot", () => {
+    const line = lineFixture({
+      fact: "Your receipt from Perplexity",
+      delta: undefined,
+      numbers: [{ raw: "$24.00", value: 24, unit: "USD" }],
+    });
+    const { row } = renderLine(line, { focused: false });
+    expect(within(row).getByTestId("update-amount")).toHaveTextContent("$24.00");
+    act(() => putGist(receiptGist()));
+    expect(within(row).queryByTestId("update-amount")).toBeNull();
+  });
+
+  test("the row never shows the gist's ask; the peek may", () => {
+    act(() => putGist(receiptGist({ ask: { summary: "update the card", quote: null } })));
+    const { row } = renderLine(receipt(), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-fact")).not.toHaveTextContent("update the card");
+    expect(within(row).getByTestId("update-gist-ask")).toHaveTextContent("Asks: update the card");
+  });
+
+  test("a gist for another email of the thread, or with no email named, is not shown", () => {
+    act(() => putGist(receiptGist({ newest_message_id: "m0" })));
+    const { row } = renderLine(receipt(), { focused: false });
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Your receipt from Perplexity",
+    );
+    act(() => putGist(receiptGist({ newest_message_id: null })));
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Your receipt from Perplexity",
+    );
+  });
+
+  test("a fact the rules took from the body keeps the rule's words", () => {
+    act(() => putGist(receiptGist()));
+    const { row } = renderLine(
+      lineFixture({ fact: "Your payment of $19.00 was received", fact_source: "body" }),
+      { focused: false },
+    );
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Your payment of $19.00 was received",
+    );
+  });
+
+  test("a fact taken from an older email than the line's latest keeps the subject", () => {
+    act(() => putGist(receiptGist()));
+    const { row } = renderLine(receiptFromAnOlderEmail(), { focused: false });
+    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
+      "Your receipt from Perplexity",
+    );
+  });
+
+  test("the peek names the subject, the model and the email, and previews the email's first lines", async () => {
+    apiFetch.mockResolvedValue({
+      thread: {},
+      messages: [],
+      bodies: [
+        {
+          message_id: "m1",
+          reader_text: [
+            "Hi Bhekani,",
+            "",
+            "Thanks for your payment to Perplexity.",
+            "Pro plan, monthly   $24.00",
+            "https://perplexity.example/invoice/123",
+            "<img src=x onerror=alert(1)> Renews on 14 November 2026",
+            "Questions? Reply to this email.",
+            "Extra line that is beyond the fourth",
+          ].join("\n"),
+        },
+      ],
+    });
+    act(() => putGist(receiptGist()));
+    const { row } = renderLine(receipt(), { focused: false, peeked: true });
+    const peek = within(row).getByTestId("update-peek");
+    expect(within(peek).getByTestId("update-subject")).toHaveTextContent(
+      "Subject: Your receipt from Perplexity",
+    );
+    expect(within(peek).getByTestId("update-gist-source")).toHaveTextContent(
+      "Local model gemma4 · from this email",
+    );
+    const preview = await within(peek).findByTestId("update-preview");
+    expect(preview.textContent).toBe(
+      [
+        "Thanks for your payment to Perplexity.",
+        "Pro plan, monthly $24.00",
+        "<img src=x onerror=alert(1)> Renews on 14 November 2026",
+        "Questions? Reply to this email.",
+      ].join("\n"),
+    );
+    // Text, never markup.
+    expect(preview.querySelector("img")).toBeNull();
+    expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/threads/t1");
+  });
+
+  test("a cloud model is named as cloud, and the email is the only thing it read", () => {
+    act(() =>
+      putGist(
+        receiptGist({
+          provenance: {
+            model: "claude-haiku-5-5 via Anthropic",
+            locality: "cloud",
+            sources: ["this_thread"],
+          },
+        }),
+      ),
+    );
+    const { row } = renderLine(receipt(), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-gist-source")).toHaveTextContent(
+      "Cloud model claude-haiku-5-5 via Anthropic · from this email only",
+    );
+  });
+
+  test("a closed peek fetches nothing", () => {
+    renderLine(receipt(), { focused: false });
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  test("a peek whose fetch fails still shows its other lines", async () => {
+    apiFetch.mockRejectedValue(new Error("offline"));
+    const { row } = renderLine(receipt(), { peeked: true });
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(within(row).getByTestId("update-why")).toBeInTheDocument();
+    expect(within(row).queryByTestId("update-preview")).toBeNull();
+  });
+});
+
+function receiptFromAnOlderEmail(): UpdateLine {
+  return lineFixture({
+    fact: "Your receipt from Perplexity",
+    fact_source: "subject",
+    fact_message_id: "m0",
+    latest_message_id: "m1",
+    delta: undefined,
+    numbers: [],
+  });
+}

@@ -35,7 +35,7 @@ const PROGRESS_CELLS: usize = 20;
 const DEFAULT_WPM: u32 = 230;
 
 const LIST_KEYS: &str = "Enter read \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} A let go all \u{b7} B Later shelf \u{b7} M Marginalia \u{b7} ? help";
-const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} M Marginalia \u{b7} o email";
+const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} H highlights \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} M Marginalia \u{b7} o email";
 
 /// As many whole "key verb" items as fit in `width`.
 fn fit_keys(keys: &str, width: usize) -> String {
@@ -637,6 +637,7 @@ pub fn draw(
     );
 
     draw_confirm(frame, area, page.confirm.as_ref(), page, theme);
+    highlights::draw(frame, area, page, theme);
 }
 
 fn method_line(method: ReadingUnsubscribeData) -> &'static str {
@@ -763,6 +764,8 @@ fn draw_confirm(
     frame.render_widget(block, popup);
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
+
+mod highlights;
 
 #[cfg(test)]
 pub(crate) mod tests;

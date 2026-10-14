@@ -89,6 +89,24 @@ pub enum ReadingConfirm {
     },
 }
 
+/// `H`: the open item's highlights, one selected.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HighlightsPanel {
+    pub selected: usize,
+    pub step: HighlightStep,
+}
+
+/// What the highlights panel is doing with the selected highlight.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum HighlightStep {
+    #[default]
+    Browse,
+    /// `e`: typing the note; Enter saves it, a blank one clears it.
+    Note(String),
+    /// `x`: Enter removes this highlight, by its id.
+    Remove,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ReadingPageState {
     pub edition: Option<ReadingEditionData>,
@@ -113,6 +131,8 @@ pub struct ReadingPageState {
     /// Ask the daemon what unsubscribing would do.
     pub pending_unsubscribe_preview: Option<ReadingUnsubscribeTarget>,
     pub confirm: Option<ReadingConfirm>,
+    /// `H`: the reader's highlights, to edit a note or remove one.
+    pub highlights: Option<HighlightsPanel>,
     /// `B`: the Later shelf instead of the edition.
     pub later_shelf: bool,
     /// The keyboard is in the reader pane (Enter), not the list.

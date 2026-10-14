@@ -61,6 +61,7 @@ impl App {
             Action::ReadingUnsubscribeOnly => self.reading_unsubscribe_only(),
             Action::ReadingOriginal => self.reading_original(),
             Action::ReadingHighlight => self.reading_highlight(),
+            Action::ReadingHighlights => self.reading_highlights_open(),
             Action::ReadingOpenEmail => self.reading_open_email(),
             Action::ReadingBack => self.reading_back(),
             Action::ReadingLaterShelf => self.toggle_later_shelf(),
@@ -660,6 +661,10 @@ impl App {
                 _ => None,
             };
         }
+        if page.highlights.is_some() {
+            self.highlights_key(key);
+            return None;
+        }
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
         if page.reader_focused && page.reader.is_some() {
@@ -682,6 +687,7 @@ impl App {
                 }
                 KeyCode::Esc | KeyCode::Left => return Some(Action::ReadingBack),
                 KeyCode::Char('h') if plain => return Some(Action::ReadingHighlight),
+                KeyCode::Char('H') if shifted => return Some(Action::ReadingHighlights),
                 _ => {}
             }
         }

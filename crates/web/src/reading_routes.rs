@@ -195,6 +195,65 @@ async fn save_highlight(
     passthrough(response)
 }
 
+/// Body of `POST /api/v1/mail/reading/highlights/{id}/note`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct ReadingHighlightNoteBody {
+    /// The whole note. Required: an empty or blank string clears it, and
+    /// `null` or a missing field is refused rather than read as a clear.
+    note: String,
+    /// Name the highlight it would change without changing it.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn update_highlight(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(highlight_id): AxumPath<String>,
+    Json(body): Json<ReadingHighlightNoteBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::UpdateHighlight {
+            highlight_id,
+            note: body.note,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/reading/highlights/{id}/remove`.
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
+pub(crate) struct ReadingHighlightRemoveBody {
+    /// Name the highlight it would remove without removing it.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn remove_highlight(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(highlight_id): AxumPath<String>,
+    body: Option<Json<ReadingHighlightRemoveBody>>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let dry_run = body.is_some_and(|Json(body)| body.dry_run);
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::RemoveHighlight {
+            highlight_id,
+            dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 async fn highlights(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -340,6 +399,8 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/reading/later", post(later))
         .route("/reading/engagement", post(engagement))
         .route("/reading/highlights", get(highlights).post(save_highlight))
+        .route("/reading/highlights/{id}/note", post(update_highlight))
+        .route("/reading/highlights/{id}/remove", post(remove_highlight))
         .route("/reading/sources", post(set_source))
         .route("/reading/items/{item_key}", get(item))
         .route("/reading/items/{item_key}/article", post(article))

@@ -169,6 +169,7 @@ impl App {
             | Action::ReadingUnsubscribeOnly
             | Action::ReadingOriginal
             | Action::ReadingHighlight
+            | Action::ReadingHighlights
             | Action::ReadingOpenEmail
             | Action::ReadingBack
             | Action::ReadingLaterShelf

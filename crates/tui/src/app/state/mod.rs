@@ -59,7 +59,7 @@ pub use modals::{
 };
 pub use now::{NowPageState, NowRow};
 pub use reading::{
-    ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
+    HighlightStep, HighlightsPanel, ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
     READING_LINKS_SHOWN,
 };
 pub use records::{

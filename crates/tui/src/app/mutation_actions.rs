@@ -156,6 +156,10 @@ impl App {
                         UndoAction::Mutations(mutation_ids) => {
                             let effect = if self.mailbox.mailbox_view == MailboxView::Updates {
                                 MutationEffect::RefreshUpdates(String::new())
+                            } else if self.mailbox.mailbox_view == MailboxView::Reading {
+                                // Brings back a removed highlight or an old
+                                // note in the open reader, and a let-go item.
+                                MutationEffect::ModeDone(String::new())
                             } else {
                                 MutationEffect::RefreshList
                             };

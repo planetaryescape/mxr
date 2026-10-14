@@ -38,6 +38,7 @@ mod place_actions;
 mod platform_actions;
 mod promises;
 mod reading_actions;
+mod reading_highlights;
 mod recorder;
 mod records_actions;
 mod reply_later_prompt;

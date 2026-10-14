@@ -104,6 +104,7 @@ use utoipa::{
         mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export,
         mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
         mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
+        mail_reading_highlight_note, mail_reading_highlight_remove,
         mail_reading_sources, mail_reading_marginalia_get, mail_reading_marginalia_post,
         mail_reading_marginalia_send, mail_reading_marginalia_sync,
         mail_updates_digest, mail_updates_let_go, mail_updates_source,
@@ -145,6 +146,8 @@ use utoipa::{
         crate::reading_routes::ReadingEngagementBody,
         crate::reading_routes::ReadingArticleBody,
         crate::reading_routes::ReadingHighlightBody,
+        crate::reading_routes::ReadingHighlightNoteBody,
+        crate::reading_routes::ReadingHighlightRemoveBody,
         crate::reading_routes::ReadingSourceBody,
         crate::reading_routes::MarginaliaConnectionBody,
         crate::reading_routes::MarginaliaSendBody,
@@ -1330,6 +1333,34 @@ fn mail_reading_highlights_get() {}
 )]
 #[allow(dead_code)]
 fn mail_reading_highlights_post() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/highlights/{id}/note",
+    summary = "Change a highlight's note; a blank note clears it. Highlights made in Marginalia are refused. The run returns a mutation id for undo",
+    params(("id" = String, Path, description = "The highlight's id")),
+    request_body = crate::reading_routes::ReadingHighlightNoteBody,
+    responses(
+        (status = 200, description = "The `ReadingHighlightChanged` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_highlight_note() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/highlights/{id}/remove",
+    summary = "Remove a highlight, or with `dry_run` name what it would remove. Highlights made in Marginalia are refused. The run returns a mutation id for undo",
+    params(("id" = String, Path, description = "The highlight's id")),
+    request_body(content = crate::reading_routes::ReadingHighlightRemoveBody, description = "Optional; omitted removes"),
+    responses(
+        (status = 200, description = "The `ReadingHighlightChanged` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_highlight_remove() {}
 
 #[utoipa::path(
     post,

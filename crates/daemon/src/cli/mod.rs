@@ -3102,6 +3102,24 @@ pub enum ReadingAction {
         #[arg(long)]
         article: bool,
     },
+    /// Change the note on a highlight you made, by its id (shown by
+    /// `reading open` and in `reading export --format json`). A blank TEXT
+    /// clears the note. Preview with --dry-run; `mxr undo` restores the old
+    /// note. Highlights made in Marginalia are changed there.
+    Note {
+        highlight: String,
+        text: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Remove a highlight you made, by its id. Preview with --dry-run;
+    /// `mxr undo` puts it back. Highlights made in Marginalia are removed
+    /// there.
+    Unhighlight {
+        highlight: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Every highlight as Markdown (the default) or JSON.
     Export {
         /// Markdown, ready for a notes app (the default).

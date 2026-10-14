@@ -162,7 +162,7 @@ async fn detect(
     }
     // Pin once: the provenance label and the call follow the same endpoint.
     let llm = state.llm.for_feature(FEATURE).pin();
-    let locality = if llm_endpoint_is_local(llm.base_url()) {
+    let locality = if llm_endpoint_is_local(&llm) {
         AiLocalityData::Local
     } else {
         AiLocalityData::Cloud

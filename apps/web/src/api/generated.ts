@@ -6545,6 +6545,53 @@ export interface components {
             | "unauthorized"
             | "empty"
             | "other";
+        /** @description One AI feature's model and where its requests go. */
+        LlmFeatureStatusData: {
+            /** @description The endpoint for a model that isn't routed. */
+            base_url?: string | null;
+            /** @description Privacy settings keep this feature from its model. */
+            blocked?: string | null;
+            /** @description Requests can leave this machine. */
+            cloud: boolean;
+            enabled: boolean;
+            /** @description The feature's name, e.g. `summarize`. */
+            feature: string;
+            model: string;
+            /**
+             * @description The model goes through Anthropic and/or OpenRouter with stored keys
+             *     rather than `llm.base_url`.
+             */
+            routed: boolean;
+            /** @description Routes in the order they are tried. Empty when not routed. */
+            routes?: components["schemas"]["LlmRouteStatusData"][];
+        };
+        /** @description The outcome of storing or removing a provider key. */
+        LlmKeyChangeData: {
+            /** @description What the key status is after the change (or would be). */
+            after: components["schemas"]["LlmKeyStatusData"];
+            /** @description The store changed (or would have): a key was written or deleted. */
+            changed: boolean;
+            /** @description This was a preview: nothing was stored or removed. */
+            dry_run: boolean;
+            provider: components["schemas"]["LlmProviderData"];
+        };
+        /**
+         * @description An LLM provider key on its way to the daemon. `Debug` never shows it, so
+         *     a logged request can't leak it.
+         */
+        LlmKeySecret: string;
+        /** @enum {string} */
+        LlmKeySourceData: "stored" | "env";
+        /** @description Whether a provider has a key and where it comes from. */
+        LlmKeyStatusData: {
+            /** @description The environment variable that is read when no key is stored. */
+            env_var: string;
+            /** @description The file holding a stored key, or the environment variable name. */
+            location?: string | null;
+            present: boolean;
+            provider: components["schemas"]["LlmProviderData"];
+            source?: components["schemas"]["LlmKeySourceData"] | null;
+        };
         LlmObservationData: {
             failure?: components["schemas"]["LlmFailureKindData"] | null;
             /** @description `default` is the base provider; other values are feature route names. */
@@ -6605,6 +6652,32 @@ export interface components {
             /** @default null */
             voice_match: components["schemas"]["LlmOverrideData"] | null;
         };
+        /**
+         * @description A hosted provider mxr can hold a key for.
+         * @enum {string}
+         */
+        LlmProviderData: "anthropic" | "openrouter";
+        /** @enum {string} */
+        LlmRouteStateData:
+            "ok" | "cooling" | "broken" | "recovering" | "probing" | "no_key";
+        LlmRouteStatusData: {
+            /** @description The id this provider knows the model by. */
+            model: string;
+            /** @description A request would go here now. */
+            next: boolean;
+            provider: components["schemas"]["LlmProviderData"];
+            /**
+             * @description Why it is out, e.g. `429 rate limited`. Fixed phrases, never text
+             *     from the provider's reply.
+             */
+            reason?: string | null;
+            /**
+             * Format: date-time
+             * @description When a cooling or broken route may be tried again.
+             */
+            retry_at?: string | null;
+            state: components["schemas"]["LlmRouteStateData"];
+        };
         LlmStatusSnapshot: {
             /**
              * @description Whether history with a person may go to a cloud model. Clients key
@@ -6618,6 +6691,10 @@ export interface components {
             /** Format: int32 */
             context_window: number;
             enabled: boolean;
+            /** @description Each AI feature's model, providers and their health. */
+            features?: components["schemas"]["LlmFeatureStatusData"][];
+            /** @description Which providers have a key. Presence only, never the key. */
+            keys?: components["schemas"]["LlmKeyStatusData"][];
             model: string;
             /**
              * @description Last process-local endpoint outcomes, separated by routed feature.
@@ -9359,6 +9436,23 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "ReloadLlmConfig";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetLlmKey";
+                  dry_run?: boolean;
+                  key: components["schemas"]["LlmKeySecret"];
+                  provider: components["schemas"]["LlmProviderData"];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "RemoveLlmKey";
+                  dry_run?: boolean;
+                  provider: components["schemas"]["LlmProviderData"];
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "GetNotificationChimes";
               }
             | {
@@ -11463,6 +11557,11 @@ export interface components {
                   config: components["schemas"]["LlmConfigData"];
                   /** @enum {string} */
                   kind: "LlmConfig";
+              }
+            | {
+                  change: components["schemas"]["LlmKeyChangeData"];
+                  /** @enum {string} */
+                  kind: "LlmKeyChange";
               }
             | {
                   config: components["schemas"]["NotificationChimesData"];

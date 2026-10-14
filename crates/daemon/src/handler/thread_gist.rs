@@ -153,7 +153,7 @@ pub(super) struct GistPolicy {
 impl GistPolicy {
     pub fn pin(state: &AppState) -> Self {
         let llm = state.llm.for_feature(FEATURE).pin();
-        let local = llm_endpoint_is_local(llm.base_url());
+        let local = llm_endpoint_is_local(&llm);
         let share_history = local || state.config_snapshot().llm.allow_cloud_relationship_data;
         let locality = if local {
             AiLocalityData::Local
@@ -432,7 +432,15 @@ fn gist_content_hash(envelopes: &[Envelope], share_history: bool, llm: &PinnedLl
     hash.update([u8::from(share_history)]);
     hash.update(llm.model_name().as_bytes());
     hash.update(b"|");
-    hash.update(llm.base_url().unwrap_or("on-machine").as_bytes());
+    // Routed models have no single URL; they are still not on this machine.
+    let endpoint = llm.base_url().unwrap_or_else(|| {
+        if llm.leaves_machine() {
+            "hosted"
+        } else {
+            "on-machine"
+        }
+    });
+    hash.update(endpoint.as_bytes());
     base16ct::lower::encode_string(&hash.finalize())
 }
 

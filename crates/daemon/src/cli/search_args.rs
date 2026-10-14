@@ -73,8 +73,51 @@ pub enum SemanticAction {
 
 #[derive(Subcommand)]
 pub enum LlmAction {
-    /// Show LLM provider status
+    /// Show each AI feature's model, the providers it goes through and their health
     Status,
+    /// Manage the Anthropic and OpenRouter API keys used for Claude models
+    Key {
+        #[command(subcommand)]
+        action: LlmKeyAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LlmKeyAction {
+    /// Store a key read from stdin (never from an argument, so it stays out
+    /// of shell history and process listings)
+    Set {
+        #[arg(value_enum)]
+        provider: LlmProviderArg,
+        /// Check the key and show what would be stored, without storing it
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Show which providers have a key and where it comes from (never the key)
+    Status,
+    /// Delete a stored key
+    Remove {
+        #[arg(value_enum)]
+        provider: LlmProviderArg,
+        /// Show what would be removed, without removing it
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum LlmProviderArg {
+    Anthropic,
+    Openrouter,
+}
+
+impl From<LlmProviderArg> for mxr_protocol::LlmProviderData {
+    fn from(value: LlmProviderArg) -> Self {
+        match value {
+            LlmProviderArg::Anthropic => Self::Anthropic,
+            LlmProviderArg::Openrouter => Self::Openrouter,
+        }
+    }
 }
 
 #[derive(Subcommand)]

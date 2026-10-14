@@ -829,21 +829,33 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
     let config = state.config_snapshot().llm;
     let capabilities = state.llm.capabilities();
     let api_key_env = (!config.api_key_env.is_empty()).then_some(config.api_key_env.clone());
-    let api_key_present = api_key_env
-        .as_deref()
-        .and_then(|name| std::env::var(name).ok())
-        .is_some_and(|value| !value.is_empty());
+    let features = super::llm_routes::feature_statuses(state);
+    let keys = super::llm_routes::key_statuses();
+    // A routed base model has no `api_key_env`; it has the stored keys.
+    let base_routed = config.enabled
+        && !mxr_config::is_demo_instance()
+        && super::llm_routes::base_model_routed(&config);
+    let api_key_present = if base_routed {
+        keys.iter().any(|key| key.present)
+    } else {
+        api_key_env
+            .as_deref()
+            .and_then(|name| std::env::var(name).ok())
+            .is_some_and(|value| !value.is_empty())
+    };
     let snapshot = mxr_protocol::LlmStatusSnapshot {
         enabled: config.enabled,
-        provider: if config.enabled {
-            "openai_compatible".to_string()
-        } else {
+        provider: if !config.enabled {
             "noop".to_string()
+        } else if base_routed {
+            "routed".to_string()
+        } else {
+            "openai_compatible".to_string()
         },
         model: state.llm.model_name(),
         configured_model: config.model,
-        base_url: config.enabled.then_some(config.base_url),
-        api_key_env,
+        base_url: (config.enabled && !base_routed).then_some(config.base_url),
+        api_key_env: api_key_env.filter(|_| !base_routed),
         api_key_present,
         context_window: capabilities.context_window,
         supports_streaming: capabilities.supports_streaming,
@@ -881,6 +893,8 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
                 }
             })
             .collect(),
+        features,
+        keys,
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }

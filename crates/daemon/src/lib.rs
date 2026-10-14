@@ -17,6 +17,7 @@ pub mod commands;
 pub mod handler;
 pub(crate) mod history_text;
 pub mod ipc_client;
+pub(crate) mod llm_keys;
 pub(crate) mod loops;
 pub(crate) mod message_deletion;
 pub mod output;
@@ -212,7 +213,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             commands::version::run();
         }
         Some(Command::Config { action }) => {
-            commands::config::run(action)?;
+            commands::config::run(action).await?;
         }
         Some(Command::Completions { shell }) => {
             // Clap builds the whole command tree; do not nest its debug frame in dispatch.

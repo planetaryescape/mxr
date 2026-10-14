@@ -52,6 +52,28 @@ mod tests {
     use bytes::BytesMut;
 
     #[test]
+    fn a_provider_key_in_a_request_never_shows_in_debug_output_and_roundtrips() {
+        let request = Request::SetLlmKey {
+            provider: LlmProviderData::Anthropic,
+            key: LlmKeySecret::new("sk-ant-do-not-log".into()),
+            dry_run: false,
+        };
+        assert!(!format!("{request:?}").contains("sk-ant"));
+        let json = serde_json::to_string(&request).unwrap();
+        match serde_json::from_str::<Request>(&json).unwrap() {
+            Request::SetLlmKey { provider, key, .. } => {
+                assert_eq!(provider, LlmProviderData::Anthropic);
+                assert_eq!(key.expose(), "sk-ant-do-not-log");
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        // The remote policy is an allow-list: a key can't be set from a
+        // paired remote client.
+        assert!(!remote::remote_read_allowed(&request));
+        assert!(!remote::remote_send_allowed(&request));
+    }
+
+    #[test]
     fn unsubscribe_preview_commit_requires_token_and_choice() {
         for json in [
             serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "archive":false}),
@@ -536,6 +558,22 @@ mod tests {
                 },
                 IpcCategory::MxrPlatform,
             ),
+            (Request::ReloadLlmConfig, IpcCategory::MxrPlatform),
+            (
+                Request::SetLlmKey {
+                    provider: LlmProviderData::Anthropic,
+                    key: LlmKeySecret::new("sk-test".into()),
+                    dry_run: true,
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::RemoveLlmKey {
+                    provider: LlmProviderData::Openrouter,
+                    dry_run: true,
+                },
+                IpcCategory::MxrPlatform,
+            ),
             (Request::GetNotificationChimes, IpcCategory::MxrPlatform),
             (
                 Request::UpdateNotificationChimes {
@@ -970,6 +1008,25 @@ mod tests {
                         request_timeout_secs: 120,
                         allow_cloud_relationship_data: false,
                         observations: Vec::new(),
+                        features: Vec::new(),
+                        keys: Vec::new(),
+                    },
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::LlmKeyChange {
+                    change: LlmKeyChangeData {
+                        provider: LlmProviderData::Anthropic,
+                        dry_run: true,
+                        changed: false,
+                        after: LlmKeyStatusData {
+                            provider: LlmProviderData::Anthropic,
+                            present: false,
+                            source: None,
+                            location: None,
+                            env_var: "ANTHROPIC_API_KEY".into(),
+                        },
                     },
                 },
                 IpcCategory::MxrPlatform,

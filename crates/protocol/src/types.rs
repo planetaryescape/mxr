@@ -7,6 +7,7 @@ mod arrivals;
 mod desk;
 mod draft_provenance;
 mod freshness;
+mod llm_routes;
 mod messages;
 mod mode_guide;
 mod modes;
@@ -24,6 +25,7 @@ pub use arrivals::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
+pub use llm_routes::*;
 pub use messages::*;
 pub use mode_guide::*;
 pub use modes::*;
@@ -181,6 +183,12 @@ pub struct LlmStatusSnapshot {
     /// These contain typed failure classes only, never provider error text.
     #[serde(default)]
     pub observations: Vec<LlmObservationData>,
+    /// Each AI feature's model, providers and their health.
+    #[serde(default)]
+    pub features: Vec<LlmFeatureStatusData>,
+    /// Which providers have a key. Presence only, never the key.
+    #[serde(default)]
+    pub keys: Vec<LlmKeyStatusData>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -967,6 +975,24 @@ pub enum Request {
     GetLlmConfig,
     UpdateLlmConfig {
         config: Box<LlmConfigData>,
+    },
+    /// Re-read `[llm]` from config.toml and apply it to the running daemon,
+    /// for edits made outside it (`mxr config set llm.*`, a text editor).
+    ReloadLlmConfig,
+    /// Store (or replace) a provider key, written by the daemon alone. With
+    /// `dry_run` nothing is stored; the reply says what would change.
+    SetLlmKey {
+        provider: LlmProviderData,
+        key: LlmKeySecret,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Delete the stored key for a provider. With `dry_run` nothing is
+    /// removed; the reply says what would change.
+    RemoveLlmKey {
+        provider: LlmProviderData,
+        #[serde(default)]
+        dry_run: bool,
     },
     GetNotificationChimes,
     UpdateNotificationChimes {
@@ -2864,6 +2890,9 @@ impl Request {
             | Self::GetLlmStatus
             | Self::GetLlmConfig
             | Self::UpdateLlmConfig { .. }
+            | Self::ReloadLlmConfig
+            | Self::SetLlmKey { .. }
+            | Self::RemoveLlmKey { .. }
             | Self::GetNotificationChimes
             | Self::UpdateNotificationChimes { .. }
             | Self::PatchNotificationChimes { .. }
@@ -3639,6 +3668,9 @@ pub enum ResponseData {
     LlmConfig {
         config: LlmConfigData,
     },
+    LlmKeyChange {
+        change: LlmKeyChangeData,
+    },
     NotificationChimes {
         config: NotificationChimesData,
     },
@@ -4371,6 +4403,7 @@ impl ResponseData {
             | Self::AccountAddresses { .. }
             | Self::LlmStatus { .. }
             | Self::LlmConfig { .. }
+            | Self::LlmKeyChange { .. }
             | Self::NotificationChimes { .. }
             | Self::NotificationChimePreview { .. }
             | Self::SemanticStatus { .. }

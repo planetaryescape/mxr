@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.101](https://github.com/planetaryescape/mxr/compare/v0.6.100...v0.6.101) (2026-10-14)
+
+
+### Features
+
+* show what an Updates email says, with number-checked gists and folded repeat alerts ([#462](https://github.com/planetaryescape/mxr/issues/462)) ([d35a602](https://github.com/planetaryescape/mxr/commit/d35a602f2d83ee4a8ccea85b420a07440dbeee74))
+
+
+### Bug Fixes
+
+* keep Marginalia highlight read-back moving past failing items ([#466](https://github.com/planetaryescape/mxr/issues/466)) ([5cd5d1e](https://github.com/planetaryescape/mxr/commit/5cd5d1e75666517327bbb3bd3aa50d9f696605b1))
+
+
+### Documentation
+
+* close out Reading rungs 1-3 and log a flaky mailbox test ([#464](https://github.com/planetaryescape/mxr/issues/464)) ([cd434e4](https://github.com/planetaryescape/mxr/commit/cd434e48f08d5c905f805d475de19472ab371ff0))
+
 ## [0.6.100](https://github.com/planetaryescape/mxr/compare/v0.6.99...v0.6.100) (2026-10-14)
 
 

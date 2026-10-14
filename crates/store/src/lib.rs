@@ -23,6 +23,7 @@ macro_rules! todo_untouched_sql {
 }
 
 mod account;
+mod assistant;
 mod analytics;
 mod arrival_ledger;
 mod arrivals;
@@ -109,6 +110,7 @@ mod voice_samples;
 pub mod workspace_lease;
 mod wrapped;
 
+pub use assistant::{AssistantConversationRow, AssistantMessageRow};
 pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
 };

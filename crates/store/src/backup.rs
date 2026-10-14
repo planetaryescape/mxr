@@ -198,7 +198,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=87).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=88).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -255,6 +255,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 88 {
+        sqlx::raw_sql("DROP TABLE assistant_messages; DROP TABLE assistant_conversations;")
+            .execute(expected.writer())
+            .await?;
+    }
     if manifest.schema_version < 87 {
         sqlx::raw_sql("ALTER TABLE reading_highlights DROP COLUMN paragraph_index;")
             .execute(expected.writer())
@@ -343,6 +348,17 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
             return Err("Backup contains excluded private operational state".into());
         }
     }
+    if manifest.schema_version >= 88 {
+        for excluded in ["assistant_conversations", "assistant_messages"] {
+            let count: i64 =
+                sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {excluded}")))
+                    .fetch_one(&mut db)
+                    .await?;
+            if count != 0 {
+                return Err("Backup contains assistant conversations".into());
+            }
+        }
+    }
     let identity: (String, String) = sqlx::query_as(
         "SELECT workspace_id,recovery_generation FROM archive_workspace WHERE singleton=1",
     )
@@ -407,7 +423,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=87).contains(&version) {
+    if !(80..=88).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -489,8 +505,8 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:87, workspace_id,recovery_generation,files,
-        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into()] })
+    Ok(BackupManifest { format_version:1, schema_version:88, workspace_id,recovery_generation,files,
+        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into()] })
 }
 
 /// Retire runnable state before any restored Store or daemon can open it.

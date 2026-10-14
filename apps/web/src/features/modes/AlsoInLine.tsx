@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
+import { Chip } from "@/components/Chip";
 import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export function AlsoInLine({
   className,
   keys = true,
   links = true,
+  chips = false,
 }: {
   modes: ThreadModes | null | undefined;
   /** The mode on screen, left out of the line. */
@@ -29,6 +31,8 @@ export function AlsoInLine({
    * opens on Enter and the mode's `g` key jumps there).
    */
   links?: boolean;
+  /** Each mode as a neutral Chip instead of an underlined link. */
+  chips?: boolean;
 }) {
   const others = otherModes(modes, here);
   if (others.length === 0) return null;
@@ -39,7 +43,13 @@ export function AlsoInLine({
     >
       {others.map((entry) => (
         <span key={entry.mode} className="inline-flex min-w-0 items-center gap-1">
-          {links ? (
+          {chips && links ? (
+            <Chip asChild>
+              <Link to={RAIL_PATHS[entry.mode] ?? "/now"} title={entry.reason}>
+                {entry.also_in}
+              </Link>
+            </Chip>
+          ) : links ? (
             <Link
               to={RAIL_PATHS[entry.mode] ?? "/now"}
               title={entry.reason}

@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Check, Reply } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Chip } from "@/components/Chip";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { rowAge, rowPerson } from "@/features/desk/deskCopy";
@@ -78,12 +79,28 @@ function RowFrame({
         {main}
       </Link>
       {/*
-        The action rail has one width on every row, buttons shown or not, so
-        dates line up in one column against the right edge.
+        One trailing slot, as in Updates: the date at rest, and the row's own
+        verbs in its place once the row is focused or hovered. On a wide screen
+        with a fine pointer the verbs wait for that, so the slot takes no width
+        at rest; a narrow screen or a touch screen has no hover, so the verbs
+        always show there.
       */}
       <span className="row-span-2 flex items-start gap-1">
-        {meta}
-        <span className="flex w-[3.75rem] shrink-0 items-start justify-end gap-1">{actions}</span>
+        {meta ? (
+          <span className={state.focused ? "hidden" : "sm:pointer-fine:group-hover/now:hidden"}>
+            {meta}
+          </span>
+        ) : null}
+        <span
+          className={cn(
+            "items-start justify-end gap-1",
+            state.focused
+              ? "flex"
+              : "flex sm:pointer-fine:hidden sm:pointer-fine:group-hover/now:flex",
+          )}
+        >
+          {actions}
+        </span>
       </span>
       {extra ? <div className="min-w-0">{extra}</div> : null}
       {state.hint ? <div className="col-span-2 min-w-0">{state.hint}</div> : null}
@@ -103,12 +120,7 @@ function DoneButton({ item, state, title }: { item: NowItem; state: RowState; ti
         event.stopPropagation();
         state.onDone(item);
       }}
-      className={cn(
-        "-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-primary-muted hover:text-primary",
-        state.focused
-          ? "opacity-100"
-          : "pointer-fine:opacity-0 pointer-fine:group-hover/now:opacity-100",
-      )}
+      className="-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-primary-muted hover:text-primary"
     >
       <Check className="size-3.5" strokeWidth={2.25} />
     </button>
@@ -175,12 +187,7 @@ export function PersonRow({
               event.stopPropagation();
               onReply(item);
             }}
-            className={cn(
-              "-my-1 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
-              state.focused
-                ? "opacity-100"
-                : "pointer-fine:opacity-0 pointer-fine:group-hover/now:opacity-100",
-            )}
+            className="-my-1 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Reply className="size-3.5" />
           </button>
@@ -213,7 +220,7 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
           </p>
         </>
       }
-      extra={<AlsoInLine modes={modes} here="todo" keys={false} />}
+      extra={<AlsoInLine modes={modes} here="todo" keys={false} chips />}
       meta={
         <span
           className={cn(
@@ -295,9 +302,7 @@ export function UpdatesCard({
                       {line.source_name}
                     </span>
                     <span className="min-w-0 break-words text-foreground/80">{line.fact}</span>
-                    {line.in_todo ? (
-                      <span className="text-2xs text-muted-foreground">({line.in_todo})</span>
-                    ) : null}
+                    {line.in_todo ? <Chip>{line.in_todo}</Chip> : null}
                   </li>
                 ))}
               </ul>
@@ -346,7 +351,7 @@ export function ReadingRow({
           </p>
         </>
       }
-      extra={<AlsoInLine modes={modes} here="reading" keys={false} />}
+      extra={<AlsoInLine modes={modes} here="reading" keys={false} chips />}
       actions={<DoneButton item={item} state={state} title="Let go (e)" />}
     />
   );

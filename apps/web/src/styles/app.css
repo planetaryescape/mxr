@@ -579,3 +579,37 @@ svg.low-tide {
   border-radius: 2px;
   padding: 0 0.1em;
 }
+
+/*
+ * The reading column takes the reader theme (reader.css from
+ * @planetaryescape/reader sets --reader-* on the same element), so its own
+ * text, rules and buttons follow it instead of the app theme. The font
+ * variables are the package's typeface names, filled with fonts the system
+ * already has.
+ */
+.reading-themed {
+  --background: var(--reader-bg);
+  --foreground: var(--reader-fg);
+  --fg-2: var(--reader-fg-soft);
+  --muted-foreground: var(--reader-muted);
+  --border: var(--reader-border);
+  --border-strong: var(--reader-border-strong);
+  --accent: var(--reader-chip);
+  --accent-foreground: var(--reader-fg);
+  --primary: var(--pen);
+  --primary-foreground: var(--reader-bg);
+  --font-newsreader: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-literata: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  --font-dm-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-atkinson: "Atkinson Hyperlegible", Verdana, system-ui, sans-serif;
+}
+.reading-themed .reader-prose .mxr-image-blocked {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 0 6px;
+  border: 1px solid var(--reader-border-strong);
+  border-radius: 4px;
+  font: 11px/18px var(--font-sans);
+  color: var(--reader-muted);
+  white-space: nowrap;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { prepareEmailHtml, remoteHost, sanitizeHtml } from "./sanitizeHtml";
+import { prepareEmailHtml, remoteHost, sanitizeHtml, sanitizeReaderHtml } from "./sanitizeHtml";
 
 describe("sanitizeHtml", () => {
   it("strips inline <script> tags", () => {
@@ -183,5 +183,138 @@ describe("sanitizeHtml", () => {
     expect(prepared.canvas).toBe("paper");
     expect(prepared.html).toMatch(/color:\s*#fff/i);
     expect(prepared.html).toMatch(/background:\s*#777/i);
+  });
+});
+
+describe("sanitizeReaderHtml", () => {
+  const hostile = [
+    `<p onclick="x()">hello</p>`,
+    `<script>window.pwned = 1</script>`,
+    `<img src="https://cdn.example/a.png" onerror="x()" alt="a">`,
+    `<a href="javascript:alert(1)">js</a>`,
+    `<a href="  JaVaScRiPt:alert(1)">js2</a>`,
+    `<a href="data:text/html,<script>alert(1)</script>">data</a>`,
+    `<style>body{display:none}</style>`,
+    `<iframe src="https://evil.example"></iframe>`,
+    `<form action="https://evil.example"><input name="q"><button>go</button></form>`,
+    `<object data="x"></object><embed src="x">`,
+    `<div style="position:fixed;inset:0;z-index:9999" class="fixed inset-0 z-50" id="root">overlay</div>`,
+    `<svg onload="x()"><script>1</script></svg>`,
+    `<base href="https://evil.example/"><link rel="stylesheet" href="https://evil.example/a.css">`,
+  ].join("");
+
+  it("leaves nothing active, restyling or app-relative in hostile markup", () => {
+    const clean = sanitizeReaderHtml(hostile, { allowRemoteImages: true });
+    const dom = new DOMParser().parseFromString(clean, "text/html");
+
+    expect(
+      dom.querySelectorAll(
+        "script, style, iframe, object, embed, form, input, button, svg, base, link",
+      ),
+    ).toHaveLength(0);
+    for (const element of dom.body.querySelectorAll("*")) {
+      const names = element.getAttributeNames();
+      expect(names.filter((name) => name.startsWith("on"))).toEqual([]);
+      expect(names).not.toContain("style");
+      expect(names).not.toContain("class");
+      expect(names).not.toContain("id");
+    }
+    for (const anchor of dom.querySelectorAll("a")) {
+      const href = anchor.getAttribute("href");
+      expect(href === null || /^(https?:|mailto:)/i.test(href)).toBe(true);
+    }
+    expect(clean).not.toMatch(/javascript:/i);
+    expect(clean).not.toMatch(/pwned|display:none/);
+    expect(dom.body.textContent).toContain("hello");
+  });
+
+  it("opens links safely in a new tab", () => {
+    const clean = sanitizeReaderHtml(
+      `<a href="https://example.com/x" target="_self" rel="opener">x</a>`,
+      {
+        allowRemoteImages: false,
+      },
+    );
+    const anchor = new DOMParser().parseFromString(clean, "text/html").querySelector("a");
+    expect(anchor?.getAttribute("href")).toBe("https://example.com/x");
+    expect(anchor?.getAttribute("target")).toBe("_blank");
+    expect(anchor?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("drops links that would navigate the app itself", () => {
+    const clean = sanitizeReaderHtml(
+      `<a href="/settings">a</a><a href="#top">b</a><a href="//evil.example/x">c</a><a href="mailto:a@b.co">d</a>`,
+      { allowRemoteImages: true },
+    );
+    const hrefs = [
+      ...new DOMParser().parseFromString(clean, "text/html").querySelectorAll("a"),
+    ].map((anchor) => anchor.getAttribute("href"));
+    expect(hrefs).toEqual([null, null, null, "mailto:a@b.co"]);
+  });
+
+  it("holds remote images back until allowed", () => {
+    const html = `<p>before</p><img src="https://cdn.example/a.png" alt="chart"><p>after</p>`;
+    const blocked = sanitizeReaderHtml(html, { allowRemoteImages: false });
+    expect(blocked).not.toContain("cdn.example");
+    expect(blocked).not.toContain("<img");
+    expect(blocked).toContain("Image blocked");
+    // The note keeps its own class (for styling) while the sender's classes go.
+    expect(blocked).toContain('class="mxr-image-blocked"');
+
+    const allowed = sanitizeReaderHtml(html, { allowRemoteImages: true });
+    expect(allowed).toContain(`src="https://cdn.example/a.png"`);
+  });
+
+  it("always removes tracking pixels, even when remote images are allowed", () => {
+    const clean = sanitizeReaderHtml(
+      `<p>hi</p><img src="https://track.customer.io/e/open" alt=""><img src="https://cdn.example/p.gif" width="1" height="1">`,
+      { allowRemoteImages: true },
+    );
+    expect(clean).not.toContain("<img");
+  });
+
+  it("keeps inline images and drops images the app would resolve against itself", () => {
+    const clean = sanitizeReaderHtml(
+      `<img src="data:image/png;base64,iVBORw0KGgo=" alt="inline"><img src="/api/v1/mail/threads"><img src="//cdn.example/a.png"><img src="cid:abc">`,
+      { allowRemoteImages: true },
+    );
+    const dom = new DOMParser().parseFromString(clean, "text/html");
+    expect([...dom.querySelectorAll("img")].map((img) => img.getAttribute("src"))).toEqual([
+      "data:image/png;base64,iVBORw0KGgo=",
+    ]);
+  });
+
+  it("keeps the structure of a real newsletter", () => {
+    const newsletter = `
+      <h1>Issue 42</h1><h2>Top story</h2>
+      <p>Text with <strong>bold</strong>, <em>emphasis</em> and a <a href="https://example.com/a">link</a>.</p>
+      <figure><img src="data:image/png;base64,iVBORw0KGgo=" alt="x"><figcaption>Caption</figcaption></figure>
+      <ul><li>one</li><li>two</li></ul><ol><li>first</li></ol>
+      <blockquote>Quote</blockquote><pre><code>let x = 1;</code></pre>
+      <table><thead><tr><th>A</th></tr></thead><tbody><tr><td colspan="2">cell</td></tr></tbody></table><hr>`;
+    const clean = sanitizeReaderHtml(newsletter, { allowRemoteImages: false });
+    const dom = new DOMParser().parseFromString(clean, "text/html");
+    for (const selector of [
+      "h1",
+      "h2",
+      "strong",
+      "em",
+      "a[href]",
+      "figure img",
+      "figcaption",
+      "ul li",
+      "ol li",
+      "blockquote",
+      "pre code",
+      "table thead th",
+      "td[colspan]",
+      "hr",
+    ]) {
+      expect([selector, dom.querySelector(selector) !== null]).toEqual([selector, true]);
+    }
+  });
+
+  it("returns an empty string for empty input", () => {
+    expect(sanitizeReaderHtml("", { allowRemoteImages: false })).toBe("");
   });
 });

@@ -181,13 +181,31 @@ issue as opened.
 
 ## Highlight what you want to keep
 
-Select text in the reader and press `h` (the TUI saves the paragraph at the
-top of the reader). In the web reader, saved highlights are marked on the
-article wherever their text appears. Highlights are found by [search](/guides/semantic-search/)
-and exported as Markdown, grouped by item with the source and the link:
+In the web reader, select text and a small toolbar appears over the
+selection: **Highlight**, or **Highlight with note**. `h` still highlights
+the selection without the toolbar. The TUI saves the paragraph at the top of
+the reader with `h`. Saved highlights are marked on the article wherever their
+text appears, and listed under the article with their notes.
+
+To change one, click it in the article or use its row in the list: edit
+its note (a blank note clears it) or remove it. Removing a highlight, or
+changing its note, can be undone for about a minute with `u` or `mxr undo`.
+In the TUI, `H` in the reader lists the item's highlights: `e` edits the
+note, `x` removes (it asks first).
+
+Highlights you made in Marginalia are read-only here: they are read back
+from Marginalia, so a change here would be undone by the next read. They are
+marked "Made in Marginalia; change it there", with **Open in Marginalia**.
+
+Highlights are found by [search](/guides/semantic-search/) and exported as
+Markdown, grouped by item with the source and the link. From the CLI, the id
+that `reading open` and `reading export --format json` show names a highlight:
 
 ```bash
 mxr reading highlight ITEM "A delete is the absence of a row" --note "for the talk"
+mxr reading note HIGHLIGHT_ID "for the essay"          # a blank note clears it
+mxr reading unhighlight HIGHLIGHT_ID --dry-run          # names what it would remove
+mxr reading unhighlight HIGHLIGHT_ID                    # then `mxr undo ID` restores it
 mxr reading export --markdown > reading-highlights.md
 ```
 
@@ -222,6 +240,7 @@ makes no unsubscribe offers.
 | `R` | The sender's own layout |
 | `A` | Let go of everything shown, with a preview |
 | `h` | Highlight the selection |
+| `H` | The TUI reader's highlights: edit a note, remove one |
 | `o` | Open the email itself |
 | `M` | Open in Marginalia, sending it the first time |
 | `?` | Help, starting with Reading |

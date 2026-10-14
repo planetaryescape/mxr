@@ -84,7 +84,7 @@ mxr reading marginalia sync
 mxr reading marginalia sync ITEM
 ```
 
-They appear in the reader marked "from Marginalia", and in
+They appear in the reader marked "Made in Marginalia; change it there", read-only in mxr (a change here would be undone by the next read), and in
 `mxr reading export`. A highlight deleted in Marginalia is removed from mxr
 at the next read. Highlights you make in mxr are never changed by this, and
 nothing you do in mxr changes Marginalia.

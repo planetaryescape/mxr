@@ -23,10 +23,6 @@ export const ALLOWLIST = new Map([
     "features/reading/ReadingReader.tsx",
     "reader title is 24px, then 28px from sm: and there is no token between 2xl (24) and 3xl (32)",
   ],
-  [
-    "features/updates",
-    "rung 1 (feat/updates-reel) owns this folder; its literal sizes convert after that merges",
-  ],
 ]);
 
 /** A literal size: a number with px or rem, inside `text-[...]`, after a class boundary. */
@@ -43,8 +39,8 @@ export function checkScript(text) {
 }
 
 /** True when `rel` (relative to src/) is covered by an allowlist entry. */
-export function allowed(rel) {
-  for (const entry of ALLOWLIST.keys()) {
+export function allowed(rel, list = ALLOWLIST) {
+  for (const entry of list.keys()) {
     if (rel === entry || rel.startsWith(`${entry}/`)) return true;
   }
   return false;

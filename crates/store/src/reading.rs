@@ -242,6 +242,28 @@ fn highlight_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingHighlightR
     })
 }
 
+/// The highlight, read inside the transaction that will change it, unless
+/// it is missing or not mxr's own (then the refusal to hand back).
+async fn own_highlight_in(
+    tx: &mut sqlx::SqliteConnection,
+    id: &str,
+) -> Result<Result<ReadingHighlightRow, HighlightEdit>, sqlx::Error> {
+    let row = sqlx::query("SELECT * FROM reading_highlights WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .as_ref()
+        .map(highlight_from_row)
+        .transpose()?;
+    Ok(match row {
+        None => Err(HighlightEdit::Missing),
+        Some(prior) if prior.origin != LOCAL_HIGHLIGHT_ORIGIN => {
+            Err(HighlightEdit::ReadOnly(prior.origin))
+        }
+        Some(prior) => Ok(prior),
+    })
+}
+
 fn marginalia_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingMarginaliaRow, sqlx::Error> {
     Ok(ReadingMarginaliaRow {
         message_id: decode_id(&row.try_get::<String, _>("message_id")?)?,
@@ -698,28 +720,18 @@ impl super::Store {
         note: Option<&str>,
     ) -> Result<HighlightEdit, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let Some(prior) = sqlx::query("SELECT * FROM reading_highlights WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .as_ref()
-            .map(highlight_from_row)
-            .transpose()?
-        else {
-            return Ok(HighlightEdit::Missing);
+        let prior = match own_highlight_in(&mut tx, id).await? {
+            Ok(prior) => prior,
+            Err(refusal) => return Ok(refusal),
         };
-        if prior.origin != LOCAL_HIGHLIGHT_ORIGIN {
-            return Ok(HighlightEdit::ReadOnly(prior.origin));
-        }
-        let changed = sqlx::query(
-            "UPDATE reading_highlights SET note = ?1 WHERE id = ?2 AND origin = ?3",
-        )
-        .bind(note)
-        .bind(id)
-        .bind(LOCAL_HIGHLIGHT_ORIGIN)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        let changed =
+            sqlx::query("UPDATE reading_highlights SET note = ?1 WHERE id = ?2 AND origin = ?3")
+                .bind(note)
+                .bind(id)
+                .bind(LOCAL_HIGHLIGHT_ORIGIN)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
         tx.commit().await?;
         Ok(if changed == 0 {
             HighlightEdit::Missing
@@ -732,19 +744,10 @@ impl super::Store {
     /// `set_reading_highlight_note`.
     pub async fn remove_reading_highlight(&self, id: &str) -> Result<HighlightEdit, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let Some(prior) = sqlx::query("SELECT * FROM reading_highlights WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .as_ref()
-            .map(highlight_from_row)
-            .transpose()?
-        else {
-            return Ok(HighlightEdit::Missing);
+        let prior = match own_highlight_in(&mut tx, id).await? {
+            Ok(prior) => prior,
+            Err(refusal) => return Ok(refusal),
         };
-        if prior.origin != LOCAL_HIGHLIGHT_ORIGIN {
-            return Ok(HighlightEdit::ReadOnly(prior.origin));
-        }
         let removed = sqlx::query("DELETE FROM reading_highlights WHERE id = ?1 AND origin = ?2")
             .bind(id)
             .bind(LOCAL_HIGHLIGHT_ORIGIN)

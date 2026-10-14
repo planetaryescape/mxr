@@ -111,7 +111,7 @@ describe("HighlightToolbar", () => {
     select(screen.getByTestId("own"));
     expect(screen.queryByTestId("toolbar-highlight")).toBeNull();
     fireEvent.click(screen.getByTestId("toolbar-edit-note"));
-    const input = screen.getByTestId("highlight-note-input") as HTMLTextAreaElement;
+    const input = screen.getByTestId<HTMLTextAreaElement>("highlight-note-input");
     expect(input.value).toBe("first");
     fireEvent.change(input, { target: { value: "" } });
     await act(async () => {

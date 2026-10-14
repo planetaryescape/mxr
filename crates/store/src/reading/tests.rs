@@ -544,7 +544,12 @@ async fn only_your_own_highlights_can_be_edited_or_removed() {
         .await
         .unwrap();
     assert_eq!(
-        fx.store.reading_highlight("own").await.unwrap().unwrap().note,
+        fx.store
+            .reading_highlight("own")
+            .await
+            .unwrap()
+            .unwrap()
+            .note,
         None,
         "no note clears it"
     );
@@ -600,11 +605,18 @@ async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
         .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
         .await
         .unwrap();
-    let rows = fx.store.reading_highlights_for_message(&issue).await.unwrap();
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].origin, "marginalia");
     assert_eq!(
-        fx.store.remove_reading_highlight(&rows[0].id).await.unwrap(),
+        fx.store
+            .remove_reading_highlight(&rows[0].id)
+            .await
+            .unwrap(),
         HighlightEdit::ReadOnly("marginalia".into())
     );
 }
@@ -666,10 +678,7 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
         Some("changed".into())
     );
     assert_eq!(
-        fx.store
-            .put_back_reading_highlights(&[edit])
-            .await
-            .unwrap(),
+        fx.store.put_back_reading_highlights(&[edit]).await.unwrap(),
         1
     );
     assert_eq!(
@@ -692,7 +701,10 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
         .await
         .unwrap();
     assert_eq!(
-        fx.store.put_back_reading_highlights(&[remove]).await.unwrap(),
+        fx.store
+            .put_back_reading_highlights(&[remove])
+            .await
+            .unwrap(),
         0
     );
 }

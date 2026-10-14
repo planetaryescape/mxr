@@ -26,3 +26,7 @@ the number check, the folded Needs a look lines).
   the sender kind for every conversation in a request (the prompt style is
   part of the cache key), not only the ones with no cached gist. One
   `AccountKinds::load` per account per request.
+
+## From orchestrator review (2026-10-14)
+- A gist can carry a URL (seen with the stub model: "View workflow run https://…"). URLs pass the number check because their digits are in the mail. Consider stripping URLs from the displayed gist, or rejecting gists that are mostly a URL.
+- Spelled numbers over-drop: "no one" or "one of your" fails when the mail has no "1". Safe direction (the rule fact shows), but watch the daemon's drop warning on real mail.

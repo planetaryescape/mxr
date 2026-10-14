@@ -15,6 +15,6 @@ Nothing in that commit touched the mailbox.
 ## Next step
 
 The cause isn't established. Run the test in a loop under CPU load
-(`npx vitest run src/features/mailbox/MailView.connection.test.tsx --repeat 50`)
+(for example `for i in $(seq 50); do npx vitest run src/features/mailbox/MailView.connection.test.tsx || break; done`)
 and read how it waits for recovery after the 503 (real or fake timers, `findBy`
 timeout) before changing it.

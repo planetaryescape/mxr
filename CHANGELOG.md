@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.100](https://github.com/planetaryescape/mxr/compare/v0.6.99...v0.6.100) (2026-10-14)
+
+
+### Features
+
+* edit and remove Reading highlights in every client ([#461](https://github.com/planetaryescape/mxr/issues/461)) ([5d359cc](https://github.com/planetaryescape/mxr/commit/5d359cc811e6298b151fec4b932ddf0e23fbcfe8))
+
 ## [0.6.99](https://github.com/planetaryescape/mxr/compare/v0.6.98...v0.6.99) (2026-10-14)
 
 

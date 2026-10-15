@@ -4,7 +4,8 @@
 
 use mxr_protocol::{
     AssistantAvailabilityData, AssistantConversationData, AssistantConversationSummaryData,
-    AssistantDeleteData, AssistantPendingData, AssistantProgressData, AssistantStatusData, Request,
+    AssistantDeleteData, AssistantItemData, AssistantLinkData, AssistantPendingData,
+    AssistantProgressData, AssistantStatusData, Request,
 };
 use std::time::Instant;
 
@@ -148,6 +149,31 @@ impl AssistantState {
             }
             _ => &[],
         }
+    }
+
+    /// The latest reply that links an email or a person, and its links
+    /// numbered `1`-`9` in the order it shows them. A later reply without
+    /// links ("anything else?") leaves the earlier one's open.
+    pub fn linked_reply(&self) -> Option<(usize, Vec<AssistantLinkData>)> {
+        let items = &self.conversation.as_ref()?.items;
+        items
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, item)| match item {
+                AssistantItemData::Assistant { text, .. } => {
+                    let (_, links) = crate::ui::assistant_describe::plain_text_with_links(text);
+                    (!links.is_empty()).then_some((index, links))
+                }
+                _ => None,
+            })
+    }
+
+    /// The links `1`-`9` open: [`Self::linked_reply`]'s.
+    pub fn reply_links(&self) -> Vec<AssistantLinkData> {
+        self.linked_reply()
+            .map(|(_, links)| links)
+            .unwrap_or_default()
     }
 
     pub fn auto_approve(&self) -> bool {

@@ -4992,6 +4992,12 @@ export interface components {
             | {
                   /** Format: int64 */
                   created_at: number;
+                  /**
+                   * @description The steps right before this reply that failed and weren't redone
+                   *     after: a small model can say it did what these didn't, so
+                   *     clients name them under the reply.
+                   */
+                  failed_call_ids?: string[];
                   /** @enum {string} */
                   kind: "assistant";
                   model?: string | null;

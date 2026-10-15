@@ -6,8 +6,8 @@
 use super::*;
 use mxr_protocol::{
     AssistantAnswerData, AssistantConversationData, AssistantDecisionData,
-    AssistantDecisionKindData, AssistantPendingData, AssistantProgressData, AssistantStatusData,
-    AssistantViewContextData,
+    AssistantDecisionKindData, AssistantLinkData, AssistantPendingData, AssistantProgressData,
+    AssistantStatusData, AssistantViewContextData,
 };
 use ratatui::crossterm::event::KeyEvent;
 
@@ -195,6 +195,14 @@ impl App {
                 }
                 _ => {}
             }
+        }
+
+        if let (KeyCode::Char(digit @ '1'..='9'), KeyModifiers::NONE) = (key.code, key.modifiers) {
+            let number = (digit as usize) - ('1' as usize);
+            if let Some(link) = self.assistant.reply_links().into_iter().nth(number) {
+                self.open_assistant_link(link);
+            }
+            return None;
         }
 
         let page = 8;
@@ -458,6 +466,28 @@ impl App {
         assistant.error = None;
         assistant.prompt = None;
         assistant.scroll_from_bottom = 0;
+    }
+
+    /// Open a link from the latest reply: the email in the reader, or the
+    /// person in Messages. The pane stays open beside it and keys go to the
+    /// screen, where the link now is.
+    fn open_assistant_link(&mut self, link: AssistantLinkData) {
+        match link {
+            AssistantLinkData::Thread { thread_id } => {
+                match thread_id.parse::<mxr_core::ThreadId>() {
+                    Ok(thread_id) => {
+                        self.pending_assistant_thread_open = Some(thread_id);
+                        self.status_message = Some("Opening the email…".into());
+                    }
+                    Err(_) => {
+                        self.status_message = Some("That link doesn't name an email".into());
+                        return;
+                    }
+                }
+            }
+            AssistantLinkData::Person { person_id } => self.open_messages_person(person_id),
+        }
+        self.assistant.focus = AssistantFocus::Away;
     }
 
     fn stop_assistant_turn(&mut self) {

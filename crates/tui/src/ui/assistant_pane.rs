@@ -4,8 +4,8 @@
 //! followed or fetched.
 
 use super::assistant_describe::{
-    answered_with, describe_change, plain_text, preview_draft, preview_messages, readout_line,
-    tool_words,
+    answered_with, describe_change, plain_text, plain_text_with_links, preview_draft,
+    preview_messages, readout_line, tool_words,
 };
 use super::sanitize::{one_line, strip_control_chars, truncate};
 use crate::app::{AssistantFocus, AssistantPrompt, AssistantState};
@@ -164,7 +164,14 @@ pub fn hint_text(state: &AssistantState) -> String {
                     if other { " · o own answer" } else { "" }
                 )
             }
-            None => format!("i write · N new · L history · T trust · D delete · e steps{stop}"),
+            None => {
+                let links = match state.reply_links().len() {
+                    0 => String::new(),
+                    1 => "1 open link · ".into(),
+                    n => format!("1-{n} open link · "),
+                };
+                format!("{links}i write · N new · L history · T trust · D delete · e steps{stop}")
+            }
         },
         AssistantFocus::Away => "Ctrl-a to use the assistant".into(),
     }
@@ -300,6 +307,27 @@ fn step_label(tool: &str, reason: &str, result: Option<&str>) -> String {
     }
 }
 
+/// The steps a reply's `failed_call_ids` names, in words. Small models
+/// sometimes say they did what failed; the steps are mxr's record, so the
+/// reply is followed by what they say.
+fn failed_steps(items: &[AssistantItemData], failed_call_ids: &[String]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            AssistantItemData::ToolCall {
+                call_id,
+                tool,
+                reason,
+                result,
+                ..
+            } if failed_call_ids.contains(call_id) => {
+                Some(step_label(tool, reason, result.as_deref()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// The conversation as lines: what the user wrote, the replies, the steps
 /// between (folded once settled), and how the last turn ended.
 pub(crate) fn transcript_lines(
@@ -342,6 +370,9 @@ pub(crate) fn transcript_lines(
 
     let running = state.running();
     let items = &conversation.items;
+    // Only one reply numbers its links, the latest that has any, so a
+    // number always means one thing: the link `1`-`9` opens.
+    let linked_reply = state.linked_reply().map(|(index, _)| index);
     let mut index = 0;
     while index < items.len() {
         if !lines.is_empty() {
@@ -349,14 +380,40 @@ pub(crate) fn transcript_lines(
         }
         match &items[index] {
             AssistantItemData::User { text, .. } => push_user(&mut lines, text, width, theme),
-            AssistantItemData::Assistant { text, .. } => push_wrapped(
-                &mut lines,
-                "",
-                &plain_text(text),
-                width,
-                Style::default(),
-                Style::default().fg(theme.text_primary),
-            ),
+            AssistantItemData::Assistant {
+                text,
+                failed_call_ids,
+                ..
+            } => {
+                push_wrapped(
+                    &mut lines,
+                    "",
+                    &if linked_reply == Some(index) {
+                        plain_text_with_links(text).0
+                    } else {
+                        plain_text(text)
+                    },
+                    width,
+                    Style::default(),
+                    Style::default().fg(theme.text_primary),
+                );
+                let failed = failed_steps(items, failed_call_ids);
+                if !failed.is_empty() {
+                    let error = Style::default().fg(theme.error);
+                    let head = if failed.len() == 1 {
+                        "This step failed, whatever the reply says:".to_string()
+                    } else {
+                        format!(
+                            "These {} steps failed, whatever the reply says:",
+                            failed.len()
+                        )
+                    };
+                    push_wrapped(&mut lines, "! ", &head, width, error, error.bold());
+                    for label in failed {
+                        push_wrapped(&mut lines, "  ", &format!("✕ {label}"), width, error, error);
+                    }
+                }
+            }
             AssistantItemData::Summary { text, .. } => {
                 let label = " Earlier messages summarised ";
                 let side = width.saturating_sub(label.width()) / 2;
@@ -1182,6 +1239,46 @@ mod tests {
         state.steps_expanded = true;
         let open = render(&state);
         assert!(open.contains("✓ Look again"), "{open}");
+    }
+
+    #[test]
+    fn a_reply_after_failed_steps_names_them() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        let reply = |seq, failed: &str| AssistantItemData::Assistant {
+            seq,
+            text: "Starred it.".into(),
+            model: None,
+            failed_call_ids: vec![failed.to_string()],
+            created_at: 0,
+        };
+        state.conversation = Some(conversation(
+            AssistantStatusData::Idle,
+            vec![
+                user(1, "star the Q1 email"),
+                step(2, "Find it", AssistantCallStateData::Failed),
+                reply(3, "call2"),
+                user(4, "again"),
+                step(5, "Find it", AssistantCallStateData::Done),
+                step(6, "Star the Q1 email", AssistantCallStateData::Failed),
+                reply(7, "call6"),
+            ],
+            Vec::new(),
+        ));
+        let screen = render(&state);
+        assert_eq!(
+            screen
+                .matches("This step failed, whatever the reply says:")
+                .count(),
+            2,
+            "{screen}"
+        );
+        assert!(screen.contains("✕ Star the Q1 email"), "{screen}");
+        assert_eq!(
+            screen.matches("✕ ").count(),
+            2,
+            "only the steps the replies name: {screen}"
+        );
     }
 
     #[test]

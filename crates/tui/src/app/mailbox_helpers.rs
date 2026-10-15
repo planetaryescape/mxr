@@ -517,6 +517,30 @@ impl App {
         self.status_message = None;
     }
 
+    /// Called by the runtime once `Request::GetThread` resolves for a link
+    /// in the assistant's reply. Opens the thread's latest message in All
+    /// Mail's reader, wherever the email now is, as the web's link does:
+    /// the mode lenses draw full width, with no reader beside them.
+    pub(crate) fn open_assistant_thread(&mut self, messages: Vec<Envelope>) {
+        let Some(env) = messages.last().cloned() else {
+            self.status_message = Some("That email has no messages left".into());
+            return;
+        };
+        self.screen = Screen::Mailbox;
+        self.apply(Action::GoToAllMail);
+        if let Some(index) = self
+            .mail_list_rows()
+            .iter()
+            .position(|row| row.thread_id == env.thread_id)
+        {
+            self.mailbox.selected_index = index;
+        }
+        self.open_envelope(env);
+        self.mailbox.layout_mode = LayoutMode::ThreePane;
+        self.mailbox.active_pane = ActivePane::MessageView;
+        self.status_message = None;
+    }
+
     /// Called by the runtime once `Request::GetThread` resolves for a delivery
     /// opened with `o`/Enter on the Deliveries screen. Opens the source
     /// thread's most recent message inline in a right-hand split pane,

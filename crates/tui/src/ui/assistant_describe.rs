@@ -6,7 +6,7 @@
 //! Every string here may come from someone else's email (subjects, senders,
 //! a model's reply about them): it is displayed, never acted on.
 
-use mxr_protocol::AssistantReadoutData;
+use mxr_protocol::{AssistantLinkData, AssistantReadoutData};
 use serde_json::Value;
 
 /// A tool name as words: `mxr_list_messages` reads "List messages".
@@ -222,6 +222,40 @@ pub fn readout_line(readout: &AssistantReadoutData) -> Option<String> {
 /// bullets kept, links as "text (url)", in-app `mxr:` links as their text,
 /// images as their description only (nothing remote is fetched or shown).
 pub fn plain_text(markdown: &str) -> String {
+    render_plain(markdown, None)
+}
+
+/// The most links a reply numbers: one key each, `1` to `9`.
+pub const MAX_NUMBERED_LINKS: usize = 9;
+
+/// A reply as [`plain_text`], with each in-app link numbered after its
+/// words, "Q1 report [1]", and the links in that order. The same email
+/// linked twice keeps one number. The daemon has already dropped links
+/// whose ids no tool returned, so these are safe to open.
+pub fn plain_text_with_links(markdown: &str) -> (String, Vec<AssistantLinkData>) {
+    let mut links = Vec::new();
+    let text = render_plain(markdown, Some(&mut links));
+    (text, links)
+}
+
+/// An `mxr:thread/<id>` or `mxr:person/<id>` href.
+fn parse_mxr_link(url: &str) -> Option<AssistantLinkData> {
+    let (kind, id) = url.strip_prefix("mxr:")?.split_once('/')?;
+    if id.is_empty() {
+        return None;
+    }
+    match kind {
+        "thread" => Some(AssistantLinkData::Thread {
+            thread_id: id.to_owned(),
+        }),
+        "person" => Some(AssistantLinkData::Person {
+            person_id: id.to_owned(),
+        }),
+        _ => None,
+    }
+}
+
+fn render_plain(markdown: &str, mut links: Option<&mut Vec<AssistantLinkData>>) -> String {
     let mut out = Vec::new();
     for line in markdown.lines() {
         let trimmed = line.trim_start();
@@ -233,13 +267,16 @@ pub fn plain_text(markdown: &str) -> String {
             .strip_prefix("- ")
             .or_else(|| trimmed.strip_prefix("* "))
         {
-            format!("{indent}• {}", inline(rest))
+            format!("{indent}• {}", inline(rest, links.as_deref_mut()))
         } else if trimmed.starts_with('#') {
-            inline(trimmed.trim_start_matches('#').trim_start())
+            inline(
+                trimmed.trim_start_matches('#').trim_start(),
+                links.as_deref_mut(),
+            )
         } else if let Some(rest) = trimmed.strip_prefix("> ") {
-            format!("{indent}│ {}", inline(rest))
+            format!("{indent}│ {}", inline(rest, links.as_deref_mut()))
         } else {
-            format!("{indent}{}", inline(trimmed))
+            format!("{indent}{}", inline(trimmed, links.as_deref_mut()))
         };
         out.push(body);
     }
@@ -247,7 +284,7 @@ pub fn plain_text(markdown: &str) -> String {
 }
 
 /// Emphasis and code markers dropped; links and images rewritten.
-fn inline(text: &str) -> String {
+fn inline(text: &str, mut links: Option<&mut Vec<AssistantLinkData>>) -> String {
     let mut out = String::with_capacity(text.len());
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -258,10 +295,26 @@ fn inline(text: &str) -> String {
             let start = if image { i + 2 } else { i + 1 };
             if let Some((label, url, end)) = link_at(&chars, start) {
                 // An image is only its description: nothing remote loads.
-                // An mxr: link opens an email in the web app; here its
-                // words are the thing.
+                // An mxr: link is its words, numbered when the reply's
+                // links can be opened by number.
                 if image || label == url || url.is_empty() || url.starts_with("mxr:") {
                     out.push_str(&label);
+                    let numbered = links
+                        .as_deref_mut()
+                        .zip(parse_mxr_link(&url).filter(|_| !image));
+                    if let Some((links, link)) = numbered {
+                        let number = match links.iter().position(|known| *known == link) {
+                            Some(at) => Some(at + 1),
+                            None if links.len() < MAX_NUMBERED_LINKS => {
+                                links.push(link);
+                                Some(links.len())
+                            }
+                            None => None,
+                        };
+                        if let Some(number) = number {
+                            out.push_str(&format!(" [{number}]"));
+                        }
+                    }
                 } else {
                     out.push_str(&format!("{label} ({url})"));
                 }
@@ -409,6 +462,36 @@ mod tests {
             plain_text("Reply to [Q1 report](mxr:thread/t-1)"),
             "Reply to Q1 report"
         );
+    }
+
+    #[test]
+    fn numbers_in_app_links_once_each_up_to_nine() {
+        let (text, links) = plain_text_with_links(
+            "- [Q1](mxr:thread/t-1) from [Ann](mxr:person/person:a@x.test)\n\
+             [Q1 again](mxr:thread/t-1), [web](https://x.test), ![pixel](mxr:thread/t-2), \
+             [odd](mxr:folder/f-1)",
+        );
+        assert_eq!(
+            text,
+            "• Q1 [1] from Ann [2]\nQ1 again [1], web (https://x.test), pixel, odd"
+        );
+        assert_eq!(
+            links,
+            vec![
+                AssistantLinkData::Thread {
+                    thread_id: "t-1".into()
+                },
+                AssistantLinkData::Person {
+                    person_id: "person:a@x.test".into()
+                },
+            ]
+        );
+        let many: String = (1..=11)
+            .map(|n| format!("[t{n}](mxr:thread/t-{n}) "))
+            .collect();
+        let (text, links) = plain_text_with_links(&many);
+        assert_eq!(links.len(), MAX_NUMBERED_LINKS);
+        assert!(text.trim_end().ends_with("t9 [9] t10 t11"), "{text}");
     }
 
     #[test]

@@ -71,6 +71,7 @@ pub(crate) fn conversation_view(
                         seq: row.seq,
                         text,
                         model: meta.model.clone(),
+                        failed_call_ids: Vec::new(),
                         created_at: row.created_at,
                     });
                 }
@@ -127,6 +128,7 @@ pub(crate) fn conversation_view(
             *text = links.apply(text);
         }
     }
+    mark_failed_steps(&mut items);
 
     AssistantConversationData {
         id: row.id.clone(),
@@ -139,6 +141,78 @@ pub(crate) fn conversation_view(
         auto_approve: row.auto_approve,
         items: with_summary(items, row),
         pending: pending.into_iter().map(pending_view).collect(),
+    }
+}
+
+/// Note on each reply the steps right before it that failed and that no
+/// later step among them redid. A retry counts when it is the same tool
+/// with the same arguments, apart from `confirm`: a change mxr refused for
+/// lacking it and then made with it did happen.
+fn mark_failed_steps(items: &mut [AssistantItemData]) {
+    let succeeded = |state: &AssistantCallStateData| {
+        matches!(
+            state,
+            AssistantCallStateData::Done
+                | AssistantCallStateData::Approved
+                | AssistantCallStateData::AutoApproved
+        )
+    };
+    let without_confirm = |arguments: &serde_json::Value| {
+        let mut arguments = arguments.clone();
+        if let Some(object) = arguments.as_object_mut() {
+            object.remove("confirm");
+        }
+        arguments
+    };
+    let mut steps_start = 0;
+    for index in 0..items.len() {
+        match &items[index] {
+            AssistantItemData::ToolCall { .. } => continue,
+            AssistantItemData::Assistant { .. } => {}
+            _ => {
+                steps_start = index + 1;
+                continue;
+            }
+        }
+        let steps: Vec<(&str, &str, serde_json::Value, AssistantCallStateData)> = items
+            [steps_start..index]
+            .iter()
+            .filter_map(|item| match item {
+                AssistantItemData::ToolCall {
+                    call_id,
+                    tool,
+                    arguments,
+                    state,
+                    ..
+                } => Some((
+                    call_id.as_str(),
+                    tool.as_str(),
+                    without_confirm(arguments),
+                    *state,
+                )),
+                _ => None,
+            })
+            .collect();
+        let failed: Vec<String> = steps
+            .iter()
+            .enumerate()
+            .filter(|(at, (_, tool, arguments, state))| {
+                *state == AssistantCallStateData::Failed
+                    && !steps[at + 1..]
+                        .iter()
+                        .any(|(_, later_tool, later_arguments, later)| {
+                            later_tool == tool && later_arguments == arguments && succeeded(later)
+                        })
+            })
+            .map(|(_, (call_id, ..))| call_id.to_string())
+            .collect();
+        if let AssistantItemData::Assistant {
+            failed_call_ids, ..
+        } = &mut items[index]
+        {
+            *failed_call_ids = failed;
+        }
+        steps_start = index + 1;
     }
 }
 
@@ -243,4 +317,93 @@ fn outcome(stored: &str) -> Option<AssistantOutcomeData> {
         "interrupted" => AssistantOutcomeData::Interrupted,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn user(seq: i64) -> AssistantItemData {
+        AssistantItemData::User {
+            seq,
+            text: "star it".into(),
+            created_at: 0,
+        }
+    }
+
+    fn step(
+        call_id: &str,
+        arguments: serde_json::Value,
+        state: AssistantCallStateData,
+    ) -> AssistantItemData {
+        AssistantItemData::ToolCall {
+            seq: 0,
+            call_id: call_id.into(),
+            tool: "mxr_mutate".into(),
+            reason: String::new(),
+            arguments,
+            state,
+            result: None,
+            readout: None,
+            created_at: 0,
+        }
+    }
+
+    fn reply(seq: i64) -> AssistantItemData {
+        AssistantItemData::Assistant {
+            seq,
+            text: "Starred it.".into(),
+            model: None,
+            failed_call_ids: Vec::new(),
+            created_at: 0,
+        }
+    }
+
+    fn failed_ids(item: &AssistantItemData) -> Vec<&str> {
+        match item {
+            AssistantItemData::Assistant {
+                failed_call_ids, ..
+            } => failed_call_ids.iter().map(String::as_str).collect(),
+            other => panic!("not a reply: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_reply_names_the_failed_steps_before_it_that_no_retry_redid() {
+        use AssistantCallStateData::{AutoApproved, Done, Failed};
+        let star = json!({"action": "star", "message_ids": ["m1"]});
+        let mut items = vec![
+            user(1),
+            step("bad-shape", json!({"action": {"is_starred": true}}), Failed),
+            reply(2),
+            user(3),
+            // Refused for lacking confirm, then made with it: it happened.
+            step("refused", star.clone(), Failed),
+            step("preview", json!({"preview": true}), Done),
+            step(
+                "made",
+                json!({"action": "star", "message_ids": ["m1"], "confirm": true}),
+                AutoApproved,
+            ),
+            // A retry on another message doesn't redo this one.
+            step(
+                "other",
+                json!({"action": "star", "message_ids": ["m2"]}),
+                Failed,
+            ),
+            step(
+                "other-retry",
+                json!({"action": "star", "message_ids": ["m3"], "confirm": true}),
+                AutoApproved,
+            ),
+            reply(4),
+            user(5),
+            reply(6),
+        ];
+        mark_failed_steps(&mut items);
+        assert_eq!(failed_ids(&items[2]), vec!["bad-shape"]);
+        assert_eq!(failed_ids(&items[9]), vec!["other"]);
+        assert!(failed_ids(&items[11]).is_empty());
+    }
 }

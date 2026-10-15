@@ -113,6 +113,14 @@ export function Transcript({
           );
         }
         if (block.kind === "assistant") {
+          const failedIds = new Set(block.item.failed_call_ids ?? []);
+          const failed =
+            failedIds.size > 0
+              ? items.filter(
+                  (item): item is ToolCallItem =>
+                    item.kind === "tool_call" && failedIds.has(item.call_id),
+                )
+              : [];
           return (
             <li key={`a${block.item.seq}`}>
               <div
@@ -122,6 +130,7 @@ export function Transcript({
                   __html: renderMarkdown(block.item.text, { appLinks: true }),
                 }}
               />
+              {failed.length > 0 ? <FailedNote items={failed} /> : null}
             </li>
           );
         }
@@ -141,6 +150,35 @@ export function Transcript({
         </li>
       ) : null}
     </ol>
+  );
+}
+
+/**
+ * Small models sometimes say they did what failed. The steps are mxr's
+ * record, not the model's, so the daemon names the ones before a reply
+ * that failed and weren't redone, and they show under it, whatever it says.
+ */
+function FailedNote({ items }: { items: ToolCallItem[] }) {
+  return (
+    <div
+      role="note"
+      className="mt-2 flex gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1.5 text-xs text-destructive"
+    >
+      <CircleX className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="font-medium">
+          {items.length === 1 ? "This step failed" : `These ${items.length} steps failed`}, whatever
+          the reply says:
+        </p>
+        <ul className="mt-0.5 space-y-0.5 text-destructive/90">
+          {items.map((item) => (
+            <li key={item.call_id} className="break-words">
+              {stepLabel(item)}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

@@ -563,3 +563,160 @@ fn toasts_stack_beside_the_pane_and_leave_its_hint_line_visible() {
         assert!(screen.contains("L history · T trust · D"), "{screen}");
     }
 }
+
+const LINKED_THREAD: &str = "019e6f2a-1234-7000-8000-abcdef000001";
+
+/// A finished turn whose reply links an email and two people, one of them
+/// not in Messages.
+fn linked_reply() -> App {
+    let mut conversation = conversation(AssistantStatusData::Idle, vec![]);
+    conversation.items.push(AssistantItemData::Assistant {
+        seq: 2,
+        text: format!(
+            "Reply to [Q1 report](mxr:thread/{LINKED_THREAD}) from \
+             [Jon Bell](mxr:person/person:jon@example.com), not \
+             [Ann](mxr:person/person:ann@elsewhere.test). See [Q1 again](mxr:thread/{LINKED_THREAD})."
+        ),
+        model: None,
+        failed_call_ids: Vec::new(),
+        created_at: 0,
+    });
+    let mut app = showing(conversation);
+    app.assistant.focus = AssistantFocus::Pane;
+    app
+}
+
+#[test]
+fn the_latest_reply_numbers_its_links_and_the_hint_says_so() {
+    let mut app = linked_reply();
+    let screen = render_to_string(160, 30, |frame| app.draw(frame));
+    assert!(screen.contains("Q1 report [1]"), "{screen}");
+    assert!(screen.contains("Jon Bell [2]"), "{screen}");
+    assert!(
+        screen.contains("Q1 again [1]"),
+        "the same email keeps its number: {screen}"
+    );
+    assert!(screen.contains("1-3 open link"), "{screen}");
+}
+
+#[test]
+fn a_number_opens_the_linked_email_in_the_reader() {
+    let mut app = linked_reply();
+    press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
+    let thread_id: mxr_core::ThreadId = LINKED_THREAD.parse().unwrap();
+    assert_eq!(app.pending_assistant_thread_open.as_ref(), Some(&thread_id));
+    assert_eq!(app.assistant.focus, AssistantFocus::Away);
+    assert!(app.assistant.open, "the pane stays open beside the email");
+
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .thread_id(thread_id.clone())
+        .subject("Q1 report")
+        .build();
+    app.apply(Action::OpenNow);
+    app.open_assistant_thread(vec![envelope.clone()]);
+    assert_eq!(app.screen, Screen::Mailbox);
+    assert_eq!(
+        app.mailbox.mailbox_view,
+        MailboxView::Messages,
+        "a mode lens has no reader beside it, so the email opens in All Mail"
+    );
+    assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+    assert_eq!(
+        app.mailbox.viewing_envelope.as_ref().map(|e| &e.id),
+        Some(&envelope.id)
+    );
+}
+
+#[test]
+fn a_number_opens_the_linked_person_in_messages() {
+    let mut app = linked_reply();
+    press(&mut app, KeyCode::Char('2'), KeyModifiers::NONE);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
+    assert!(app.mailbox.messages_page.pending_refresh);
+    app.mailbox.messages_page.pending_refresh = false;
+    let loaded = crate::ui::messages_lens::tests::populated();
+    app.set_messages(loaded, None);
+    assert_eq!(
+        app.selected_messages_row().map(|row| row.id.as_str()),
+        Some("person:jon@example.com")
+    );
+    assert_eq!(
+        app.mailbox
+            .messages_page
+            .pending_person
+            .as_ref()
+            .map(|(id, _)| id.as_str()),
+        Some("person:jon@example.com"),
+        "their page is asked for"
+    );
+}
+
+#[test]
+fn a_person_in_the_folded_quiet_band_opens_it_and_is_selected() {
+    let mut app = linked_reply();
+    app.apply_assistant_result(
+        AssistantCall::Conversation,
+        Ok(ResponseData::AssistantConversation {
+            conversation: {
+                let mut conversation = app.assistant.conversation.clone().unwrap();
+                conversation.items.push(AssistantItemData::Assistant {
+                    seq: 9,
+                    text: "Ask [Leo Park](mxr:person/person:leo@example.com).".into(),
+                    model: None,
+                    failed_call_ids: Vec::new(),
+                    created_at: 0,
+                });
+                conversation
+            },
+        }),
+    );
+    app.assistant.focus = AssistantFocus::Pane;
+    press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
+    app.mailbox.messages_page.pending_refresh = false;
+    app.set_messages(crate::ui::messages_lens::tests::populated(), None);
+    assert!(app.mailbox.messages_page.quiet_open);
+    assert_eq!(
+        app.selected_messages_row().map(|row| row.id.as_str()),
+        Some("person:leo@example.com")
+    );
+}
+
+#[test]
+fn a_person_messages_does_not_list_gets_a_note() {
+    let mut app = linked_reply();
+    press(&mut app, KeyCode::Char('3'), KeyModifiers::NONE);
+    app.mailbox.messages_page.pending_refresh = false;
+    app.set_messages(crate::ui::messages_lens::tests::populated(), None);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("They aren't in Messages right now")
+    );
+}
+
+#[test]
+fn a_later_reply_without_links_leaves_the_earlier_links_open() {
+    let mut app = linked_reply();
+    if let Some(conversation) = app.assistant.conversation.as_mut() {
+        conversation.items.push(AssistantItemData::Assistant {
+            seq: 3,
+            text: "Anything else?".into(),
+            model: None,
+            failed_call_ids: Vec::new(),
+            created_at: 0,
+        });
+    }
+    let screen = render_to_string(160, 30, |frame| app.draw(frame));
+    assert!(screen.contains("Q1 report [1]"), "{screen}");
+    press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
+    assert!(app.pending_assistant_thread_open.is_some());
+}
+
+#[test]
+fn numbers_past_the_links_do_nothing() {
+    let mut app = linked_reply();
+    let view = app.mailbox.mailbox_view;
+    press(&mut app, KeyCode::Char('9'), KeyModifiers::NONE);
+    assert!(app.pending_assistant_thread_open.is_none());
+    assert_eq!(app.mailbox.mailbox_view, view);
+    assert_eq!(app.assistant.focus, AssistantFocus::Pane);
+}

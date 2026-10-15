@@ -166,7 +166,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             ),
             (
                 "Assistant (Ctrl-a)".into(),
-                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose, s skip, N new, L history, T trust, D delete, Ctrl-c stop".into(),
+                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose (or open a reply link), s skip, N new, L history, T trust, D delete, Ctrl-c stop".into(),
             ),
         ],
     });

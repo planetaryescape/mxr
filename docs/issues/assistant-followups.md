@@ -1,6 +1,6 @@
 # Assistant follow-ups
 
-Open work on the assistant (blueprint [25](../blueprint/25-assistant.md), D122). Status: two open items: a model limit that the app makes visible but can't remove, and opening a linked email from the TUI.
+Open work on the assistant (blueprint [25](../blueprint/25-assistant.md), D122). Status: nothing open.
 
 ## The TUI history list can't delete
 
@@ -16,7 +16,7 @@ Resolved. While the pane is open, toasts stack bottom-right of the area left of 
 
 ## Small models sometimes say they did what failed
 
-Open, mitigated. Testing with `gemma4` (Ollama), the model once said it had starred an email after both calls failed. Three changes make this visible and less likely: a call mxr's own guard refuses (`"blocked": true`, such as a change without `confirm`) is stored as an error, so the model reads it as a failure and the step shows as failed, including in conversations stored before the change; the system prompt says to report a change only when its result shows it succeeded; and folded steps read "N steps · N changed · N failed" right above the reply. Checking each reply against its steps would need a second model call per turn, which isn't worth it yet.
+Resolved. Each reply now carries `failed_call_ids`: the steps right before it that failed and that no later step among them redid (the same tool and arguments, apart from `confirm`, so a change mxr refused for lacking confirmation and then made with it doesn't count). The daemon works this out once, and every client names those steps under the reply: "This step failed, whatever the reply says:" in the web and TUI, "! failed, whatever the reply says:" in the CLI. On the `gemma4` conversation where the model said "I've starred the email from Quinn and marked it as read" after both calls failed, that reply now carries the note, and the turn where a retry did star it doesn't. The model can still write the wrong thing; the app no longer lets it stand unanswered. Before this: Testing with `gemma4` (Ollama), the model once said it had starred an email after both calls failed. Three changes make this visible and less likely: a call mxr's own guard refuses (`"blocked": true`, such as a change without `confirm`) is stored as an error, so the model reads it as a failure and the step shows as failed, including in conversations stored before the change; the system prompt says to report a change only when its result shows it succeeded; and folded steps read "N steps · N changed · N failed" right above the reply. Checking each reply against its steps would need a second model call per turn, which isn't worth it yet.
 
 ## Addresses in replies became mailto links
 
@@ -32,4 +32,4 @@ Resolved. Replies said "Q1 Report review" and the user had to go and find it. Th
 
 ## The TUI can't open a linked email
 
-Open. The TUI shows a reply's links and a step's rows as words. Opening one would need a way to pick a link in the pane (a link cursor, or numbered links and a key), which the pane doesn't have yet. Until then, the email is one search away.
+Resolved. The latest reply with links numbers them after their words, "Q1 report [1]" (the same email keeps one number, up to nine), and with no question waiting `1`-`9` opens one: an email in the reader at its latest message, wherever it now is, and a person selected in Messages, or a note when Messages doesn't list them. The pane stays open and the keys go to the screen. Other replies keep their links as words, so a number only ever means one link; a later reply without links ("anything else?") leaves the earlier one's numbers in place. A step's readout rows still show as words in the TUI.

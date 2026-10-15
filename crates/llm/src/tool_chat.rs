@@ -167,7 +167,7 @@ pub(crate) fn openai_body<'a>(model: &'a str, req: &ToolChatRequest) -> OpenAiTo
                 "function": {
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": tool.input_schema,
+                    "parameters": portable_schema(&tool.input_schema),
                 },
             })
         })
@@ -263,6 +263,59 @@ pub(crate) fn openai_reply(
     })
 }
 
+/// A tool's JSON Schema in the subset every provider parses. JSON Schema
+/// allows `true` and `false` as whole schemas (schemars writes `true` for a
+/// free-form JSON field), and Ollama rejects the request when a property is
+/// a bool rather than an object. `$schema` is dropped too: it names a
+/// dialect, and some servers refuse keys they don't know.
+pub(crate) fn portable_schema(schema: &Value) -> Value {
+    match schema {
+        Value::Bool(true) => Value::Object(serde_json::Map::new()),
+        Value::Bool(false) => serde_json::json!({"not": {}}),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(key, _)| key.as_str() != "$schema")
+                .map(|(key, value)| {
+                    let value = match key.as_str() {
+                        // Maps of name -> schema.
+                        "properties" | "$defs" | "definitions" | "patternProperties" => match value
+                        {
+                            Value::Object(entries) => Value::Object(
+                                entries
+                                    .iter()
+                                    .map(|(name, sub)| (name.clone(), portable_schema(sub)))
+                                    .collect(),
+                            ),
+                            other => other.clone(),
+                        },
+                        // A schema, or a list of schemas.
+                        "items"
+                        | "additionalProperties"
+                        | "not"
+                        | "contains"
+                        | "propertyNames"
+                        | "if"
+                        | "then"
+                        | "else"
+                        | "anyOf"
+                        | "oneOf"
+                        | "allOf"
+                        | "prefixItems" => match value {
+                            Value::Array(list) => {
+                                Value::Array(list.iter().map(portable_schema).collect())
+                            }
+                            other => portable_schema(other),
+                        },
+                        _ => value.clone(),
+                    };
+                    (key.clone(), value)
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 fn parse_arguments(raw: &str) -> Value {
     if raw.trim().is_empty() {
         return Value::Object(serde_json::Map::new());
@@ -345,6 +398,36 @@ mod tests {
         );
         assert_eq!(response.tool_calls[1].arguments, json!({}));
         assert_eq!(response.text, "");
+    }
+
+    #[test]
+    fn schemas_lose_bool_subschemas_and_the_dialect_key() {
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+                "draft": true,
+                "never": false,
+                "list": {"type": "array", "items": true},
+                "nested": {"type": "object", "properties": {"x": true}, "additionalProperties": false},
+                "either": {"anyOf": [true, {"type": "string"}]}
+            },
+            "required": ["draft"]
+        });
+        assert_eq!(
+            portable_schema(&schema),
+            json!({
+                "type": "object",
+                "properties": {
+                    "draft": {},
+                    "never": {"not": {}},
+                    "list": {"type": "array", "items": {}},
+                    "nested": {"type": "object", "properties": {"x": {}}, "additionalProperties": {"not": {}}},
+                    "either": {"anyOf": [{}, {"type": "string"}]}
+                },
+                "required": ["draft"]
+            })
+        );
     }
 
     #[test]

@@ -404,7 +404,7 @@ fn build_tool_request<'a>(
             json!({
                 "name": tool.name,
                 "description": tool.description,
-                "input_schema": tool.input_schema,
+                "input_schema": crate::tool_chat::portable_schema(&tool.input_schema),
             })
         })
         .collect();

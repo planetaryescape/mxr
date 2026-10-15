@@ -249,6 +249,18 @@ export function splitSourceName(line: UpdateLine): SourceName {
 }
 
 /**
+ * A source name as a reader sees it. The daemon takes domain labels as they
+ * come ("ups", "usps", "plausible"), so an all-lowercase name is cased here:
+ * four letters or fewer is an acronym, anything longer gets a capital. A name
+ * with any capital already ("eBay", "GitHub acme/api") is shown as it is.
+ */
+export function displaySourceName(name: string): string {
+  if (name.length === 0 || name !== name.toLowerCase()) return name;
+  if ([...name].length <= 4) return name.toUpperCase();
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
  * The first amount the mail quoted that the fact doesn't already say: the
  * amount a "Your scheduled payment" line is missing.
  */

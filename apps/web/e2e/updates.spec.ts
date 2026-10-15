@@ -187,12 +187,15 @@ test("K tunes a source with undo, and e previews then lets go of one source", as
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("one column, no sideways scroll, Let go of all at the thumb", async ({ page }) => {
+  test("one column, no sideways scroll, Let go of all in the header and no bar over rows", async ({
+    page,
+  }) => {
     await waitForDigest(page);
     await openApp(page, "/updates");
     await expect(page.getByTestId("update-line").first()).toBeVisible();
-    await expect(page.getByTestId("updates-let-go-all-mobile")).toBeVisible();
-    await expect(page.getByTestId("updates-let-go-all")).toBeHidden();
+    // The action lives in the header at every width; no sticky bar covers rows.
+    await expect(page.getByTestId("updates-let-go-all")).toBeVisible();
+    await expect(page.getByTestId("updates-let-go-all-mobile")).toHaveCount(0);
     await expect
       .poll(() =>
         page.evaluate(

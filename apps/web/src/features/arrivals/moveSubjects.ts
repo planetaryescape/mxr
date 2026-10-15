@@ -9,6 +9,7 @@ import type { NowItem } from "@/features/now/nowItems";
 import { bundleSender } from "@/features/places/placeCopy";
 import type { EditionEntry } from "@/features/reading/readingView";
 import type { UpdateLine } from "@/features/updates/api";
+import { displaySourceName } from "@/features/updates/digestView";
 
 import { answerPendingSenderAsk, openMovePicker, type MoveSubject } from "./moves";
 
@@ -56,7 +57,8 @@ export function placeMoveSubject(bundle: PlaceBundle, message?: PlaceMessage): M
 export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
   const messageId = line.latest_message_id ?? line.fact_message_id;
   if (!messageId) return null;
-  return { messageId, label: line.source_name, senderLabel: line.source_name };
+  const label = displaySourceName(line.source_name);
+  return { messageId, label, senderLabel: label };
 }
 
 /** A Reading item, or the issue a digest link came from. */

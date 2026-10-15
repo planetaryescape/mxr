@@ -90,19 +90,6 @@ export function rowTime(row: MessagesRow, now: Date = new Date()): string {
     : dayLabel(row.last_at, now);
 }
 
-/** "AB" from "Ari Bell", "S" from "samir@…": the face in Pinned and rows. */
-export function initials(title: string): string {
-  const words = title
-    .split(/[\s,]+/)
-    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ""))
-    .filter(Boolean);
-  const letters = words.length > 1 ? [words[0], words[1]] : [words[0] ?? "?"];
-  return letters
-    .map((word) => (word ?? "?").charAt(0).toUpperCase())
-    .join("")
-    .slice(0, 2);
-}
-
 /** A topic's label on a person page: "with Ruth: Pricing copy" for a group. */
 export function topicLabel(topic: MessagesTopic): string {
   const others = topic.with ?? [];

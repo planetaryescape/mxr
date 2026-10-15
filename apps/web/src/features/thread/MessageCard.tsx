@@ -16,8 +16,8 @@ import {
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import type { AddressView, MessageBodyView, MessageRowView } from "@/features/mailbox/types";
-import { formatLongDate, initials, parseAddress, plural } from "@/lib/format";
-import { avatarTone } from "@/components/avatarTone";
+import { formatLongDate, parseAddress, plural } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import {
@@ -104,7 +104,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           aria-expanded={false}
           className="grid w-full grid-cols-[32px_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2.5 text-left hover:bg-accent/40"
         >
-          <Avatar name={name} small />
+          <Avatar name={name} />
           <span
             className={cn("truncate text-sm", message.unread ? "font-semibold" : "font-medium")}
           >
@@ -138,7 +138,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
       ) : null}
       <header className="flex items-start gap-3 px-5 pb-2 pt-4">
-        <Avatar name={name} />
+        <Avatar name={name} size="lg" />
         <div className="min-w-0 flex-1">
           <button type="button" onClick={onToggle} aria-expanded className="block w-full text-left">
             <span className="flex flex-wrap items-baseline gap-x-2">
@@ -531,20 +531,5 @@ function MessageMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function Avatar({ name, small = false }: { name: string; small?: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid shrink-0 place-items-center rounded-full font-mono font-semibold",
-        small ? "size-7 text-2xs" : "size-8 text-xs",
-        avatarTone(name),
-      )}
-    >
-      {initials(name)}
-    </span>
   );
 }

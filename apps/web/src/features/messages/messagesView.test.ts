@@ -7,7 +7,6 @@ import {
   countdownLabel,
   cursorRows,
   doneLine,
-  initials,
   letterLead,
   openThreads,
   paragraphBlocks,
@@ -118,12 +117,6 @@ describe("labels", () => {
     expect(waitLabel("2026-10-02T14:13:00Z", NOW)).toBe("47m");
     expect(waitLabel("2026-10-01T23:00:00Z", NOW)).toBe("16h");
     expect(waitLabel("2026-09-29T15:00:00Z", NOW)).toBe("3d");
-  });
-
-  test("initials come from the first two words", () => {
-    expect(initials("Samir Patel")).toBe("SP");
-    expect(initials("Samir, Ruth")).toBe("SR");
-    expect(initials("iris@meridian.example")).toBe("I");
   });
 
   test("a group topic names the others", () => {

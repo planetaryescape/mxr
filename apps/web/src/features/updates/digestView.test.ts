@@ -4,6 +4,7 @@ import {
   canLetGoSource,
   cutLine,
   digestRows,
+  displaySourceName,
   gistThread,
   numberNotInFact,
   openableLink,
@@ -14,6 +15,32 @@ import {
   tuneToast,
 } from "./digestView";
 import { digestFixture, lineFixture } from "./testing";
+
+describe("source names read as names", () => {
+  test("an all-lowercase acronym is upper-cased; a longer one gets a capital", () => {
+    expect(displaySourceName("ups")).toBe("UPS");
+    expect(displaySourceName("usps")).toBe("USPS");
+    expect(displaySourceName("dhl")).toBe("DHL");
+    expect(displaySourceName("plausible")).toBe("Plausible");
+    expect(displaySourceName("linear")).toBe("Linear");
+    // Four letters exactly is still an acronym; five is a word.
+    expect(displaySourceName("dell")).toBe("DELL");
+    expect(displaySourceName("strav")).toBe("Strav");
+  });
+
+  test("a name with any capital is left exactly as it came", () => {
+    expect(displaySourceName("eBay")).toBe("eBay");
+    expect(displaySourceName("iCloud")).toBe("iCloud");
+    expect(displaySourceName("GitHub acme/api")).toBe("GitHub acme/api");
+    expect(displaySourceName("Amazon.com")).toBe("Amazon.com");
+    expect(displaySourceName("Account Verification")).toBe("Account Verification");
+  });
+
+  test("an empty name stays empty, and a name with no letters is unchanged", () => {
+    expect(displaySourceName("")).toBe("");
+    expect(displaySourceName("1password")).toBe("1password");
+  });
+});
 
 describe("the digest's layout", () => {
   test("Routine has no rows until opened, and its totals still count", () => {

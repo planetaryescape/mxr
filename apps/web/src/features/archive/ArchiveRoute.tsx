@@ -303,12 +303,6 @@ function Ledger({
       ?.querySelector(`[data-index="${showingSubscriptions ? subscriptionIndex : index}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [index, subscriptionIndex, showingSubscriptions]);
-  // The answer box is the default focus on arrival.
-  // Only when nothing else holds the focus, so it never steals a field.
-  useEffect(() => {
-    const active = document.activeElement;
-    if (!singlePane && (!active || active === document.body)) inputRef.current?.focus();
-  }, [singlePane]);
 
   // One hint under the first record row, one under the first answer.
   const answerHint = useHint("archive", "archive.answer", { ready: Boolean(answer?.answer) });
@@ -805,16 +799,16 @@ function Ledger({
               className="flex min-h-0 flex-col"
             >
               {showingSubscriptions && subscription ? (
-                <aside aria-label="Subscription" className="min-h-0 flex-1 overflow-y-auto">
+                <section aria-label="Subscription" className="min-h-0 flex-1 overflow-y-auto">
                   <SubscriptionCard
                     subscription={subscription}
                     onCopyAmount={() => copySubscriptionAmount(subscription)}
                     onOpenEmail={() => openSubscriptionEmail(subscription)}
                     onIssuer={() => subscriptionIssuer(subscription)}
                   />
-                </aside>
+                </section>
               ) : cardRecord ? (
-                <aside aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">
+                <section aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">
                   <RecordCard
                     record={cardRecord}
                     onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
@@ -822,7 +816,7 @@ function Ledger({
                     onOpenEmail={() => openEmail(cardRecord)}
                     onIssuer={() => issuerPage(cardRecord)}
                   />
-                </aside>
+                </section>
               ) : null}
             </ResizablePanel>
           </>

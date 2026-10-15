@@ -299,10 +299,14 @@ fn print_conversation(
                 tool,
                 reason,
                 state,
+                result,
                 ..
             } => {
                 let reason = if reason.is_empty() { tool } else { reason };
                 println!("  · {reason} [{tool}, {}]", state_label(*state));
+                if let Some(id) = undo_id(*state, result.as_deref()) {
+                    println!("    undo within a minute: mxr undo {id}");
+                }
             }
         }
     }
@@ -406,6 +410,22 @@ fn state_label(state: AssistantCallStateData) -> &'static str {
         AssistantCallStateData::Cancelled => "stopped",
         AssistantCallStateData::Interrupted => "interrupted",
     }
+}
+
+/// The id a mail change the assistant made can be undone with.
+fn undo_id(state: AssistantCallStateData, result: Option<&str>) -> Option<String> {
+    if !matches!(
+        state,
+        AssistantCallStateData::Approved | AssistantCallStateData::AutoApproved
+    ) {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(result?).ok()?;
+    value
+        .pointer("/result/mutation_id")
+        .or_else(|| value.get("mutation_id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 fn item_seq(item: &AssistantItemData) -> i64 {

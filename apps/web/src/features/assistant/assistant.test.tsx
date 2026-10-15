@@ -198,3 +198,23 @@ describe("live and summarised turns", () => {
     expect(screen.getByLabelText("Ran without asking")).toBeInTheDocument();
   });
 });
+
+describe("undo", () => {
+  test("an approved mail change can be undone by its mutation id; reads can't", async () => {
+    const { mutationIdOf } = await import("./Transcript");
+    const base = {
+      kind: "tool_call" as const,
+      seq: 1,
+      call_id: "a",
+      tool: "mxr_mutate",
+      reason: "",
+      arguments: {},
+      created_at: 1,
+    };
+    const result = '{"kind":"MutationResult","result":{"mutation_id":"01abc","succeeded":2}}';
+    expect(mutationIdOf({ ...base, state: "approved", result })).toBe("01abc");
+    expect(mutationIdOf({ ...base, state: "auto_approved", result })).toBe("01abc");
+    expect(mutationIdOf({ ...base, state: "done", result })).toBeNull();
+    expect(mutationIdOf({ ...base, state: "approved", result: "{}" })).toBeNull();
+  });
+});

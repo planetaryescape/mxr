@@ -16,10 +16,14 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import type { AssistantCallState, AssistantItem } from "./api";
 import { toolWords } from "./describe";
 import { renderMarkdown } from "./markdown";
+import { undoMutation } from "@/features/mailbox/api";
+import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -157,11 +161,51 @@ function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
   );
 }
 
+/** The id a mail change can be undone with, from its step's result. */
+export function mutationIdOf(item: ToolCallItem): string | null {
+  if (item.state !== "approved" && item.state !== "auto_approved") return null;
+  const match = /"mutation_id"\s*:\s*"([^"]+)"/.exec(item.result ?? "");
+  return match?.[1] ?? null;
+}
+
+function UndoStep({ mutationId }: { mutationId: string }) {
+  const [state, setState] = useState<"idle" | "undoing" | "undone">("idle");
+  if (state === "undone") {
+    return <span className="font-mono text-2xs text-muted-foreground">undone</span>;
+  }
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      disabled={state === "undoing"}
+      onClick={() => {
+        setState("undoing");
+        undoMutation(mutationId)
+          .then(() => {
+            setState("undone");
+            void invalidateMailQueries();
+            toast.success("Undone. Tell the assistant if it should know.");
+          })
+          .catch((error: unknown) => {
+            setState("idle");
+            toast.error("Couldn't undo that", {
+              description:
+                error instanceof Error ? error.message : "Its undo window may have passed.",
+            });
+          });
+      }}
+    >
+      Undo
+    </Button>
+  );
+}
+
 function Step({ item }: { item: ToolCallItem }) {
   const label = stepLabel(item);
+  const mutationId = mutationIdOf(item);
   return (
-    <li>
-      <Collapsible>
+    <li className="flex items-start gap-1">
+      <Collapsible className="min-w-0 flex-1">
         <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded-sm px-1 py-0.5 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring">
           <StateIcon state={item.state} />
           <span className="min-w-0 flex-1 text-xs text-muted-foreground group-hover:text-foreground">
@@ -186,6 +230,7 @@ function Step({ item }: { item: ToolCallItem }) {
           ) : null}
         </CollapsibleContent>
       </Collapsible>
+      {mutationId ? <UndoStep mutationId={mutationId} /> : null}
     </li>
   );
 }

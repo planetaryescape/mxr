@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.105](https://github.com/planetaryescape/mxr/compare/v0.6.104...v0.6.105) (2026-10-15)
+
+
+### Features
+
+* show what each assistant step found and link the emails replies name ([#485](https://github.com/planetaryescape/mxr/issues/485)) ([46441d1](https://github.com/planetaryescape/mxr/commit/46441d1528b22b681cf07f8db5d13276a192e8a6))
+
 ## [0.6.104](https://github.com/planetaryescape/mxr/compare/v0.6.103...v0.6.104) (2026-10-15)
 
 

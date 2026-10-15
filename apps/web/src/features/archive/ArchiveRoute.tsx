@@ -1,4 +1,4 @@
-import { useParams } from "@tanstack/react-router";
+import { useParams, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, FolderArchive, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -16,6 +16,7 @@ import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useReplaceSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -44,6 +45,7 @@ import {
   markNotRecord,
   openDocument,
 } from "./archiveVerbs";
+import { filterFromSearch, searchFromFilter, type ArchiveSearch } from "./archiveSearch";
 import { FacetsPanel } from "./FacetsPanel";
 import { activeChip, answerList, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
 import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts";
@@ -61,6 +63,22 @@ const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge", "renewal_
 /** The record card beside the ledger. */
 const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 
+/** Every ledger param stays while a record's email opens beside it. */
+const ARCHIVE_LIST_SEARCH: readonly (keyof ArchiveSearch)[] = [
+  "record",
+  "section",
+  "sub",
+  "q",
+  "year",
+  "issuer",
+  "kinds",
+  "checked",
+  "pdf",
+  "group",
+  "min",
+  "max",
+];
+
 /**
  * Archive: a filing cabinet you ask questions of. The answer box is the
  * default focus; below it, a ledger of records by month with counts and
@@ -71,7 +89,12 @@ export function ArchiveRoute() {
   const ids = useRef<string[]>([]);
   const threadIds = useCallback(() => ids.current, []);
   return (
-    <PlaceLayout basePath="/archive" label="Archive" threadIds={threadIds}>
+    <PlaceLayout
+      basePath="/archive"
+      label="Archive"
+      threadIds={threadIds}
+      keepSearch={ARCHIVE_LIST_SEARCH}
+    >
       <ArchiveView onThreads={(next) => (ids.current = next)} />
     </PlaceLayout>
   );
@@ -88,15 +111,29 @@ function useDebounced(value: string, ms: number): string {
 
 function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const account = useUiPrefs((s) => s.accountScope);
-  const [filter, setFilter] = useState<RecordFilter>({});
-  const [section, setSection] = useState<ArchiveSection>("ledger");
+  // The filter, section and question live in the URL, so a copied link
+  // reopens the same view.
+  const search = useSearch({ from: "/archive" });
+  const replaceSearch = useReplaceSearch();
+  // Keyed on the filter's value: a new search object with the same filter
+  // keeps the same ledger query.
+  const filterKey = JSON.stringify(filterFromSearch(search));
+  const filter = useMemo(() => JSON.parse(filterKey) as RecordFilter, [filterKey]);
+  const section: ArchiveSection = search.section ?? "ledger";
+  const setSection = useCallback(
+    (next: ArchiveSection) =>
+      replaceSearch({ section: next === "subscriptions" ? next : undefined }),
+    [replaceSearch],
+  );
   const [limit, setLimit] = useState(PAGE);
   const ledger = useLedger(filter, limit);
   const guide = useModeGuide("archive");
   const phase = useDelayedPending(ledger.isLoading);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(search.q ?? "");
   const asked = useDebounced(query, 250);
   const askedText = asked.trim();
+  // The URL takes the question once typing settles, not every keystroke.
+  useEffect(() => replaceSearch({ q: askedText || undefined }), [askedText, replaceSearch]);
   // "Show all" and "Show more" belong to the query they were pressed on: a
   // new query decides for itself between an answer and a list.
   const [showAllFor, setShowAllFor] = useState<string | null>(null);
@@ -141,9 +178,8 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
           account={account}
           filter={filter}
           setFilter={(next) => {
-            setFilter(next);
+            replaceSearch({ ...searchFromFilter(next), section: undefined });
             setLimit(PAGE);
-            setSection("ledger");
           }}
           section={section}
           setSection={setSection}
@@ -249,7 +285,7 @@ function Ledger({
   const list = answerList(answer);
   const records = list?.records ?? ledger.records;
   const months = list?.months ?? ledger.months;
-  const [cursorId, setCursorId] = useState<string | null>(null);
+  const [cursorId, setCursorId] = useSearchParam("record");
   // While an answer is on screen and the cursor hasn't moved, y, Enter and
   // o act on the answer's record.
   const [onAnswer, setOnAnswer] = useState(false);
@@ -273,7 +309,7 @@ function Ledger({
     () => subscriptions.data?.subscriptions ?? [],
     [subscriptions.data],
   );
-  const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  const [subscriptionId, setSubscriptionId] = useSearchParam("sub");
   const subscriptionIndex = Math.max(
     0,
     subscriptionRows.findIndex((row) => row.id === subscriptionId),
@@ -290,11 +326,23 @@ function Ledger({
   // new list moves the cursor: a refetch or "Show more" leaves it.
   const bestId = list?.top_record_id ?? null;
   const listQuery = list ? answer?.query : undefined;
+  // A link's own record wins over the best match of the link's own question.
+  const linkedRecord = useRef({ id: cursorId, query: query.trim() });
+  const listed = useRef(records);
+  listed.current = records;
   useEffect(() => {
     if (!bestId) return;
+    const linked = linkedRecord.current;
+    if (
+      linked.id &&
+      linked.query === listQuery &&
+      listed.current.some((record) => record.id === linked.id)
+    )
+      return;
+    linkedRecord.current = { id: null, query: "" };
     setCursorId(bestId);
     setOnAnswer(false);
-  }, [bestId, listQuery]);
+  }, [bestId, listQuery, setCursorId]);
   useEffect(() => {
     if (!bestId && answer?.answer) setOnAnswer(true);
   }, [answer, bestId]);
@@ -313,10 +361,13 @@ function Ledger({
   const { dismiss: dismissRecordHint } = recordHint;
   const closeHint = useActiveHintDismiss();
 
-  const select = useCallback((record: RecordData) => {
-    setCursorId(record.id);
-    setOnAnswer(false);
-  }, []);
+  const select = useCallback(
+    (record: RecordData) => {
+      setCursorId(record.id);
+      setOnAnswer(false);
+    },
+    [setCursorId],
+  );
   const openCard = useCallback(
     (record: RecordData) => {
       select(record);
@@ -336,7 +387,7 @@ function Ledger({
       setSubscriptionId(row.id);
       if (singlePane) setCardOpen(true);
     },
-    [singlePane],
+    [setSubscriptionId, singlePane],
   );
   const openSubscriptionEmail = useCallback(
     (row?: RecordSubscription) => {

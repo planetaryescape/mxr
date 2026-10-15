@@ -15,6 +15,7 @@ import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { openMoveSenderFor } from "@/features/places/placeVerbs";
 import { useRowSwipe, SwipeLayer, type SwipeLayerHandle } from "@/features/swipe/RowSwipe";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -30,7 +31,13 @@ import {
 } from "./api";
 import { LetGoAllDialog, ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import { ReadingItemCard, type CardHandlers } from "./ReadingItemCard";
-import { editionEntries, letGoAllPlan, visibleBands, type EditionEntry } from "./readingView";
+import {
+  editionEntries,
+  letGoAllPlan,
+  READING_LIST_SEARCH,
+  visibleBands,
+  type EditionEntry,
+} from "./readingView";
 import {
   answerLater,
   fetchLinked,
@@ -87,7 +94,13 @@ export function ReadingRoute({ view }: { view?: "later" }) {
     [edition.data],
   );
   return (
-    <PlaceLayout basePath="/reading" label="Reading" threadIds={threadIds} wideReader>
+    <PlaceLayout
+      basePath="/reading"
+      label="Reading"
+      threadIds={threadIds}
+      keepSearch={READING_LIST_SEARCH}
+      wideReader
+    >
       {params.itemKey ? <Outlet /> : <Edition status={edition} view={view} />}
     </PlaceLayout>
   );
@@ -218,7 +231,9 @@ function Bands({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hidden = useModeDone((s) => s.hidden.reading);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [cursorKey, setCursorKey] = useState<string | null>(null);
+  // In the URL, so a copied link (and coming back from the reader) lands
+  // on the same entry.
+  const [cursorKey, setCursorKey] = useSearchParam("row");
 
   const bands = useMemo(
     () =>
@@ -230,6 +245,14 @@ function Bands({
     [edition, hidden, view],
   );
   const entries = useMemo(() => editionEntries(bands, expanded), [bands, expanded]);
+  // A link to one of a digest's links unfolds that digest.
+  useEffect(() => {
+    if (!cursorKey || entries.some((entry) => entry.key === cursorKey)) return;
+    const parent = bands
+      .flatMap((band) => band.items)
+      .find((item) => item.links?.some((link) => link.item_key === cursorKey));
+    if (parent) setExpanded((previous) => new Set(previous).add(parent.item_key));
+  }, [bands, cursorKey, entries]);
   const index = Math.max(
     0,
     entries.findIndex((entry) => entry.key === cursorKey),
@@ -254,7 +277,11 @@ function Bands({
   const read = useCallback(
     (key: string) => {
       setActivePane("reader");
-      void navigate({ to: "/reading/item/$itemKey", params: { itemKey: key } });
+      void navigate({
+        to: "/reading/item/$itemKey",
+        params: { itemKey: key },
+        search: (prev) => ({ ...pickSearch(prev, READING_LIST_SEARCH), row: key }),
+      });
     },
     [navigate, setActivePane],
   );
@@ -312,7 +339,7 @@ function Bands({
           return next;
         }),
     }),
-    [later, letGoItem, read, unsubscribe],
+    [later, letGoItem, read, setCursorKey, unsubscribe],
   );
 
   // Touch: swipe right keeps it for later, left lets it go.

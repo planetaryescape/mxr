@@ -18,13 +18,14 @@ import { doneToast, markModeDone, NONE_HIDDEN, useModeDone } from "@/features/mo
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { tickOff } from "@/features/todo/todoVerbs";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 
 import { useNowQuery, type Now } from "./api";
 import { LetGoDigestDialog } from "./LetGoDigestDialog";
 import {
-  itemPath,
+  itemTarget,
   nowItems,
   type CardItem,
   type NowItem,
@@ -98,7 +99,8 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   const navigate = useNavigate();
   const hidden = useModeDone((s) => s.hidden);
   const items = useMemo(() => nowItems(now, hidden), [hidden, now]);
-  const [cursorKey, setCursorKey] = useState<string | null>(null);
+  // In the URL, so coming back to Now (or a copied link) lands on the same row.
+  const [cursorKey, setCursorKey] = useSearchParam("row");
   const [letGo, setLetGo] = useState(false);
   const index = Math.max(
     0,
@@ -142,12 +144,12 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   const closeHint = useActiveHintDismiss();
 
   const open = useCallback(
-    (item: NowItem) => {
+    (item: NowItem, options?: { email?: boolean }) => {
       dismissFromMode();
       setCursorKey(item.key);
-      void navigate({ to: itemPath(item) });
+      void navigate(itemTarget(item, options) as { to: string });
     },
-    [dismissFromMode, navigate],
+    [dismissFromMode, navigate, setCursorKey],
   );
   const done = useCallback(
     (item: NowItem) => {
@@ -175,7 +177,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
       .getState()
       .openCompose(replyIntent(item.person.row.message_id, "single"), "overlay");
   }, []);
-  const select = useCallback((item: NowItem) => setCursorKey(item.key), []);
+  const select = useCallback((item: NowItem) => setCursorKey(item.key), [setCursorKey]);
   const letGoDigest = () => {
     dismissLetGo();
     setLetGo(true);
@@ -190,7 +192,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     down: () => move(1),
     up: () => move(-1),
     open: () => current && open(current),
-    openEmail: () => current && current.kind !== "updates" && open(current),
+    openEmail: () => current && current.kind !== "updates" && open(current, { email: true }),
     done: () => current && done(current),
     reply: () => current && reply(current),
     letGoDigest: now.updates ? letGoDigest : undefined,

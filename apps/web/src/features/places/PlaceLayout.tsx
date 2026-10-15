@@ -6,21 +6,28 @@ import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
 import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { pickSearch } from "@/hooks/useSearchParam";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+
+const NO_KEYS: readonly string[] = [];
 
 /**
  * A place's list with the reader beside it, as the mail lists have it: an
  * open conversation lives at `${basePath}/<thread>`, Esc closes it and n/N
  * step through the conversations the place shows. `wideReader` gives the
  * reader the whole width (Reading's issues are already open in the feed).
+ * `keepSearch` names the list's own search params (its view and cursor),
+ * which stay in the URL while a conversation opens and closes; the
+ * reader's own params don't carry over to the next one.
  */
 export function PlaceLayout({
   basePath,
   label,
   threadIds,
   wideReader = false,
+  keepSearch = NO_KEYS,
   children,
 }: {
   basePath: "/reading" | "/updates" | "/todo" | "/archive";
@@ -28,6 +35,7 @@ export function PlaceLayout({
   /** Conversations in the order the place shows them. */
   threadIds: () => string[];
   wideReader?: boolean;
+  keepSearch?: readonly string[];
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -49,14 +57,20 @@ export function PlaceLayout({
   const open = useCallback(
     (threadId: string, options?: { focusReader?: boolean }) => {
       setActivePane(options?.focusReader === false ? "mailbox" : "reader");
-      void navigate({ to: `${basePath}/${encodeURIComponent(threadId)}` });
+      void navigate({
+        to: `${basePath}/${encodeURIComponent(threadId)}`,
+        search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
+      } as never);
     },
-    [basePath, navigate, setActivePane],
+    [basePath, keepSearch, navigate, setActivePane],
   );
   const close = useCallback(() => {
     setActivePane("mailbox");
-    void navigate({ to: basePath });
-  }, [basePath, navigate, setActivePane]);
+    void navigate({
+      to: basePath,
+      search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
+    } as never);
+  }, [basePath, keepSearch, navigate, setActivePane]);
 
   // The open conversation left the place (done from the list, sync): open
   // its neighbour, keeping the keys where they were.

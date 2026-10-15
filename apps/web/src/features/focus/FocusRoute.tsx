@@ -17,6 +17,7 @@ import { markDeskDone } from "@/features/desk/deskDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { targetFromThread } from "@/features/mail-actions/target";
 import type { ThreadResponse } from "@/features/mailbox/types";
+import { useReplaceSearch } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { runPointerCommand } from "@/lib/actions/keyHints";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -27,10 +28,18 @@ import { FocusFinish } from "./FocusFinish";
 import { FocusThread } from "./FocusThread";
 import { focusReplyIntent, useFocusSession } from "./useFocusSession";
 
-export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
+export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; at?: string }) {
   const navigate = useNavigate();
-  const focus = useFocusSession(lane);
+  const focus = useFocusSession(lane, at);
   const { current, progress } = focus;
+  // The conversation on screen is in the URL, so a copied link (or a
+  // reload) comes back to it.
+  const replaceSearch = useReplaceSearch();
+  const shownId = current?.threadId;
+  useEffect(() => {
+    if (shownId) replaceSearch({ at: shownId });
+    else if (!focus.loading) replaceSearch({ at: undefined });
+  }, [focus.loading, replaceSearch, shownId]);
   const replyKey = current ? focusReplyIntent(current).key : null;
   const replyOpen = useComposeUi(
     (s) => s.intent !== null && s.intent.key === replyKey && s.surface === "inline",

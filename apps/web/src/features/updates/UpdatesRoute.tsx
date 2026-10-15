@@ -15,6 +15,7 @@ import { useModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -48,6 +49,9 @@ import {
   useUpdatesHidden,
 } from "./updatesVerbs";
 
+/** The line under the cursor and the open peek, kept while an email opens. */
+const UPDATES_LIST_SEARCH = ["row", "peek"] as const;
+
 /**
  * Updates: notifications as a briefing by source, gathered at fixed cuts
  * and let go in one key. Not a list of emails: each line is a source's
@@ -63,7 +67,12 @@ export function UpdatesRoute() {
     return lines.flatMap((line) => (line.latest_thread_id ? [line.latest_thread_id] : []));
   }, [digest.data]);
   return (
-    <PlaceLayout basePath="/updates" label="Updates" threadIds={threadIds}>
+    <PlaceLayout
+      basePath="/updates"
+      label="Updates"
+      threadIds={threadIds}
+      keepSearch={UPDATES_LIST_SEARCH}
+    >
       <Briefing status={digest} />
     </PlaceLayout>
   );
@@ -118,9 +127,10 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const hidden = useUpdatesHidden((s) => s.hidden);
   // Routine stays collapsed to its one line until opened, for this visit.
   const [routineOpen, setRoutineOpen] = useState(false);
-  const [cursorId, setCursorId] = useState<string | null>(null);
+  // Both in the URL, so a copied link lands on the same line.
+  const [cursorId, setCursorId] = useSearchParam("row");
   // Space opens the peek under one line at a time; Escape closes it.
-  const [peekId, setPeekId] = useState<string | null>(null);
+  const [peekId, setPeekId] = useSearchParam("peek");
   const [letGoOpen, setLetGoOpen] = useState(false);
   // `e`: the line whose source the open preview is for.
   const [letGoLineOf, setLetGoLineOf] = useState<UpdateLine | null>(null);
@@ -147,9 +157,19 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const current = rows[index]?.line;
   // A peek belongs to its line: when a refetch, a let go or a tune takes the
   // line away, the peek goes with it, and an undo does not bring it back open.
+  // A link to a routine line opens Routine first.
+  const folded = useCallback(
+    (id: string | null) =>
+      id !== null && !routineOpen && digest.routine.some((line) => line.id === id),
+    [digest.routine, routineOpen],
+  );
   useEffect(() => {
-    if (peekId !== null && !rows.some((row) => row.line.id === peekId)) setPeekId(null);
-  }, [rows, peekId]);
+    if (folded(cursorId)) setRoutineOpen(true);
+  }, [cursorId, folded]);
+  useEffect(() => {
+    if (peekId !== null && !folded(peekId) && !rows.some((row) => row.line.id === peekId))
+      setPeekId(null);
+  }, [folded, rows, peekId, setPeekId]);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
@@ -185,7 +205,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const { dismiss: dismissSourceHint } = sourceHint;
   const { dismiss: dismissLetGoHint } = letGoHint;
 
-  const select = useCallback((line: UpdateLine) => setCursorId(line.id), []);
+  const select = useCallback((line: UpdateLine) => setCursorId(line.id), [setCursorId]);
   const openEmail = useCallback(
     (line: UpdateLine) => {
       if (line.latest_thread_id) nav?.open(line.latest_thread_id);
@@ -247,8 +267,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   };
 
   const togglePeek = useCallback(
-    (line: UpdateLine) => setPeekId((open) => (open === line.id ? null : line.id)),
-    [],
+    (line: UpdateLine) => setPeekId(peekId === line.id ? null : line.id),
+    [peekId, setPeekId],
   );
   const move = (delta: number) => {
     const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))];

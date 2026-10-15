@@ -52,6 +52,9 @@ export function visibleBands(
 }
 
 /** Every focusable entry, in the order the edition shows them. */
+/** The shelf shown and the entry under the cursor, kept while something opens. */
+export const READING_LIST_SEARCH = ["view", "row"] as const;
+
 export function editionEntries(
   bands: readonly ReadingBand[],
   expanded: ReadonlySet<string>,

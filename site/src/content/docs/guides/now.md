@@ -157,7 +157,7 @@ emails you moved; mail you never opened isn't checked.
 | Key | What it does |
 |---|---|
 | `j` / `k` | Next and previous row |
-| `Enter` | Open the row in its own mode: a person in Messages, a to-do in To do, the card in Updates, the pick in Reading |
+| `Enter` | Open the row in its own mode, on that row: a person in Messages, a to-do in To do, the card's first line in Updates, the pick in Reading's reader |
 | `e` | Done here, in the row's mode |
 | `r` | Reply to a person |
 | `o` | Open the email |

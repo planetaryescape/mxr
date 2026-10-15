@@ -26,13 +26,50 @@ const mocks = vi.hoisted(() => ({
       },
     };
   })(),
+  // The URL's search params: Archive keeps its ledger state there.
+  url: (() => {
+    let search: Record<string, unknown> = {};
+    const listeners = new Set<() => void>();
+    return {
+      get: () => search,
+      replace: (patch: Record<string, unknown>) => {
+        search = Object.fromEntries(
+          Object.entries({ ...search, ...patch }).filter(([, value]) => value !== undefined),
+        );
+        for (const listener of listeners) listener();
+      },
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      reset: () => {
+        search = {};
+      },
+    };
+  })(),
   markChecked: vi.fn<() => void>(),
   markNotRecord: vi.fn<() => void>(),
   openMailDialog: vi.fn<() => void>(),
   toastInfo: vi.fn<() => void>(),
 }));
 
-vi.mock("@tanstack/react-router", () => ({ useParams: () => ({}) }));
+vi.mock("@tanstack/react-router", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useParams: () => ({}),
+    useSearch: () => useSyncExternalStore(mocks.url.subscribe, mocks.url.get),
+  };
+});
+vi.mock("@/hooks/useSearchParam", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useReplaceSearch: () => mocks.url.replace,
+    useSearchParam: (key: string) => [
+      (useSyncExternalStore(mocks.url.subscribe, mocks.url.get)[key] as string | undefined) ?? null,
+      (next: string | null) => mocks.url.replace({ [key]: next ?? undefined }),
+    ],
+  };
+});
 vi.mock("@/features/places/PlaceLayout", () => ({
   PlaceLayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -54,7 +91,12 @@ vi.mock("@/features/modes/api", () => ({ useModeGuide: () => ({ data: undefined 
 vi.mock("@/hooks/useDelayedPending", () => ({ useDelayedPending: () => "ready" }));
 vi.mock("@/hooks/useMediaQuery", () => ({ SINGLE_PANE_QUERY: "", useMediaQuery: () => false }));
 vi.mock("@/hooks/useSplitPane", () => ({
-  useSplitPane: () => ({ groupProps: {}, otherPanelProps: {}, handleProps: {}, sidePanelProps: {} }),
+  useSplitPane: () => ({
+    groupProps: {},
+    otherPanelProps: {},
+    handleProps: {},
+    sidePanelProps: {},
+  }),
 }));
 vi.mock("@/hooks/useShortcutScope", () => ({ useShortcutScope: vi.fn<() => void>() }));
 vi.mock("@/features/archive/api", () => ({
@@ -101,6 +143,7 @@ afterEach(() => {
   mocks.markNotRecord.mockReset();
   mocks.openMailDialog.mockReset();
   mocks.toastInfo.mockReset();
+  mocks.url.reset();
   act(() => useUiPrefs.setState({ accountScope: null }));
   HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
 });
@@ -122,6 +165,8 @@ describe("Archive actions while subscriptions are displayed", () => {
 
     render(<ArchiveRoute />);
     fireEvent.click(screen.getByTestId("subscriptions-chip"));
+    // In the URL, so a copied link opens Subscriptions too.
+    expect(mocks.url.get()).toEqual(expect.objectContaining({ section: "subscriptions" }));
     expect((await screen.findAllByTestId("subscription-row"))[0]).toHaveTextContent("Netflix");
     expect(screen.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "true");
 

@@ -110,6 +110,15 @@ describe("focusReducer", () => {
     expect(session.queue).toEqual(["a", "c"]);
   });
 
+  test("a linked conversation comes to the front; one not queued changes nothing", () => {
+    const session = run(
+      { kind: "sync", items: [item("a"), item("b"), item("c")] },
+      { kind: "front", threadId: "c" },
+    );
+    expect(session.queue).toEqual(["c", "a", "b"]);
+    expect(focusReducer(session, { kind: "front", threadId: "gone" })).toBe(session);
+  });
+
   test("skip moves the current conversation to the end and keeps it", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b"), item("c")] },

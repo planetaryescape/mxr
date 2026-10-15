@@ -160,3 +160,41 @@ describe("change titles and previews", () => {
     expect(previewMessages({ nothing: true })).toEqual([]);
   });
 });
+
+describe("live and summarised turns", () => {
+  test("the reply being written shows while the turn runs", () => {
+    render(
+      <Transcript
+        items={[{ kind: "user", seq: 1, text: "hi", created_at: 1 }]}
+        running
+        writing="Looking at **your** mail"
+      />,
+    );
+    expect(screen.getByText("your").tagName).toBe("STRONG");
+  });
+
+  test("a summary marks where earlier messages were folded, and auto-approved steps say so", () => {
+    render(
+      <Transcript
+        items={[
+          { kind: "user", seq: 1, text: "old", created_at: 1 },
+          { kind: "summary", seq: 1, text: "They asked about invoices.", created_at: 2 },
+          {
+            kind: "tool_call",
+            seq: 2,
+            call_id: "a",
+            tool: "mxr_mutate",
+            reason: "Archive the receipts.",
+            arguments: {},
+            state: "auto_approved",
+            created_at: 2,
+          },
+        ]}
+        running
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Earlier messages summarised/ }));
+    expect(screen.getByText("They asked about invoices.")).toBeVisible();
+    expect(screen.getByLabelText("Ran without asking")).toBeInTheDocument();
+  });
+});

@@ -48,7 +48,16 @@ function blocks(items: AssistantItem[]): Block[] {
   return out;
 }
 
-export function Transcript({ items, running }: { items: AssistantItem[]; running: boolean }) {
+export function Transcript({
+  items,
+  running,
+  writing = null,
+}: {
+  items: AssistantItem[];
+  running: boolean;
+  /** The reply being written now, shown until it is stored. */
+  writing?: string | null;
+}) {
   const grouped = useMemo(() => blocks(items), [items]);
   return (
     <ol className="space-y-4" aria-label="Conversation">
@@ -98,6 +107,15 @@ export function Transcript({ items, running }: { items: AssistantItem[]; running
           </li>
         );
       })}
+      {running && writing ? (
+        <li aria-live="off">
+          <div
+            className="assistant-prose text-sm leading-relaxed text-foreground"
+            // Sanitized in renderMarkdown: no scripts, no images, safe links.
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(writing) }}
+          />
+        </li>
+      ) : null}
     </ol>
   );
 }

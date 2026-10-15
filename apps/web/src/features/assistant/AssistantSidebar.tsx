@@ -12,6 +12,7 @@ import {
   BotMessageSquare,
   History,
   LoaderCircle,
+  ShieldCheck,
   Square,
   SquarePen,
   Trash2,
@@ -64,7 +65,7 @@ export function AssistantSidebar() {
   const availability = useAvailability();
   const conversation = useConversation(conversationId);
   const live = useLiveTurn(conversationId);
-  const { send, answer, stop } = useAssistantActions();
+  const { send, answer, stop, trust } = useAssistantActions();
   const viewContext = useViewContext();
 
   // A conversation deleted elsewhere: start fresh rather than show an error.
@@ -93,6 +94,30 @@ export function AssistantSidebar() {
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
           {data?.title ?? "Assistant"}
         </h2>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={!data}
+          aria-pressed={data?.auto_approve ?? false}
+          className={cn(data?.auto_approve && "bg-muted text-primary")}
+          onClick={() =>
+            data &&
+            trust.mutate(
+              { id: data.id, enabled: !data.auto_approve },
+              { onError: (error) => toast.error(errorText(error)) },
+            )
+          }
+          aria-label="Approve reversible changes automatically"
+          title={
+            data
+              ? data.auto_approve
+                ? "Reversible changes run without asking. Click to ask for every change again."
+                : "Let reversible changes (archive, read, star, moves) run without asking in this conversation"
+              : "Start a conversation to choose what runs without asking"
+          }
+        >
+          <ShieldCheck className="size-4" />
+        </Button>
         <HistoryMenu currentId={conversationId} onPick={showConversation} />
         <Button
           size="icon-sm"
@@ -114,10 +139,16 @@ export function AssistantSidebar() {
         </Button>
       </header>
 
-      <ScrollToEnd watch={data} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {data?.auto_approve ? (
+        <p className="shrink-0 border-b border-border px-4 py-1.5 text-2xs text-muted-foreground">
+          Archive, read, star and moves run without asking here. Sending, deleting, trash, spam and
+          rules still ask.
+        </p>
+      ) : null}
+      <ScrollToEnd watch={[data, live.writing]} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {data && data.items.length > 0 ? (
           <div className="space-y-4">
-            <Transcript items={data.items} running={running} />
+            <Transcript items={data.items} running={running} writing={live.writing} />
             <Outcome conversation={data} onContinue={() => submit("Go on.")} />
           </div>
         ) : conversationId && conversation.isPending ? (
@@ -263,7 +294,11 @@ function RunningLine({
   const doing =
     progress?.kind === "calling"
       ? progress.reason || toolWords(progress.tool)
-      : "Thinking";
+      : progress?.kind === "summarizing"
+        ? "Summarising earlier messages to make room"
+        : progress?.kind === "writing"
+          ? "Writing"
+          : "Thinking";
   return (
     <div className="flex items-center gap-2" role="status" aria-live="polite">
       <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />

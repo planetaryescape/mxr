@@ -80,6 +80,17 @@ export async function cancelTurn(conversationId: string): Promise<AssistantConve
   return response.conversation;
 }
 
+export async function setAutoApprove(
+  conversationId: string,
+  enabled: boolean,
+): Promise<AssistantConversation> {
+  const response = await apiFetch<{ conversation: AssistantConversation }>(
+    `${BASE}/conversations/${encodeURIComponent(conversationId)}/auto-approve`,
+    { method: "POST", body: { enabled } },
+  );
+  return response.conversation;
+}
+
 export async function deleteConversation(conversationId: string): Promise<void> {
   await apiFetch(`${BASE}/conversations/${encodeURIComponent(conversationId)}/delete`, {
     method: "POST",

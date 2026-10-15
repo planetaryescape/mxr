@@ -166,16 +166,25 @@ Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemo
 
 ## Next actions, in order
 
-1. **BK dogfoods Reading** on v0.6.101 and Marginalia. Open items for BK:
-   check that Marginalia's reader looks unchanged since `0d2f75d`, delete
-   the live-check test article, and revoke the demo token.
-2. **Rung 4 (anchored highlights)** is done: a highlight stores the paragraph
-   it was made in and is drawn there. Older highlights still mark their first
-   match.
-3. Package follow-ups (small, in `planetaryescape/reader`): make the outer
-   `reader-article` wrapper class configurable (it collided with a Marginalia
-   page class, renamed to `article-column` there), and scope the package's
-   `code` font-family.
+1. **BK dogfoods Reading** on v0.6.103 and Marginalia. Open items for BK:
+   delete the live-check test article and revoke the demo token.
+2. Nothing else is planned. Rungs 1 to 4 are released, the cross-model
+   review was waived, and the package follow-ups shipped in reader v0.1.3
+   (`wrapperClassName`, and no code `font-family`, because the unlayered
+   sheet beat Tailwind v4's layered monospace in mxr). Marginalia pins
+   v0.1.3 at `948a8ec`; mxr since #470.
+
+Rung 4 anchors only mxr's own highlights, and only in the view they were
+made in. Each view numbers paragraphs differently: the plain reader uses the
+daemon's list, and the HTML reader uses the package's `data-para`.
+Marginalia's `paragraphIndex` is stored but not drawn, because nobody has
+checked that Marginalia numbers its copy the way mxr does. Check that before
+using it.
+
+Decided 2026-10-15: the reader keeps a 20px default, the same as
+Marginalia, since both apps share one settings model. mxr gets no width
+setting, because the column is already capped (66ch plain, 42rem HTML) and
+no width problem has been reported.
 
 ## Reader package rules
 

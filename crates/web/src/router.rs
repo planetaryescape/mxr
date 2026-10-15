@@ -230,7 +230,7 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest(
             "/mail",
-            arrival_routes::extend_mail(updates_routes::extend_mail(reading_routes::extend_mail(
+            assistant_routes::extend_mail(arrival_routes::extend_mail(updates_routes::extend_mail(reading_routes::extend_mail(
                 record_routes::extend_mail(messages_routes::extend_mail(mode_routes::extend_mail(
                     todo_routes::extend_mail(place_routes::extend_mail(
                         promise_routes::extend_mail(thread_context_routes::extend_mail(
@@ -242,7 +242,7 @@ pub fn app(config: WebServerConfig) -> Router {
                         )),
                     )),
                 ))),
-            ))),
+            )))),
         )
         .nest(
             "/platform",

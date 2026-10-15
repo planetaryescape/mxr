@@ -9,7 +9,7 @@
 use serde_json::{Map, Value};
 
 /// What happens to one tool call.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Gate {
     /// Reads, previews and other calls that change nothing the user would
     /// need to undo.
@@ -146,7 +146,7 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
         // Only a literal `false` or nothing at all is a preview: a string
         // "true" or any other value is treated as the real change.
         Rule::Confirm => match flag("confirm") {
-            None | Some(Value::Null) | Some(Value::Bool(false)) => Gate::Run,
+            None | Some(Value::Null | Value::Bool(false)) => Gate::Run,
             Some(_) => Gate::Approve {
                 preview: Some((
                     tool.to_string(),
@@ -155,7 +155,7 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
             },
         },
         Rule::ConfirmPreviewedBy(preview_tool, fields) => match flag("confirm") {
-            None | Some(Value::Null) | Some(Value::Bool(false)) => Gate::Run,
+            None | Some(Value::Null | Value::Bool(false)) => Gate::Run,
             Some(_) => Gate::Approve {
                 preview: Some((preview_tool.to_string(), pick(arguments, fields))),
             },

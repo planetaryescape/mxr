@@ -69,14 +69,14 @@ pub enum Progress {
 }
 
 /// A call waiting for the user.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingItem {
     pub call_id: String,
     #[serde(flatten)]
     pub kind: PendingKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PendingKind {
     Approval {
@@ -97,7 +97,7 @@ pub enum PendingKind {
 }
 
 /// The user's answer to one pending call.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum Decision {
     Approve,
@@ -110,7 +110,7 @@ pub enum Decision {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnOutcome {
     /// The model answered without asking for more tools.
     Finished,
@@ -476,7 +476,7 @@ fn collect_message_ids(value: &Value, depth: u8, ids: &mut Vec<String>) {
                 match (key.as_str(), child) {
                     ("message_id", Value::String(id)) => ids.push(id.clone()),
                     ("message_ids", Value::Array(list)) => {
-                        ids.extend(list.iter().filter_map(|id| id.as_str().map(str::to_string)))
+                        ids.extend(list.iter().filter_map(|id| id.as_str().map(str::to_string)));
                     }
                     _ => collect_message_ids(child, depth + 1, ids),
                 }

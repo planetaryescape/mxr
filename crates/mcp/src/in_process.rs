@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// Bytes buffered each way on the in-memory pipe.
 const PIPE_CAPACITY: usize = 1 << 20;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolDescriptor {
     pub name: String,
     pub description: String,
@@ -127,7 +127,7 @@ mod tests {
     async fn tools_list_sorted_and_calls_return_mxr_results_and_errors() {
         let tools = InProcessTools::start(Arc::new(PongRequester))
             .await
-            .unwrap();
+            .expect("tools start");
         let names: Vec<&str> = tools.tools().iter().map(|t| t.name.as_str()).collect();
         let mut sorted = names.clone();
         sorted.sort_unstable();

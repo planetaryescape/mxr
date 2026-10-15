@@ -453,7 +453,7 @@ impl ToolHost for CannedHost {
                 .results
                 .get(name)
                 .cloned()
-                .unwrap_or(json!({}))
+                .unwrap_or_else(|| json!({}))
                 .to_string(),
             is_error: false,
         }

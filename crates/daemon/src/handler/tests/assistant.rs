@@ -338,3 +338,79 @@ async fn without_a_model_nothing_is_written() {
     };
     assert!(conversations.is_empty());
 }
+
+#[tokio::test]
+async fn a_trusted_conversation_stars_without_asking() {
+    let fx = Fixture::new().await;
+    let message = fx
+        .message(
+            &ThreadId::new(),
+            "news@example.com",
+            ME,
+            Duration::hours(1),
+            None,
+        )
+        .await;
+    let star = || serde_json::json!({"action": "star", "message_ids": [message.id.as_str()], "confirm": true});
+    fx.state.llm.replace(ScriptedLlm::new(vec![
+        reply("", vec![("c1", "mxr_mutate", star())]),
+        reply("Left it.", vec![]),
+        reply("", vec![("c2", "mxr_mutate", star())]),
+        reply("Starred.", vec![]),
+    ]));
+    let ResponseData::AssistantConversation { conversation } = request(
+        &fx,
+        Request::AssistantSend {
+            conversation_id: None,
+            message: "hello".into(),
+            context: AssistantViewContextData::default(),
+        },
+    )
+    .await
+    else {
+        panic!("expected a conversation");
+    };
+    let id = conversation.id;
+    // The first turn starts before trust is set, so it asks.
+    let first = settled(&fx, &id).await;
+    assert_eq!(first.status, AssistantStatusData::AwaitingUser);
+    decide(
+        &fx,
+        &id,
+        "c1",
+        AssistantDecisionKindData::Reject { reason: None },
+    )
+    .await;
+    settled(&fx, &id).await;
+
+    let ResponseData::AssistantConversation { conversation } = request(
+        &fx,
+        Request::SetAssistantAutoApprove {
+            conversation_id: id.clone(),
+            enabled: true,
+        },
+    )
+    .await
+    else {
+        panic!("expected a conversation");
+    };
+    assert!(conversation.auto_approve);
+    request(
+        &fx,
+        Request::AssistantSend {
+            conversation_id: Some(id.clone()),
+            message: "star it".into(),
+            context: AssistantViewContextData::default(),
+        },
+    )
+    .await;
+    let done = settled(&fx, &id).await;
+    assert_eq!(stars(&fx), 1, "a reversible change ran without asking");
+    assert!(done.items.iter().any(|item| matches!(
+        item,
+        AssistantItemData::ToolCall {
+            state: AssistantCallStateData::AutoApproved,
+            ..
+        }
+    )));
+}

@@ -13,8 +13,8 @@ pub(crate) use view::{conversation_view, summary_view};
 use crate::state::AppState;
 use async_trait::async_trait;
 use mxr_assistant::{
-    prompt, Agent, ChatModel, Decision, Limits, MessageMeta, PendingItem, Progress, TurnOutcome,
-    TurnSink, ViewContext,
+    prompt, Agent, ChatModel, Decision, Limits, MessageMeta, PendingItem, Progress, Summary,
+    TurnOutcome, TurnSink, ViewContext,
 };
 use mxr_llm::{LlmError, LlmFeature, ToolChatMessage, ToolChatRequest, ToolChatResponse};
 use mxr_protocol::{
@@ -22,6 +22,11 @@ use mxr_protocol::{
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// How often the reply being written is sent to clients. Fast enough to
+/// read as typing, slow enough not to flood the event channel.
+const WRITING_EVERY: Duration = Duration::from_millis(120);
 use tokio_util::sync::CancellationToken;
 
 #[derive(Default)]
@@ -136,10 +141,29 @@ async fn run_turn(
         Ok(tools) => tools,
         Err(error) => return TurnOutcome::Failed(format!("mxr's tools didn't start: {error}")),
     };
+    let row = match state
+        .store
+        .get_assistant_conversation(conversation_id)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return TurnOutcome::Failed("the conversation is gone".to_string()),
+        Err(error) => return TurnOutcome::Failed(error.to_string()),
+    };
+    // Message seqs start at 1 and have no gaps, so the summary that covers
+    // through seq N replaces the first N messages.
+    let summary = match (row.summary, row.summary_through_seq) {
+        (Some(text), Some(through)) => usize::try_from(through)
+            .ok()
+            .filter(|through| *through <= history.len())
+            .map(|through| Summary { text, through }),
+        _ => None,
+    };
     let model = PinnedModel(state.llm.for_feature(LlmFeature::Assistant).pin());
     let sink = StoreSink {
         state,
         conversation_id,
+        last_writing: Mutex::new(None),
     };
     let agent = Agent {
         model: &model,
@@ -147,6 +171,8 @@ async fn run_turn(
         sink: &sink,
         cancel,
         limits: Limits::default(),
+        auto_approve: row.auto_approve,
+        summary: std::sync::Mutex::new(summary),
     };
     let outcome = match start {
         TurnStart::Send { message, context } => {
@@ -293,14 +319,24 @@ struct PinnedModel(mxr_llm::PinnedLlm);
 
 #[async_trait]
 impl ChatModel for PinnedModel {
-    async fn chat(&self, request: ToolChatRequest) -> Result<ToolChatResponse, LlmError> {
-        self.0.chat(request).await
+    async fn chat(
+        &self,
+        request: ToolChatRequest,
+        on_text: &(dyn for<'t> Fn(&'t str) + Send + Sync),
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.0.chat_stream(request, on_text).await
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(self.0.context_window()).filter(|window| *window > 0)
     }
 }
 
 struct StoreSink<'a> {
     state: &'a Arc<AppState>,
     conversation_id: &'a str,
+    /// When the reply being written was last sent to clients.
+    last_writing: Mutex<Option<Instant>>,
 }
 
 #[async_trait]
@@ -330,6 +366,7 @@ impl TurnSink for StoreSink<'_> {
         let progress = match progress {
             Progress::Thinking { step } => AssistantProgressData::Thinking { step },
             Progress::Calling { tool, reason } => AssistantProgressData::Calling { tool, reason },
+            Progress::Summarizing => AssistantProgressData::Summarizing,
         };
         emit(
             self.state,
@@ -337,5 +374,35 @@ impl TurnSink for StoreSink<'_> {
             AssistantStatusData::Running,
             Some(progress),
         );
+    }
+
+    fn writing(&self, text: &str) {
+        {
+            let mut last = self
+                .last_writing
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if last.is_some_and(|at| at.elapsed() < WRITING_EVERY) {
+                return;
+            }
+            *last = Some(Instant::now());
+        }
+        emit(
+            self.state,
+            self.conversation_id,
+            AssistantStatusData::Running,
+            Some(AssistantProgressData::Writing {
+                text: text.to_string(),
+            }),
+        );
+    }
+
+    async fn summarized(&self, summary: &Summary) -> Result<(), String> {
+        let through = i64::try_from(summary.through).map_err(|error| error.to_string())?;
+        self.state
+            .store
+            .set_assistant_summary(self.conversation_id, &summary.text, through)
+            .await
+            .map_err(|error| format!("could not save the summary: {error}"))
     }
 }

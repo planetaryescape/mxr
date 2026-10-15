@@ -50,6 +50,7 @@ mod health;
 mod observations;
 mod route;
 mod routed;
+mod stream;
 mod tool_chat;
 
 #[cfg(test)]
@@ -66,6 +67,9 @@ use observations::CompletionObservations;
 pub use observations::{CompletionObservation, LlmFailureKind};
 pub use route::{is_claude_model, routes_for_model, ApiKey, ApiKeySource, Route, RouteProvider};
 pub use routed::{route_statuses, RouteStatus, RoutedProvider, RoutedProviderConfig};
+/// Called with the whole reply text so far while a reply streams in.
+pub type TextCallback<'a> = &'a (dyn for<'t> Fn(&'t str) + Send + Sync);
+
 pub use tool_chat::{
     ProviderTurn, TokenUsage, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse,
     ToolSpec,
@@ -315,6 +319,16 @@ pub trait LlmProvider: Send + Sync {
             "the model '{}' can't call tools here; choose an OpenAI-compatible or Claude model for the assistant",
             self.model_name()
         )))
+    }
+    /// [`Self::chat_as`], reporting the reply text as it streams in.
+    /// Providers that can't stream answer whole, without reporting.
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        _on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.chat_as(req, kind).await
     }
     fn capabilities(&self) -> LlmCapabilities;
     fn model_name(&self) -> &str;
@@ -683,6 +697,31 @@ impl PinnedLlm {
         result
     }
 
+    /// [`Self::chat`], reporting the reply text as it streams in.
+    pub async fn chat_stream(
+        &self,
+        req: ToolChatRequest,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        if let Some(reason) = &self.blocked {
+            return Err(LlmError::PrivacyBlocked(reason.clone()));
+        }
+        let result = self
+            .provider
+            .chat_stream_as(req, CallKind::Foreground, on_text)
+            .await;
+        self.runtime
+            .observations
+            .record(self.generation, Some(self.feature), &result);
+        result
+    }
+
+    /// How many tokens one request to the pinned provider may hold, as
+    /// configured.
+    pub fn context_window(&self) -> u32 {
+        self.provider.capabilities().context_window
+    }
+
     /// [`Self::complete`] under the background timeout and breaker, like
     /// [`FeatureLlmRuntime::complete_background`], on the pinned provider.
     pub async fn complete_background(
@@ -887,6 +926,22 @@ impl OpenAiCompatibleProvider {
         Ok(response)
     }
 
+    /// [`Self::chat_attempt`] with the reply streamed.
+    pub(crate) async fn chat_stream_attempt(
+        &self,
+        req: &ToolChatRequest,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+        on_text: stream::TextSink<'_>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        let mut body = tool_chat::openai_body(&self.model, req);
+        body.stream = true;
+        let response = self.send_checked(&body, api_key, timeout).await?;
+        let mut folded = stream::OpenAiStream::default();
+        stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+        folded.finish(&self.model)
+    }
+
     /// POST one chat-completions body and read the reply, mapping transport
     /// and status failures onto route health.
     async fn post<B: Serialize, R: serde::de::DeserializeOwned>(
@@ -895,6 +950,26 @@ impl OpenAiCompatibleProvider {
         api_key: Option<&str>,
         timeout: Option<Duration>,
     ) -> Result<R, AttemptError> {
+        let response = self.send_checked(body, api_key, timeout).await?;
+        response.json::<R>().await.map_err(|e| {
+            AttemptError::route(
+                LlmError::Other(format!("response parse error: {e}")),
+                RouteFailure::Cooling {
+                    reason: FailureReason::plain("unreadable reply"),
+                    retry_after: None,
+                },
+            )
+        })
+    }
+
+    /// POST one chat-completions body and return the response once its
+    /// status says it succeeded, for reading whole or as a stream.
+    async fn send_checked<B: Serialize>(
+        &self,
+        body: &B,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, AttemptError> {
         let url = format!("{}/chat/completions", self.base_url);
         let client = self
             .client
@@ -975,16 +1050,7 @@ impl OpenAiCompatibleProvider {
                 class,
             });
         }
-
-        response.json::<R>().await.map_err(|e| {
-            AttemptError::route(
-                LlmError::Other(format!("response parse error: {e}")),
-                RouteFailure::Cooling {
-                    reason: FailureReason::plain("unreadable reply"),
-                    retry_after: None,
-                },
-            )
-        })
+        Ok(response)
     }
 
     /// A full completion, including the one retry with reasoning off for
@@ -1041,6 +1107,17 @@ impl LlmProvider for OpenAiCompatibleProvider {
         _kind: CallKind,
     ) -> Result<ToolChatResponse, LlmError> {
         self.chat_attempt(&req, self.api_key.as_deref(), None)
+            .await
+            .map_err(AttemptError::into_error)
+    }
+
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        _kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.chat_stream_attempt(&req, self.api_key.as_deref(), None, on_text)
             .await
             .map_err(AttemptError::into_error)
     }

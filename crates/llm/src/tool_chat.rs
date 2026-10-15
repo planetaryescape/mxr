@@ -316,7 +316,7 @@ pub(crate) fn portable_schema(schema: &Value) -> Value {
     }
 }
 
-fn parse_arguments(raw: &str) -> Value {
+pub(crate) fn parse_arguments(raw: &str) -> Value {
     if raw.trim().is_empty() {
         return Value::Object(serde_json::Map::new());
     }

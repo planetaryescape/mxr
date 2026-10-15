@@ -193,8 +193,16 @@ Updates (`g u`) is the briefing: the latest digest in Needs a look,
 Changed and Routine, one line per source, with what arrived since the cut
 below it. `A` lets go of the digest after a preview, `e` lets go of one
 source, `t` makes a to-do from a line, `K` tunes the source, `L` opens the
-line's link and `o` the email. On a phone the sections stack and letting go
-sits at the bottom. See [Read Updates as a briefing](/guides/updates/).
+line's link and `o` the email. **Let go of all** sits in the page header at
+every width; on a phone the sections stack under it. See
+[Read Updates as a briefing](/guides/updates/).
+
+Rows stay quiet until you are on them. The reason a row is in its mode
+(Reading's "Here because", a to-do's "from a rule" source) and the row's
+keys show on the row you have selected or are pointing at. On Now, a row's
+buttons take the place of its date the same way. Fade dates, amounts and
+due dates always show. On a phone or a narrow window, where there is no
+hover, every row shows its reason and buttons.
 
 The reader names the other modes holding a conversation ("Also in To do:
 sign by Mon 5 Oct"), and a first-time person's row asks once where their
@@ -206,8 +214,8 @@ opens from the card on Now.
 
 ## Archive
 
-**Archive** (`g e`) opens on its answer box: type what you remember, like
-"lisbon booking ref", and the answer card shows the field, where it came
+**Archive** (`g e`) opens on its ledger. Press `/` for the answer box and
+type what you remember, like "lisbon booking ref", and the answer card shows the field, where it came
 from and whether it is checked, with `y` to copy it, `Enter` for the PDF and
 `o` for the email. When no record matches, the card says so and shows what
 `mxr ask` found in all your mail. Below are the "Coming up" strip, kind

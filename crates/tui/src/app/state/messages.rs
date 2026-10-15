@@ -55,6 +55,9 @@ pub struct MessagesPageState {
     /// and verbs wait until it is: an older answer landing late (a refetch
     /// of the topic just done) can't replace it.
     pub person_target: Option<(String, Option<ThreadId>)>,
+    /// A row to select once the bands are in, by id (`person:<email>`):
+    /// the person an assistant link opened.
+    pub select_row: Option<String>,
     /// Ask the daemon for a Got it preview on this thread.
     pub pending_ack_preview: Option<ThreadId>,
     /// The thread `.` asked a preview for: only its preview may start a

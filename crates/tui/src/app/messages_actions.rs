@@ -130,9 +130,52 @@ impl App {
         }
         if self.mailbox.mailbox_view == MailboxView::People {
             self.reselect_messages_row(&before, selected.as_ref());
+            self.select_requested_messages_row();
         }
         self.sync_messages_page();
         self.guard_messages_ack();
+    }
+
+    /// Open Messages on one person, by row id. The bands are refetched on
+    /// open, so the row is selected when they arrive.
+    pub(crate) fn open_messages_person(&mut self, row_id: String) {
+        self.open_messages();
+        self.mailbox.messages_page.select_row = Some(row_id);
+        self.select_requested_messages_row();
+    }
+
+    /// Select the row `open_messages_person` asked for, once it is shown.
+    /// Someone Messages doesn't list gets a note instead.
+    fn select_requested_messages_row(&mut self) {
+        let page = &mut self.mailbox.messages_page;
+        let Some(row_id) = page.select_row.clone() else {
+            return;
+        };
+        let Some(messages) = &page.messages else {
+            return;
+        };
+        if page.pending_refresh {
+            return;
+        }
+        page.select_row = None;
+        let row = messages
+            .your_turn
+            .iter()
+            .chain(&messages.pinned)
+            .chain(&messages.recent)
+            .chain(&messages.quiet)
+            .find(|row| row.id == row_id);
+        let Some(key) = row.map(row_key) else {
+            self.status_message = Some("They aren't in Messages right now".into());
+            return;
+        };
+        if page.in_quiet(&key) {
+            page.quiet_open = true;
+        }
+        if let Some(index) = page.index_of(&key) {
+            self.mailbox.selected_index = index;
+        }
+        self.sync_messages_page();
     }
 
     /// Put the selection back on `selected` after the bands changed, or on

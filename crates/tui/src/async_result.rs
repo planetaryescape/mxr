@@ -331,6 +331,8 @@ pub(crate) enum AsyncResult {
     /// Messages of a delivery's source thread, opened via `o`/Enter on the
     /// Deliveries screen.
     DeliveryThreadOpened(Result<Vec<Envelope>, MxrError>),
+    /// Messages of a thread a link in the assistant's reply opened.
+    AssistantThreadOpened(Result<Vec<Envelope>, MxrError>),
     /// Snapshot of recent activity log rows.
     ActivityList(Result<Vec<mxr_protocol::ActivityEntry>, MxrError>),
     /// Confirmation that a pause/resume toggle reached the daemon.

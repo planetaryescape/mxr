@@ -169,8 +169,17 @@ describe("transcript", () => {
       result: '{"blocked":true}',
       created_at: 4,
     };
-    render(<Transcript items={[...items.slice(0, 2), failed, items[2]!]} running={false} />);
+    const reply = { ...items[2]!, failed_call_ids: ["b"] } as AssistantItem;
+    render(<Transcript items={[...items.slice(0, 2), failed, reply]} running={false} />);
     expect(screen.getByRole("button", { name: /2 steps.*1 failed/ })).toBeVisible();
+    const note = screen.getByRole("note");
+    expect(note).toHaveTextContent("This step failed, whatever the reply says:");
+    expect(note).toHaveTextContent("Star it.");
+  });
+
+  test("a reply whose steps all worked has no failure note", () => {
+    render(<Transcript items={items} running={false} />);
+    expect(screen.queryByRole("note")).toBeNull();
   });
 
   test("shows steps as they happen while the turn runs", () => {

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.104"
+    "version": "0.6.105"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -9463,6 +9463,13 @@
               "created_at": {
                 "type": "integer",
                 "format": "int64"
+              },
+              "failed_call_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The steps right before this reply that failed and weren't redone\nafter: a small model can say it did what these didn't, so\nclients name them under the reply."
               },
               "kind": {
                 "type": "string",

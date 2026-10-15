@@ -294,7 +294,36 @@ fn print_conversation(
             AssistantItemData::Summary { .. } => {
                 println!("  (earlier messages were summarised to fit the model's context)\n");
             }
-            AssistantItemData::Assistant { text, .. } => println!("{text}\n"),
+            AssistantItemData::Assistant {
+                text,
+                failed_call_ids,
+                ..
+            } => {
+                println!("{text}\n");
+                // Small models sometimes say they did what failed: name
+                // the steps before the reply that did, from mxr's record.
+                let failed: Vec<&str> = conversation
+                    .items
+                    .iter()
+                    .filter_map(|item| match item {
+                        AssistantItemData::ToolCall {
+                            call_id,
+                            tool,
+                            reason,
+                            ..
+                        } if failed_call_ids.contains(call_id) => {
+                            Some(if reason.is_empty() { tool } else { reason }.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if !failed.is_empty() {
+                    println!(
+                        "  ! failed, whatever the reply says: {}\n",
+                        failed.join("; ")
+                    );
+                }
+            }
             AssistantItemData::ToolCall {
                 tool,
                 reason,

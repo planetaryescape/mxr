@@ -98,6 +98,11 @@ pub enum AssistantItemData {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
+        /// The steps right before this reply that failed and weren't redone
+        /// after: a small model can say it did what these didn't, so
+        /// clients name them under the reply.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        failed_call_ids: Vec<String>,
         created_at: i64,
     },
     /// Earlier messages were summarised to fit the model's context window.

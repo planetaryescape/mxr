@@ -1176,6 +1176,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 86, name: "reading_marginalia", kind: MigrationKind::Composite(READING_MARGINALIA_STEPS) },
     Migration { version: 87, name: "reading_highlight_paragraph", kind: MigrationKind::AddColumn { table: "reading_highlights", column: "paragraph_index", sql: include_str!("../migrations/087_reading_highlight_paragraph.sql") } },
     Migration { version: 88, name: "assistant", kind: MigrationKind::Sql(include_str!("../migrations/088_assistant.sql")) },
+    Migration { version: 89, name: "activity_sources", kind: MigrationKind::Sql(include_str!("../migrations/089_activity_sources.sql")) },
 ];
 
 const READING_MARGINALIA_STEPS: &[MigrationStep] = &[
@@ -1958,7 +1959,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=88).collect::<Vec<_>>(),
+                (83..=89).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

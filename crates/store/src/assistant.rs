@@ -244,7 +244,11 @@ mod tests {
         let messages = store.assistant_messages("c1").await.unwrap();
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[1].meta_json.as_deref(), Some("{}"));
-        let conversation = store.get_assistant_conversation("c1").await.unwrap().unwrap();
+        let conversation = store
+            .get_assistant_conversation("c1")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(conversation.message_count, 2);
         assert_eq!(conversation.status, "idle");
 
@@ -268,10 +272,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(store.mark_interrupted_assistant_turns().await.unwrap(), 1);
-        let running = store.get_assistant_conversation("running").await.unwrap().unwrap();
+        let running = store
+            .get_assistant_conversation("running")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(running.status, "idle");
         assert_eq!(running.last_outcome.as_deref(), Some("interrupted"));
-        let waiting = store.get_assistant_conversation("waiting").await.unwrap().unwrap();
+        let waiting = store
+            .get_assistant_conversation("waiting")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(waiting.status, "awaiting_user");
         assert_eq!(waiting.pending_json.as_deref(), Some("[{}]"));
         let listed = store.list_assistant_conversations(10).await.unwrap();

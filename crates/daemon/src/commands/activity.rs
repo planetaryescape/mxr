@@ -104,6 +104,7 @@ fn source_arg_to_proto(s: ActivitySourceArg) -> ClientKind {
         ActivitySourceArg::Daemon => ClientKind::Daemon,
         ActivitySourceArg::Agent => ClientKind::Agent,
         ActivitySourceArg::Mcp => ClientKind::Mcp,
+        ActivitySourceArg::Assistant => ClientKind::Assistant,
     }
 }
 

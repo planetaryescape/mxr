@@ -3380,6 +3380,7 @@ pub enum ActivitySourceArg {
     Daemon,
     Agent,
     Mcp,
+    Assistant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]

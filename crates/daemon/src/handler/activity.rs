@@ -64,6 +64,7 @@ fn store_row_to_proto(r: &store::ActivityRow) -> ActivityEntry {
         "daemon" => ClientKind::Daemon,
         "agent" => ClientKind::Agent,
         "mcp" => ClientKind::Mcp,
+        "assistant" => ClientKind::Assistant,
         _ => ClientKind::Cli,
     };
     let context = r

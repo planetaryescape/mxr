@@ -166,7 +166,7 @@ Live check, 2026-10-14, against branch build f0f6ee9a9 in an isolated demo daemo
 
 ## Next actions, in order
 
-1. **BK dogfoods Reading** on v0.6.102 and Marginalia. Open items for BK:
+1. **BK dogfoods Reading** on v0.6.103 and Marginalia. Open items for BK:
    delete the live-check test article and revoke the demo token.
 2. Nothing else is planned. Rungs 1 to 4 are released, the cross-model
    review was waived, and the package follow-ups shipped in reader v0.1.3

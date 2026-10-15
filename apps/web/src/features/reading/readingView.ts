@@ -202,6 +202,28 @@ export function marksForParagraph(
   });
 }
 
+/**
+ * Saved highlights as marks for the view on screen. A paragraph number only
+ * means something in the view it was made in (the plain reader counts the
+ * daemon's paragraphs, the HTML reader the package's), and Marginalia counts
+ * its own copy of the text, so only mxr's highlights made in this view keep
+ * their anchor. The rest mark wherever their words appear, as before.
+ */
+export function marksForView(
+  highlights: readonly {
+    quote: string;
+    view: string;
+    origin?: string | null;
+    paragraph?: number | null;
+  }[],
+  view: string,
+): AnchoredMark[] {
+  return highlights.map((h) => ({
+    quote: h.quote,
+    paragraph: h.view === view && isOwnHighlight(h) ? h.paragraph : null,
+  }));
+}
+
 /** Highlights made elsewhere (Marginalia) are mirrored here, so mxr only shows them. */
 export const isOwnHighlight = (h: { origin?: string | null }) => (h.origin ?? "mxr") === "mxr";
 

@@ -34,6 +34,7 @@ import {
   editionEntries,
   isOwnHighlight,
   marksForParagraph,
+  marksForView,
   type AnchoredMark,
   type ParagraphMark,
   minutesLeft,
@@ -222,10 +223,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   });
 
   const highlights = detail.highlights;
-  const marks = useMemo(
-    () => highlights.map((h) => ({ quote: h.quote, paragraph: h.paragraph })),
-    [highlights],
-  );
+  const shownView = showingArticle ? "article" : "issue";
+  const marks = useMemo(() => marksForView(highlights, shownView), [highlights, shownView]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">

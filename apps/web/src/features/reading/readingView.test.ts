@@ -14,6 +14,7 @@ import {
   LINKS_SHOWN,
   letGoAllPlan,
   marksForParagraph,
+  marksForView,
   minutesLeft,
   scrollProgress,
   shownLinks,
@@ -246,5 +247,32 @@ describe("highlightMatching", () => {
     expect(isOwnHighlight({})).toBe(true);
     expect(isOwnHighlight({ origin: "marginalia" })).toBe(false);
     expect(isOwnHighlight({ origin: "anything-else" })).toBe(false);
+  });
+});
+
+const made = (view: string, origin: string, paragraph: number | null) => ({
+  quote: "same words",
+  view,
+  origin,
+  paragraph,
+});
+
+describe("marksForView", () => {
+  test("keeps the anchor of your own highlight made in this view", () => {
+    expect(marksForView([made("issue", "mxr", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: 3 },
+    ]);
+  });
+
+  test("drops the anchor from another view, whose paragraphs are numbered differently", () => {
+    expect(marksForView([made("article", "mxr", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: null },
+    ]);
+  });
+
+  test("drops the anchor from a Marginalia highlight, numbered in Marginalia's copy", () => {
+    expect(marksForView([made("issue", "marginalia", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: null },
+    ]);
   });
 });

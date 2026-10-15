@@ -6,6 +6,7 @@
 //! Every string here may come from someone else's email (subjects, senders,
 //! a model's reply about them): it is displayed, never acted on.
 
+use mxr_protocol::AssistantReadoutData;
 use serde_json::Value;
 
 /// A tool name as words: `mxr_list_messages` reads "List messages".
@@ -193,9 +194,33 @@ pub fn answered_with(result: Option<&str>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
+/// A step's readout on one line: "9 found: Ann, Bo, Cy and 6 more", or its
+/// facts, "Accepted yes · Items 2".
+pub fn readout_line(readout: &AssistantReadoutData) -> Option<String> {
+    if let Some(total) = readout.total {
+        let names: Vec<&str> = readout.rows.iter().map(|row| row.title.as_str()).collect();
+        let rest = total.saturating_sub(names.len() as u64);
+        let mut line = format!("{total} found");
+        if !names.is_empty() {
+            line.push_str(": ");
+            line.push_str(&names.join(", "));
+            if rest > 0 {
+                line.push_str(&format!(" and {rest} more"));
+            }
+        }
+        return Some(line);
+    }
+    let facts: Vec<String> = readout
+        .facts
+        .iter()
+        .map(|fact| format!("{} {}", fact.label, fact.value))
+        .collect();
+    (!facts.is_empty()).then(|| facts.join(" · "))
+}
+
 /// The assistant's light markdown as terminal text: markers dropped,
-/// bullets kept, links as "text (url)", images as their description only
-/// (nothing remote is fetched or shown).
+/// bullets kept, links as "text (url)", in-app `mxr:` links as their text,
+/// images as their description only (nothing remote is fetched or shown).
 pub fn plain_text(markdown: &str) -> String {
     let mut out = Vec::new();
     for line in markdown.lines() {
@@ -233,7 +258,9 @@ fn inline(text: &str) -> String {
             let start = if image { i + 2 } else { i + 1 };
             if let Some((label, url, end)) = link_at(&chars, start) {
                 // An image is only its description: nothing remote loads.
-                if image || label == url || url.is_empty() {
+                // An mxr: link opens an email in the web app; here its
+                // words are the thing.
+                if image || label == url || url.is_empty() || url.starts_with("mxr:") {
                     out.push_str(&label);
                 } else {
                     out.push_str(&format!("{label} ({url})"));
@@ -345,10 +372,42 @@ mod tests {
     }
 
     #[test]
+    fn a_readout_is_one_line() {
+        use mxr_protocol::{AssistantReadoutFactData, AssistantReadoutRowData};
+        let row = |title: &str| AssistantReadoutRowData {
+            title: title.into(),
+            detail: None,
+            link: None,
+        };
+        let listed = AssistantReadoutData {
+            total: Some(9),
+            rows: vec![row("Ann"), row("Bo")],
+            facts: Vec::new(),
+        };
+        assert_eq!(
+            readout_line(&listed).as_deref(),
+            Some("9 found: Ann, Bo and 7 more")
+        );
+        let facts = AssistantReadoutData {
+            total: None,
+            rows: Vec::new(),
+            facts: vec![AssistantReadoutFactData {
+                label: "Items".into(),
+                value: "2".into(),
+            }],
+        };
+        assert_eq!(readout_line(&facts).as_deref(), Some("Items 2"));
+    }
+
+    #[test]
     fn markdown_becomes_plain_text() {
         assert_eq!(
             plain_text("## Today\n- **Acme** sent [the invoice](https://x.test)\n`code` and snake_case\n![pixel](https://t.test/p.gif)"),
             "Today\n• Acme sent the invoice (https://x.test)\ncode and snake_case\npixel"
+        );
+        assert_eq!(
+            plain_text("Reply to [Q1 report](mxr:thread/t-1)"),
+            "Reply to Q1 report"
         );
     }
 

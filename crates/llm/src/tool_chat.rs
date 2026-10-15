@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// One tool the model may call. `input_schema` is a JSON Schema object.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolSpec {
     pub name: String,
     pub description: String,
@@ -16,7 +16,7 @@ pub struct ToolSpec {
 }
 
 /// A tool call the model asked for. `arguments` is the parsed JSON object.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -27,7 +27,7 @@ pub struct ToolCall {
 /// next request to the same provider. Anthropic requires thinking blocks to
 /// come back exactly as they were sent and rejects edited history, so the
 /// rebuilt `text` + `tool_calls` form is only good for other providers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderTurn {
     /// `"anthropic"` today.
     pub provider: String,
@@ -35,7 +35,7 @@ pub struct ProviderTurn {
     pub content: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "snake_case")]
 pub enum ToolChatMessage {
     System {

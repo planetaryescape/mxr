@@ -46,7 +46,7 @@ pub struct AssistantViewContextData {
     pub search_query: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AssistantConversationSummaryData {
     pub id: String,
@@ -61,7 +61,7 @@ pub struct AssistantConversationSummaryData {
     pub pending_count: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AssistantConversationData {
     pub id: String,
@@ -79,7 +79,7 @@ pub struct AssistantConversationData {
 
 /// One entry in the conversation as the user sees it. A tool call and its
 /// result are one item.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantItemData {
@@ -135,7 +135,7 @@ pub enum AssistantCallStateData {
 }
 
 /// A call waiting for the user.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantPendingData {

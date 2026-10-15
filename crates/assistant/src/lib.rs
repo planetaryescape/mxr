@@ -1,3 +1,11 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::panic,
+        clippy::unwrap_used,
+        reason = "unit tests use panic and unwrap to keep fixture failures direct"
+    )
+)]
 //! The in-app assistant: a chat agent that works on the user's mailbox
 //! through mxr's own tools.
 //!

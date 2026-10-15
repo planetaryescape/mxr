@@ -1,0 +1,223 @@
+/*
+ * The conversation: what the user wrote, what the assistant answered, and
+ * the steps it took between, folded into one line once the turn is done.
+ * The steps are the assistant's work shown, not narrated: each carries the
+ * reason the model gave and, opened, the exact call and what mxr returned.
+ */
+
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleSlash,
+  CircleX,
+  Hand,
+  LoaderCircle,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+
+import type { AssistantCallState, AssistantItem } from "./api";
+import { toolWords } from "./describe";
+import { renderMarkdown } from "./markdown";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+
+type ToolCallItem = Extract<AssistantItem, { kind: "tool_call" }>;
+type Block =
+  | { kind: "user"; item: Extract<AssistantItem, { kind: "user" }> }
+  | { kind: "assistant"; item: Extract<AssistantItem, { kind: "assistant" }> }
+  | { kind: "steps"; items: ToolCallItem[] };
+
+function blocks(items: AssistantItem[]): Block[] {
+  const out: Block[] = [];
+  for (const item of items) {
+    if (item.kind === "tool_call") {
+      const last = out.at(-1);
+      if (last?.kind === "steps") last.items.push(item);
+      else out.push({ kind: "steps", items: [item] });
+    } else if (item.kind === "user") {
+      out.push({ kind: "user", item });
+    } else {
+      out.push({ kind: "assistant", item });
+    }
+  }
+  return out;
+}
+
+export function Transcript({ items, running }: { items: AssistantItem[]; running: boolean }) {
+  const grouped = useMemo(() => blocks(items), [items]);
+  return (
+    <ol className="space-y-4" aria-label="Conversation">
+      {grouped.map((block, index) => {
+        const isLast = index === grouped.length - 1;
+        if (block.kind === "user") {
+          return (
+            <li key={`u${block.item.seq}`}>
+              <p className="border-l-2 border-foreground/70 pl-3 text-sm italic leading-relaxed whitespace-pre-wrap text-foreground">
+                {block.item.text}
+              </p>
+            </li>
+          );
+        }
+        if (block.kind === "assistant") {
+          return (
+            <li key={`a${block.item.seq}`}>
+              <div
+                className="assistant-prose text-sm leading-relaxed text-foreground"
+                // Sanitized in renderMarkdown: no scripts, no images, safe links.
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(block.item.text) }}
+              />
+            </li>
+          );
+        }
+        return (
+          <li key={`s${block.items[0]?.call_id ?? index}`}>
+            <Steps items={block.items} live={running && isLast} />
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
+  const settled = !live && items.every((item) => item.state !== "running");
+  const [open, setOpen] = useState(false);
+  if (!settled || open) {
+    return (
+      <div>
+        {settled ? (
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mb-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
+          >
+            Hide {items.length === 1 ? "step" : `${items.length} steps`}
+          </button>
+        ) : null}
+        <ul className="space-y-0.5">
+          {items.map((item) => (
+            <Step key={item.call_id} item={item} />
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const waiting = items.some((item) => item.state === "waiting");
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
+    >
+      <ChevronRight className="size-3" aria-hidden="true" />
+      {items.length === 1 ? "1 step" : `${items.length} steps`}
+      {waiting ? ", waiting for you" : ""}
+    </button>
+  );
+}
+
+function Step({ item }: { item: ToolCallItem }) {
+  const label = stepLabel(item);
+  return (
+    <li>
+      <Collapsible>
+        <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded-sm px-1 py-0.5 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring">
+          <StateIcon state={item.state} />
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground group-hover:text-foreground">
+            {label}
+          </span>
+          <ChevronRight
+            className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90"
+            aria-hidden="true"
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="ml-6 space-y-1.5 py-1.5">
+          <p className="font-mono text-2xs text-muted-foreground">
+            {item.tool} · {STATE_WORDS[item.state]}
+          </p>
+          <pre className="max-h-40 overflow-auto rounded-sm bg-muted/40 p-2 font-mono text-2xs whitespace-pre-wrap break-all">
+            {JSON.stringify(item.arguments, null, 2)}
+          </pre>
+          {item.result ? (
+            <pre className="max-h-56 overflow-auto rounded-sm bg-muted/40 p-2 font-mono text-2xs whitespace-pre-wrap break-all">
+              {pretty(item.result)}
+            </pre>
+          ) : null}
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
+
+function stepLabel(item: ToolCallItem): string {
+  if (item.tool === "ask_user") {
+    const answered = answeredWith(item.result);
+    const reason = item.reason || "Asked you a question";
+    return answered ? `${reason}: ${answered}` : reason;
+  }
+  return item.reason || toolWords(item.tool);
+}
+
+/** "Work, plus a note" from an ask_user result the user wrote. */
+function answeredWith(result: string | null | undefined): string | null {
+  if (!result) return null;
+  try {
+    const parsed = JSON.parse(result) as {
+      answers?: Array<{ selected?: string[]; other?: string | null }>;
+    };
+    const parts: string[] = [];
+    for (const answer of parsed.answers ?? []) {
+      parts.push(...(answer.selected ?? []));
+      if (answer.other) parts.push(answer.other);
+    }
+    return parts.length > 0 ? parts.join(", ") : null;
+  } catch {
+    return null;
+  }
+}
+
+function pretty(result: string): string {
+  try {
+    return JSON.stringify(JSON.parse(result), null, 2);
+  } catch {
+    return result;
+  }
+}
+
+const STATE_WORDS: Record<AssistantCallState, string> = {
+  running: "running",
+  done: "done",
+  failed: "failed",
+  waiting: "waiting for you",
+  approved: "you approved it",
+  declined: "declined",
+  answered: "you answered",
+  cancelled: "stopped",
+  interrupted: "interrupted",
+};
+
+function StateIcon({ state }: { state: AssistantCallState }) {
+  const base = "mt-0.5 size-3.5 shrink-0";
+  switch (state) {
+    case "running":
+      return <LoaderCircle className={cn(base, "animate-spin text-primary")} aria-label="Running" />;
+    case "done":
+    case "answered":
+      return <CircleCheck className={cn(base, "text-muted-foreground")} aria-label="Done" />;
+    case "approved":
+      return <CircleCheck className={cn(base, "text-primary")} aria-label="Approved" />;
+    case "waiting":
+      return <Hand className={cn(base, "text-warning")} aria-label="Waiting for you" />;
+    case "failed":
+      return <CircleX className={cn(base, "text-destructive")} aria-label="Failed" />;
+    case "declined":
+    case "cancelled":
+      return <CircleSlash className={cn(base, "text-muted-foreground")} aria-label="Not run" />;
+    case "interrupted":
+      return <CircleAlert className={cn(base, "text-warning")} aria-label="Interrupted" />;
+    default:
+      return <CircleDashed className={cn(base, "text-muted-foreground")} aria-hidden="true" />;
+  }
+}

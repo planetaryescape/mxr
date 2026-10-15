@@ -61,6 +61,7 @@
     "email-addresses": "^5.0.0",
     "linkifyjs": "^4.3.2",
     "lucide-react": "^0.577.0",
+    "marked": "18.0.14",
     "openapi-fetch": "*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

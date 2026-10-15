@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, CircleHelp, PenSquare, Search } from "lucide-react";
+import { BotMessageSquare, ChevronRight, CircleHelp, PenSquare, Search } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
+import { useAssistantUi } from "@/features/assistant/assistantStore";
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
@@ -232,6 +233,8 @@ export function Topbar() {
         </Button>
       ) : null}
 
+      <AssistantToggle />
+
       <Button
         size="sm"
         variant="secondary"
@@ -244,5 +247,24 @@ export function Topbar() {
         <span className="hidden md:inline">Compose</span>
       </Button>
     </div>
+  );
+}
+
+function AssistantToggle() {
+  const open = useAssistantUi((s) => s.open);
+  const toggle = useAssistantUi((s) => s.toggle);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn("h-8 w-8 p-0", open && "bg-muted text-primary")}
+      onClick={toggle}
+      aria-pressed={open}
+      aria-label="Assistant"
+      title={`Assistant (${formatChord("Mod+.")})`}
+    >
+      <BotMessageSquare className="size-4" />
+    </Button>
   );
 }

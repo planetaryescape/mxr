@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
 import { ArchiveRecoveryPanel } from "@/features/mail-actions/ArchiveRecoveryPanel";
+import { AssistantSplit } from "@/features/assistant/AssistantSplit";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileTabs } from "@/components/MobileTabs";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -231,6 +232,7 @@ export function AppShell() {
               />
             )}
             <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
+              <AssistantSplit>
               <div
                 className="app-shell"
                 data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
@@ -267,6 +269,7 @@ export function AppShell() {
                   {mountPromises ? <PromiseTray /> : null}
                 </Suspense>
               </div>
+              </AssistantSplit>
             </ResizablePanel>
           </ResizablePanelGroup>
         </>

@@ -101,7 +101,6 @@ pub enum AssistantItemData {
         tool: String,
         /// The model's one-line reason, for the user.
         reason: String,
-        #[cfg_attr(feature = "openapi", schema(value_type = Object))]
         arguments: serde_json::Value,
         state: AssistantCallStateData,
         /// The start of the result as mxr returned it, for a details view.
@@ -144,12 +143,10 @@ pub enum AssistantPendingData {
     Approval {
         call_id: String,
         tool: String,
-        #[cfg_attr(feature = "openapi", schema(value_type = Object))]
         arguments: serde_json::Value,
         reason: String,
         /// What the change will do, from the tool's own preview.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
         preview: Option<serde_json::Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         preview_error: Option<String>,

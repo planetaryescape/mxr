@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 89);
+    assert_eq!(manifest.schema_version, 90);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -712,7 +712,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 89, "source {source_version}");
+        assert_eq!(manifest.schema_version, 90, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -746,7 +746,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         populate(source.path(), stage.path()).await.unwrap(),
     );
     // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
-    assert_eq!(manifest.schema_version, 89);
+    assert_eq!(manifest.schema_version, 90);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -790,7 +790,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .unwrap();
     assert!(inspect(stage.path()).await.is_err());
-    manifest.schema_version = 90;
+    manifest.schema_version = 91;
     std::fs::write(
         stage.path().join("manifest.json"),
         serde_json::to_vec(&manifest).unwrap(),
@@ -811,7 +811,7 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 89);
+    assert_eq!(manifest.schema_version, 90);
 
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),

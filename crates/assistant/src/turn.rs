@@ -470,7 +470,8 @@ impl Agent<'_> {
                     })
                     .await;
                 let output = self.host.call(&call.name, arguments).await;
-                done(prompt::tool_result(&output.content), output.is_error)
+                let is_error = output.is_error || crate::outcome::refused(&output.content);
+                done(prompt::tool_result(&output.content), is_error)
             }
             Gate::Approve { .. }
                 if self.auto_approve && gate::auto_approvable(&call.name, &arguments) =>
@@ -488,7 +489,7 @@ impl Agent<'_> {
                         crate::outcome::AUTO_APPROVED_PREFIX,
                         prompt::tool_result(&output.content)
                     ),
-                    output.is_error,
+                    output.is_error || crate::outcome::refused(&output.content),
                 )
             }
             Gate::Approve { preview } => {

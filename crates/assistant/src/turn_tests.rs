@@ -92,6 +92,13 @@ impl ToolHost for RecordingHost {
             .lock()
             .unwrap()
             .push((name.to_string(), arguments.clone()));
+        // mxr's own guard: a change without its confirm flag doesn't run.
+        if name == "mxr_mutate" && arguments.get("confirm").is_none() {
+            return ToolOutput {
+                content: json!({"blocked": true, "reason": "confirm=true is required"}).to_string(),
+                is_error: false,
+            };
+        }
         ToolOutput {
             content: json!({"tool": name, "ok": true}).to_string(),
             is_error: false,
@@ -204,6 +211,30 @@ async fn reads_run_at_once_and_their_results_are_fenced() {
         .unwrap()
         .contains(&json!("reason"))));
     assert_eq!(*sink.appended.lock().unwrap(), history);
+}
+
+#[tokio::test]
+async fn a_call_mxr_refuses_counts_as_failed_not_done() {
+    let model = ScriptedModel::new(vec![
+        calls(&[(
+            "c1",
+            "mxr_mutate",
+            json!({"action": "star", "message_ids": ["m1"], "reason": "Star it."}),
+        )]),
+        answer("It didn't run."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    agent(&model, &host, &sink)
+        .send(&mut history, &[], "star m1".into())
+        .await;
+    let (content, is_error) = tool_result(&history, "c1");
+    assert!(is_error, "a blocked call must not read as done: {content}");
+    assert_eq!(
+        crate::outcome::call_state(&content, is_error),
+        crate::outcome::CallState::Failed
+    );
 }
 
 #[tokio::test]

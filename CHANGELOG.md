@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.103](https://github.com/planetaryescape/mxr/compare/v0.6.102...v0.6.103) (2026-10-15)
+
+
+### Features
+
+* mark a Reading highlight where you made it, not its first match ([#473](https://github.com/planetaryescape/mxr/issues/473)) ([56bccf3](https://github.com/planetaryescape/mxr/commit/56bccf3f52f2765de6c532448729b5ece3f7cff5))
+* settle avatars, names and colour across the modes ([#475](https://github.com/planetaryescape/mxr/issues/475)) ([e82f358](https://github.com/planetaryescape/mxr/commit/e82f3587e8400ab19e772a7dcddb619619c60465))
+
+
+### Bug Fixes
+
+* keep mxr's code font in the reader ([#470](https://github.com/planetaryescape/mxr/issues/470)) ([db36883](https://github.com/planetaryescape/mxr/commit/db368832b9240678ab8a568d7ce628ae78b8287b))
+
 ## [0.6.102](https://github.com/planetaryescape/mxr/compare/v0.6.101...v0.6.102) (2026-10-14)
 
 

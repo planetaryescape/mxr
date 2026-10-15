@@ -140,7 +140,9 @@ pub fn with_reason(mut spec: ToolSpec) -> ToolSpec {
     }
     schema["properties"][REASON_FIELD] = json!({
         "type": "string",
-        "description": "Why you are making this call, in one plain sentence for the user. Shown in the app next to the step."
+        // Kept short: it repeats on every tool, and the system prompt
+        // explains the field once.
+        "description": "One sentence for the user: why this call."
     });
     let mut required: Vec<Value> = schema["required"].as_array().cloned().unwrap_or_default();
     if !required.iter().any(|field| field == REASON_FIELD) {

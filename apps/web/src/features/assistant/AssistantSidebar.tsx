@@ -178,7 +178,7 @@ export function AssistantSidebar() {
         ) : null}
         {running ? (
           <RunningLine
-            progress={live.progress}
+            progress={live.writing ? { kind: "writing", text: live.writing } : live.progress}
             startedAt={live.startedAt}
             stopping={stop.isPending}
             onStop={() => data && stop.mutate(data.id)}

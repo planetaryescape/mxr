@@ -354,13 +354,17 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    fn collect() -> (Mutex<Vec<String>>, impl Fn(&Mutex<Vec<String>>, &str)) {
-        (
-            Mutex::new(Vec::new()),
-            |seen: &Mutex<Vec<String>>, text: &str| {
-                seen.lock().unwrap().push(text.to_string());
-            },
-        )
+    /// Every text the stream reported, in order.
+    #[derive(Default)]
+    struct Seen(Mutex<Vec<String>>);
+
+    impl Seen {
+        fn push(&self, text: &str) {
+            self.0.lock().unwrap().push(text.to_string());
+        }
+        fn all(&self) -> Vec<String> {
+            self.0.lock().unwrap().clone()
+        }
     }
 
     #[test]
@@ -376,8 +380,8 @@ mod tests {
 
     #[test]
     fn openai_chunks_build_text_and_tool_calls() {
-        let (seen, push) = collect();
-        let sink = |text: &str| push(&seen, text);
+        let seen = Seen::default();
+        let sink = |text: &str| seen.push(text);
         let mut stream = OpenAiStream::default();
         for data in [
             r#"{"model":"m","choices":[{"delta":{"content":"Look"}}]}"#,
@@ -393,13 +397,13 @@ mod tests {
         assert_eq!(reply.tool_calls[0].id, "c1");
         assert_eq!(reply.tool_calls[0].arguments, json!({"query": "x"}));
         assert_eq!(reply.finish_reason.as_deref(), Some("tool_calls"));
-        assert_eq!(*seen.lock().unwrap(), vec!["Look", "Looking."]);
+        assert_eq!(seen.all(), vec!["Look", "Looking."]);
     }
 
     #[test]
     fn anthropic_events_rebuild_the_unstreamed_reply_for_replay() {
-        let (seen, push) = collect();
-        let sink = |text: &str| push(&seen, text);
+        let seen = Seen::default();
+        let sink = |text: &str| seen.push(text);
         let mut stream = AnthropicStream::default();
         for data in [
             r#"{"type":"message_start","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":8}}}"#,
@@ -431,7 +435,7 @@ mod tests {
         assert_eq!(reply["stop_reason"], "tool_use");
         assert_eq!(reply["usage"]["output_tokens"], 5);
         assert_eq!(reply["usage"]["cache_read_input_tokens"], 8);
-        assert_eq!(*seen.lock().unwrap(), vec!["Hi"]);
+        assert_eq!(seen.all(), vec!["Hi"]);
     }
 
     #[test]

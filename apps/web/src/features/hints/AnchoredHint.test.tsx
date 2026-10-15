@@ -12,7 +12,7 @@ const hint: Hint = {
   key: { key: "t", verb: "add to To do" },
 };
 
-describe("a floating hint", () => {
+describe("a hint", () => {
   test("is announced as a status with its text", () => {
     render(<AnchoredHint hint={hint} onDismiss={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent("Nothing becomes a to-do on its own.");

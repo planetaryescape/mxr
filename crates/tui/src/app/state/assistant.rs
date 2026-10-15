@@ -27,7 +27,8 @@ pub enum AssistantPrompt {
     RejectReason { call_id: String, text: String },
     /// The user's own answer to the active question.
     Other { text: String },
-    /// The daemon's dry run of deleting the open conversation.
+    /// The daemon's dry run of deleting the open conversation, or the one
+    /// highlighted in the history list.
     ConfirmDelete(AssistantDeleteData),
 }
 
@@ -99,6 +100,9 @@ pub struct AssistantState {
     pub answers: Vec<AnswerDraft>,
     /// Which question number keys answer when there are several.
     pub active_question: usize,
+    /// The approval whose exact call (tool and arguments) is unfolded.
+    /// Kept by call id so the next approval starts folded, as on the web.
+    pub exact_call_for: Option<String>,
     /// Settled tool steps are folded to "N steps" unless this is set.
     pub steps_expanded: bool,
     /// Lines scrolled up from the newest; 0 keeps the newest in view.
@@ -190,6 +194,7 @@ impl AssistantState {
         self.answers_for = None;
         self.answers.clear();
         self.active_question = 0;
+        self.exact_call_for = None;
         self.steps_expanded = false;
         self.scroll_from_bottom = 0;
         self.error = None;

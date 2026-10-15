@@ -31,9 +31,10 @@ While the pane has the keys, everything you type goes to it, not to the screen b
 | `Esc` | Leave the message box for the pane's keys; `Esc` again returns the keys to the screen |
 | `i` | Back to the message box |
 | `y` / `n` | Approve or reject the waiting change; `n` asks why (optional), `Enter` rejects |
+| `x` | Show or hide the waiting change's exact call: the tool and its arguments |
 | `1`-`9`, `o`, `Enter`, `s` | Choose an option, write your own answer, answer, or skip the question |
 | `Ctrl-c` | Stop a running turn |
-| `N` / `L` | New conversation / past conversations |
+| `N` / `L` | New conversation / past conversations; in the list, `Enter` opens one and `D` deletes it after saying what goes |
 | `T` | Let reversible changes run without asking in this conversation, or stop; the title says "auto-approve on" |
 | `D` | Delete the conversation, after saying what goes |
 | `e` | Open or fold the steps |
@@ -69,7 +70,7 @@ Only you can switch this on. The assistant can't ask for it, and nothing in an e
 
 Replies appear as the model writes them. Each step the assistant takes shows as a line with its reason. Once a turn ends the steps fold into one line such as "5 steps · 1 changed · 1 failed", so a reply that claims more than happened sits right under the steps that say otherwise. A change mxr refused to make, such as one sent without its confirmation, counts as failed. Open a step to see the exact call and what mxr returned. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`. Changes that mxr can undo by id (archiving, read state and stars made in one step) show an **Undo** button on their step for about a minute (in the terminal, `mxr assistant` prints the `mxr undo` command); undoing doesn't tell the assistant, so mention it if it matters for what comes next.
 
-Past conversations are under the history button, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
+Past conversations are under the history button, under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
 ## What it reads, and where it goes
 

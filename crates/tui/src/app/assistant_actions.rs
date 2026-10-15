@@ -56,7 +56,12 @@ impl App {
             self.stop_assistant_turn();
             return Some(None);
         }
-        if self.assistant.list.is_some() {
+        // A delete confirm can sit over the history list and answers first.
+        let confirming = matches!(
+            self.assistant.prompt,
+            Some(AssistantPrompt::ConfirmDelete(_))
+        );
+        if self.assistant.list.is_some() && !confirming {
             self.assistant_list_key(key);
             return Some(None);
         }
@@ -122,6 +127,11 @@ impl App {
                         call_id,
                         text: String::new(),
                     });
+                    return None;
+                }
+                (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                    let shown = self.assistant.exact_call_for.as_deref() == Some(call_id.as_str());
+                    self.assistant.exact_call_for = (!shown).then_some(call_id);
                     return None;
                 }
                 _ => {}
@@ -244,7 +254,23 @@ impl App {
                     self.show_assistant_conversation(id);
                 }
             }
-            KeyCode::Esc | KeyCode::Char('q') => self.assistant.list = None,
+            KeyCode::Char('D') => {
+                if let Some(summary) = list.conversations.get(list.selected) {
+                    let conversation_id = summary.id.clone();
+                    self.assistant.error = None;
+                    self.assistant.queue(
+                        AssistantCall::DeletePreview,
+                        Request::DeleteAssistantConversation {
+                            conversation_id,
+                            dry_run: true,
+                        },
+                    );
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.assistant.list = None;
+                self.assistant.error = None;
+            }
             _ => {}
         }
     }
@@ -688,9 +714,14 @@ impl App {
                 }
             }
             (AssistantCall::DeletePreview, Ok(ResponseData::AssistantDelete { delete })) => {
-                if self.assistant.conversation_id.as_deref()
-                    == Some(delete.conversation_id.as_str())
-                {
+                let open = self.assistant.conversation_id.as_deref()
+                    == Some(delete.conversation_id.as_str());
+                let listed = self.assistant.list.as_ref().is_some_and(|list| {
+                    list.conversations
+                        .iter()
+                        .any(|summary| summary.id == delete.conversation_id)
+                });
+                if open || listed {
                     self.assistant.prompt = Some(AssistantPrompt::ConfirmDelete(delete));
                 }
             }
@@ -700,6 +731,13 @@ impl App {
                         == Some(delete.conversation_id.as_str())
                     {
                         self.assistant.reset_conversation();
+                    }
+                    if let Some(list) = self.assistant.list.as_mut() {
+                        list.conversations
+                            .retain(|summary| summary.id != delete.conversation_id);
+                        list.selected = list
+                            .selected
+                            .min(list.conversations.len().saturating_sub(1));
                     }
                     self.push_toast(Toast::success(format!(
                         "Deleted \"{}\"",

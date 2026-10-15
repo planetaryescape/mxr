@@ -59,7 +59,7 @@ Anthropic replays thinking blocks only in the exact transcript that produced the
 
 - **Web**: a right-hand pane, closed until opened with the toolbar button or `Mod+.`, beside every page and kept as you navigate; an overlay drawer below 1024px. Steps fold into "N steps" once a turn ends and each opens to the exact call and result. Approval cards show the change in words, the reason, and the messages or draft it touches. Question cards offer the options, an "Other" box and Skip.
 - **CLI**: `mxr assistant status | send | approve | reject | answer | stop | list | show | delete`. `send` and the decisions wait for the turn and print what waits with the command that answers it; `--format json` prints the conversation.
-- **TUI**: not yet; see [docs/issues/assistant-followups.md](../issues/assistant-followups.md). `Mod+.` is listed as a web-only key.
+- **TUI**: a pane opened with `Ctrl-a` on any screen, beside the content or over its right on narrow terminals, with the same approval and question cards; `x` unfolds an approval's exact call, and `L` lists past conversations, where `D` deletes one after a dry run. `Mod+.` is listed as a web-only key.
 - **MCP**: deliberately absent. An external agent already has the tools; driving the assistant would let it approve its own changes.
 
 ## Privacy

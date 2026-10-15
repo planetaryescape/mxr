@@ -428,3 +428,137 @@ fn t_toggles_auto_approve_for_the_conversation() {
         [Request::SetAssistantAutoApprove { conversation_id, enabled: true }] if conversation_id == "c1"
     ));
 }
+
+fn summary(id: &str, title: &str) -> mxr_protocol::AssistantConversationSummaryData {
+    mxr_protocol::AssistantConversationSummaryData {
+        id: id.into(),
+        title: title.into(),
+        status: AssistantStatusData::Idle,
+        last_outcome: None,
+        created_at: 0,
+        updated_at: 0,
+        message_count: 2,
+        pending_count: 0,
+    }
+}
+
+#[test]
+fn shift_d_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run() {
+    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('L'), KeyModifiers::SHIFT);
+    requests(&mut app);
+    app.apply_assistant_result(
+        AssistantCall::List,
+        Ok(ResponseData::AssistantConversations {
+            conversations: vec![summary("c1", "Receipts"), summary("c2", "Old trip")],
+        }),
+    );
+    press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('D'), KeyModifiers::SHIFT);
+    let preview = app.assistant.take_outbound();
+    assert!(matches!(
+        preview.as_slice(),
+        [outbound] if matches!(&outbound.request, Request::DeleteAssistantConversation { conversation_id, dry_run: true } if conversation_id == "c2")
+    ));
+    app.apply_assistant_result(
+        preview[0].call.clone(),
+        Ok(ResponseData::AssistantDelete {
+            delete: AssistantDeleteData {
+                conversation_id: "c2".into(),
+                title: "Old trip".into(),
+                message_count: 2,
+                dry_run: true,
+                deleted: false,
+            },
+        }),
+    );
+    let screen = render_to_string(140, 40, |frame| app.draw(frame));
+    assert!(screen.contains("Delete \"Old trip\""), "{screen}");
+    press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+    let delete = app.assistant.take_outbound();
+    assert!(matches!(
+        delete.as_slice(),
+        [outbound] if matches!(&outbound.request, Request::DeleteAssistantConversation { conversation_id, dry_run: false } if conversation_id == "c2")
+    ));
+    app.apply_assistant_result(
+        delete[0].call.clone(),
+        Ok(ResponseData::AssistantDelete {
+            delete: AssistantDeleteData {
+                conversation_id: "c2".into(),
+                title: "Old trip".into(),
+                message_count: 2,
+                dry_run: false,
+                deleted: true,
+            },
+        }),
+    );
+    // The list stays open without it; the open conversation is untouched.
+    let list = app.assistant.list.as_ref().expect("the list stays open");
+    assert_eq!(list.conversations.len(), 1);
+    assert_eq!(list.selected, 0);
+    assert_eq!(app.assistant.conversation_id.as_deref(), Some("c1"));
+}
+
+#[test]
+fn deleting_the_open_conversation_from_the_history_starts_a_fresh_one() {
+    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('L'), KeyModifiers::SHIFT);
+    requests(&mut app);
+    app.apply_assistant_result(
+        AssistantCall::List,
+        Ok(ResponseData::AssistantConversations {
+            conversations: vec![summary("c1", "Receipts")],
+        }),
+    );
+    app.apply_assistant_result(
+        AssistantCall::Delete,
+        Ok(ResponseData::AssistantDelete {
+            delete: AssistantDeleteData {
+                conversation_id: "c1".into(),
+                title: "Receipts".into(),
+                message_count: 2,
+                dry_run: false,
+                deleted: true,
+            },
+        }),
+    );
+    assert_eq!(app.assistant.conversation_id, None);
+    assert!(app.assistant.conversation.is_none());
+    assert!(app
+        .assistant
+        .list
+        .as_ref()
+        .is_some_and(|list| list.conversations.is_empty()));
+}
+
+#[test]
+fn x_shows_and_hides_the_exact_call_of_the_waiting_change() {
+    let mut app = showing(conversation(
+        AssistantStatusData::AwaitingUser,
+        vec![approval()],
+    ));
+    let folded = render_to_string(140, 40, |frame| app.draw(frame));
+    assert!(!folded.contains("EXACT CALL"), "{folded}");
+    press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+    let open = render_to_string(140, 40, |frame| app.draw(frame));
+    assert!(open.contains("EXACT CALL"), "{open}");
+    assert!(open.contains("mxr_mutate {"), "{open}");
+    assert!(open.contains("\"action\": \"archive\""), "{open}");
+    press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+    assert_eq!(app.assistant.exact_call_for, None);
+    assert!(requests(&mut app).is_empty(), "x decides nothing");
+}
+
+#[test]
+fn toasts_stack_beside_the_pane_and_leave_its_hint_line_visible() {
+    for width in [140, 90] {
+        let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+        app.push_toast(crate::app::Toast::success("Archived 3 messages"));
+        let screen = render_to_string(width, 30, |frame| app.draw(frame));
+        assert!(screen.contains("Archived 3 messages"), "{screen}");
+        assert!(screen.contains("L history · T trust · D"), "{screen}");
+    }
+}

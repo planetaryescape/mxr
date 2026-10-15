@@ -23,6 +23,6 @@ expression: render(&state)
 "│ ──────────────────────────────────────────── │"
 "│ › Answer above, or press i to write instead  │"
 "│ qwen3:8b · runs on this machine              │"
-"│ y approve · n reject · i write instead · Esc │"
-"│ leave                                        │"
+"│ y approve · n reject · x exact call · i      │"
+"│ write instead · Esc leave                    │"
 "╰──────────────────────────────────────────────╯"

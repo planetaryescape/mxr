@@ -891,7 +891,13 @@ impl App {
             visible_toasts.insert(0, pinned);
         }
         visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
-        ui::toasts::draw(frame, area, &visible_toasts, now, theme);
+        // The assistant pane keeps its key hints at its bottom, where toasts
+        // would stack, so they stack left of the pane while it is open.
+        let toast_area = assistant_area.map_or(area, |pane| Rect {
+            width: pane.x.saturating_sub(area.x),
+            ..area
+        });
+        ui::toasts::draw(frame, toast_area, &visible_toasts, now, theme);
     }
 
     fn draw_saved_search_tabs(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {

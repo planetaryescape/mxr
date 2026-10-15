@@ -478,9 +478,11 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | `Esc` | Message box → pane keys → screen |
 | `i` | Back to the message box |
 | `y` / `n` | Approve / reject the waiting change |
+| `x` | Show / hide the waiting change's exact call |
 | `1`–`9`, `o`, `Enter`, `s` | Choose, write your own answer, answer, skip |
 | `Ctrl-c` | Stop a running turn |
 | `N` / `L` | New conversation / past conversations |
+| `D` (in the `L` list) | Delete the highlighted conversation (shows what goes first) |
 | `T` | Auto-approve reversible changes in this conversation (on/off) |
 | `D` | Delete the conversation (shows what goes first) |
 | `e` | Open or fold the steps |

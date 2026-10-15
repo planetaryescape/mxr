@@ -60,8 +60,14 @@ pub fn draw(
     push_wrapped(&mut footer, "", &hint_text(state), width, muted, muted);
 
     let mut card = card_lines(state, width, theme);
-    // The card can take half the pane; the footer always shows.
-    let card_room = usize::from(inner.height / 2);
+    // The card can take half the pane, or all the footer leaves while the
+    // exact call is unfolded; the footer always shows.
+    let card_room = if state.exact_call_for.is_some() {
+        usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
+    } else {
+        0
+    }
+    .max(usize::from(inner.height / 2));
     if card.len() > card_room {
         card.truncate(card_room.saturating_sub(1));
         card.push(Line::from(Span::styled(
@@ -124,11 +130,12 @@ fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
 
 /// The keys that work right now, in the pane's own words.
 pub fn hint_text(state: &AssistantState) -> String {
-    if state.list.is_some() {
-        return "j/k move · Enter open · Esc back".into();
-    }
     match &state.prompt {
+        // A delete confirm can sit over the history list.
         Some(AssistantPrompt::ConfirmDelete(_)) => return "y delete · n keep".into(),
+        _ if state.list.is_some() => {
+            return "j/k move · Enter open · D delete · Esc back".into();
+        }
         Some(AssistantPrompt::RejectReason { .. }) => return "Enter reject · Esc back".into(),
         Some(AssistantPrompt::Other { .. }) => return "Enter save · Esc back".into(),
         None => {}
@@ -142,7 +149,7 @@ pub fn hint_text(state: &AssistantState) -> String {
         AssistantFocus::Input => format!("Enter send · Alt-Enter new line · Esc keys{stop}"),
         AssistantFocus::Pane => match state.pending().first() {
             Some(AssistantPendingData::Approval { .. }) => {
-                "y approve · n reject · i write instead · Esc leave".into()
+                "y approve · n reject · x exact call · i write instead · Esc leave".into()
             }
             Some(AssistantPendingData::Question { questions, .. }) => {
                 let other = questions.iter().any(|question| question.allow_other);
@@ -220,6 +227,28 @@ fn push_wrapped(
             Span::styled(lead.to_string(), prefix_style),
             Span::styled(row, style),
         ]));
+    }
+}
+
+/// `value` as indented JSON, `lead` before its first line. Each line
+/// wraps under its own indent so nesting stays readable when narrow.
+fn push_json(
+    lines: &mut Vec<Line<'static>>,
+    lead: &str,
+    value: &serde_json::Value,
+    width: usize,
+    style: Style,
+) {
+    let json = serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string());
+    for (index, row) in json.lines().enumerate() {
+        let text = row.trim_start();
+        let indent = " ".repeat(row.len() - text.len());
+        let prefix = if index == 0 {
+            format!("{lead}{indent}")
+        } else {
+            indent
+        };
+        push_wrapped(lines, &prefix, text, width, style, style);
     }
 }
 
@@ -469,14 +498,17 @@ pub(crate) fn transcript_lines(
 /// What waits for the user: a change to approve, or questions to answer.
 fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
-    if state.list.is_some() {
-        return lines;
-    }
     let muted = Style::default().fg(theme.text_muted);
+    // Over the history list the card is only the delete confirm.
+    let pending: &[AssistantPendingData] = if state.list.is_some() {
+        &[]
+    } else {
+        state.pending()
+    };
     let label = Style::default().fg(theme.accent).bold();
     let strong = Style::default().fg(theme.text_primary).bold();
     let body = Style::default().fg(theme.text_primary);
-    for pending in state.pending() {
+    for pending in pending {
         lines.push(Line::from(Span::styled("─".repeat(width), muted)));
         match pending {
             AssistantPendingData::Approval {
@@ -566,6 +598,17 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                         warn,
                         warn,
                     );
+                }
+                if state.exact_call_for.as_deref() == Some(call_id.as_str()) {
+                    lines.push(Line::from(Span::styled("EXACT CALL", label)));
+                    push_json(&mut lines, &format!("{tool} "), arguments, width, muted);
+                    // A preview the card couldn't put in words shows as
+                    // the daemon returned it, as the web's does.
+                    if let Some(preview) = preview.as_ref().filter(|_| messages.is_empty()) {
+                        if preview_draft(preview).is_none() {
+                            push_json(&mut lines, "preview ", preview, width, muted);
+                        }
+                    }
                 }
                 if let Some(AssistantPrompt::RejectReason {
                     call_id: rejecting,
@@ -704,6 +747,11 @@ fn footer_lines(
     let mut lines: Vec<Line<'static>> = Vec::new();
     let muted = Style::default().fg(theme.text_muted);
     if state.list.is_some() {
+        // A refused delete from the list says why there.
+        if let Some(error) = &state.error {
+            let style = Style::default().fg(theme.error);
+            push_wrapped(&mut lines, "", &one_line(error), width, style, style);
+        }
         return lines;
     }
     if state.running() {
@@ -1000,6 +1048,57 @@ mod tests {
         waiting.auto_approve = true;
         state.conversation = Some(waiting);
         insta::assert_snapshot!("assistant_pane_approval", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_approval_exact_call() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Make a rule for Acme receipts")],
+            vec![AssistantPendingData::Approval {
+                call_id: "call2".into(),
+                tool: "mxr_rule".into(),
+                arguments: json!({"name": "Acme receipts", "query": "from:acme.test"}),
+                reason: "So they file themselves".into(),
+                preview: Some(json!({"matches": 3})),
+                preview_error: None,
+            }],
+        ));
+        state.exact_call_for = Some("call2".into());
+        insta::assert_snapshot!("assistant_pane_approval_exact_call", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_history_delete_confirm() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.list = Some(crate::app::AssistantListState {
+            loading: false,
+            conversations: vec![mxr_protocol::AssistantConversationSummaryData {
+                id: "c2".into(),
+                title: "Old receipts".into(),
+                status: AssistantStatusData::Idle,
+                last_outcome: None,
+                created_at: 0,
+                updated_at: chrono::Utc::now().timestamp() - 2 * 3600,
+                message_count: 4,
+                pending_count: 0,
+            }],
+            selected: 0,
+        });
+        state.prompt = Some(AssistantPrompt::ConfirmDelete(
+            mxr_protocol::AssistantDeleteData {
+                conversation_id: "c2".into(),
+                title: "Old receipts".into(),
+                message_count: 4,
+                dry_run: true,
+                deleted: false,
+            },
+        ));
+        insta::assert_snapshot!("assistant_pane_history_delete_confirm", render(&state));
     }
 
     #[test]

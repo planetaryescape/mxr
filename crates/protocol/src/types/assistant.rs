@@ -118,8 +118,56 @@ pub enum AssistantItemData {
         /// The start of the result as mxr returned it, for a details view.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         result: Option<String>,
+        /// What the result found, in words, read from the whole result.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readout: Option<AssistantReadoutData>,
         created_at: i64,
     },
+}
+
+/// A tool result for people: what it lists (the first few, with where to
+/// open each) or, when it lists nothing, its plain fields.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantReadoutData {
+    /// How many things the result lists in all, when it lists any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rows: Vec<AssistantReadoutRowData>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<AssistantReadoutFactData>,
+}
+
+/// One thing a result lists: an email, a person, a to-do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantReadoutRowData {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<AssistantLinkData>,
+}
+
+/// A plain field of a result, such as "Archived: 3".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantReadoutFactData {
+    pub label: String,
+    pub value: String,
+}
+
+/// Where a client opens something the assistant found. Replies link the
+/// same places as markdown links: `mxr:thread/<id>` and `mxr:person/<id>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AssistantLinkData {
+    /// An email conversation.
+    Thread { thread_id: String },
+    /// Someone's row in Messages.
+    Person { person_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

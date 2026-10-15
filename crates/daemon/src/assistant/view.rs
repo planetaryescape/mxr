@@ -1,7 +1,9 @@
 //! The conversation as clients show it: user and assistant messages, and
 //! each tool call joined with how it ended.
 
+use super::links::KnownLinks;
 use super::parse_pending;
+use super::readout::readout;
 use mxr_assistant::{
     call_state, prompt, readable_result, CallState, MessageMeta, PendingItem, PendingKind,
 };
@@ -41,6 +43,9 @@ pub(crate) fn conversation_view(
     let mut items: Vec<AssistantItemData> = Vec::new();
     // Where each call's item sits, so its result can fill it in.
     let mut call_index: HashMap<String, usize> = HashMap::new();
+    // What the model was given, so the emails and people its replies name
+    // link to the right place.
+    let mut links = KnownLinks::default();
     for row in messages {
         let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
             tracing::warn!(seq = row.seq, "skipping an unreadable assistant message");
@@ -87,6 +92,7 @@ pub(crate) fn conversation_view(
                         arguments,
                         state,
                         result: None,
+                        readout: None,
                         created_at: row.created_at,
                     });
                 }
@@ -99,13 +105,26 @@ pub(crate) fn conversation_view(
                 let Some(index) = call_index.get(&call_id) else {
                     continue;
                 };
-                if let Some(AssistantItemData::ToolCall { state, result, .. }) =
-                    items.get_mut(*index)
+                if let Some(AssistantItemData::ToolCall {
+                    state,
+                    result,
+                    readout: found,
+                    ..
+                }) = items.get_mut(*index)
                 {
                     *state = call_state_data(call_state(&content, is_error));
-                    *result = Some(readable_result(&content, RESULT_PREVIEW_CHARS));
+                    let whole = readable_result(&content, usize::MAX);
+                    *found = readout(&whole);
+                    *result = Some(readable_result(&whole, RESULT_PREVIEW_CHARS));
+                    links.add_result(&whole);
                 }
             }
+        }
+    }
+
+    for item in &mut items {
+        if let AssistantItemData::Assistant { text, .. } = item {
+            *text = links.apply(text);
         }
     }
 

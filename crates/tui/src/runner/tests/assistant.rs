@@ -374,6 +374,7 @@ fn updates_refetch_the_open_conversation_one_at_a_time() {
         arguments: json!({}),
         state: AssistantCallStateData::Done,
         result: None,
+        readout: None,
         created_at: 0,
     });
     app.apply_assistant_result(

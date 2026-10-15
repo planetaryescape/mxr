@@ -7,7 +7,13 @@ import type { AssistantDecision, AssistantItem, AssistantPending } from "./api";
 import { describeChange, previewMessages } from "./describe";
 import { renderMarkdown } from "./markdown";
 import { PendingCards } from "./PendingCards";
-import { Transcript } from "./Transcript";
+import { Transcript, inputWords } from "./Transcript";
+
+const navigate = vi.fn<(options: { href: string }) => Promise<void>>();
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => navigate,
+}));
 
 const approval: AssistantPending = {
   kind: "approval",
@@ -191,6 +197,88 @@ describe("markdown", () => {
     expect(html).not.toContain("<a");
     expect(html).toContain("quinn@work.com");
     expect(html).toContain("me");
+  });
+});
+
+describe("links to mail", () => {
+  test("a stored reply's mxr links open in the app; a reply being written shows words", () => {
+    const reply =
+      "Reply to [Q1 report](mxr:thread/t-1234567) and [Diana](mxr:person/person:d@x.com).";
+    const stored = renderMarkdown(reply, { appLinks: true });
+    expect(stored).toContain('href="/m/archive/t-1234567"');
+    expect(stored).toContain('href="/messages?person=person%3Ad%40x.com"');
+    expect(stored).toContain("data-app-link");
+    expect(stored).not.toContain("target=");
+    const writing = renderMarkdown(reply);
+    expect(writing).not.toContain("<a");
+    expect(writing).toContain("Q1 report");
+  });
+
+  test("clicking a reply link navigates inside the app", () => {
+    navigate.mockClear();
+    render(
+      <Transcript
+        running={false}
+        items={[
+          {
+            kind: "assistant",
+            seq: 1,
+            text: "See [Q1 report](mxr:thread/t-1234567).",
+            created_at: 0,
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Q1 report" }));
+    expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
+  });
+
+  test("an opened step reads out what it found, each row a link", () => {
+    navigate.mockClear();
+    render(
+      <Transcript
+        running={false}
+        items={[
+          {
+            kind: "tool_call",
+            seq: 1,
+            call_id: "c1",
+            tool: "mxr_messages",
+            reason: "To see who is waiting on you.",
+            arguments: {},
+            state: "done",
+            result: '{"kind":"Messages"}',
+            readout: {
+              total: 9,
+              rows: [
+                {
+                  title: "Nigel Nk",
+                  detail: "German visa application pack",
+                  link: { kind: "person", person_id: "person:n@x.com" },
+                },
+              ],
+            },
+            created_at: 0,
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    fireEvent.click(screen.getByRole("button", { name: /who is waiting on you/ }));
+    expect(screen.getByText("Found 9")).toBeVisible();
+    expect(screen.getByText("and 8 more")).toBeVisible();
+    expect(screen.queryByText("Looked for")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /Nigel Nk/ }));
+    expect(navigate).toHaveBeenCalledWith({ href: "/messages?person=person%3An%40x.com" });
+  });
+
+  test("a call's inputs read as words, leaving out empty ones", () => {
+    expect(inputWords({ query: "from:nigel", limit: 3, ids: ["a", "b"], cursor: null })).toEqual([
+      "query “from:nigel”",
+      "limit 3",
+      "ids 2 items",
+    ]);
+    expect(inputWords({})).toEqual([]);
   });
 });
 

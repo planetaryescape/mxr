@@ -5015,6 +5015,8 @@ export interface components {
                   created_at: number;
                   /** @enum {string} */
                   kind: "tool_call";
+                  readout?:
+                      components["schemas"]["AssistantReadoutData"] | null;
                   /** @description The model's one-line reason, for the user. */
                   reason: string;
                   /** @description The start of the result as mxr returned it, for a details view. */
@@ -5023,6 +5025,21 @@ export interface components {
                   seq: number;
                   state: components["schemas"]["AssistantCallStateData"];
                   tool: string;
+              };
+        /**
+         * @description Where a client opens something the assistant found. Replies link the
+         *     same places as markdown links: `mxr:thread/<id>` and `mxr:person/<id>`.
+         */
+        AssistantLinkData:
+            | {
+                  /** @enum {string} */
+                  kind: "thread";
+                  thread_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "person";
+                  person_id: string;
               };
         /**
          * @description How the last turn ended.
@@ -5083,6 +5100,30 @@ export interface components {
         AssistantQuestionOptionData: {
             description?: string | null;
             label: string;
+        };
+        /**
+         * @description A tool result for people: what it lists (the first few, with where to
+         *     open each) or, when it lists nothing, its plain fields.
+         */
+        AssistantReadoutData: {
+            facts?: components["schemas"]["AssistantReadoutFactData"][];
+            rows?: components["schemas"]["AssistantReadoutRowData"][];
+            /**
+             * Format: int64
+             * @description How many things the result lists in all, when it lists any.
+             */
+            total?: number | null;
+        };
+        /** @description A plain field of a result, such as "Archived: 3". */
+        AssistantReadoutFactData: {
+            label: string;
+            value: string;
+        };
+        /** @description One thing a result lists: an email, a person, a to-do. */
+        AssistantReadoutRowData: {
+            detail?: string | null;
+            link?: components["schemas"]["AssistantLinkData"] | null;
+            title: string;
         };
         /** @description Body of `POST /api/v1/mail/assistant/conversations`. */
         AssistantSendBody: {

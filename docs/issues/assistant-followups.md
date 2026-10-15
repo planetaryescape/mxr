@@ -1,6 +1,6 @@
 # Assistant follow-ups
 
-Open work on the assistant (blueprint [25](../blueprint/25-assistant.md), D122). Status: one open item, a model limit that the app makes visible but can't remove.
+Open work on the assistant (blueprint [25](../blueprint/25-assistant.md), D122). Status: two open items: a model limit that the app makes visible but can't remove, and opening a linked email from the TUI.
 
 ## The TUI history list can't delete
 
@@ -21,3 +21,15 @@ Open, mitigated. Testing with `gemma4` (Ollama), the model once said it had star
 ## Addresses in replies became mailto links
 
 Resolved. Markdown autolinked addresses into `mailto:` links that opened another mail app. Addresses now stay plain text.
+
+## Steps showed raw JSON
+
+Resolved. An opened step showed `{}` for a call with no inputs and the result as the first 4,000 characters of minified JSON, cut mid-object. The daemon now reads each result whole into a readout (how many things it lists, the first five with a link to each, or its plain fields), and the web shows that with the inputs as words. The raw call and result sit under "Raw call". In the TUI, an open step adds one line of what it found.
+
+## Replies named emails but didn't link them
+
+Resolved. Replies said "Q1 Report review" and the user had to go and find it. The prompt asks for `mxr:thread/<id>` and `mxr:person/<id>` links, and the daemon adds them when the model doesn't (testing with `gemma4`, it never did): a subject or name the reply quotes exactly is linked when one tool result in the conversation gave it to one email or person. A link whose id no result returned becomes plain text. The web opens them in the app beside the assistant.
+
+## The TUI can't open a linked email
+
+Open. The TUI shows a reply's links and a step's rows as words. Opening one would need a way to pick a link in the pane (a link cursor, or numbered links and a key), which the pane doesn't have yet. Until then, the email is one search away.

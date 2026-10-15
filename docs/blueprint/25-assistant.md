@@ -46,6 +46,8 @@ Agent and MCP clients can't send assistant requests. The assistant's tools run a
 - Results mxr writes itself (approvals, rejections, answers) are plain JSON with `"source": "user"`; mail can't forge one because mail always arrives fenced.
 - The gate, not the prompt, is the boundary: an injected instruction can at most make the model propose a change, which then waits for the user with a preview.
 - Replies render as sanitized markdown: no scripts, no images (a remote image is a tracking pixel), links open outside the app without a referrer.
+- Replies link the emails and people they name as `mxr:thread/<id>` and `mxr:person/<id>`. The daemon keeps a link only when its id came back in a tool result in that conversation, and links a subject or name the reply quotes exactly when a result gave that text to one email or person, since small models rarely write the links themselves. Clients open them in the app: the web goes to the email in All Mail (`/m/archive/<id>`) or the person's row in Messages; the TUI shows their words.
+- Each step carries a readout the daemon reads from the whole result, not the 4,000-character preview: how many things it lists, the first five with where to open each, or its plain fields when it lists nothing.
 
 ## Questions are a tool the turn waits on
 
@@ -57,9 +59,9 @@ Anthropic replays thinking blocks only in the exact transcript that produced the
 
 ## Clients
 
-- **Web**: a right-hand pane, closed until opened with the toolbar button or `Mod+.`, beside every page and kept as you navigate; an overlay drawer below 1024px. Steps fold into "N steps" once a turn ends and each opens to the exact call and result. Approval cards show the change in words, the reason, and the messages or draft it touches. Question cards offer the options, an "Other" box and Skip.
+- **Web**: a right-hand pane, closed until opened with the toolbar button or `Mod+.`, beside every page and kept as you navigate; an overlay drawer below 1024px. Steps fold into "N steps" once a turn ends; each opens to what it looked for and what it found, rows linking to the email or person, with the exact call and result under "Raw call". Approval cards show the change in words, the reason, and the messages or draft it touches. Question cards offer the options, an "Other" box and Skip.
 - **CLI**: `mxr assistant status | send | approve | reject | answer | stop | list | show | delete`. `send` and the decisions wait for the turn and print what waits with the command that answers it; `--format json` prints the conversation.
-- **TUI**: a pane opened with `Ctrl-a` on any screen, beside the content or over its right on narrow terminals, with the same approval and question cards; `x` unfolds an approval's exact call, and `L` lists past conversations, where `D` deletes one after a dry run. `Mod+.` is listed as a web-only key.
+- **TUI**: a pane opened with `Ctrl-a` on any screen, beside the content or over its right on narrow terminals, with the same approval and question cards; `x` unfolds an approval's exact call, open steps add a line of what each found, and `L` lists past conversations, where `D` deletes one after a dry run. `Mod+.` is listed as a web-only key.
 - **MCP**: deliberately absent. An external agent already has the tools; driving the assistant would let it approve its own changes.
 
 ## Privacy

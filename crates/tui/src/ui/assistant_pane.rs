@@ -4,7 +4,8 @@
 //! followed or fetched.
 
 use super::assistant_describe::{
-    answered_with, describe_change, plain_text, preview_draft, preview_messages, tool_words,
+    answered_with, describe_change, plain_text, preview_draft, preview_messages, readout_line,
+    tool_words,
 };
 use super::sanitize::{one_line, strip_control_chars, truncate};
 use crate::app::{AssistantFocus, AssistantPrompt, AssistantState};
@@ -413,6 +414,7 @@ pub(crate) fn transcript_lines(
                             reason,
                             state: call_state,
                             result,
+                            readout,
                             ..
                         } = step
                         {
@@ -432,6 +434,15 @@ pub(crate) fn transcript_lines(
                                     lead,
                                     Span::styled(row, Style::default().fg(theme.text_secondary)),
                                 ]));
+                            }
+                            if let Some(found) = readout.as_ref().and_then(readout_line) {
+                                let found = strip_control_chars(&one_line(&found)).into_owned();
+                                for row in wrap(&found, width.saturating_sub(4)) {
+                                    lines.push(Line::from(vec![
+                                        Span::raw("    "),
+                                        Span::styled(row, muted),
+                                    ]));
+                                }
                             }
                         }
                     }
@@ -957,6 +968,7 @@ mod tests {
             arguments: json!({}),
             state,
             result: None,
+            readout: None,
             created_at: 0,
         }
     }

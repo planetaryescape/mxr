@@ -6,6 +6,8 @@
 //! model, the tools and the transcript, and tells clients what changed.
 
 mod host;
+mod links;
+mod readout;
 mod view;
 
 pub(crate) use view::{conversation_view, summary_view};

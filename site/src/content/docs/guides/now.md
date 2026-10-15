@@ -327,8 +327,8 @@ same line in place of the snippet, and so does the TUI.
 Lines come from the cache at once. Missing ones are written in the
 background for the rows on screen first and appear as each is ready; the
 desk keeps a line's space under every row, so nothing moves. Pointing at a
-line names the model that wrote it. Newsletters and automated mail never go
-to the model, and with no model the rows look as they always did.
+line names the model that wrote it. Newsletters and mailing lists never go
+to the model, and automated mail only on [Updates](/guides/updates/#a-model-can-say-what-the-email-says). With no model the rows look as they always did.
 
 A local model writes a line every few seconds (about 3 s each with gemma4 on
 Ollama), so a screen of rows fills in over a minute or so the first time,

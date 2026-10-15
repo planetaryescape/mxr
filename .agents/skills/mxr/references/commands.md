@@ -479,6 +479,9 @@ Show configured LLM provider, model and, per feature, the model, route order and
 ### `mxr llm key status|set <anthropic|openrouter>|remove <provider> [--dry-run] [--format <FMT>]`
 Manage the API keys behind `claude-*` models (Anthropic first, OpenRouter as fallback). `set` reads the key from stdin only (`printf %s "$KEY" | mxr llm key set anthropic`); `status` shows presence and source, never the key.
 
+### `mxr briefing gists THREAD_ID... [--generate [--automated]] [--format <FMT>]`
+The one-line gist the desk and inbox rows show, for up to 100 conversations. Answers from the cache; `--generate` queues missing gists for conversations from people, and `--automated` (needs `--generate`) also queues receipts, alerts and other automated mail, which sends that mail's text to the configured model. A gist is kept only if every number in it is in the mail. `mxr events --type gist` shows each as it lands.
+
 ---
 
 ## Semantic search

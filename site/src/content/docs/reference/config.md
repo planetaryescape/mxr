@@ -581,12 +581,18 @@ model = "qwen2.5:3b-instruct"
 api_key_env = ""                    # name of the env var; empty = no auth header
 context_window = 8192
 request_timeout_secs = 120
+background_request_timeout_secs = 45
 allow_cloud_relationship_data = false
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
 to the config file. Empty `api_key_env` means no `Authorization` header
 is sent — correct for Ollama and LM Studio.
+
+`request_timeout_secs` bounds a request you started. `background_request_timeout_secs`
+(default 45) bounds the daemon's own background work, such as relationship
+summaries and commitment extraction, so a dead endpoint can't hold a background
+worker for the full foreground wait.
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
@@ -603,7 +609,7 @@ apply: mxr restart`.
 
 Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
-is present. It also lists each feature's model and, for Claude models, the
+is present. It lists each feature's model and, for Claude models, the
 providers in order with their health. It also reports process-local model request outcomes by provider
 route: initially no observation, then a typed success or failure. A successful
 request on one feature route does not clear another route's failure, and a

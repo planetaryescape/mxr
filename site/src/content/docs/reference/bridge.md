@@ -351,7 +351,7 @@ The existing `/mail/actions/unsubscribe-purge` commit retains its clear-mail beh
 | `POST` | `/mail/reading/engagement` | Local engagement (`{item_key, opened, dwell_ms, progress}`); not written with `MXR_ACTIVITY=off` |
 | `POST` | `/mail/reading/items/{item_key}/article` | Fetch and save the linked article, contacting its site (`{refresh}`) |
 | `GET` | `/mail/reading/highlights` | Every highlight, plus the same as Markdown |
-| `POST` | `/mail/reading/highlights` | Save a passage (`{item_key, quote, note?, view?}`) |
+| `POST` | `/mail/reading/highlights` | Save a passage (`{item_key, quote, note?, view?, paragraph?}`); `paragraph` is the 0-based paragraph it was selected in, so it marks that passage and not the first match |
 | `POST` | `/mail/reading/highlights/{id}/note` | Replace a highlight's note (`{note, dry_run?}`). `note` is required: blank clears it, `null` is refused. Returns a `mutation_id` for `POST /mail/mutations/undo` |
 | `POST` | `/mail/reading/highlights/{id}/remove` | Remove a highlight, or with `{dry_run: true}` name what it would remove. Returns a `mutation_id` for undo |
 | `POST` | `/mail/reading/sources` | Per-source settings (`{account_id, sender_email, original_layout?, dismiss_unsubscribe_offer?}`) |

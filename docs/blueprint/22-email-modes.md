@@ -765,7 +765,7 @@ edition is the feed and Later is the shelf (reading.md §2).
 **Extracted** (reading.md §4), rule-based in `post_sync_fanout` with no
 model and no network: source, cleaned headline, standfirst, shape
 (`single`, `digest`, `teaser`, `notice`), main link and digest items with
-unwrapped URLs, minutes (238 wpm, adjusted from finished items), cadence,
+unwrapped URLs, minutes (230 wpm, adjusted from finished items), cadence,
 and local engagement (opened, finished).
 
 ```text
@@ -1832,6 +1832,13 @@ only. Index: section-aware chunks and link items, embedded lazily.
   proxy and stops at 5 MB. Highlights are indexed as their own semantic
   chunk kind. Section-aware chunks and lazy embedding for whole issues are
   not built yet.
+- **Since phase 5:** `M` opens an item in Marginalia and reads its
+  highlights back (`GetMarginaliaStatus`, `SetMarginaliaConnection`,
+  `SendReadingToMarginalia`, `SyncMarginaliaHighlights`, migration 086;
+  D121, #447, v0.6.97). Highlights are edited and removed in every client
+  with a dry run and undo (`UpdateHighlight`, `RemoveHighlight`; #461,
+  v0.6.100), and a highlight remembers the paragraph it was made in
+  (`paragraph` on `SaveHighlight`, migration 087; #473, v0.6.103).
 
 ### Phase 6: Archive as records with an answer box
 

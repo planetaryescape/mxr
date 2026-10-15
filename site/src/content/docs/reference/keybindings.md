@@ -296,19 +296,28 @@ cut below.
 
 ## Reading
 
-A lens in the sidebar (`gr`). Mail keys act on the message under the
-cursor.
+The [edition](/guides/reading/) (`gr`). Mail keys such as archive, star and
+reply don't apply here.
 
 | Key | Action |
 |-----|--------|
-| `e` | Done here: let go of the message's conversation in this mode |
-| `p` | Pin or unpin the message |
+| `Enter` | Read the item |
+| `L` | Fetch the linked article |
+| `b` | Put the item on Later |
+| `B` | Open the Later shelf (`Esc` goes back) |
+| `e` | Let go of the item |
+| `A` | Let go of everything shown (asks first) |
+| `D` | Unsubscribe, with the evidence first |
+| `R` | The sender's own layout |
+| `o` | Open the email |
+| `t` | Make a to-do from the item's email |
 | `K` | Move the sender to another place |
-| `S` | Sweep this sender's bundle (previews first) |
-| `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
-| `>` / `+` | More senders / more from this sender |
+| `X` | Move this email to another mode |
 | `M` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
+| `u` | Undo |
+| `h` | In the reader: highlight the paragraph at the top |
 | `H` | In the reader: list the item's highlights; `e` edits a note, `x` removes one (it asks first), `u` undoes |
+| `Esc` | In the reader: back to the edition |
 
 ## Archive
 

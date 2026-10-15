@@ -15,7 +15,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    ChatRole, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
+    CallKind, ChatRole, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError,
+    LlmProvider, ToolChatRequest, ToolChatResponse,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -37,6 +38,14 @@ impl LlmProvider for DemoLlmProvider {
             model: "mxr-demo-canned".to_string(),
             finish_reason: Some("stop".to_string()),
         })
+    }
+
+    async fn chat_as(
+        &self,
+        req: ToolChatRequest,
+        _kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
+        Ok(crate::demo_assistant::reply(&req))
     }
 
     fn capabilities(&self) -> LlmCapabilities {

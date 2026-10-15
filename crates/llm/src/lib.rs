@@ -43,6 +43,7 @@ use tokio::time::Instant;
 mod anthropic;
 mod background;
 mod demo;
+mod demo_assistant;
 mod endpoint;
 mod failure;
 mod health;

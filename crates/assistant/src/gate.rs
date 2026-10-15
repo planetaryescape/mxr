@@ -180,7 +180,7 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
     }
 }
 
-/// Whether `tool` has an entry in [`RULES`].
+/// Whether `tool` has its own gate rule (unlisted tools always wait).
 pub fn is_classified(tool: &str) -> bool {
     RULES.iter().any(|(name, _)| *name == tool)
 }

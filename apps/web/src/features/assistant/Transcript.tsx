@@ -27,6 +27,7 @@ type ToolCallItem = Extract<AssistantItem, { kind: "tool_call" }>;
 type Block =
   | { kind: "user"; item: Extract<AssistantItem, { kind: "user" }> }
   | { kind: "assistant"; item: Extract<AssistantItem, { kind: "assistant" }> }
+  | { kind: "summary"; item: Extract<AssistantItem, { kind: "summary" }> }
   | { kind: "steps"; items: ToolCallItem[] };
 
 function blocks(items: AssistantItem[]): Block[] {
@@ -38,6 +39,8 @@ function blocks(items: AssistantItem[]): Block[] {
       else out.push({ kind: "steps", items: [item] });
     } else if (item.kind === "user") {
       out.push({ kind: "user", item });
+    } else if (item.kind === "summary") {
+      out.push({ kind: "summary", item });
     } else {
       out.push({ kind: "assistant", item });
     }
@@ -57,6 +60,24 @@ export function Transcript({ items, running }: { items: AssistantItem[]; running
               <p className="border-l-2 border-foreground/70 pl-3 text-sm italic leading-relaxed whitespace-pre-wrap text-foreground">
                 {block.item.text}
               </p>
+            </li>
+          );
+        }
+        if (block.kind === "summary") {
+          return (
+            <li key={`sum${block.item.seq}`}>
+              <Collapsible>
+                <CollapsibleTrigger className="group flex w-full items-center gap-2 font-mono text-2xs text-muted-foreground hover:text-foreground">
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                  Earlier messages summarised
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">
+                    {block.item.text}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
             </li>
           );
         }
@@ -192,6 +213,7 @@ const STATE_WORDS: Record<AssistantCallState, string> = {
   failed: "failed",
   waiting: "waiting for you",
   approved: "you approved it",
+  auto_approved: "ran without asking (reversible)",
   declined: "declined",
   answered: "you answered",
   cancelled: "stopped",
@@ -208,6 +230,8 @@ function StateIcon({ state }: { state: AssistantCallState }) {
       return <CircleCheck className={cn(base, "text-muted-foreground")} aria-label="Done" />;
     case "approved":
       return <CircleCheck className={cn(base, "text-primary")} aria-label="Approved" />;
+    case "auto_approved":
+      return <CircleCheck className={cn(base, "text-primary")} aria-label="Ran without asking" />;
     case "waiting":
       return <Hand className={cn(base, "text-warning")} aria-label="Waiting for you" />;
     case "failed":

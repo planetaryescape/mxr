@@ -36,6 +36,10 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
             decisions,
         } => decide(state, conversation_id, decisions).await,
         Request::AssistantCancel { conversation_id } => cancel(state, conversation_id).await,
+        Request::SetAssistantAutoApprove {
+            conversation_id,
+            enabled,
+        } => set_auto_approve(state, conversation_id, *enabled).await,
         Request::ListAssistantConversations { limit } => {
             let limit = limit.unwrap_or(DEFAULT_LIST_LIMIT).clamp(1, MAX_LIST_LIMIT);
             state
@@ -200,6 +204,22 @@ async fn cancel(state: &Arc<AppState>, conversation_id: &str) -> Result<Response
         if !pending.is_empty() {
             abandon_pending(state, conversation_id, &pending).await?;
         }
+    }
+    conversation(state, conversation_id).await
+}
+
+async fn set_auto_approve(
+    state: &Arc<AppState>,
+    conversation_id: &str,
+    enabled: bool,
+) -> Result<ResponseData, String> {
+    if !state
+        .store
+        .set_assistant_auto_approve(conversation_id, enabled)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Err(format!("no assistant conversation {conversation_id}"));
     }
     conversation(state, conversation_id).await
 }

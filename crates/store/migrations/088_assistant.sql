@@ -10,6 +10,10 @@
 --
 -- pending_json on the conversation lists the calls waiting for the user
 -- (approvals and questions), so a waiting turn survives a daemon restart.
+-- auto_approve is the user's choice to let reversible changes run without
+-- asking. summary replaces every message up to summary_through_seq in what
+-- the model reads, once the history outgrows its context window; the
+-- messages themselves stay.
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS assistant_conversations (
     id            TEXT PRIMARY KEY,
@@ -20,6 +24,9 @@ CREATE TABLE IF NOT EXISTS assistant_conversations (
     last_outcome  TEXT,
     last_error    TEXT,
     pending_json  TEXT,
+    auto_approve  INTEGER NOT NULL DEFAULT 0 CHECK (auto_approve IN (0, 1)),
+    summary       TEXT,
+    summary_through_seq INTEGER,
     created_at    INTEGER NOT NULL,
     updated_at    INTEGER NOT NULL
 );

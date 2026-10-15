@@ -126,6 +126,27 @@ pub async fn run(action: AssistantAction, format: Option<OutputFormat>) -> anyho
             )
             .await
         }
+        AssistantAction::Trust { conversation, off } => {
+            let response = client
+                .request(Request::SetAssistantAutoApprove {
+                    conversation_id: conversation,
+                    enabled: !off,
+                })
+                .await?;
+            let conversation = conversation_from(response)?;
+            if is_json(&format) {
+                return print_json(&conversation, &format);
+            }
+            if conversation.auto_approve {
+                println!("Reversible changes in \"{}\" now run without asking. Sending, deleting, trash, spam and rules still ask.", conversation.title);
+            } else {
+                println!(
+                    "Every change in \"{}\" asks first again.",
+                    conversation.title
+                );
+            }
+            Ok(())
+        }
         AssistantAction::Stop { conversation } => {
             let response = client
                 .request(Request::AssistantCancel {
@@ -270,6 +291,9 @@ fn print_conversation(
     {
         match item {
             AssistantItemData::User { text, .. } => println!("you: {text}\n"),
+            AssistantItemData::Summary { .. } => {
+                println!("  (earlier messages were summarised to fit the model's context)\n");
+            }
             AssistantItemData::Assistant { text, .. } => println!("{text}\n"),
             AssistantItemData::ToolCall {
                 tool,
@@ -376,6 +400,7 @@ fn state_label(state: AssistantCallStateData) -> &'static str {
         AssistantCallStateData::Failed => "failed",
         AssistantCallStateData::Waiting => "waiting for you",
         AssistantCallStateData::Approved => "approved",
+        AssistantCallStateData::AutoApproved => "ran without asking",
         AssistantCallStateData::Declined => "declined",
         AssistantCallStateData::Answered => "answered",
         AssistantCallStateData::Cancelled => "stopped",
@@ -387,6 +412,7 @@ fn item_seq(item: &AssistantItemData) -> i64 {
     match item {
         AssistantItemData::User { seq, .. }
         | AssistantItemData::Assistant { seq, .. }
+        | AssistantItemData::Summary { seq, .. }
         | AssistantItemData::ToolCall { seq, .. } => *seq,
     }
 }

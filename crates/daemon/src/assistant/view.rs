@@ -117,8 +117,41 @@ pub(crate) fn conversation_view(
         last_error: row.last_error.clone(),
         created_at: row.created_at,
         updated_at: row.updated_at,
-        items,
+        auto_approve: row.auto_approve,
+        items: with_summary(items, row),
         pending: pending.into_iter().map(pending_view).collect(),
+    }
+}
+
+/// The summary sits where the messages it replaces end.
+fn with_summary(
+    mut items: Vec<AssistantItemData>,
+    row: &AssistantConversationRow,
+) -> Vec<AssistantItemData> {
+    let (Some(text), Some(through)) = (&row.summary, row.summary_through_seq) else {
+        return items;
+    };
+    let at = items
+        .iter()
+        .position(|item| item_seq(item) > through)
+        .unwrap_or(items.len());
+    items.insert(
+        at,
+        AssistantItemData::Summary {
+            seq: through,
+            text: text.clone(),
+            created_at: row.updated_at,
+        },
+    );
+    items
+}
+
+fn item_seq(item: &AssistantItemData) -> i64 {
+    match item {
+        AssistantItemData::User { seq, .. }
+        | AssistantItemData::Assistant { seq, .. }
+        | AssistantItemData::Summary { seq, .. }
+        | AssistantItemData::ToolCall { seq, .. } => *seq,
     }
 }
 
@@ -167,6 +200,7 @@ fn call_state_data(state: CallState) -> AssistantCallStateData {
         CallState::Done => AssistantCallStateData::Done,
         CallState::Failed => AssistantCallStateData::Failed,
         CallState::Approved => AssistantCallStateData::Approved,
+        CallState::AutoApproved => AssistantCallStateData::AutoApproved,
         CallState::Declined => AssistantCallStateData::Declined,
         CallState::Answered => AssistantCallStateData::Answered,
         CallState::Cancelled => AssistantCallStateData::Cancelled,

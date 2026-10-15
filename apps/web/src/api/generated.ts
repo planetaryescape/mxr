@@ -477,6 +477,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/assistant/conversations/{id}/auto-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Let reversible changes run without asking in this conversation; sending, deleting, trash, spam and rules still ask */
+        post: operations["mail_assistant_auto_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/assistant/conversations/{id}/cancel": {
         parameters: {
             query?: never;
@@ -4862,6 +4879,10 @@ export interface components {
             other?: string | null;
             selected?: string[];
         };
+        /** @description Body of `POST /api/v1/mail/assistant/conversations/{id}/auto-approve`. */
+        AssistantAutoApproveBody: {
+            enabled: boolean;
+        };
         /** @description Whether the assistant can run, and on what. */
         AssistantAvailabilityData: {
             available: boolean;
@@ -4878,11 +4899,18 @@ export interface components {
             | "failed"
             | "waiting"
             | "approved"
+            | "auto_approved"
             | "declined"
             | "answered"
             | "cancelled"
             | "interrupted";
         AssistantConversationData: {
+            /**
+             * @description Reversible changes (archive, move, star, read, labels) run without
+             *     asking. Sending, deleting, trash, spam and rules always ask. Set
+             *     only by the user (`SetAssistantAutoApprove`).
+             */
+            auto_approve?: boolean;
             /** Format: int64 */
             created_at: number;
             id: string;
@@ -4972,6 +5000,15 @@ export interface components {
                   text: string;
               }
             | {
+                  /** Format: int64 */
+                  created_at: number;
+                  /** @enum {string} */
+                  kind: "summary";
+                  /** Format: int64 */
+                  seq: number;
+                  text: string;
+              }
+            | {
                   arguments: unknown;
                   call_id: string;
                   /** Format: int64 */
@@ -5026,6 +5063,15 @@ export interface components {
                   kind: "calling";
                   reason: string;
                   tool: string;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "writing";
+                  text: string;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "summarizing";
               };
         AssistantQuestionData: {
             allow_other?: boolean;
@@ -11249,6 +11295,12 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "SetAssistantAutoApprove";
+                  conversation_id: string;
+                  enabled: boolean;
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "ListAssistantConversations";
                   /** Format: int32 */
                   limit?: number | null;
@@ -15621,6 +15673,40 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description The `AssistantConversation` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_auto_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantAutoApproveBody"];
+            };
+        };
         responses: {
             /** @description The `AssistantConversation` variant */
             200: {

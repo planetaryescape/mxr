@@ -137,6 +137,31 @@ async fn cancel(
     passthrough(response)
 }
 
+/// Body of `POST /api/v1/mail/assistant/conversations/{id}/auto-approve`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct AssistantAutoApproveBody {
+    enabled: bool,
+}
+
+async fn auto_approve(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(conversation_id): AxumPath<String>,
+    Json(body): Json<AssistantAutoApproveBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SetAssistantAutoApprove {
+            conversation_id,
+            enabled: body.enabled,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 /// Body of `POST /api/v1/mail/assistant/conversations/{id}/delete`.
 #[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
 pub(crate) struct AssistantDeleteBody {
@@ -173,4 +198,8 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/assistant/conversations/{id}/decide", post(decide))
         .route("/assistant/conversations/{id}/cancel", post(cancel))
         .route("/assistant/conversations/{id}/delete", post(delete))
+        .route(
+            "/assistant/conversations/{id}/auto-approve",
+            post(auto_approve),
+        )
 }

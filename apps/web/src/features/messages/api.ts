@@ -70,10 +70,22 @@ export async function fetchPerson(
   return answer.page;
 }
 
+const personKey = (account: string | null, person: string | null, topic: string | null) =>
+  [...MESSAGES_KEY, "person", account ?? "all", person, topic] as const;
+
+/**
+ * The page fetched for a person's default topic is also that topic's page:
+ * naming the topic in the URL reuses it instead of fetching it again.
+ */
+export function rememberTopicPage(person: string, topic: string, page: PersonPage): void {
+  const account = useUiPrefs.getState().accountScope;
+  getActiveQueryClient()?.setQueryData(personKey(account, person, topic), page);
+}
+
 export function usePersonQuery(person: string | null, topic: string | null) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
-    queryKey: [...MESSAGES_KEY, "person", account ?? "all", person, topic],
+    queryKey: personKey(account, person, topic),
     queryFn: () => fetchPerson(account, person ?? "", topic),
     enabled: person !== null,
     staleTime: 15_000,

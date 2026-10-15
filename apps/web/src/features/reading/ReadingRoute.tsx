@@ -245,14 +245,17 @@ function Bands({
     [edition, hidden, view],
   );
   const entries = useMemo(() => editionEntries(bands, expanded), [bands, expanded]);
-  // A link to one of a digest's links unfolds that digest.
+  // A link to one of a digest's links unfolds that digest, once.
+  const linkedEntry = useRef(cursorKey);
   useEffect(() => {
-    if (!cursorKey || entries.some((entry) => entry.key === cursorKey)) return;
+    const linked = linkedEntry.current;
+    linkedEntry.current = null;
+    if (!linked || entries.some((entry) => entry.key === linked)) return;
     const parent = bands
       .flatMap((band) => band.items)
-      .find((item) => item.links?.some((link) => link.item_key === cursorKey));
+      .find((item) => item.links?.some((link) => link.item_key === linked));
     if (parent) setExpanded((previous) => new Set(previous).add(parent.item_key));
-  }, [bands, cursorKey, entries]);
+  }, [bands, entries]);
   const index = Math.max(
     0,
     entries.findIndex((entry) => entry.key === cursorKey),

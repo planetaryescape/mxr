@@ -34,6 +34,7 @@ import {
   refreshMessages,
   setPinned,
   useMessagesQuery,
+  rememberTopicPage,
   usePersonQuery,
   type MessagesData,
   type MessagesRow,
@@ -218,10 +219,11 @@ function MessagesBody({
   const autoTopic = useRef<string | null>(null);
   const shownTopic = person.isPlaceholderData ? undefined : conversation?.thread_id;
   useEffect(() => {
-    if (threadId || !search.person || search.topic || !shownTopic) return;
+    if (threadId || !search.person || search.topic || !shownTopic || !page) return;
     autoTopic.current = shownTopic;
+    rememberTopicPage(search.person, shownTopic, page);
     select(search.person, { topic: shownTopic });
-  }, [search.person, search.topic, select, shownTopic, threadId]);
+  }, [page, search.person, search.topic, select, shownTopic, threadId]);
 
   // A person who still has topics left stays in view, even when the
   // daemon moves their row into the folded Quiet band.

@@ -157,15 +157,18 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const current = rows[index]?.line;
   // A peek belongs to its line: when a refetch, a let go or a tune takes the
   // line away, the peek goes with it, and an undo does not bring it back open.
-  // A link to a routine line opens Routine first.
+  // A link to a routine line (or its peek) opens Routine first, once.
   const folded = useCallback(
     (id: string | null) =>
       id !== null && !routineOpen && digest.routine.some((line) => line.id === id),
     [digest.routine, routineOpen],
   );
+  const linkedLines = useRef([cursorId, peekId]);
   useEffect(() => {
-    if (folded(cursorId)) setRoutineOpen(true);
-  }, [cursorId, folded]);
+    const linked = linkedLines.current;
+    linkedLines.current = [];
+    if (linked.some(folded)) setRoutineOpen(true);
+  }, [folded]);
   useEffect(() => {
     if (peekId !== null && !folded(peekId) && !rows.some((row) => row.line.id === peekId))
       setPeekId(null);

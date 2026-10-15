@@ -201,14 +201,18 @@ function Bands({
   const [cursorId, setCursorId] = useSearchParam("row");
   const [expandedId, setExpandedId] = useSearchParam("source");
   const items = useMemo(() => runwayItems(runway, open, hidden), [runway, open, hidden]);
-  // A link to a to-do in a folded band opens that band.
+  // A link to a to-do in a folded band opens that band, once: a row ticked
+  // off later moves to Done without opening it.
+  const linkedRow = useRef(cursorId);
   useEffect(() => {
-    if (!cursorId || items.some((item) => item.todo.id === cursorId)) return;
+    const linked = linkedRow.current;
+    linkedRow.current = null;
+    if (!linked || items.some((item) => item.todo.id === linked)) return;
     const band = runwayItems(runway, { whenever: true, done: true }, hidden).find(
-      (item) => item.todo.id === cursorId,
+      (item) => item.todo.id === linked,
     )?.band;
     if (band === "whenever" || band === "done") setOpen((was) => ({ ...was, [band]: true }));
-  }, [cursorId, hidden, items, runway]);
+  }, [hidden, items, runway]);
   const index = Math.max(
     0,
     items.findIndex((item) => item.todo.id === cursorId),

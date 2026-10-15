@@ -123,9 +123,15 @@ test("Enter reads an item in a 66-character column with time left and a progress
   expect(perLine).toBeGreaterThanOrEqual(55);
   expect(perLine).toBeLessThanOrEqual(80);
   await expect(reader.getByTestId("end-of-issue")).toContainText("From this source:");
-  // Esc goes back to the edition.
+  // Esc goes back to the edition, with the cursor on the item just read.
+  const itemKey = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1)!);
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/\/reading$/);
+  await expect
+    .poll(() => {
+      const url = new URL(page.url());
+      return [url.pathname, url.searchParams.get("row")];
+    })
+    .toEqual(["/reading", itemKey]);
 });
 
 test("b on a digest link puts it on Later and names the site it saves the article from", async ({
@@ -240,31 +246,34 @@ test("the reader's Unsubscribe button is visible without scrolling and offers bo
   await expect(control).toBeInViewport();
   const commits: { preview_token: string; archive: boolean }[] = [];
   let previewToken = "";
-  await page.route(/\/api\/v1\/mail\/actions\/unsubscribe(?:-purge|-preview\/commit)$/, async (route) => {
-    const request = route.request().postDataJSON();
-    if (request.dry_run) {
-      const response = await route.fetch();
-      const preview = await response.json();
-      previewToken = preview.result.preview_token;
-      await route.fulfill({ response });
-    } else {
-      // The outbound unsubscribe is irreversible; daemon tests use FakeProvider.
-      // Here we check each button's real request against the real daemon preview.
-      commits.push({ preview_token: request.preview_token, archive: request.archive });
-      await route.fulfill({
-        json: {
-          ok: true,
-          result: {
-            address: request.address,
-            method: "None",
-            status: "unsubscribed",
-            message_count: 12,
-            archived_count: request.archive ? 12 : 0,
+  await page.route(
+    /\/api\/v1\/mail\/actions\/unsubscribe(?:-purge|-preview\/commit)$/,
+    async (route) => {
+      const request = route.request().postDataJSON();
+      if (request.dry_run) {
+        const response = await route.fetch();
+        const preview = await response.json();
+        previewToken = preview.result.preview_token;
+        await route.fulfill({ response });
+      } else {
+        // The outbound unsubscribe is irreversible; daemon tests use FakeProvider.
+        // Here we check each button's real request against the real daemon preview.
+        commits.push({ preview_token: request.preview_token, archive: request.archive });
+        await route.fulfill({
+          json: {
+            ok: true,
+            result: {
+              address: request.address,
+              method: "None",
+              status: "unsubscribed",
+              message_count: 12,
+              archived_count: request.archive ? 12 : 0,
+            },
           },
-        },
-      });
-    }
-  });
+        });
+      }
+    },
+  );
   await control.click();
   const dialog = page.getByTestId("reading-unsubscribe");
   await expect(dialog).toBeVisible();

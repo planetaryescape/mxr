@@ -279,6 +279,7 @@ test.describe("on a phone", () => {
     // between mouse down and up and loses the click: bring it in first.
     await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await card.getByRole("link", { name: /Open/ }).click();
-    await expect(page).toHaveURL(/\/updates$/);
+    // On the card's first line, when it lists any.
+    await expect(page).toHaveURL(/\/updates(\?row=[^&]+)?$/);
   });
 });

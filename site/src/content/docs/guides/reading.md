@@ -186,8 +186,9 @@ selection: **Highlight**, or **Highlight with note**. `h` still highlights
 the selection without the toolbar. The TUI saves the paragraph at the top of
 the reader with `h`. A highlight is marked on the passage you selected: the
 reader remembers which paragraph you were in, so selecting the second of two
-identical phrases marks the second. Highlights saved before that carry no
-paragraph and are marked wherever their text first appears. Highlights are
+identical phrases marks the second. Older highlights, highlights made in
+the other view (issue or article), and highlights from Marginalia are
+marked wherever their text appears instead. Highlights are
 listed under the article with their notes.
 
 To change one, click it in the article or use its row in the list: edit

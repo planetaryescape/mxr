@@ -641,12 +641,14 @@ Any field omitted from an override falls back to the top-level `[llm]`
 section. Feature keys: `summarize` (also row gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
 `draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert`, and
-`delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)).
+`archive_ask`, `decision_log`, `briefing`, `expert`,
+`delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
+and `assistant` (the [assistant](/guides/assistant/), which needs a model that
+can call tools).
 
 `relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing` and `expert` carry relationship
-data, so the daemon refuses them on a non-local endpoint unless
+`archive_ask`, `decision_log`, `briefing`, `expert` and `assistant` carry
+relationship data, so the daemon refuses them on a non-local endpoint unless
 `allow_cloud_relationship_data = true`. The `answer_coverage` example above
 needs that setting to run.
 

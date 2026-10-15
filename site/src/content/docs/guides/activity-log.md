@@ -26,7 +26,7 @@ Mapping is closed: every IPC verb that produces activity has an explicit entry i
 mxr activity list --since 24h
 ```
 
-What you get: reverse-chronological table with `TIME / SRC / ACTION / TARGET / CONTEXT` columns. Source badges (`tui`/`cli`/`web`/`daemon`) make it obvious where each action originated.
+What you get: reverse-chronological table with `TIME / SRC / ACTION / TARGET / CONTEXT` columns. Source badges (`tui`, `cli`, `web`, `daemon`, `agent`, `mcp`, `assistant` and the rest) make it obvious where each action originated. Changes the [assistant](/guides/assistant/) made after you approved them show as `assistant`; filter with `--source assistant`.
 
 ## What it does NOT capture
 

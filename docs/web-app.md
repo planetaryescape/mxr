@@ -131,6 +131,11 @@ row per conversation, so waking a row wakes every snoozed message in it.
   below 1024 px or in full-width reader mode the reader replaces it.
 - Right rail: context panels (sender, briefing, attachments, whois, ask the
   archive). Below 1024 px it overlays.
+- Assistant: `features/assistant/`, a resizable pane beside the whole shell
+  (`AssistantSplit`, parked while closed), closed until opened with `Mod+.` or
+  the topbar button and kept across pages; an overlay drawer below 1024 px.
+  Turns run in the daemon; the pane refetches on `AssistantUpdated` events.
+  See [blueprint 25](blueprint/25-assistant.md).
 - Status bar: connection, sync progress or a Sync button, live key hints.
 
 Non-mail pages use `components/Page.tsx` (`Page`, `PageSection`, `PageTabs`).

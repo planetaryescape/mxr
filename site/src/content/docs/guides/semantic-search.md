@@ -180,7 +180,7 @@ Reach for `--force` only to recover a corrupt or half-migrated index, or after a
 Watch it from another shell:
 
 ```bash
-mxr semantic status --format json \
+mxr semantic --format json status \
   | jq -r '.profiles[] | "\(.profile) \(.status) \(.progress_completed)/\(.progress_total)"'
 ```
 

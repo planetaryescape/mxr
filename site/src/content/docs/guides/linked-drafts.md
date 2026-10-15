@@ -21,7 +21,7 @@ creating anything in Gmail:
 
 ```bash
 mxr drafts --format json
-mxr drafts push DRAFT_ID --dry-run --format json
+mxr drafts --format json push DRAFT_ID --dry-run
 ```
 
 The preview reports `"sync_mode": "create_or_update"` and
@@ -72,7 +72,7 @@ same local UUID.
 Preview the local draft selected for deletion:
 
 ```bash
-mxr drafts delete DRAFT_ID --dry-run --format json
+mxr drafts --format json delete DRAFT_ID --dry-run
 ```
 
 Then delete it:

@@ -76,7 +76,7 @@ at send-time, so you don't ship a message with a half-edited template.
 
 ```bash
 # Show me what's installed; pipe to jq for scripts.
-mxr snippets list --format json | jq -r '.[].name'
+mxr snippets --format json list | jq -r '.[].name'
 ```
 
 ## TUI

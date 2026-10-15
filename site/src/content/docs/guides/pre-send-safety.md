@@ -253,7 +253,6 @@ Configure the LLM in `[llm]`. Per-feature overrides:
 ```toml
 [llm.overrides.answer_coverage]
 model = "gpt-5-mini"
-temperature = 0.0
 ```
 
 ## The override flow

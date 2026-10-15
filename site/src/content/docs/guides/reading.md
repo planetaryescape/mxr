@@ -32,7 +32,37 @@ mxr reading
 ```
 
 ```text
-EDITION_OUTPUT
+Reading  Newsletters you chose, as an edition. Read when you like.
+Later 4
+
+SINCE YOU WERE LAST HERE
+* The quiet death of the three-pane layout
+    Long Reads Weekly · 14 min · you read 9 of 10
+    Why every RSS reader since 2002 shipped the same window.
+    0199e4a2-5b1c-7d3e-8f40-1a2b3c4d5e6f:0
+* SQLite Notes, issue 112
+    SQLite Notes · 6 links · 4 min · new source
+    > Local-first mail is having a moment  via substack.com
+      0199e4a2-6c2d-7e4f-9051-2b3c4d5e6f70:1
+    > SQLite 3.51 release notes  sqlite.org
+      0199e4a2-6c2d-7e4f-9051-2b3c4d5e6f70:2
+    + 4 more
+    0199e4a2-6c2d-7e4f-9051-2b3c4d5e6f70:0
+
+── You left off here ──
+
+EARLIER THIS WEEK
+  Shipping a sync engine in 2026
+    Platform Weekly · 9 min · you opened 3 of 5
+    0199e1f0-0a1b-7c2d-8e3f-405162738495:0
+
+FADING  Goes within a day, unless you keep it with b.
+  Growth Digest #88
+    Growth Digest · 3 min · you opened 0 of 11
+    You opened 0 of the last 11 issues. D to unsubscribe in the app, or mxr unsubscribe.
+    0199dc33-9e8f-7a6b-8c5d-4e3f2a1b0c9d:0
+
+mxr reading open ITEM to read · later --add ITEM · let-go ITEM · sources
 ```
 
 The edition has three bands:
@@ -71,7 +101,17 @@ mxr reading sources
 ```
 
 ```text
-SOURCES_OUTPUT
+Sources, best read first
+
+Long Reads Weekly  <editor@longreads.example>
+    You opened 10 of the last 10 issues · every 7 days · fades after 14 days
+SQLite Notes  <notes@sqlite-notes.example>
+    You opened 1 of its 1 issue · one issue so far · fades after 7 days
+Platform Weekly  <news@platform.example>
+    You opened 3 of the last 5 issues · every 7 days · fades after 14 days
+Growth Digest  <hello@growth.example>
+    You opened 0 of the last 11 issues · every 3 days · fades after 6 days
+    Unsubscribe? mxr unsubscribe --purge hello@growth.example
 ```
 
 ## Read in the reader
@@ -184,9 +224,9 @@ issue as opened.
 In the web reader, select text and a small toolbar appears over the
 selection: **Highlight**, or **Highlight with note**. `h` still highlights
 the selection without the toolbar. The TUI saves the paragraph at the top of
-the reader with `h`. A highlight is marked on the passage you selected: the
-reader remembers which paragraph you were in, so selecting the second of two
-identical phrases marks the second. Older highlights, highlights made in
+the reader with `h`. The web reader marks a highlight on the passage you
+selected: it remembers which paragraph you were in, so selecting the second
+of two identical phrases marks the second. Older highlights, highlights made in
 the other view (issue or article), and highlights from Marginalia are
 marked wherever their text appears instead. Highlights are
 listed under the article with their notes.

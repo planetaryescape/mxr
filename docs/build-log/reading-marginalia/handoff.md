@@ -42,7 +42,7 @@ Recorded in mxr as decision **D121** in `docs/blueprint/15-decision-log.md`.
 | 3 | Extract Marginalia's reader UI into `planetaryescape/reader` | DONE: package **v0.1.2** (0d9e13d). Marginalia renders through it (marginalia `0d2f75d`, Vercel prod `marginalia-b6vgi1y0q`, 2026-10-14) |
 | 4 | Rebuild mxr's web reader on that package | DONE: PR #457 (1c87564ba), released in **v0.6.98**. Sanitized article HTML, themes, typography, quote highlights drawn on the article |
 | 5 | Manage highlights: selection toolbar, edit notes, remove with dry run and undo, in every client | DONE: PR #461 (5d359cc81), released in **v0.6.100**. Protocol 18. Marginalia-origin highlights are read-only in mxr |
-| 6 | Anchored highlights (mark the exact occurrence, not the first match) | DONE: `paragraph_index` column (migration 087), `paragraph` on `SaveHighlight` and `ReadingHighlightData` (additive, protocol stays 18). Older highlights keep marking the first match |
+| 6 | Anchored highlights (mark the exact occurrence, not the first match) | DONE: PR #473 (56bccf3f5), released in **v0.6.103**. `paragraph_index` column (migration 087), `paragraph` on `SaveHighlight` and `ReadingHighlightData` (additive, protocol stays 18). Older highlights keep marking the first match |
 
 The rung ladder, with each rung's promise, demo and tier, is in the orchestrator's
 `plan.md` at `~/code/planetaryescape/.orchestrate/reading-marginalia-20261014/plan.md`.

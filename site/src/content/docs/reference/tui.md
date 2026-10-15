@@ -82,7 +82,11 @@ email. The keys are in the [keybindings reference](/reference/keybindings/#updat
 
 ## Reading and Paper trail
 
-Reading and Paper trail are sidebar lenses
+Reading (`gr`) is the [edition](/guides/reading/): the bands, a reader, the
+Later shelf (`B`) and highlights (`h` and `H` in the reader). Its keys are in
+the [keybindings reference](/reference/keybindings/#reading).
+
+Paper trail is a lens
 ([Clear Reading and Paper trail](/guides/reading-and-paper-trail/)). Mail is
 bundled by sender, each bundle with its "here because" line and no unread
 count. From a bundle you can pin a message, move the sender to another

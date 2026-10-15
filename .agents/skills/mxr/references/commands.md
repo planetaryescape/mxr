@@ -517,7 +517,7 @@ Per-sender aggregates: volume, response cadence, open threads.
 ### `mxr contacts <SUBCOMMAND>`
 Materialized contacts table.
 ```
-mxr contacts asymmetry [--min-inbound 3] [--limit 50] [--account NAME] [--format FMT]
+mxr contacts [--format FMT] asymmetry [--min-inbound 3] [--limit 50] [--account NAME]
   # Rank by reply imbalance (|inbound - outbound| / max)
 
 mxr contacts decay [--threshold-days 30] [--max-lookback-days 1095] [--limit 50] [--account NAME]

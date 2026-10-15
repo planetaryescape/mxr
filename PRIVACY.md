@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Effective date**: 2026-03-18
-**Last updated**: 2026-05-31
+**Last updated**: 2026-10-15
 
 mxr is a local-first, open-source email client. Your mail data is stored on your machine, and mxr does not run a hosted relay, analytics service, or remote database.
 
@@ -77,6 +77,8 @@ mxr uses Google user data only to provide local mail sync, search, display, draf
 ## Optional AI Features
 
 Local search, reading, and core mailbox operations do not require a hosted AI service. If you configure a nonlocal LLM provider, mxr sends only the prompts required for the enabled feature to that provider. Agent, MCP, and LLM workflows should be treated as user-directed exports of local mail context.
+
+The assistant (the web sidebar and `mxr assistant`) sends your messages, and the mail it reads to answer them, to the model you configure for it. With a model off this machine it runs only when `llm.allow_cloud_relationship_data` is on, because it reads across your mailbox; the sidebar names the model and says whether it leaves the machine. Conversations, including the mail text the assistant read, are stored in the local database, are not included in portable backups, and are removed with `mxr assistant delete`. Changes it makes after your approval are recorded in the activity log with the source `assistant`; the chat text is not.
 
 ---
 

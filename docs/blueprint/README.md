@@ -32,6 +32,7 @@
 | 22r | Email modes research | One note per mode with sources, mockups and risks: [messages](../research/email-modes/messages.md), [to do](../research/email-modes/todo.md), [updates](../research/email-modes/updates.md), [reading](../research/email-modes/reading.md), [archive](../research/email-modes/archive.md), [now and handoff](../research/email-modes/now-and-handoff.md), plus [sign in with ChatGPT](../research/chatgpt-sign-in.md) |
 | 23 | [Daemon portability](23-daemon-portability.md) | Durable drafts, recoverable actions, portable files, API contracts, client targeting and headless restore; ordered implementation slices for a future SwiftUI client or personal VPS |
 | 24 | [Remote hosting and clients](24-remote-hosting-and-clients.md) | Proposed `mxr serve` / `mxr connect`, authenticated Tailscale hosting, saved targets, registrations, presence, shutdown/reconnect and deregistration |
+| 25 | [The assistant](25-assistant.md) | The in-app chat agent: daemon loop over the MCP tools, approval enforced in code, ask_user questions, append-only history, web sidebar and `mxr assistant` |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 |  | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |

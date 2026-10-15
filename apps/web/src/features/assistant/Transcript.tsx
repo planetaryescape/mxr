@@ -69,8 +69,8 @@ export function Transcript({
         const isLast = index === grouped.length - 1;
         if (block.kind === "user") {
           return (
-            <li key={`u${block.item.seq}`}>
-              <p className="border-l-2 border-foreground/70 pl-3 text-sm italic leading-relaxed whitespace-pre-wrap text-foreground">
+            <li key={`u${block.item.seq}`} className="flex justify-end">
+              <p className="max-w-[88%] rounded-lg rounded-br-sm bg-muted px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground">
                 {block.item.text}
               </p>
             </li>
@@ -80,13 +80,13 @@ export function Transcript({
           return (
             <li key={`sum${block.item.seq}`}>
               <Collapsible>
-                <CollapsibleTrigger className="group flex w-full items-center gap-2 font-mono text-2xs text-muted-foreground hover:text-foreground">
+                <CollapsibleTrigger className="group flex w-full items-center gap-2 font-mono text-2xs tracking-wider text-muted-foreground uppercase hover:text-foreground">
                   <span className="h-px flex-1 bg-border" aria-hidden="true" />
                   Earlier messages summarised
                   <span className="h-px flex-1 bg-border" aria-hidden="true" />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <p className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">
+                  <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
                     {block.item.text}
                   </p>
                 </CollapsibleContent>
@@ -100,7 +100,9 @@ export function Transcript({
               <div
                 className="assistant-prose text-sm leading-relaxed text-foreground"
                 // Sanitized in renderMarkdown: no scripts, no images, safe links.
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(block.item.text) }}
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(block.item.text),
+                }}
               />
             </li>
           );
@@ -127,6 +129,7 @@ export function Transcript({
 function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
   const settled = !live && items.every((item) => item.state !== "running");
   const [open, setOpen] = useState(false);
+  const count = items.length === 1 ? "1 step" : `${items.length} steps`;
   if (!settled || open) {
     return (
       <div>
@@ -134,12 +137,14 @@ function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="mb-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
+            aria-expanded="true"
+            className="mb-1 flex items-center gap-1.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
           >
-            Hide {items.length === 1 ? "step" : `${items.length} steps`}
+            <ChevronRight className="size-3 rotate-90" aria-hidden="true" />
+            {count}
           </button>
         ) : null}
-        <ul className="space-y-0.5">
+        <ul className="ml-1.5 space-y-0.5 border-l border-border pl-2">
           {items.map((item) => (
             <Step key={item.call_id} item={item} />
           ))}
@@ -148,15 +153,24 @@ function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
     );
   }
   const waiting = items.some((item) => item.state === "waiting");
+  // A model can say it did something when the call failed; the count of
+  // failed steps sits right above its reply so the user sees both.
+  const failed = items.filter((item) => item.state === "failed").length;
+  const changed = items.filter(
+    (item) => item.state === "approved" || item.state === "auto_approved",
+  ).length;
   return (
     <button
       type="button"
       onClick={() => setOpen(true)}
-      className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
+      aria-expanded="false"
+      className="flex items-center gap-1.5 rounded-sm font-mono text-2xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
       <ChevronRight className="size-3" aria-hidden="true" />
-      {items.length === 1 ? "1 step" : `${items.length} steps`}
-      {waiting ? ", waiting for you" : ""}
+      {count}
+      {changed > 0 ? <span className="text-primary">· {changed} changed</span> : null}
+      {failed > 0 ? <span className="text-destructive">· {failed} failed</span> : null}
+      {waiting ? <span className="text-warning">· waiting for you</span> : null}
     </button>
   );
 }
@@ -287,7 +301,9 @@ function StateIcon({ state }: { state: AssistantCallState }) {
   const base = "mt-0.5 size-3.5 shrink-0";
   switch (state) {
     case "running":
-      return <LoaderCircle className={cn(base, "animate-spin text-primary")} aria-label="Running" />;
+      return (
+        <LoaderCircle className={cn(base, "animate-spin text-primary")} aria-label="Running" />
+      );
     case "done":
     case "answered":
       return <CircleCheck className={cn(base, "text-muted-foreground")} aria-label="Done" />;

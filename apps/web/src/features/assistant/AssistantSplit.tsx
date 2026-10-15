@@ -17,7 +17,11 @@ const AssistantSidebar = lazy(async () => ({
   default: (await import("./AssistantSidebar")).AssistantSidebar,
 }));
 
-const PANE_SIZE: SidePaneSize = { defaultSize: "400px", minSize: "320px", maxSize: "720px" };
+const PANE_SIZE: SidePaneSize = {
+  defaultSize: "400px",
+  minSize: "320px",
+  maxSize: "720px",
+};
 
 export function AssistantSplit({ children }: { children: ReactNode }) {
   const open = useAssistantUi((s) => s.open);

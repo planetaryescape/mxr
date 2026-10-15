@@ -89,7 +89,12 @@ export function useLiveTurn(conversationId: string | null): {
       if (update.conversation_id !== conversationId) return;
       setLive((current) => {
         if (update.status !== "running") {
-          return { id: conversationId, progress: null, startedAt: null, writing: null };
+          return {
+            id: conversationId,
+            progress: null,
+            startedAt: null,
+            writing: null,
+          };
         }
         const same = current.id === conversationId;
         const startedAt = same && current.startedAt !== null ? current.startedAt : Date.now();
@@ -117,7 +122,11 @@ export function useLiveTurn(conversationId: string | null): {
   useDaemonEvents(onEvent);
 
   return live.id === conversationId
-    ? { progress: live.progress, startedAt: live.startedAt, writing: live.writing }
+    ? {
+        progress: live.progress,
+        startedAt: live.startedAt,
+        writing: live.writing,
+      }
     : { progress: null, startedAt: null, writing: null };
 }
 

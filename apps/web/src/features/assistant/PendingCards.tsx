@@ -4,7 +4,7 @@
  * daemon takes it from its own record, not from this page.
  */
 
-import { Check, X } from "lucide-react";
+import { Check, ChevronRight, CircleHelp, ShieldAlert, X, type LucideIcon } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 
 import type { AssistantDecision, AssistantPending, AssistantQuestion } from "./api";
@@ -45,14 +45,25 @@ export function PendingCards({
   );
 }
 
-function CardFrame({ label, children }: { label: string; children: React.ReactNode }) {
+function CardFrame({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <section
       aria-label={label}
-      className="rounded-md border border-primary/40 bg-background p-3 shadow-sm shadow-black/5"
+      className="overflow-hidden rounded-lg border border-border border-l-2 border-l-primary bg-surface shadow-sm shadow-black/10"
     >
-      <p className="mb-1.5 font-mono text-2xs uppercase tracking-wide text-primary">{label}</p>
-      {children}
+      <p className="flex items-center gap-1.5 border-b border-border/60 px-3 py-1.5 font-mono text-2xs tracking-wider text-primary uppercase">
+        <Icon className="size-3.5" aria-hidden="true" />
+        {label}
+      </p>
+      <div className="p-3">{children}</div>
     </section>
   );
 }
@@ -72,11 +83,15 @@ function ApprovalCard({
   const draft = messages.length === 0 ? previewDraft(item.preview) : null;
   const reject = (event?: FormEvent) => {
     event?.preventDefault();
-    onDecide({ call_id: item.call_id, decision: "reject", reason: reason.trim() || undefined });
+    onDecide({
+      call_id: item.call_id,
+      decision: "reject",
+      reason: reason.trim() || undefined,
+    });
   };
 
   return (
-    <CardFrame label="Your call">
+    <CardFrame label="Your call" icon={ShieldAlert}>
       <h3 className="text-sm font-semibold text-foreground">
         {describeChange(item.tool, item.arguments)}
       </h3>
@@ -87,7 +102,9 @@ function ApprovalCard({
           {messages.slice(0, PREVIEW_ROWS).map((message) => (
             <li key={message.key} className="border-b border-border/60 py-1.5">
               <div className="flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{message.subject}</span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                  {message.subject}
+                </span>
                 {message.date ? (
                   <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     {formatWhen(message.date)}
@@ -117,7 +134,11 @@ function ApprovalCard({
       ) : null}
 
       <Collapsible className="mt-2">
-        <CollapsibleTrigger className="font-mono text-2xs text-muted-foreground hover:text-foreground">
+        <CollapsibleTrigger className="group flex items-center gap-1 font-mono text-2xs text-muted-foreground hover:text-foreground">
+          <ChevronRight
+            className="size-3 transition-transform group-data-[state=open]:rotate-90"
+            aria-hidden="true"
+          />
           Exact call
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -156,7 +177,7 @@ function ApprovalCard({
           </div>
         </form>
       ) : (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex gap-2 border-t border-border/60 pt-3">
           <Button
             size="sm"
             disabled={busy}
@@ -206,7 +227,7 @@ function QuestionCard({
   };
 
   return (
-    <CardFrame label="A question for you">
+    <CardFrame label="A question for you" icon={CircleHelp}>
       <form onSubmit={submit} className="space-y-4">
         {item.questions.map((question, index) => (
           <QuestionField
@@ -217,7 +238,7 @@ function QuestionCard({
             onSubmit={submit}
           />
         ))}
-        <div className="flex gap-2">
+        <div className="flex gap-2 border-t border-border/60 pt-3">
           <Button type="submit" size="sm" disabled={!complete || busy}>
             Answer
           </Button>
@@ -259,17 +280,24 @@ function QuestionField({
         ? []
         : [label];
     // A single answer is either an option or typed text, not both.
-    onChange({ selected, other: question.multi_select || selected.length === 0 ? answer.other : "" });
+    onChange({
+      selected,
+      other: question.multi_select || selected.length === 0 ? answer.other : "",
+    });
   };
 
   return (
     <fieldset className="space-y-1.5">
-      {question.header ? (
-        <span className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          {question.header}
-        </span>
-      ) : null}
-      <legend className="text-sm font-medium text-foreground">{question.question}</legend>
+      {/* A legend always renders first in its fieldset, so the header
+          goes inside it to sit above the question. */}
+      <legend className="mb-2 text-sm font-medium text-foreground">
+        {question.header ? (
+          <span className="mb-0.5 block font-mono text-2xs font-normal tracking-wider text-muted-foreground uppercase">
+            {question.header}
+          </span>
+        ) : null}
+        {question.question}
+      </legend>
       {options.length > 0 ? (
         <div
           role={question.multi_select ? "group" : "radiogroup"}
@@ -286,16 +314,38 @@ function QuestionField({
                 aria-checked={chosen}
                 onClick={() => choose(option.label)}
                 className={cn(
-                  "block w-full rounded-sm border px-2.5 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex w-full items-start gap-2.5 rounded-md border px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   chosen
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border hover:border-primary/50 hover:bg-muted/40",
+                    ? "border-primary/70 bg-primary/10 text-foreground"
+                    : "border-border hover:border-primary/40 hover:bg-muted/50",
                 )}
               >
-                <span className="block text-xs font-medium">{option.label}</span>
-                {option.description ? (
-                  <span className="block text-2xs text-muted-foreground">{option.description}</span>
-                ) : null}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "mt-0.5 flex size-3.5 shrink-0 items-center justify-center border",
+                    question.multi_select ? "rounded-[3px]" : "rounded-full",
+                    chosen
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border-strong",
+                  )}
+                >
+                  {chosen ? (
+                    question.multi_select ? (
+                      <Check className="size-2.5" strokeWidth={3} />
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-primary-foreground" />
+                    )
+                  ) : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium">{option.label}</span>
+                  {option.description ? (
+                    <span className="block text-2xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             );
           })}

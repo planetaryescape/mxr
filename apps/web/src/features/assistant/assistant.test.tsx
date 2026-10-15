@@ -20,8 +20,18 @@ const approval: AssistantPending = {
     preview: {
       kind: "Envelopes",
       envelopes: [
-        { id: "m1", subject: "Your parcel shipped", from: { name: "Shop", email: "s@x" }, date: "2026-10-14T09:00:00Z" },
-        { id: "m2", subject: "Out for delivery", from: { email: "s@x" }, date: "2026-10-15T07:00:00Z" },
+        {
+          id: "m1",
+          subject: "Your parcel shipped",
+          from: { name: "Shop", email: "s@x" },
+          date: "2026-10-14T09:00:00Z",
+        },
+        {
+          id: "m2",
+          subject: "Out for delivery",
+          from: { email: "s@x" },
+          date: "2026-10-15T07:00:00Z",
+        },
       ],
     },
   },
@@ -55,7 +65,10 @@ describe("approval card", () => {
     expect(screen.getByText("Your parcel shipped")).toBeVisible();
     expect(screen.getByText("Out for delivery")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(onDecide).toHaveBeenCalledWith({ call_id: "c1", decision: "approve" });
+    expect(onDecide).toHaveBeenCalledWith({
+      call_id: "c1",
+      decision: "approve",
+    });
   });
 
   test("a rejection carries the user's reason", () => {
@@ -80,7 +93,10 @@ describe("question card", () => {
     expect(answer).toBeDisabled();
     const group = screen.getByRole("radiogroup", { name: "Which account?" });
     fireEvent.click(within(group).getByRole("radio", { name: /Home/ }));
-    expect(within(group).getByRole("radio", { name: /Home/ })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: /Home/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     fireEvent.click(answer);
     expect(onDecide).toHaveBeenCalledWith({
       call_id: "q1",
@@ -92,7 +108,9 @@ describe("question card", () => {
   test("typing an answer replaces a single choice, and Skip declines", () => {
     const onDecide = cards([question]);
     fireEvent.click(screen.getByRole("radio", { name: /Work/ }));
-    fireEvent.change(screen.getByLabelText("Your own answer"), { target: { value: "Both" } });
+    fireEvent.change(screen.getByLabelText("Your own answer"), {
+      target: { value: "Both" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Answer" }));
     expect(onDecide).toHaveBeenLastCalledWith({
       call_id: "q1",
@@ -100,7 +118,10 @@ describe("question card", () => {
       answers: [{ selected: [], other: "Both" }],
     });
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(onDecide).toHaveBeenLastCalledWith({ call_id: "q1", decision: "reject" });
+    expect(onDecide).toHaveBeenLastCalledWith({
+      call_id: "q1",
+      decision: "reject",
+    });
   });
 });
 
@@ -115,7 +136,7 @@ describe("transcript", () => {
       reason: "Find shipping notices.",
       arguments: { query: "shipped" },
       state: "done",
-      result: "{\"total\":2}",
+      result: '{"total":2}',
       created_at: 2,
     },
     { kind: "assistant", seq: 3, text: "Found **2**.", created_at: 3 },
@@ -128,6 +149,22 @@ describe("transcript", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
     expect(screen.getByText("Find shipping notices.")).toBeVisible();
     expect(screen.getByText("2").tagName).toBe("STRONG");
+  });
+
+  test("a folded turn counts its failed steps beside the reply", () => {
+    const failed: AssistantItem = {
+      kind: "tool_call",
+      seq: 4,
+      call_id: "b",
+      tool: "mxr_mutate",
+      reason: "Star it.",
+      arguments: { action: "star", message_ids: ["m1"] },
+      state: "failed",
+      result: '{"blocked":true}',
+      created_at: 4,
+    };
+    render(<Transcript items={[...items.slice(0, 2), failed, items[2]!]} running={false} />);
+    expect(screen.getByRole("button", { name: /2 steps.*1 failed/ })).toBeVisible();
   });
 
   test("shows steps as they happen while the turn runs", () => {
@@ -146,6 +183,14 @@ describe("markdown", () => {
     expect(html).toContain('href="https://ok.example"');
     expect(html).toContain('rel="noopener noreferrer nofollow"');
     expect(html).not.toContain("javascript:");
+  });
+
+  test("keeps email addresses as text rather than mailto links", () => {
+    const html = renderMarkdown("Write to quinn@work.com or [me](mailto:me@x.example).");
+    expect(html).not.toContain("mailto:");
+    expect(html).not.toContain("<a");
+    expect(html).toContain("quinn@work.com");
+    expect(html).toContain("me");
   });
 });
 
@@ -178,7 +223,12 @@ describe("live and summarised turns", () => {
       <Transcript
         items={[
           { kind: "user", seq: 1, text: "old", created_at: 1 },
-          { kind: "summary", seq: 1, text: "They asked about invoices.", created_at: 2 },
+          {
+            kind: "summary",
+            seq: 1,
+            text: "They asked about invoices.",
+            created_at: 2,
+          },
           {
             kind: "tool_call",
             seq: 2,

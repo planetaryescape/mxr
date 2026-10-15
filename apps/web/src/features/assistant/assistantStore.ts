@@ -25,11 +25,21 @@ export const useAssistantUi = create<AssistantUiState>()(
       conversationId: null,
       focusRequest: 0,
       setOpen: (open) =>
-        set((s) => ({ open, focusRequest: open ? s.focusRequest + 1 : s.focusRequest })),
+        set((s) => ({
+          open,
+          focusRequest: open ? s.focusRequest + 1 : s.focusRequest,
+        })),
       toggle: () =>
-        set((s) => ({ open: !s.open, focusRequest: s.open ? s.focusRequest : s.focusRequest + 1 })),
+        set((s) => ({
+          open: !s.open,
+          focusRequest: s.open ? s.focusRequest : s.focusRequest + 1,
+        })),
       showConversation: (conversationId) => set({ conversationId }),
-      newConversation: () => set((s) => ({ conversationId: null, focusRequest: s.focusRequest + 1 })),
+      newConversation: () =>
+        set((s) => ({
+          conversationId: null,
+          focusRequest: s.focusRequest + 1,
+        })),
     }),
     {
       name: "mxr:assistant",

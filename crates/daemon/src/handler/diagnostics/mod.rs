@@ -946,6 +946,7 @@ fn llm_overrides_data(overrides: mxr_config::LlmOverrides) -> LlmOverridesData {
         briefing: overrides.briefing.map(llm_override_data),
         expert: overrides.expert.map(llm_override_data),
         delivery_extraction: overrides.delivery_extraction.map(llm_override_data),
+        assistant: overrides.assistant.map(llm_override_data),
     }
 }
 
@@ -1020,6 +1021,7 @@ fn normalize_llm_overrides(config: LlmOverridesData) -> Result<mxr_config::LlmOv
         briefing: normalize_llm_override(config.briefing)?,
         expert: normalize_llm_override(config.expert)?,
         delivery_extraction: normalize_llm_override(config.delivery_extraction)?,
+        assistant: normalize_llm_override(config.assistant)?,
     })
 }
 

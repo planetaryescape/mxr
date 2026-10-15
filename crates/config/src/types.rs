@@ -412,6 +412,7 @@ pub struct LlmOverrides {
     pub briefing: Option<LlmOverrideConfig>,
     pub expert: Option<LlmOverrideConfig>,
     pub delivery_extraction: Option<LlmOverrideConfig>,
+    pub assistant: Option<LlmOverrideConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

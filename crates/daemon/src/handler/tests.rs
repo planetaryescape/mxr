@@ -703,6 +703,7 @@ mod account_scope;
 mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
+mod assistant;
 mod body_and_invites;
 mod categories;
 mod category_rules;

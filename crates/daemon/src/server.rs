@@ -224,6 +224,12 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         // behind; clear it before any loop can read it as "already syncing".
         loops::reconcile_interrupted_syncs(&state).await;
 
+        // An assistant turn the previous daemon was running died with it.
+        // Calls waiting for the user stay waiting.
+        if let Err(error) = state.store.mark_interrupted_assistant_turns().await {
+            tracing::warn!(%error, "could not mark interrupted assistant turns");
+        }
+
         // Cleanup a previous daemon owed for deleted mail (it failed or died
         // between the delete and the cleanup). Off the startup path: it only
         // touches files and the semantic worker.

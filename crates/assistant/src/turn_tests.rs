@@ -192,12 +192,12 @@ async fn a_change_waits_with_its_preview_and_approval_runs_the_stored_arguments(
     let TurnOutcome::AwaitingUser(pending) = outcome else {
         panic!("expected a wait, got {outcome:?}");
     };
-    // Only the preview ran: the same call with confirm=false.
+    // Only the preview ran, through the read tool that lists the messages.
     assert_eq!(
         host.calls(),
         vec![(
-            "mxr_mutate".into(),
-            json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": false})
+            "mxr_mutation_preview".into(),
+            json!({"action": "archive", "message_ids": ["m1", "m2"]})
         )]
     );
     let PendingKind::Approval {

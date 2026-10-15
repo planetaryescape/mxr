@@ -188,16 +188,7 @@ impl Agent<'_> {
         pending: Vec<PendingItem>,
         decisions: HashMap<String, Decision>,
     ) -> Result<TurnOutcome, String> {
-        let known: HashSet<&str> = pending.iter().map(|item| item.call_id.as_str()).collect();
-        if let Some(stray) = decisions.keys().find(|id| !known.contains(id.as_str())) {
-            return Err(format!("nothing is waiting on call {stray}"));
-        }
-        for item in &pending {
-            let Some(decision) = decisions.get(&item.call_id) else {
-                continue;
-            };
-            check_decision(item, decision)?;
-        }
+        check_decisions(&pending, &decisions)?;
 
         let mut remaining = Vec::new();
         for item in pending {
@@ -232,7 +223,8 @@ impl Agent<'_> {
                 ToolChatMessage::Tool {
                     call_id,
                     content: format!(
-                        "The user approved this call.\n{}",
+                        "{}{}",
+                        crate::outcome::APPROVED_PREFIX,
                         prompt::tool_result(&output.content)
                     ),
                     is_error: output.is_error,
@@ -436,7 +428,8 @@ enum CallStep {
     Wait(PendingItem),
 }
 
-fn cancelled_result(call_id: String) -> ToolChatMessage {
+/// The result for a call the user stopped before it ran.
+pub fn cancelled_result(call_id: String) -> ToolChatMessage {
     ToolChatMessage::Tool {
         call_id,
         content: prompt::system_result(json!({
@@ -446,6 +439,24 @@ fn cancelled_result(call_id: String) -> ToolChatMessage {
         })),
         is_error: true,
     }
+}
+
+/// Refuse decisions for calls that aren't waiting (so a stale client can't
+/// approve something twice) and decisions that don't fit their call.
+pub fn check_decisions(
+    pending: &[PendingItem],
+    decisions: &HashMap<String, Decision>,
+) -> Result<(), String> {
+    let known: HashSet<&str> = pending.iter().map(|item| item.call_id.as_str()).collect();
+    if let Some(stray) = decisions.keys().find(|id| !known.contains(id.as_str())) {
+        return Err(format!("nothing is waiting on call {stray}"));
+    }
+    for item in pending {
+        if let Some(decision) = decisions.get(&item.call_id) {
+            check_decision(item, decision)?;
+        }
+    }
+    Ok(())
 }
 
 fn check_decision(item: &PendingItem, decision: &Decision) -> Result<(), String> {

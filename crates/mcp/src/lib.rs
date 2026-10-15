@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::Path, str::FromStr, sync::Arc};
 
+mod in_process;
 mod todo;
+pub use in_process::{InProcessTools, ToolCallOutcome, ToolDescriptor};
 use todo::{TodoGetInput, TodoListInput, TodoResolutionInput, TodoStateInput};
 
 #[async_trait]

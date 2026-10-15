@@ -9,14 +9,16 @@
 
 pub mod ask_user;
 pub mod gate;
+pub mod outcome;
 pub mod prompt;
 pub mod turn;
 
 pub use ask_user::{Answer, Question, QuestionOption, ASK_USER_TOOL};
+pub use outcome::{call_state, readable_result, CallState};
 pub use prompt::ViewContext;
 pub use turn::{
-    model_input, Agent, ChatModel, Decision, Limits, MessageMeta, PendingItem, PendingKind,
-    Progress, ToolHost, ToolOutput, TurnOutcome, TurnSink,
+    cancelled_result, check_decisions, model_input, Agent, ChatModel, Decision, Limits,
+    MessageMeta, PendingItem, PendingKind, Progress, ToolHost, ToolOutput, TurnOutcome, TurnSink,
 };
 
 #[cfg(test)]

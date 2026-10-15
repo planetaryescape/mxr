@@ -8,6 +8,7 @@
 
 #[doc(hidden)]
 pub mod activity;
+mod assistant;
 pub mod backup;
 pub(crate) mod bridge;
 pub(crate) mod chimes;
@@ -839,6 +840,10 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         Some(Command::Semantic { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::semantic::run(action, format).await?;
+        }
+        Some(Command::Assistant { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::assistant::run(action, format).await?;
         }
         Some(Command::Llm { action, format }) => {
             crate::server::ensure_daemon_running().await?;

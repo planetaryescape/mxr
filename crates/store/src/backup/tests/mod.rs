@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 88);
+    assert_eq!(manifest.schema_version, 89);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -304,6 +304,10 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     )
     .await
     .unwrap();
+    sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+        .execute(&mut db)
+        .await
+        .unwrap();
     sqlx::raw_sql(
         "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
     )
@@ -547,6 +551,10 @@ async fn exact_schema_82_backup_remains_restorable() {
     )
     .await
     .unwrap();
+    sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+        .execute(&mut db)
+        .await
+        .unwrap();
     sqlx::raw_sql("DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version>=83;").execute(&mut db).await.unwrap();
     db.close().await.unwrap();
     manifest.schema_version = 82;
@@ -591,6 +599,10 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
         .await
         .unwrap();
         // Rebuild authority from the immutable migration, without today's added columns.
+        sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+            .execute(&mut db)
+            .await
+            .unwrap();
         sqlx::raw_sql("DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;")
         .execute(&mut db).await.unwrap();
         sqlx::raw_sql(include_str!("../../../migrations/083_remote_authority.sql"))
@@ -670,6 +682,10 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         )
         .await
         .unwrap();
+        sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+            .execute(&mut db)
+            .await
+            .unwrap();
         sqlx::raw_sql(
             "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
              ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
@@ -696,7 +712,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 88, "source {source_version}");
+        assert_eq!(manifest.schema_version, 89, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -730,7 +746,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         populate(source.path(), stage.path()).await.unwrap(),
     );
     // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
-    assert_eq!(manifest.schema_version, 88);
+    assert_eq!(manifest.schema_version, 89);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -738,6 +754,10 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .await
     .unwrap();
+    sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+        .execute(&mut db)
+        .await
+        .unwrap();
     sqlx::raw_sql(
         "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
          ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
@@ -770,7 +790,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .unwrap();
     assert!(inspect(stage.path()).await.is_err());
-    manifest.schema_version = 89;
+    manifest.schema_version = 90;
     std::fs::write(
         stage.path().join("manifest.json"),
         serde_json::to_vec(&manifest).unwrap(),
@@ -791,13 +811,17 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 88);
+    assert_eq!(manifest.schema_version, 89);
 
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
     )
     .await
     .unwrap();
+    sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+        .execute(&mut db)
+        .await
+        .unwrap();
     sqlx::raw_sql(
         "DROP TABLE assistant_messages; DROP TABLE assistant_conversations;
          ALTER TABLE reading_highlights DROP COLUMN paragraph_index;

@@ -975,6 +975,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_client_kind_is_recorded() {
+        let store = fresh_store().await;
+        for source in [
+            "human",
+            "tui",
+            "cli",
+            "script",
+            "web",
+            "daemon",
+            "agent",
+            "mcp",
+            "assistant",
+        ] {
+            store
+                .record_activity(ins(
+                    1,
+                    "mail.archive",
+                    Tier::Important,
+                    source,
+                    None,
+                    None,
+                    None,
+                ))
+                .await
+                .unwrap_or_else(|error| panic!("{source} was refused: {error}"));
+        }
+        assert!(store
+            .record_activity(ins(
+                1,
+                "mail.archive",
+                Tier::Important,
+                "nobody",
+                None,
+                None,
+                None
+            ))
+            .await
+            .is_err());
+    }
+
+    /// 089 rebuilds the table to widen its sources: rows, ids and search
+    /// over them survive the upgrade.
+    #[tokio::test]
+    async fn widening_sources_keeps_rows_ids_and_search() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mxr.db");
+        let kept = {
+            let store = Store::new(&path).await.unwrap();
+            sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
+                .execute(store.writer())
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_migrations WHERE version >= 89")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            assert!(store
+                .record_activity(ins(
+                    1,
+                    "mail.archive",
+                    Tier::Important,
+                    "mcp",
+                    None,
+                    None,
+                    None
+                ))
+                .await
+                .is_err());
+            let context = json!({ "query": "quarterly report" });
+            let id = store
+                .record_activity(ins(
+                    5,
+                    "search.run",
+                    Tier::Standard,
+                    "tui",
+                    Some("search"),
+                    None,
+                    Some(&context),
+                ))
+                .await
+                .unwrap();
+            store.writer().close().await;
+            id
+        };
+
+        let store = Store::new(&path).await.unwrap();
+        let found = store
+            .list_activity(
+                &ActivityFilter {
+                    query: Some("quarterly".into()),
+                    ..ActivityFilter::default()
+                },
+                10,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(found.rows.len(), 1);
+        assert_eq!(found.rows[0].id, kept);
+        let next = store
+            .record_activity(ins(
+                9,
+                "mail.archive",
+                Tier::Important,
+                "assistant",
+                None,
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+        assert!(next > kept, "ids keep counting up after the rebuild");
+    }
+
+    #[tokio::test]
     async fn fts_query_finds_subject_substring_and_excludes_after_redaction() {
         let store = fresh_store().await;
         let ctx_invoice = json!({ "query": "invoice 2026", "result_count": 12 });

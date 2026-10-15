@@ -23,10 +23,10 @@ macro_rules! todo_untouched_sql {
 }
 
 mod account;
-mod assistant;
 mod analytics;
 mod arrival_ledger;
 mod arrivals;
+mod assistant;
 mod auto_reminders;
 pub mod backup;
 mod backup_resources;
@@ -110,11 +110,11 @@ mod voice_samples;
 pub mod workspace_lease;
 mod wrapped;
 
-pub use assistant::{AssistantConversationRow, AssistantMessageRow};
 pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
 };
 pub use arrivals::Arrival;
+pub use assistant::{AssistantConversationRow, AssistantMessageRow};
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;
 pub use categories::{

@@ -351,7 +351,7 @@ htmlescape = "0.3"
 regex = "1"
 psl = "2"
 once_cell = "1"
-rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+rodio = { version = "0.23.0", default-features = false, features = ["playback"] }
 
 # Compose
 serde_yaml = "0.9"

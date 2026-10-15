@@ -257,7 +257,13 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     context: "*",
     keys: ["Mod+."],
     bound: "web",
-    why: "The assistant sidebar is web-only for now; the TUI reaches the assistant through `mxr assistant`",
+    why: "Shows or hides the assistant in the browser; terminals don't pass Ctrl+. through reliably, so the TUI uses Ctrl+a",
+  },
+  {
+    context: "*",
+    keys: ["Ctrl+a"],
+    bound: "tui",
+    why: "Shows or hides the TUI's assistant pane; the browser keeps Ctrl+a for select-all and uses Mod+.",
   },
   {
     context: "*",

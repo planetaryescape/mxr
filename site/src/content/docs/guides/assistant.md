@@ -11,11 +11,35 @@ It reads and searches on its own. Every change it wants to make stops and waits 
 
 In the web app, press `⌘.` (`Ctrl+.` on Linux and Windows) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. On narrow windows it slides over the page instead. It is closed until you open it, and it remembers whether you left it open.
 
+In the TUI, press `Ctrl-a`; see [In the terminal](#in-the-terminal).
+
 From a terminal:
 
 ```sh
 mxr assistant send "Which newsletters haven't I opened in a month?"
 ```
+
+## In the terminal
+
+In the TUI, press `Ctrl-a` on any screen. The assistant opens as a pane on the right, or over the right of the screen when the terminal is narrower than 110 columns. It is hidden until you open it. `Ctrl-a` hides it again, or brings the keys back to it after you've moved away. The palette (`Ctrl-p`) has the same commands under "Assistant".
+
+While the pane has the keys, everything you type goes to it, not to the screen behind it:
+
+| Key | Does |
+|-----|------|
+| `Enter` | Send the message (`Alt-Enter` or `Ctrl-j` for a new line) |
+| `Esc` | Leave the message box for the pane's keys; `Esc` again returns the keys to the screen |
+| `i` | Back to the message box |
+| `y` / `n` | Approve or reject the waiting change; `n` asks why (optional), `Enter` rejects |
+| `1`-`9`, `o`, `Enter`, `s` | Choose an option, write your own answer, answer, or skip the question |
+| `Ctrl-c` | Stop a running turn |
+| `N` / `L` | New conversation / past conversations |
+| `T` | Let reversible changes run without asking in this conversation, or stop; the title says "auto-approve on" |
+| `D` | Delete the conversation, after saying what goes |
+| `e` | Open or fold the steps |
+| `j` / `k` | Scroll the conversation |
+
+The assistant also knows what you have open: the screen, the thread in the reader and any messages you selected.
 
 ## Approve or reject each change
 

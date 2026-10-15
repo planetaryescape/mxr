@@ -2,6 +2,7 @@ mod account_actions;
 mod account_form_helpers;
 mod actions;
 mod analytics_actions;
+mod assistant_actions;
 mod attachment_helpers;
 mod body_helpers;
 mod compose_actions;
@@ -346,6 +347,8 @@ pub struct App {
     pub diagnostics: DiagnosticsState,
     pub analytics: AnalyticsState,
     pub deliveries: DeliveriesState,
+    /// The assistant pane, hidden until asked for.
+    pub assistant: AssistantState,
     pub modals: ModalsState,
     /// Which hints are dismissed here and where the keys were last used.
     pub(crate) hints: hints::HintState,
@@ -570,6 +573,7 @@ impl App {
             diagnostics: DiagnosticsState::default(),
             analytics: AnalyticsState::default(),
             deliveries: DeliveriesState::default(),
+            assistant: AssistantState::default(),
             modals: ModalsState {
                 snooze_config: snooze_config.clone(),
                 ..ModalsState::default()

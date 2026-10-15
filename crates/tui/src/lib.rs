@@ -11,6 +11,7 @@ mod account_workflow;
 mod accounts_helpers;
 pub mod action;
 pub mod app;
+mod assistant_ipc;
 mod async_result;
 pub mod client;
 mod compose_flow;

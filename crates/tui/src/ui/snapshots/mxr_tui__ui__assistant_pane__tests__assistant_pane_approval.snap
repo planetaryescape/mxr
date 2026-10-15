@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&state)
+---
+"╭ Tidy newsletters · auto-approve on ──────────╮"
+"│ │ Archive the Acme receipts                  │"
+"│                                              │"
+"│ ▸ 2 steps, waiting for you                   │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ ──────────────────────────────────────────── │"
+"│ YOUR CALL                                    │"
+"│ Archive 3 messages                           │"
+"│ They are receipts you already filed          │"
+"│ touches 3 messages:                          │"
+"│ • Your receipt #1  Acme                      │"
+"│ • Your receipt #2  Acme                      │"
+"│ • Your receipt #3  billing@acme.test         │"
+"│ ──────────────────────────────────────────── │"
+"│ › Answer above, or press i to write instead  │"
+"│ qwen3:8b · runs on this machine              │"
+"│ y approve · n reject · i write instead · Esc │"
+"│ leave                                        │"
+"╰──────────────────────────────────────────────╯"

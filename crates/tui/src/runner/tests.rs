@@ -144,6 +144,7 @@ fn set_active_inbox(app: &mut App) {
 // --- Mail list title tests ---
 
 mod accounts_and_delivery;
+mod assistant;
 mod input_and_compose;
 mod keymap;
 mod mailbox_views;

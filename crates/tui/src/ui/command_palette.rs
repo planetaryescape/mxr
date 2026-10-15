@@ -772,6 +772,36 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Assistant: show or hide".into(),
+            shortcut: "Ctrl-a".into(),
+            action: Action::ToggleAssistant,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
+            label: "Assistant: new conversation".into(),
+            shortcut: String::new(),
+            action: Action::NewAssistantConversation,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
+            label: "Assistant: past conversations".into(),
+            shortcut: String::new(),
+            action: Action::OpenAssistantConversations,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
+            label: "Assistant: approve reversible changes automatically (on/off)".into(),
+            shortcut: String::new(),
+            action: Action::ToggleAssistantTrust,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
+            label: "Assistant: delete conversation".into(),
+            shortcut: String::new(),
+            action: Action::DeleteAssistantConversation,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
             label: "Filter Current Mailbox".into(),
             shortcut: "Ctrl-f".into(),
             action: Action::OpenMailboxFilter,

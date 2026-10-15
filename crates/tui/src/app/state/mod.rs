@@ -1,6 +1,7 @@
 mod accounts;
 mod analytics;
 mod arrivals;
+mod assistant;
 mod command_palette;
 mod compose;
 mod deliveries;
@@ -25,6 +26,10 @@ pub use analytics::{
 };
 pub use arrivals::{
     ArrivalsListFetch, ArrivalsListState, MoveMenu, SenderAsk, TrustState, CHIP_BATCH,
+};
+pub use assistant::{
+    AnswerDraft, AssistantCall, AssistantFocus, AssistantListState, AssistantOutbound,
+    AssistantPrompt, AssistantState,
 };
 pub use command_palette::CommandPaletteState;
 pub use compose::{

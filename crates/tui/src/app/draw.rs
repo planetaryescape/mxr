@@ -29,6 +29,30 @@ fn selected_tab(screen: Screen) -> usize {
 const MIN_TERMINAL_WIDTH: u16 = 80;
 const MIN_TERMINAL_HEIGHT: u16 = 20;
 
+/// From this width the assistant pane is a third column; below it, it
+/// covers the right of the screen so the content keeps a usable width.
+const ASSISTANT_COLUMN_MIN_WIDTH: u16 = 110;
+
+/// The content and the assistant pane's areas.
+fn assistant_layout(area: Rect) -> (Rect, Rect) {
+    if area.width >= ASSISTANT_COLUMN_MIN_WIDTH {
+        let width = (area.width * 34 / 100).clamp(44, 64);
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(width)])
+            .split(area);
+        (chunks[0], chunks[1])
+    } else {
+        let width = (area.width * 60 / 100).max(44).min(area.width);
+        let pane = Rect {
+            x: area.right() - width,
+            width,
+            ..area
+        };
+        (area, pane)
+    }
+}
+
 struct TodoReaderContent {
     preview_blocks: Vec<ui::message_view::ThreadMessageBlock>,
     summary: Option<ui::message_view::ThreadSummaryBlock>,
@@ -183,6 +207,12 @@ impl App {
             _ => content_area.height.saturating_sub(2) as usize,
         };
         let bottom_bar_area = outer_chunks[3];
+        let (content_area, assistant_area) = if self.assistant.open {
+            let (content, pane) = assistant_layout(content_area);
+            (content, Some(pane))
+        } else {
+            (content_area, None)
+        };
 
         // Tab bar
         let tabs = ratatui::widgets::Tabs::new(tab_titles())
@@ -661,6 +691,16 @@ impl App {
                     ui::deliveries_page::draw(frame, content_area, &self.deliveries, theme);
                 }
             }
+        }
+
+        if let Some(pane) = assistant_area {
+            self.assistant.max_scroll = ui::assistant_pane::draw(
+                frame,
+                pane,
+                &self.assistant,
+                std::time::Instant::now(),
+                theme,
+            );
         }
 
         let status_bar = self.status_bar_state();

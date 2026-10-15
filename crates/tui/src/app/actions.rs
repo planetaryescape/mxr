@@ -417,6 +417,11 @@ impl App {
             Action::OpenCommandPalette | Action::CloseCommandPalette | Action::Help => {
                 self.apply_modal_action(action);
             }
+            Action::ToggleAssistant
+            | Action::NewAssistantConversation
+            | Action::OpenAssistantConversations
+            | Action::ToggleAssistantTrust
+            | Action::DeleteAssistantConversation => self.apply_assistant_action(action),
         }
         // The person page follows the cursor in Messages, and a Got it
         // never outlives the conversation it answers.

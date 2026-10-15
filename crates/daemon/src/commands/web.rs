@@ -73,8 +73,8 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
     }
 
     clear_web_state();
-    let child_pid = spawn_detached_web_child(&args)?;
-    let (host, port) = wait_for_detached_web_ready(child_pid, &fallback_host).await?;
+    let child = spawn_detached_web_child(&args)?;
+    let (host, port) = wait_for_detached_web_ready(child, &fallback_host, args.port).await?;
     let (bridge_url, display_url) = local_bridge_url(&host, port)?;
     present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
     Ok(())
@@ -369,7 +369,7 @@ fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_o
     }
 }
 
-fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
+fn spawn_detached_web_child(args: &Args) -> anyhow::Result<std::process::Child> {
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
     // Capture stderr so a child that fails to bind / connect can still
@@ -410,7 +410,6 @@ fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
 
     command
         .spawn()
-        .map(|child| child.id())
         .map_err(|error| anyhow::anyhow!("failed to start mxr web bridge: {error}"))
 }
 
@@ -436,9 +435,11 @@ fn read_recent_web_child_stderr() -> Option<String> {
 }
 
 async fn wait_for_detached_web_ready(
-    pid: u32,
+    mut child: std::process::Child,
     fallback_host: &str,
+    requested_port: u16,
 ) -> anyhow::Result<(String, u16)> {
+    let pid = child.id();
     let deadline = Instant::now() + START_TIMEOUT;
     while Instant::now() < deadline {
         if read_web_pid() == Some(pid) {
@@ -448,15 +449,27 @@ async fn wait_for_detached_web_ready(
             }
         }
 
-        if !process_is_alive(pid) {
+        // `try_wait` reaps the child: a dead child left unreaped stays a
+        // zombie that `kill(pid, 0)` still reports alive until the timeout.
+        if !matches!(child.try_wait(), Ok(None)) {
             clear_web_state();
-            anyhow::bail!("mxr web bridge exited before it became ready");
+            // The usual reason it died: the daemon's own bridge took the
+            // port between the first probe and the child's bind, as it does
+            // right after `mxr web` restarts the daemon. Use that bridge.
+            if let Some(bridge) = existing_bridge(fallback_host, requested_port).await {
+                return Ok(bridge);
+            }
+            let detail = read_recent_web_child_stderr()
+                .map(|tail| format!("\nLast detached-child stderr lines:\n{tail}"))
+                .unwrap_or_default();
+            anyhow::bail!("mxr web bridge exited before it became ready{detail}");
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    let _ = terminate_web_pid(pid).await;
+    let _ = child.kill();
+    let _ = child.wait();
     clear_web_state();
     let detail = read_recent_web_child_stderr()
         .map(|tail| format!("\nLast detached-child stderr lines:\n{tail}"))
@@ -786,6 +799,74 @@ mod tests {
                 server.await.unwrap();
             });
         });
+    }
+
+    #[test]
+    fn a_child_that_lost_the_port_to_the_daemon_bridge_hands_over_to_it() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(temp.path().join("config"))),
+                ("MXR_DATA_DIR", Some(temp.path().join("data"))),
+            ],
+            || {
+                runtime.block_on(async {
+                    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                        .await
+                        .unwrap();
+                    let port = listener.local_addr().unwrap().port();
+                    let server = spawn_health_server(listener, true);
+                    // Stands in for a child whose bind failed: it exits at once.
+                    let child = std::process::Command::new("true").spawn().unwrap();
+                    let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+
+                    let started = Instant::now();
+                    let result = wait_for_detached_web_ready(child, &host, port).await;
+                    assert_eq!(result.unwrap(), (host, port));
+                    assert!(started.elapsed() < START_TIMEOUT);
+                    server.await.unwrap();
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn a_child_that_dies_with_no_bridge_to_use_fails_at_once() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(temp.path().join("config"))),
+                ("MXR_DATA_DIR", Some(temp.path().join("data"))),
+            ],
+            || {
+                runtime.block_on(async {
+                    // A port nothing listens on.
+                    let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                        .unwrap()
+                        .local_addr()
+                        .unwrap()
+                        .port();
+                    let child = std::process::Command::new("true").spawn().unwrap();
+
+                    let started = Instant::now();
+                    let error = wait_for_detached_web_ready(child, "127.0.0.1", port)
+                        .await
+                        .unwrap_err();
+                    assert!(error.to_string().contains("exited before it became ready"));
+                    assert!(started.elapsed() < START_TIMEOUT);
+                });
+            },
+        );
     }
 
     fn spawn_health_server(

@@ -16,7 +16,7 @@ mxr assistant┼─ IPC ─▶ daemon ─ turn ──┤
 
 - **Loop** (`crates/assistant/src/turn.rs`): call the model, run what it asks for, stop when a call needs the user, at most 30 model calls a turn. Turns run in a daemon task, so closing the sidebar or reloading the page doesn't stop one.
 - **Tools**: the 72 MCP tools, unchanged. `mxr_mcp::InProcessTools` runs `MxrMcpServer` over a `tokio::io::duplex` pipe with a requester that calls `handler::handle_request` with `ClientKind::Assistant`. The assistant therefore has exactly MCP's capability and preview/confirm flows, and its calls pass through the global safety policy, workspace ownership checks and the activity log like any client's. Adding an MCP tool adds an assistant tool.
-- **Model**: `LlmFeature::Assistant`, configurable with `[llm.overrides.assistant]`. `mxr-llm` gained one tool-calling chat turn (`chat_as`) for OpenAI-compatible endpoints and Claude, sharing routing, route health and observations with completions. The demo profile answers with a short script (`demo_assistant.rs`).
+- **Model**: `LlmFeature::Assistant`, configurable with `[llm.overrides.assistant]`. `mxr-llm` gained a tool-calling chat turn for OpenAI-compatible endpoints and Claude, streamed (`chat_stream_as`, `crates/llm/src/stream.rs`) and sharing routing, route health and observations with completions. Claude's streamed blocks, thinking signatures included, are rebuilt into the same content an unstreamed reply has, so replay stays byte-exact. The reply so far reaches clients as `AssistantProgressData::Writing`, at most every 120ms. The demo profile answers with a short script (`demo_assistant.rs`).
 - **Storage**: `assistant_conversations` and `assistant_messages` (migration 88). The transcript is append-only and stored as the model saw it.
 
 ## Approval is enforced in code, never by the prompt
@@ -32,7 +32,9 @@ mxr assistant┼─ IPC ─▶ daemon ─ turn ──┤
 | Preview token | no `preview_token` | waits; no fresh preview, since the token binds what an earlier preview showed |
 | Always | never | waits |
 
-A tool with no entry waits, and `every_mcp_tool_has_a_gate_rule` fails until it is classified. Approving runs exactly the call stored in the transcript; the daemon never takes the arguments from the client. A decision for a call that isn't waiting is refused, so a stale client can't approve twice. A preview that names messages only by id is joined with `mxr_mutation_preview` so the card lists subjects and senders.
+A tool with no entry waits, and `every_mcp_tool_has_a_gate_rule` fails until it is classified.
+
+A conversation the user sets to trust (`SetAssistantAutoApprove`, the sidebar's shield, `mxr assistant trust`) runs reversible changes without waiting: `gate::auto_approvable` allows `mxr_mutate` archive, read/unread and star/unstar, plus `mxr_archive_submit`, `mxr_move`, `mxr_reading_later`, `mxr_category_assignment_apply` and `mxr_todo_set_state`. Everything else still waits, including trash, spam, sending, drafts, rules and anything that reaches another service. The flag is stored on the conversation and read by the daemon at the start of each turn; no tool, model output or email can set it. Such calls are stored with their own result prefix and shown as "ran without asking". Approving runs exactly the call stored in the transcript; the daemon never takes the arguments from the client. A decision for a call that isn't waiting is refused, so a stale client can't approve twice. A preview that names messages only by id is joined with `mxr_mutation_preview` so the card lists subjects and senders.
 
 Waiting calls are cleared from the store before an approved call runs: a crash mid-turn leaves the call unanswered (the model sees "interrupted, check before assuming it ran") rather than an approval that could run twice.
 
@@ -51,7 +53,7 @@ Agent and MCP clients can't send assistant requests. The assistant's tools run a
 
 ## History is append-only
 
-Anthropic replays thinking blocks only in the exact transcript that produced them and rejects edited history, so the transcript is never rewritten. Each Claude reply's content blocks are stored and replayed verbatim; other providers get the rebuilt text and tool calls. Tool results are capped (40,000 characters, with a note telling the model to narrow the query) when written, not trimmed later. A call with no stored result gets an "interrupted" result in what is sent, never in storage. The system prompt and the tool list are byte-identical across a conversation; the time and what the user has open travel in each user message's `[context]` block. Claude requests use automatic prompt caching.
+Anthropic replays thinking blocks only in the exact transcript that produced them and rejects edited history, so the transcript is never rewritten. Each Claude reply's content blocks are stored and replayed verbatim; other providers get the rebuilt text and tool calls. Tool results are capped (40,000 characters, with a note telling the model to narrow the query) when written, not trimmed later. A call with no stored result gets an "interrupted" result in what is sent, never in storage. When the next request would fill three quarters of the model's context window (`context_window`, only when the system prompt and tools alone leave room), or the provider answers that it is too long, the loop summarises (`crates/assistant/src/compact.rs`): it cuts before the current turn's user message, or inside the turn if that isn't enough, asks the model with no tools for a summary of everything before the cut, and from then on sends the summary (fenced as untrusted, since it quotes mail) in place of those messages. The summary and its cut are stored on the conversation (`summary`, `summary_through_seq`); the transcript keeps everything and shows where the summary starts. A summary replaces history in what is sent, so on Claude it starts a new cached prefix once. The system prompt and the tool list are byte-identical across a conversation; the time and what the user has open travel in each user message's `[context]` block. Claude requests use automatic prompt caching.
 
 ## Clients
 
@@ -66,4 +68,4 @@ Conversations live in the local database and are deleted with `mxr assistant del
 
 ## Not built yet
 
-Token streaming (the sidebar shows steps as they happen, not words), context compaction for small-context local models, a TUI pane, and an "approve every change in this turn" mode. Each is in [docs/issues/assistant-followups.md](../issues/assistant-followups.md).
+What is still open is in [docs/issues/assistant-followups.md](../issues/assistant-followups.md).

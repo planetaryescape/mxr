@@ -424,6 +424,23 @@ emails from sender" and deep-link directly into the matching thread.
 | `POST` | `/mail/humanizer/score` | Score text against your voice profile |
 | `POST` | `/mail/humanizer/rewrite` | Rewrite toward human-like / on-voice output |
 
+### Assistant
+
+The [assistant](/guides/assistant/) runs in the daemon. Sending and
+deciding return as soon as the turn starts; follow `AssistantUpdated` on
+the events stream and refetch the conversation.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/assistant/availability` | Whether it can run, on which model, and whether conversations leave the machine |
+| `GET` | `/mail/assistant/conversations` | Conversations, most recently active first (`?limit=`) |
+| `POST` | `/mail/assistant/conversations` | `{conversation_id?, message, context}`: send a message, starting a conversation without an id |
+| `GET` | `/mail/assistant/conversations/{id}` | The transcript and anything waiting for you |
+| `POST` | `/mail/assistant/conversations/{id}/decide` | `{decisions: [{call_id, decision: approve \| reject \| answer, ...}]}`; approving runs exactly the stored call |
+| `POST` | `/mail/assistant/conversations/{id}/cancel` | Stop a running turn, or close what is waiting without running it |
+| `POST` | `/mail/assistant/conversations/{id}/auto-approve` | `{enabled}`: let reversible changes run without asking in this conversation |
+| `POST` | `/mail/assistant/conversations/{id}/delete` | `{dry_run}`: delete the conversation and its transcript |
+
 ### Relationship and commitments
 
 | Method | Path | Purpose |
@@ -666,6 +683,9 @@ per daemon event. The TypeScript shapes are in
 - `ReminderTriggered` — auto-reminder fired
 - `ScheduledSendFlushed` — a `Send Later` draft just went out
 - `IndexBootstrapped` — Tantivy completed a startup repair
+- `AssistantUpdated` — an assistant conversation changed; `progress` says
+  what a running turn is doing (`thinking`, `calling`, `writing` with the
+  reply so far, `summarizing`)
 
 ```bash
 # Quick subscribe via websocat

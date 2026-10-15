@@ -35,9 +35,15 @@ mxr assistant reject asst_01… call_7 --reason "keep the ones from Ana"
 mxr assistant answer asst_01… call_9 --choose "Work"
 ```
 
+## Let reversible changes run on their own
+
+For a long cleanup, approving every archive gets old. The shield button in the sidebar's header (or `mxr assistant trust <id>`) lets that one conversation run reversible changes without asking: archiving, marking read or unread, stars, moves between modes, Later, categories and to-do state. A line under the header says it is on. Sending, deleting, trash, spam, rules and anything that talks to another service still wait for you. Steps that ran this way say "ran without asking". Turn it off with the same button, or `mxr assistant trust <id> --off`.
+
+Only you can switch this on. The assistant can't ask for it, and nothing in an email can turn it on.
+
 ## See what it did
 
-Each step the assistant takes shows as a line with its reason. Once a turn ends the steps fold into "5 steps"; open one to see the exact call and what mxr returned. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`.
+Replies appear as the model writes them. Each step the assistant takes shows as a line with its reason. Once a turn ends the steps fold into "5 steps"; open one to see the exact call and what mxr returned. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`. Changes that mxr can undo by id (archiving, read state and stars made in one step) show an **Undo** button on their step for about a minute (in the terminal, `mxr assistant` prints the `mxr undo` command); undoing doesn't tell the assistant, so mention it if it matters for what comes next.
 
 Past conversations are under the history button, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
@@ -55,5 +61,7 @@ allow_cloud_relationship_data = true
 [llm.overrides.assistant]
 model = "claude-sonnet-5-5"
 ```
+
+Long conversations are fine on small models too. When a conversation would crowd the model's context window (`context_window` in `[llm]`), or the model says the request is too long, the assistant summarises the older messages and carries on; a line in the conversation shows where the summary starts, and the full history stays in your database.
 
 A model that can call tools is needed: Claude, OpenAI-compatible APIs, or a local Ollama model with tool support. Large requests go faster on hosted models; a local model works but can take half a minute a turn. `mxr assistant status` says whether it is ready and on what. In `mxr demo` the assistant follows a short script, so you can try an approval without a model.

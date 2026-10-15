@@ -986,6 +986,49 @@
         }
       }
     },
+    "/api/v1/mail/assistant/conversations/{id}/auto-approve": {
+      "post": {
+        "tags": [],
+        "summary": "Let reversible changes run without asking in this conversation; sending, deleting, trash, spam and rules still ask",
+        "operationId": "mail_assistant_auto_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantAutoApproveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/assistant/conversations/{id}/cancel": {
       "post": {
         "tags": [],
@@ -9076,6 +9119,18 @@
           }
         }
       },
+      "AssistantAutoApproveBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/conversations/{id}/auto-approve`.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "AssistantAvailabilityData": {
         "type": "object",
         "description": "Whether the assistant can run, and on what.",
@@ -9114,6 +9169,7 @@
           "failed",
           "waiting",
           "approved",
+          "auto_approved",
           "declined",
           "answered",
           "cancelled",
@@ -9132,6 +9188,10 @@
           "pending"
         ],
         "properties": {
+          "auto_approve": {
+            "type": "boolean",
+            "description": "Reversible changes (archive, move, star, read, labels) run without\nasking. Sending, deleting, trash, spam and rules always ask. Set\nonly by the user (`SetAssistantAutoApprove`)."
+          },
           "created_at": {
             "type": "integer",
             "format": "int64"
@@ -9427,6 +9487,35 @@
           },
           {
             "type": "object",
+            "description": "Earlier messages were summarised to fit the model's context window.\nEverything before this point reaches the model only as `text`.",
+            "required": [
+              "seq",
+              "text",
+              "created_at",
+              "kind"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summary"
+                ]
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "seq",
               "call_id",
@@ -9602,6 +9691,40 @@
               },
               "tool": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The reply so far, while the model writes it. The whole text each\ntime, so a missed event loses nothing.",
+            "required": [
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "writing"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Summarising earlier messages to fit the context window.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summarizing"
+                ]
               }
             }
           }
@@ -29627,6 +29750,29 @@
               },
               "conversation_id": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Let reversible changes run without asking in this conversation, or\nstop. Sending, deleting, trash, spam and rules always ask. Returns\n`ResponseData::AssistantConversation`.",
+            "required": [
+              "conversation_id",
+              "enabled",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetAssistantAutoApprove"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
               }
             }
           },

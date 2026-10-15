@@ -133,12 +133,59 @@ impl AnthropicClient {
         interpret_tool_reply(reply, model)
     }
 
+    /// [`Self::chat`] with the reply streamed and rebuilt block by block.
+    pub(crate) async fn chat_stream(
+        &self,
+        key: &ApiKey,
+        model: &str,
+        req: &ToolChatRequest,
+        timeout: Option<Duration>,
+        on_text: crate::stream::TextSink<'_>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        let mut body = build_tool_request(model, req)?;
+        body.stream = true;
+        let response = self.send_checked(key, &body, timeout).await?;
+        let mut folded = crate::stream::AnthropicStream::default();
+        crate::stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+        let reply: ToolMessagesResponse =
+            serde_json::from_value(folded.finish()).map_err(|error| {
+                AttemptError::route(
+                    LlmError::Other(format!("Anthropic reply could not be read: {error}")),
+                    RouteFailure::Cooling {
+                        reason: FailureReason::plain("unreadable reply"),
+                        retry_after: None,
+                    },
+                )
+            })?;
+        interpret_tool_reply(reply, model)
+    }
+
     async fn post<B: Serialize, R: serde::de::DeserializeOwned>(
         &self,
         key: &ApiKey,
         body: &B,
         timeout: Option<Duration>,
     ) -> Result<R, AttemptError> {
+        let response = self.send_checked(key, body, timeout).await?;
+        response.json::<R>().await.map_err(|error| {
+            AttemptError::route(
+                LlmError::Other(format!("Anthropic reply could not be read: {error}")),
+                RouteFailure::Cooling {
+                    reason: FailureReason::plain("unreadable reply"),
+                    retry_after: None,
+                },
+            )
+        })
+    }
+
+    /// Send one request and return the response once its status says it
+    /// succeeded, for reading whole or as a stream.
+    async fn send_checked<B: Serialize>(
+        &self,
+        key: &ApiKey,
+        body: &B,
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, AttemptError> {
         let client = self
             .client
             .as_ref()
@@ -206,15 +253,7 @@ impl AnthropicClient {
             return Err(AttemptError { error, class });
         }
 
-        response.json::<R>().await.map_err(|error| {
-            AttemptError::route(
-                LlmError::Other(format!("Anthropic reply could not be read: {error}")),
-                RouteFailure::Cooling {
-                    reason: FailureReason::plain("unreadable reply"),
-                    retry_after: None,
-                },
-            )
-        })
+        Ok(response)
     }
 }
 
@@ -310,6 +349,8 @@ struct ToolMessagesRequest<'a> {
     /// Automatic caching: the breakpoint follows the end of the history, so
     /// the tools, system prompt and earlier turns are read from cache.
     cache_control: Value,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stream: bool,
 }
 
 #[derive(Deserialize)]
@@ -418,6 +459,7 @@ fn build_tool_request<'a>(
             effort: ASSISTANT_EFFORT,
         },
         cache_control: json!({"type": "ephemeral"}),
+        stream: false,
     })
 }
 

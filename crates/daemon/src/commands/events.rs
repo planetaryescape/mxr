@@ -156,6 +156,12 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                     Some(mxr_protocol::AssistantProgressData::Calling { tool, .. }) => {
                         format!(" calling {tool}")
                     }
+                    Some(mxr_protocol::AssistantProgressData::Writing { text }) => {
+                        format!(" writing chars={}", text.chars().count())
+                    }
+                    Some(mxr_protocol::AssistantProgressData::Summarizing) => {
+                        " summarizing".to_string()
+                    }
                     None => String::new(),
                 };
                 format!("assistant conversation={conversation_id} status={status:?}{progress}")

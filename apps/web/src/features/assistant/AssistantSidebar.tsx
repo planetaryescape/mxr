@@ -12,10 +12,15 @@ import {
   BotMessageSquare,
   History,
   LoaderCircle,
+  MailQuestion,
+  Newspaper,
+  ShieldCheck,
+  Sparkles,
   Square,
   SquarePen,
   Trash2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -50,10 +55,10 @@ import { cn } from "@/lib/utils";
 
 export const ASSISTANT_SHORTCUT = "Mod+.";
 
-const SUGGESTIONS = [
-  "What needs a reply from me this week?",
-  "Summarise what arrived today",
-  "Find newsletters I never open and tidy them up",
+const SUGGESTIONS: Array<{ text: string; icon: LucideIcon }> = [
+  { text: "What needs a reply from me this week?", icon: MailQuestion },
+  { text: "Summarise what arrived today", icon: Sparkles },
+  { text: "Find newsletters I never open and tidy them up", icon: Newspaper },
 ];
 
 export function AssistantSidebar() {
@@ -64,7 +69,7 @@ export function AssistantSidebar() {
   const availability = useAvailability();
   const conversation = useConversation(conversationId);
   const live = useLiveTurn(conversationId);
-  const { send, answer, stop } = useAssistantActions();
+  const { send, answer, stop, trust } = useAssistantActions();
   const viewContext = useViewContext();
 
   // A conversation deleted elsewhere: start fresh rather than show an error.
@@ -87,12 +92,40 @@ export function AssistantSidebar() {
   };
 
   return (
-    <section aria-label="Assistant" className="flex h-full min-h-0 w-full flex-col bg-surface">
-      <header className="flex h-[var(--shell-topbar-h)] shrink-0 items-center gap-1 border-b border-border px-3">
+    <section aria-label="Assistant" className="flex h-full min-h-0 w-full flex-col bg-background">
+      <header className="flex h-[var(--shell-topbar-h)] shrink-0 items-center gap-1 border-b border-border pr-2 pl-4">
         <BotMessageSquare className="size-4 shrink-0 text-primary" aria-hidden="true" />
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+        <h2 className="ml-1.5 min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {data?.title ?? "Assistant"}
         </h2>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={!data}
+          aria-pressed={data?.auto_approve ?? false}
+          className={cn(
+            data?.auto_approve
+              ? "bg-primary/10 text-primary hover:bg-primary/15"
+              : "text-muted-foreground",
+          )}
+          onClick={() =>
+            data &&
+            trust.mutate(
+              { id: data.id, enabled: !data.auto_approve },
+              { onError: (error) => toast.error(errorText(error)) },
+            )
+          }
+          aria-label="Approve reversible changes automatically"
+          title={
+            data
+              ? data.auto_approve
+                ? "Reversible changes run without asking. Click to ask for every change again."
+                : "Let reversible changes (archive, read, star, moves) run without asking in this conversation"
+              : "Start a conversation to choose what runs without asking"
+          }
+        >
+          <ShieldCheck className="size-4" />
+        </Button>
         <HistoryMenu currentId={conversationId} onPick={showConversation} />
         <Button
           size="icon-sm"
@@ -114,10 +147,22 @@ export function AssistantSidebar() {
         </Button>
       </header>
 
-      <ScrollToEnd watch={data} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {data?.auto_approve ? (
+        <p className="flex shrink-0 items-start gap-2 border-b border-border bg-primary/5 px-4 py-2 text-2xs text-muted-foreground">
+          <ShieldCheck className="mt-px size-3.5 shrink-0 text-primary" aria-hidden="true" />
+          <span>
+            <span className="text-foreground">Reversible changes run without asking.</span> Sending,
+            deleting, trash, spam and rules still ask.
+          </span>
+        </p>
+      ) : null}
+      <ScrollToEnd
+        watch={[data, live.writing]}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
+      >
         {data && data.items.length > 0 ? (
-          <div className="space-y-4">
-            <Transcript items={data.items} running={running} />
+          <div className="space-y-5">
+            <Transcript items={data.items} running={running} writing={live.writing} />
             <Outcome conversation={data} onContinue={() => submit("Go on.")} />
           </div>
         ) : conversationId && conversation.isPending ? (
@@ -130,7 +175,7 @@ export function AssistantSidebar() {
         )}
       </ScrollToEnd>
 
-      <div className="shrink-0 space-y-2 border-t border-border bg-surface px-3 pt-3 pb-3">
+      <div className="shrink-0 space-y-2.5 px-3 pt-1 pb-3">
         {pending.length > 0 && data ? (
           <div className="max-h-[55vh] overflow-y-auto">
             <PendingCards
@@ -147,7 +192,7 @@ export function AssistantSidebar() {
         ) : null}
         {running ? (
           <RunningLine
-            progress={live.progress}
+            progress={live.writing ? { kind: "writing", text: live.writing } : live.progress}
             startedAt={live.startedAt}
             stopping={stop.isPending}
             onStop={() => data && stop.mutate(data.id)}
@@ -171,7 +216,6 @@ export function AssistantSidebar() {
           waiting={pending.length > 0}
           onSend={submit}
         />
-        <Disclosure />
       </div>
     </section>
   );
@@ -207,7 +251,14 @@ function Composer({
   };
 
   return (
-    <form onSubmit={submit} className="relative">
+    <form
+      onSubmit={submit}
+      className={cn(
+        "rounded-lg border border-border bg-surface shadow-sm shadow-black/10",
+        "focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-ring/20",
+        disabled && "opacity-60",
+      )}
+    >
       <Textarea
         ref={input}
         aria-label="Message the assistant"
@@ -223,27 +274,26 @@ function Composer({
           if (event.key === "Escape") input.current?.blur();
         }}
         placeholder={
-          waiting
-            ? "Answer above, or write to move on"
-            : "Ask about your mail, or say what to do"
+          waiting ? "Answer above, or write to move on" : "Ask about your mail, or say what to do"
         }
         rows={2}
-        className="max-h-48 min-h-16 resize-none pr-11 text-sm"
+        className="max-h-48 min-h-14 resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
       />
-      <Button
-        type="submit"
-        size="icon-sm"
-        className="absolute right-2 bottom-2"
-        disabled={!text.trim() || running || disabled}
-        aria-label="Send"
-      >
-        <ArrowUp className="size-4" />
-      </Button>
-      {waiting && text.trim() ? (
-        <p className="mt-1 text-2xs text-muted-foreground">
-          Sending this declines what is waiting above.
-        </p>
-      ) : null}
+      <div className="flex items-center gap-2 pr-1.5 pb-1.5 pl-3">
+        <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
+          {waiting && text.trim() ? "Sending this declines what is waiting above." : <Disclosure />}
+        </span>
+        <Button
+          type="submit"
+          size="icon-xs"
+          className="size-7 rounded-md"
+          disabled={!text.trim() || running || disabled}
+          aria-label="Send"
+          title="Send (Enter)"
+        >
+          <ArrowUp className="size-4" />
+        </Button>
+      </div>
     </form>
   );
 }
@@ -263,9 +313,13 @@ function RunningLine({
   const doing =
     progress?.kind === "calling"
       ? progress.reason || toolWords(progress.tool)
-      : "Thinking";
+      : progress?.kind === "summarizing"
+        ? "Summarising earlier messages to make room"
+        : progress?.kind === "writing"
+          ? "Writing"
+          : "Thinking";
   return (
-    <div className="flex items-center gap-2" role="status" aria-live="polite">
+    <div className="flex items-center gap-2 px-1" role="status" aria-live="polite">
       <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{doing}</span>
       {elapsed !== null ? (
@@ -290,7 +344,7 @@ function Outcome({
   switch (conversation.last_outcome) {
     case "failed":
       return (
-        <p className="rounded-sm border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           That turn failed: {conversation.last_error ?? "unknown error"}. Send a message to try
           again.
         </p>
@@ -319,28 +373,40 @@ function Outcome({
 
 function EmptyState({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
   return (
-    <div className="space-y-4 pt-6">
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">Talk to your mail.</p>
-        <p className="text-xs text-muted-foreground">
-          Ask questions, get summaries, or have it sort, archive and draft. Every change waits
-          for your approval first.
-        </p>
+    <div className="flex min-h-full flex-col justify-end gap-6 pb-2">
+      <div className="space-y-3">
+        <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-primary">
+          <BotMessageSquare className="size-5" aria-hidden="true" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-base font-medium text-foreground">Talk to your mail.</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Ask questions, get summaries, or have it sort, archive and draft. It reads freely; every
+            change waits for your approval.
+          </p>
+        </div>
       </div>
-      <ul className="space-y-1.5">
-        {SUGGESTIONS.map((suggestion) => (
-          <li key={suggestion}>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onPick(suggestion)}
-              className="w-full rounded-sm border border-border px-2.5 py-1.5 text-left text-xs text-muted-foreground outline-none hover:border-primary/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-            >
-              {suggestion}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="space-y-1.5">
+        <p className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">Try</p>
+        <ul className="-mx-2">
+          {SUGGESTIONS.map(({ text, icon: Icon }) => (
+            <li key={text}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onPick(text)}
+                className="group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-foreground/90 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <Icon
+                  className="size-4 shrink-0 text-muted-foreground group-hover:text-primary"
+                  aria-hidden="true"
+                />
+                {text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
       <p className="text-2xs text-muted-foreground">
         <KeyChip>{formatChord(ASSISTANT_SHORTCUT)}</KeyChip> opens and closes this panel.
       </p>
@@ -348,15 +414,22 @@ function EmptyState({ disabled, onPick }: { disabled: boolean; onPick: (text: st
   );
 }
 
-/** Where the conversation goes, said once, under the composer. */
+/** Where the conversation goes, said once, inside the composer. */
 function Disclosure() {
   const availability = useAvailability();
   const data = availability.data;
   if (!data?.available || !data.model) return null;
   return (
-    <p className="font-mono text-2xs text-muted-foreground">
+    <span
+      className="font-mono"
+      title={
+        data.leaves_machine
+          ? "Your messages and the mail it reads go to this provider"
+          : "Nothing leaves this machine"
+      }
+    >
       {data.model} · {data.leaves_machine ? "sent off this machine" : "runs on this machine"}
-    </p>
+    </span>
   );
 }
 
@@ -383,11 +456,16 @@ function HistoryMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button size="icon-sm" variant="ghost" aria-label="Past conversations" title="Past conversations">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Past conversations"
+          title="Past conversations"
+        >
           <History className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel>Conversations</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {conversations.isPending ? (
@@ -402,7 +480,7 @@ function HistoryMenu({
               className={cn("group gap-2", summary.id === currentId && "bg-muted/60")}
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs">{summary.title}</span>
+                <span className="block truncate text-sm">{summary.title}</span>
                 <span className="block font-mono text-2xs text-muted-foreground">
                   {formatRelative(new Date(summary.updated_at * 1000))}
                   {summary.pending_count > 0 ? " · waiting for you" : ""}
@@ -417,7 +495,7 @@ function HistoryMenu({
                   event.stopPropagation();
                   void remove(summary.id);
                 }}
-                className="rounded-sm p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                className="rounded-sm p-1 text-muted-foreground opacity-0 group-hover:opacity-100 group-data-[highlighted]:opacity-100 hover:text-destructive focus-visible:opacity-100"
               >
                 <Trash2 className="size-3.5" />
               </button>

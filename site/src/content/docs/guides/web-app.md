@@ -386,6 +386,14 @@ conversation open or rows selected, the mail actions for it come first.
 search. You can type straight after opening the palette or quick search:
 keys pressed before it has focus land in its field.
 
+## Talk to your mail
+
+`⌘.` (`Ctrl+.`), or the assistant button beside Search, opens the
+[assistant](/guides/assistant/) on the right. It stays as you move between
+pages and slides over the page on narrow windows. Ask it questions or tell
+it what to do; replies appear as they are written, and every change waits
+on a card until you approve it.
+
 ## Compose
 
 Compose opens in place, for a new message, a reply, reply all or a forward.

@@ -1,0 +1,1181 @@
+//! The assistant pane: the conversation, what waits for the user, and the
+//! message box. Everything in it that came from email or from the model is
+//! untrusted text: control characters are stripped and nothing in it is
+//! followed or fetched.
+
+use super::assistant_describe::{
+    answered_with, describe_change, plain_text, preview_draft, preview_messages, tool_words,
+};
+use super::sanitize::{one_line, strip_control_chars, truncate};
+use crate::app::{AssistantFocus, AssistantPrompt, AssistantState};
+use crate::theme::Theme;
+use mxr_protocol::{
+    AssistantCallStateData, AssistantItemData, AssistantOutcomeData, AssistantPendingData,
+    AssistantProgressData, AssistantStatusData,
+};
+use ratatui::prelude::*;
+use ratatui::widgets::*;
+use std::time::Instant;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+/// Approvals list this many messages, then "and N more".
+const PREVIEW_ROWS: usize = 6;
+/// The message box grows to this many lines, then shows the newest.
+const INPUT_ROWS: usize = 4;
+
+const SUGGESTIONS: [&str; 3] = [
+    "What needs a reply from me this week?",
+    "Summarise what arrived today",
+    "Find newsletters I never open and tidy them up",
+];
+
+/// Draws the pane and returns how far its transcript can scroll.
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AssistantState,
+    now: Instant,
+    theme: &Theme,
+) -> u16 {
+    frame.render_widget(Clear, area);
+    let focused = state.focus != AssistantFocus::Away;
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(if focused {
+            theme.border_focused
+        } else {
+            theme.border_unfocused
+        }))
+        .title(title_line(state, theme))
+        .style(Style::default().bg(theme.modal_bg));
+    let inner = block.inner(area).inner(ratatui::layout::Margin::new(1, 0));
+    frame.render_widget(block, area);
+    if inner.width < 4 || inner.height < 4 {
+        return 0;
+    }
+    let width = usize::from(inner.width).max(1);
+
+    let mut footer = footer_lines(state, width, now, theme);
+    let muted = Style::default().fg(theme.text_muted);
+    push_wrapped(&mut footer, "", &hint_text(state), width, muted, muted);
+
+    let mut card = card_lines(state, width, theme);
+    // The card can take half the pane, or all the footer leaves while the
+    // exact call is unfolded; the footer always shows.
+    let card_room = if state.exact_call_for.is_some() {
+        usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
+    } else {
+        0
+    }
+    .max(usize::from(inner.height / 2));
+    if card.len() > card_room {
+        card.truncate(card_room.saturating_sub(1));
+        card.push(Line::from(Span::styled(
+            "…",
+            Style::default().fg(theme.text_muted),
+        )));
+    }
+    let bottom = (footer.len() + card.len()).min(usize::from(inner.height.saturating_sub(2)));
+    let chunks = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(u16::try_from(bottom).unwrap_or(u16::MAX)),
+    ])
+    .split(inner);
+
+    let (body, max_scroll) = if let Some(list) = &state.list {
+        (list_lines(list, width, theme), 0)
+    } else {
+        let lines = transcript_lines(state, width, theme);
+        let height = usize::from(chunks[0].height);
+        let max = lines.len().saturating_sub(height);
+        let max_scroll = u16::try_from(max).unwrap_or(u16::MAX);
+        let from_bottom = usize::from(state.scroll_from_bottom.min(max_scroll));
+        let start = max - from_bottom;
+        let visible: Vec<Line<'static>> = lines.into_iter().skip(start).take(height).collect();
+        (visible, max_scroll)
+    };
+    frame.render_widget(Paragraph::new(body), chunks[0]);
+
+    let mut bottom_lines = card;
+    bottom_lines.extend(footer);
+    let skip = bottom_lines
+        .len()
+        .saturating_sub(usize::from(chunks[1].height));
+    frame.render_widget(
+        Paragraph::new(bottom_lines.into_iter().skip(skip).collect::<Vec<_>>()),
+        chunks[1],
+    );
+    max_scroll
+}
+
+fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
+    let title = state
+        .conversation
+        .as_ref()
+        .map(|conversation| one_line(&conversation.title))
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or_else(|| "Assistant".into());
+    let mut spans = vec![Span::styled(
+        format!(" {} ", truncate(&title, 40)),
+        Style::default().fg(theme.text_primary).bold(),
+    )];
+    if state.auto_approve() {
+        spans.push(Span::styled(
+            "· auto-approve on ",
+            Style::default().fg(theme.warning).bold(),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// The keys that work right now, in the pane's own words.
+pub fn hint_text(state: &AssistantState) -> String {
+    match &state.prompt {
+        // A delete confirm can sit over the history list.
+        Some(AssistantPrompt::ConfirmDelete(_)) => return "y delete · n keep".into(),
+        _ if state.list.is_some() => {
+            return "j/k move · Enter open · D delete · Esc back".into();
+        }
+        Some(AssistantPrompt::RejectReason { .. }) => return "Enter reject · Esc back".into(),
+        Some(AssistantPrompt::Other { .. }) => return "Enter save · Esc back".into(),
+        None => {}
+    }
+    let stop = if state.running() {
+        " · Ctrl-c stop"
+    } else {
+        ""
+    };
+    match state.focus {
+        AssistantFocus::Input => format!("Enter send · Alt-Enter new line · Esc keys{stop}"),
+        AssistantFocus::Pane => match state.pending().first() {
+            Some(AssistantPendingData::Approval { .. }) => {
+                "y approve · n reject · x exact call · i write instead · Esc leave".into()
+            }
+            Some(AssistantPendingData::Question { questions, .. }) => {
+                let other = questions.iter().any(|question| question.allow_other);
+                let tab = if questions.len() > 1 {
+                    " · Tab next"
+                } else {
+                    ""
+                };
+                format!(
+                    "1-9 choose{} · Enter answer · s skip{tab}",
+                    if other { " · o own answer" } else { "" }
+                )
+            }
+            None => format!("i write · N new · L history · T trust · D delete · e steps{stop}"),
+        },
+        AssistantFocus::Away => "Ctrl-a to use the assistant".into(),
+    }
+}
+
+/// Words a long text into lines no wider than `width`, keeping its breaks.
+pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut out = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        let mut line_width = 0;
+        for word in paragraph.split(' ') {
+            let word_width = word.width();
+            let gap = usize::from(!line.is_empty());
+            if line_width + gap + word_width <= width {
+                if gap == 1 {
+                    line.push(' ');
+                }
+                line.push_str(word);
+                line_width += gap + word_width;
+                continue;
+            }
+            if !line.is_empty() {
+                out.push(std::mem::take(&mut line));
+                line_width = 0;
+            }
+            // A word wider than the line breaks wherever it must.
+            for c in word.chars() {
+                let w = c.width().unwrap_or(0);
+                if line_width + w > width {
+                    out.push(std::mem::take(&mut line));
+                    line_width = 0;
+                }
+                line.push(c);
+                line_width += w;
+            }
+        }
+        out.push(line);
+    }
+    out
+}
+
+/// `text` wrapped under `prefix`, continuation lines indented to match.
+fn push_wrapped(
+    lines: &mut Vec<Line<'static>>,
+    prefix: &str,
+    text: &str,
+    width: usize,
+    prefix_style: Style,
+    style: Style,
+) {
+    let indent = " ".repeat(prefix.width());
+    let text = strip_control_chars(text).replace('\t', "  ");
+    for (index, row) in wrap(&text, width.saturating_sub(prefix.width()))
+        .into_iter()
+        .enumerate()
+    {
+        let lead = if index == 0 { prefix } else { indent.as_str() };
+        lines.push(Line::from(vec![
+            Span::styled(lead.to_string(), prefix_style),
+            Span::styled(row, style),
+        ]));
+    }
+}
+
+/// `value` as indented JSON, `lead` before its first line. Each line
+/// wraps under its own indent so nesting stays readable when narrow.
+fn push_json(
+    lines: &mut Vec<Line<'static>>,
+    lead: &str,
+    value: &serde_json::Value,
+    width: usize,
+    style: Style,
+) {
+    let json = serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string());
+    for (index, row) in json.lines().enumerate() {
+        let text = row.trim_start();
+        let indent = " ".repeat(row.len() - text.len());
+        let prefix = if index == 0 {
+            format!("{lead}{indent}")
+        } else {
+            indent
+        };
+        push_wrapped(lines, &prefix, text, width, style, style);
+    }
+}
+
+/// The user's lines wear a bar, so a quote stays visibly theirs.
+fn push_user(lines: &mut Vec<Line<'static>>, text: &str, width: usize, theme: &Theme) {
+    let text = strip_control_chars(text);
+    for row in wrap(&text, width.saturating_sub(2)) {
+        lines.push(Line::from(vec![
+            Span::styled("│ ", Style::default().fg(theme.text_secondary)),
+            Span::styled(row, Style::default().fg(theme.text_primary).italic()),
+        ]));
+    }
+}
+
+fn state_glyph(state: AssistantCallStateData, theme: &Theme) -> Span<'static> {
+    let (glyph, color) = match state {
+        AssistantCallStateData::Running => ("…", theme.accent),
+        AssistantCallStateData::Done | AssistantCallStateData::Answered => ("✓", theme.text_muted),
+        AssistantCallStateData::Approved | AssistantCallStateData::AutoApproved => {
+            ("✓", theme.accent)
+        }
+        AssistantCallStateData::Waiting => ("◆", theme.warning),
+        AssistantCallStateData::Failed => ("✗", theme.error),
+        AssistantCallStateData::Declined | AssistantCallStateData::Cancelled => {
+            ("⊘", theme.text_muted)
+        }
+        AssistantCallStateData::Interrupted => ("!", theme.warning),
+    };
+    Span::styled(format!("{glyph} "), Style::default().fg(color))
+}
+
+fn step_label(tool: &str, reason: &str, result: Option<&str>) -> String {
+    if tool == "ask_user" {
+        let reason = if reason.is_empty() {
+            "Asked you a question"
+        } else {
+            reason
+        };
+        return match answered_with(result) {
+            Some(answer) => format!("{reason}: {answer}"),
+            None => reason.to_string(),
+        };
+    }
+    if reason.is_empty() {
+        tool_words(tool)
+    } else {
+        reason.to_string()
+    }
+}
+
+/// The conversation as lines: what the user wrote, the replies, the steps
+/// between (folded once settled), and how the last turn ended.
+pub(crate) fn transcript_lines(
+    state: &AssistantState,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let muted = Style::default().fg(theme.text_muted);
+    let Some(conversation) = state.conversation.as_ref().filter(|c| !c.items.is_empty()) else {
+        if state.conversation_id.is_some() && state.conversation.is_none() {
+            lines.push(Line::from(Span::styled("Loading the conversation…", muted)));
+            return lines;
+        }
+        if state.sending {
+            if let Some(text) = state.input_sent.as_deref() {
+                push_user(&mut lines, text, width, theme);
+            }
+            return lines;
+        }
+        lines.push(Line::from(Span::styled(
+            "Talk to your mail.",
+            Style::default().fg(theme.text_primary).bold(),
+        )));
+        push_wrapped(
+            &mut lines,
+            "",
+            "Ask questions, get summaries, or have it sort, archive and draft. Every change waits for your approval first.",
+            width,
+            muted,
+            muted,
+        );
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled("For example:", muted)));
+        for suggestion in SUGGESTIONS {
+            push_wrapped(&mut lines, "  ", suggestion, width, muted, muted);
+        }
+        return lines;
+    };
+
+    let running = state.running();
+    let items = &conversation.items;
+    let mut index = 0;
+    while index < items.len() {
+        if !lines.is_empty() {
+            lines.push(Line::default());
+        }
+        match &items[index] {
+            AssistantItemData::User { text, .. } => push_user(&mut lines, text, width, theme),
+            AssistantItemData::Assistant { text, .. } => push_wrapped(
+                &mut lines,
+                "",
+                &plain_text(text),
+                width,
+                Style::default(),
+                Style::default().fg(theme.text_primary),
+            ),
+            AssistantItemData::Summary { text, .. } => {
+                let label = " Earlier messages summarised ";
+                let side = width.saturating_sub(label.width()) / 2;
+                lines.push(Line::from(Span::styled(
+                    format!("{}{label}{}", "─".repeat(side), "─".repeat(side)),
+                    muted,
+                )));
+                if state.steps_expanded {
+                    push_wrapped(&mut lines, "", text, width, muted, muted);
+                }
+            }
+            AssistantItemData::ToolCall { .. } => {
+                let end = items[index..]
+                    .iter()
+                    .position(|item| !matches!(item, AssistantItemData::ToolCall { .. }))
+                    .map_or(items.len(), |offset| index + offset);
+                let steps = &items[index..end];
+                let live = running && end == items.len();
+                let settled = !live
+                    && steps.iter().all(|step| {
+                        !matches!(
+                            step,
+                            AssistantItemData::ToolCall {
+                                state: AssistantCallStateData::Running,
+                                ..
+                            }
+                        )
+                    });
+                if settled && !state.steps_expanded {
+                    let waiting = steps.iter().any(|step| {
+                        matches!(
+                            step,
+                            AssistantItemData::ToolCall {
+                                state: AssistantCallStateData::Waiting,
+                                ..
+                            }
+                        )
+                    });
+                    let count = if steps.len() == 1 {
+                        "1 step".to_string()
+                    } else {
+                        format!("{} steps", steps.len())
+                    };
+                    lines.push(Line::from(Span::styled(
+                        format!(
+                            "▸ {count}{}",
+                            if waiting { ", waiting for you" } else { "" }
+                        ),
+                        muted,
+                    )));
+                } else {
+                    for step in steps {
+                        if let AssistantItemData::ToolCall {
+                            tool,
+                            reason,
+                            state: call_state,
+                            result,
+                            ..
+                        } = step
+                        {
+                            let label = step_label(tool, reason, result.as_deref());
+                            let glyph = state_glyph(*call_state, theme);
+                            let indent = "  ";
+                            for (row_index, row) in wrap(&one_line(&label), width.saturating_sub(2))
+                                .into_iter()
+                                .enumerate()
+                            {
+                                let lead = if row_index == 0 {
+                                    glyph.clone()
+                                } else {
+                                    Span::raw(indent)
+                                };
+                                lines.push(Line::from(vec![
+                                    lead,
+                                    Span::styled(row, Style::default().fg(theme.text_secondary)),
+                                ]));
+                            }
+                        }
+                    }
+                }
+                index = end;
+                continue;
+            }
+        }
+        index += 1;
+    }
+
+    // The reply as it is written, until the finished one is stored.
+    if let Some(AssistantProgressData::Writing { text }) = &state.progress {
+        let stored = matches!(items.last(), Some(AssistantItemData::Assistant { text: last, .. }) if last == text);
+        if running && !text.trim().is_empty() && !stored {
+            lines.push(Line::default());
+            push_wrapped(
+                &mut lines,
+                "",
+                &plain_text(text),
+                width,
+                Style::default(),
+                Style::default().fg(theme.text_primary),
+            );
+        }
+    }
+
+    if conversation.status == AssistantStatusData::Idle {
+        let outcome = match conversation.last_outcome {
+            Some(AssistantOutcomeData::Failed) => Some((
+                format!(
+                    "That turn failed: {}. Send a message to try again.",
+                    one_line(
+                        conversation
+                            .last_error
+                            .as_deref()
+                            .unwrap_or("unknown error")
+                    )
+                ),
+                theme.error,
+            )),
+            Some(AssistantOutcomeData::StepLimit) => Some((
+                "I stopped after many steps. Send \"go on\" to keep going.".to_string(),
+                theme.text_muted,
+            )),
+            Some(AssistantOutcomeData::Cancelled) => {
+                Some(("Stopped.".to_string(), theme.text_muted))
+            }
+            Some(AssistantOutcomeData::Interrupted) => Some((
+                "mxr restarted during this turn. Send a message to carry on.".to_string(),
+                theme.text_muted,
+            )),
+            Some(AssistantOutcomeData::Finished) | None => None,
+        };
+        if let Some((text, color)) = outcome {
+            lines.push(Line::default());
+            let style = Style::default().fg(color);
+            push_wrapped(&mut lines, "", &text, width, style, style);
+        }
+    }
+    lines
+}
+
+/// What waits for the user: a change to approve, or questions to answer.
+fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let muted = Style::default().fg(theme.text_muted);
+    // Over the history list the card is only the delete confirm.
+    let pending: &[AssistantPendingData] = if state.list.is_some() {
+        &[]
+    } else {
+        state.pending()
+    };
+    let label = Style::default().fg(theme.accent).bold();
+    let strong = Style::default().fg(theme.text_primary).bold();
+    let body = Style::default().fg(theme.text_primary);
+    for pending in pending {
+        lines.push(Line::from(Span::styled("─".repeat(width), muted)));
+        match pending {
+            AssistantPendingData::Approval {
+                call_id,
+                tool,
+                arguments,
+                reason,
+                preview,
+                preview_error,
+            } => {
+                lines.push(Line::from(Span::styled("YOUR CALL", label)));
+                push_wrapped(
+                    &mut lines,
+                    "",
+                    &describe_change(tool, arguments),
+                    width,
+                    strong,
+                    strong,
+                );
+                if !reason.is_empty() {
+                    push_wrapped(&mut lines, "", &one_line(reason), width, muted, muted);
+                }
+                let messages = preview.as_ref().map(preview_messages).unwrap_or_default();
+                let draft = if messages.is_empty() {
+                    preview.as_ref().and_then(preview_draft)
+                } else {
+                    None
+                };
+                if !messages.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!(
+                            "touches {} message{}:",
+                            messages.len(),
+                            if messages.len() == 1 { "" } else { "s" }
+                        ),
+                        muted,
+                    )));
+                    for message in messages.iter().take(PREVIEW_ROWS) {
+                        let row = format!(
+                            "{}  {}",
+                            one_line(&message.subject),
+                            one_line(&message.from)
+                        );
+                        lines.push(Line::from(vec![
+                            Span::styled("• ", muted),
+                            Span::styled(
+                                truncate(&row, width.saturating_sub(2)),
+                                Style::default().fg(theme.text_secondary),
+                            ),
+                        ]));
+                    }
+                    if messages.len() > PREVIEW_ROWS {
+                        lines.push(Line::from(Span::styled(
+                            format!("  and {} more", messages.len() - PREVIEW_ROWS),
+                            muted,
+                        )));
+                    }
+                } else if let Some(draft) = draft {
+                    let to = if draft.to.is_empty() {
+                        "(no recipients)".to_string()
+                    } else {
+                        draft.to
+                    };
+                    push_wrapped(&mut lines, "To ", &one_line(&to), width, muted, body);
+                    let subject = if draft.subject.is_empty() {
+                        "(no subject)".to_string()
+                    } else {
+                        draft.subject
+                    };
+                    push_wrapped(&mut lines, "", &one_line(&subject), width, strong, strong);
+                    let mut rows = wrap(&strip_control_chars(&draft.body), width);
+                    let more = rows.len() > PREVIEW_ROWS;
+                    rows.truncate(PREVIEW_ROWS);
+                    for row in rows {
+                        lines.push(Line::from(Span::styled(row, muted)));
+                    }
+                    if more {
+                        lines.push(Line::from(Span::styled("…", muted)));
+                    }
+                } else if let Some(error) = preview_error {
+                    let warn = Style::default().fg(theme.warning);
+                    push_wrapped(
+                        &mut lines,
+                        "",
+                        &format!("The preview failed: {}", one_line(error)),
+                        width,
+                        warn,
+                        warn,
+                    );
+                }
+                if state.exact_call_for.as_deref() == Some(call_id.as_str()) {
+                    lines.push(Line::from(Span::styled("EXACT CALL", label)));
+                    push_json(&mut lines, &format!("{tool} "), arguments, width, muted);
+                    // A preview the card couldn't put in words shows as
+                    // the daemon returned it, as the web's does.
+                    if let Some(preview) = preview.as_ref().filter(|_| messages.is_empty()) {
+                        if preview_draft(preview).is_none() {
+                            push_json(&mut lines, "preview ", preview, width, muted);
+                        }
+                    }
+                }
+                if let Some(AssistantPrompt::RejectReason {
+                    call_id: rejecting,
+                    text,
+                }) = &state.prompt
+                {
+                    if rejecting == call_id {
+                        push_wrapped(
+                            &mut lines,
+                            "Why, or what to do instead (optional): ",
+                            &format!("{text}█"),
+                            width,
+                            muted,
+                            body,
+                        );
+                    }
+                }
+            }
+            AssistantPendingData::Question {
+                call_id, questions, ..
+            } => {
+                lines.push(Line::from(Span::styled("A QUESTION FOR YOU", label)));
+                let current = state.answers_for.as_deref() == Some(call_id.as_str());
+                for (index, question) in questions.iter().enumerate() {
+                    let answer = state.answers.get(index).filter(|_| current);
+                    let active = index == state.active_question;
+                    if let Some(header) = &question.header {
+                        lines.push(Line::from(Span::styled(
+                            one_line(header).to_uppercase(),
+                            muted,
+                        )));
+                    }
+                    let marker = if questions.len() > 1 && active {
+                        "› "
+                    } else {
+                        ""
+                    };
+                    push_wrapped(
+                        &mut lines,
+                        marker,
+                        &one_line(&question.question),
+                        width,
+                        Style::default().fg(theme.accent),
+                        strong,
+                    );
+                    for (number, option) in question.options.iter().enumerate() {
+                        let chosen =
+                            answer.is_some_and(|answer| answer.selected.contains(&option.label));
+                        let mark = match (question.multi_select, chosen) {
+                            (true, true) => "[x]",
+                            (true, false) => "[ ]",
+                            (false, true) => "(•)",
+                            (false, false) => "( )",
+                        };
+                        let key = if active && number < 9 {
+                            format!("{} ", number + 1)
+                        } else {
+                            "  ".into()
+                        };
+                        push_wrapped(
+                            &mut lines,
+                            &format!("{key}{mark} "),
+                            &one_line(&option.label),
+                            width,
+                            muted,
+                            if chosen { strong } else { body },
+                        );
+                        if let Some(description) = &option.description {
+                            push_wrapped(
+                                &mut lines,
+                                "      ",
+                                &one_line(description),
+                                width,
+                                muted,
+                                muted,
+                            );
+                        }
+                    }
+                    if question.allow_other {
+                        let typed = answer.map_or("", |answer| answer.other.as_str());
+                        let editing =
+                            active && matches!(state.prompt, Some(AssistantPrompt::Other { .. }));
+                        if editing {
+                            if let Some(AssistantPrompt::Other { text }) = &state.prompt {
+                                push_wrapped(
+                                    &mut lines,
+                                    "Your answer: ",
+                                    &format!("{text}█"),
+                                    width,
+                                    muted,
+                                    body,
+                                );
+                            }
+                        } else if !typed.trim().is_empty() {
+                            push_wrapped(&mut lines, "Your answer: ", typed, width, muted, strong);
+                        } else if active {
+                            let hint = if question.options.is_empty() {
+                                "o  write your answer"
+                            } else {
+                                "o  or write your own answer"
+                            };
+                            lines.push(Line::from(Span::styled(hint, muted)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(AssistantPrompt::ConfirmDelete(delete)) = &state.prompt {
+        lines.push(Line::from(Span::styled("─".repeat(width), muted)));
+        let warn = Style::default().fg(theme.warning);
+        push_wrapped(
+            &mut lines,
+            "",
+            &format!(
+                "Delete \"{}\" and its {} message{}? This can't be undone.",
+                one_line(&delete.title),
+                delete.message_count,
+                if delete.message_count == 1 { "" } else { "s" }
+            ),
+            width,
+            warn,
+            warn,
+        );
+    }
+    lines
+}
+
+/// The running line, errors, the message box and where the model runs.
+fn footer_lines(
+    state: &AssistantState,
+    width: usize,
+    now: Instant,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let muted = Style::default().fg(theme.text_muted);
+    if state.list.is_some() {
+        // A refused delete from the list says why there.
+        if let Some(error) = &state.error {
+            let style = Style::default().fg(theme.error);
+            push_wrapped(&mut lines, "", &one_line(error), width, style, style);
+        }
+        return lines;
+    }
+    if state.running() {
+        let doing = match &state.progress {
+            Some(AssistantProgressData::Calling { tool, reason }) => {
+                if reason.is_empty() {
+                    tool_words(tool)
+                } else {
+                    one_line(reason)
+                }
+            }
+            Some(AssistantProgressData::Writing { .. }) => "Writing…".into(),
+            Some(AssistantProgressData::Summarizing) => "Summarising earlier messages".into(),
+            Some(AssistantProgressData::Thinking { .. }) | None => "Thinking".into(),
+        };
+        let elapsed = state
+            .started_at
+            .map(|started| format!("  {}s", now.saturating_duration_since(started).as_secs()))
+            .unwrap_or_default();
+        let room = width.saturating_sub(elapsed.width() + 2);
+        lines.push(Line::from(vec![
+            Span::styled("◐ ", Style::default().fg(theme.accent)),
+            Span::styled(
+                truncate(&doing, room),
+                Style::default().fg(theme.text_secondary),
+            ),
+            Span::styled(elapsed, muted),
+        ]));
+    }
+    if let Some(error) = &state.error {
+        let style = Style::default().fg(theme.error);
+        push_wrapped(&mut lines, "", &one_line(error), width, style, style);
+    }
+    lines.push(Line::from(Span::styled("─".repeat(width), muted)));
+    if !state.available() {
+        let reason = state
+            .availability
+            .as_ref()
+            .and_then(|availability| availability.reason.clone())
+            .unwrap_or_else(|| "The assistant can't run.".into());
+        let warn = Style::default().fg(theme.warning);
+        push_wrapped(&mut lines, "", &reason, width, warn, warn);
+        push_wrapped(
+            &mut lines,
+            "",
+            "Set a model under [llm] in mxr.toml (g c), then reopen this pane.",
+            width,
+            muted,
+            muted,
+        );
+        return lines;
+    }
+    let waiting = !state.pending().is_empty();
+    let typing = state.focus == AssistantFocus::Input && state.prompt.is_none();
+    if state.input.is_empty() && !typing {
+        let placeholder = if waiting {
+            "› Answer above, or press i to write instead"
+        } else {
+            "› Ask about your mail, or say what to do"
+        };
+        lines.push(Line::from(Span::styled(placeholder, muted)));
+    } else {
+        let text = if typing {
+            format!("{}█", state.input)
+        } else {
+            state.input.clone()
+        };
+        let mut rows: Vec<Line<'static>> = Vec::new();
+        push_wrapped(
+            &mut rows,
+            "› ",
+            &text,
+            width,
+            Style::default().fg(theme.accent),
+            Style::default().fg(theme.text_primary),
+        );
+        let skip = rows.len().saturating_sub(INPUT_ROWS);
+        lines.extend(rows.into_iter().skip(skip));
+        if waiting && !state.input.trim().is_empty() {
+            lines.push(Line::from(Span::styled(
+                "Sending this declines what is waiting above.",
+                muted,
+            )));
+        }
+    }
+    if let Some(availability) = &state.availability {
+        if let Some(model) = &availability.model {
+            let place = if availability.leaves_machine {
+                "sent off this machine"
+            } else {
+                "runs on this machine"
+            };
+            lines.push(Line::from(Span::styled(
+                truncate(&format!("{model} · {place}"), width),
+                muted,
+            )));
+        }
+    }
+    lines
+}
+
+fn list_lines(
+    list: &crate::app::AssistantListState,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let muted = Style::default().fg(theme.text_muted);
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Conversations",
+            Style::default().fg(theme.accent).bold(),
+        )),
+        Line::default(),
+    ];
+    if list.loading {
+        lines.push(Line::from(Span::styled("Loading…", muted)));
+        return lines;
+    }
+    if list.conversations.is_empty() {
+        lines.push(Line::from(Span::styled("None yet.", muted)));
+        return lines;
+    }
+    let now = chrono::Utc::now().timestamp();
+    for (index, summary) in list.conversations.iter().enumerate() {
+        let selected = index == list.selected;
+        let style = if selected {
+            Style::default()
+                .fg(theme.selection_fg)
+                .bg(theme.selection_bg)
+        } else {
+            Style::default().fg(theme.text_primary)
+        };
+        let title = truncate(&one_line(&summary.title), width.saturating_sub(2));
+        lines.push(Line::from(Span::styled(
+            format!("{}{title}", if selected { "› " } else { "  " }),
+            style,
+        )));
+        let mut meta = age(now - summary.updated_at);
+        if summary.pending_count > 0 {
+            meta.push_str(" · waiting for you");
+        }
+        if summary.status == AssistantStatusData::Running {
+            meta.push_str(" · working");
+        }
+        lines.push(Line::from(Span::styled(format!("  {meta}"), muted)));
+    }
+    lines
+}
+
+fn age(seconds: i64) -> String {
+    match seconds.max(0) {
+        s if s < 60 => "just now".into(),
+        s if s < 3600 => format!("{}m ago", s / 60),
+        s if s < 86_400 => format!("{}h ago", s / 3600),
+        s => format!("{}d ago", s / 86_400),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{AnswerDraft, AssistantState};
+    use mxr_protocol::{
+        AssistantAvailabilityData, AssistantConversationData, AssistantQuestionData,
+        AssistantQuestionOptionData,
+    };
+    use mxr_test_support::render_to_string;
+    use serde_json::json;
+
+    fn conversation(
+        status: AssistantStatusData,
+        items: Vec<AssistantItemData>,
+        pending: Vec<AssistantPendingData>,
+    ) -> AssistantConversationData {
+        AssistantConversationData {
+            id: "c1".into(),
+            title: "Tidy newsletters".into(),
+            status,
+            last_outcome: None,
+            last_error: None,
+            created_at: 0,
+            updated_at: 0,
+            auto_approve: false,
+            items,
+            pending,
+        }
+    }
+
+    fn user(seq: i64, text: &str) -> AssistantItemData {
+        AssistantItemData::User {
+            seq,
+            text: text.into(),
+            created_at: 0,
+        }
+    }
+
+    fn step(seq: i64, reason: &str, state: AssistantCallStateData) -> AssistantItemData {
+        AssistantItemData::ToolCall {
+            seq,
+            call_id: format!("call{seq}"),
+            tool: "mxr_search".into(),
+            reason: reason.into(),
+            arguments: json!({}),
+            state,
+            result: None,
+            created_at: 0,
+        }
+    }
+
+    fn open_state() -> AssistantState {
+        let mut state = AssistantState::default();
+        state.open = true;
+        state.focus = AssistantFocus::Input;
+        state.availability = Some(AssistantAvailabilityData {
+            available: true,
+            model: Some("qwen3:8b".into()),
+            leaves_machine: false,
+            reason: None,
+        });
+        state
+    }
+
+    fn render(state: &AssistantState) -> String {
+        render_to_string(48, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 48, 24),
+                state,
+                state.started_at.unwrap_or_else(Instant::now),
+                &Theme::default(),
+            );
+        })
+    }
+
+    #[test]
+    fn assistant_pane_empty() {
+        insta::assert_snapshot!("assistant_pane_empty", render(&open_state()));
+    }
+
+    #[test]
+    fn assistant_pane_running_with_steps() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Running,
+            vec![
+                user(1, "Find newsletters I never open"),
+                step(
+                    2,
+                    "Search newsletters from the last month",
+                    AssistantCallStateData::Done,
+                ),
+                step(3, "Count opens per sender", AssistantCallStateData::Running),
+            ],
+            Vec::new(),
+        ));
+        state.progress = Some(AssistantProgressData::Calling {
+            tool: "mxr_search".into(),
+            reason: "Count opens per sender".into(),
+        });
+        state.focus = AssistantFocus::Pane;
+        insta::assert_snapshot!("assistant_pane_running", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_approval_waiting() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        let mut waiting = conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![
+                user(1, "Archive the Acme receipts"),
+                step(2, "Find Acme receipts", AssistantCallStateData::Done),
+                step(
+                    3,
+                    "Archive the three receipts",
+                    AssistantCallStateData::Waiting,
+                ),
+            ],
+            vec![AssistantPendingData::Approval {
+                call_id: "call3".into(),
+                tool: "mxr_mutate".into(),
+                arguments: json!({"action": "archive", "message_ids": ["a", "b", "c"]}),
+                reason: "They are receipts you already filed".into(),
+                preview: Some(json!({"messages": [
+                    {"subject": "Your receipt #1", "from": {"name": "Acme"}},
+                    {"subject": "Your receipt #2", "from": {"name": "Acme"}},
+                    {"subject": "Your receipt #3", "from": {"email": "billing@acme.test"}}
+                ]})),
+                preview_error: None,
+            }],
+        );
+        waiting.auto_approve = true;
+        state.conversation = Some(waiting);
+        insta::assert_snapshot!("assistant_pane_approval", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_approval_exact_call() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Make a rule for Acme receipts")],
+            vec![AssistantPendingData::Approval {
+                call_id: "call2".into(),
+                tool: "mxr_rule".into(),
+                arguments: json!({"name": "Acme receipts", "query": "from:acme.test"}),
+                reason: "So they file themselves".into(),
+                preview: Some(json!({"matches": 3})),
+                preview_error: None,
+            }],
+        ));
+        state.exact_call_for = Some("call2".into());
+        insta::assert_snapshot!("assistant_pane_approval_exact_call", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_history_delete_confirm() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.list = Some(crate::app::AssistantListState {
+            loading: false,
+            conversations: vec![mxr_protocol::AssistantConversationSummaryData {
+                id: "c2".into(),
+                title: "Old receipts".into(),
+                status: AssistantStatusData::Idle,
+                last_outcome: None,
+                created_at: 0,
+                updated_at: chrono::Utc::now().timestamp() - 2 * 3600,
+                message_count: 4,
+                pending_count: 0,
+            }],
+            selected: 0,
+        });
+        state.prompt = Some(AssistantPrompt::ConfirmDelete(
+            mxr_protocol::AssistantDeleteData {
+                conversation_id: "c2".into(),
+                title: "Old receipts".into(),
+                message_count: 4,
+                dry_run: true,
+                deleted: false,
+            },
+        ));
+        insta::assert_snapshot!("assistant_pane_history_delete_confirm", render(&state));
+    }
+
+    #[test]
+    fn assistant_pane_question_waiting() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Tidy my newsletters")],
+            vec![AssistantPendingData::Question {
+                call_id: "q1".into(),
+                reason: "Which ones count".into(),
+                questions: vec![AssistantQuestionData {
+                    question: "Which newsletters should go?".into(),
+                    header: Some("Scope".into()),
+                    options: vec![
+                        AssistantQuestionOptionData {
+                            label: "Unopened for 3 months".into(),
+                            description: Some("12 senders".into()),
+                        },
+                        AssistantQuestionOptionData {
+                            label: "All of them".into(),
+                            description: None,
+                        },
+                    ],
+                    multi_select: false,
+                    allow_other: true,
+                }],
+            }],
+        ));
+        state.answers_for = Some("q1".into());
+        state.answers = vec![AnswerDraft {
+            selected: vec!["Unopened for 3 months".into()],
+            other: String::new(),
+        }];
+        insta::assert_snapshot!("assistant_pane_question", render(&state));
+    }
+
+    #[test]
+    fn unavailable_shows_the_reason_instead_of_the_box() {
+        let mut state = open_state();
+        state.availability = Some(AssistantAvailabilityData {
+            available: false,
+            model: None,
+            leaves_machine: false,
+            reason: Some("No model is set up for the assistant.".into()),
+        });
+        let screen = render(&state);
+        assert!(screen.contains("No model is set up"), "{screen}");
+        assert!(!screen.contains("Ask about your mail"), "{screen}");
+    }
+
+    #[test]
+    fn settled_steps_fold_and_expand() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Idle,
+            vec![
+                user(1, "hi"),
+                step(2, "Look around", AssistantCallStateData::Done),
+                step(3, "Look again", AssistantCallStateData::Done),
+            ],
+            Vec::new(),
+        ));
+        let folded = render(&state);
+        assert!(folded.contains("▸ 2 steps"), "{folded}");
+        state.steps_expanded = true;
+        let open = render(&state);
+        assert!(open.contains("✓ Look again"), "{open}");
+    }
+
+    #[test]
+    fn wrap_keeps_breaks_and_splits_long_words() {
+        assert_eq!(wrap("one two three", 7), vec!["one two", "three"]);
+        assert_eq!(wrap("a\nb", 10), vec!["a", "b"]);
+        assert_eq!(wrap("abcdefgh", 3), vec!["abc", "def", "gh"]);
+    }
+}

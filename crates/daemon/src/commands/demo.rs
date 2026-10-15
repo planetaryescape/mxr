@@ -1598,6 +1598,10 @@ fn demo_account_ids() -> [AccountId; 2] {
     ]
 }
 
+/// The demo's bridge and TCP ports: ten above the real profile's defaults.
+const DEMO_BRIDGE_PORT: u16 = 42839;
+const DEMO_TCP_PORT: u16 = 42840;
+
 fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
     let paths = prepare_environment(messages)?;
     let config_path = paths.config_dir.join("config.toml");
@@ -1632,6 +1636,17 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
     // on `is_demo_instance`), so no real network calls are ever made.
     config.llm.enabled = true;
     config.llm.model = "mxr-demo-canned".to_string();
+
+    // The demo runs beside the real profile, whose daemon holds the default
+    // ports, so the demo's bridge would fail to bind. Move them while they
+    // are still the defaults; a port the user chose is kept.
+    let defaults = mxr_config::MxrConfig::default();
+    if config.bridge.port == defaults.bridge.port {
+        config.bridge.port = DEMO_BRIDGE_PORT;
+    }
+    if config.transports.tcp.port == defaults.transports.tcp.port {
+        config.transports.tcp.port = DEMO_TCP_PORT;
+    }
 
     std::fs::create_dir_all(&paths.config_dir)?;
     std::fs::create_dir_all(&paths.data_dir)?;

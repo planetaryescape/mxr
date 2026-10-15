@@ -447,6 +447,7 @@ pub async fn run() -> anyhow::Result<()> {
     let replaceable = spawn_replaceable_request_worker(bg.clone(), result_tx.clone());
     let queued = spawn_task_worker(result_tx.clone());
     let local_io = spawn_task_worker(result_tx.clone());
+    let assistant_io = spawn_task_worker(result_tx.clone());
 
     loop {
         crate::local_io::submit_pending_work(&mut app, &local_io);
@@ -2035,6 +2036,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         spawn_trust_fetches(&mut app, &bg, &queued);
+        crate::assistant_ipc::spawn_assistant_requests(&mut app, &bg, &assistant_io);
 
         if std::mem::take(&mut app.mailbox.messages_page.pending_refresh) {
             let bg = bg.clone();
@@ -4736,6 +4738,9 @@ pub async fn run() -> anyhow::Result<()> {
                             if was_ok {
                                 app.analytics.mark_refreshed();
                             }
+                        }
+                        AsyncResult::Assistant { call, result } => {
+                            app.apply_assistant_result(call, *result);
                         }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {

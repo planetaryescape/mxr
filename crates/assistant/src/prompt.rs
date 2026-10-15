@@ -52,6 +52,8 @@ isn't clear.
 make one call that covers all of them rather than one call per message.
 - Never send mail the user didn't ask you to send in this conversation. Prefer saving a draft and saying \
 where it is.
+- Say a change happened only when its result in this conversation shows it succeeded. If a call failed, \
+was blocked or was rejected, say that it did not happen and why, and fix the call or ask.
 
 ─── ASKING ───
 When the request is ambiguous and the answer changes what you do (which account, which of several matches, \
@@ -140,7 +142,9 @@ pub fn with_reason(mut spec: ToolSpec) -> ToolSpec {
     }
     schema["properties"][REASON_FIELD] = json!({
         "type": "string",
-        "description": "Why you are making this call, in one plain sentence for the user. Shown in the app next to the step."
+        // Kept short: it repeats on every tool, and the system prompt
+        // explains the field once.
+        "description": "One sentence for the user: why this call."
     });
     let mut required: Vec<Value> = schema["required"].as_array().cloned().unwrap_or_default();
     if !required.iter().any(|field| field == REASON_FIELD) {

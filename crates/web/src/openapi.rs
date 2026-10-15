@@ -109,6 +109,7 @@ use utoipa::{
         mail_reading_marginalia_send, mail_reading_marginalia_sync,
         mail_assistant_availability, mail_assistant_list, mail_assistant_send,
         mail_assistant_get, mail_assistant_decide, mail_assistant_cancel, mail_assistant_delete,
+        mail_assistant_auto_approve,
         mail_updates_digest, mail_updates_let_go, mail_updates_source,
         mail_arrivals, mail_arrivals_list, mail_arrivals_modes, mail_message_move,
         mail_move_undo, mail_corrections
@@ -156,6 +157,7 @@ use utoipa::{
         crate::assistant_routes::AssistantSendBody,
         crate::assistant_routes::AssistantDecideBody,
         crate::assistant_routes::AssistantDeleteBody,
+        crate::assistant_routes::AssistantAutoApproveBody,
         crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
@@ -1523,6 +1525,20 @@ fn mail_assistant_cancel() {}
 )]
 #[allow(dead_code)]
 fn mail_assistant_delete() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations/{id}/auto-approve",
+    summary = "Let reversible changes run without asking in this conversation; sending, deleting, trash, spam and rules still ask",
+    params(("id" = String, Path, description = "Conversation id")),
+    request_body = crate::assistant_routes::AssistantAutoApproveBody,
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_auto_approve() {}
 
 #[utoipa::path(
     get,

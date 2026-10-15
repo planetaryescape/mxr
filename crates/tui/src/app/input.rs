@@ -1261,6 +1261,12 @@ impl App {
             }
         }
 
+        // The assistant pane, once no modal above it wants the key: Ctrl-a
+        // anywhere, and every key while the pane has focus.
+        if let Some(action) = self.assistant_key(key) {
+            return action;
+        }
+
         // A promise prompt answers to y / n / Esc once no modal or prompt
         // above it wants the key; every other key works as usual.
         if !self.promise_prompts.is_empty() {

@@ -73,6 +73,11 @@ pub struct AssistantConversationData {
     pub last_error: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Reversible changes (archive, move, star, read, labels) run without
+    /// asking. Sending, deleting, trash, spam and rules always ask. Set
+    /// only by the user (`SetAssistantAutoApprove`).
+    #[serde(default)]
+    pub auto_approve: bool,
     pub items: Vec<AssistantItemData>,
     pub pending: Vec<AssistantPendingData>,
 }
@@ -93,6 +98,13 @@ pub enum AssistantItemData {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
+        created_at: i64,
+    },
+    /// Earlier messages were summarised to fit the model's context window.
+    /// Everything before this point reaches the model only as `text`.
+    Summary {
+        seq: i64,
+        text: String,
         created_at: i64,
     },
     ToolCall {
@@ -124,6 +136,9 @@ pub enum AssistantCallStateData {
     Waiting,
     /// The user approved it and it ran.
     Approved,
+    /// It ran without asking: a reversible change in a conversation the
+    /// user set to approve those automatically.
+    AutoApproved,
     /// The user declined, or wrote instead of answering.
     Declined,
     /// The user answered the question.
@@ -218,8 +233,20 @@ pub struct AssistantAnswerData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantProgressData {
-    Thinking { step: u32 },
-    Calling { tool: String, reason: String },
+    Thinking {
+        step: u32,
+    },
+    Calling {
+        tool: String,
+        reason: String,
+    },
+    /// The reply so far, while the model writes it. The whole text each
+    /// time, so a missed event loses nothing.
+    Writing {
+        text: String,
+    },
+    /// Summarising earlier messages to fit the context window.
+    Summarizing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

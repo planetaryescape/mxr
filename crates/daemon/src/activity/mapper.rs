@@ -1013,6 +1013,7 @@ pub fn map_request(
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
         | Request::DeleteAssistantConversation { .. } => {

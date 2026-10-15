@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&state)
+---
+"╭ Assistant ───────────────────────────────────╮"
+"│ Conversations                                │"
+"│                                              │"
+"│ › Old receipts                               │"
+"│   2h ago                                     │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ ──────────────────────────────────────────── │"
+"│ Delete "Old receipts" and its 4 messages?    │"
+"│ This can't be undone.                        │"
+"│ y delete · n keep                            │"
+"╰──────────────────────────────────────────────╯"

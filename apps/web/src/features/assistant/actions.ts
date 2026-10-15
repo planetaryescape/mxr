@@ -18,7 +18,7 @@ export const assistantActions: Action[] = [
     group: "View",
     icon: BotMessageSquare,
     shortcut: "Mod+.",
-    tuiNote: "The TUI has no assistant pane yet; use `mxr assistant` in a terminal",
+    tuiNote: "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through",
     run: () => {
       useModals.getState().setCommandPaletteOpen(false);
       useAssistantUi.getState().toggle();

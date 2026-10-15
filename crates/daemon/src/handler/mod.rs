@@ -1799,6 +1799,7 @@ async fn dispatch(
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
         | Request::DeleteAssistantConversation { .. } => {
@@ -2644,6 +2645,8 @@ fn classify_request(req: &Request) -> RequestClass {
         // Contacts Marginalia and writes highlights read back.
         | Request::SyncMarginaliaHighlights { .. }
         | Request::DeleteAssistantConversation { dry_run: false, .. }
+        // Decides which changes run without asking.
+        | Request::SetAssistantAutoApprove { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2929,6 +2932,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::AssistantSend { .. } => "assistant_send",
         Request::AssistantDecide { .. } => "assistant_decide",
         Request::AssistantCancel { .. } => "assistant_cancel",
+        Request::SetAssistantAutoApprove { .. } => "set_assistant_auto_approve",
         Request::ListAssistantConversations { .. } => "list_assistant_conversations",
         Request::GetAssistantConversation { .. } => "get_assistant_conversation",
         Request::DeleteAssistantConversation { .. } => "delete_assistant_conversation",
@@ -4498,6 +4502,7 @@ fn is_assistant_request(req: &Request) -> bool {
             | Request::AssistantSend { .. }
             | Request::AssistantDecide { .. }
             | Request::AssistantCancel { .. }
+            | Request::SetAssistantAutoApprove { .. }
             | Request::ListAssistantConversations { .. }
             | Request::GetAssistantConversation { .. }
             | Request::DeleteAssistantConversation { .. }

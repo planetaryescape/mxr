@@ -1,27 +1,23 @@
 # Assistant follow-ups
 
-Open work after the assistant shipped (blueprint [25](../blueprint/25-assistant.md), D122). Status: open, none started.
+Open work on the assistant (blueprint [25](../blueprint/25-assistant.md), D122). Status: one open item, a model limit that the app makes visible but can't remove.
 
-## The TUI has no assistant pane
+## The TUI history list can't delete
 
-Client parity says a daemon capability needs CLI, TUI, web and MCP. The TUI reaches the assistant only through `mxr assistant` in another terminal. A right-hand pane in `crates/tui/src/app/draw.rs` (a third horizontal split), with approval and question prompts in the status line, would close it. `Mod+.` is listed in `KEYMAP_DIFFERENCES` as web-only until then. MCP stays deliberately without it (an agent driving the assistant could approve its own changes).
+Resolved. In the list `L` opens, `D` asks the daemon for a dry run of deleting the highlighted conversation, shows what goes, and deletes it on `y`, through the same `DeleteAssistantConversation` request the CLI and web use. Deleting the open conversation leaves a fresh one. A refusal, such as a conversation that is still running, shows under the list.
 
-## Replies don't stream
+## TUI approvals don't show the exact call
 
-`mxr-llm` has no streaming, so the sidebar shows steps and a status line, then the reply all at once. Claude's Messages API and chat-completions both stream; the turn would emit text deltas as `AssistantUpdated` progress. Needs tolerant partial-JSON handling for tool inputs.
+Resolved. `x` on a waiting approval unfolds the tool and its arguments as indented JSON, and the raw preview when the card can't put it in words, as the web's "Exact call" does. The next approval starts folded.
 
-## Small-context local models fill up
+## Toasts cover the TUI pane's hint line
 
-History is append-only (Anthropic rejects edited history), and the tool list is about 11k tokens. A local model with an 8k or 32k window fails a long conversation with a provider error. Options: start a new conversation automatically with a summary, Anthropic server-side compaction for Claude, or a smaller tool menu for small models (which costs prompt-cache reuse).
+Resolved. While the pane is open, toasts stack bottom-right of the area left of it, so the pane's key hints stay visible.
 
-## Every change needs its own click
+## Small models sometimes say they did what failed
 
-There is no "approve every change in this turn". Notto deliberately has no per-request exemption because a model once used one to bypass its own supervision; if this is added it should be a user setting checked in the daemon, never something the model can ask for.
+Open, mitigated. Testing with `gemma4` (Ollama), the model once said it had starred an email after both calls failed. Three changes make this visible and less likely: a call mxr's own guard refuses (`"blocked": true`, such as a change without `confirm`) is stored as an error, so the model reads it as a failure and the step shows as failed, including in conversations stored before the change; the system prompt says to report a change only when its result shows it succeeded; and folded steps read "N steps · N changed · N failed" right above the reply. Checking each reply against its steps would need a second model call per turn, which isn't worth it yet.
 
-## The web activity filter lists five sources
+## Addresses in replies became mailto links
 
-`features/activity/ActivityRoute.tsx` offers tui, cli, web, daemon and assistant. Agent, MCP, human and script rows are now recorded (migration 89) but can't be filtered in the web app.
-
-## Re-running `mxr demo` duplicates its saved searches
-
-Running `mxr demo --no-tui` three times on one profile without `--reset` left four copies of each demo saved search, and React warns about duplicate keys in the sidebar. Seen while testing the assistant on 2026-10-15; not investigated.
+Resolved. Markdown autolinked addresses into `mailto:` links that opened another mail app. Addresses now stay plain text.

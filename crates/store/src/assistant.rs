@@ -14,6 +14,10 @@ pub struct AssistantConversationRow {
     pub last_outcome: Option<String>,
     pub last_error: Option<String>,
     pub pending_json: Option<String>,
+    pub auto_approve: bool,
+    /// What the model reads instead of messages up to `summary_through_seq`.
+    pub summary: Option<String>,
+    pub summary_through_seq: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
     pub message_count: i64,
@@ -30,8 +34,8 @@ pub struct AssistantMessageRow {
 /// The columns `conversation_from_row` reads, from `assistant_conversations c`.
 macro_rules! conversation_columns {
     () => {
-        "c.id, c.title, c.status, c.last_outcome, c.last_error, c.pending_json, c.created_at, \
-         c.updated_at, (SELECT COUNT(*) FROM assistant_messages m WHERE m.conversation_id = c.id) \
+        "c.id, c.title, c.status, c.last_outcome, c.last_error, c.pending_json, c.auto_approve, \
+         c.summary, c.summary_through_seq, c.created_at, c.updated_at, (SELECT COUNT(*) FROM assistant_messages m WHERE m.conversation_id = c.id) \
          AS message_count"
     };
 }
@@ -44,6 +48,9 @@ fn conversation_from_row(row: &sqlx::sqlite::SqliteRow) -> AssistantConversation
         last_outcome: row.get("last_outcome"),
         last_error: row.get("last_error"),
         pending_json: row.get("pending_json"),
+        auto_approve: row.get::<i64, _>("auto_approve") != 0,
+        summary: row.get("summary"),
+        summary_through_seq: row.get("summary_through_seq"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         message_count: row.get("message_count"),
@@ -186,6 +193,41 @@ impl super::Store {
         Ok(())
     }
 
+    pub async fn set_assistant_auto_approve(
+        &self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<bool, sqlx::Error> {
+        Ok(
+            sqlx::query("UPDATE assistant_conversations SET auto_approve = ?2 WHERE id = ?1")
+                .bind(id)
+                .bind(i64::from(enabled))
+                .execute(self.writer())
+                .await?
+                .rows_affected()
+                > 0,
+        )
+    }
+
+    /// Record a summary of every message up to `through_seq`. Replaces any
+    /// earlier summary, which the new one covers.
+    pub async fn set_assistant_summary(
+        &self,
+        id: &str,
+        summary: &str,
+        through_seq: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE assistant_conversations SET summary = ?2, summary_through_seq = ?3 WHERE id = ?1",
+        )
+        .bind(id)
+        .bind(summary)
+        .bind(through_seq)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
     /// Delete a conversation and its transcript. False when there was none.
     pub async fn delete_assistant_conversation(&self, id: &str) -> Result<bool, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
@@ -251,6 +293,24 @@ mod tests {
             .unwrap();
         assert_eq!(conversation.message_count, 2);
         assert_eq!(conversation.status, "idle");
+        assert!(!conversation.auto_approve);
+        assert!(store.set_assistant_auto_approve("c1", true).await.unwrap());
+        store
+            .set_assistant_summary("c1", "earlier", 1)
+            .await
+            .unwrap();
+        let conversation = store
+            .get_assistant_conversation("c1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(conversation.auto_approve);
+        assert_eq!(conversation.summary.as_deref(), Some("earlier"));
+        assert_eq!(conversation.summary_through_seq, Some(1));
+        assert!(!store
+            .set_assistant_auto_approve("missing", true)
+            .await
+            .unwrap());
 
         assert!(store.delete_assistant_conversation("c1").await.unwrap());
         assert!(store.assistant_messages("c1").await.unwrap().is_empty());

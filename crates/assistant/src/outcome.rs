@@ -6,12 +6,17 @@ use serde_json::Value;
 
 /// Starts the result of a call the user approved.
 pub const APPROVED_PREFIX: &str = "The user approved this call.\n";
+/// Starts the result of a reversible call that ran without asking, because
+/// the user set this conversation to approve those automatically.
+pub const AUTO_APPROVED_PREFIX: &str =
+    "This reversible change ran without asking: the user lets this conversation approve those.\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallState {
     Done,
     Failed,
     Approved,
+    AutoApproved,
     Declined,
     Answered,
     Cancelled,
@@ -26,6 +31,13 @@ pub fn call_state(content: &str, is_error: bool) -> CallState {
             CallState::Approved
         };
     }
+    if content.starts_with(AUTO_APPROVED_PREFIX) {
+        return if is_error {
+            CallState::Failed
+        } else {
+            CallState::AutoApproved
+        };
+    }
     if let Ok(value) = serde_json::from_str::<Value>(content) {
         if value["source"] == "user" {
             if value.get("answers").is_some() {
@@ -38,16 +50,28 @@ pub fn call_state(content: &str, is_error: bool) -> CallState {
             }
         }
     }
-    if is_error {
+    // mxr's guard refused it (stored before refusals were marked as errors).
+    if is_error || refused(content) {
         CallState::Failed
     } else {
         CallState::Done
     }
 }
 
+/// mxr's own guard refused the call, such as a change sent without its
+/// confirm flag. Nothing ran, so it reads as a failure, not a finished step
+/// the model could report as done.
+pub(crate) fn refused(content: &str) -> bool {
+    serde_json::from_str::<Value>(&readable_result(content, usize::MAX))
+        .is_ok_and(|value| value.get("blocked").and_then(Value::as_bool) == Some(true))
+}
+
 /// The result as mxr returned it, for showing the user, cut to `max_chars`.
 pub fn readable_result(content: &str, max_chars: usize) -> String {
-    let content = content.strip_prefix(APPROVED_PREFIX).unwrap_or(content);
+    let content = content
+        .strip_prefix(APPROVED_PREFIX)
+        .or_else(|| content.strip_prefix(AUTO_APPROVED_PREFIX))
+        .unwrap_or(content);
     let content = content
         .strip_prefix(UNTRUSTED_MAIL_BEGIN)
         .map_or(content, |rest| rest.strip_prefix('\n').unwrap_or(rest));
@@ -73,6 +97,9 @@ mod tests {
         let fenced = prompt::tool_result("{\"ok\":true}");
         assert_eq!(call_state(&fenced, false), CallState::Done);
         assert_eq!(call_state(&fenced, true), CallState::Failed);
+        let blocked =
+            prompt::tool_result("{\"blocked\":true,\"reason\":\"confirm=true is required\"}");
+        assert_eq!(call_state(&blocked, false), CallState::Failed);
         assert_eq!(
             call_state(&format!("{APPROVED_PREFIX}{fenced}"), false),
             CallState::Approved

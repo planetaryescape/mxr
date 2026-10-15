@@ -2505,6 +2505,13 @@ pub enum Request {
     AssistantCancel {
         conversation_id: String,
     },
+    /// Let reversible changes run without asking in this conversation, or
+    /// stop. Sending, deleting, trash, spam and rules always ask. Returns
+    /// `ResponseData::AssistantConversation`.
+    SetAssistantAutoApprove {
+        conversation_id: String,
+        enabled: bool,
+    },
     /// Most recently active first. Returns
     /// `ResponseData::AssistantConversations`.
     ListAssistantConversations {
@@ -2923,6 +2930,7 @@ impl Request {
             | Self::AssistantSend { .. }
             | Self::AssistantDecide { .. }
             | Self::AssistantCancel { .. }
+            | Self::SetAssistantAutoApprove { .. }
             | Self::ListAssistantConversations { .. }
             | Self::GetAssistantConversation { .. }
             | Self::DeleteAssistantConversation { .. }

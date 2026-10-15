@@ -644,7 +644,8 @@ section. Feature keys: `summarize` (also row gists and `mxr triage`),
 `archive_ask`, `decision_log`, `briefing`, `expert`,
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
 and `assistant` (the [assistant](/guides/assistant/), which needs a model that
-can call tools).
+can call tools, and summarises older messages once a conversation nears
+`context_window`).
 
 `relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
 `archive_ask`, `decision_log`, `briefing`, `expert` and `assistant` carry

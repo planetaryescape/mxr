@@ -121,6 +121,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
         | Request::DeleteAssistantConversation { .. } => AllAccounts,

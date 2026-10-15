@@ -29,6 +29,7 @@ help modal (`?`).
 |-----|--------|
 | `1`–`7` | Switch Mailbox / Search / Rules / Accounts / Diagnostics / Analytics / Deliveries |
 | `Ctrl-p` | Open command palette |
+| `Ctrl-a` | Show or hide the assistant pane |
 | `gc` | Edit config |
 | `gL` | Open logs |
 | `?` | Toggle help modal |
@@ -476,6 +477,26 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | `c` | Edit config |
 | `r` | Refresh account inventory |
 
+## Assistant pane
+
+`Ctrl-a` opens the pane, brings the keys back to it, or hides it. While it has the keys, nothing you type reaches the screen behind it. See [the assistant guide](/guides/assistant/#in-the-terminal).
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send (`Alt-Enter` / `Ctrl-j` new line) |
+| `Esc` | Message box → pane keys → screen |
+| `i` | Back to the message box |
+| `y` / `n` | Approve / reject the waiting change |
+| `x` | Show / hide the waiting change's exact call |
+| `1`–`9`, `o`, `Enter`, `s` | Choose, write your own answer, answer, skip |
+| `Ctrl-c` | Stop a running turn |
+| `N` / `L` | New conversation / past conversations |
+| `D` (in the `L` list) | Delete the highlighted conversation (shows what goes first) |
+| `T` | Auto-approve reversible changes in this conversation (on/off) |
+| `D` | Delete the conversation (shows what goes first) |
+| `e` | Open or fold the steps |
+| `j` / `k`, `Ctrl-d` / `Ctrl-u`, `G` | Scroll the conversation |
+
 ## Modal controls
 
 | Context | Keys |
@@ -531,7 +552,7 @@ Work on every page except while typing in a field or compose.
 | `?` | Keyboard help |  |
 | `c` | Compose |  |
 | `u`, `z` | Undo last action | z also undoes, for Gmail muscle memory |
-| `⌘. / Ctrl+.` | Show or hide the assistant | The TUI has no assistant pane yet; use `mxr assistant` in a terminal |
+| `⌘. / Ctrl+.` | Show or hide the assistant | Ctrl+a in the TUI, where terminals don't pass Ctrl+. through |
 
 ### Go to
 

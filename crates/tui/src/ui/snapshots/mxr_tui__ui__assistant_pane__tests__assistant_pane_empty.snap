@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&open_state())
+---
+"╭ Assistant ───────────────────────────────────╮"
+"│ Talk to your mail.                           │"
+"│ Ask questions, get summaries, or have it     │"
+"│ sort, archive and draft. Every change waits  │"
+"│ for your approval first.                     │"
+"│                                              │"
+"│ For example:                                 │"
+"│   What needs a reply from me this week?      │"
+"│   Summarise what arrived today               │"
+"│   Find newsletters I never open and tidy     │"
+"│   them up                                    │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ ──────────────────────────────────────────── │"
+"│ › █                                          │"
+"│ qwen3:8b · runs on this machine              │"
+"│ Enter send · Alt-Enter new line · Esc keys   │"
+"╰──────────────────────────────────────────────╯"

@@ -17,6 +17,7 @@ import {
   fetchConversation,
   fetchConversations,
   sendMessage,
+  setAutoApprove,
   type AssistantConversation,
   type AssistantDecision,
   type AssistantProgress,
@@ -61,33 +62,58 @@ export function useConversation(id: string | null) {
 export function useLiveTurn(conversationId: string | null): {
   progress: AssistantProgress | null;
   startedAt: number | null;
+  /** The reply so far while the model writes it. */
+  writing: string | null;
 } {
   const queryClient = useQueryClient();
   const [live, setLive] = useState<{
     id: string | null;
     progress: AssistantProgress | null;
     startedAt: number | null;
-  }>({ id: null, progress: null, startedAt: null });
+    writing: string | null;
+  }>({ id: null, progress: null, startedAt: null, writing: null });
 
   const onEvent = useCallback(
     (event: DaemonEvent) => {
       if (event.type !== "AssistantUpdated") return;
       const update = event as Extract<DaemonEvent, { type: "AssistantUpdated" }>;
-      void queryClient.invalidateQueries({
-        queryKey: assistantKeys.conversation(update.conversation_id),
-      });
+      // Text being written changes nothing stored: no refetch for it.
+      if (update.progress?.kind !== "writing") {
+        void queryClient.invalidateQueries({
+          queryKey: assistantKeys.conversation(update.conversation_id),
+        });
+      }
       if (update.status !== "running") {
         void queryClient.invalidateQueries({ queryKey: assistantKeys.list });
       }
       if (update.conversation_id !== conversationId) return;
       setLive((current) => {
-        if (update.status !== "running") return { id: conversationId, progress: null, startedAt: null };
-        const startedAt =
-          current.id === conversationId && current.startedAt !== null ? current.startedAt : Date.now();
+        if (update.status !== "running") {
+          return {
+            id: conversationId,
+            progress: null,
+            startedAt: null,
+            writing: null,
+          };
+        }
+        const same = current.id === conversationId;
+        const startedAt = same && current.startedAt !== null ? current.startedAt : Date.now();
+        const progress = update.progress ?? null;
+        if (progress?.kind === "writing") {
+          return {
+            id: conversationId,
+            progress: same ? current.progress : null,
+            startedAt,
+            writing: progress.text,
+          };
+        }
+        // Anything else means the written reply was stored (or a new step
+        // began): the stored conversation shows it from here.
         return {
           id: conversationId,
-          progress: update.progress ?? (current.id === conversationId ? current.progress : null),
+          progress: progress ?? (same ? current.progress : null),
           startedAt,
+          writing: progress === null && same ? current.writing : null,
         };
       });
     },
@@ -96,8 +122,12 @@ export function useLiveTurn(conversationId: string | null): {
   useDaemonEvents(onEvent);
 
   return live.id === conversationId
-    ? { progress: live.progress, startedAt: live.startedAt }
-    : { progress: null, startedAt: null };
+    ? {
+        progress: live.progress,
+        startedAt: live.startedAt,
+        writing: live.writing,
+      }
+    : { progress: null, startedAt: null, writing: null };
 }
 
 /** What the user has open, so "this thread" and "these" mean something. */
@@ -141,5 +171,9 @@ export function useAssistantActions() {
     onSuccess: settle,
   });
   const stop = useMutation({ mutationFn: cancelTurn, onSuccess: settle });
-  return { send, answer, stop };
+  const trust = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setAutoApprove(id, enabled),
+    onSuccess: settle,
+  });
+  return { send, answer, stop, trust };
 }

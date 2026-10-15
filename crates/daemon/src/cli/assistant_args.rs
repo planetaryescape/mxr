@@ -58,6 +58,15 @@ pub enum AssistantAction {
         #[arg(long)]
         no_wait: bool,
     },
+    /// Let reversible changes (archive, move, star, read, labels) run
+    /// without asking in one conversation. Sending, deleting, trash, spam
+    /// and rules always ask.
+    Trust {
+        conversation: String,
+        /// Ask before every change again.
+        #[arg(long)]
+        off: bool,
+    },
     /// Stop a running turn, or close what is waiting without running it.
     Stop { conversation: String },
     /// Conversations, most recently active first

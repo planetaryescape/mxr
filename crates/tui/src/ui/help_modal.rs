@@ -93,6 +93,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             title: "Start Here".into(),
             entries: vec![
                 ("Ctrl-p".into(), "Open command palette".into()),
+                ("Ctrl-a".into(), "Show or hide the assistant".into()),
                 ("gc".into(), "Edit config in $EDITOR".into()),
                 ("?".into(), "Toggle Help".into()),
                 ("Esc".into(), "Back / Close".into()),
@@ -162,6 +163,10 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             (
                 "Bulk Confirm".into(),
                 "Enter/y confirm, Esc/n cancel".into(),
+            ),
+            (
+                "Assistant (Ctrl-a)".into(),
+                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose, s skip, N new, L history, T trust, D delete, Ctrl-c stop".into(),
             ),
         ],
     });

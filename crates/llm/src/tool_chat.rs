@@ -266,57 +266,96 @@ pub(crate) fn openai_reply(
 /// A tool's JSON Schema in the subset every provider parses. JSON Schema
 /// allows `true` and `false` as whole schemas (schemars writes `true` for a
 /// free-form JSON field), and Ollama rejects the request when a property is
-/// a bool rather than an object. `$schema` is dropped too: it names a
-/// dialect, and some servers refuse keys they don't know.
+/// a bool rather than an object. Local `$ref`s into `$defs` are inlined:
+/// small models don't follow them, and one that never saw an enum's values
+/// invents its own. `$schema` is dropped too: it names a dialect, and some
+/// servers refuse keys they don't know.
 pub(crate) fn portable_schema(schema: &Value) -> Value {
+    let empty = serde_json::Map::new();
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+    portable(schema, defs, 0)
+}
+
+/// How deep `$ref`s are followed; past it (a recursive type) the reference
+/// becomes an open object.
+const MAX_REF_DEPTH: u8 = 8;
+
+fn portable(schema: &Value, defs: &serde_json::Map<String, Value>, depth: u8) -> Value {
     match schema {
         Value::Bool(true) => Value::Object(serde_json::Map::new()),
         Value::Bool(false) => serde_json::json!({"not": {}}),
-        Value::Object(map) => Value::Object(
-            map.iter()
-                .filter(|(key, _)| key.as_str() != "$schema")
-                .map(|(key, value)| {
-                    let value = match key.as_str() {
-                        // Maps of name -> schema.
-                        "properties" | "$defs" | "definitions" | "patternProperties" => match value
-                        {
-                            Value::Object(entries) => Value::Object(
-                                entries
-                                    .iter()
-                                    .map(|(name, sub)| (name.clone(), portable_schema(sub)))
-                                    .collect(),
-                            ),
-                            other => other.clone(),
-                        },
-                        // A schema, or a list of schemas.
-                        "items"
-                        | "additionalProperties"
-                        | "not"
-                        | "contains"
-                        | "propertyNames"
-                        | "if"
-                        | "then"
-                        | "else"
-                        | "anyOf"
-                        | "oneOf"
-                        | "allOf"
-                        | "prefixItems" => match value {
-                            Value::Array(list) => {
-                                Value::Array(list.iter().map(portable_schema).collect())
+        Value::Object(map) => {
+            if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
+                let name = reference
+                    .strip_prefix("#/$defs/")
+                    .or_else(|| reference.strip_prefix("#/definitions/"));
+                if let Some(target) = name.and_then(|name| defs.get(name)) {
+                    if depth >= MAX_REF_DEPTH {
+                        return serde_json::json!({"type": "object"});
+                    }
+                    let mut inlined = portable(target, defs, depth + 1);
+                    // Keywords beside the $ref (a description) still apply.
+                    if let Value::Object(target_map) = &mut inlined {
+                        for (key, value) in map {
+                            if key != "$ref" {
+                                target_map.insert(key.clone(), portable(value, defs, depth));
                             }
-                            other => portable_schema(other),
-                        },
-                        _ => value.clone(),
-                    };
-                    (key.clone(), value)
-                })
-                .collect(),
-        ),
+                        }
+                    }
+                    return inlined;
+                }
+            }
+            Value::Object(
+                map.iter()
+                    .filter(|(key, _)| !matches!(key.as_str(), "$schema" | "$defs" | "definitions"))
+                    .map(|(key, value)| {
+                        let value = match key.as_str() {
+                            // Maps of name -> schema.
+                            "properties" | "patternProperties" => match value {
+                                Value::Object(entries) => Value::Object(
+                                    entries
+                                        .iter()
+                                        .map(|(name, sub)| {
+                                            (name.clone(), portable(sub, defs, depth))
+                                        })
+                                        .collect(),
+                                ),
+                                other => other.clone(),
+                            },
+                            // A schema, or a list of schemas.
+                            "items"
+                            | "additionalProperties"
+                            | "not"
+                            | "contains"
+                            | "propertyNames"
+                            | "if"
+                            | "then"
+                            | "else"
+                            | "anyOf"
+                            | "oneOf"
+                            | "allOf"
+                            | "prefixItems" => match value {
+                                Value::Array(list) => Value::Array(
+                                    list.iter().map(|sub| portable(sub, defs, depth)).collect(),
+                                ),
+                                other => portable(other, defs, depth),
+                            },
+                            _ => value.clone(),
+                        };
+                        (key.clone(), value)
+                    })
+                    .collect(),
+            )
+        }
         other => other.clone(),
     }
 }
 
-fn parse_arguments(raw: &str) -> Value {
+pub(crate) fn parse_arguments(raw: &str) -> Value {
     if raw.trim().is_empty() {
         return Value::Object(serde_json::Map::new());
     }
@@ -428,6 +467,29 @@ mod tests {
                 "required": ["draft"]
             })
         );
+    }
+
+    #[test]
+    fn local_refs_are_inlined_so_small_models_see_enums() {
+        let schema = json!({
+            "$defs": {
+                "Action": {"enum": ["archive", "star"], "type": "string"},
+                "Node": {"type": "object", "properties": {"child": {"$ref": "#/$defs/Node"}}}
+            },
+            "type": "object",
+            "properties": {
+                "action": {"$ref": "#/$defs/Action", "description": "What to do"},
+                "tree": {"$ref": "#/$defs/Node"}
+            }
+        });
+        let portable = portable_schema(&schema);
+        assert_eq!(
+            portable["properties"]["action"],
+            json!({"enum": ["archive", "star"], "type": "string", "description": "What to do"})
+        );
+        assert!(portable.get("$defs").is_none());
+        // A recursive type stops at an open object instead of looping.
+        assert!(!portable.to_string().contains("$ref"));
     }
 
     #[test]

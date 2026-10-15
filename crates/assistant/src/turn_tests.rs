@@ -8,15 +8,20 @@ use tokio_util::sync::CancellationToken;
 
 /// Replies in order and records every request it was sent.
 struct ScriptedModel {
-    replies: Mutex<VecDeque<ToolChatResponse>>,
+    replies: Mutex<VecDeque<Result<ToolChatResponse, LlmError>>>,
     requests: Mutex<Vec<ToolChatRequest>>,
+    window: Option<u32>,
 }
 
 impl ScriptedModel {
     fn new(replies: Vec<ToolChatResponse>) -> Self {
+        Self::with_results(replies.into_iter().map(Ok).collect(), None)
+    }
+    fn with_results(replies: Vec<Result<ToolChatResponse, LlmError>>, window: Option<u32>) -> Self {
         Self {
             replies: Mutex::new(replies.into()),
             requests: Mutex::new(Vec::new()),
+            window,
         }
     }
     fn requests(&self) -> Vec<ToolChatRequest> {
@@ -26,13 +31,28 @@ impl ScriptedModel {
 
 #[async_trait]
 impl ChatModel for ScriptedModel {
-    async fn chat(&self, request: ToolChatRequest) -> Result<ToolChatResponse, LlmError> {
+    async fn chat(
+        &self,
+        request: ToolChatRequest,
+        on_text: &(dyn for<'t> Fn(&'t str) + Send + Sync),
+    ) -> Result<ToolChatResponse, LlmError> {
         self.requests.lock().unwrap().push(request);
-        self.replies
+        let reply = self
+            .replies
             .lock()
             .unwrap()
             .pop_front()
-            .ok_or_else(|| LlmError::Other("script ran out".into()))
+            .unwrap_or_else(|| Err(LlmError::Other("script ran out".into())));
+        if let Ok(reply) = &reply {
+            if !reply.text.is_empty() {
+                on_text(reply.text.get(..1).unwrap_or_default());
+                on_text(&reply.text);
+            }
+        }
+        reply
+    }
+    fn context_window(&self) -> Option<u32> {
+        self.window
     }
 }
 
@@ -72,6 +92,13 @@ impl ToolHost for RecordingHost {
             .lock()
             .unwrap()
             .push((name.to_string(), arguments.clone()));
+        // mxr's own guard: a change without its confirm flag doesn't run.
+        if name == "mxr_mutate" && arguments.get("confirm").is_none() {
+            return ToolOutput {
+                content: json!({"blocked": true, "reason": "confirm=true is required"}).to_string(),
+                is_error: false,
+            };
+        }
         ToolOutput {
             content: json!({"tool": name, "ok": true}).to_string(),
             is_error: false,
@@ -82,6 +109,8 @@ impl ToolHost for RecordingHost {
 #[derive(Default)]
 struct MemorySink {
     appended: Mutex<Vec<ToolChatMessage>>,
+    written: Mutex<Vec<String>>,
+    summaries: Mutex<Vec<Summary>>,
 }
 
 #[async_trait]
@@ -91,6 +120,13 @@ impl TurnSink for MemorySink {
         Ok(())
     }
     async fn progress(&self, _progress: Progress) {}
+    fn writing(&self, text: &str) {
+        self.written.lock().unwrap().push(text.to_string());
+    }
+    async fn summarized(&self, summary: &Summary) -> Result<(), String> {
+        self.summaries.lock().unwrap().push(summary.clone());
+        Ok(())
+    }
 }
 
 fn calls(calls: &[(&str, &str, Value)]) -> ToolChatResponse {
@@ -125,6 +161,8 @@ fn agent<'a>(model: &'a ScriptedModel, host: &'a RecordingHost, sink: &'a Memory
         sink,
         cancel: CancellationToken::new(),
         limits: Limits::default(),
+        auto_approve: false,
+        summary: Mutex::new(None),
     }
 }
 
@@ -173,6 +211,30 @@ async fn reads_run_at_once_and_their_results_are_fenced() {
         .unwrap()
         .contains(&json!("reason"))));
     assert_eq!(*sink.appended.lock().unwrap(), history);
+}
+
+#[tokio::test]
+async fn a_call_mxr_refuses_counts_as_failed_not_done() {
+    let model = ScriptedModel::new(vec![
+        calls(&[(
+            "c1",
+            "mxr_mutate",
+            json!({"action": "star", "message_ids": ["m1"], "reason": "Star it."}),
+        )]),
+        answer("It didn't run."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    agent(&model, &host, &sink)
+        .send(&mut history, &[], "star m1".into())
+        .await;
+    let (content, is_error) = tool_result(&history, "c1");
+    assert!(is_error, "a blocked call must not read as done: {content}");
+    assert_eq!(
+        crate::outcome::call_state(&content, is_error),
+        crate::outcome::CallState::Failed
+    );
 }
 
 #[tokio::test]
@@ -498,6 +560,8 @@ async fn an_id_only_preview_gets_the_messages_it_names() {
         sink: &sink,
         cancel: CancellationToken::new(),
         limits: Limits::default(),
+        auto_approve: false,
+        summary: Mutex::new(None),
     };
     let TurnOutcome::AwaitingUser(pending) = assistant
         .send(&mut history, &[], "archive them".into())
@@ -517,4 +581,114 @@ async fn an_id_only_preview_gets_the_messages_it_names() {
     let looked_up = host.calls.lock().unwrap()[1].clone();
     assert_eq!(looked_up.0, "mxr_mutation_preview");
     assert_eq!(looked_up.1["message_ids"], json!(["m1", "m2"]));
+}
+
+#[tokio::test]
+async fn a_trusting_conversation_runs_reversible_changes_but_still_asks_for_the_rest() {
+    let model = ScriptedModel::new(vec![calls(&[
+        (
+            "a",
+            "mxr_mutate",
+            json!({"action": "archive", "message_ids": ["m1"], "confirm": true}),
+        ),
+        (
+            "t",
+            "mxr_mutate",
+            json!({"action": "trash", "message_ids": ["m2"], "confirm": true}),
+        ),
+    ])]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let mut assistant = agent(&model, &host, &sink);
+    assistant.auto_approve = true;
+    let TurnOutcome::AwaitingUser(pending) = assistant.send(&mut history, &[], "tidy".into()).await
+    else {
+        panic!("the trash must still wait");
+    };
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].call_id, "t");
+    let archive = &host.calls()[0];
+    assert_eq!(archive.1["action"], "archive");
+    assert_eq!(archive.1["confirm"], true);
+    assert!(tool_result(&history, "a")
+        .0
+        .starts_with(crate::outcome::AUTO_APPROVED_PREFIX));
+}
+
+#[tokio::test]
+async fn the_reply_streams_to_the_sink_as_it_is_written() {
+    let model = ScriptedModel::new(vec![answer("Hello there.")]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    agent(&model, &host, &sink)
+        .send(&mut history, &[], "hi".into())
+        .await;
+    assert_eq!(*sink.written.lock().unwrap(), vec!["H", "Hello there."]);
+}
+
+fn long_history() -> Vec<ToolChatMessage> {
+    vec![
+        ToolChatMessage::User {
+            content: "first question".into(),
+        },
+        ToolChatMessage::Assistant {
+            text: "x".repeat(20_000),
+            tool_calls: Vec::new(),
+            provider_turn: None,
+        },
+    ]
+}
+
+#[tokio::test]
+async fn too_long_for_the_model_summarises_once_and_retries() {
+    let model = ScriptedModel::with_results(
+        vec![
+            Err(LlmError::Other(
+                "400: maximum context length is 8192 tokens".into(),
+            )),
+            Ok(answer("The user asked a first question.")),
+            Ok(answer("Here you go.")),
+        ],
+        None,
+    );
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = long_history();
+    let outcome = agent(&model, &host, &sink)
+        .send(&mut history, &[], "second question".into())
+        .await;
+    assert_eq!(outcome, TurnOutcome::Finished);
+    let requests = model.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests[1].tools.is_empty(),
+        "the summary call can't use tools"
+    );
+    // The retry reads the summary instead of the first exchange, and keeps
+    // the current request in full.
+    let retry = serde_json::to_string(&requests[2].messages).unwrap();
+    assert!(retry.contains("The user asked a first question."));
+    assert!(!retry.contains("first question\""));
+    assert!(retry.contains("second question"));
+    assert_eq!(sink.summaries.lock().unwrap()[0].through, 2);
+    // History itself is untouched.
+    assert_eq!(history.len(), 4);
+}
+
+#[tokio::test]
+async fn a_crowded_window_is_summarised_before_the_call() {
+    let model = ScriptedModel::with_results(
+        vec![Ok(answer("Summary.")), Ok(answer("Done."))],
+        Some(8_000),
+    );
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = long_history();
+    agent(&model, &host, &sink)
+        .send(&mut history, &[], "next".into())
+        .await;
+    assert_eq!(model.requests().len(), 2);
+    assert_eq!(sink.summaries.lock().unwrap().len(), 1);
 }

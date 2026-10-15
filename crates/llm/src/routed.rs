@@ -11,7 +11,8 @@ use crate::health::{Admission, RouteFailure, RouteHealth, RouteState, RouteView,
 use crate::route::{is_claude_model, ApiKey, ApiKeySource, Route, RouteProvider};
 use crate::{
     CallKind, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    OpenAiCompatibleConfig, OpenAiCompatibleProvider, ToolChatRequest, ToolChatResponse,
+    OpenAiCompatibleConfig, OpenAiCompatibleProvider, TextCallback, ToolChatRequest,
+    ToolChatResponse,
 };
 use async_trait::async_trait;
 use std::future::Future;
@@ -220,6 +221,45 @@ impl RoutedProvider {
         .await
     }
 
+    async fn chat_stream_on(
+        &self,
+        route: &Route,
+        key: ApiKey,
+        req: &ToolChatRequest,
+        timeout: Option<Duration>,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        match route.provider {
+            RouteProvider::Anthropic => {
+                self.anthropic
+                    .chat_stream(&key, &route.model, req, timeout, on_text)
+                    .await
+            }
+            RouteProvider::OpenRouter => match &self.openrouter {
+                Some(openrouter) => {
+                    openrouter
+                        .chat_stream_attempt(req, Some(key.expose()), timeout, on_text)
+                        .await
+                }
+                None => Err(no_openrouter_route()),
+            },
+        }
+    }
+
+    async fn run_chat_stream(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_routes(
+            kind,
+            |route, key, timeout| self.chat_stream_on(route, key, &req, timeout, on_text),
+            |response: &mut ToolChatResponse| &mut response.model,
+        )
+        .await
+    }
+
     async fn run_chat(
         &self,
         req: ToolChatRequest,
@@ -367,6 +407,15 @@ impl LlmProvider for RoutedProvider {
         kind: CallKind,
     ) -> Result<ToolChatResponse, LlmError> {
         self.run_chat(req, kind).await
+    }
+
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_chat_stream(req, kind, on_text).await
     }
 
     fn capabilities(&self) -> LlmCapabilities {

@@ -180,6 +180,27 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
     }
 }
 
+/// Whether a change may run without asking in a conversation the user set
+/// to approve reversible changes automatically. Only changes the user can
+/// put back from mxr qualify: archiving, read state, stars, moves between
+/// modes, Later, category assignment and to-do state. Anything that sends,
+/// deletes, trashes, reports spam, writes rules, talks to another service
+/// or isn't listed always asks.
+pub fn auto_approvable(tool: &str, arguments: &Value) -> bool {
+    match tool {
+        "mxr_mutate" => matches!(
+            arguments.get("action").and_then(Value::as_str),
+            Some("archive" | "read_and_archive" | "mark_read" | "mark_unread" | "star" | "unstar")
+        ),
+        "mxr_archive_submit"
+        | "mxr_move"
+        | "mxr_reading_later"
+        | "mxr_category_assignment_apply"
+        | "mxr_todo_set_state" => true,
+        _ => false,
+    }
+}
+
 /// Whether `tool` has its own gate rule (unlisted tools always wait).
 pub fn is_classified(tool: &str) -> bool {
     RULES.iter().any(|(name, _)| *name == tool)
@@ -290,6 +311,28 @@ mod tests {
             classify("mxr_sorting_rule", &json!({"preview_token": "tok"})),
             Gate::Approve { preview: None }
         );
+    }
+
+    #[test]
+    fn only_reversible_changes_may_skip_asking() {
+        assert!(auto_approvable("mxr_mutate", &json!({"action": "archive"})));
+        assert!(auto_approvable("mxr_move", &json!({})));
+        for action in ["trash", "spam", "anything_new"] {
+            assert!(
+                !auto_approvable("mxr_mutate", &json!({"action": action})),
+                "{action}"
+            );
+        }
+        for tool in [
+            "mxr_send_draft",
+            "mxr_delete_draft",
+            "mxr_got_it",
+            "mxr_sorting_rule",
+            "mxr_reading_marginalia",
+            "mxr_unknown",
+        ] {
+            assert!(!auto_approvable(tool, &json!({"confirm": true})), "{tool}");
+        }
     }
 
     #[test]

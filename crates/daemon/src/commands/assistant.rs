@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 const POLL_EVERY: Duration = Duration::from_millis(400);
 /// How long a command waits before handing back a turn still running.
 const WAIT_AT_MOST: Duration = Duration::from_secs(600);
+/// Messages listed under a waiting change before "and N more".
+const PREVIEW_LINES: usize = 8;
 
 pub async fn run(action: AssistantAction, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let format = resolve_format(format);
@@ -317,7 +319,18 @@ fn print_pending(conversation: &AssistantConversationData) {
                 println!("\nWaiting for your approval: {reason}");
                 println!("  {tool} {arguments}");
                 if let Some(preview) = preview {
-                    println!("  preview: {}", truncate(&preview.to_string(), 600));
+                    let messages = preview_messages(preview);
+                    if messages.is_empty() {
+                        println!("  preview: {}", truncate(&preview.to_string(), 600));
+                    } else {
+                        println!("  touches {} message(s):", messages.len());
+                        for line in messages.iter().take(PREVIEW_LINES) {
+                            println!("    - {line}");
+                        }
+                        if messages.len() > PREVIEW_LINES {
+                            println!("    and {} more", messages.len() - PREVIEW_LINES);
+                        }
+                    }
                 }
                 if let Some(error) = preview_error {
                     println!("  the preview failed: {error}");
@@ -411,6 +424,43 @@ fn when(unix_seconds: i64) -> String {
             time.with_timezone(&chrono::Local)
                 .format("%Y-%m-%d %H:%M")
                 .to_string()
+        })
+        .unwrap_or_default()
+}
+
+/// "Subject (sender)" for each message a preview names: the first list of
+/// objects with a subject, wherever the tool put it.
+fn preview_messages(preview: &serde_json::Value) -> Vec<String> {
+    fn find(value: &serde_json::Value, depth: u8) -> Option<&Vec<serde_json::Value>> {
+        if depth > 4 {
+            return None;
+        }
+        match value {
+            serde_json::Value::Array(items)
+                if !items.is_empty() && items.iter().all(|item| item.get("subject").is_some()) =>
+            {
+                Some(items)
+            }
+            serde_json::Value::Array(items) => items.iter().find_map(|item| find(item, depth + 1)),
+            serde_json::Value::Object(map) => map.values().find_map(|item| find(item, depth + 1)),
+            _ => None,
+        }
+    }
+    find(preview, 0)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    let subject = item["subject"].as_str().unwrap_or("(no subject)");
+                    let from = &item["from"];
+                    let sender = from["name"]
+                        .as_str()
+                        .filter(|name| !name.is_empty())
+                        .or_else(|| from["email"].as_str())
+                        .unwrap_or("");
+                    format!("{subject} ({sender})")
+                })
+                .collect()
         })
         .unwrap_or_default()
 }

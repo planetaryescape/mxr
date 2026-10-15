@@ -59,8 +59,8 @@ mxr archive --search "from:noreply@example.com older:30d" --yes
 mxr compose --to a@example.com --subject "Hi" --body "Hello" --dry-run
 mxr reply <message_id> --body "Thanks" --dry-run
 mxr drafts edit <draft_id>
-mxr drafts delete <draft_id> --dry-run --format json
-mxr drafts push <draft_id> --dry-run --format json
+mxr drafts --format json delete <draft_id> --dry-run
+mxr drafts --format json push <draft_id> --dry-run
 mxr sync --status --format json
 mxr events --format jsonl
 mxr logs --level error --since 1h --format jsonl
@@ -94,11 +94,11 @@ Gmail draft.
 
 ```bash
 mxr drafts --format json
-mxr drafts push <draft_id> --dry-run --format json
+mxr drafts --format json push <draft_id> --dry-run
 mxr drafts push <draft_id>
 mxr drafts edit <draft_id>
 mxr sync
-mxr drafts delete <draft_id> --dry-run --format json
+mxr drafts --format json delete <draft_id> --dry-run
 mxr drafts delete <draft_id>
 ```
 

@@ -55,14 +55,14 @@ provider failures preserve the local row. `discard` remains an alias for older
 scripts:
 
 ```bash
-mxr drafts delete DRAFT_ID --dry-run --format json
+mxr drafts --format json delete DRAFT_ID --dry-run
 mxr drafts delete DRAFT_ID
 ```
 
 Gmail accounts can link a local draft to Gmail Drafts:
 
 ```bash
-mxr drafts push DRAFT_ID --dry-run --format json
+mxr drafts --format json push DRAFT_ID --dry-run
 mxr drafts push DRAFT_ID
 ```
 

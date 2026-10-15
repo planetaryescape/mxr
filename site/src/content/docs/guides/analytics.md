@@ -176,7 +176,7 @@ Relationship analytics over the materialized contacts table.
 ```bash
 # Reply imbalance — surfaces the people you're letting down (or vice versa).
 mxr contacts asymmetry --min-inbound 3
-mxr contacts asymmetry --format json | jq '.[] | select(.asymmetry > 0.7)'
+mxr contacts --format json asymmetry | jq '.[] | select(.asymmetry > 0.7)'
 
 # Going-cold detection. Last inbound much more recent than last outbound.
 mxr contacts decay --threshold-days 30
@@ -311,7 +311,7 @@ Every analytics command supports `--format`:
 ```bash
 mxr stale --mine --format ids | xargs -I{} mxr cat {}
 mxr unsub --rank --format json | jq '.[] | select(.opened_count == 0)'
-mxr contacts decay --format csv > decay.csv
+mxr contacts --format csv decay > decay.csv
 ```
 
 ## Workflows
@@ -402,7 +402,7 @@ inbound.
 specific list.
 
 ```bash
-mxr contacts asymmetry --min-inbound 5 --format json \
+mxr contacts --format json asymmetry --min-inbound 5 \
   | jq '.[] | select(.asymmetry > 0.7 and .total_inbound >= 10)'
 ```
 
@@ -437,7 +437,7 @@ forgetting something" feeling won't quit.
 
 ```bash
 mxr stale --mine --older-than-days 7 --format ids > /tmp/oo-loose-ends.txt
-mxr contacts asymmetry --min-inbound 10 --format json > /tmp/oo-asymmetric.json
+mxr contacts --format json asymmetry --min-inbound 10 > /tmp/oo-asymmetric.json
 mxr response-time --since-days 30 --format json > /tmp/oo-baseline.json
 ```
 
@@ -492,8 +492,8 @@ not the one your inbox app's marketing team made.
 ```bash
 mxr response-time --since-days 365
 mxr response-time --since-days 365 --theirs
-mxr contacts asymmetry --min-inbound 20 --format json | jq '.[0:20]'
-mxr storage --by sender --limit 20 --since-days 365
+mxr contacts --format json asymmetry --min-inbound 20 | jq '.[0:20]'
+mxr storage --by sender --limit 20
 mxr wrapped --year 2025                       # human-readable year-in-review
 ```
 

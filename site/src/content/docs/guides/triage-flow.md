@@ -109,7 +109,7 @@ The whole loop stays in the keyboard. No mouse, no context switches.
 
 - **Monday morning:** open mxr, hit `Ctrl-p → Reply Queue` to see what
   you bookmarked over the weekend; walk it with `j/k` and `r`.
-- **Inbox bombing after vacation:** `mxr screener queue --format ids
+- **Inbox bombing after vacation:** `mxr screener --format ids queue
   | xargs -n1 mxr cat | less` to skim every unknown sender at once,
   decide dispositions in one pass.
 - **Tax season:** `mxr screener paper-trail billing@shop.example --label "Receipts"`

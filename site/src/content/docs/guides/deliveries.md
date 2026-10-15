@@ -38,12 +38,12 @@ mxr deliveries list --filter dismissed    # false positives you hid
 ## Inspect one delivery
 
 ```bash
-mxr deliveries get DELIVERY_ID --format json
+mxr deliveries --format json get DELIVERY_ID
 ```
 
 What you get: the full record — `merchant`, `carrier`, `tracking_number`, `tracking_url`, `order_number`, `status`, `eta_until`, `items`, `confidence`, `source` (`schema` / `llm` / `heuristic`), and `message_ids` (the source emails that built it).
 
-Get a delivery's id from `mxr deliveries list --format json`.
+Get a delivery's id from `mxr deliveries --format json list`.
 
 ## Resolve or dismiss
 
@@ -96,21 +96,21 @@ mxr deliveries scan --since-days 90
 
 ## In real life
 
-- **What's arriving this week, soonest first:** `mxr deliveries list --format json | jq -r 'map(select(.eta_until)) | sort_by(.eta_until) | .[] | "\(.eta_until[0:10])\t\(.merchant // .carrier)\t\(.status)"'` — a date-sorted arrival board.
-- **Which orders shipped but haven't landed:** `mxr deliveries list --filter active --format json | jq -r '.[] | select(.tracking_number) | "\(.merchant)\t\(.tracking_number)"'` — merchant + tracking for everything in transit.
+- **What's arriving this week, soonest first:** `mxr deliveries --format json list | jq -r 'map(select(.eta_until)) | sort_by(.eta_until) | .[] | "\(.eta_until[0:10])\t\(.merchant // .carrier)\t\(.status)"'` — a date-sorted arrival board.
+- **Which orders shipped but haven't landed:** `mxr deliveries --format json list --filter active | jq -r '.[] | select(.tracking_number) | "\(.merchant)\t\(.tracking_number)"'` — merchant + tracking for everything in transit.
 - **Audit detection before trusting it:** `mxr deliveries scan --since-days 30 --dry-run` — see the create/shortlist counts on a known window without writing a thing.
 - **Clear a stale misfire:** `mxr deliveries dismiss DELIVERY_ID` — hides one bad row without affecting the email.
 
 ## Agent prompts that work
 
 ```text
-"Run `mxr deliveries list --format json` and tell me which packages are
+"Run `mxr deliveries --format json list` and tell me which packages are
 arriving in the next 3 days, with merchant and carrier. Don't resolve or
 dismiss anything — just report."
 ```
 
 ```text
-"Use `mxr deliveries list --filter active --format json` to find any
+"Use `mxr deliveries --format json list --filter active` to find any
 delivery whose ETA has already passed but isn't marked delivered, and
 list its merchant, tracking number, and source email ids from
 `mxr deliveries get <id>`."

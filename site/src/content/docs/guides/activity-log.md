@@ -235,7 +235,7 @@ inbox-processing hour."
 
 ## Surfaces
 
-- **CLI**: `mxr activity ...` (alias `mxr act`). Scripts use `--format json|ndjson`.
+- **CLI**: `mxr activity ...` (alias `mxr act`). Scripts use `--format json`; `mxr activity export` also takes `--format ndjson`.
 - **TUI**: press `g a` from any screen to open the activity modal. `j`/`k` to navigate, `p` to toggle pause, `Esc` to close. Also visible inside the Diagnostics page (`G d`) as the **Activity** pane.
 - **Web**: navigate to `/activity` in the web app, or open the Diagnostics page and switch to the **Activity** tab. Filter sidebar, bulk-select with checkboxes, pause/resume from the top bar.
 

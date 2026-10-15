@@ -2471,3 +2471,43 @@ async fn resolve_time_uses_the_callers_zone_when_given() {
     };
     assert!(message.contains("Unknown time zone"), "{message}");
 }
+
+/// Saved searches are run, renamed and deleted by name: a second one with
+/// the same name is refused rather than left ambiguous.
+#[tokio::test]
+async fn saved_search_names_stay_unique() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let create = |name: &str| IpcMessage {
+        expected_workspace: None,
+        id: 30,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::CreateSavedSearch {
+            name: name.to_string(),
+            query: "is:unread".to_string(),
+            account_id: None,
+            search_mode: mxr_core::SearchMode::Lexical,
+        }),
+    };
+    let ok =
+        |message: &IpcMessage| matches!(message.payload, IpcPayload::Response(Response::Ok { .. }));
+    assert!(ok(&handle_request(&state, &create("Unread")).await));
+    assert!(ok(&handle_request(&state, &create("Later")).await));
+    assert!(!ok(&handle_request(&state, &create("Unread")).await));
+
+    let rename = IpcMessage {
+        expected_workspace: None,
+        id: 31,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UpdateSavedSearch {
+            name: "Later".to_string(),
+            new_name: Some("Unread".to_string()),
+            query: None,
+            search_mode: None,
+            sort: None,
+            icon: None,
+            position: None,
+        }),
+    };
+    assert!(!ok(&handle_request(&state, &rename).await));
+    assert_eq!(state.store.list_saved_searches().await.unwrap().len(), 2);
+}

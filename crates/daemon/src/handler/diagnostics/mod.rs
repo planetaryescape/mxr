@@ -1139,6 +1139,11 @@ pub(crate) async fn create_saved_search(
     account_id: Option<AccountId>,
     search_mode: SearchMode,
 ) -> HandlerResult {
+    // Saved searches are run, renamed and deleted by name, so a second one
+    // with the same name would make those ambiguous.
+    if state.store.get_saved_search_by_name(name).await?.is_some() {
+        return Err(format!("A saved search named '{name}' already exists").into());
+    }
     let search = mxr_core::types::SavedSearch {
         id: mxr_core::SavedSearchId::new(),
         account_id,
@@ -1159,6 +1164,16 @@ pub(crate) async fn update_saved_search(
     name: &str,
     update: mxr_store::SavedSearchUpdate<'_>,
 ) -> HandlerResult {
+    if let Some(new_name) = update.new_name.filter(|new_name| *new_name != name) {
+        if state
+            .store
+            .get_saved_search_by_name(new_name)
+            .await?
+            .is_some()
+        {
+            return Err(format!("A saved search named '{new_name}' already exists").into());
+        }
+    }
     let updated = state
         .store
         .update_saved_search_by_name(name, update)

@@ -76,7 +76,9 @@ Highlights you make in Marginalia are read back into mxr:
 
 - when you open a sent item in mxr's web reader,
 - after each sync, for items sent in the last 60 days, at most every half
-  hour,
+  hour. An item whose read fails (Marginalia is down, or answers with an
+  error) waits half an hour before its next try, so it doesn't hold up the
+  others,
 - when you ask:
 
 ```bash

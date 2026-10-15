@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.104](https://github.com/planetaryescape/mxr/compare/v0.6.103...v0.6.104) (2026-10-15)
+
+
+### Features
+
+* an assistant you can talk to about your mail ([#476](https://github.com/planetaryescape/mxr/issues/476)) ([1e326a2](https://github.com/planetaryescape/mxr/commit/1e326a21031b65b0ab1255aae224085a8d32deef))
+
+
+### Documentation
+
+* close out the Reading x Marginalia work ([#474](https://github.com/planetaryescape/mxr/issues/474)) ([dc1b4da](https://github.com/planetaryescape/mxr/commit/dc1b4dac98893fee93f023dc9cae660c50ba34c8))
+* fix Reading drift and stale CLI flag order ([#482](https://github.com/planetaryescape/mxr/issues/482)) ([d4f36d1](https://github.com/planetaryescape/mxr/commit/d4f36d1565232ffe12f11288599c1411e8cd53f0))
+* log issues found in the docs drift audit ([#483](https://github.com/planetaryescape/mxr/issues/483)) ([b72d9ff](https://github.com/planetaryescape/mxr/commit/b72d9ff6f1bc7a00348d79ff2d0485b05a98f694))
+* match the web guides to the calmer rows, the Archive ledger and the header Let go of all ([#478](https://github.com/planetaryescape/mxr/issues/478)) ([cc35e45](https://github.com/planetaryescape/mxr/commit/cc35e453727ff8b58a2fb0aaf1210b682b6289ba))
+* say a failing Marginalia read-back waits instead of holding up others ([#477](https://github.com/planetaryescape/mxr/issues/477)) ([ec93dc3](https://github.com/planetaryescape/mxr/commit/ec93dc32f59d8be4e8c9cc800912989f77120e34))
+* sweep drift from v0.6.97 to v0.6.103 ([#479](https://github.com/planetaryescape/mxr/issues/479)) ([c806fec](https://github.com/planetaryescape/mxr/commit/c806fec34a399702f1b500238a8a1f27c27a2eba))
+
 ## [0.6.103](https://github.com/planetaryescape/mxr/compare/v0.6.102...v0.6.103) (2026-10-15)
 
 

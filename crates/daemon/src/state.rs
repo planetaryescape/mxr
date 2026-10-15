@@ -370,6 +370,7 @@ fn llm_override_entries(
             LlmFeature::DeliveryExtraction,
             overrides.delivery_extraction.as_ref(),
         ),
+        (LlmFeature::Assistant, overrides.assistant.as_ref()),
     ]
     .into_iter()
     .filter_map(|(feature, config)| config.map(|config| (feature, config)))
@@ -387,10 +388,12 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
             | mxr_llm::LlmFeature::DecisionLog
             | mxr_llm::LlmFeature::Briefing
             | mxr_llm::LlmFeature::Expert
+            // Searches and reads across the whole mailbox.
+            | mxr_llm::LlmFeature::Assistant
     )
 }
 
-fn relationship_data_features() -> [mxr_llm::LlmFeature; 8] {
+fn relationship_data_features() -> [mxr_llm::LlmFeature; 9] {
     [
         mxr_llm::LlmFeature::RelationshipSummary,
         mxr_llm::LlmFeature::Commitments,
@@ -400,6 +403,7 @@ fn relationship_data_features() -> [mxr_llm::LlmFeature; 8] {
         mxr_llm::LlmFeature::DecisionLog,
         mxr_llm::LlmFeature::Briefing,
         mxr_llm::LlmFeature::Expert,
+        mxr_llm::LlmFeature::Assistant,
     ]
 }
 
@@ -507,6 +511,8 @@ pub struct AppState {
     pub(crate) sweep_gate: crate::handler::places::SweepGate,
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
+    /// The in-app assistant's running turns and its tools.
+    pub(crate) assistant: crate::assistant::AssistantRuntime,
     runtime: RwLock<ProviderRuntime>,
     draft_operation_locks: ParkingMutex<HashMap<mxr_core::DraftId, Arc<TokioMutex<()>>>>,
     attachment_materialization_locks:
@@ -834,6 +840,7 @@ impl AppState {
             category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
+            assistant: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: provider_setup.providers,
                 send_providers: provider_setup.send_providers,
@@ -2059,6 +2066,7 @@ impl AppState {
             category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
+            assistant: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers,
                 send_providers,
@@ -2143,6 +2151,7 @@ impl AppState {
             category_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
+            assistant: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: HashMap::new(),
                 send_providers: HashMap::new(),
@@ -2253,6 +2262,7 @@ impl AppState {
                 category_previews: Default::default(),
                 sweep_gate: Default::default(),
                 gist_queue: Default::default(),
+                assistant: Default::default(),
                 runtime: RwLock::new(ProviderRuntime {
                     providers,
                     send_providers,

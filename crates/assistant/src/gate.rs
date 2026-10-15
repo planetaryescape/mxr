@@ -26,6 +26,9 @@ enum Rule {
     Read,
     /// Previews unless `confirm` is `true`.
     Confirm,
+    /// Changes when `confirm` is `true`, and its own preview form only
+    /// says "blocked": the preview is another tool, given these fields.
+    ConfirmPreviewedBy(&'static str, &'static [&'static str]),
     /// Changes unless `dry_run` is `true`. A missing `dry_run` is the real
     /// change, so it waits.
     DryRun,
@@ -42,7 +45,10 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_archive_outcome", Rule::Read),
     // Retains a reviewed selection; dispatches nothing until submit.
     ("mxr_archive_preview", Rule::Read),
-    ("mxr_archive_submit", Rule::Confirm),
+    (
+        "mxr_archive_submit",
+        Rule::ConfirmPreviewedBy("mxr_archive_outcome", &["operation_id"]),
+    ),
     ("mxr_arrivals", Rule::Read),
     ("mxr_arrivals_list", Rule::Read),
     ("mxr_attachment_chunk", Rule::Read),
@@ -73,7 +79,10 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_list_scheduled_sends", Rule::Read),
     ("mxr_messages", Rule::Read),
     ("mxr_move", Rule::Confirm),
-    ("mxr_mutate", Rule::Confirm),
+    (
+        "mxr_mutate",
+        Rule::ConfirmPreviewedBy("mxr_mutation_preview", &["action", "message_ids"]),
+    ),
     ("mxr_mutation_preview", Rule::Read),
     ("mxr_person", Rule::Read),
     ("mxr_prepare_reply", Rule::Read),
@@ -98,7 +107,10 @@ const RULES: &[(&str, Rule)] = &[
     // A new local draft: nothing leaves the machine and the user can delete it.
     ("mxr_save_draft", Rule::Read),
     ("mxr_search", Rule::Read),
-    ("mxr_send_draft", Rule::Confirm),
+    (
+        "mxr_send_draft",
+        Rule::ConfirmPreviewedBy("mxr_get_draft", &["draft_id", "expected_workspace"]),
+    ),
     ("mxr_send_outcome", Rule::Read),
     ("mxr_sorting_rule", Rule::PreviewToken),
     ("mxr_status", Rule::Read),
@@ -142,6 +154,12 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
                 )),
             },
         },
+        Rule::ConfirmPreviewedBy(preview_tool, fields) => match flag("confirm") {
+            None | Some(Value::Null) | Some(Value::Bool(false)) => Gate::Run,
+            Some(_) => Gate::Approve {
+                preview: Some((preview_tool.to_string(), pick(arguments, fields))),
+            },
+        },
         Rule::DryRun => match flag("dry_run") {
             Some(Value::Bool(true)) => Gate::Run,
             _ => Gate::Approve {
@@ -167,6 +185,18 @@ pub fn is_classified(tool: &str) -> bool {
     RULES.iter().any(|(name, _)| *name == tool)
 }
 
+fn pick(arguments: &Value, fields: &[&str]) -> Value {
+    let picked: Map<String, Value> = fields
+        .iter()
+        .filter_map(|field| {
+            arguments
+                .get(*field)
+                .map(|value| ((*field).to_string(), value.clone()))
+        })
+        .collect();
+    Value::Object(picked)
+}
+
 fn with(arguments: &Value, key: &str, value: Value) -> Value {
     let mut object = arguments.as_object().cloned().unwrap_or_else(Map::new);
     object.insert(key.to_string(), value);
@@ -189,29 +219,49 @@ mod tests {
 
     #[test]
     fn confirm_tools_preview_unless_confirm_is_anything_but_false() {
-        assert_eq!(
-            classify("mxr_mutate", &json!({"message_ids": ["a"]})),
-            Gate::Run
-        );
-        assert_eq!(
-            classify("mxr_mutate", &json!({"confirm": false})),
-            Gate::Run
-        );
+        assert_eq!(classify("mxr_move", &json!({"message_id": "a"})), Gate::Run);
+        assert_eq!(classify("mxr_move", &json!({"confirm": false})), Gate::Run);
         for confirm in [json!(true), json!("true"), json!(1)] {
-            let gate = classify(
-                "mxr_mutate",
-                &json!({"action": "archive", "confirm": confirm}),
-            );
+            let gate = classify("mxr_move", &json!({"message_id": "a", "confirm": confirm}));
             assert_eq!(
                 gate,
                 Gate::Approve {
                     preview: Some((
-                        "mxr_mutate".into(),
-                        json!({"action": "archive", "confirm": false})
+                        "mxr_move".into(),
+                        json!({"message_id": "a", "confirm": false})
                     ))
                 }
             );
         }
+    }
+
+    #[test]
+    fn tools_whose_own_preview_only_blocks_are_previewed_by_their_read_tool() {
+        assert_eq!(
+            classify(
+                "mxr_mutate",
+                &json!({"action": "archive", "message_ids": ["m"], "confirm": true, "client_correlation_id": "x"})
+            ),
+            Gate::Approve {
+                preview: Some((
+                    "mxr_mutation_preview".into(),
+                    json!({"action": "archive", "message_ids": ["m"]})
+                ))
+            }
+        );
+        assert_eq!(
+            classify(
+                "mxr_send_draft",
+                &json!({"draft_id": "d", "confirm": true, "expected_revision": 3})
+            ),
+            Gate::Approve {
+                preview: Some(("mxr_get_draft".into(), json!({"draft_id": "d"})))
+            }
+        );
+        assert_eq!(
+            classify("mxr_mutate", &json!({"action": "archive"})),
+            Gate::Run
+        );
     }
 
     #[test]

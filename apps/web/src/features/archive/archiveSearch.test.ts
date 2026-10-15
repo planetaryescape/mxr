@@ -34,9 +34,16 @@ describe("Archive's URL", () => {
 
   test("clearing the filter clears every filter param", () => {
     const cleared = searchFromFilter({});
-    expect(Object.keys(cleared).sort()).toEqual(
-      ["checked", "group", "issuer", "kinds", "max", "min", "pdf", "year"].sort(),
-    );
+    expect(Object.keys(cleared).toSorted()).toEqual([
+      "checked",
+      "group",
+      "issuer",
+      "kinds",
+      "max",
+      "min",
+      "pdf",
+      "year",
+    ]);
     expect(Object.values(cleared).every((value) => value === undefined)).toBe(true);
   });
 });

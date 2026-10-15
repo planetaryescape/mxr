@@ -115,6 +115,8 @@ async function selectInLastParagraph(page: Page): Promise<{ text: string; index:
     );
     const last = tagged.at(-1);
     if (!last) throw new Error("no paragraph");
+    // A reader selects text they can see; off screen, the toolbar would be too.
+    last.scrollIntoView({ block: "center" });
     const index =
       last.dataset.paragraph !== undefined
         ? Number(last.dataset.paragraph)

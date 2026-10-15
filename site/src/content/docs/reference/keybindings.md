@@ -531,6 +531,7 @@ Work on every page except while typing in a field or compose.
 | `?` | Keyboard help |  |
 | `c` | Compose |  |
 | `u`, `z` | Undo last action | z also undoes, for Gmail muscle memory |
+| `⌘. / Ctrl+.` | Show or hide the assistant | The TUI has no assistant pane yet; use `mxr assistant` in a terminal |
 
 ### Go to
 

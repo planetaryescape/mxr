@@ -255,6 +255,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Everywhere.
   {
     context: "*",
+    keys: ["Mod+."],
+    bound: "web",
+    why: "The assistant sidebar is web-only for now; the TUI reaches the assistant through `mxr assistant`",
+  },
+  {
+    context: "*",
     keys: ["Mod+k", ":"],
     bound: "web",
     why: "Extra palette keys for the browser; Ctrl+p opens the palette in both",

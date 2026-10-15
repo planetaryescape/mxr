@@ -244,6 +244,86 @@
   min-width: 0;
 }
 
+/*
+ * The assistant (features/assistant): a pane beside the app on wide
+ * windows, an overlay drawer where list and reader stop sharing the
+ * screen, full width on phones.
+ */
+.assistant-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(420px, 100vw);
+  z-index: 45;
+  display: flex;
+  border-left: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: -16px 0 40px -12px rgb(0 0 0 / 0.45);
+}
+
+.assistant-prose > * + * {
+  margin-top: 0.6em;
+}
+.assistant-prose ul,
+.assistant-prose ol {
+  padding-left: 1.25em;
+}
+.assistant-prose ul {
+  list-style: disc;
+}
+.assistant-prose ol {
+  list-style: decimal;
+}
+.assistant-prose li + li {
+  margin-top: 0.2em;
+}
+.assistant-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.assistant-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background-color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0 0.25em;
+}
+.assistant-prose pre {
+  overflow-x: auto;
+  padding: 0.5em;
+  background-color: var(--muted);
+  border-radius: var(--radius-sm);
+}
+.assistant-prose pre code {
+  background: none;
+  padding: 0;
+}
+.assistant-prose blockquote {
+  border-left: 1px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted-foreground);
+}
+.assistant-prose strong {
+  font-weight: 600;
+}
+.assistant-prose h1,
+.assistant-prose h2,
+.assistant-prose h3,
+.assistant-prose h4 {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.assistant-prose table {
+  font-size: var(--text-xs);
+  border-collapse: collapse;
+}
+.assistant-prose th,
+.assistant-prose td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+
 .app-shell-rightrail {
   grid-area: rightrail;
   border-left: 1px solid var(--border);

@@ -4972,7 +4972,7 @@ export interface components {
                   text: string;
               }
             | {
-                  arguments: Record<string, never>;
+                  arguments: unknown;
                   call_id: string;
                   /** Format: int64 */
                   created_at: number;
@@ -4996,12 +4996,12 @@ export interface components {
         /** @description A call waiting for the user. */
         AssistantPendingData:
             | {
-                  arguments: Record<string, never>;
+                  arguments: unknown;
                   call_id: string;
                   /** @enum {string} */
                   kind: "approval";
                   /** @description What the change will do, from the tool's own preview. */
-                  preview?: Record<string, never> | null;
+                  preview?: unknown;
                   preview_error?: string | null;
                   reason: string;
                   tool: string;

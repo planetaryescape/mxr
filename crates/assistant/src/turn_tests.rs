@@ -430,3 +430,91 @@ fn an_interrupted_call_is_closed_in_model_input_but_not_in_history() {
     assert!(matches!(input.last(), Some(ToolChatMessage::User { .. })));
     assert_eq!(model_input(&history), input, "the repair is deterministic");
 }
+
+/// Answers every call with a fixed result per tool.
+struct CannedHost {
+    tools: Vec<ToolSpec>,
+    results: HashMap<&'static str, Value>,
+    calls: Mutex<Vec<(String, Value)>>,
+}
+
+#[async_trait]
+impl ToolHost for CannedHost {
+    fn tools(&self) -> &[ToolSpec] {
+        &self.tools
+    }
+    async fn call(&self, name: &str, arguments: Value) -> ToolOutput {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((name.to_string(), arguments));
+        ToolOutput {
+            content: self
+                .results
+                .get(name)
+                .cloned()
+                .unwrap_or(json!({}))
+                .to_string(),
+            is_error: false,
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_id_only_preview_gets_the_messages_it_names() {
+    let tool = |name: &str| ToolSpec {
+        name: name.into(),
+        description: name.into(),
+        input_schema: json!({"type": "object"}),
+    };
+    let host = CannedHost {
+        tools: vec![
+            tool("mxr_archive_submit"),
+            tool("mxr_archive_outcome"),
+            tool("mxr_mutation_preview"),
+        ],
+        results: HashMap::from([
+            (
+                "mxr_archive_outcome",
+                json!({"operation": {"items": [{"message_id": "m1"}, {"message_id": "m2"}]}}),
+            ),
+            (
+                "mxr_mutation_preview",
+                json!({"preview": {"envelopes": [{"id": "m1", "subject": "One"}, {"id": "m2", "subject": "Two"}]}}),
+            ),
+        ]),
+        calls: Mutex::new(Vec::new()),
+    };
+    let model = ScriptedModel::new(vec![calls(&[(
+        "c1",
+        "mxr_archive_submit",
+        json!({"operation_id": "op", "confirm": true}),
+    )])]);
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = Agent {
+        model: &model,
+        host: &host,
+        sink: &sink,
+        cancel: CancellationToken::new(),
+        limits: Limits::default(),
+    };
+    let TurnOutcome::AwaitingUser(pending) = assistant
+        .send(&mut history, &[], "archive them".into())
+        .await
+    else {
+        panic!("expected a wait");
+    };
+    let PendingKind::Approval { preview, .. } = &pending[0].kind else {
+        panic!("expected an approval");
+    };
+    let preview = preview.as_ref().unwrap();
+    assert_eq!(preview["messages"]["envelopes"][1]["subject"], "Two");
+    assert_eq!(
+        preview["detail"]["operation"]["items"][0]["message_id"],
+        "m1"
+    );
+    let looked_up = host.calls.lock().unwrap()[1].clone();
+    assert_eq!(looked_up.0, "mxr_mutation_preview");
+    assert_eq!(looked_up.1["message_ids"], json!(["m1", "m2"]));
+}

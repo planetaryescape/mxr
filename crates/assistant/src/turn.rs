@@ -374,13 +374,9 @@ impl Agent<'_> {
                         if output.is_error {
                             (None, Some(output.content))
                         } else {
-                            (
-                                Some(
-                                    serde_json::from_str(&output.content)
-                                        .unwrap_or(Value::String(output.content)),
-                                ),
-                                None,
-                            )
+                            let preview = serde_json::from_str(&output.content)
+                                .unwrap_or(Value::String(output.content));
+                            (Some(self.with_messages(preview).await), None)
                         }
                     }
                     None => (None, None),
@@ -396,6 +392,35 @@ impl Agent<'_> {
                     },
                 })
             }
+        }
+    }
+
+    /// A preview that names messages only by id (the reviewed archive
+    /// flow) gets the messages themselves, so the user approves subjects
+    /// and senders, not ids.
+    async fn with_messages(&self, preview: Value) -> Value {
+        if has_subjects(&preview, 0) || !self.host.tools().iter().any(|t| t.name == LIST_BY_IDS) {
+            return preview;
+        }
+        let mut ids = Vec::new();
+        collect_message_ids(&preview, 0, &mut ids);
+        ids.dedup();
+        if ids.is_empty() || ids.len() > MAX_PREVIEW_LOOKUP {
+            return preview;
+        }
+        let lookup = self
+            .host
+            .call(
+                LIST_BY_IDS,
+                json!({"action": "archive", "message_ids": ids}),
+            )
+            .await;
+        if lookup.is_error {
+            return preview;
+        }
+        match serde_json::from_str::<Value>(&lookup.content) {
+            Ok(found) => json!({ "messages": found["preview"], "detail": preview }),
+            Err(_) => preview,
         }
     }
 
@@ -420,6 +445,49 @@ impl Agent<'_> {
         self.sink.append(&message, &meta).await?;
         history.push(message);
         Ok(())
+    }
+}
+
+/// The read-only tool that lists envelopes by id.
+const LIST_BY_IDS: &str = "mxr_mutation_preview";
+/// More ids than this and the preview stays as the tool returned it.
+const MAX_PREVIEW_LOOKUP: usize = 200;
+
+fn has_subjects(value: &Value, depth: u8) -> bool {
+    if depth > 5 {
+        return false;
+    }
+    match value {
+        Value::Object(map) => {
+            map.contains_key("subject") || map.values().any(|v| has_subjects(v, depth + 1))
+        }
+        Value::Array(items) => items.iter().any(|v| has_subjects(v, depth + 1)),
+        _ => false,
+    }
+}
+
+fn collect_message_ids(value: &Value, depth: u8, ids: &mut Vec<String>) {
+    if depth > 5 {
+        return;
+    }
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                match (key.as_str(), child) {
+                    ("message_id", Value::String(id)) => ids.push(id.clone()),
+                    ("message_ids", Value::Array(list)) => {
+                        ids.extend(list.iter().filter_map(|id| id.as_str().map(str::to_string)))
+                    }
+                    _ => collect_message_ids(child, depth + 1, ids),
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_message_ids(item, depth + 1, ids);
+            }
+        }
+        _ => {}
     }
 }
 

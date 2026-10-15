@@ -227,7 +227,12 @@ for motion), implement the command in the view's controller, done.
   (Match app maps midnight, eclipse, light and paper to Ink, Night, Snow
   and Paper), font, size and line spacing, kept in `uiPrefsStore`
   (`readingDisplay`) as a client preference. Quote highlights are placed by
-  matching their text in the rendered article.
+  matching their text in the rendered article, in the paragraph they were
+  made in when the highlight has one (`paragraph` on the highlight, captured
+  from the selection's start by `paragraphAnchor.ts`). The anchor is used
+  only for mxr's own highlights shown in the view they were made in
+  (`marksForView`), because each view and Marginalia number paragraphs
+  differently; any other highlight marks its first match.
 - The article is fetched only on `L` or the Article tab, or on `M` for a digest link whose article isn't saved (Marginalia needs it first), after the toast
   names the site; `b` on a link saves it and then fetches it so it reads
   offline.

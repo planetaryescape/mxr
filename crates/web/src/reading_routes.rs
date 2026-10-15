@@ -173,6 +173,9 @@ pub(crate) struct ReadingHighlightBody {
     /// `issue` (default) or `article`.
     #[serde(default)]
     view: Option<String>,
+    /// The paragraph (from 0) it was selected in; absent marks the first match.
+    #[serde(default)]
+    paragraph: Option<u32>,
 }
 
 async fn save_highlight(
@@ -189,6 +192,7 @@ async fn save_highlight(
             quote: body.quote,
             note: body.note,
             view: body.view,
+            paragraph: body.paragraph,
         },
     )
     .await?;

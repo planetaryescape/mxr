@@ -17905,6 +17905,15 @@
               "null"
             ]
           },
+          "paragraph": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The paragraph (from 0) it was selected in; absent marks the first match.",
+            "minimum": 0
+          },
           "quote": {
             "type": "string"
           },
@@ -17997,6 +18006,15 @@
           "origin": {
             "type": "string",
             "description": "`mxr`, or `marginalia` for one made there and read back."
+          },
+          "paragraph": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The paragraph it was made in; absent for older highlights, which\nmark the first match.",
+            "minimum": 0
           },
           "quote": {
             "type": "string"
@@ -28369,6 +28387,15 @@
                   "null"
                 ]
               },
+              "paragraph": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The paragraph it was selected in (0-based, in the view's own\nparagraph list), so it marks that passage and not the first\nmatch. Absent: the first match.",
+                "minimum": 0
+              },
               "quote": {
                 "type": "string"
               },
@@ -28899,12 +28926,15 @@
           },
           {
             "type": "object",
-            "description": "Gists for list rows, many conversations at once. Returns the cached\ngists that still match each conversation at once, without calling a\nmodel. With `generate`, conversations from people that have none are\nqueued for a background writer, in the order given (put the rows on\nscreen first); each gist arrives as `DaemonEvent::ThreadGistReady`.\nA newer request goes ahead of older ones, and asking again for a\nqueued conversation never queues it twice. At most 100 ids. Returns\n`ResponseData::ThreadGists`.",
+            "description": "Gists for list rows, many conversations at once. Returns the cached\ngists that still match each conversation at once, without calling a\nmodel. With `generate`, conversations from people that have none are\nqueued for a background writer, in the order given (put the rows on\nscreen first); each gist arrives as `DaemonEvent::ThreadGistReady`.\nWith `automated`, conversations from automated senders (receipts,\nalerts: what Updates shows) are queued too, and written with the\nnotification prompt. A newer request goes ahead of older ones, and\nasking again for a queued conversation never queues it twice. At\nmost 100 ids. Returns `ResponseData::ThreadGists`.",
             "required": [
               "thread_ids",
               "cmd"
             ],
             "properties": {
+              "automated": {
+                "type": "boolean"
+              },
               "cmd": {
                 "type": "string",
                 "enum": [

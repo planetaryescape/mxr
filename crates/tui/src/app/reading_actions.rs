@@ -585,6 +585,7 @@ impl App {
                 quote,
                 note: None,
                 view: Some(view.into()),
+                paragraph: None,
             },
             MutationEffect::ModeDone("Highlight saved".into()),
             "Saving the highlight...".into(),

@@ -11,6 +11,7 @@ import { useMemo, useRef } from "react";
 import { sanitizeReaderHtml } from "@/lib/sanitizeHtml";
 
 import type { ReadingParagraph } from "./api";
+import type { AnchoredMark } from "./readingView";
 
 const NO_ANNOTATIONS: never[] = [];
 const noop = () => {};
@@ -58,7 +59,7 @@ export function ReaderArticle({
 }: {
   html: string;
   paragraphs: ReadingParagraph[];
-  marks: string[];
+  marks: AnchoredMark[];
   allowRemoteImages: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -68,7 +69,13 @@ export function ReaderArticle({
     [paragraphs],
   );
   const docs = useMemo<HighlightDoc[]>(
-    () => marks.map((quote) => ({ text: quote, kind: "highlight" })),
+    () =>
+      marks.map(({ quote, paragraph }) => ({
+        text: quote,
+        kind: "highlight",
+        // Absent, the package matches the whole article, as for older highlights.
+        ...(typeof paragraph === "number" ? { paragraphIndex: paragraph } : {}),
+      })),
     [marks],
   );
   const { version } = useParagraphs(ref, true);

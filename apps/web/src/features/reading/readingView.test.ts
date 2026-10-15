@@ -13,6 +13,8 @@ import {
   isOwnHighlight,
   LINKS_SHOWN,
   letGoAllPlan,
+  marksForParagraph,
+  marksForView,
   minutesLeft,
   scrollProgress,
   shownLinks,
@@ -146,6 +148,39 @@ describe("h", () => {
   });
 });
 
+describe("marksForParagraph", () => {
+  const paragraphs = [{ text: "Same words." }, { text: "Other. Same words." }];
+
+  test("an anchored highlight is drawn once, in its own paragraph only", () => {
+    const marks = [{ quote: "Same words", paragraph: 1 }];
+    expect(marksForParagraph(paragraphs, marks, 0)).toEqual([]);
+    expect(marksForParagraph(paragraphs, marks, 1)).toEqual([{ quote: "Same words", once: true }]);
+  });
+
+  test("a highlight without a paragraph keeps drawing everywhere its words appear", () => {
+    for (const paragraph of [undefined, null]) {
+      const marks = [{ quote: "Same words", paragraph }];
+      expect(marksForParagraph(paragraphs, marks, 0)).toEqual([
+        { quote: "Same words", once: false },
+      ]);
+      expect(marksForParagraph(paragraphs, marks, 1)).toEqual([
+        { quote: "Same words", once: false },
+      ]);
+    }
+  });
+
+  test("an anchor that no longer holds the words falls back to drawing them wherever they are", () => {
+    for (const paragraph of [0, 9]) {
+      expect(marksForParagraph(paragraphs, [{ quote: "Other", paragraph }], 1)).toEqual([
+        { quote: "Other", once: paragraph === 1 },
+      ]);
+    }
+    expect(marksForParagraph(paragraphs, [{ quote: "Other", paragraph: 0 }], 1)).toEqual([
+      { quote: "Other", once: false },
+    ]);
+  });
+});
+
 /** A daemon unsubscribe preview with this method and token. */
 const purgePreview = (method: UnsubscribeMethod, token: string | null = "tok") => ({
   ok: true,
@@ -212,5 +247,32 @@ describe("highlightMatching", () => {
     expect(isOwnHighlight({})).toBe(true);
     expect(isOwnHighlight({ origin: "marginalia" })).toBe(false);
     expect(isOwnHighlight({ origin: "anything-else" })).toBe(false);
+  });
+});
+
+const made = (view: string, origin: string, paragraph: number | null) => ({
+  quote: "same words",
+  view,
+  origin,
+  paragraph,
+});
+
+describe("marksForView", () => {
+  test("keeps the anchor of your own highlight made in this view", () => {
+    expect(marksForView([made("issue", "mxr", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: 3 },
+    ]);
+  });
+
+  test("drops the anchor from another view, whose paragraphs are numbered differently", () => {
+    expect(marksForView([made("article", "mxr", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: null },
+    ]);
+  });
+
+  test("drops the anchor from a Marginalia highlight, numbered in Marginalia's copy", () => {
+    expect(marksForView([made("issue", "marginalia", 3)], "issue")).toEqual([
+      { quote: "same words", paragraph: null },
+    ]);
   });
 });

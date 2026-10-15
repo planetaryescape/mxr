@@ -97,10 +97,18 @@ export async function saveHighlight(input: {
   quote: string;
   view: "issue" | "article";
   note?: string;
+  /** The paragraph it was selected in; absent marks the first match. */
+  paragraph?: number | null;
 }): Promise<ReadingHighlight> {
   const answer = await apiFetch<HighlightResponse>("/api/v1/mail/reading/highlights", {
     method: "POST",
-    body: { item_key: input.itemKey, quote: input.quote, view: input.view, note: input.note },
+    body: {
+      item_key: input.itemKey,
+      quote: input.quote,
+      view: input.view,
+      note: input.note,
+      paragraph: input.paragraph ?? undefined,
+    },
   });
   return answer.highlight;
 }

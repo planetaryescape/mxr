@@ -12,7 +12,8 @@ Arguments:
 
 Options:
       --note <NOTE>
-      --article            Taken from the fetched article rather than the issue
-      --account <ACCOUNT>  Limit to one account; the default covers every account
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --article                Taken from the fetched article rather than the issue
+      --paragraph <PARAGRAPH>  The paragraph (counting from 0) the passage is in, so the highlight marks that one and not the first match
+      --account <ACCOUNT>      Limit to one account; the default covers every account
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

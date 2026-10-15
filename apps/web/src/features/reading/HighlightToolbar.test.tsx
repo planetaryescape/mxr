@@ -73,7 +73,28 @@ describe("HighlightToolbar", () => {
     select(screen.getByTestId("inside"));
     expect(screen.getByRole("toolbar")).toBeTruthy();
     fireEvent.click(screen.getByTestId("toolbar-highlight"));
-    expect(verbs.highlightSelection).toHaveBeenCalledWith("some text", "m:0", "issue");
+    expect(verbs.highlightSelection).toHaveBeenCalledWith(
+      "some text",
+      "m:0",
+      "issue",
+      undefined,
+      null,
+    );
+  });
+
+  test("passes the paragraph the selection starts in, so the highlight is anchored there", () => {
+    setup();
+    const inside = screen.getByTestId("inside");
+    inside.setAttribute("data-paragraph", "4");
+    select(inside);
+    fireEvent.click(screen.getByTestId("toolbar-highlight"));
+    expect(verbs.highlightSelection).toHaveBeenCalledWith(
+      "some text",
+      "m:0",
+      "issue",
+      undefined,
+      4,
+    );
   });
 
   test("a selection in the highlights list or with nothing selected shows nothing", () => {
@@ -103,6 +124,7 @@ describe("HighlightToolbar", () => {
       "m:0",
       "issue",
       "for the talk",
+      null,
     );
   });
 

@@ -288,6 +288,7 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
         created_at: at(3),
         origin: "mxr".into(),
         origin_id: None,
+        paragraph: None,
     };
     fx.store
         .insert_reading_highlight(&highlight)
@@ -380,6 +381,7 @@ async fn marginalia_highlights_mirror_without_touching_your_own() {
         created_at: at(1),
         origin: "mxr".into(),
         origin_id: None,
+        paragraph: None,
     };
     fx.store.insert_reading_highlight(&own).await.expect("own");
     let sent = ReadingMarginaliaRow {
@@ -412,6 +414,7 @@ async fn marginalia_highlights_mirror_without_touching_your_own() {
     let marked = |id: &str, quote: &str| MarginaliaHighlightIn {
         origin_id: id.into(),
         quote: quote.into(),
+        paragraph: (id == "b").then_some(4),
         created_at: at(3),
     };
     let first = fx
@@ -453,6 +456,25 @@ async fn marginalia_highlights_mirror_without_touching_your_own() {
         vec![("mxr", "made in mxr"), ("marginalia", "two, edited")]
     );
     assert_eq!(
+        rows.iter().map(|row| row.paragraph).collect::<Vec<_>>(),
+        vec![None, Some(4)],
+        "the mirrored row keeps Marginalia's paragraph"
+    );
+    let moved = MarginaliaHighlightIn {
+        paragraph: Some(7),
+        ..marked("b", "two, edited")
+    };
+    fx.store
+        .mirror_marginalia_highlights(&sent, &[moved], at(5))
+        .await
+        .expect("mirror a moved paragraph");
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .expect("highlights");
+    assert_eq!(rows[1].paragraph, Some(7), "a changed paragraph is updated");
+    assert_eq!(
         fx.store
             .reading_marginalia(&issue, 0)
             .await
@@ -489,6 +511,7 @@ fn highlight(fx: &Fx, issue: &MessageId, id: &str, origin: &str) -> ReadingHighl
         created_at: at(1),
         origin: origin.into(),
         origin_id: (origin != "mxr").then(|| format!("remote-{id}")),
+        paragraph: None,
     }
 }
 
@@ -591,6 +614,7 @@ async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
     let remote = MarginaliaHighlightIn {
         origin_id: "a".into(),
         quote: "one".into(),
+        paragraph: None,
         created_at: at(3),
     };
     fx.store
@@ -707,4 +731,34 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
             .unwrap(),
         0
     );
+}
+
+#[tokio::test]
+async fn a_highlight_keeps_the_paragraph_it_was_made_in() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p-anchor", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let mut anchored = highlight(&fx, &issue, "anchored", "mxr");
+    anchored.paragraph = Some(3);
+    let loose = highlight(&fx, &issue, "loose", "mxr");
+    fx.store
+        .insert_reading_highlight(&anchored)
+        .await
+        .expect("anchored");
+    fx.store
+        .insert_reading_highlight(&loose)
+        .await
+        .expect("loose");
+
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .expect("highlights");
+    let paragraphs: Vec<(&str, Option<u32>)> =
+        rows.iter().map(|r| (r.id.as_str(), r.paragraph)).collect();
+    assert_eq!(paragraphs, vec![("anchored", Some(3)), ("loose", None)]);
 }

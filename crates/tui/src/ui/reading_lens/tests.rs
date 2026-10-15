@@ -424,6 +424,7 @@ fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
             quote: format!("A delete is the absence of a row ({id})"),
             note: note.map(str::to_string),
             origin: origin.into(),
+            paragraph: None,
             title: reader.item.title.clone(),
             source: reader.item.source.clone(),
             url: None,

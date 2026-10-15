@@ -1174,6 +1174,7 @@ const MIGRATIONS: &[Migration] = &[
         MigrationStep::AddColumn { table: "remote_clients", column: "allow_send", sql: include_str!("../migrations/085_remote_client_send.sql") },
     ]) },
     Migration { version: 86, name: "reading_marginalia", kind: MigrationKind::Composite(READING_MARGINALIA_STEPS) },
+    Migration { version: 87, name: "reading_highlight_paragraph", kind: MigrationKind::AddColumn { table: "reading_highlights", column: "paragraph_index", sql: include_str!("../migrations/087_reading_highlight_paragraph.sql") } },
 ];
 
 const READING_MARGINALIA_STEPS: &[MigrationStep] = &[
@@ -1956,7 +1957,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=86).collect::<Vec<_>>(),
+                (83..=87).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

@@ -484,6 +484,7 @@ async fn highlights_export_as_markdown_with_their_source() {
             quote: "A delete is the absence of a row".to_string(),
             note: Some("for the talk".to_string()),
             view: None,
+            paragraph: None,
         },
     )
     .await
@@ -846,6 +847,7 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
                 quote: "A delete is the absence of a row".to_string(),
                 note: None,
                 view: None,
+                paragraph: None,
             },
         )
         .await;
@@ -965,6 +967,7 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
             quote: "x".to_string(),
             note: None,
             view: None,
+            paragraph: None,
         },
         Request::SetReadingSource {
             account_id: other.id.clone(),
@@ -1215,6 +1218,7 @@ mod marginalia {
                 quote: "A delete is the absence of a row".into(),
                 note: None,
                 view: None,
+                paragraph: None,
             },
         )
         .await;
@@ -1238,6 +1242,15 @@ mod marginalia {
         assert_eq!(origins.len(), 3);
         assert!(origins.contains(&"mxr:A delete is the absence of a row".to_string()));
         assert!(origins.contains(&"marginalia:an absence does not travel on its own".to_string()));
+        // Marginalia's paragraphIndex is kept; the highlight made in mxr without one has none.
+        let anchors: Vec<(String, Option<u32>)> = item(&fx, &key)
+            .await
+            .highlights
+            .iter()
+            .map(|h| (h.origin.clone(), h.paragraph))
+            .collect();
+        assert!(anchors.contains(&("marginalia".to_string(), Some(0))));
+        assert!(anchors.contains(&("mxr".to_string(), None)));
 
         // Deleted there, deleted here; mxr's own highlight stays.
         Mock::given(method("GET"))

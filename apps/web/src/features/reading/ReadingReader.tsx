@@ -26,12 +26,17 @@ import {
 } from "./api";
 import { HighlightToolbar, NoteComposer } from "./HighlightToolbar";
 import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
+import { PARAGRAPH_ATTRIBUTE, selectionParagraph } from "./paragraphAnchor";
 import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
 import { readingRootProps, useAppTheme } from "./readerAppearance";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
   isOwnHighlight,
+  marksForParagraph,
+  marksForView,
+  type AnchoredMark,
+  type ParagraphMark,
   minutesLeft,
   scrollProgress,
   visibleBands,
@@ -162,7 +167,13 @@ function Reader({ detail }: { detail: ReadingDetail }) {
 
   const highlight = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";
-    void highlightSelection(selection, item.item_key, showingArticle ? "article" : "issue");
+    void highlightSelection(
+      selection,
+      item.item_key,
+      showingArticle ? "article" : "issue",
+      undefined,
+      selectionParagraph(bodyRef.current),
+    );
   }, [item.item_key, showingArticle]);
 
   const marginaliaStatus = useMarginaliaStatus();
@@ -212,7 +223,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   });
 
   const highlights = detail.highlights;
-  const marks = useMemo(() => highlights.map((h) => h.quote), [highlights]);
+  const shownView = showingArticle ? "article" : "issue";
+  const marks = useMemo(() => marksForView(highlights, shownView), [highlights, shownView]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
@@ -571,7 +583,13 @@ function HighlightRow({
 }
 
 /** The text, paragraph by paragraph, with your highlights marked. */
-function Paragraphs({ paragraphs, marks }: { paragraphs: ReadingParagraph[]; marks: string[] }) {
+export function Paragraphs({
+  paragraphs,
+  marks,
+}: {
+  paragraphs: ReadingParagraph[];
+  marks: AnchoredMark[];
+}) {
   return (
     <div
       className="mt-6 grid gap-4 text-lg leading-[1.65] text-foreground sm:text-lg"
@@ -579,42 +597,59 @@ function Paragraphs({ paragraphs, marks }: { paragraphs: ReadingParagraph[]; mar
     >
       {paragraphs.map((paragraph, index) => {
         const key = `${index}-${paragraph.text.slice(0, 12)}`;
-        const content = <Marked text={paragraph.text} marks={marks} />;
+        // The anchor a highlight made here is saved with and drawn by.
+        const tag = { [PARAGRAPH_ATTRIBUTE]: index };
+        const content = (
+          <Marked text={paragraph.text} marks={marksForParagraph(paragraphs, marks, index)} />
+        );
         switch (paragraph.kind) {
           case "heading":
             return (
-              <h2 key={key} className="mt-4 text-xl font-semibold leading-snug">
+              <h2 key={key} {...tag} className="mt-4 text-xl font-semibold leading-snug">
                 {content}
               </h2>
             );
           case "quote":
             return (
-              <blockquote key={key} className="border-l-2 border-border pl-4 text-foreground/85">
+              <blockquote
+                key={key}
+                {...tag}
+                className="border-l-2 border-border pl-4 text-foreground/85"
+              >
                 {content}
               </blockquote>
             );
           case "list_item":
             return (
-              <p key={key} className="pl-5 -indent-3">
+              <p key={key} {...tag} className="pl-5 -indent-3">
                 <span aria-hidden>• </span>
                 {content}
               </p>
             );
           default:
-            return <p key={key}>{content}</p>;
+            return (
+              <p key={key} {...tag}>
+                {content}
+              </p>
+            );
         }
       })}
     </div>
   );
 }
 
-/** Marks the first place each highlight appears in `text`; text only, no markup built. */
-function Marked({ text, marks }: { text: string; marks: string[] }) {
+/**
+ * Draws each mark in `text`: wherever its words appear, or only the first
+ * match for an anchored one. Text only, no markup built.
+ */
+function Marked({ text, marks }: { text: string; marks: ParagraphMark[] }) {
   const hit = marks
-    .map((mark) => ({ mark, at: text.indexOf(mark) }))
-    .filter((found) => found.mark.length > 0 && found.at >= 0)
+    .map((mark) => ({ mark, at: text.indexOf(mark.quote) }))
+    .filter((found) => found.mark.quote.length > 0 && found.at >= 0)
     .toSorted((a, b) => a.at - b.at)[0];
   if (!hit) return <>{text}</>;
+  // An anchored mark is spent once drawn; the rest of the paragraph can't show it again.
+  const rest = hit.mark.once ? marks.filter((mark) => mark !== hit.mark) : marks;
   return (
     <>
       {text.slice(0, hit.at)}
@@ -623,9 +658,9 @@ function Marked({ text, marks }: { text: string; marks: string[] }) {
         // Selecting it is how the toolbar finds the highlight to edit.
         onClick={(event) => window.getSelection()?.selectAllChildren(event.currentTarget)}
       >
-        {hit.mark}
+        {hit.mark.quote}
       </mark>
-      <Marked text={text.slice(hit.at + hit.mark.length)} marks={marks} />
+      <Marked text={text.slice(hit.at + hit.mark.quote.length)} marks={rest} />
     </>
   );
 }

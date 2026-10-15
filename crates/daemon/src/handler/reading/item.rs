@@ -177,6 +177,7 @@ pub(super) fn highlight_data(
         quote: row.quote.clone(),
         note: row.note.clone(),
         origin: row.origin.clone(),
+        paragraph: row.paragraph,
         title: title.to_string(),
         source: source.to_string(),
         url,
@@ -310,6 +311,7 @@ pub(in crate::handler) async fn save_highlight(
     quote: &str,
     note: Option<&str>,
     view: Option<&str>,
+    paragraph: Option<u32>,
 ) -> HandlerResult {
     let quote = quote.trim();
     if quote.is_empty() {
@@ -344,6 +346,7 @@ pub(in crate::handler) async fn save_highlight(
         created_at: Utc::now(),
         origin: "mxr".to_string(),
         origin_id: None,
+        paragraph,
     };
     state.store.insert_reading_highlight(&row).await?;
     // Search finds highlights through the message's semantic chunks.

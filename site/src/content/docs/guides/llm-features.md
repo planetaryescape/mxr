@@ -180,7 +180,7 @@ subscription.
 | Work | When it runs | What a cloud endpoint receives |
 |---|---|---|
 | `mxr summarize`, `mxr triage`, `mxr draft-assist`, `mxr draft` and `mxr draft refine` | When you run them | The thread the command works on |
-| Row gists | In the background, for conversations from people that a client shows | That conversation's messages. Newsletters and automated mail are never sent |
+| Row gists | In the background, for conversations from people that a client shows, and for automated mail while the web app's Updates page or `mxr briefing gists --automated` asks | That conversation's messages. Newsletters and mailing lists are never sent |
 | Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
 | Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |

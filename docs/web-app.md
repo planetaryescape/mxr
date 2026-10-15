@@ -106,7 +106,8 @@ exact origin, query string included.
 | `/search?q=…&mode=…` and `/search/<thread>?…` | Search results with the reader |
 | `/reply-queue/<thread?>`, `/owed/<thread?>`, `/snoozed/<thread?>` | Triage lists on the same list+reader component |
 | `/drafts`, `/screener`, `/invites`, `/subscriptions`, `/deliveries` | Triage pages |
-| `/updates` and `/updates/<thread>` | Updates: the digest as Needs a look, Changed and Routine, with since below; the reader opens beside it. `/paper-trail` is the plain list by sender |
+| `/now`, `/messages/<thread?>`, `/todo/<thread?>`, `/reading` and `/reading/<thread>` | The modes; `/reading/item/<key>` is an item's reader. `/find` is the phone's Find tab |
+| `/updates` and `/updates/<thread>` | Updates: the digest as Needs a look, Changed and Routine, with since below; the reader opens beside it. `/paper-trail` redirects here, keeping the thread |
 | `/analytics/<dashboard>`, `/rules`, `/accounts`, `/diagnostics`, `/activity`, `/jobs`, `/settings/<section>` | Tools |
 | `/compose/new`, `/compose/<draft>` | Deep links that open the compose host |
 | `/sender/<address>` | Sender profile page |
@@ -199,6 +200,30 @@ for motion), implement the command in the view's controller, done.
   `dialogs/` and open through one store, so every surface opens the same one.
 - Unsubscribe-and-archive shows the count from a `dry_run` of the same daemon
   request before it runs.
+
+## Updates
+
+`features/updates/` renders the digest as a notification reel.
+
+- A row is the source, its fact and at most one trailing value. `trailingItem`
+  (`digestView.ts`) picks it in a fixed order: already in To do, the To do
+  affordance, the computed change, the first amount the fact leaves out, then
+  a routine count. Anything else waits for the peek.
+- The row's keys and More menu replace the trailing text while the row is
+  focused or hovered on a wide screen with a fine pointer. A narrow or touch
+  screen has no hover, so they always show.
+- `Space` opens the peek under one row at a time (`UpdateLineRow.tsx`): the
+  first four lines of the latest email (`emailPreview.ts`, read through the
+  reader's `["thread", id]` query only once the peek is open), why the row is
+  here, the numbers the mail quoted, parcel items and references, and the
+  link and the email. `Escape` closes it, then a hint.
+- Routine is one line until `Enter` opens it, and stays open for that visit.
+  "Let go of all" lives in the header at every width and only while the digest
+  has something to let go of.
+- Subject-only lines ask for a gist with `requestRowGists(..., { automated:
+  true })`. The daemon writes it and drops it unless every number in it is in
+  the mail (`crates/daemon/src/handler/gist_numbers.rs`); a dropped gist leaves
+  the rule's fact on the row.
 
 ## Reading mode
 
@@ -310,6 +335,31 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
   DESIGN.md's midnight (navy ink, cyan signal, yellow cue); light, eclipse and
   paper are alternates; `system` follows the OS live. `data-scheme` drives
   `dark:` utilities.
+- Type sizes come from the scale in `tokens.css`: `text-2xs` (11 px) through
+  `text-xl` (20 px) for the app, `text-2xl` to `text-4xl` above that. A literal
+  size such as `text-[13px]` fails `npm run lint` (`scripts/check-type-scale.mjs`,
+  with `check-motion.mjs` beside it). A file that needs one goes on the
+  script's `ALLOWLIST` with its reason; keep that list short.
+- Cyan (`--primary`) means focus, selection, the primary action and unread. It
+  carries no other meaning, so a status, a progress bar or a decoration is
+  never cyan. Amber (`--warning`) means attention, and green (`--success`)
+  success.
+- `components/Chip.tsx` is the one small label for a status or a membership
+  ("In To do", "from a rule", a label name): neutral by default, with
+  `attention` and `success` tones, one height, radius and size. Pass `asChild`
+  to make a link or button look like one. `components/ui/badge.tsx` still
+  serves Settings and Compose; new mode UI uses `Chip`.
+- A mode page is a `ModeHeader` (title, a one-line subtitle, right-aligned
+  actions) over a `ModeFrame` whose `width` is `list` (72 rem), `reader`
+  (980 px) or `wide`. `wide` pages split into `ModeColumns` once the page is
+  1280 px wide, inside a `mode-page` container. `SectionHeading` is the
+  section label (mono caps, an optional count) and `KeyLine` the key hints at
+  the foot of the page, on desktop only. `Page` shares `PageTitle` so every
+  title has one size.
+- `components/Avatar.tsx` draws a sender's initials on a hue taken from
+  their name, so one sender wears one colour in every mode.
+- Teaching hints (`AnchoredHint`) sit in the flow under the thing they explain,
+  never over a row.
 - Recursive is the only font; its MONO axis (`.font-mono`, `code`, `kbd`) is the
   monospace. Weight stays on `font-weight`.
 - `styles/base.css` sits in the base layer. An unlayered reset there once beat

@@ -20,8 +20,9 @@ gains or loses a control, so this page and the app can't drift apart.
 | all keys (`?`) | Status bar | Discoverability: the way into every key. |
 | Key hint strip | Status bar | Discoverability: the current view's five most useful keys (not buttons). |
 
-The sidebar holds places (Desk, Inbox, Reply queue, Waiting on, Snoozed,
-Reading, Paper trail, Screener) with folded More, Labels and Tools groups.
+The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
+Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
+Waiting on, Snoozed and Subscriptions sit under More.
 
 ## Lists (inbox, labels, saved searches)
 
@@ -67,11 +68,13 @@ not in the toolbar.
 | Leave | Shows Esc; the way out of a mode. |
 | Send and next, Skip, Done (no reply needed), Snooze, Send and remind, Draft in your voice | Discoverability: focus mode is a mode with its own keys, each shown on its button. |
 
-## Places
+## Reading and Updates
 
-| Control | Reason |
-|---|---|
-| Sweep all (Reading, Paper trail) | Frequency: sweeping is what a place is for. Shows S. |
+| Control | Where | Reason |
+|---|---|---|
+| Let go of all | Page header of Reading, and of Updates while it has a digest | Frequency: letting go of the lot is what the page is for. Previews first. Shows A. |
 
-Per-sender Sweep, Move sender and Unsubscribe show under an open bundle,
-next to what they act on.
+Updates rows hold no persistent buttons. A row's keys and More menu replace
+its trailing value while the row is focused or hovered (always on touch), and
+the Space peek holds the rest. Per-sender Sweep, Move sender and Unsubscribe
+show next to what they act on.

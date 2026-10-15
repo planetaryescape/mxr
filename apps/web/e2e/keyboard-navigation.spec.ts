@@ -133,11 +133,8 @@ test("g chords jump to the TUI's views", async ({ page }) => {
     await page.keyboard.press("g");
     await page.keyboard.press(key);
     await expect(page, `g ${key}`).toHaveURL(url);
-    // Archive's answer box takes the focus on arrival; Esc hands the keys back.
-    if (key === "e") {
-      await expect(page.getByTestId("archive-ask")).toBeFocused();
-      await page.keyboard.press("Escape");
-    }
+    // Archive opens on its ledger, not the answer box: nothing takes the focus on arrival.
+    if (key === "e") await expect(page.getByTestId("archive-ask")).not.toBeFocused();
   }
 });
 

@@ -3,7 +3,6 @@ import { Bell, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
-import { KeyLine, type KeyHint } from "@/components/KeyLine";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
@@ -12,18 +11,18 @@ import { moveCommands, updateMoveSubject } from "@/features/arrivals/moveSubject
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
-import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { useModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
-import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { useDigest, type UpdateLine, type UpdateSection, type UpdatesDigest } from "./api";
+import { displaySourceName } from "./digestView";
 import {
   cutLine,
   digestRows,
@@ -107,19 +106,11 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
       </>
     );
   }
-  if (data) return <Digest digest={data} guide={guide.data} subtitle={subtitle} />;
+  if (data) return <Digest digest={data} subtitle={subtitle} />;
   return plainHeader;
 }
 
-function Digest({
-  digest,
-  guide,
-  subtitle,
-}: {
-  digest: UpdatesDigest;
-  guide?: ModeGuide;
-  subtitle: string;
-}) {
+function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string }) {
   const account = useUiPrefs((s) => s.accountScope);
   const nav = useReaderNav();
   const params = useParams({ strict: false }) as { threadId?: string };
@@ -366,7 +357,6 @@ function Digest({
             <Button
               size="sm"
               variant="outline"
-              className="hidden md:inline-flex"
               data-testid="updates-let-go-all"
               onClick={() => {
                 dismissLetGoHint();
@@ -379,11 +369,7 @@ function Digest({
           ) : null
         }
       />
-      <div
-        ref={listRef}
-        // Below the phone bar, the last row scrolls clear of the sticky Let go of all.
-        className={cn("min-h-0 flex-1 overflow-y-auto pb-6", digest.let_go_line && "pb-16 md:pb-6")}
-      >
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
         <ModeFrame>
           <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
             <p data-testid="updates-cut" className="min-w-0 text-sm text-foreground/90">
@@ -437,7 +423,9 @@ function Digest({
               <p className="mt-0.5 text-foreground/80">
                 {digest.since.lines
                   .map((line) =>
-                    line.count > 1 ? `${line.source_name} (${line.count})` : line.source_name,
+                    line.count > 1
+                      ? `${displaySourceName(line.source_name)} (${line.count})`
+                      : displaySourceName(line.source_name),
                   )
                   .join(", ")}
               </p>
@@ -447,23 +435,6 @@ function Digest({
             <p data-testid="updates-expired" className="mx-5 mt-4 text-xs text-muted-foreground">
               {digest.expired_line}
             </p>
-          ) : null}
-          {guide ? <KeyLine keys={footKeys(guide)} /> : null}
-
-          {digest.let_go_line ? (
-            <div className="sticky bottom-0 mt-6 bg-background/95 px-4 pb-3 pt-2 md:hidden">
-              <Button
-                variant="outline"
-                className="w-full"
-                data-testid="updates-let-go-all-mobile"
-                onClick={() => {
-                  setLetGoLineOf(null);
-                  setLetGoOpen(true);
-                }}
-              >
-                Let go of all {digest.message_count}
-              </Button>
-            </div>
           ) : null}
 
           <LetGoAllDialog
@@ -486,11 +457,4 @@ function Digest({
       </div>
     </>
   );
-}
-
-/** The mode's own key table, without the two keys the foot line leaves out. */
-function footKeys(guide: ModeGuide): KeyHint[] {
-  return guide.keys
-    .filter((key) => key.key !== "?" && key.key !== "u")
-    .map((key) => ({ key: key.key, verb: key.verb }));
 }

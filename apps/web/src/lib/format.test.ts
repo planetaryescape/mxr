@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { formatTime, formatWhen } from "./format";
+import { formatTime, formatWhen, initials } from "./format";
 
 // Saturday 26 September 2026, 15:00 local time.
 const NOW = new Date(2026, 8, 26, 15, 0, 0);
@@ -12,6 +12,15 @@ const fullDate = (date: Date) =>
   new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(
     date,
   );
+
+describe("initials for an avatar", () => {
+  test("two words give two letters; an address gives one", () => {
+    expect(initials("Samir Patel")).toBe("SP");
+    expect(initials("Samir, Ruth")).toBe("SR");
+    expect(initials("iris@meridian.example")).toBe("I");
+    expect(initials("")).toBe("?");
+  });
+});
 
 describe("formatWhen: one wording for an age, on every surface", () => {
   test("within a minute either way is just now", () => {

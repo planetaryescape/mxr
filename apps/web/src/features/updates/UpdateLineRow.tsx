@@ -25,6 +25,7 @@ import {
   canTune,
   gistThread,
   openableLink,
+  displaySourceName,
   splitSourceName,
   trackerStatus,
   trackLabel,
@@ -92,7 +93,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   };
   const pinned = line.latest_message_pinned ?? false;
   const link = openableLink(line);
-  const { name, host } = splitSourceName(line);
+  const { name: rawName, host } = splitSourceName(line);
+  const name = displaySourceName(rawName);
   const parcel = line.tracker?.kind === "parcel";
   const delivered = parcel && line.tracker?.state === "delivered";
   const track = parcel ? trackLabel(line) : null;

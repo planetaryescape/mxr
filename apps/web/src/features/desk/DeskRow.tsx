@@ -189,7 +189,7 @@ export const DeskRow = memo(function DeskRow({
           }}
           className={cn(
             "relative -my-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground",
-            "hover:bg-primary-muted hover:text-primary",
+            "hover:bg-accent hover:text-foreground",
             // On touch: a bigger target than it looks, so a tap on the
             // check never opens the row instead.
             "pointer-coarse:size-8 pointer-coarse:opacity-60 pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5",

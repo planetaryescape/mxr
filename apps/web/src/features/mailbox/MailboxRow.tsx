@@ -18,8 +18,8 @@ import { Chip } from "@/components/Chip";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { initials, parseAddress, plural } from "@/lib/format";
-import { avatarTone } from "@/components/avatarTone";
+import { parseAddress, plural } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
 import { ModeChip } from "@/features/arrivals/ModeChip";
@@ -353,33 +353,26 @@ function rowLabel(
     .join(", ");
 }
 
-function Avatar({ name }: { name: string }) {
-  return (
-    <span
-      className={cn(
-        "grid size-7 place-items-center rounded-full font-mono text-2xs font-semibold",
-        "[[data-density=compact]_&]:size-6 [[data-density=compact]_&]:text-2xs",
-        avatarTone(name),
-      )}
-    >
-      {initials(name)}
-    </span>
-  );
-}
-
 function LabelChip({ name }: { name: string }) {
   return <Chip className="hidden @3xl:inline">{name}</Chip>;
 }
 
 function TriageChip({ verdict, reason }: { verdict: string; reason?: string | null }) {
   const normalized = verdict.toUpperCase();
+  // FYI is information, not a call to act: the neutral chip, not the accent.
+  if (normalized === "FYI") {
+    return (
+      <Chip title={reason ?? "Triage: FYI"} className="font-mono">
+        {normalized}
+      </Chip>
+    );
+  }
   return (
     <span
       title={reason ?? `Triage: ${normalized}`}
       className={cn(
         "shrink-0 rounded-sm px-1 font-mono text-2xs font-semibold leading-4",
         normalized === "ACTION" && "bg-destructive/15 text-destructive",
-        normalized === "FYI" && "bg-primary-muted text-primary",
         normalized === "ROUTINE" && "bg-muted text-muted-foreground",
       )}
     >

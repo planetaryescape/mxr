@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { letGoRequest, type UpdateLine, type UpdateSetting } from "./api";
-import { SETTING_LABEL, SETTINGS } from "./digestView";
+import { displaySourceName, SETTING_LABEL, SETTINGS } from "./digestView";
 
 /**
  * Let go of a digest: the daemon's dry run of exactly the cut, then the
@@ -106,7 +106,7 @@ export function TuneDialog({
     <Dialog open={line !== null} onOpenChange={onOpenChange}>
       <DialogContent data-testid="updates-tune-dialog" className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Tune {line?.source_name}</DialogTitle>
+          <DialogTitle>Tune {line ? displaySourceName(line.source_name) : null}</DialogTitle>
           <DialogDescription>How this source reaches you. Undo puts it back.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-1.5">

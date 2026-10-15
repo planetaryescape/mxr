@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Chip } from "@/components/Chip";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
+import { displaySourceName } from "@/features/updates/digestView";
 import { rowAge, rowPerson } from "@/features/desk/deskCopy";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
@@ -120,7 +121,7 @@ function DoneButton({ item, state, title }: { item: NowItem; state: RowState; ti
         event.stopPropagation();
         state.onDone(item);
       }}
-      className="-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-primary-muted hover:text-primary"
+      className="-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       <Check className="size-3.5" strokeWidth={2.25} />
     </button>
@@ -293,13 +294,13 @@ export function UpdatesCard({
                       aria-hidden
                       className={cn(
                         "w-2 shrink-0 font-semibold",
-                        line.section === "needs_a_look" ? "text-warning" : "text-primary",
+                        line.section === "needs_a_look" ? "text-warning" : "text-muted-foreground",
                       )}
                     >
                       {line.section === "needs_a_look" ? "!" : "·"}
                     </span>
                     <span className="shrink-0 font-medium text-foreground/90">
-                      {line.source_name}
+                      {displaySourceName(line.source_name)}
                     </span>
                     <span className="min-w-0 break-words text-foreground/80">{line.fact}</span>
                     {line.in_todo ? <Chip>{line.in_todo}</Chip> : null}

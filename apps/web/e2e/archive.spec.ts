@@ -45,10 +45,8 @@ async function blockingViolations(page: Page): Promise<string[]> {
 
 const ask = (page: Page) => page.getByTestId("archive-ask");
 
-/** The answer box has the focus on arrival; Esc hands the keys to the ledger. */
-async function leaveAskBox(page: Page): Promise<void> {
-  await expect(ask(page)).toBeFocused();
-  await page.keyboard.press("Escape");
+/** Archive opens on the ledger: the answer box does not take the focus (or its ring) on load. */
+async function expectLedgerOnArrival(page: Page): Promise<void> {
   await expect(ask(page)).not.toBeFocused();
 }
 
@@ -78,7 +76,9 @@ test("the answer box returns the booking reference with where it came from, and 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await waitForRecords(page);
   await openApp(page, "/archive");
-  // The answer box has the focus on arrival.
+  // The answer box is one key away: "/" focuses it, nothing does on arrival.
+  await expect(ask(page)).not.toBeFocused();
+  await page.keyboard.press("/");
   await expect(ask(page)).toBeFocused();
   await page.keyboard.type("lisbon booking ref");
   const card = page.getByTestId("answer-card");
@@ -162,7 +162,7 @@ test("E previews the export's rows, unchecked rows and missing PDFs, then downlo
 }) => {
   const total = await waitForRecords(page);
   await openApp(page, "/archive");
-  await leaveAskBox(page);
+  await expectLedgerOnArrival(page);
   await page.keyboard.press("E");
   const dialog = page.getByTestId("export-dialog");
   await expect(dialog.getByTestId("export-rows")).toHaveText(String(total));
@@ -250,7 +250,7 @@ test("the first answer carries its hint; dismissed, it never returns", async ({ 
 test("? leads with what Archive is for", async ({ page }) => {
   await waitForRecords(page);
   await openApp(page, "/archive");
-  await leaveAskBox(page);
+  await expectLedgerOnArrival(page);
   await page.keyboard.press("?");
   await expect(page.getByTestId("mode-help")).toContainText(
     "Archive: Receipts, orders, bookings and documents.",
@@ -308,7 +308,7 @@ for (const colorScheme of ["dark", "light"] as const) {
     test("axe: the export preview", async ({ page }) => {
       await waitForRecords(page);
       await openApp(page, "/archive");
-      await leaveAskBox(page);
+      await expectLedgerOnArrival(page);
       await page.keyboard.press("E");
       await expect(page.getByTestId("export-preview")).toBeVisible();
       expect(await blockingViolations(page)).toEqual([]);

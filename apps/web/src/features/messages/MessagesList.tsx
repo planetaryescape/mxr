@@ -1,13 +1,14 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
+import { Avatar } from "@/components/Avatar";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
 import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import { cn } from "@/lib/utils";
 
 import type { MessagesData, MessagesRow } from "./api";
-import { initials, rowTime, type Arrival } from "./messagesView";
+import { rowTime, type Arrival } from "./messagesView";
 import { SectionHeading } from "@/components/SectionHeading";
 
 /**
@@ -170,12 +171,14 @@ function Band({
 }
 
 function Face({ title, group = false }: { title: string; group?: boolean }) {
+  // A group has no one sender to colour, so it gets the neutral people glyph.
+  if (!group) return <Avatar name={title} size="lg" />;
   return (
     <span
       aria-hidden
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-2xs font-medium text-foreground/80"
+      className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-foreground/80"
     >
-      {group ? <Users className="size-3.5" /> : initials(title)}
+      <Users className="size-3.5" />
     </span>
   );
 }

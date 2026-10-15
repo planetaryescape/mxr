@@ -28,7 +28,7 @@ import {
   type UpdateSetting,
   type UpdatesLetGo,
 } from "./api";
-import { tuneToast } from "./digestView";
+import { displaySourceName, tuneToast } from "./digestView";
 
 interface UpdatesHiddenState {
   /** Lines folding up: still drawn, animating out. */
@@ -196,7 +196,7 @@ export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Prom
       // sender moves it between places: the same toast tone and undo.
       offerUndo(
         "move-sender",
-        tuneToast(line.source_name, setting),
+        tuneToast(displaySourceName(line.source_name), setting),
         `updates-tune-${line.source_key}`,
         reverse,
         claim.run,
@@ -220,7 +220,7 @@ export function sweepSource(line: UpdateLine): void {
   openMailDialog({
     kind: "sweep",
     scope: { place: "paper_trail", accountId: line.account_id, senderEmail: line.sender_email },
-    senderLabel: line.source_name,
+    senderLabel: displaySourceName(line.source_name),
   });
 }
 

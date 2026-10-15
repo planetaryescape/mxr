@@ -53,7 +53,7 @@ export function AlsoInLine({
             <Link
               to={RAIL_PATHS[entry.mode] ?? "/now"}
               title={entry.reason}
-              className="flex min-h-6 min-w-0 items-center truncate underline decoration-border-strong underline-offset-4 hover:text-foreground hover:decoration-primary"
+              className="flex min-h-6 min-w-0 items-center truncate underline decoration-border-strong underline-offset-4 hover:text-foreground hover:decoration-foreground"
             >
               {entry.also_in}
             </Link>

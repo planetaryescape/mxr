@@ -333,8 +333,8 @@ working.
 
 ## In the apps
 
-`g e` opens Archive with the answer box focused. The keys are the same in
-the web app and the TUI:
+`g e` opens Archive. The TUI focuses the answer box; the web app opens on
+the ledger, and `/` focuses the box. The other keys are the same in both:
 
 | Key | What it does |
 |---|---|

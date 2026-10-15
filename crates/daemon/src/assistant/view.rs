@@ -360,12 +360,12 @@ mod tests {
         }
     }
 
-    fn failed_ids(item: &AssistantItemData) -> Vec<&str> {
+    fn failed_ids(item: &AssistantItemData) -> Option<Vec<&str>> {
         match item {
             AssistantItemData::Assistant {
                 failed_call_ids, ..
-            } => failed_call_ids.iter().map(String::as_str).collect(),
-            other => panic!("not a reply: {other:?}"),
+            } => Some(failed_call_ids.iter().map(String::as_str).collect()),
+            _ => None,
         }
     }
 
@@ -402,8 +402,8 @@ mod tests {
             reply(6),
         ];
         mark_failed_steps(&mut items);
-        assert_eq!(failed_ids(&items[2]), vec!["bad-shape"]);
-        assert_eq!(failed_ids(&items[9]), vec!["other"]);
-        assert!(failed_ids(&items[11]).is_empty());
+        assert_eq!(failed_ids(&items[2]), Some(vec!["bad-shape"]));
+        assert_eq!(failed_ids(&items[9]), Some(vec!["other"]));
+        assert_eq!(failed_ids(&items[11]), Some(vec![]));
     }
 }

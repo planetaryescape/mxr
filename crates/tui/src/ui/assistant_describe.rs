@@ -229,7 +229,7 @@ pub fn plain_text(markdown: &str) -> String {
 pub const MAX_NUMBERED_LINKS: usize = 9;
 
 /// A reply as [`plain_text`], with each in-app link numbered after its
-/// words, "Q1 report [1]", and the links in that order. The same email
+/// words, "Q1 report \[1\]", and the links in that order. The same email
 /// linked twice keeps one number. The daemon has already dropped links
 /// whose ids no tool returned, so these are safe to open.
 pub fn plain_text_with_links(markdown: &str) -> (String, Vec<AssistantLinkData>) {

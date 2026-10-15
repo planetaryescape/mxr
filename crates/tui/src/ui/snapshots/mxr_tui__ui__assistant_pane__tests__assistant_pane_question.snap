@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&state)
+---
+"╭ Tidy newsletters ────────────────────────────╮"
+"│ │ Tidy my newsletters                        │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ ──────────────────────────────────────────── │"
+"│ A QUESTION FOR YOU                           │"
+"│ SCOPE                                        │"
+"│ Which newsletters should go?                 │"
+"│ 1 (•) Unopened for 3 months                  │"
+"│       12 senders                             │"
+"│ 2 ( ) All of them                            │"
+"│ o  or write your own answer                  │"
+"│ ──────────────────────────────────────────── │"
+"│ › Answer above, or press i to write instead  │"
+"│ qwen3:8b · runs on this machine              │"
+"│ 1-9 choose · o own answer · Enter answer · s │"
+"│ skip                                         │"
+"╰──────────────────────────────────────────────╯"

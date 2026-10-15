@@ -11,6 +11,11 @@ use mxr_protocol::{
 use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
+    /// An answer to one of the assistant pane's requests.
+    Assistant {
+        call: crate::app::AssistantCall,
+        result: Box<Result<mxr_protocol::ResponseData, MxrError>>,
+    },
     SendIdentityRetained(mxr_core::AccountId, mxr_core::SendIdentity),
     ScheduledIdentityRetained(
         mxr_core::AccountId,

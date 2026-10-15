@@ -118,6 +118,7 @@ export default defineConfig({
             { label: 'Briefings and Loop-in', slug: 'guides/briefings-and-loop-in' },
             { label: 'Rules', slug: 'guides/rules' },
             { label: 'LLM Features', slug: 'guides/llm-features' },
+            { label: 'Talk to Your Mail (Assistant)', slug: 'guides/assistant' },
             { label: 'Analytics', slug: 'guides/analytics' },
             { label: 'Crash-Safe Drafts', slug: 'guides/crash-safe-drafts' },
             { label: 'Activity Log', slug: 'guides/activity-log' },

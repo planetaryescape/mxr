@@ -1175,6 +1175,30 @@ const MIGRATIONS: &[Migration] = &[
     ]) },
     Migration { version: 86, name: "reading_marginalia", kind: MigrationKind::Composite(READING_MARGINALIA_STEPS) },
     Migration { version: 87, name: "reading_highlight_paragraph", kind: MigrationKind::AddColumn { table: "reading_highlights", column: "paragraph_index", sql: include_str!("../migrations/087_reading_highlight_paragraph.sql") } },
+    Migration { version: 88, name: "assistant", kind: MigrationKind::Sql(include_str!("../migrations/088_assistant.sql")) },
+    Migration { version: 89, name: "activity_sources", kind: MigrationKind::Sql(include_str!("../migrations/089_activity_sources.sql")) },
+    Migration { version: 90, name: "assistant_trust_and_summary", kind: MigrationKind::Composite(ASSISTANT_TRUST_AND_SUMMARY_STEPS) },
+];
+
+/// The user's choice to let reversible changes run without asking, and the
+/// summary that replaces older messages in what the model reads once a
+/// conversation outgrows its context window (the messages themselves stay).
+const ASSISTANT_TRUST_AND_SUMMARY_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "assistant_conversations",
+        column: "auto_approve",
+        sql: "ALTER TABLE assistant_conversations ADD COLUMN auto_approve INTEGER NOT NULL DEFAULT 0 CHECK (auto_approve IN (0, 1))",
+    },
+    MigrationStep::AddColumn {
+        table: "assistant_conversations",
+        column: "summary",
+        sql: "ALTER TABLE assistant_conversations ADD COLUMN summary TEXT",
+    },
+    MigrationStep::AddColumn {
+        table: "assistant_conversations",
+        column: "summary_through_seq",
+        sql: "ALTER TABLE assistant_conversations ADD COLUMN summary_through_seq INTEGER",
+    },
 ];
 
 const READING_MARGINALIA_STEPS: &[MigrationStep] = &[
@@ -1957,7 +1981,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=87).collect::<Vec<_>>(),
+                (83..=90).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

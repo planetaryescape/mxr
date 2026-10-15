@@ -186,6 +186,10 @@ impl App {
         if self.search_is_pending() {
             timeout = timeout.min(SEARCH_SPINNER_TICK);
         }
+        // The assistant's running line counts the seconds.
+        if self.assistant.open && self.assistant.running() {
+            timeout = timeout.min(Duration::from_secs(1));
+        }
 
         if let Some(expires_in) = self.toasts.next_expiry(now) {
             timeout = timeout.min(expires_in);

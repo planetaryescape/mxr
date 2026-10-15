@@ -11,7 +11,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
  * updating that inventory and this list together.
  */
 const INVENTORY = {
-  topbar: ["Search mail", "Compose new email"],
+  topbar: ["Search mail", "Assistant", "Compose new email"],
   // "Latest mail 5m ago": the age changes, the control does not.
   statusBar: ["Sync now", "Latest mail", "all keys"],
   listHeader: ["Show single messages"],

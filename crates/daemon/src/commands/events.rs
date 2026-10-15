@@ -34,6 +34,7 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
         "mutation" => matches!(event, DaemonEvent::MutationReconciliationFailed { .. }),
         "gist" => matches!(event, DaemonEvent::ThreadGistReady { .. }),
         "modes" => matches!(event, DaemonEvent::ModesChanged { .. }),
+        "assistant" => matches!(event, DaemonEvent::AssistantUpdated { .. }),
         "error" => matches!(
             event,
             DaemonEvent::SyncError { .. }
@@ -143,6 +144,28 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                     .as_ref()
                     .map_or_else(|| "all".to_string(), ToString::to_string)
             ),
+            DaemonEvent::AssistantUpdated {
+                conversation_id,
+                status,
+                progress,
+            } => {
+                let progress = match progress {
+                    Some(mxr_protocol::AssistantProgressData::Thinking { step }) => {
+                        format!(" thinking step={step}")
+                    }
+                    Some(mxr_protocol::AssistantProgressData::Calling { tool, .. }) => {
+                        format!(" calling {tool}")
+                    }
+                    Some(mxr_protocol::AssistantProgressData::Writing { text }) => {
+                        format!(" writing chars={}", text.chars().count())
+                    }
+                    Some(mxr_protocol::AssistantProgressData::Summarizing) => {
+                        " summarizing".to_string()
+                    }
+                    None => String::new(),
+                };
+                format!("assistant conversation={conversation_id} status={status:?}{progress}")
+            }
         },
     })
 }

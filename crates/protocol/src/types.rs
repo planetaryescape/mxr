@@ -4,6 +4,7 @@ use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 mod arrivals;
+mod assistant;
 mod desk;
 mod draft_provenance;
 mod freshness;
@@ -22,6 +23,7 @@ mod thread_context;
 mod todos;
 mod updates;
 pub use arrivals::*;
+pub use assistant::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -298,6 +300,8 @@ pub struct LlmOverridesData {
     pub expert: Option<LlmOverrideData>,
     #[serde(default)]
     pub delivery_extraction: Option<LlmOverrideData>,
+    #[serde(default)]
+    pub assistant: Option<LlmOverrideData>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -530,6 +534,10 @@ pub enum ClientKind {
     Agent,
     /// Local Model Context Protocol server/client using a configured daemon permission profile.
     Mcp,
+    /// The in-app assistant, run by the daemon for a person who approves
+    /// each change it makes. Not governed by an agent profile: the
+    /// approval is the gate.
+    Assistant,
 }
 
 impl ClientKind {
@@ -543,6 +551,7 @@ impl ClientKind {
             Self::Daemon => "daemon",
             Self::Agent => "agent",
             Self::Mcp => "mcp",
+            Self::Assistant => "assistant",
         }
     }
 
@@ -2468,6 +2477,59 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         item_key: Option<String>,
     },
+    // ----- Assistant -----
+    /// Whether the assistant can run and on which model. Returns
+    /// `ResponseData::AssistantAvailability`.
+    GetAssistantAvailability,
+    /// Send the user's message, starting a conversation when
+    /// `conversation_id` is `None`. Returns as soon as the turn starts, with
+    /// the conversation `running`; `AssistantUpdated` events follow until it
+    /// settles. Calls still waiting for the user are declined first. Returns
+    /// `ResponseData::AssistantConversation`.
+    AssistantSend {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conversation_id: Option<String>,
+        message: String,
+        #[serde(default)]
+        context: AssistantViewContextData,
+    },
+    /// Approve, reject or answer waiting calls. Approving runs exactly the
+    /// call that was shown. The turn continues once nothing waits. Returns
+    /// `ResponseData::AssistantConversation`.
+    AssistantDecide {
+        conversation_id: String,
+        decisions: Vec<AssistantDecisionData>,
+    },
+    /// Stop a running turn. Calls not yet run are recorded as cancelled.
+    /// Returns `ResponseData::AssistantConversation`.
+    AssistantCancel {
+        conversation_id: String,
+    },
+    /// Let reversible changes run without asking in this conversation, or
+    /// stop. Sending, deleting, trash, spam and rules always ask. Returns
+    /// `ResponseData::AssistantConversation`.
+    SetAssistantAutoApprove {
+        conversation_id: String,
+        enabled: bool,
+    },
+    /// Most recently active first. Returns
+    /// `ResponseData::AssistantConversations`.
+    ListAssistantConversations {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
+    /// Returns `ResponseData::AssistantConversation`.
+    GetAssistantConversation {
+        conversation_id: String,
+    },
+    /// Delete a conversation and its transcript; `dry_run` says what would
+    /// go. A running turn must be stopped first. Returns
+    /// `ResponseData::AssistantDelete`.
+    DeleteAssistantConversation {
+        conversation_id: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     // ----- Updates -----
     /// The Updates briefing (blueprint 22, phase 4): everything that
     /// arrived by the cut (`cut`, else the latest one) and wasn't let go,
@@ -2864,6 +2926,14 @@ impl Request {
             | Self::SetMarginaliaConnection { .. }
             | Self::SendReadingToMarginalia { .. }
             | Self::SyncMarginaliaHighlights { .. }
+            | Self::GetAssistantAvailability
+            | Self::AssistantSend { .. }
+            | Self::AssistantDecide { .. }
+            | Self::AssistantCancel { .. }
+            | Self::SetAssistantAutoApprove { .. }
+            | Self::ListAssistantConversations { .. }
+            | Self::GetAssistantConversation { .. }
+            | Self::DeleteAssistantConversation { .. }
             | Self::GetUpdatesDigest { .. }
             | Self::LetGoDigest { .. }
             | Self::SetUpdateSource { .. }
@@ -4143,6 +4213,22 @@ pub enum ResponseData {
     MarginaliaSync {
         sync: MarginaliaSyncData,
     },
+    /// Returned by `Request::GetAssistantAvailability`.
+    AssistantAvailability {
+        availability: AssistantAvailabilityData,
+    },
+    /// Returned by the assistant's send, decide, cancel and get requests.
+    AssistantConversation {
+        conversation: AssistantConversationData,
+    },
+    /// Returned by `Request::ListAssistantConversations`.
+    AssistantConversations {
+        conversations: Vec<AssistantConversationSummaryData>,
+    },
+    /// Returned by `Request::DeleteAssistantConversation`.
+    AssistantDelete {
+        delete: AssistantDeleteData,
+    },
     /// Returned by `Request::ExportReadingHighlights`.
     ReadingHighlights {
         highlights: Vec<ReadingHighlightData>,
@@ -4409,6 +4495,10 @@ impl ResponseData {
             | Self::MarginaliaStatus { .. }
             | Self::MarginaliaSend { .. }
             | Self::MarginaliaSync { .. }
+            | Self::AssistantAvailability { .. }
+            | Self::AssistantConversation { .. }
+            | Self::AssistantConversations { .. }
+            | Self::AssistantDelete { .. }
             | Self::UpdatesDigest { .. }
             | Self::UpdatesLetGo { .. }
             | Self::UpdateSource { .. }
@@ -5500,6 +5590,14 @@ pub enum DaemonEvent {
     /// Where mail sits changed: an email or a sender was moved, a move was
     /// undone, or new arrivals were placed. Clients refetch their modes,
     /// Now and Inbox's chips.
+    /// An assistant conversation changed: a message was added, a call
+    /// started, or the turn settled. Clients refetch the conversation.
+    AssistantUpdated {
+        conversation_id: String,
+        status: AssistantStatusData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        progress: Option<AssistantProgressData>,
+    },
     ModesChanged {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
@@ -5525,6 +5623,7 @@ impl DaemonEvent {
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
             | Self::ModesChanged { .. } => IpcCategory::CoreMail,
+            Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }
 }

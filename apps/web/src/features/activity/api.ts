@@ -1,6 +1,15 @@
 import { apiFetch } from "@/api/client";
 
-export type ClientKind = "tui" | "cli" | "web" | "daemon";
+export type ClientKind =
+  | "human"
+  | "tui"
+  | "cli"
+  | "script"
+  | "web"
+  | "daemon"
+  | "agent"
+  | "mcp"
+  | "assistant";
 export type ActivityTier = "ephemeral" | "standard" | "important";
 
 export interface ActivityEntry {

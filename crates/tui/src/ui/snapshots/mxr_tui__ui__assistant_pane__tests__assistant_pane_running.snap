@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&state)
+---
+"╭ Tidy newsletters ────────────────────────────╮"
+"│ │ Find newsletters I never open              │"
+"│                                              │"
+"│ ✓ Search newsletters from the last month     │"
+"│ … Count opens per sender                     │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ ◐ Count opens per sender                     │"
+"│ ──────────────────────────────────────────── │"
+"│ › Ask about your mail, or say what to do     │"
+"│ qwen3:8b · runs on this machine              │"
+"│ i write · N new · L history · T trust · D    │"
+"│ delete · e steps · Ctrl-c stop               │"
+"╰──────────────────────────────────────────────╯"

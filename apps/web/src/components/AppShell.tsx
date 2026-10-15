@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
 import { ArchiveRecoveryPanel } from "@/features/mail-actions/ArchiveRecoveryPanel";
+import { AssistantSplit } from "@/features/assistant/AssistantSplit";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileTabs } from "@/components/MobileTabs";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -231,42 +232,44 @@ export function AppShell() {
               />
             )}
             <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
-              <div
-                className="app-shell"
-                data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-                data-rightrail-open={rightRail ? "true" : "false"}
-              >
-                <header className="app-shell-topbar">
-                  <Topbar />
-                </header>
-                <main id="main" className="app-shell-main">
-                  <RecoveryNotice />
-                  <OfflineBanner />
-                  <ErrorBoundary resetKey={path}>
-                    <Outlet />
-                  </ErrorBoundary>
-                </main>
-                {rightRail ? (
-                  <aside className="app-shell-rightrail" aria-label="Context">
-                    <Suspense fallback={null}>
-                      <RightRail />
-                    </Suspense>
-                  </aside>
-                ) : null}
-                <footer className="app-shell-statusbar">
-                  <StatusBar />
-                </footer>
-                <MobileTabs />
-                <Suspense fallback={null}>
-                  {mountPalette ? <CommandPaletteMount /> : null}
-                  {mountLauncher ? <ComposeLauncher /> : null}
-                  {mountCompose ? <ComposeHost /> : null}
-                  {mountSearch ? <SearchPalette /> : null}
-                  {mountDialogs ? <MailDialogs /> : null}
-                  {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
-                  {mountPromises ? <PromiseTray /> : null}
-                </Suspense>
-              </div>
+              <AssistantSplit>
+                <div
+                  className="app-shell"
+                  data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+                  data-rightrail-open={rightRail ? "true" : "false"}
+                >
+                  <header className="app-shell-topbar">
+                    <Topbar />
+                  </header>
+                  <main id="main" className="app-shell-main">
+                    <RecoveryNotice />
+                    <OfflineBanner />
+                    <ErrorBoundary resetKey={path}>
+                      <Outlet />
+                    </ErrorBoundary>
+                  </main>
+                  {rightRail ? (
+                    <aside className="app-shell-rightrail" aria-label="Context">
+                      <Suspense fallback={null}>
+                        <RightRail />
+                      </Suspense>
+                    </aside>
+                  ) : null}
+                  <footer className="app-shell-statusbar">
+                    <StatusBar />
+                  </footer>
+                  <MobileTabs />
+                  <Suspense fallback={null}>
+                    {mountPalette ? <CommandPaletteMount /> : null}
+                    {mountLauncher ? <ComposeLauncher /> : null}
+                    {mountCompose ? <ComposeHost /> : null}
+                    {mountSearch ? <SearchPalette /> : null}
+                    {mountDialogs ? <MailDialogs /> : null}
+                    {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+                    {mountPromises ? <PromiseTray /> : null}
+                  </Suspense>
+                </div>
+              </AssistantSplit>
             </ResizablePanel>
           </ResizablePanelGroup>
         </>

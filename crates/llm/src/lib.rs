@@ -43,12 +43,15 @@ use tokio::time::Instant;
 mod anthropic;
 mod background;
 mod demo;
+mod demo_assistant;
 mod endpoint;
 mod failure;
 mod health;
 mod observations;
 mod route;
 mod routed;
+mod stream;
+mod tool_chat;
 
 #[cfg(test)]
 mod observation_tests;
@@ -64,6 +67,13 @@ use observations::CompletionObservations;
 pub use observations::{CompletionObservation, LlmFailureKind};
 pub use route::{is_claude_model, routes_for_model, ApiKey, ApiKeySource, Route, RouteProvider};
 pub use routed::{route_statuses, RouteStatus, RoutedProvider, RoutedProviderConfig};
+/// Called with the whole reply text so far while a reply streams in.
+pub type TextCallback<'a> = &'a (dyn for<'t> Fn(&'t str) + Send + Sync);
+
+pub use tool_chat::{
+    ProviderTurn, TokenUsage, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse,
+    ToolSpec,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -90,11 +100,12 @@ pub enum LlmFeature {
     Briefing,
     Expert,
     DeliveryExtraction,
+    Assistant,
 }
 
 impl LlmFeature {
     /// Every feature, in the order status lists them.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Summarize,
         Self::RelationshipSummary,
         Self::Commitments,
@@ -109,6 +120,7 @@ impl LlmFeature {
         Self::Briefing,
         Self::Expert,
         Self::DeliveryExtraction,
+        Self::Assistant,
     ];
 
     pub const fn key(self) -> &'static str {
@@ -127,6 +139,7 @@ impl LlmFeature {
             Self::Briefing => "briefing",
             Self::Expert => "expert",
             Self::DeliveryExtraction => "delivery_extraction",
+            Self::Assistant => "assistant",
         }
     }
 }
@@ -294,6 +307,28 @@ pub trait LlmProvider: Send + Sync {
         _kind: CallKind,
     ) -> Result<CompletionResponse, LlmError> {
         self.complete(req).await
+    }
+    /// One tool-calling chat turn. Providers without tool support refuse
+    /// before making a request.
+    async fn chat_as(
+        &self,
+        _req: ToolChatRequest,
+        _kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
+        Err(LlmError::Other(format!(
+            "the model '{}' can't call tools here; choose an OpenAI-compatible or Claude model for the assistant",
+            self.model_name()
+        )))
+    }
+    /// [`Self::chat_as`], reporting the reply text as it streams in.
+    /// Providers that can't stream answer whole, without reporting.
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        _on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.chat_as(req, kind).await
     }
     fn capabilities(&self) -> LlmCapabilities;
     fn model_name(&self) -> &str;
@@ -649,6 +684,44 @@ impl PinnedLlm {
         result
     }
 
+    /// One tool-calling chat turn on the pinned provider. A person is
+    /// waiting, so it runs as foreground work.
+    pub async fn chat(&self, req: ToolChatRequest) -> Result<ToolChatResponse, LlmError> {
+        if let Some(reason) = &self.blocked {
+            return Err(LlmError::PrivacyBlocked(reason.clone()));
+        }
+        let result = self.provider.chat_as(req, CallKind::Foreground).await;
+        self.runtime
+            .observations
+            .record(self.generation, Some(self.feature), &result);
+        result
+    }
+
+    /// [`Self::chat`], reporting the reply text as it streams in.
+    pub async fn chat_stream(
+        &self,
+        req: ToolChatRequest,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        if let Some(reason) = &self.blocked {
+            return Err(LlmError::PrivacyBlocked(reason.clone()));
+        }
+        let result = self
+            .provider
+            .chat_stream_as(req, CallKind::Foreground, on_text)
+            .await;
+        self.runtime
+            .observations
+            .record(self.generation, Some(self.feature), &result);
+        result
+    }
+
+    /// How many tokens one request to the pinned provider may hold, as
+    /// configured.
+    pub fn context_window(&self) -> u32 {
+        self.provider.capabilities().context_window
+    }
+
     /// [`Self::complete`] under the background timeout and breaker, like
     /// [`FeatureLlmRuntime::complete_background`], on the pinned provider.
     pub async fn complete_background(
@@ -699,6 +772,14 @@ pub struct NoopProvider;
 #[async_trait]
 impl LlmProvider for NoopProvider {
     async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        Err(LlmError::Disabled)
+    }
+
+    async fn chat_as(
+        &self,
+        _req: ToolChatRequest,
+        _kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
         Err(LlmError::Disabled)
     }
 
@@ -798,7 +879,6 @@ impl OpenAiCompatibleProvider {
         timeout: Option<Duration>,
         disable_reasoning: bool,
     ) -> Result<ChatCompletion, AttemptError> {
-        let url = format!("{}/chat/completions", self.base_url);
         let body = ChatCompletionsRequestBody {
             model: &self.model,
             messages: &req.messages,
@@ -807,7 +887,90 @@ impl OpenAiCompatibleProvider {
             reasoning_effort: disable_reasoning.then_some("none"),
             stream: false,
         };
+        let raw: ChatCompletionsResponseBody = self.post(&body, api_key, timeout).await?;
 
+        let choice = raw
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
+        let reasoned = [choice.message.reasoning, choice.message.reasoning_content]
+            .iter()
+            .flatten()
+            .any(|text| !text.trim().is_empty());
+        Ok(ChatCompletion {
+            response: CompletionResponse {
+                content: choice.message.content.unwrap_or_default(),
+                model: raw.model,
+                finish_reason: choice.finish_reason,
+            },
+            reasoned,
+        })
+    }
+
+    /// One tool-calling chat turn. A reply with neither text nor tool calls
+    /// is empty, like an empty completion.
+    pub(crate) async fn chat_attempt(
+        &self,
+        req: &ToolChatRequest,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        let body = tool_chat::openai_body(&self.model, req);
+        let raw: tool_chat::OpenAiToolChatReply = self.post(&body, api_key, timeout).await?;
+        let response = tool_chat::openai_reply(raw, &self.model)
+            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
+        if response.text.trim().is_empty() && response.tool_calls.is_empty() {
+            return Err(AttemptError::request(LlmError::Empty));
+        }
+        Ok(response)
+    }
+
+    /// [`Self::chat_attempt`] with the reply streamed.
+    pub(crate) async fn chat_stream_attempt(
+        &self,
+        req: &ToolChatRequest,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+        on_text: stream::TextSink<'_>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        let mut body = tool_chat::openai_body(&self.model, req);
+        body.stream = true;
+        let response = self.send_checked(&body, api_key, timeout).await?;
+        let mut folded = stream::OpenAiStream::default();
+        stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+        folded.finish(&self.model)
+    }
+
+    /// POST one chat-completions body and read the reply, mapping transport
+    /// and status failures onto route health.
+    async fn post<B: Serialize, R: serde::de::DeserializeOwned>(
+        &self,
+        body: &B,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<R, AttemptError> {
+        let response = self.send_checked(body, api_key, timeout).await?;
+        response.json::<R>().await.map_err(|e| {
+            AttemptError::route(
+                LlmError::Other(format!("response parse error: {e}")),
+                RouteFailure::Cooling {
+                    reason: FailureReason::plain("unreadable reply"),
+                    retry_after: None,
+                },
+            )
+        })
+    }
+
+    /// POST one chat-completions body and return the response once its
+    /// status says it succeeded, for reading whole or as a stream.
+    async fn send_checked<B: Serialize>(
+        &self,
+        body: &B,
+        api_key: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, AttemptError> {
+        let url = format!("{}/chat/completions", self.base_url);
         let client = self
             .client
             .as_ref()
@@ -887,37 +1050,7 @@ impl OpenAiCompatibleProvider {
                 class,
             });
         }
-
-        let raw = response
-            .json::<ChatCompletionsResponseBody>()
-            .await
-            .map_err(|e| {
-                AttemptError::route(
-                    LlmError::Other(format!("response parse error: {e}")),
-                    RouteFailure::Cooling {
-                        reason: FailureReason::plain("unreadable reply"),
-                        retry_after: None,
-                    },
-                )
-            })?;
-
-        let choice = raw
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
-        let reasoned = [choice.message.reasoning, choice.message.reasoning_content]
-            .iter()
-            .flatten()
-            .any(|text| !text.trim().is_empty());
-        Ok(ChatCompletion {
-            response: CompletionResponse {
-                content: choice.message.content.unwrap_or_default(),
-                model: raw.model,
-                finish_reason: choice.finish_reason,
-            },
-            reasoned,
-        })
+        Ok(response)
     }
 
     /// A full completion, including the one retry with reasoning off for
@@ -964,6 +1097,27 @@ struct ChatCompletion {
 impl LlmProvider for OpenAiCompatibleProvider {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
         self.attempt(&req, self.api_key.as_deref(), None)
+            .await
+            .map_err(AttemptError::into_error)
+    }
+
+    async fn chat_as(
+        &self,
+        req: ToolChatRequest,
+        _kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.chat_attempt(&req, self.api_key.as_deref(), None)
+            .await
+            .map_err(AttemptError::into_error)
+    }
+
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        _kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.chat_stream_attempt(&req, self.api_key.as_deref(), None, on_text)
             .await
             .map_err(AttemptError::into_error)
     }

@@ -184,6 +184,7 @@ subscription.
 | Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
 | Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
+| The [assistant](/guides/assistant/) | When you send it a message | Your message, what you have open, and the mail it reads while answering (search results, threads, drafts). Refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true`, since it reads across your mailbox |
 | Archive's records and answer box | After sync and on demand | Nothing: records are read by rules and schema.org markup on your machine. Only when no record matches does the answer box fall back to `mxr ask`, under that row's rule |
 
 Prompts that carry mail wrap it as untrusted data and tell the model it is
@@ -213,9 +214,10 @@ api_key_env = "OPENAI_API_KEY"
 The keys are `summarize` (which also covers gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
 `draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert` and
-`delivery_extraction`. The relationship rule above still applies to an
-override that points at a cloud endpoint.
+`archive_ask`, `decision_log`, `briefing`, `expert`,
+`delivery_extraction` and `assistant` (which needs a model that can call
+tools). The relationship rule above still applies to an override that
+points at a cloud endpoint.
 
 ## Fast and smart tiers are planned for the email modes
 

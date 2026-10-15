@@ -222,6 +222,11 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         // An email or sender moved in some client, or new mail was sorted:
         // Now's line, the mode on screen and Inbox's chips refetch.
         DaemonEvent::ModesChanged { .. } => app.modes_changed(),
+        DaemonEvent::AssistantUpdated {
+            conversation_id,
+            status,
+            progress,
+        } => app.assistant_updated(conversation_id, status, progress),
         DaemonEvent::NewMessages { envelopes, total } => {
             // The status bar's "latest mail" moves with every arrival.
             app.diagnostics.pending_status_refresh = true;
@@ -246,6 +251,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 /// compose state remains under its original workspace owner.
 pub(crate) fn refresh_after_event_gap(app: &mut App) {
     app.row_gists.invalidate_all();
+    app.assistant.refetch();
     app.mailbox.pending_labels_refresh = true;
     app.mailbox.pending_all_envelopes_refresh = true;
     if app.is_paired_remote_read_only() {

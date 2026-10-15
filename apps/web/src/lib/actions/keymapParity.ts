@@ -255,6 +255,18 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Everywhere.
   {
     context: "*",
+    keys: ["Mod+."],
+    bound: "web",
+    why: "Shows or hides the assistant in the browser; terminals don't pass Ctrl+. through reliably, so the TUI uses Ctrl+a",
+  },
+  {
+    context: "*",
+    keys: ["Ctrl+a"],
+    bound: "tui",
+    why: "Shows or hides the TUI's assistant pane; the browser keeps Ctrl+a for select-all and uses Mod+.",
+  },
+  {
+    context: "*",
     keys: ["Mod+k", ":"],
     bound: "web",
     why: "Extra palette keys for the browser; Ctrl+p opens the palette in both",

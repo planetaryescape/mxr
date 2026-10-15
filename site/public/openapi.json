@@ -866,6 +866,288 @@
         }
       }
     },
+    "/api/v1/mail/assistant/availability": {
+      "get": {
+        "tags": [],
+        "summary": "Whether the assistant can run, on which model, and whether conversations leave this machine",
+        "operationId": "mail_assistant_availability",
+        "responses": {
+          "200": {
+            "description": "The `AssistantAvailability` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations": {
+      "get": {
+        "tags": [],
+        "summary": "Assistant conversations, most recently active first",
+        "operationId": "mail_assistant_list",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many (default 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversations` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Send a message to the assistant; returns once the turn starts. Follow AssistantUpdated events",
+        "operationId": "mail_assistant_send",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantSendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations/{id}": {
+      "get": {
+        "tags": [],
+        "summary": "One assistant conversation, with what waits for the user",
+        "operationId": "mail_assistant_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations/{id}/auto-approve": {
+      "post": {
+        "tags": [],
+        "summary": "Let reversible changes run without asking in this conversation; sending, deleting, trash, spam and rules still ask",
+        "operationId": "mail_assistant_auto_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantAutoApproveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations/{id}/cancel": {
+      "post": {
+        "tags": [],
+        "summary": "Stop a running turn, or close what is waiting without running it",
+        "operationId": "mail_assistant_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations/{id}/decide": {
+      "post": {
+        "tags": [],
+        "summary": "Approve, reject or answer calls the assistant is waiting on; approving runs exactly the call shown",
+        "operationId": "mail_assistant_decide",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantDecideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantConversation` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/conversations/{id}/delete": {
+      "post": {
+        "tags": [],
+        "summary": "Delete a conversation and its transcript; dry_run says what would go",
+        "operationId": "mail_assistant_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantDeleteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantDelete` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/attachments/download": {
       "post": {
         "tags": [],
@@ -8820,6 +9102,749 @@
           }
         }
       },
+      "AssistantAnswerData": {
+        "type": "object",
+        "properties": {
+          "other": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssistantAutoApproveBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/conversations/{id}/auto-approve`.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AssistantAvailabilityData": {
+        "type": "object",
+        "description": "Whether the assistant can run, and on what.",
+        "required": [
+          "available",
+          "leaves_machine"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "leaves_machine": {
+            "type": "boolean",
+            "description": "True when conversations go to a model off this machine."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it can't run, in words for the user."
+          }
+        }
+      },
+      "AssistantCallStateData": {
+        "type": "string",
+        "enum": [
+          "running",
+          "done",
+          "failed",
+          "waiting",
+          "approved",
+          "auto_approved",
+          "declined",
+          "answered",
+          "cancelled",
+          "interrupted"
+        ]
+      },
+      "AssistantConversationData": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at",
+          "items",
+          "pending"
+        ],
+        "properties": {
+          "auto_approve": {
+            "type": "boolean",
+            "description": "Reversible changes (archive, move, star, read, labels) run without\nasking. Sending, deleting, trash, spam and rules always ask. Set\nonly by the user (`SetAssistantAutoApprove`)."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantItemData"
+            }
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOutcomeData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantPendingData"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantStatusData"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AssistantConversationSummaryData": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at",
+          "message_count",
+          "pending_count"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix seconds."
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistantOutcomeData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pending_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantStatusData"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AssistantDecideBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/conversations/{id}/decide`.",
+        "required": [
+          "decisions"
+        ],
+        "properties": {
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantDecisionData"
+            }
+          }
+        }
+      },
+      "AssistantDecisionData": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AssistantDecisionKindData"
+          },
+          {
+            "type": "object",
+            "required": [
+              "call_id"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "The user's answer to one waiting call."
+      },
+      "AssistantDecisionKindData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "approve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "reject"
+                ]
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One answer per question, in order.",
+            "required": [
+              "answers",
+              "decision"
+            ],
+            "properties": {
+              "answers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantAnswerData"
+                }
+              },
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "answer"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "AssistantDeleteBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/conversations/{id}/delete`.",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Say what would be deleted, without deleting it."
+          }
+        }
+      },
+      "AssistantDeleteData": {
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "title",
+          "message_count",
+          "dry_run",
+          "deleted"
+        ],
+        "properties": {
+          "conversation_id": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantItemData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "seq",
+              "text",
+              "created_at",
+              "kind"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "seq",
+              "text",
+              "created_at",
+              "kind"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "assistant"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Earlier messages were summarised to fit the model's context window.\nEverything before this point reaches the model only as `text`.",
+            "required": [
+              "seq",
+              "text",
+              "created_at",
+              "kind"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summary"
+                ]
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "seq",
+              "call_id",
+              "tool",
+              "reason",
+              "arguments",
+              "state",
+              "created_at",
+              "kind"
+            ],
+            "properties": {
+              "arguments": {},
+              "call_id": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tool_call"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "description": "The model's one-line reason, for the user."
+              },
+              "result": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The start of the result as mxr returned it, for a details view."
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "state": {
+                "$ref": "#/components/schemas/AssistantCallStateData"
+              },
+              "tool": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "One entry in the conversation as the user sees it. A tool call and its\nresult are one item."
+      },
+      "AssistantOutcomeData": {
+        "type": "string",
+        "description": "How the last turn ended.",
+        "enum": [
+          "finished",
+          "cancelled",
+          "step_limit",
+          "failed",
+          "interrupted"
+        ]
+      },
+      "AssistantPendingData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A change. Approving runs exactly `arguments`.",
+            "required": [
+              "call_id",
+              "tool",
+              "arguments",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "arguments": {},
+              "call_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "approval"
+                ]
+              },
+              "preview": {
+                "description": "What the change will do, from the tool's own preview."
+              },
+              "preview_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "call_id",
+              "reason",
+              "questions",
+              "kind"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "question"
+                ]
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantQuestionData"
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "A call waiting for the user."
+      },
+      "AssistantProgressData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "thinking"
+                ]
+              },
+              "step": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "tool",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "calling"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The reply so far, while the model writes it. The whole text each\ntime, so a missed event loses nothing.",
+            "required": [
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "writing"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Summarising earlier messages to fit the context window.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summarizing"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "What a running turn is doing now."
+      },
+      "AssistantQuestionData": {
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "allow_other": {
+            "type": "boolean"
+          },
+          "header": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "multi_select": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantQuestionOptionData"
+            }
+          },
+          "question": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantQuestionOptionData": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantSendBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/conversations`.",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AssistantViewContextData",
+            "description": "What the user has open, so \"this\" and \"these\" resolve."
+          },
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue this conversation; omitted starts a new one."
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantStatusData": {
+        "type": "string",
+        "description": "Where a conversation stands.",
+        "enum": [
+          "idle",
+          "running",
+          "awaiting_user"
+        ]
+      },
+      "AssistantViewContextData": {
+        "type": "object",
+        "description": "What the user has open when they send a message, so \"this\" and\n\"these\" mean something.",
+        "properties": {
+          "open_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open_thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "search_query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selected_message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "view": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AttachmentChunk": {
         "type": "object",
         "required": [
@@ -9912,7 +10937,8 @@
           "web",
           "daemon",
           "agent",
-          "mcp"
+          "mcp",
+          "assistant"
         ]
       },
       "ClosenessData": {
@@ -11373,7 +12399,39 @@
           },
           {
             "type": "object",
-            "description": "Where mail sits changed: an email or a sender was moved, a move was\nundone, or new arrivals were placed. Clients refetch their modes,\nNow and Inbox's chips.",
+            "description": "Where mail sits changed: an email or a sender was moved, a move was\nundone, or new arrivals were placed. Clients refetch their modes,\nNow and Inbox's chips.\nAn assistant conversation changed: a message was added, a call\nstarted, or the turn settled. Clients refetch the conversation.",
+            "required": [
+              "conversation_id",
+              "status",
+              "event"
+            ],
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "AssistantUpdated"
+                ]
+              },
+              "progress": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AssistantProgressData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/AssistantStatusData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "event"
             ],
@@ -14600,6 +15658,17 @@
             "default": null
           },
           "archive_ask": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LlmOverrideData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "assistant": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LlmOverrideData"
@@ -28598,6 +29667,181 @@
           },
           {
             "type": "object",
+            "description": "Whether the assistant can run and on which model. Returns\n`ResponseData::AssistantAvailability`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetAssistantAvailability"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Send the user's message, starting a conversation when\n`conversation_id` is `None`. Returns as soon as the turn starts, with\nthe conversation `running`; `AssistantUpdated` events follow until it\nsettles. Calls still waiting for the user are declined first. Returns\n`ResponseData::AssistantConversation`.",
+            "required": [
+              "message",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "AssistantSend"
+                ]
+              },
+              "context": {
+                "$ref": "#/components/schemas/AssistantViewContextData"
+              },
+              "conversation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Approve, reject or answer waiting calls. Approving runs exactly the\ncall that was shown. The turn continues once nothing waits. Returns\n`ResponseData::AssistantConversation`.",
+            "required": [
+              "conversation_id",
+              "decisions",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "AssistantDecide"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantDecisionData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Stop a running turn. Calls not yet run are recorded as cancelled.\nReturns `ResponseData::AssistantConversation`.",
+            "required": [
+              "conversation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "AssistantCancel"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Let reversible changes run without asking in this conversation, or\nstop. Sending, deleting, trash, spam and rules always ask. Returns\n`ResponseData::AssistantConversation`.",
+            "required": [
+              "conversation_id",
+              "enabled",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetAssistantAutoApprove"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Most recently active first. Returns\n`ResponseData::AssistantConversations`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListAssistantConversations"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returns `ResponseData::AssistantConversation`.",
+            "required": [
+              "conversation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetAssistantConversation"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Delete a conversation and its transcript; `dry_run` says what would\ngo. A running turn must be stopped first. Returns\n`ResponseData::AssistantDelete`.",
+            "required": [
+              "conversation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeleteAssistantConversation"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "dry_run": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "The Updates briefing (blueprint 22, phase 4): everything that\narrived by the cut (`cut`, else the latest one) and wasn't let go,\none line per source in Needs a look, Changed and Routine, plus what\narrived since. Rules only; deltas are computed, never written by a\nmodel. `mark_seen` records that Updates was opened, so the expired\ncount starts again and the mute question counts as asked;\n`expired` lists every update past its window. Returns\n`ResponseData::UpdatesDigest`.",
             "required": [
               "cmd"
@@ -33432,6 +34676,85 @@
               },
               "sync": {
                 "$ref": "#/components/schemas/MarginaliaSyncData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetAssistantAvailability`.",
+            "required": [
+              "availability",
+              "kind"
+            ],
+            "properties": {
+              "availability": {
+                "$ref": "#/components/schemas/AssistantAvailabilityData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantAvailability"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by the assistant's send, decide, cancel and get requests.",
+            "required": [
+              "conversation",
+              "kind"
+            ],
+            "properties": {
+              "conversation": {
+                "$ref": "#/components/schemas/AssistantConversationData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantConversation"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListAssistantConversations`.",
+            "required": [
+              "conversations",
+              "kind"
+            ],
+            "properties": {
+              "conversations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantConversationSummaryData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantConversations"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::DeleteAssistantConversation`.",
+            "required": [
+              "delete",
+              "kind"
+            ],
+            "properties": {
+              "delete": {
+                "$ref": "#/components/schemas/AssistantDeleteData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantDelete"
+                ]
               }
             }
           },

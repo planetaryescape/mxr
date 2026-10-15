@@ -11,9 +11,11 @@ use crate::health::{Admission, RouteFailure, RouteHealth, RouteState, RouteView,
 use crate::route::{is_claude_model, ApiKey, ApiKeySource, Route, RouteProvider};
 use crate::{
     CallKind, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    OpenAiCompatibleConfig, OpenAiCompatibleProvider,
+    OpenAiCompatibleConfig, OpenAiCompatibleProvider, TextCallback, ToolChatRequest,
+    ToolChatResponse,
 };
 use async_trait::async_trait;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -129,31 +131,22 @@ impl RoutedProvider {
         }
     }
 
-    async fn attempt(
+    /// One call on one route, recording what it says about the route.
+    async fn attempt<T, Fut>(
         &self,
         route: &Route,
-        key: &ApiKey,
-        req: &CompletionRequest,
-        timeout: Option<Duration>,
+        call: Fut,
         ticket: Ticket,
-    ) -> Attempt {
-        let result = match route.provider {
-            RouteProvider::Anthropic => {
-                self.anthropic
-                    .complete(key, &route.model, req, timeout)
-                    .await
-            }
-            RouteProvider::OpenRouter => match &self.openrouter {
-                Some(openrouter) => openrouter.attempt(req, Some(key.expose()), timeout).await,
-                None => Err(AttemptError::request(LlmError::Other(
-                    "no OpenRouter route is configured for this model".to_string(),
-                ))),
-            },
-        };
-        match result {
+        model_of: fn(&mut T) -> &mut String,
+    ) -> Attempt<T>
+    where
+        Fut: Future<Output = Result<T, AttemptError>>,
+    {
+        match call.await {
             Ok(mut response) => {
                 ticket.succeeded();
-                response.model = answered_by(route.provider, &response.model, &route.model);
+                let model = model_of(&mut response);
+                *model = answered_by(route.provider, model, &route.model);
                 Attempt::Done(Ok(response))
             }
             Err(AttemptError {
@@ -174,12 +167,122 @@ impl RoutedProvider {
         }
     }
 
+    async fn complete_on(
+        &self,
+        route: &Route,
+        key: ApiKey,
+        req: &CompletionRequest,
+        timeout: Option<Duration>,
+    ) -> Result<CompletionResponse, AttemptError> {
+        match route.provider {
+            RouteProvider::Anthropic => {
+                self.anthropic
+                    .complete(&key, &route.model, req, timeout)
+                    .await
+            }
+            RouteProvider::OpenRouter => match &self.openrouter {
+                Some(openrouter) => openrouter.attempt(req, Some(key.expose()), timeout).await,
+                None => Err(no_openrouter_route()),
+            },
+        }
+    }
+
+    async fn chat_on(
+        &self,
+        route: &Route,
+        key: ApiKey,
+        req: &ToolChatRequest,
+        timeout: Option<Duration>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        match route.provider {
+            RouteProvider::Anthropic => self.anthropic.chat(&key, &route.model, req, timeout).await,
+            RouteProvider::OpenRouter => match &self.openrouter {
+                Some(openrouter) => {
+                    openrouter
+                        .chat_attempt(req, Some(key.expose()), timeout)
+                        .await
+                }
+                None => Err(no_openrouter_route()),
+            },
+        }
+    }
+
     async fn run(
         &self,
         req: CompletionRequest,
         kind: CallKind,
     ) -> Result<CompletionResponse, LlmError> {
         let req = self.prepare(req);
+        self.run_routes(
+            kind,
+            |route, key, timeout| self.complete_on(route, key, &req, timeout),
+            |response: &mut CompletionResponse| &mut response.model,
+        )
+        .await
+    }
+
+    async fn chat_stream_on(
+        &self,
+        route: &Route,
+        key: ApiKey,
+        req: &ToolChatRequest,
+        timeout: Option<Duration>,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, AttemptError> {
+        match route.provider {
+            RouteProvider::Anthropic => {
+                self.anthropic
+                    .chat_stream(&key, &route.model, req, timeout, on_text)
+                    .await
+            }
+            RouteProvider::OpenRouter => match &self.openrouter {
+                Some(openrouter) => {
+                    openrouter
+                        .chat_stream_attempt(req, Some(key.expose()), timeout, on_text)
+                        .await
+                }
+                None => Err(no_openrouter_route()),
+            },
+        }
+    }
+
+    async fn run_chat_stream(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_routes(
+            kind,
+            |route, key, timeout| self.chat_stream_on(route, key, &req, timeout, on_text),
+            |response: &mut ToolChatResponse| &mut response.model,
+        )
+        .await
+    }
+
+    async fn run_chat(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_routes(
+            kind,
+            |route, key, timeout| self.chat_on(route, key, &req, timeout),
+            |response: &mut ToolChatResponse| &mut response.model,
+        )
+        .await
+    }
+
+    async fn run_routes<'a, T, F, Fut>(
+        &'a self,
+        kind: CallKind,
+        call: F,
+        model_of: fn(&mut T) -> &mut String,
+    ) -> Result<T, LlmError>
+    where
+        F: Fn(&'a Route, ApiKey, Option<Duration>) -> Fut,
+        Fut: Future<Output = Result<T, AttemptError>>,
+    {
         let started = Instant::now();
         let background_budget = match kind {
             CallKind::Foreground => None,
@@ -216,7 +319,10 @@ impl RoutedProvider {
                     .count();
                 remaining / u32::try_from(fallbacks + 1).unwrap_or(1)
             });
-            match self.attempt(route, key, &req, timeout, ticket).await {
+            match self
+                .attempt(route, call(route, key.clone(), timeout), ticket, model_of)
+                .await
+            {
                 Attempt::Done(result) => return result,
                 Attempt::RouteFailed { error, failure } => {
                     failed.push((route, failure));
@@ -242,7 +348,10 @@ impl RoutedProvider {
             }
             // A person is waiting: try the soonest-recovering route once.
             let ticket = self.health.force(route);
-            return match self.attempt(route, key, &req, None, ticket).await {
+            return match self
+                .attempt(route, call(route, key.clone(), None), ticket, model_of)
+                .await
+            {
                 Attempt::Done(result) => result,
                 Attempt::RouteFailed { failure, .. } => {
                     failed.push((route, failure));
@@ -270,8 +379,8 @@ impl RoutedProvider {
     }
 }
 
-enum Attempt {
-    Done(Result<CompletionResponse, LlmError>),
+enum Attempt<T> {
+    Done(Result<T, LlmError>),
     RouteFailed {
         error: LlmError,
         failure: RouteFailure,
@@ -290,6 +399,23 @@ impl LlmProvider for RoutedProvider {
         kind: CallKind,
     ) -> Result<CompletionResponse, LlmError> {
         self.run(req, kind).await
+    }
+
+    async fn chat_as(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_chat(req, kind).await
+    }
+
+    async fn chat_stream_as(
+        &self,
+        req: ToolChatRequest,
+        kind: CallKind,
+        on_text: TextCallback<'_>,
+    ) -> Result<ToolChatResponse, LlmError> {
+        self.run_chat_stream(req, kind, on_text).await
     }
 
     fn capabilities(&self) -> LlmCapabilities {
@@ -320,6 +446,12 @@ fn answered_by(provider: RouteProvider, reported: &str, requested: &str) -> Stri
         reported
     };
     format!("{model} via {}", provider.label())
+}
+
+fn no_openrouter_route() -> AttemptError {
+    AttemptError::request(LlmError::Other(
+        "no OpenRouter route is configured for this model".to_string(),
+    ))
 }
 
 fn no_key_message(routes: &[Route]) -> String {

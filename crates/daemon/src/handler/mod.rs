@@ -15,6 +15,7 @@ mod admin;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;
+mod assistant;
 mod auth_sessions;
 mod briefing;
 pub(crate) mod categories;
@@ -1794,6 +1795,16 @@ async fn dispatch(
         | Request::SyncMarginaliaHighlights { .. } => {
             Box::pin(reading::handle(state, scoped_profile, req)).await
         }
+        Request::GetAssistantAvailability
+        | Request::AssistantSend { .. }
+        | Request::AssistantDecide { .. }
+        | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
+        | Request::ListAssistantConversations { .. }
+        | Request::GetAssistantConversation { .. }
+        | Request::DeleteAssistantConversation { .. } => {
+            Box::pin(assistant::handle(state, req)).await
+        }
         Request::SetModeDone {
             thread_ids,
             mode,
@@ -2154,8 +2165,17 @@ async fn enforce_client_profile(
         | ClientKind::Cli
         | ClientKind::Script
         | ClientKind::Web
-        | ClientKind::Daemon => return Ok(()),
+        | ClientKind::Daemon
+        | ClientKind::Assistant => return Ok(()),
     };
+    // The assistant's changes are gated by a person's approval, and its
+    // tools run as `Assistant`, which no profile governs. An agent driving
+    // it could approve its own changes, so agents use the tools directly.
+    if is_assistant_request(req) {
+        return Err(format!(
+            "{profile_name} clients can't drive the in-app assistant; call mxr's tools directly"
+        ));
+    }
 
     let profile = config
         .agent_surfaces
@@ -2391,6 +2411,15 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetReadingItem { .. }
         | Request::ExportReadingHighlights { .. }
         | Request::GetMarginaliaStatus
+        // A conversation changes no mail: each call the assistant makes is
+        // classified on its own when it runs.
+        | Request::GetAssistantAvailability
+        | Request::AssistantSend { .. }
+        | Request::AssistantDecide { .. }
+        | Request::AssistantCancel { .. }
+        | Request::ListAssistantConversations { .. }
+        | Request::GetAssistantConversation { .. }
+        | Request::DeleteAssistantConversation { dry_run: true, .. }
         | Request::SendReadingToMarginalia { dry_run: true, .. }
         | Request::UpdateHighlight { dry_run: true, .. }
         | Request::RemoveHighlight { dry_run: true, .. }
@@ -2615,6 +2644,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetMarginaliaConnection { .. }
         // Contacts Marginalia and writes highlights read back.
         | Request::SyncMarginaliaHighlights { .. }
+        | Request::DeleteAssistantConversation { dry_run: false, .. }
+        // Decides which changes run without asking.
+        | Request::SetAssistantAutoApprove { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2896,6 +2928,14 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetMarginaliaConnection { .. } => "set_marginalia_connection",
         Request::SendReadingToMarginalia { .. } => "send_reading_to_marginalia",
         Request::SyncMarginaliaHighlights { .. } => "sync_marginalia_highlights",
+        Request::GetAssistantAvailability => "get_assistant_availability",
+        Request::AssistantSend { .. } => "assistant_send",
+        Request::AssistantDecide { .. } => "assistant_decide",
+        Request::AssistantCancel { .. } => "assistant_cancel",
+        Request::SetAssistantAutoApprove { .. } => "set_assistant_auto_approve",
+        Request::ListAssistantConversations { .. } => "list_assistant_conversations",
+        Request::GetAssistantConversation { .. } => "get_assistant_conversation",
+        Request::DeleteAssistantConversation { .. } => "delete_assistant_conversation",
         Request::GetUpdatesDigest { .. } => "get_updates_digest",
         Request::LetGoDigest { .. } => "let_go_digest",
         Request::SetUpdateSource { .. } => "set_update_source",
@@ -4453,6 +4493,20 @@ fn open_local_file(path: &str) -> anyhow::Result<()> {
     {
         anyhow::bail!("opening attachments is not supported on this platform")
     }
+}
+
+fn is_assistant_request(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::GetAssistantAvailability
+            | Request::AssistantSend { .. }
+            | Request::AssistantDecide { .. }
+            | Request::AssistantCancel { .. }
+            | Request::SetAssistantAutoApprove { .. }
+            | Request::ListAssistantConversations { .. }
+            | Request::GetAssistantConversation { .. }
+            | Request::DeleteAssistantConversation { .. }
+    )
 }
 
 #[cfg(test)]

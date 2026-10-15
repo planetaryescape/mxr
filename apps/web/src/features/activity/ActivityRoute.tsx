@@ -41,7 +41,17 @@ const WINDOWS: { label: string; ms: number | null }[] = [
   { label: "All", ms: null },
 ];
 
-const SOURCES: ClientKind[] = ["tui", "cli", "web", "daemon"];
+const SOURCES: ClientKind[] = [
+  "tui",
+  "cli",
+  "web",
+  "assistant",
+  "agent",
+  "mcp",
+  "script",
+  "human",
+  "daemon",
+];
 const TIERS: ActivityTier[] = ["important", "standard", "ephemeral"];
 
 interface ActivityBrowserProps {

@@ -9,6 +9,10 @@ import tomllib
 ROOT = Path.cwd()
 
 ALLOW = {
+    # The in-app assistant's loop, gate and prompt. It reaches mail only
+    # through the tools the daemon hands it, so it may never name a store,
+    # protocol or provider crate.
+    "mxr-assistant": {"mxr-llm"},
     "mxr-core": set(),
     "mxr-compose": {"mxr-core", "mxr-mail-parse", "mxr-outbound"},
     "mxr-config": {"mxr-core"},

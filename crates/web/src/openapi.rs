@@ -107,6 +107,9 @@ use utoipa::{
         mail_reading_highlight_note, mail_reading_highlight_remove,
         mail_reading_sources, mail_reading_marginalia_get, mail_reading_marginalia_post,
         mail_reading_marginalia_send, mail_reading_marginalia_sync,
+        mail_assistant_availability, mail_assistant_list, mail_assistant_send,
+        mail_assistant_get, mail_assistant_decide, mail_assistant_cancel, mail_assistant_delete,
+        mail_assistant_auto_approve,
         mail_updates_digest, mail_updates_let_go, mail_updates_source,
         mail_arrivals, mail_arrivals_list, mail_arrivals_modes, mail_message_move,
         mail_move_undo, mail_corrections
@@ -151,6 +154,10 @@ use utoipa::{
         crate::reading_routes::ReadingSourceBody,
         crate::reading_routes::MarginaliaConnectionBody,
         crate::reading_routes::MarginaliaSendBody,
+        crate::assistant_routes::AssistantSendBody,
+        crate::assistant_routes::AssistantDecideBody,
+        crate::assistant_routes::AssistantDeleteBody,
+        crate::assistant_routes::AssistantAutoApproveBody,
         crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
@@ -1426,6 +1433,112 @@ fn mail_reading_marginalia_send() {}
 )]
 #[allow(dead_code)]
 fn mail_reading_marginalia_sync() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/assistant/availability",
+    summary = "Whether the assistant can run, on which model, and whether conversations leave this machine",
+    responses(
+        (status = 200, description = "The `AssistantAvailability` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_availability() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/assistant/conversations",
+    summary = "Assistant conversations, most recently active first",
+    params(("limit" = Option<u32>, Query, description = "At most this many (default 50)")),
+    responses(
+        (status = 200, description = "The `AssistantConversations` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_list() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations",
+    summary = "Send a message to the assistant; returns once the turn starts. Follow AssistantUpdated events",
+    request_body = crate::assistant_routes::AssistantSendBody,
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_send() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/assistant/conversations/{id}",
+    summary = "One assistant conversation, with what waits for the user",
+    params(("id" = String, Path, description = "Conversation id")),
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations/{id}/decide",
+    summary = "Approve, reject or answer calls the assistant is waiting on; approving runs exactly the call shown",
+    params(("id" = String, Path, description = "Conversation id")),
+    request_body = crate::assistant_routes::AssistantDecideBody,
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_decide() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations/{id}/cancel",
+    summary = "Stop a running turn, or close what is waiting without running it",
+    params(("id" = String, Path, description = "Conversation id")),
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_cancel() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations/{id}/delete",
+    summary = "Delete a conversation and its transcript; dry_run says what would go",
+    params(("id" = String, Path, description = "Conversation id")),
+    request_body = crate::assistant_routes::AssistantDeleteBody,
+    responses(
+        (status = 200, description = "The `AssistantDelete` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_delete() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/conversations/{id}/auto-approve",
+    summary = "Let reversible changes run without asking in this conversation; sending, deleting, trash, spam and rules still ask",
+    params(("id" = String, Path, description = "Conversation id")),
+    request_body = crate::assistant_routes::AssistantAutoApproveBody,
+    responses(
+        (status = 200, description = "The `AssistantConversation` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_auto_approve() {}
 
 #[utoipa::path(
     get,

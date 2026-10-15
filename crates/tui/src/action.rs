@@ -292,6 +292,14 @@ pub enum Action {
     // Command palette
     OpenCommandPalette,
     CloseCommandPalette,
+    /// Ctrl-a: open the assistant pane, move the keys into it, or hide it.
+    ToggleAssistant,
+    NewAssistantConversation,
+    OpenAssistantConversations,
+    /// Let reversible changes run without asking in this conversation.
+    ToggleAssistantTrust,
+    /// Asks the daemon what would go (`dry_run`), then confirms.
+    DeleteAssistantConversation,
     // Sync
     SyncNow,
     // Message view
@@ -619,6 +627,11 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
             action,
             OpenCommandPalette
                 | CloseCommandPalette
+                | ToggleAssistant
+                | NewAssistantConversation
+                | OpenAssistantConversations
+                | ToggleAssistantTrust
+                | DeleteAssistantConversation
                 | OpenMailboxScreen
                 | OpenSearchScreen
                 | OpenRulesScreen
@@ -674,6 +687,11 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | CycleSearchMode
                 | OpenCommandPalette
                 | CloseCommandPalette
+                | ToggleAssistant
+                | NewAssistantConversation
+                | OpenAssistantConversations
+                | ToggleAssistantTrust
+                | DeleteAssistantConversation
                 | OpenMailboxScreen
                 | OpenSearchScreen
                 | OpenRulesScreen
@@ -735,6 +753,11 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
             action,
             OpenCommandPalette
                 | CloseCommandPalette
+                | ToggleAssistant
+                | NewAssistantConversation
+                | OpenAssistantConversations
+                | ToggleAssistantTrust
+                | DeleteAssistantConversation
                 | OpenMailboxScreen
                 | OpenSearchScreen
                 | OpenRulesScreen
@@ -776,6 +799,11 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
             action,
             OpenCommandPalette
                 | CloseCommandPalette
+                | ToggleAssistant
+                | NewAssistantConversation
+                | OpenAssistantConversations
+                | ToggleAssistantTrust
+                | DeleteAssistantConversation
                 | OpenMailboxScreen
                 | OpenSearchScreen
                 | OpenRulesScreen
@@ -817,6 +845,11 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
             action,
             OpenCommandPalette
                 | CloseCommandPalette
+                | ToggleAssistant
+                | NewAssistantConversation
+                | OpenAssistantConversations
+                | ToggleAssistantTrust
+                | DeleteAssistantConversation
                 | OpenMailboxScreen
                 | OpenSearchScreen
                 | OpenRulesScreen

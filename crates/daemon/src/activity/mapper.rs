@@ -1009,6 +1009,19 @@ pub fn map_request(
                 "reading views, dwell reports, previews, per-source settings, the Marginalia connection and highlight read-back are not activity"
             );
         }
+        Request::GetAssistantAvailability
+        | Request::AssistantSend { .. }
+        | Request::AssistantDecide { .. }
+        | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
+        | Request::ListAssistantConversations { .. }
+        | Request::GetAssistantConversation { .. }
+        | Request::DeleteAssistantConversation { .. } => {
+            skip_activity!(
+                "assistant",
+                "what the assistant does to mail is recorded as it runs, with source assistant; the chat itself is not activity"
+            );
+        }
         Request::GetModeGuide { .. } | Request::SetHintSeen { .. } => {
             skip_activity!(
                 "mode_guide",

@@ -8,6 +8,7 @@
 )]
 
 mod arrival_routes;
+mod assistant_routes;
 mod chime_routes;
 mod chrome;
 mod envelope_list;

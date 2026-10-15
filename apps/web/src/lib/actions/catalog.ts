@@ -10,6 +10,7 @@ import { analyticsActions } from "@/features/analytics/actions";
 import { archiveActions } from "@/features/archive/actions";
 import { arrivalActions } from "@/features/arrivals/actions";
 import { askActions } from "@/features/ask/actions";
+import { assistantActions } from "@/features/assistant/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
 import { focusActions } from "@/features/focus/actions";
@@ -77,6 +78,7 @@ const featureActions: Action[] = [
   ...accountsActions,
   ...analyticsActions,
   ...askActions,
+  ...assistantActions,
 ];
 
 let registered = false;

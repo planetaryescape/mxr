@@ -1495,6 +1495,7 @@ mod tests {
             (ClientKind::Script, "script"),
             (ClientKind::Agent, "agent"),
             (ClientKind::Mcp, "mcp"),
+            (ClientKind::Assistant, "assistant"),
         ] {
             let msg = IpcMessage {
                 expected_workspace: None,

@@ -84,6 +84,13 @@ export type DaemonEvent =
       /** `ThreadGistData`, always `status: "ready"`. */
       gist: components["schemas"]["ThreadGistData"];
     }
+  | {
+      type: "AssistantUpdated";
+      event?: "AssistantUpdated";
+      conversation_id: string;
+      status: components["schemas"]["AssistantStatusData"];
+      progress?: components["schemas"]["AssistantProgressData"] | null;
+    }
   | { type: string; [key: string]: unknown };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;

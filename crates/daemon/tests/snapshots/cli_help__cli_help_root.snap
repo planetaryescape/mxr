@@ -64,6 +64,7 @@ Commands:
   signatures          Manage outgoing compose signatures
   remind              Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up
   semantic            Manage semantic search profiles and indexing
+  assistant           Talk to the assistant about your mail. It reads and searches freely; every change it wants to make waits for your approval
   llm                 Inspect local/cloud LLM provider status
   chimes              Manage local notification chimes
   subscriptions       List senders with unsubscribe support

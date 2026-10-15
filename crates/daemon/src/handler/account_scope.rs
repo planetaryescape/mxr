@@ -115,6 +115,16 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
         Request::RemoteRead { .. } | Request::GetRemoteReady | Request::RemoteAuthority { .. } => AllAccounts,
         Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
+        // Refused for agent profiles before scoping; a conversation can
+        // read any account.
+        Request::GetAssistantAvailability
+        | Request::AssistantSend { .. }
+        | Request::AssistantDecide { .. }
+        | Request::AssistantCancel { .. }
+        | Request::SetAssistantAutoApprove { .. }
+        | Request::ListAssistantConversations { .. }
+        | Request::GetAssistantConversation { .. }
+        | Request::DeleteAssistantConversation { .. } => AllAccounts,
         // ----- Named by account -----
         Request::ListEnvelopes {
             account_id,
@@ -1155,7 +1165,8 @@ pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
         | ClientKind::Cli
         | ClientKind::Script
         | ClientKind::Web
-        | ClientKind::Daemon => None,
+        | ClientKind::Daemon
+        | ClientKind::Assistant => None,
     }
 }
 
@@ -1518,6 +1529,9 @@ pub(crate) async fn scope_event(
         // The count covers every account's events, so a scoped client is
         // told to resync without learning how much the others got.
         DaemonEvent::EventsLagged { .. } => Some(DaemonEvent::EventsLagged { skipped: 0 }),
+        // Agent profiles can't use the assistant, and a conversation can
+        // touch any account.
+        DaemonEvent::AssistantUpdated { .. } => None,
         DaemonEvent::ThreadGistReady { ref gist } => {
             let mut allowed = true;
             for account_id in thread_accounts(state, std::slice::from_ref(&gist.thread_id)).await? {

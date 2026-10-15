@@ -7,9 +7,11 @@
     )
 )]
 
+mod assistant_args;
 mod mutation_args;
 mod search_args;
 
+pub use assistant_args::*;
 pub use mutation_args::*;
 pub use search_args::*;
 
@@ -982,6 +984,14 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<SemanticAction>,
         #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Talk to the assistant about your mail. It reads and searches
+    /// freely; every change it wants to make waits for your approval.
+    Assistant {
+        #[command(subcommand)]
+        action: AssistantAction,
+        #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
     /// Inspect local/cloud LLM provider status
@@ -3370,6 +3380,7 @@ pub enum ActivitySourceArg {
     Daemon,
     Agent,
     Mcp,
+    Assistant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]

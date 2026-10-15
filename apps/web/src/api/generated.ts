@@ -425,6 +425,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/assistant/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the assistant can run, on which model, and whether conversations leave this machine */
+        get: operations["mail_assistant_availability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assistant conversations, most recently active first */
+        get: operations["mail_assistant_list"];
+        put?: never;
+        /** Send a message to the assistant; returns once the turn starts. Follow AssistantUpdated events */
+        post: operations["mail_assistant_send"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One assistant conversation, with what waits for the user */
+        get: operations["mail_assistant_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/conversations/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop a running turn, or close what is waiting without running it */
+        post: operations["mail_assistant_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/conversations/{id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve, reject or answer calls the assistant is waiting on; approving runs exactly the call shown */
+        post: operations["mail_assistant_decide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/conversations/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a conversation and its transcript; dry_run says what would go */
+        post: operations["mail_assistant_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/attachments/download": {
         parameters: {
             query?: never;
@@ -4755,6 +4858,210 @@ export interface components {
             /** Format: date-time */
             until: string;
         };
+        AssistantAnswerData: {
+            other?: string | null;
+            selected?: string[];
+        };
+        /** @description Whether the assistant can run, and on what. */
+        AssistantAvailabilityData: {
+            available: boolean;
+            /** @description True when conversations go to a model off this machine. */
+            leaves_machine: boolean;
+            model?: string | null;
+            /** @description Why it can't run, in words for the user. */
+            reason?: string | null;
+        };
+        /** @enum {string} */
+        AssistantCallStateData:
+            | "running"
+            | "done"
+            | "failed"
+            | "waiting"
+            | "approved"
+            | "declined"
+            | "answered"
+            | "cancelled"
+            | "interrupted";
+        AssistantConversationData: {
+            /** Format: int64 */
+            created_at: number;
+            id: string;
+            items: components["schemas"]["AssistantItemData"][];
+            last_error?: string | null;
+            last_outcome?: components["schemas"]["AssistantOutcomeData"] | null;
+            pending: components["schemas"]["AssistantPendingData"][];
+            status: components["schemas"]["AssistantStatusData"];
+            title: string;
+            /** Format: int64 */
+            updated_at: number;
+        };
+        AssistantConversationSummaryData: {
+            /**
+             * Format: int64
+             * @description Unix seconds.
+             */
+            created_at: number;
+            id: string;
+            last_outcome?: components["schemas"]["AssistantOutcomeData"] | null;
+            /** Format: int64 */
+            message_count: number;
+            pending_count: number;
+            status: components["schemas"]["AssistantStatusData"];
+            title: string;
+            /** Format: int64 */
+            updated_at: number;
+        };
+        /** @description Body of `POST /api/v1/mail/assistant/conversations/{id}/decide`. */
+        AssistantDecideBody: {
+            decisions: components["schemas"]["AssistantDecisionData"][];
+        };
+        /** @description The user's answer to one waiting call. */
+        AssistantDecisionData: components["schemas"]["AssistantDecisionKindData"] & {
+            call_id: string;
+        };
+        AssistantDecisionKindData:
+            | {
+                  /** @enum {string} */
+                  decision: "approve";
+              }
+            | {
+                  /** @enum {string} */
+                  decision: "reject";
+                  reason?: string | null;
+              }
+            | {
+                  answers: components["schemas"]["AssistantAnswerData"][];
+                  /** @enum {string} */
+                  decision: "answer";
+              };
+        /** @description Body of `POST /api/v1/mail/assistant/conversations/{id}/delete`. */
+        AssistantDeleteBody: {
+            /** @description Say what would be deleted, without deleting it. */
+            dry_run?: boolean;
+        };
+        AssistantDeleteData: {
+            conversation_id: string;
+            deleted: boolean;
+            dry_run: boolean;
+            /** Format: int64 */
+            message_count: number;
+            title: string;
+        };
+        /**
+         * @description One entry in the conversation as the user sees it. A tool call and its
+         *     result are one item.
+         */
+        AssistantItemData:
+            | {
+                  /** Format: int64 */
+                  created_at: number;
+                  /** @enum {string} */
+                  kind: "user";
+                  /** Format: int64 */
+                  seq: number;
+                  text: string;
+              }
+            | {
+                  /** Format: int64 */
+                  created_at: number;
+                  /** @enum {string} */
+                  kind: "assistant";
+                  model?: string | null;
+                  /** Format: int64 */
+                  seq: number;
+                  text: string;
+              }
+            | {
+                  arguments: Record<string, never>;
+                  call_id: string;
+                  /** Format: int64 */
+                  created_at: number;
+                  /** @enum {string} */
+                  kind: "tool_call";
+                  /** @description The model's one-line reason, for the user. */
+                  reason: string;
+                  /** @description The start of the result as mxr returned it, for a details view. */
+                  result?: string | null;
+                  /** Format: int64 */
+                  seq: number;
+                  state: components["schemas"]["AssistantCallStateData"];
+                  tool: string;
+              };
+        /**
+         * @description How the last turn ended.
+         * @enum {string}
+         */
+        AssistantOutcomeData:
+            "finished" | "cancelled" | "step_limit" | "failed" | "interrupted";
+        /** @description A call waiting for the user. */
+        AssistantPendingData:
+            | {
+                  arguments: Record<string, never>;
+                  call_id: string;
+                  /** @enum {string} */
+                  kind: "approval";
+                  /** @description What the change will do, from the tool's own preview. */
+                  preview?: Record<string, never> | null;
+                  preview_error?: string | null;
+                  reason: string;
+                  tool: string;
+              }
+            | {
+                  call_id: string;
+                  /** @enum {string} */
+                  kind: "question";
+                  questions: components["schemas"]["AssistantQuestionData"][];
+                  reason: string;
+              };
+        /** @description What a running turn is doing now. */
+        AssistantProgressData:
+            | {
+                  /** @enum {string} */
+                  kind: "thinking";
+                  /** Format: int32 */
+                  step: number;
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "calling";
+                  reason: string;
+                  tool: string;
+              };
+        AssistantQuestionData: {
+            allow_other?: boolean;
+            header?: string | null;
+            multi_select?: boolean;
+            options?: components["schemas"]["AssistantQuestionOptionData"][];
+            question: string;
+        };
+        AssistantQuestionOptionData: {
+            description?: string | null;
+            label: string;
+        };
+        /** @description Body of `POST /api/v1/mail/assistant/conversations`. */
+        AssistantSendBody: {
+            /** @description What the user has open, so "this" and "these" resolve. */
+            context?: components["schemas"]["AssistantViewContextData"];
+            /** @description Continue this conversation; omitted starts a new one. */
+            conversation_id?: string | null;
+            message: string;
+        };
+        /**
+         * @description Where a conversation stands.
+         * @enum {string}
+         */
+        AssistantStatusData: "idle" | "running" | "awaiting_user";
+        /**
+         * @description What the user has open when they send a message, so "this" and
+         *     "these" mean something.
+         */
+        AssistantViewContextData: {
+            open_message_id?: string | null;
+            open_thread_id?: string | null;
+            search_query?: string | null;
+            selected_message_ids?: string[];
+            view?: string | null;
+        };
         AttachmentChunk: {
             attachment_id: components["schemas"]["AttachmentId"];
             /** @description Standard base64 bytes; never a JSON integer array. */
@@ -5065,7 +5372,8 @@ export interface components {
             | "web"
             | "daemon"
             | "agent"
-            | "mcp";
+            | "mcp"
+            | "assistant";
         /**
          * @description How close you are, from your history with them: reciprocity, recency
          *     and longevity (Whittaker, Jones and Terveen, CSCW 2002).
@@ -5502,6 +5810,14 @@ export interface components {
                   /** @enum {string} */
                   event: "ReplyLaterReturned";
                   message_id: components["schemas"]["MessageId"];
+              }
+            | {
+                  conversation_id: string;
+                  /** @enum {string} */
+                  event: "AssistantUpdated";
+                  progress?:
+                      components["schemas"]["AssistantProgressData"] | null;
+                  status: components["schemas"]["AssistantStatusData"];
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
@@ -6659,6 +6975,8 @@ export interface components {
             answer_coverage: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             archive_ask: components["schemas"]["LlmOverrideData"] | null;
+            /** @default null */
+            assistant: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             briefing: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
@@ -10908,6 +11226,45 @@ export interface components {
                   item_key?: string | null;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "GetAssistantAvailability";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "AssistantSend";
+                  context?: components["schemas"]["AssistantViewContextData"];
+                  conversation_id?: string | null;
+                  message: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "AssistantDecide";
+                  conversation_id: string;
+                  decisions: components["schemas"]["AssistantDecisionData"][];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "AssistantCancel";
+                  conversation_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "ListAssistantConversations";
+                  /** Format: int32 */
+                  limit?: number | null;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "GetAssistantConversation";
+                  conversation_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "DeleteAssistantConversation";
+                  conversation_id: string;
+                  dry_run?: boolean;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetUpdatesDigest";
@@ -12182,6 +12539,26 @@ export interface components {
                   /** @enum {string} */
                   kind: "MarginaliaSync";
                   sync: components["schemas"]["MarginaliaSyncData"];
+              }
+            | {
+                  availability: components["schemas"]["AssistantAvailabilityData"];
+                  /** @enum {string} */
+                  kind: "AssistantAvailability";
+              }
+            | {
+                  conversation: components["schemas"]["AssistantConversationData"];
+                  /** @enum {string} */
+                  kind: "AssistantConversation";
+              }
+            | {
+                  conversations: components["schemas"]["AssistantConversationSummaryData"][];
+                  /** @enum {string} */
+                  kind: "AssistantConversations";
+              }
+            | {
+                  delete: components["schemas"]["AssistantDeleteData"];
+                  /** @enum {string} */
+                  kind: "AssistantDelete";
               }
             | {
                   highlights: components["schemas"]["ReadingHighlightData"][];
@@ -15135,6 +15512,222 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_availability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantAvailability` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_list: {
+        parameters: {
+            query?: {
+                /** @description At most this many (default 50) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantConversations` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_send: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantSendBody"];
+            };
+        };
+        responses: {
+            /** @description The `AssistantConversation` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantConversation` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantConversation` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_decide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantDecideBody"];
+            };
+        };
+        responses: {
+            /** @description The `AssistantConversation` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantDeleteBody"];
+            };
+        };
+        responses: {
+            /** @description The `AssistantDelete` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

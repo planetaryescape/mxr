@@ -115,7 +115,8 @@ test.describe("the rail at 1440px", () => {
   });
 
   test("settings is one page with its sections as tabs, and no second nav", async ({ page }) => {
-    await openApp(page, "/settings/all");
+    // A bare /settings is not a dead end: it lands where /settings/all does.
+    await openApp(page, "/settings");
     await expect(page).toHaveURL(/\/settings\/theme$/);
     const tabs = page.getByRole("navigation", { name: "Settings sections" });
     await expect(tabs).toHaveCount(1);
@@ -302,7 +303,8 @@ test.describe("the phone at 390px", () => {
   });
 
   test("Settings drills in from a list, with no clipped tab strip", async ({ page }) => {
-    await openApp(page, "/settings/all");
+    await openApp(page, "/settings");
+    await expect(page).toHaveURL(/\/settings\/all$/);
     const list = page.getByRole("list", { name: "Settings sections" });
     await expect(list).toBeVisible();
     await list.getByRole("link", { name: /^Keyboard/ }).click();

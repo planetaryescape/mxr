@@ -23,6 +23,9 @@ const ICONS = {
   error: <CircleX className="size-4" aria-hidden />,
 };
 
+/** `lib/actions/keyHints.ts` shows its tip under this id. */
+const KEY_HINT_ID = "key-hint";
+
 /** Sonner switches to its mobile layout at this width. */
 const MOBILE_WIDTH = 600;
 
@@ -41,7 +44,9 @@ function litRowBox(): DOMRect | null {
  * keeps them all), and it takes the corner that leaves the lit row clear.
  */
 function useOneAtATime(preferred: ToastCorner): ToastCorner {
-  const { toasts } = useSonner();
+  // The key hint is a tip with its own spot at the bottom centre, never a result: it stays
+  // beside the Undo toast of the action it teaches.
+  const toasts = useSonner().toasts.filter((item) => item.id !== KEY_HINT_ID);
   const [corner, setCorner] = useState(preferred);
   const newest = toasts[0]?.id;
   useEffect(() => {

@@ -10,7 +10,6 @@ import {
   Highlighter,
   Loader2,
   MailX,
-  RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -19,7 +18,8 @@ import { PageFrame } from "@/components/PageFrame";
 import { ReaderToolbar, ToolButton } from "@/components/ToolButton";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { BridgeRequestError } from "@/api/client";
+import { PageError } from "@/components/PageParts";
 import { MessageContent } from "@/features/thread/MessageCard";
 import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
 import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
@@ -93,15 +93,12 @@ export function ReadingReader({ itemKey }: { itemKey: string }) {
   }
   if (item.isError || !item.data) {
     return (
-      <Centered
-        icon={<RefreshCw className="size-6" />}
+      <PageError
+        framed
         title="Couldn't open this item"
-        body={item.error?.message ?? "It may have been deleted."}
-        action={
-          <Button size="sm" onClick={() => void item.refetch()}>
-            Try again
-          </Button>
-        }
+        subject="this item"
+        error={item.error ?? new BridgeRequestError(404, "Reading item not found")}
+        onRetry={() => void item.refetch()}
       />
     );
   }
@@ -524,7 +521,10 @@ function ArticleStatus({
   if (error) {
     return (
       <div data-testid="article-status" className="mt-6 text-base">
-        <p className="text-foreground/90">The article couldn't be read here: {error}.</p>
+        <p className="text-foreground/90">
+          The article couldn't be read here. The email is still here, and the original opens in your
+          browser.
+        </p>
         {item.url ? (
           <a
             href={item.url}
@@ -535,6 +535,10 @@ function ArticleStatus({
             <ExternalLink className="size-3.5" /> Open in browser
           </a>
         ) : null}
+        <details className="mt-3 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer underline underline-offset-4">Details</summary>
+          <pre className="mt-1 whitespace-pre-wrap break-words font-mono">{error}</pre>
+        </details>
       </div>
     );
   }

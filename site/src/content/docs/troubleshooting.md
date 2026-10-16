@@ -142,11 +142,11 @@ mxr reset --hard                  # destructive; preserves config + credentials
 
 ## Web app cannot reach mxr
 
-If the web app says **Could not reach mxr**, check the connection first. Mail
-already loaded on the page may still be available, but new pages and changes
-need mxr to answer. The banner's **Copy command** button copies
-`mxr restart`; run it on the computer running mxr. If copying is unavailable,
-use the command below. You can also check the connection and restart mxr there:
+If the web app says **mxr isn't running. Showing what was loaded at 21:04.**,
+the page keeps what it had loaded, but new pages and changes need mxr to
+answer. The banner's **Copy start command** button copies `mxr restart`; run it
+on the computer running mxr. If copying is unavailable, use the command below.
+You can also check the connection and restart mxr there:
 
 ```bash
 mxr status
@@ -155,8 +155,10 @@ mxr restart
 
 For a remote bridge, check the tunnel or network connection before restarting
 the daemon. The banner clears when mxr is reachable again; you do not need to
-reload the page. If a request error has a **Technical details** disclosure,
-expand it to see the underlying error. If the banner says **Live updates are
+reload the page. A page that couldn't load says what happened and what still
+works in plain words; expand **Details** under it to see the underlying error.
+A conversation or item that can't be found offers **Go to Inbox**, not **Try
+again**, because asking again can't change the answer. If the banner says **Live updates are
 paused** instead, mxr is answering but the event stream is disconnected: mail
 still loads, changes still work, and new mail appears when the stream
 reconnects. A proxy that does not pass WebSockets can cause that state.

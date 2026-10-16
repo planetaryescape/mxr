@@ -1,11 +1,12 @@
 import { useParams } from "@tanstack/react-router";
-import { Bell, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LampVia } from "@/components/Row";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Button } from "@/components/ui/button";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { NextPlace } from "@/features/modes/NextPlace";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { moveCommands, updateMoveSubject } from "@/features/arrivals/moveSubjects";
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
@@ -107,7 +108,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
     return (
       <>
         {plainHeader}
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed shown={phase === "skeleton"} />
       </>
     );
   }
@@ -115,15 +116,11 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
     return (
       <>
         {plainHeader}
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load Updates"
-          body={status.error.message}
-          action={
-            <Button size="sm" onClick={() => void status.refetch()}>
-              Try again
-            </Button>
-          }
+          error={status.error}
+          onRetry={() => void status.refetch()}
         />
       </>
     );
@@ -435,14 +432,19 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
 
           {!hasLines ? (
             digest.empty_state ? (
-              <div className="mx-5 mt-6 flex items-start gap-3 text-sm text-muted-foreground">
-                <Bell aria-hidden className="mt-0.5 size-4 shrink-0" />
-                <p data-testid="updates-empty">
-                  {digest.empty_state}
-                  {digest.source_total > 0
-                    ? ` ${plural(digest.source_total, "source")}, ${digest.muted_total} muted.`
-                    : null}
-                </p>
+              <div className="mx-5 mt-6">
+                <PageEmpty
+                  glyph="updates"
+                  title={digest.empty_state}
+                  body={
+                    <>
+                      {digest.source_total > 0
+                        ? `${plural(digest.source_total, "source")}, ${digest.muted_total} muted.`
+                        : null}
+                      <NextPlace current="updates" />
+                    </>
+                  }
+                />
               </div>
             ) : null
           ) : (

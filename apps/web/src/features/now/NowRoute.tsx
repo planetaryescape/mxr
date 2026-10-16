@@ -1,15 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
-import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
-import { LowTide } from "@/features/low-tide/LowTide";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { LowTideScene } from "@/features/low-tide/LowTide";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -101,17 +99,13 @@ export function NowRoute() {
         </ModeFrame>
       ) : null}
       {phase !== "ready" ? (
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} />
       ) : now.isError ? (
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load Now"
-          body={now.error.message}
-          action={
-            <Button size="sm" onClick={() => void now.refetch()}>
-              Try again
-            </Button>
-          }
+          error={now.error}
+          onRetry={() => void now.refetch()}
         />
       ) : now.data ? (
         <NowBody now={now.data} />
@@ -419,26 +413,25 @@ function NowBody({ now }: { now: Now }) {
 
 /**
  * Nothing on Now. Before the first run finishes, the never-had-any line;
- * after it, the low tide scene with when the next thing arrives.
+ * after it, the empty state with the low tide scene as its finishing moment.
  */
 function NowEmpty({ now }: { now: Now }) {
   if (!now.first_run.complete) {
     return (
-      <Centered
-        icon={<Sun className="size-6" />}
-        title="Sorting your mail"
-        body={now.empty_state ?? undefined}
-      />
+      <PageEmpty framed glyph="now" title="Sorting your mail" body={now.empty_state ?? undefined} />
     );
   }
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-      <LowTide line={now.empty_state ?? "Clear."} sound className="w-full">
-        <p className="mt-3">
+    <PageEmpty
+      framed
+      moment={<LowTideScene sound />}
+      title={now.empty_state ?? "Clear."}
+      body={
+        <>
           New mail still arrives in the inbox: <kbd className="font-mono">g</kbd>{" "}
           <kbd className="font-mono">i</kbd>.
-        </p>
-      </LowTide>
-    </div>
+        </>
+      }
+    />
   );
 }

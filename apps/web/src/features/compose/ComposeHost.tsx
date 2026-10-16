@@ -12,6 +12,7 @@ import { Maximize2, Minimize2, PictureInPicture2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { PageError } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
@@ -107,22 +108,23 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   // retrying can only fail again. Show the document instead.
   const htmlDraft = htmlDraftRefusal(controller.sessionError);
   const body = controller.sessionLoading ? (
-    <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
+    <div role="status" className="type-body flex h-40 items-center justify-center text-text-2">
       Opening {intent.title.toLowerCase()}…
     </div>
   ) : htmlDraft ? (
     <HtmlDraftNotice refusal={htmlDraft} />
   ) : controller.sessionError ? (
-    <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs">
-      <span className="text-destructive">{controller.sessionError.message}</span>
+    <div className="flex flex-col items-start gap-3 p-5">
+      <PageError
+        title={`Couldn't open ${intent.title.toLowerCase()}`}
+        error={controller.sessionError}
+        onRetry={controller.retrySession}
+      />
       {controller.reopenSavedDraft && (
         <Button size="sm" variant="outline" onClick={controller.reopenSavedDraft}>
           Open saved draft for review
         </Button>
       )}
-      <Button size="sm" variant="outline" onClick={controller.retrySession}>
-        Retry
-      </Button>
     </div>
   ) : controller.draft ? (
     <ComposeEditorPanel controller={controller} />

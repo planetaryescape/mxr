@@ -1,12 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlarmClockOff, Clock } from "lucide-react";
+import { AlarmClockOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { fetchSnoozed, unsnoozeMessage, type SnoozedEntry } from "@/features/mailbox/api";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { PageEmpty } from "@/components/PageParts";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { formatLongDate, formatRelative, plural } from "@/lib/format";
 
@@ -77,8 +77,8 @@ export function SnoozedRoute() {
         run: (row) => wake.mutate(row.message_ids?.length ? row.message_ids : [row.id]),
       }}
       empty={
-        <Centered
-          icon={<Clock className="size-6" />}
+        <PageEmpty
+          framed
           title="Nothing snoozed"
           body="Press Z on a conversation to send it away until later."
         />

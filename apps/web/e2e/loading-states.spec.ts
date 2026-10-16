@@ -41,7 +41,7 @@ async function delay(page: Page, pattern: string, ms: number): Promise<void> {
 }
 
 test("a list that loads in 100 ms never shows a skeleton", async ({ page }) => {
-  await watchSkeletons(page, "list-skeleton");
+  await watchSkeletons(page, "page-skeleton");
   // Keep daemon response latency outside the browser's 100 ms loading window.
   const mailbox = await bridge<MailboxResponse>(
     page,
@@ -57,7 +57,7 @@ test("a list that loads in 100 ms never shows a skeleton", async ({ page }) => {
 });
 
 test("a list that takes 600 ms shows its skeleton, and for at least 400 ms", async ({ page }) => {
-  await watchSkeletons(page, "list-skeleton");
+  await watchSkeletons(page, "page-skeleton");
   await delay(page, "**/api/v1/mail/mailbox?**", 600);
   await openApp(page, "/m/inbox");
   await expect(mailRows(page).first()).toBeVisible();

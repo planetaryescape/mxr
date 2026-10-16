@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Check, Receipt, Rss, Shield, Users, type LucideIcon } from "lucide-react";
+import { Ban, Check, Receipt, Rss, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -116,7 +116,6 @@ export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
         />
       ) : !account ? (
         <PageEmpty
-          icon={<Users className="size-5" />}
           title="No account to screen"
           body="Connect an account first; its unknown senders queue up here."
         />
@@ -210,7 +209,6 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
     return (
       <>
         <PageEmpty
-          icon={<Shield className="size-5" />}
           title="Queue empty"
           body={
             allSenders
@@ -306,7 +304,6 @@ function ScreenerDecisions({ accountId }: { accountId: string }) {
   if (rows.length === 0)
     return (
       <PageEmpty
-        icon={<Shield className="size-5" />}
         title="No decisions yet"
         body="Senders you allow, deny, feed or paper-trail are listed here, so you can undo a call."
       />

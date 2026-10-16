@@ -1,5 +1,4 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { SearchX } from "lucide-react";
 
 import { Page } from "@/components/Page";
 import { PageEmpty } from "@/components/PageParts";
@@ -15,7 +14,6 @@ export function NotFoundPage() {
   return (
     <Page title="Not found">
       <PageEmpty
-        icon={<SearchX className="size-5" />}
         title={`Nothing at ${path}`}
         body="The link may be from an older version of mxr."
         action={

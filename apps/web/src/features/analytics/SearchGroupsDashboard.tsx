@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { BarList, Segmented, searchValue, useDrillToSearch } from "./analyticsParts";
@@ -73,7 +72,7 @@ export function SearchGroupsDashboard() {
       </form>
       <PageNote>Any search query works. Select a group to open its messages as a search.</PageNote>
       {!query ? (
-        <PageEmpty icon={<Search className="size-5" />} title="Type a query to group" />
+        <PageEmpty title="Type a query to group" />
       ) : groups.isPending ? (
         <PageSkeleton label="Grouping results" />
       ) : groups.isError ? (
@@ -83,11 +82,7 @@ export function SearchGroupsDashboard() {
           onRetry={() => void groups.refetch()}
         />
       ) : rows.length === 0 ? (
-        <PageEmpty
-          icon={<Search className="size-5" />}
-          title="No matches"
-          body="Try a broader query, or group by another field."
-        />
+        <PageEmpty title="No matches" body="Try a broader query, or group by another field." />
       ) : (
         <BarList
           label="Search groups"

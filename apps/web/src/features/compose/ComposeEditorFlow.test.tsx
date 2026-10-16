@@ -49,7 +49,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
   apiFetch: rawApi.fetch,
 }));
 
@@ -338,8 +339,9 @@ describe("Compose opening a saved draft that has an HTML body", () => {
 
     renderCompose(draftIntent("draft-42"));
 
-    expect(await screen.findByText(/failed to connect to mxr daemon/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: /retry/i })).toBeVisible();
+    expect(await screen.findByRole("button", { name: /try again/i })).toBeVisible();
+    // The raw error sits under Details, not in the headline.
+    expect(screen.getByText(/failed to connect to mxr daemon/i)).not.toBeVisible();
     expect(screen.queryByText(/This draft has an HTML body/i)).not.toBeInTheDocument();
   });
 });

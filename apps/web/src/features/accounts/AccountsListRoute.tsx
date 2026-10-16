@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, UserCog } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -70,7 +70,6 @@ export function AccountsListRoute() {
         />
       ) : rows.length === 0 ? (
         <PageEmpty
-          icon={<UserCog className="size-5" />}
           title="No accounts yet"
           body="Connect Gmail, Outlook or any IMAP mailbox to start syncing."
           action={

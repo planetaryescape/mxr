@@ -1,9 +1,7 @@
 /* What the results pane shows with no query yet, or no matches. */
 
-import { SearchX } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { PageEmpty } from "@/components/PageParts";
 import { searchSyntaxRows } from "@/lib/searchSyntax";
 import type { SearchMode } from "./api";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -16,55 +14,68 @@ export function SearchStart({
   onRun: (q: string) => void;
 }) {
   return (
-    <div className="flex-1 overflow-auto px-6 py-8">
-      <div className="mx-auto max-w-xl">
-        <h2 className="text-md font-semibold">Search everything you have, offline</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Exact search is the default. Hybrid adds meaning-based matches when semantic search is on.
-        </p>
-        {saved.length > 0 ? (
-          <>
-            <SectionHeading as="h3" className="mb-1 mt-6">
-              Saved
-            </SectionHeading>
-            <ul className="divide-y divide-border/70 rounded-md border border-border">
-              {saved.slice(0, 9).map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => onRun(item.query)}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent"
-                  >
-                    <span className="flex-1 truncate text-sm">{item.name}</span>
-                    <span className="truncate font-mono text-2xs text-muted-foreground">
-                      {item.query}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        <SectionHeading as="h3" className="mb-1 mt-6">
-          Operators
-        </SectionHeading>
-        <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-4 gap-y-1 text-sm">
-          {searchSyntaxRows.map(([operator, description]) => (
-            <div key={operator} className="contents">
-              <dt>
+    <div className="min-h-0 flex-1 overflow-auto">
+      <PageEmpty
+        framed
+        title="Search everything you have, offline"
+        body="Exact search is the default. Hybrid adds meaning-based matches when semantic search is on."
+        action={<SearchHelp saved={saved} onRun={onRun} />}
+      />
+    </div>
+  );
+}
+
+function SearchHelp({
+  saved,
+  onRun,
+}: {
+  saved: { id: string; name: string; query: string }[];
+  onRun: (q: string) => void;
+}) {
+  return (
+    <div className="max-w-xl">
+      {saved.length > 0 ? (
+        <>
+          <SectionHeading as="h3" className="mb-1 mt-6">
+            Saved
+          </SectionHeading>
+          <ul className="divide-y divide-border/70 rounded-md border border-border">
+            {saved.slice(0, 9).map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => onRun(operator)}
-                  className="font-mono text-xs text-primary hover:underline"
+                  onClick={() => onRun(item.query)}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent"
                 >
-                  {operator}
+                  <span className="flex-1 truncate text-sm">{item.name}</span>
+                  <span className="truncate font-mono text-2xs text-muted-foreground">
+                    {item.query}
+                  </span>
                 </button>
-              </dt>
-              <dd className="text-muted-foreground">{description}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <SectionHeading as="h3" className="mb-1 mt-6">
+        Operators
+      </SectionHeading>
+      <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-4 gap-y-1 text-sm">
+        {searchSyntaxRows.map(([operator, description]) => (
+          <div key={operator} className="contents">
+            <dt>
+              <button
+                type="button"
+                onClick={() => onRun(operator)}
+                className="font-mono text-xs text-primary hover:underline"
+              >
+                {operator}
+              </button>
+            </dt>
+            <dd className="text-muted-foreground">{description}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -80,8 +91,8 @@ export function NoResults({
 }) {
   const hasOperators = /\w+:/.test(q);
   return (
-    <Centered
-      icon={<SearchX className="size-6" />}
+    <PageEmpty
+      framed
       title="No matches"
       body={
         hasOperators

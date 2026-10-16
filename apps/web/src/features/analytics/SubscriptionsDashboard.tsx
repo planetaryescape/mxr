@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { MailX, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -71,7 +71,6 @@ export function SubscriptionsDashboard() {
           />
         ) : rows.length === 0 ? (
           <PageEmpty
-            icon={<MailX className="size-5" />}
             title="No subscriptions found"
             body="Mailing-list senders appear here once they have been synced."
           />

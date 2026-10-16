@@ -1,16 +1,50 @@
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useDaemonDown } from "@/lib/daemonAvailability";
+import { copyCommand, START_COMMAND } from "@/lib/copyCommand";
 import { useConnectionStore } from "@/state/connectionStore";
 
 /** The event stream alone dropping only matters once it stays down. */
 const STREAM_BANNER_DELAY_MS = 30_000;
 
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+}
+
+/** The one band under the top bar: what is wrong, and that what is on screen still works. */
+function Banner({
+  kind,
+  role,
+  action,
+  children,
+}: {
+  kind: string;
+  role: "status" | "alert";
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-offline-banner={kind}
+      role={role}
+      className="type-body flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-ink-lamp px-5 py-2 text-text-1"
+    >
+      <span aria-hidden className="size-1.5 shrink-0 bg-cue" />
+      <span className="min-w-0 flex-1">{children}</span>
+      {action}
+    </div>
+  );
+}
+
 export function OfflineBanner() {
   const state = useConnectionStore((s) => s.state);
   const protocolMismatch = useConnectionStore((s) => s.protocolMismatch);
+  const lastAnsweredAt = useConnectionStore((s) => s.daemonLastAnsweredAt);
   const daemonDown = useDaemonDown();
   const [offlineSince, setOfflineSince] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -33,58 +67,37 @@ export function OfflineBanner() {
   if (protocolMismatch) {
     const actual = protocolMismatch.actualProtocol ?? "missing";
     return (
-      <Alert
-        data-offline-banner
-        role="alert"
-        variant="destructive"
-        className="rounded-none border-x-0 border-t-0 px-4 py-2 text-xs"
-      >
-        mxr protocol mismatch. Web expects IPC v{protocolMismatch.requiredProtocol}; bridge reports
-        v{actual}. Update mxr: {protocolMismatch.updateSteps.join(" · ")}.
-      </Alert>
+      <Banner kind="protocol" role="alert">
+        mxr needs updating. This web app expects IPC v{protocolMismatch.requiredProtocol}; mxr
+        reports v{actual}. Update: {protocolMismatch.updateSteps.join(" · ")}.
+      </Banner>
     );
   }
 
-  // Calm, not an alarm: nothing the person has on screen is lost.
-  const banner = daemonDown
-    ? {
-        kind: "daemon",
-        text: "Could not reach mxr. Mail already loaded on this page may still be available, but new pages and changes need a connection. Check the connection, or run mxr restart on the computer running mxr.",
-      }
-    : offlineSince && now - offlineSince >= STREAM_BANNER_DELAY_MS
-      ? {
-          kind: "stream",
-          text: "Live updates are paused while mxr reconnects. Mail still loads; new mail shows up once it's back.",
+  if (daemonDown) {
+    return (
+      <Banner
+        kind="daemon"
+        role="status"
+        action={
+          <Button variant="outline" size="sm" onClick={() => copyCommand(START_COMMAND)}>
+            Copy start command
+          </Button>
         }
-      : null;
-  if (!banner) return null;
+      >
+        mxr isn&apos;t running. Showing what was loaded
+        {lastAnsweredAt ? ` at ${clockTime(lastAnsweredAt)}` : ""}.
+      </Banner>
+    );
+  }
 
-  return (
-    <Alert
-      data-offline-banner={banner.kind}
-      role="status"
-      variant="warning"
-      className="rounded-none border-x-0 border-t-0 px-4 py-2 text-xs text-foreground"
-    >
-      {banner.text}
-      {banner.kind === "daemon" ? (
-        <button
-          type="button"
-          className="ml-2 underline underline-offset-2"
-          onClick={() => {
-            if (!navigator.clipboard) {
-              toast.error("Copy is unavailable in this browser");
-              return;
-            }
-            void navigator.clipboard
-              .writeText("mxr restart")
-              .then(() => toast.success("Restart command copied"))
-              .catch(() => toast.error("Could not copy the command"));
-          }}
-        >
-          Copy command
-        </button>
-      ) : null}
-    </Alert>
-  );
+  if (offlineSince && now - offlineSince >= STREAM_BANNER_DELAY_MS) {
+    return (
+      <Banner kind="stream" role="status">
+        Live updates are paused while mxr reconnects. Mail still loads; new mail shows up once
+        it&apos;s back.
+      </Banner>
+    );
+  }
+  return null;
 }

@@ -180,7 +180,6 @@ export function InvitesRoute() {
         />
       ) : rows.length === 0 ? (
         <PageEmpty
-          icon={<Calendar className="size-5" />}
           title="No calendar invites"
           body="Invites in synced mail show up here, ready to accept or decline."
         />

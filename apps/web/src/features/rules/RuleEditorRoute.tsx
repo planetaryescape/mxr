@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Check, FlaskConical, Play, Trash2 } from "lucide-react";
+import { Check, Play, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -507,7 +507,6 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
             ) : null}
             {condition.length === 0 ? (
               <PageEmpty
-                icon={<FlaskConical className="size-5" />}
                 title="Nothing to preview"
                 body="Write a condition to see which messages this rule would change."
               />

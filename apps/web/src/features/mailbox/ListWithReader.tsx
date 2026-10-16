@@ -1,15 +1,16 @@
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Filter, RefreshCw } from "lucide-react";
+import { Filter } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { LIST_PANE_SIZE } from "./listPane";
 import { MailboxList, type MailboxListProps } from "./MailboxList";
-import { Centered, ListSkeleton } from "./MailViewParts";
 import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
+import { DaemonUnavailableError } from "@/api/client";
 import { ModeFrame } from "@/components/ModeFrame";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import {
   FramePanesContext,
   PageFrame,
@@ -281,28 +282,18 @@ export function ListWithReader({
                 </div>
               ) : null}
               {phase !== "ready" ? (
-                <ListSkeleton quiet={phase === "quiet"} />
-              ) : status.fetchStatus === "paused" && !hasData ? (
-                <Centered
-                  icon={<RefreshCw className="size-6" />}
-                  title="Waiting for mxr"
-                  body={`Couldn't load ${title.toLowerCase()} yet. It will appear when mxr reconnects.`}
-                  action={
-                    <Button size="sm" onClick={() => void status.refetch()}>
-                      Try again
-                    </Button>
-                  }
+                <PageSkeleton
+                  framed
+                  lead="avatar"
+                  shown={phase === "skeleton"}
+                  label={`Loading ${title}`}
                 />
-              ) : status.isError && !hasData ? (
-                <Centered
-                  icon={<RefreshCw className="size-6" />}
-                  title={`Couldn't load ${title.toLowerCase()}`}
-                  body={status.error?.message}
-                  action={
-                    <Button size="sm" onClick={() => void status.refetch()}>
-                      Try again
-                    </Button>
-                  }
+              ) : (status.fetchStatus === "paused" || status.isError) && !hasData ? (
+                <PageError
+                  framed
+                  title={`Couldn't load ${title}`}
+                  error={status.error ?? new DaemonUnavailableError()}
+                  onRetry={() => void status.refetch()}
                 />
               ) : (
                 <MailboxList
@@ -317,8 +308,8 @@ export function ListWithReader({
                   onCloseThread={threadOpen ? close : undefined}
                   empty={
                     filter.trim() && loadedCount > 0 ? (
-                      <Centered
-                        icon={<Filter className="size-6" />}
+                      <PageEmpty
+                        framed
                         title="Nothing loaded matches"
                         body={`No conversation in this list mentions “${filter.trim()}”.`}
                         action={

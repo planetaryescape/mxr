@@ -1,20 +1,20 @@
 import { Link, Navigate } from "@tanstack/react-router";
-import { Inbox, RefreshCw, Rows3, SearchX, SquareStack } from "lucide-react";
+import { Rows3, SquareStack } from "lucide-react";
 import { useMemo } from "react";
 
 import { syncNow } from "./actions";
 import { lensesFromShell, resolveLens, type LensRoute, type MailLens } from "./lenses";
 import { ListWithReader } from "./ListWithReader";
-import { Centered, ListSkeleton } from "./MailViewParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMailboxQuery, useShellQuery } from "./useMailboxQuery";
+import { DaemonUnavailableError } from "@/api/client";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
+import { NextPlace } from "@/features/modes/NextPlace";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { formatRelative, plural } from "@/lib/format";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-
-export { Centered, ListSkeleton };
 
 /** System mailboxes that are pages of their own, not label lenses. */
 const PAGE_MAILBOXES: Record<string, string> = {
@@ -35,30 +35,25 @@ export function MailView({ route }: { route: LensRoute }) {
   }
   const needsShell = route.kind !== "system" || route.mailbox !== "inbox";
   if (needsShell && !shell.data && (shell.fetchStatus === "paused" || shell.isError)) {
-    const waiting = shell.fetchStatus === "paused";
     return (
-      <Centered
-        icon={<RefreshCw className="size-6" />}
-        title={waiting ? "Waiting for mxr" : "Couldn't load mail lists"}
-        body={
-          waiting
-            ? "Labels and saved searches will appear when mxr reconnects."
-            : shell.error?.message
-        }
-        action={
-          <Button size="sm" onClick={() => void shell.refetch()}>
-            Try again
-          </Button>
-        }
+      <PageError
+        framed
+        title="Couldn't load mail lists"
+        error={shell.error ?? new DaemonUnavailableError()}
+        onRetry={() => void shell.refetch()}
       />
     );
   }
   const lens = resolveLens(route, lenses);
   if (!lens) {
-    if (phase !== "ready") return <ListSkeleton quiet={phase === "quiet"} />;
+    if (phase !== "ready") {
+      return (
+        <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} label="Loading mail" />
+      );
+    }
     return (
-      <Centered
-        icon={<SearchX className="size-6" />}
+      <PageEmpty
+        framed
         title={
           route.kind === "label"
             ? "No label by that name"
@@ -162,8 +157,8 @@ function EmptyLens({ lens }: { lens: MailLens }) {
   const lastEventAt = useConnectionStore((s) => s.lastEventAt);
   if (sync) {
     return (
-      <Centered
-        icon={<RefreshCw className="size-6 animate-spin" />}
+      <PageEmpty
+        framed
         title="Syncing your mail"
         body={
           sync.total > 0
@@ -175,25 +170,29 @@ function EmptyLens({ lens }: { lens: MailLens }) {
   }
   if (lens.key === "inbox") {
     return (
-      <Centered
-        icon={<Inbox className="size-6" />}
+      <PageEmpty
+        framed
+        glyph="inbox"
         title="Inbox zero"
         body={
-          lastEventAt
-            ? `Nothing waiting. Last update ${formatRelative(new Date(lastEventAt))}.`
-            : "Nothing waiting on you."
+          <>
+            {lastEventAt
+              ? `Last update ${formatRelative(new Date(lastEventAt))}.`
+              : "Nothing is waiting on you."}
+            <NextPlace current="inbox" />
+          </>
         }
         action={
           <Button variant="outline" size="sm" onClick={() => void syncNow()}>
-            <RefreshCw className="size-3.5" /> Check for mail
+            Check for mail
           </Button>
         }
       />
     );
   }
   return (
-    <Centered
-      icon={<Inbox className="size-6" />}
+    <PageEmpty
+      framed
       title={`Nothing in ${lens.label}`}
       body={
         lens.section === "saved"

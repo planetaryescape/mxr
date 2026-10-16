@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Hourglass } from "lucide-react";
 
 import { fetchOwedReplies, OWED_PAGE_LIMIT, type OwedPeople, type OwedReplyRow } from "./api";
 import { waitingLine } from "./waitingLine";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { PageEmpty } from "@/components/PageParts";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -75,8 +74,8 @@ export function OwedRoute() {
       rowGists
       status={owed}
       empty={
-        <Centered
-          icon={<Hourglass className="size-6" />}
+        <PageEmpty
+          framed
           title="You don't owe anyone you write with a reply"
           body={
             owed.data?.people?.others

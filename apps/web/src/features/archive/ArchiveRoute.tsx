@@ -1,5 +1,5 @@
 import { useParams, useSearch } from "@tanstack/react-router";
-import { ArrowLeft, FolderArchive, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { ArrowLeft, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -168,17 +168,13 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
     <>
       <ArchiveHeader ledger={ledger.data} guide={guide.data} />
       {phase !== "ready" ? (
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed shown={phase === "skeleton"} />
       ) : ledger.isError ? (
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load Archive"
-          body={ledger.error.message}
-          action={
-            <Button size="sm" onClick={() => void ledger.refetch()}>
-              Try again
-            </Button>
-          }
+          error={ledger.error}
+          onRetry={() => void ledger.refetch()}
         />
       ) : ledger.data ? (
         <Ledger
@@ -547,8 +543,9 @@ function Ledger({
 
   if (ledger.total === 0) {
     return (
-      <Centered
-        icon={<FolderArchive className="size-6" />}
+      <PageEmpty
+        framed
+        glyph="archive"
         title="Nothing filed yet"
         body={
           [ledger.first_run?.line, ledger.empty_state ?? guide?.never_had_any]

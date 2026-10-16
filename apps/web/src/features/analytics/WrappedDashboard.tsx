@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Clipboard, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clipboard } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -41,11 +41,7 @@ export function WrappedDashboard({ range }: { range: AnalyticsRange }) {
   const total = summary.volume.inbound_count + summary.volume.outbound_count;
   if (total === 0)
     return (
-      <PageEmpty
-        icon={<Sparkles className="size-5" />}
-        title="No mail in this window"
-        body="Pick a longer range to build a Wrapped."
-      />
+      <PageEmpty title="No mail in this window" body="Pick a longer range to build a Wrapped." />
     );
 
   return (

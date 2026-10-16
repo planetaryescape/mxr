@@ -69,10 +69,14 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   try {
     await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
     await expect(daemonBanner(page)).toContainText(
-      "Mail already loaded on this page may still be available",
+      /mxr isn't running\. Showing what was loaded at \d{1,2}:\d{2}/,
     );
-    await expect(daemonBanner(page)).toContainText("mxr restart");
-    await expect(daemonBanner(page).getByRole("button", { name: "Copy command" })).toBeVisible();
+    await expect(
+      daemonBanner(page).getByRole("button", { name: "Copy start command" }),
+    ).toBeVisible();
+    // One banner: the recovery card's "protocol upgrade" text is only for a mismatch.
+    await expect(page.locator("[data-offline-banner]")).toHaveCount(1);
+    await expect(page.getByText("Recovery status unavailable")).toHaveCount(0);
 
     // The inbox stays on screen and the cursor still moves.
     await expect(rowById(page, first!)).toBeVisible();
@@ -131,6 +135,46 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   await expect(rowById(page, first!)).toBeVisible();
 });
 
+test("with the daemon stopped, Now keeps its cached rows under one banner and the sidebar keeps every item", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await openApp(page, "/now");
+  await expect(page.getByTestId("now-row").first()).toBeVisible({ timeout: 60_000 });
+  const sidebar = page.getByRole("complementary", { name: "Mailboxes" });
+  const destinations = () =>
+    sidebar.getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")));
+  // The groups are folded until opened; open them so every item is on the page.
+  for (const group of ["Mail", "Views", "Tools", "Labels"]) {
+    const toggle = sidebar.getByRole("button", { name: group, exact: true });
+    if ((await toggle.count()) > 0 && (await toggle.getAttribute("aria-expanded")) === "false") {
+      await toggle.click();
+    }
+  }
+  const before = await destinations();
+  // Mail, Views and Tools are fixed data: they are there before the daemon stops.
+  expect(before).toEqual(expect.arrayContaining(["/m/starred", "/m/sent", "/m/trash"]));
+  const rows = await page.getByTestId("now-row").count();
+
+  await stopDaemon();
+  let restarted = false;
+  try {
+    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("[data-offline-banner]")).toHaveCount(1);
+    await expect(daemonBanner(page)).toContainText("Showing what was loaded at");
+    await expect(page.getByTestId("now-row")).toHaveCount(rows);
+    expect(await destinations()).toEqual(before);
+    // Nothing on this frame is an error page: the cached content is the page.
+    await expect(page.getByTestId("page-error")).toHaveCount(0);
+    await restartDaemon();
+    restarted = true;
+  } finally {
+    if (!restarted) await restartDaemon();
+  }
+  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
+  expect(await destinations()).toEqual(before);
+});
+
 test("a reply typed while the daemon is stopped keeps its text and saves once it is back", async ({
   page,
 }) => {
@@ -155,9 +199,7 @@ test("a reply typed while the daemon is stopped keeps its text and saves once it
     await page.keyboard.type(" Written while it was stopped.");
     // Past the autosave debounce: nothing could save, the text is all there.
     await page.waitForTimeout(4_000);
-    await expect(
-      inlineComposer(page).getByText(/Not saved: mxr is unavailable/),
-    ).toBeVisible();
+    await expect(inlineComposer(page).getByText(/Not saved: mxr is unavailable/)).toBeVisible();
     await expect(body).toContainText("Written before the stop. Written while it was stopped.");
 
     await restartDaemon();

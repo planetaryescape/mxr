@@ -47,8 +47,16 @@ export function useDaemonDown(): boolean {
   return useConnectionStore((state) => state.daemonDown);
 }
 
+// Kept out of the store: every answered request moves it, and only an outage
+// reads it.
+let lastAnsweredAt = Date.now();
+
 function setDown(daemonDown: boolean): void {
-  if (isDaemonDown() !== daemonDown) useConnectionStore.getState().setState({ daemonDown });
+  if (isDaemonDown() === daemonDown) return;
+  useConnectionStore.getState().setState({
+    daemonDown,
+    daemonLastAnsweredAt: daemonDown ? lastAnsweredAt : undefined,
+  });
 }
 
 /**
@@ -130,8 +138,10 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
   });
 
   const offReachability = onDaemonReachability((reachable) => {
-    if (reachable) markReachable();
-    else if (!isDaemonDown()) void probeDaemon();
+    if (reachable) {
+      lastAnsweredAt = Date.now();
+      markReachable();
+    } else if (!isDaemonDown()) void probeDaemon();
   });
 
   // A restored socket closes an event gap even when HTTP stayed healthy.

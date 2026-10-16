@@ -6,6 +6,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { FramePanesContext, PageFrame } from "./PageFrame";
 import { usePageTitleStore } from "@/state/pageTitleStore";
 
+const BESIDE_A_READER = { split: true, inset: 40 };
+
 afterEach(() => usePageTitleStore.setState({ title: null }));
 
 describe("PageFrame", () => {
@@ -106,7 +108,7 @@ describe("PageFrame", () => {
 
   test("beside a detail pane the list steps down to Title and reserves the detail's toolbar", () => {
     render(
-      <FramePanesContext.Provider value={{ split: true, inset: 40 }}>
+      <FramePanesContext.Provider value={BESIDE_A_READER}>
         <PageFrame title="Inbox" />
         <PageFrame title="Subject" detail wrapTitle />
       </FramePanesContext.Provider>,

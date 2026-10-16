@@ -54,6 +54,12 @@ const STEPS = 60;
  * 5,000 positions each frame, ran about 197k.
  */
 const BLOCKS_PER_STEP = 60_000;
+/**
+ * A lamp move on 5,000 people mounts a screenful of rows and re-renders two of
+ * them: about 2.6k blocks. Before the bands were windowed it was about 32k
+ * (every row rebuilt and the removal scan walking all of them).
+ */
+const LAMP_BLOCKS_PER_STEP = 8_000;
 
 /**
  * A model with a cached gist for every row, answered for the rows each
@@ -273,6 +279,6 @@ test(`${ROWS} people: each j moves the lamp inside the same code budget`, async 
     type: "perf",
     description: `lamp blocks/step ${Math.round(blocks / STEPS)} (Row ${Math.round(rowBlocks / STEPS)})`,
   });
-  expect(blocks / STEPS, "list code executed per lamp move").toBeLessThan(BLOCKS_PER_STEP);
+  expect(blocks / STEPS, "list code executed per lamp move").toBeLessThan(LAMP_BLOCKS_PER_STEP);
   await expect(page.locator("[data-lit='true']")).toHaveCount(1);
 });

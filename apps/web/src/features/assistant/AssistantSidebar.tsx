@@ -38,8 +38,6 @@ import {
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
 
-export { ASSISTANT_SHORTCUT };
-
 export function AssistantSidebar() {
   const conversationId = useAssistantUi((s) => s.conversationId);
   const showConversation = useAssistantUi((s) => s.showConversation);

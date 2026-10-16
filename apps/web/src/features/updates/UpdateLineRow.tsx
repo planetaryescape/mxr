@@ -158,7 +158,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           >
             {name}
             {host ? (
-              <span data-testid="update-host" className="type-meta ml-1 text-text-3">
+              <span data-testid="update-host" className="type-meta ml-1 text-text-3 max-sm:hidden">
                 {` (${host})`}
               </span>
             ) : null}

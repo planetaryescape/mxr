@@ -18,7 +18,9 @@ import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
+import { cn } from "@/lib/utils";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useScrollFade } from "@/hooks/useScrollFade";
 import { useReplaceSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
@@ -285,6 +287,7 @@ function Ledger({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
+  const kindStrip = useScrollFade<HTMLDivElement>();
   // A listed query's matches stand in for the ledger's rows.
   const list = answerList(answer);
   const records = list?.records ?? ledger.records;
@@ -725,21 +728,30 @@ function Ledger({
                 ) : null}
 
                 <div className="mx-5 mt-4 flex items-center gap-3">
-                  <Segmented
-                    label="Kind"
-                    className="min-w-0 max-w-full overflow-x-auto"
-                    value={showingSubscriptions ? SUBSCRIPTIONS_SEGMENT : (chip ?? "")}
-                    options={KIND_SEGMENTS}
-                    onChange={(id) => {
-                      if (id === SUBSCRIPTIONS_SEGMENT) {
-                        setSection("subscriptions");
-                        setCardOpen(false);
-                        return;
-                      }
-                      const kindChip = KIND_CHIPS.find((candidate) => candidate.id === id);
-                      if (kindChip) setFilter({ ...filter, kinds: kindChip.kinds });
-                    }}
-                  />
+                  <div
+                    ref={kindStrip.ref}
+                    className={cn(
+                      "min-w-0 max-w-full overflow-x-auto [scrollbar-width:none]",
+                      kindStrip.fade &&
+                        "[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]",
+                    )}
+                  >
+                    <Segmented
+                      label="Kind"
+                      className="w-max"
+                      value={showingSubscriptions ? SUBSCRIPTIONS_SEGMENT : (chip ?? "")}
+                      options={KIND_SEGMENTS}
+                      onChange={(id) => {
+                        if (id === SUBSCRIPTIONS_SEGMENT) {
+                          setSection("subscriptions");
+                          setCardOpen(false);
+                          return;
+                        }
+                        const kindChip = KIND_CHIPS.find((candidate) => candidate.id === id);
+                        if (kindChip) setFilter({ ...filter, kinds: kindChip.kinds });
+                      }}
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"

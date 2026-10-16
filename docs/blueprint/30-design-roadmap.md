@@ -172,7 +172,7 @@ Details are in [31](31-design-open-questions.md).
 
 **Demo:** clear Messages, then To do, then Updates in one sitting; see each finishing moment once; switch themes and repeat one journey in each.
 
-**Done when:** reduced motion keeps fades only (an e2e with `prefers-reduced-motion`); the generator's Midnight is within ΔE 2 of today's; the full design gate passes and its grade is recorded in `docs/web-app-experience-rubric.md` with screenshots.
+**Done when:** reduced motion keeps fades and the finishing scene's still frame, with nothing animating (an e2e with `prefers-reduced-motion`; D134); the generator's Midnight is within ΔE 2 of today's; the full design gate passes and its grade is recorded in `docs/web-app-experience-rubric.md` with screenshots.
 
 **Left out:** editor themes (Q4).
 

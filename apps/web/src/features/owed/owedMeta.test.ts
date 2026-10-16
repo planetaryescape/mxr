@@ -8,6 +8,9 @@ describe("owedMeta", () => {
       "3 people (4 conversations), 3 others in Messages",
     );
     expect(owedMeta(1, { write_with: 1, others: 0 })).toBe("1 person");
+    expect(owedMeta(200, { write_with: 201, others: 0 })).toBe(
+      "201 people, the 200 most overdue conversations shown",
+    );
   });
 
   test("falls back to conversations from an older daemon", () => {

@@ -6138,7 +6138,9 @@ export interface components {
             reading: number;
             /**
              * Format: int32
-             * @description Senders with recent mail and no screener decision.
+             * @description Senders with recent mail and no screener decision. Across every
+             *     account it is the count of `screener_account` alone, the one queue
+             *     the Screener page opens, so the badge equals that page.
              */
             screener: number;
             screener_account?: components["schemas"]["AccountId"] | null;

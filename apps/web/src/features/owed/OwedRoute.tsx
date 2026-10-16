@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Hourglass } from "lucide-react";
 
-import { fetchOwedReplies, type OwedPeople, type OwedReplyRow } from "./api";
+import { fetchOwedReplies, OWED_PAGE_LIMIT, type OwedPeople, type OwedReplyRow } from "./api";
 import { waitingLine } from "./waitingLine";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
@@ -41,6 +41,11 @@ export function owedMeta(conversations: number, people?: OwedPeople | null): str
   if (!people) return plural(conversations, "conversation");
   const who = plural(people.write_with, "person", "people");
   const others = people.others > 0 ? `, ${plural(people.others, "other")} in Messages` : "";
+  // The people are the daemon's whole count; the rows are capped. Never put
+  // the two side by side as if they were one count.
+  if (conversations >= OWED_PAGE_LIMIT) {
+    return `${who}, the ${OWED_PAGE_LIMIT} most overdue conversations shown${others}`;
+  }
   return conversations === people.write_with
     ? `${who}${others}`
     : `${who} (${plural(conversations, "conversation")})${others}`;

@@ -684,3 +684,77 @@ async fn the_screener_page_counts_unknown_direction_mail_as_inbound_like_the_bad
     };
     assert_eq!(entries.len(), 1);
 }
+
+#[tokio::test]
+async fn the_all_accounts_screener_badge_counts_the_account_its_link_opens() {
+    let fx = Fixture::new().await;
+    wrote_to_you(&fx, "first@example.com", Duration::hours(2)).await;
+    // A second account with its own new sender.
+    let second = mxr_core::AccountId::new();
+    fx.state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(second.clone()))
+        .await
+        .unwrap();
+    let inbox = mxr_core::id::LabelId::from_scoped_provider_id(&second, "fake", "INBOX");
+    fx.state
+        .store
+        .upsert_label(&mxr_core::types::Label {
+            id: inbox.clone(),
+            account_id: second.clone(),
+            name: "Inbox".into(),
+            kind: mxr_core::types::LabelKind::System,
+            color: None,
+            provider_id: "INBOX".into(),
+            unread_count: 0,
+            total_count: 0,
+            role: None,
+        })
+        .await
+        .unwrap();
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(second.clone())
+        .thread_id(ThreadId::new())
+        .provider_id("second-new")
+        .sender_address("Newcomer", "second@example.com")
+        .date(Utc::now() - Duration::hours(2))
+        .build();
+    fx.state
+        .store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    fx.state
+        .store
+        .set_message_labels(
+            &envelope.id,
+            std::slice::from_ref(&inbox),
+            mxr_core::types::EventSource::User,
+        )
+        .await
+        .unwrap();
+    fx.state.store.refresh_contacts().await.unwrap();
+
+    let ResponseData::Desk { elsewhere, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    let opens = elsewhere.screener_account.expect("a queue to open");
+    let ResponseData::ScreenerQueue { entries } = request(
+        &fx,
+        Request::ListScreenerQueue {
+            account_id: opens,
+            limit: 100,
+            all_senders: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected the queue");
+    };
+    assert_eq!(entries.len(), 1, "one sender waits in each account");
+    assert_eq!(
+        elsewhere.screener as usize,
+        entries.len(),
+        "the badge is the page it opens, not the sum of both accounts"
+    );
+}

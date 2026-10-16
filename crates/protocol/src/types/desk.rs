@@ -125,7 +125,9 @@ pub struct DeskElsewhereData {
     pub deliveries: u32,
     /// Upcoming invites you have not answered.
     pub invites: u32,
-    /// Senders with recent mail and no screener decision.
+    /// Senders with recent mail and no screener decision. Across every
+    /// account it is the count of `screener_account` alone, the one queue
+    /// the Screener page opens, so the badge equals that page.
     pub screener: u32,
     /// The first account (in account order) with senders waiting on a
     /// screener decision, so a link from an all-accounts desk opens a queue

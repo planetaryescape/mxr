@@ -40,8 +40,8 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 /**
  * Screener, only while someone new waits for a decision. Same rule as the
- * desk's link: it opens the first account with senders waiting. Across
- * every account the count is a sum, so the entry says so.
+ * desk's link: it opens the first account with senders waiting, and the
+ * count is that account's, so the badge equals the page it opens.
  */
 export function screenerEntry(desk: Desk): NavEntry | null {
   const count = desk.elsewhere.screener;
@@ -55,7 +55,7 @@ export function screenerEntry(desk: Desk): NavEntry | null {
     count,
     hint: desk.account_id
       ? undefined
-      : `${plural(count, "new sender")} across your accounts; opens the first account with any`,
+      : `${plural(count, "new sender")} in the first account with any; pick an account to see its own`,
     shortcut: "g S",
   };
 }

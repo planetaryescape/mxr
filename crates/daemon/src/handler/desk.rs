@@ -119,8 +119,10 @@ pub(super) async fn compose_desk(
         );
         elsewhere.reading += desk.elsewhere.reading;
         elsewhere.paper_trail += desk.elsewhere.paper_trail;
-        elsewhere.screener += desk.elsewhere.screener;
+        // The Screener page composes one account, so the count is that
+        // account's: the first with anyone waiting, which the link opens.
         if desk.elsewhere.screener > 0 && elsewhere.screener_account.is_none() {
+            elsewhere.screener = desk.elsewhere.screener;
             elsewhere.screener_account = Some(account.clone());
         }
         elsewhere.invites += desk.elsewhere.invites;

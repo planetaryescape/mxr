@@ -13147,7 +13147,7 @@
           "screener": {
             "type": "integer",
             "format": "int32",
-            "description": "Senders with recent mail and no screener decision.",
+            "description": "Senders with recent mail and no screener decision. Across every\naccount it is the count of `screener_account` alone, the one queue\nthe Screener page opens, so the badge equals that page.",
             "minimum": 0
           },
           "screener_account": {

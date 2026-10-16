@@ -25,11 +25,11 @@ function desk(accountId: string | null, screener: number, screenerAccount?: stri
 }
 
 describe("sidebar Screener", () => {
-  test("opens the first account with senders, and says a summed count is a sum", () => {
+  test("opens the first account with senders, and says the count is that account's", () => {
     const entry = screenerEntry(desk(null, 5, "acct-2"));
     expect(entry).toMatchObject({ to: "/screener", count: 5, search: { account: "acct-2" } });
     expect(entry?.hint).toBe(
-      "5 new senders across your accounts; opens the first account with any",
+      "5 new senders in the first account with any; pick an account to see its own",
     );
   });
 

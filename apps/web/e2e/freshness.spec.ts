@@ -62,8 +62,8 @@ test.describe("desktop", () => {
   test("the status bar shows when the newest mail arrived, with the exact time on hover", async ({
     page,
   }) => {
-    // Not Now: a lit row there shortens this to "28m ago" beside its reason (see now.spec.ts).
-    await openApp(page, "/archive");
+    // Not a page with a lit row: a lit row shortens this to "28m ago" beside its reason (see now.spec.ts).
+    await openApp(page, "/rules");
     const reply = await bridge<FreshnessReply>(page, "/api/v1/mail/freshness");
     const newest = reply.freshness.newest_message_at;
     expect(newest).toBeTruthy();
@@ -113,7 +113,8 @@ test.describe("desktop", () => {
   });
 
   test("a new message updates the indicator and the popover live", async ({ page }) => {
-    await openApp(page, "/todo");
+    // A page with no lit row, so the status bar keeps its full freshness words.
+    await openApp(page, "/rules");
     await expect(trigger(page)).toBeVisible();
     await trigger(page).click();
     const subject = `Freshness check ${Date.now()}`;

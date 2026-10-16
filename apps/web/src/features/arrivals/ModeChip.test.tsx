@@ -10,7 +10,7 @@ vi.mock("@/api/client", () => ({ apiFetch: fetchMock }));
 beforeEach(() => fetchMock.mockReset());
 
 describe("Inbox's mode chip", () => {
-  test("names the mode quietly, with the reason on hover", async () => {
+  test("marks the mode with its glyph, with the reason on hover", async () => {
     fetchMock.mockResolvedValueOnce({
       kind: "ArrivalModes",
       items: [
@@ -38,7 +38,8 @@ describe("Inbox's mode chip", () => {
       </QueryClientProvider>,
     );
     const chip = await screen.findByTestId("mode-chip");
-    expect(chip).toHaveTextContent("Updates");
+    expect(chip).toHaveAttribute("data-bucket", "updates");
+    expect(chip).not.toHaveTextContent("Updates");
     expect(chip).toHaveAttribute("title", "→ Updates · automated sender");
     expect(screen.getAllByTestId("mode-chip")).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/arrivals/modes", {

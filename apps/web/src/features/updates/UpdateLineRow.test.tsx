@@ -42,7 +42,8 @@ function renderLine(line: UpdateLine, options: { focused?: boolean; peeked?: boo
         <UpdateLineRow
           line={line}
           index={0}
-          focused={options.focused ?? true}
+          lit={options.focused ?? true}
+          via="key"
           peeked={options.peeked ?? false}
           {...h}
         />
@@ -69,25 +70,22 @@ describe("UpdateLineRow at rest", () => {
       "title",
       "Computed from 21.3 km and 19.0 km",
     );
-    // The only control a resting row shows is its more menu.
-    expect(view.getAllByRole("button")).toHaveLength(1);
+    // A resting row's verbs wait for the lamp or a hover (Row hides them in CSS); the menu is among them.
+    expect(row).not.toHaveAttribute("data-lit");
     expect(view.getByRole("button", { name: "More actions for Strava" })).toBeInTheDocument();
     expect(view.queryByText("Why this update?")).toBeNull();
     expect(view.queryByRole("link")).toBeNull();
     expect(view.queryByTestId("update-peek")).toBeNull();
   });
 
-  test("the fact truncates at rest and wraps when the row is focused", () => {
+  test("the fact keeps the full subject for a hover, since the row is one line", () => {
     const { row } = renderLine(lineFixture(), { focused: false });
-    expect(within(row).getByTestId("update-fact")).toHaveClass("truncate");
-    expect(within(row).getByTestId("update-fact")).not.toHaveClass("break-words");
     expect(within(row).getByTestId("update-fact")).toHaveAttribute("title", lineFixture().fact);
   });
 
   test("the delta is neutral, not cyan", () => {
     const { row } = renderLine(lineFixture());
-    expect(within(row).getByTestId("update-delta")).toHaveClass("text-muted-foreground");
-    expect(within(row).getByTestId("update-delta")).not.toHaveClass("text-primary");
+    expect(within(row).getByTestId("update-delta")).not.toHaveClass("text-primary", "text-signal");
   });
 
   test("a clock time is not shown at rest", () => {
@@ -219,15 +217,13 @@ describe("UpdateLineRow's source", () => {
     );
     const source = within(row).getByTestId("update-source");
     expect(source).toHaveTextContent("Google (accounts.google.com)");
-    expect(within(row).getByTestId("update-host")).toHaveClass("text-2xs", "text-muted-foreground");
-    expect(source.firstElementChild).toHaveTextContent("Google");
-    expect(source.firstElementChild).toHaveClass("shrink-0");
-    expect(source).toHaveClass("text-foreground", "font-normal");
+    expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
+    expect(source).toHaveClass("font-medium");
   });
 
   test("a changed source is regular weight and carries no host", () => {
     const { row } = renderLine(lineFixture({ source_name: "Strava" }));
-    expect(within(row).getByTestId("update-source")).toHaveClass("text-fg-2", "font-normal");
+    expect(within(row).getByTestId("update-source")).toHaveClass("font-normal");
     expect(within(row).queryByTestId("update-host")).toBeNull();
   });
 });
@@ -280,9 +276,7 @@ describe("UpdateLineRow's track", () => {
     const fact = within(row).getByTestId("update-fact");
     expect(fact).toHaveTextContent("Delayed to Fri 17 Oct");
     expect(fact).toHaveTextContent("Shipped · next: out for delivery");
-    expect(within(fact).getByText("Shipped · next: out for delivery")).toHaveClass(
-      "text-muted-foreground",
-    );
+    expect(within(fact).getByText("Shipped · next: out for delivery")).toHaveClass("text-text-3");
     expect(within(row).queryByTestId("update-fact-full")).toBeNull();
   });
 
@@ -351,21 +345,14 @@ describe("UpdateLineRow's track", () => {
 });
 
 describe("UpdateLineRow's keys and focus", () => {
-  test("a focused row names its two most useful keys and Space", () => {
-    const { row } = renderLine(lineFixture());
-    const keys = within(row).getByTestId("update-keys");
-    expect(keys).toHaveTextContent("e");
-    expect(keys).toHaveTextContent("Let go");
-    expect(keys).toHaveTextContent("o");
-    expect(keys).toHaveTextContent("Space");
-    expect(keys).toHaveTextContent("Details");
-    expect(keys).toHaveAttribute("aria-hidden", "true");
-  });
-
-  test("a focused row shows the fact in full", () => {
+  test("the lit row names its verbs with their keys; the unlit row shows none by itself", () => {
     const { row } = renderLine(lineFixture(), { focused: true });
-    expect(within(row).getByTestId("update-fact")).toHaveClass("break-words");
-    expect(within(row).getByTestId("update-fact")).not.toHaveClass("truncate");
+    expect(row).toHaveAttribute("data-lit", "true");
+    const view = within(row);
+    expect(view.getByRole("button", { name: "peek" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "let go" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "email" })).toBeInTheDocument();
+    expect(view.queryByTestId("update-keys")).toBeNull();
   });
 });
 
@@ -445,7 +432,8 @@ describe("UpdateLineRow's more menu", () => {
             key={line.id}
             line={line}
             index={index}
-            focused={false}
+            lit={false}
+            via="key"
             peeked={false}
             {...h}
           />
@@ -529,9 +517,14 @@ describe("UpdateLineRow's peek", () => {
     expect(h.onTogglePeek).toHaveBeenCalledTimes(1);
   });
 
-  test("a peeked row's fact wraps", () => {
-    const { row } = renderLine(lineFixture(), { focused: false, peeked: true });
-    expect(within(row).getByTestId("update-fact")).toHaveClass("break-words");
+  test("a long fact is whole in the peek, since the row truncates it; a short one is not repeated", () => {
+    const long =
+      "Your week in running: 21.3 km over 3 runs, your longest this month, and a new best";
+    const { row } = renderLine(lineFixture({ fact: long }), { focused: false, peeked: true });
+    expect(within(row).getByTestId("update-fact-full")).toHaveTextContent(long);
+    cleanup();
+    const short = renderLine(lineFixture(), { focused: false, peeked: true });
+    expect(within(short.row).queryByTestId("update-fact-full")).toBeNull();
   });
 });
 
@@ -569,9 +562,8 @@ describe("UpdateLineRow's gist", () => {
     expect(fact).toHaveAttribute("data-gist", "true");
     // The subject is still one hover away.
     expect(fact).toHaveAttribute("title", "Your receipt from Perplexity");
-    // No spinner and no extra control.
+    // No spinner.
     expect(within(row).queryByRole("progressbar")).toBeNull();
-    expect(within(row).getAllByRole("button")).toHaveLength(1);
   });
 
   test("an amount the gist already says is not repeated in the trailing slot", () => {

@@ -353,7 +353,9 @@ the ledger, and `/` focuses the box. The other keys are the same in both:
 | `u` | Undo |
 | `?` | What Archive is, then every key |
 
-The Subscriptions chip beside the kinds lists the subscriptions. There,
+In the web app the kinds are one segmented control, and the lit row shows
+`o` email and `Enter` document; a field mxr isn't sure of reads "unchecked"
+in the card. The Subscriptions segment beside the kinds lists the subscriptions. There,
 `Enter` opens a subscription's card with every charge and price change, `o`
 opens the newest charge's email, `p` the issuer's records, `Y` copies the
 amount and `Esc` goes back to the ledger.

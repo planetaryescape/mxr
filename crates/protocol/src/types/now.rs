@@ -28,7 +28,7 @@ pub mod now_copy {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NowPersonData {
     pub row: DeskRowData,
-    /// "From Messages: Maya wrote to you 22h ago."
+    /// "your turn since Wednesday"
     pub why: String,
     /// A first-time sender: the one question, on the row (D117).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,7 +58,7 @@ pub struct NowPeopleData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NowTodoData {
     pub todo: TodoData,
-    /// "From To do: act by Wed 7 Oct · due Fri 9 Oct."
+    /// "act by Wed 7 Oct · due Fri 9 Oct"
     pub why: String,
 }
 
@@ -135,7 +135,7 @@ pub struct NowReadingPickData {
     pub sender_name: Option<String>,
     pub subject: String,
     pub date: chrono::DateTime<chrono::Utc>,
-    /// "From Reading: you've opened 9 of the last 10 from Long Reads."
+    /// "you've read 9 of the 10 from Long Reads in your inbox"
     pub why: String,
 }
 

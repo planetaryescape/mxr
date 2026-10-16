@@ -105,15 +105,17 @@ describe("Archive's cards and rows", () => {
     expect(screen.queryByTestId("answer-card")).toBeNull();
   });
 
-  test("a ledger row shows the fields you came for and marks an unchecked amount", () => {
+  test("a ledger row leads with the amount and says nothing about checking: the card does, per field", () => {
     render(
       <ul>
         <LedgerRow
           record={recordFixture({ unchecked_fields: ["amount"], stage_line: "ordered · shipped" })}
           index={0}
-          focused
+          lit
+          via="key"
           onSelect={vi.fn<(record: RecordData) => void>()}
           onOpen={vi.fn<(record: RecordData) => void>()}
+          onDocument={vi.fn<(record: RecordData) => void>()}
         />
       </ul>,
     );
@@ -122,8 +124,10 @@ describe("Archive's cards and rows", () => {
     expect(row).toHaveTextContent("£212.40");
     expect(row).toHaveTextContent("K7QX2M");
     expect(row).toHaveTextContent("ordered · shipped");
-    expect(within(row).getByRole("img", { name: "amount unchecked" })).toBeInTheDocument();
-    expect(row).toHaveAttribute("aria-current", "true");
+    expect(within(row).queryByRole("img", { name: "amount unchecked" })).toBeNull();
+    expect(row).toHaveAttribute("data-lit", "true");
+    // The lit row's verbs: o email.
+    expect(within(row).getByTestId("record-open-email")).toHaveAccessibleName("email");
     expect(row).not.toHaveAttribute("data-best");
   });
 
@@ -133,10 +137,12 @@ describe("Archive's cards and rows", () => {
         <LedgerRow
           record={recordFixture()}
           index={0}
-          focused={false}
+          lit={false}
+          via="key"
           best
           onSelect={vi.fn<(record: RecordData) => void>()}
           onOpen={vi.fn<(record: RecordData) => void>()}
+          onDocument={vi.fn<(record: RecordData) => void>()}
         />
       </ul>,
     );
@@ -164,7 +170,7 @@ describe("Archive's cards and rows", () => {
     );
     const card = screen.getByTestId("record-card");
     expect(card).toHaveTextContent("from a pattern in the email · unchecked");
-    expect(within(card).getAllByTestId("unchecked-dot")).toHaveLength(1);
+    expect(within(card).queryByTestId("unchecked-dot")).toBeNull();
     fireEvent.click(within(card).getByRole("button", { name: "Copy booking ref (y)" }));
     expect(onCopy).toHaveBeenCalledWith(expect.objectContaining({ field: "reference" }));
     expect(card).toHaveTextContent(record.why);

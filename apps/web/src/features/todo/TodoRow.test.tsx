@@ -17,14 +17,14 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
     todo,
     band,
     index: 0,
-    focused: true,
-    expanded: false,
+    lit: true,
+    via: "key",
+    details: false,
     onSelect: vi.fn<(todo: Todo) => void>(),
-    onPrimary: vi.fn<(todo: Todo) => void>(),
-    onDone: vi.fn<(todo: Todo) => void>(),
+    onDone: vi.fn<(todo: Todo, via: "key" | "pointer") => void>(),
     onRestore: vi.fn<(todo: Todo) => void>(),
-    onToggleSource: vi.fn<(todo: Todo) => void>(),
     onOpenEmail: vi.fn<(todo: Todo) => void>(),
+    onToggleDetails: vi.fn<(todo: Todo) => void>(),
     onOpenResolution: vi.fn<(todo: Todo, threadId: string, messageId: string) => void>(),
     ...overrides,
   };
@@ -51,32 +51,61 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
-  test("prioritizes the action and key facts before the explanation", () => {
-    const { row, props } = renderRow(todoFixture());
+  test("shows the task, who it is from and the window in words, with no bar or icon", () => {
+    const { row } = renderRow(todoFixture(), "now", { lit: false });
     const view = within(row);
     expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
     expect(row).toHaveTextContent("Camden Council");
+    expect(row).toHaveTextContent(/from \w+|from today|from yesterday/);
     expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
     expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
-    expect(view.queryByTestId("todo-arrived")).toBeNull();
-    expect(view.queryByTestId("todo-why")).toBeNull();
-    expect(view.getByTestId("todo-provenance")).toHaveTextContent("1 to check");
-    expect(view.getByTestId("runway-bar")).toHaveAttribute("data-fill", "0.60");
-    const button = view.getByTestId("todo-action");
-    expect(button).toHaveTextContent("Open email to pay");
-    expect(view.getByTestId("todo-action-domain")).toHaveTextContent("camden.gov.uk");
-    expect(
-      view.getAllByRole("button").filter((b) => b.dataset.testid === "todo-action"),
-    ).toHaveLength(1);
-    fireEvent.click(button);
-    expect(props.onPrimary).toHaveBeenCalledWith(props.todo);
+    expect(view.queryByTestId("runway-bar")).toBeNull();
+    expect(view.queryByTestId("todo-action")).toBeNull();
+    expect(view.queryByTestId("todo-provenance")).toBeNull();
+    expect(row.querySelector("svg")).toBeNull();
   });
 
-  test("a manually added row with no source email shows no arrived date", () => {
-    const { row } = renderRow(todoFixture({ source_date: null, thread_id: null }), "now", {
-      expanded: true,
-    });
-    expect(within(row).queryByTestId("todo-arrived")).toBeNull();
+  test("a field to check shows as one word in the trail, not a chip", () => {
+    const { row } = renderRow(todoFixture(), "now", { lit: false });
+    expect(within(row).getByTestId("todo-unchecked")).toHaveTextContent("unchecked");
+    expect(within(row).getByTestId("todo-unchecked").getAttribute("title")).toContain(
+      "Due: a pattern in the email",
+    );
+  });
+
+  test("the lit row offers Space done and o email; the unlit row's verbs wait for hover", () => {
+    const lit = renderRow(todoFixture(), "now", { lit: true });
+    expect(lit.row).toHaveAttribute("data-lit", "true");
+    expect(within(lit.row).getByTestId("todo-tick")).toBeVisible();
+    expect(within(lit.row).getByRole("button", { name: "email" })).toBeVisible();
+  });
+
+  test("Space done and o email call their handlers", () => {
+    const { row, props } = renderRow(todoFixture());
+    fireEvent.click(within(row).getByTestId("todo-tick"));
+    expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
+    fireEvent.click(within(row).getByRole("button", { name: "email" }));
+    expect(props.onOpenEmail).toHaveBeenCalledWith(props.todo);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("a row with no email offers no o email", () => {
+    const { row } = renderRow(todoFixture({ thread_id: null }));
+    expect(within(row).queryByRole("button", { name: "email" })).toBeNull();
+  });
+
+  test("a row's date takes the cue colour only when it is due today or past", () => {
+    const past = renderRow(todoFixture({ overdue: true, when_label: "was due Fri 2 Oct" }));
+    expect(within(past.row).getByTestId("todo-when").className).toContain("text-cue");
+    past.row.remove();
+    const later = renderRow(
+      todoFixture({
+        overdue: false,
+        due_at: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+        act_by_at: null,
+      }),
+    );
+    expect(within(later.row).getByTestId("todo-when").className).not.toContain("text-cue");
   });
 
   test("a later-mail resolution shows its evidence and opens that exact source", () => {
@@ -96,7 +125,7 @@ describe("TodoRow", () => {
         status: "pending",
       },
     });
-    const { row } = renderRow(todo, "now", { onOpenResolution });
+    const { row } = renderRow(todo, "now", { onOpenResolution, details: true });
     const card = within(row).getByTestId("todo-resolution");
     expect(card).toHaveTextContent("Your council tax payment has been received.");
     expect(card.querySelector("p")).toHaveClass("line-clamp-2");
@@ -117,6 +146,8 @@ describe("TodoRow", () => {
     const makeTodo = (id: string, resolutionId: string): Todo =>
       todoFixture({
         id,
+        // No source email: the one stubbed fetch is the preview's.
+        thread_id: null,
         resolution: {
           id: resolutionId,
           message_id: `message-${id}`,
@@ -131,7 +162,7 @@ describe("TodoRow", () => {
           status: "pending",
         },
       });
-    const { rerender } = renderRow(makeTodo("todo-a", "offer-a"));
+    const { rerender } = renderRow(makeTodo("todo-a", "offer-a"), "now", { details: true });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     rerender(makeTodo("todo-b", "offer-b"));
 
@@ -157,11 +188,11 @@ describe("TodoRow", () => {
     expect(screen.queryByRole("button", { name: "Accept and complete" })).toBeNull();
   });
 
-  test("expanded details preserve arrival, why, next and source evidence", () => {
+  test("expanded details preserve arrival, why, next and per-field unchecked words", () => {
     const { row } = renderRow(
       todoFixture({ next: "Check the council tax account", thread_id: null }),
       "now",
-      { expanded: true },
+      { details: true },
     );
     const details = within(row).getByTestId("todo-source");
 
@@ -172,7 +203,7 @@ describe("TodoRow", () => {
     expect(within(details).getByTestId("todo-why")).toHaveTextContent('"payment due 9 October"');
     expect(details).toHaveTextContent("Check the council tax account");
     expect(details).toHaveTextContent("09/10/2026");
-    expect(details).toHaveTextContent("(check this)");
+    expect(within(details).getAllByTestId("todo-field-unchecked")).toHaveLength(1);
   });
 
   test("a row about a link renders no outside link to click", () => {
@@ -187,50 +218,24 @@ describe("TodoRow", () => {
       }),
     );
     expect(row.querySelector("a[href]")).toBeNull();
-    expect(within(row).getByTestId("todo-action")).toHaveAttribute("data-kind", "email");
   });
 
-  test("a resting wide row hides the provenance chip until focus, hover or the detail", () => {
-    const { row } = renderRow(todoFixture(), "now", { focused: false });
-    expect(within(row).getByTestId("todo-provenance").className).toContain("@2xl:hidden");
-  });
-
-  test("a focused row shows the provenance chip", () => {
-    const { row } = renderRow(todoFixture(), "now", { focused: true });
-    expect(within(row).getByTestId("todo-provenance").className).not.toContain("@2xl:hidden");
-  });
-
-  test("overdue reads 'was due' with no bar and nothing in red", () => {
+  test("overdue reads 'was due' and nothing is red", () => {
     const { row } = renderRow(
       todoFixture({ overdue: true, when_label: "was due Fri 2 Oct", runway: 1 }),
     );
     expect(within(row).getByTestId("todo-when")).toHaveTextContent("was due Fri 2 Oct");
-    expect(within(row).queryByTestId("runway-bar")).toBeNull();
-    // Button's variants carry inert `aria-invalid:` and `dark:aria-invalid:` classes;
-    // only a colour class applied to the row itself counts as red.
     expect(row.innerHTML).not.toMatch(
       /(?<![\w-])(?<!aria-invalid:)(text|bg|border)-(destructive|red|warning)/,
     );
   });
 
-  test("Coming up rows say when they show up, without a primary action", () => {
+  test("Coming up rows say when they show up", () => {
     const { row } = renderRow(
       todoFixture({ when_label: "shows up Mon 12 Oct · act by Thu 15 Oct", runway: 0 }),
       "coming",
     );
     expect(row).toHaveTextContent("shows up Mon 12 Oct · act by Thu 15 Oct");
-    expect(within(row).getByTestId("todo-provenance")).toHaveTextContent("1 to check");
-    expect(within(row).queryByTestId("todo-action")).toBeNull();
-  });
-
-  test("the provenance chip shows each field's source and what to check", () => {
-    const onToggleSource = vi.fn<(todo: Todo) => void>();
-    const { row } = renderRow(todoFixture(), "now", { onToggleSource });
-    const chip = within(row).getByTestId("todo-provenance");
-    expect(chip).toHaveTextContent("from schema.org, 1 to check");
-    expect(chip.getAttribute("title")).toContain("Due: a pattern in the email (check this)");
-    fireEvent.click(chip);
-    expect(onToggleSource).toHaveBeenCalled();
   });
 
   test("keeps a visible checkbox before the title and does not select the row", () => {
@@ -243,7 +248,7 @@ describe("TodoRow", () => {
     );
 
     fireEvent.click(checkbox);
-    expect(props.onDone).toHaveBeenCalledWith(props.todo);
+    expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
@@ -252,7 +257,6 @@ describe("TodoRow", () => {
     const checkbox = within(row).getByRole("checkbox", { name: "Reopen Pay council tax" });
 
     expect(checkbox).toHaveAttribute("aria-checked", "true");
-    expect(within(row).queryByText("Reopen")).toBeNull();
     fireEvent.click(checkbox);
 
     expect(props.onRestore).toHaveBeenCalledWith(props.todo);
@@ -266,6 +270,6 @@ describe("TodoRow", () => {
 
     expect(checkbox).toHaveAttribute("aria-checked", "false");
     fireEvent.click(checkbox);
-    expect(props.onDone).toHaveBeenCalledWith(props.todo);
+    expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
   });
 });

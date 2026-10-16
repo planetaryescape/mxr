@@ -189,7 +189,9 @@ test("a Now row opens from the keyboard: Tab reaches its link, Enter follows it"
   await openApp(page, "/now");
   const open = page.getByTestId("now-section-people").getByTestId("now-open").first();
   await expect(open).toBeVisible();
-  await expect(open).toHaveAccessibleName(/^Open in Messages: .*From Messages:/);
+  await expect(open).toHaveAccessibleName(
+    /^Open in Messages: .+\. (your turn|waiting on|new from|a new sender)/,
+  );
   await open.focus();
   await expect(open).toBeFocused();
   await page.keyboard.press("Enter");

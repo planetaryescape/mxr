@@ -1,5 +1,6 @@
 import { MoreHorizontal, type LucideIcon } from "lucide-react";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, type ReactNode } from "react";
+import { create } from "zustand";
 
 import { ModeFrame, type FrameWidth } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,13 @@ export interface FramePanes {
   split: boolean;
   inset: number;
 }
+
+/**
+ * Whether the list frame beside a detail has tabs. Its header is then 32px
+ * taller than a tab-less one, so the detail's frame grows to match and the two
+ * rules stay on one line. A list registers while it is mounted beside a detail.
+ */
+const useListTabs = create<{ tabs: boolean }>(() => ({ tabs: false }));
 
 export const FramePanesContext = createContext<FramePanes>({ split: false, inset: 0 });
 
@@ -108,6 +116,15 @@ export function PageFrame({
   // Beside a list, a wrapping title would push its rule off the list's.
   const wrapTitle = wrapWanted && !(panes.split && detail);
   const inset = listBesideDetail ? panes.inset : 0;
+  const listHasTabs = useListTabs((s) => s.tabs);
+  const registersTabs = listBesideDetail && Boolean(tabs);
+  useLayoutEffect(() => {
+    if (!registersTabs) return;
+    useListTabs.setState({ tabs: true });
+    return () => useListTabs.setState({ tabs: false });
+  }, [registersTabs]);
+  // The detail's frame stands as tall as a tabbed list's (120px) beside one.
+  const matchTabbedList = panes.split && detail && listHasTabs && !tabs;
   const baseHeight = tabs ? 120 : 88;
   const hasActions = Boolean(primary) || (overflow?.length ?? 0) > 0;
   return (
@@ -125,7 +142,9 @@ export function PageFrame({
             ? "min-h-16 pb-2.5 sm:min-h-[88px]"
             : tabs
               ? "h-24 sm:h-[120px]"
-              : "h-16 sm:h-[88px]",
+              : matchTabbedList
+                ? "h-16 sm:h-[120px]"
+                : "h-16 sm:h-[88px]",
           className,
         )}
       >

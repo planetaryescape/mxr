@@ -168,7 +168,8 @@ export const SAME_ACTION: Record<string, string[]> = {
   "todo.schedule": ["TodoSchedule"],
   "todo.edit": ["TodoEdit"],
   "todo.dismiss": ["TodoDismiss"],
-  "todo.source": ["TodoOpenEmail"],
+  "todo.open-email": ["TodoOpenEmail"],
+  "todo.details": ["TodoReviewResolution"],
   "todo.expired": ["TodoOpenExpired"],
   "todo.catchup": ["TodoOpenCatchup"],
   "now.down": ["MoveDown"],
@@ -454,12 +455,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["Escape"],
     bound: "web",
     why: "Both close the To do card with Esc; the TUI's keymap probe can't see a key that needs the card on screen",
-  },
-  {
-    context: "todo",
-    keys: ["v"],
-    bound: "tui",
-    why: "The TUI reviews a suggested resolution with v; the web uses the Review button",
   },
   {
     context: "todo",

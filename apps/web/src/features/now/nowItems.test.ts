@@ -7,7 +7,7 @@ import { itemTarget, litIndex, nowItems } from "./nowItems";
 
 function person(thread: string, name: string) {
   return {
-    why: `From Messages: your turn with ${name}, 3h.`,
+    why: "your turn since Wednesday",
     row: {
       lane: "owed",
       account_id: "acct",
@@ -29,7 +29,7 @@ function person(thread: string, name: string) {
 
 function todo(id: string, thread: string | null) {
   return {
-    why: "From To do: act by Wed 7 Oct · due Fri 9 Oct.",
+    why: "act by Wed 7 Oct · due Fri 9 Oct",
     todo: { id, thread_id: thread, title: `Pay ${id}`, when_label: "act by Wed 7" },
   } as unknown as Now["due_soon"]["todos"][number];
 }
@@ -60,7 +60,7 @@ const now = {
     sender_email: "digest@longreads.example",
     subject: "The quiet death of the three-pane layout",
     date: "2026-10-02T08:00:00Z",
-    why: "From Reading: the newest from Long Reads.",
+    why: "the newest from Long Reads",
   },
   item_count: 6,
   first_run: { complete: true, scanned: 100 },

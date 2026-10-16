@@ -119,6 +119,8 @@ test("waking a snoozed conversation wakes all of its messages", async ({ page })
   // Other tests may leave their own snoozes; this conversation is one row.
   const chips = mailList(page).locator(`[title*="${subject} now (w)"]`);
   await expect(chips).toHaveCount(1);
+  // The verbs show on hover or on the lit row.
+  await chips.hover();
   await chips.click();
   await expect(page.getByText("Back in your inbox")).toBeVisible();
   await expect(chips).toHaveCount(0);

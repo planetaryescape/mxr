@@ -75,21 +75,28 @@ test("the edition shows bands with headlines, minutes and reasons, and no unread
   const essay = items(page).filter({ hasText: "The quiet death of the three-pane layout" });
   await expect(essay).toBeVisible();
   await expect(essay.getByTestId("reading-meta")).toContainText(/Long Reads Weekly · \d+ min/);
-  await expect(essay.getByTestId("why-here").first()).toHaveText(/^Here because: .+/);
-  // A digest is its links, each with its site.
+  // The reason is in the status bar, for the lit row only; the row has no third line.
+  await expect(essay.getByTestId("why-here")).toHaveCount(0);
+  await essay.click({ position: { x: 5, y: 5 } });
+  await expect(page.getByTestId("status-reason")).toHaveText(/^Here because: .+/);
+  // A digest is its links, each with its site, as rows after the issue.
   const digest = items(page).filter({ hasText: "six things worth your time" }).first();
-  await expect(digest.getByTestId("reading-link")).toHaveCount(4);
-  await expect(digest).toContainText("+ 2 more");
-  await expect(digest.getByTestId("reading-link").first()).toContainText("links.demo.mxr.local");
+  await expect(digest).toBeVisible();
+  const digestLinks = page.locator(
+    `[data-testid="reading-link"][data-key^="${(await digest.getAttribute("data-key"))!.split(":")[0]}:"]`,
+  );
+  await expect(digestLinks).toHaveCount(4);
+  await expect(page.getByText("+ 2 more").first()).toBeVisible();
+  await expect(digestLinks.first()).toContainText("links.demo.mxr.local");
   // Nothing here is owed: no unread words, and Later is the only count.
   await expect(page.getByRole("main")).not.toContainText(/unread/i);
   await expect(page.getByTestId("later-count")).toContainText(/Later \d+/);
   // The rail shows Reading built, with no count and no early note.
   await expect(page.getByTestId("early-version")).toHaveCount(0);
   // j moves item to item, then into a digest's links.
-  await expect(items(page).first()).toHaveAttribute("aria-current", "true");
+  await expect(essay).toHaveAttribute("data-lit", "true");
   await page.keyboard.press("j");
-  await expect(page.locator("[aria-current='true']")).toHaveCount(1);
+  await expect(page.locator("#main [data-lit='true']")).toHaveCount(1);
 });
 
 test("Enter reads an item in a 66-character column with time left and a progress line", async ({
@@ -139,8 +146,7 @@ test("b on a digest link puts it on Later and names the site it saves the articl
 }) => {
   const before = (await waitForEdition(page)).later_count;
   await openApp(page, "/reading");
-  const digest = items(page).filter({ hasText: "six things worth your time" }).first();
-  const link = digest.getByTestId("reading-link").filter({ hasText: "WAL checkpoints" });
+  const link = page.getByTestId("reading-link").filter({ hasText: "WAL checkpoints" }).first();
   await link.click({ position: { x: 2, y: 2 } });
   await expect(link).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("b");
@@ -376,7 +382,10 @@ test.describe("on a phone", () => {
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
     expect(await overflow()).toBeLessThanOrEqual(0);
-    await items(page).first().locator("h3 a").click();
+    await items(page)
+      .first()
+      .click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("Enter");
     await expect(page.getByTestId("reading-reader")).toBeVisible();
     expect(await overflow()).toBeLessThanOrEqual(0);
   });

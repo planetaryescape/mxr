@@ -127,7 +127,7 @@ test("a broad issuer query lists every match in place of the ledger, and Clear b
   for (const row of await rows.all()) await expect(row).toContainText("Octopus Energy");
   await expect(page.locator('[data-testid="record-row"][data-best="true"]')).toHaveCount(1);
   // The ledger's own chips don't narrow a list.
-  await expect(page.getByRole("group", { name: "Kind" })).toHaveCount(0);
+  await expect(page.getByRole("radiogroup", { name: "Kind" })).toHaveCount(0);
   await matches.getByRole("button", { name: "Clear search" }).click();
   await expect(matches).toHaveCount(0);
   await expect(ask(page)).toHaveValue("");
@@ -270,7 +270,12 @@ test.describe("on a phone", () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await page.getByTestId("record-row").filter({ hasText: "XPS 14 laptop" }).click();
+    // The lit row's verbs sit on its right; tap the words.
+    await page
+      .getByTestId("record-row")
+      .filter({ hasText: "XPS 14 laptop" })
+      .getByText("XPS 14 laptop")
+      .click();
     const screen = page.getByTestId("record-card-screen");
     await expect(screen.getByTestId("record-card")).toContainText("Dell");
     await expect(screen.getByTestId("record-pdf")).toContainText("Invoice-402118.pdf");

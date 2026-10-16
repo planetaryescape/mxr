@@ -7908,7 +7908,7 @@ export interface components {
         NowPersonData: {
             new_sender?: components["schemas"]["ScreenerQuestionData"] | null;
             row: components["schemas"]["DeskRowData"];
-            /** @description "From Messages: Maya wrote to you 22h ago." */
+            /** @description "your turn since Wednesday" */
             why: string;
         };
         /** @description The evening's one thing to read. */
@@ -7921,13 +7921,13 @@ export interface components {
             sender_name?: string | null;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
-            /** @description "From Reading: you've opened 9 of the last 10 from Long Reads." */
+            /** @description "you've read 9 of the 10 from Long Reads in your inbox" */
             why: string;
         };
         /** @description A to-do on Now. */
         NowTodoData: {
             todo: components["schemas"]["TodoData"];
-            /** @description "From To do: act by Wed 7 Oct · due Fri 9 Oct." */
+            /** @description "act by Wed 7 Oct · due Fri 9 Oct" */
             why: string;
         };
         /** @description One source on the Updates card. */

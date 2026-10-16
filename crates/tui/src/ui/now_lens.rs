@@ -11,7 +11,7 @@ use mxr_protocol::{ArrivalsData, NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::app::{ActivePane, NowPageState};
+use crate::app::{ActivePane, NowPageState, NowRow};
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -477,7 +477,15 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
         Paragraph::new(body.lines).scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0)),
         body_area,
     );
-    let why = selected.map(|row| one_line(row.why())).unwrap_or_default();
+    // The daemon's reasons read after "Here because:", as on the web status bar.
+    let why = selected
+        .map(|row| match row {
+            NowRow::Person(_) | NowRow::Todo(_) | NowRow::Reading(_) => {
+                format!("Here because: {}", one_line(row.why()))
+            }
+            _ => one_line(row.why()),
+        })
+        .unwrap_or_default();
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
@@ -537,7 +545,7 @@ pub(crate) mod tests {
                 commitment_id: None,
                 back_at: None,
             },
-            why: format!("From Messages: your turn with {name}, {hours}h."),
+            why: "your turn since Wednesday".to_string(),
             new_sender: None,
         }
     }
@@ -588,7 +596,7 @@ pub(crate) mod tests {
                 todos: [tax, lease]
                     .into_iter()
                     .map(|todo| NowTodoData {
-                        why: format!("From To do: {}.", todo.when_label),
+                        why: todo.when_label.clone(),
                         todo,
                     })
                     .collect(),
@@ -704,7 +712,7 @@ pub(crate) mod tests {
         assert!(wide.contains("+23 routine"), "{wide}");
         assert!(wide.contains("(already in To do)"), "{wide}");
         assert!(
-            wide.contains("From Messages: your turn with Maya Ortiz"),
+            wide.contains("Here because: your turn since Wednesday"),
             "{wide}"
         );
     }

@@ -27,6 +27,17 @@ describe("PageFrame", () => {
     expect(screen.getByTestId("page-frame")).toHaveAttribute("data-tabs", "true");
   });
 
+  test("a detail frame beside a tabbed list stands as tall as the list's, so the rules line up", () => {
+    render(
+      <FramePanesContext.Provider value={BESIDE_A_READER}>
+        <PageFrame title="Reading" tabs={<div role="tablist" />} />
+        <PageFrame detail title="A thread" />
+      </FramePanesContext.Provider>,
+    );
+    const [, detail] = screen.getAllByTestId("page-frame");
+    expect(detail?.firstElementChild).toHaveClass("sm:h-[120px]");
+  });
+
   test("a detail pane may wrap its title to two lines and grow, never to one line cut off", () => {
     render(<PageFrame wrapTitle title="Re: a very long subject" />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveClass("line-clamp-2");

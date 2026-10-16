@@ -164,11 +164,14 @@ describe("Archive actions while subscriptions are displayed", () => {
     mocks.subscriptions.current = subscriptionsFixture();
 
     render(<ArchiveRoute />);
-    fireEvent.click(screen.getByTestId("subscriptions-chip"));
+    fireEvent.click(screen.getByRole("radio", { name: "Subscriptions" }));
     // In the URL, so a copied link opens Subscriptions too.
     expect(mocks.url.get()).toEqual(expect.objectContaining({ section: "subscriptions" }));
     expect((await screen.findAllByTestId("subscription-row"))[0]).toHaveTextContent("Netflix");
-    expect(screen.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
 
     await waitFor(() => expect(getController("archive")).toBeDefined());
     const controller = getController("archive");

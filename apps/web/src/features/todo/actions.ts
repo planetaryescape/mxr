@@ -50,8 +50,8 @@ export const todoActions: Action[] = [
     shortLabel: "Do it",
     tuiNote: "Opens a link only when the sender passed the check; otherwise the email",
   }),
-  key("todo", "todo.done", "done", "Tick off", "Space", {
-    shortLabel: "Tick off",
+  key("todo", "todo.done", "done", "Done", "Space", {
+    shortLabel: "Done",
     icon: Check,
     aliases: ["e"],
   }),
@@ -67,8 +67,11 @@ export const todoActions: Action[] = [
     shortLabel: "Not a to-do",
     icon: X,
   }),
-  key("todo", "todo.source", "source", "Show the email it came from", "o", {
+  key("todo", "todo.open-email", "openEmail", "Open the email it came from", "o", {
     shortLabel: "Email",
+  }),
+  key("todo", "todo.details", "details", "Why it is here and where each field came from", "v", {
+    shortLabel: "Details",
   }),
   key("todo", "todo.expired", "expired", "Expired list", "E", { shortLabel: "Expired" }),
   key("todo", "todo.catchup", "catchup", "Catch-up", "C", { shortLabel: "Catch-up" }),

@@ -77,17 +77,16 @@ test("the digest is a briefing by source: what needs a look first, routine folde
   await expect(page.getByTestId("mode-header")).toHaveText(
     "Notifications gathered twice a day. Read the digest, then let go.",
   );
-  await expect(page.getByTestId("updates-cut")).toContainText(
-    /digest · \d\d:\d\d · \d+ updates? from/,
-  );
+  // The page says its count once; the frame names the cut.
+  await expect(page.getByTestId("updates-cut")).toHaveText(/^\d+ updates? from \d+ sources?$/);
+  await expect(page.getByText(/^\d\d:\d\d digest$/)).toBeVisible();
   const needsSection = page.getByTestId("updates-needs_a_look");
   const google = needsSection.getByTestId("update-line").filter({ hasText: "Google" });
   // The sending host sits beside the display name, and nothing was added
   // to To do on arrival: the alert is a highlighted suggestion.
   await expect(google).toContainText("Google (accounts.google.com)");
-  await expect(google.getByTestId("update-todo-suggestion")).toHaveAccessibleName(
-    /^Add to To do: /,
-  );
+  // The first line is lit, so its trail gives way to its verbs: the to-do suggestion is the `t` verb.
+  await expect(google.getByRole("button", { name: /^Add to To do: / })).toBeVisible();
   await expect(google.getByRole("link")).toHaveCount(0);
   await expect(
     needsSection.getByTestId("update-line").filter({ hasText: "acme/api" }),
@@ -110,7 +109,7 @@ test("a suggested to-do becomes one only when you add it", async ({ page }) => {
     .getByTestId("updates-needs_a_look")
     .getByTestId("update-line")
     .filter({ hasText: "Google" });
-  await google.getByTestId("update-todo-suggestion").click();
+  await google.getByRole("button", { name: /^Add to To do: / }).click();
   await expect(google.getByTestId("update-in-todo")).toHaveText("already in To do");
 
   // Added by hand with no date, it waits under Whenever.
@@ -162,7 +161,9 @@ test("K tunes a source with undo, and e previews then lets go of one source", as
   await waitForDigest(page);
   await openApp(page, "/updates");
   const plausible = page.getByTestId("update-line").filter({ hasText: "Plausible" });
-  await plausible.hover();
+  // A hover shows a row's actions; the lamp moves on a click (and opens its peek).
+  await plausible.click();
+  await expect(plausible).toHaveAttribute("data-lit", "true");
   await page.keyboard.press("K");
   const tune = page.getByTestId("updates-tune-dialog");
   await tune.getByRole("button", { name: "Mute" }).click();
@@ -172,7 +173,7 @@ test("K tunes a source with undo, and e previews then lets go of one source", as
   await page.keyboard.press("u");
   await expect(plausible).toBeVisible();
 
-  await plausible.hover();
+  await plausible.click();
   await page.keyboard.press("e");
   // One source previews too: the count shows before anything changes.
   const preview = page.getByTestId("updates-let-go-dialog");
@@ -214,7 +215,7 @@ test("Routine is one line until Enter opens it, and it stays open for the visit"
   await openApp(page, "/updates");
   const toggle = page.getByTestId("updates-routine-toggle");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(toggle).toContainText(/^Routine · \d+ updates? from \d+ sources?$/);
+  await expect(toggle).toContainText(/^Routine · \d+ sources?$/);
   await expect(page.getByTestId("updates-routine")).toHaveCount(0);
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("updates-routine")).toBeVisible();
@@ -249,7 +250,7 @@ test("a peek closes with its line when it is let go, and undo does not reopen it
     `[data-testid='update-line'][data-line-id=${JSON.stringify(target.id)}]`,
   );
   for (let at = order.indexOf(target); at > 0; at -= 1) await page.keyboard.press("j");
-  await expect(line).toHaveAttribute("data-focused", "true");
+  await expect(line).toHaveAttribute("data-lit", "true");
   await page.keyboard.press("Space");
   await expect(line.getByTestId("update-peek")).toBeVisible();
   await page.keyboard.press("e");

@@ -666,12 +666,8 @@ svg.low-tide {
 
 /* Reading (blueprint 22, phase 5). Fading items step back by colour, not
    opacity, so their text keeps AA contrast in both schemes. */
-.reading-fading h3,
-.reading-fading h3 a {
-  color: var(--muted-foreground);
-}
-.reading-fading p {
-  color: var(--muted-foreground);
+.reading-fading .type-body {
+  color: var(--text-3);
 }
 .reading-progress {
   transform-origin: left center;

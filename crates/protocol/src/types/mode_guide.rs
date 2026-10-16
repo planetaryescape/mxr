@@ -201,9 +201,9 @@ pub const TODO_GUIDE: ModeGuideCopy = ModeGuideCopy {
     hints: &[
         HintCopy {
             id: "todo.runway",
-            anchor: "The first runway bar",
-            text: "The bar fills from when this showed up to when it's due; Enter does what the button says.",
-            key: ("Enter", "do it"),
+            anchor: "The first row",
+            text: "Press e to tick this off, or o to open the email it came from.",
+            key: ("e", "tick off"),
         },
         HintCopy {
             id: "todo.catchup",
@@ -235,13 +235,13 @@ pub const NOW_GUIDE: ModeGuideCopy = ModeGuideCopy {
     clear_for_now: now_copy::CLEAR,
     lands_here: "People waiting on you, things due soon, the latest updates and, after 17:00, one thing to read.",
     about: now_copy::ABOUT,
-    why_template: "From {mode}: {evidence}.",
+    why_template: "Here because: {evidence}.",
     keys: NOW_KEYS,
     first_run_line: "",
     hints: &[
         HintCopy {
             id: "now.from_mode",
-            anchor: "The first row's why line, \"From To do: ...\"",
+            anchor: "The first row, and its reason in the status bar",
             text: "Each row comes from a mode; Enter opens it there.",
             key: ("Enter", "open in its mode"),
         },

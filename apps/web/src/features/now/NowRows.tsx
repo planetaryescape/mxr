@@ -246,6 +246,8 @@ export const UpdatesRow = memo(function UpdatesRow({
 }: RowState & { item: Card; onLetGo: () => void }) {
   const card = item.card;
   const lines = card.lines ?? [];
+  // Only this count is cue-coloured: names in cue blew the 3% yellow budget.
+  const needsLook = lines.filter((line) => line.section === "needs_a_look").length;
   return (
     <NowRow
       item={item}
@@ -256,13 +258,17 @@ export const UpdatesRow = memo(function UpdatesRow({
       secondary={
         lines.length > 0 ? (
           <>
+            {needsLook > 0 ? (
+              <span data-testid="now-updates-look" className="text-cue">
+                {needsLook} need{needsLook === 1 ? "s" : ""} a look
+                {" · "}
+              </span>
+            ) : null}
             {lines.map((line, at) => (
               <span key={line.id} data-testid="now-updates-item">
                 {at > 0 ? " · " : null}
-                <span className={cn(line.section === "needs_a_look" && "text-cue")}>
-                  {displaySourceName(line.source_name)}
-                </span>
-                : {line.fact}
+                <span className="text-text-1">{displaySourceName(line.source_name)}</span>:{" "}
+                {line.fact}
               </span>
             ))}
             {card.more_line ? ` · ${card.more_line}` : null}

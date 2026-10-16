@@ -60,9 +60,13 @@ function motionReduced(): boolean {
   return document.documentElement.dataset.motion === "reduced";
 }
 
-/** Start a row's exit: fold it up, or drop it at once under reduced motion. */
-function startLeaving(ids: readonly string[]): void {
-  if (motionReduced()) useTodoHidden.getState().hide(ids);
+/**
+ * Start a row's exit. A pointer folds it up (the lamp ties the click to the
+ * result); a key drops it at once so repeats stay instant (D101). Reduced
+ * motion drops it at once either way.
+ */
+function startLeaving(ids: readonly string[], how: "key" | "pointer" = "pointer"): void {
+  if (how === "key" || motionReduced()) useTodoHidden.getState().hide(ids);
   else useTodoHidden.getState().leave(ids);
 }
 
@@ -154,10 +158,10 @@ function titled(change: TodoChange, verb: string): string {
 }
 
 /** `e`: tick off. The row folds up and joins Done this week. */
-export function markDone(todos: readonly Todo[]) {
+export function markDone(todos: readonly Todo[], how: "key" | "pointer" = "pointer") {
   const ids = todos.map((todo) => todo.id);
   if (ids.length === 0 || refuseWhileDaemonDown("tick it off")) return;
-  startLeaving(ids);
+  startLeaving(ids, how);
   return withUndo("todo-done", () => setTodoState(ids, "done"), {
     message: (change) => titled(change, VERB_FEEDBACK["todo-done"].pastTense),
     reverse: reopen,
@@ -173,14 +177,14 @@ export function markDone(todos: readonly Todo[]) {
  * ("Ticked off. Archived in Gmail."). Undo is the daemon's. A to-do with no
  * email is ticked off on its own.
  */
-export async function tickOff(todo: Todo): Promise<void> {
+export async function tickOff(todo: Todo, how: "key" | "pointer" = "pointer"): Promise<void> {
   const threadId = todo.thread_id;
   if (!threadId) {
-    await markDone([todo]);
+    await markDone([todo], how);
     return;
   }
   // markModeDone refuses on its own while the daemon is down.
-  startLeaving([todo.id]);
+  startLeaving([todo.id], how);
   try {
     // Only this row: another to-do on the same email stays open, and the
     // email stays in the inbox while it does.
@@ -229,10 +233,10 @@ export function resolveSuggestion(todo: Todo, action: "preview" | "accept" | "di
 }
 
 /** `X`: not a to-do, kept as a correction so that email never comes back. */
-export function markNotTodo(todos: readonly Todo[]) {
+export function markNotTodo(todos: readonly Todo[], how: "key" | "pointer" = "pointer") {
   const ids = todos.map((todo) => todo.id);
   if (ids.length === 0 || refuseWhileDaemonDown("change it")) return;
-  startLeaving(ids);
+  startLeaving(ids, how);
   return withUndo("todo-dismiss", () => setTodoState(ids, "dismiss"), {
     message: (change) => titled(change, VERB_FEEDBACK["todo-dismiss"].pastTense),
     reverse: reopen,

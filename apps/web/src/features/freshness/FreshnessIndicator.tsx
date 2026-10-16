@@ -142,7 +142,11 @@ export function FreshnessIndicator({
 
   return (
     <span
-      className="inline-flex min-w-0 max-w-[60vw] shrink-0 items-center gap-1.5"
+      className={cn(
+        "inline-flex max-w-[60vw] items-center gap-1.5",
+        // Shrinks first when the keys need room: the reason ends in an ellipsis before any key drops.
+        compact ? "min-w-0 shrink-0" : "min-w-[9rem] shrink-[1000]",
+      )}
       data-testid="freshness"
     >
       <Popover open={open} onOpenChange={setOpen}>
@@ -169,7 +173,11 @@ export function FreshnessIndicator({
             ·
           </span>
           {calm && reason ? (
-            <span data-testid="status-reason" className="truncate text-text-2">
+            <span
+              data-testid="status-reason"
+              title={reasonText(reason) + (note ? ` · ${note}` : "")}
+              className="min-w-0 truncate text-text-2"
+            >
               {reasonText(reason)}
               {note ? ` · ${note}` : ""}
             </span>

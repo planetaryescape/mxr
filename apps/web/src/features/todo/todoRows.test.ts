@@ -3,12 +3,14 @@ import { describe, expect, test } from "vitest";
 import { runwayFixture, todoFixture } from "./testing";
 import {
   linkLine,
+  dueByToday,
+  fromDay,
   openCount,
   orderedFields,
   primaryAction,
   provenanceSummary,
   rowParty,
-  runwayFill,
+  rowSecondary,
   runwayItems,
 } from "./todoRows";
 
@@ -53,13 +55,6 @@ describe("a To do row", () => {
     expect(primaryAction(todoFixture({ action: null, thread_id: null }))).toBeNull();
   });
 
-  test("past the deadline there is no bar, and the fill stays between 0 and 1", () => {
-    expect(runwayFill(todoFixture({ runway: 0.6 }))).toBe(0.6);
-    expect(runwayFill(todoFixture({ runway: 1.4 }))).toBe(1);
-    expect(runwayFill(todoFixture({ overdue: true, when_label: "was due Fri 2 Oct" }))).toBeNull();
-    expect(runwayFill(todoFixture({ runway: null }))).toBeNull();
-  });
-
   test("the provenance chip names the main source and counts fields to check", () => {
     expect(provenanceSummary(todoFixture().fields)).toEqual({ source: "schema.org", unchecked: 1 });
     expect(orderedFields(todoFixture().fields).map((field) => field.field)).toEqual([
@@ -67,6 +62,86 @@ describe("a To do row", () => {
       "due_at",
       "act_by_at",
     ]);
+  });
+});
+
+describe("a To do row's words", () => {
+  const now = new Date(2026, 9, 14, 15, 0); // Wed 14 Oct 2026, local
+
+  test("says the day an email arrived, in the fewest words", () => {
+    expect(fromDay(new Date(2026, 9, 14, 8), now)).toBe("today");
+    expect(fromDay(new Date(2026, 9, 13, 23), now)).toBe("yesterday");
+    expect(fromDay(new Date(2026, 9, 12, 9), now)).toBe(
+      new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(new Date(2026, 9, 12)),
+    );
+    expect(fromDay(new Date(2026, 8, 1, 9), now)).toBe(
+      new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(
+        new Date(2026, 8, 1),
+      ),
+    );
+  });
+
+  test("the secondary line is who and from when; a promise is from you", () => {
+    const arrived = new Date(2026, 9, 12, 9).toISOString();
+    expect(
+      rowSecondary(todoFixture({ source_date: arrived, counterparty: "Frank Billing" }), now),
+    ).toMatch(/^Frank Billing · from \w+/);
+    expect(
+      rowSecondary(
+        todoFixture({ kind: "promise", counterparty: "Quinn Dev", source_date: arrived }),
+        now,
+      ),
+    ).toBe("Quinn Dev · from you");
+    expect(rowSecondary(todoFixture({ counterparty: null, source_date: null }), now)).toBeNull();
+  });
+
+  test("a pending later email or a looks-done sign takes the line, since that is what to act on", () => {
+    const pending = todoFixture({
+      resolution: {
+        id: "r",
+        message_id: "m",
+        thread_id: "t",
+        source_date: "2026-10-04T09:00:00Z",
+        quote: "Paid.",
+        quote_location: "body",
+        source_method: "rule",
+        action: "complete",
+        proposed_due_at: null,
+        proposed_due_words: null,
+        status: "pending",
+      },
+    });
+    expect(rowSecondary(pending, now)).toBe("A later email may change this");
+    expect(
+      rowSecondary(todoFixture({ looks_done: { reason: "you replied", message_id: "m" } }), now),
+    ).toBe("Looks done: you replied");
+  });
+
+  test("only a date due or to act by today or earlier takes the cue colour", () => {
+    expect(dueByToday(todoFixture({ overdue: true }), now)).toBe(true);
+    expect(
+      dueByToday(
+        todoFixture({
+          overdue: false,
+          due_at: new Date(2026, 9, 14, 20).toISOString(),
+          act_by_at: null,
+        }),
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      dueByToday(
+        todoFixture({
+          overdue: false,
+          due_at: new Date(2026, 9, 16, 9).toISOString(),
+          act_by_at: null,
+        }),
+        now,
+      ),
+    ).toBe(false);
+    expect(dueByToday(todoFixture({ overdue: false, due_at: null, act_by_at: null }), now)).toBe(
+      false,
+    );
   });
 });
 

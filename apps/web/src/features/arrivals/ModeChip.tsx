@@ -1,8 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
 
+import { ModeMark } from "@/components/ModeMark";
+import { useLitReason } from "@/state/litReasonStore";
+
 import { useArrivalModes } from "./api";
-import { bucketName } from "./arrivalLine";
-import type { ArrivalItem } from "./types";
+import type { ArrivalBucket, ArrivalItem, ModeId } from "./types";
 
 const ChipContext = createContext<ReadonlyMap<string, ArrivalItem> | undefined>(undefined);
 
@@ -35,21 +37,39 @@ function ChipQuery({
 }
 
 /**
- * Inbox's quiet note of where an email went: the mode's name, with the
- * reason on hover and for screen readers ("→ Updates · automated sender").
- * It reads the arrival as stored, so archived mail still says where it went.
+ * Where an email went, as the mode's mark (docs/blueprint/26 "Show it's also
+ * elsewhere"): the mode's glyph in the row's trail, with the daemon's line
+ * ("→ Updates · automated sender") as its tooltip and accessible name. It
+ * reads the arrival as stored, so archived mail still says where it went.
  */
 export function ModeChip({ messageId }: { messageId: string }) {
   const item = useContext(ChipContext)?.get(messageId);
-  if (!item) return null;
+  if (!item || !isMode(item.bucket)) return null;
   return (
     <span
       data-testid="mode-chip"
-      title={item.chip}
+      data-bucket={item.bucket}
       aria-label={item.chip}
-      className="whitespace-nowrap text-[length:var(--mail-row-meta-size)] text-muted-foreground"
+      title={item.chip}
+      className="inline-flex shrink-0"
     >
-      {bucketName(item.bucket)}
+      <ModeMark mode={item.bucket} />
     </span>
   );
+}
+
+function isMode(bucket: ArrivalBucket): bucket is ModeId {
+  return bucket !== "screened_out" && bucket !== "spam" && bucket !== "sorting";
+}
+
+/**
+ * The status bar's reason for the lit Inbox row: where it went and why, from
+ * the same arrival line the mark carries. Renders nothing; it sits inside the
+ * scope so it reads the chips already fetched for the visible rows.
+ */
+export function ModeChipReason({ messageId }: { messageId: string | undefined }) {
+  const item = useContext(ChipContext)?.get(messageId ?? "");
+  const line = item?.chip.replace(/^→\s*/, "");
+  useLitReason(line ? `went to ${line}` : null);
+  return null;
 }

@@ -199,7 +199,7 @@ async function pointerArchiveAndUndo(page: Page): Promise<void> {
     // the first rows.
     await row.hover({ position: { x: 24, y: 12 } });
     const consent = acceptArchiveReview(page);
-    await row.locator('[title="Archive (e)"]').click({ timeout: 1000 });
+    await row.locator('[title="archive (e)"]').click({ timeout: 1000 });
     await consent;
   }).toPass({ timeout: 10_000 });
   await expect(row).toHaveCount(0);

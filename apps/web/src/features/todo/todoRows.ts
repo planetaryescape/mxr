@@ -4,21 +4,6 @@
  * why line, the button's label); this decides which of them a row uses.
  */
 
-import {
-  Banknote,
-  CalendarCheck,
-  CircleDot,
-  CreditCard,
-  FileText,
-  Handshake,
-  House,
-  PenLine,
-  RefreshCw,
-  ShieldCheck,
-  Undo2,
-  type LucideIcon,
-} from "lucide-react";
-
 import { firstName } from "@/features/thread/context/contextFormat";
 
 import type { Todo, TodoField, TodoRunway } from "./api";
@@ -67,31 +52,48 @@ export function rowParty(todo: Todo): string | null {
   return todo.person_label ?? todo.counterparty ?? null;
 }
 
-/**
- * How full the runway bar is, from the day it showed up (0) to the
- * deadline (1). Past the deadline there is no bar: the date reads "was
- * due Fri" instead.
- */
-export function runwayFill(todo: Todo): number | null {
-  if (todo.overdue || todo.runway === null || todo.runway === undefined) return null;
-  return Math.min(1, Math.max(0, todo.runway));
+const SHORT_DAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const SHORT_DATE = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+
+const midnight = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+/** "today", "yesterday", "Mon" within the week, else "12 Oct": when the email arrived. */
+export function fromDay(arrived: Date, now: Date): string {
+  const days = Math.round((midnight(now).getTime() - midnight(arrived).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return days < 7 ? SHORT_DAY.format(arrived) : SHORT_DATE.format(arrived);
 }
 
-const KIND_ICONS: Record<string, LucideIcon> = {
-  bill: Banknote,
-  payment_failed: CreditCard,
-  renewal: RefreshCw,
-  document: FileText,
-  lease: House,
-  return: Undo2,
-  rsvp: CalendarCheck,
-  verify: ShieldCheck,
-  sign: PenLine,
-  promise: Handshake,
-};
+/**
+ * The row's one secondary line: who, and where it came from ("Frank Billing
+ * · from Mon", "Quinn Dev · from you"). A promise is from you; every other
+ * row is from the day its email arrived. A later email that may change the
+ * row, or a sign it looks done, says so in its place: that is what to act on.
+ */
+export function rowSecondary(todo: Todo, now: Date): string | null {
+  if (todo.resolution?.status === "pending") return "A later email may change this";
+  if (todo.looks_done) return `Looks done: ${todo.looks_done.reason}`;
+  const who = todo.counterparty ?? null;
+  const from =
+    todo.kind === "promise"
+      ? "from you"
+      : todo.source_date
+        ? `from ${fromDay(new Date(todo.source_date), now)}`
+        : null;
+  return [who, from].filter(Boolean).join(" · ") || null;
+}
 
-export function kindIcon(kind: string): LucideIcon {
-  return KIND_ICONS[kind] ?? CircleDot;
+/** Due or to act by today or earlier: the one place the cue colour belongs on a date. */
+export function dueByToday(todo: Todo, now: Date): boolean {
+  if (todo.overdue) return true;
+  const times = [todo.due_at, todo.act_by_at]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime());
+  if (times.length === 0) return false;
+  const tomorrow = new Date(now);
+  tomorrow.setHours(24, 0, 0, 0);
+  return Math.min(...times) < tomorrow.getTime();
 }
 
 const FIELD_LABELS: Record<string, string> = {

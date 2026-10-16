@@ -92,7 +92,7 @@ function LensView({ lens }: { lens: MailLens }) {
     <ListWithReader
       basePath={lens.path}
       title={lens.label}
-      meta={counts ? countLine(counts.total ?? 0) : null}
+      meta={counts ? countLine(groups, mailbox.hasNextPage, listMode, counts.total ?? 0) : null}
       groups={groups}
       scopeKey={`${lens.key}|${account ?? "all"}|${listMode}`}
       status={mailbox}
@@ -140,11 +140,21 @@ function lensPurpose(lens: MailLens): string {
 }
 
 /**
- * The daemon counts messages, not conversations, so say so. No unread
- * count: a pile's size is not work (the desk counts work).
+ * One unit, the one the reader's "2 of 49" counts: conversations. The daemon
+ * counts messages, so in the threaded view the header counts the loaded
+ * conversations (with a "+" while more are still to load); single-message
+ * view says messages. No unread count: a pile's size is not work.
  */
-function countLine(total: number): string {
-  return total === 0 ? "" : plural(total, "message");
+function countLine(
+  groups: readonly { rows: readonly unknown[] }[],
+  hasMore: boolean,
+  listMode: string,
+  messageTotal: number,
+): string {
+  if (listMode !== "threads") return messageTotal === 0 ? "" : plural(messageTotal, "message");
+  const loaded = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  if (loaded === 0) return "";
+  return hasMore ? `${loaded.toLocaleString()}+ conversations` : plural(loaded, "conversation");
 }
 
 function EmptyLens({ lens }: { lens: MailLens }) {

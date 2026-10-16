@@ -1063,7 +1063,7 @@ test checks it). A hint shared by two modes has one id and one seen state.
 
 | Id | Mode | Anchored to | Hint |
 |---|---|---|---|
-| `now.from_mode` | Now | The first row's why line ("From To do: …") | "Each row comes from a mode; Enter opens it there." |
+| `now.from_mode` | Now | The first row (its reason shows in the status bar) | "Each row comes from a mode; Enter opens it there." |
 | `done_here` | Now, Messages | The toast after the first `e` on a conversation (TUI: the status line) | "Done here (e) only clears this mode; it stays in To do until done there." |
 | `updates.let_go` | Now, Updates | The first "Let go of this digest" button; in the TUI, the Updates card row on Now and the first line in Updates | "A lets go of this digest only; new mail arrives in the next one." |
 | `updates.suggestion` | Updates | The first suggested to-do in Needs a look | "Nothing becomes a to-do on its own; t adds this one to To do." |
@@ -1100,8 +1100,8 @@ and its key line is no longer shown on its own.
   soon, the latest updates and, after 17:00, one thing to read. Acting on
   a row here does it in that row's own mode."
   Keys: `Enter` open in its mode · `e` done here · `?` what is this
-- Why line: names the mode and the reason. "From To do: act by Wed 7 ·
-  due Fri 9." "From Messages: Maya asked you something 22h ago."
+- Why line: the reason alone, read after "Here because:" (the mode mark says
+  the mode). "act by Wed 7 · due Fri 9." "your turn since Wednesday."
 
 **Messages**
 
@@ -1128,8 +1128,8 @@ and its key line is no longer shown on its own.
 - Clear for now: "Nothing needs you. Next: renew car insurance shows up Mon
   19 Oct."
 - Card: "Each row is one thing to do, written as what to do, not the
-  email's subject. Act by the first date; the bar fills from when it
-  showed up to when it's due, and Enter does what the button says."
+  email's subject. Act by the first date; Space ticks it off and o opens
+  the email it came from."
   Keys: `Enter` do it · `e` tick off · `Z` schedule · `X` not a to-do
 - Why line: "Here because: \"payment due 9 October\" (rule). Once you pay,
   the receipt files itself in Archive."

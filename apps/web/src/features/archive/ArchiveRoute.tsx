@@ -3,7 +3,8 @@ import { ArrowLeft, FolderArchive, RefreshCw, SlidersHorizontal, X } from "lucid
 import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
+import { Segmented } from "@/components/Segmented";
+import type { LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -23,7 +24,6 @@ import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
-import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -52,10 +52,18 @@ import { activeChip, answerList, groupByMonth, KIND_CHIPS, stepYear } from "./le
 import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts";
 import { SubscriptionCard, SubscriptionsList } from "./Subscriptions";
 import { subscriptionAmountCopy } from "./subscriptionRows";
-import { KeyLine } from "@/components/KeyLine";
+import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { SectionHeading } from "@/components/SectionHeading";
 
 const PAGE = 200;
+const SUBSCRIPTIONS_SEGMENT = "subscriptions";
+/** The kind filter and the subscriptions view are one either-or choice. */
+const KIND_SEGMENTS: [string, string][] = [
+  ...KIND_CHIPS.map((chip): [string, string] => [chip.id, chip.label]),
+  [SUBSCRIPTIONS_SEGMENT, "Subscriptions"],
+];
+const openDocumentFor = (record: RecordData) => void openDocument(record);
 /** The ledger of records, or the subscriptions found in them. */
 type ArchiveSection = "ledger" | "subscriptions";
 
@@ -285,6 +293,8 @@ function Ledger({
   const records = list?.records ?? ledger.records;
   const months = list?.months ?? ledger.months;
   const [cursorId, setCursorId] = useSearchParam("record");
+  // Only a pointer fades the lamp (D101): a key must feel instant.
+  const via = useRef<LampVia>("key");
   // While an answer is on screen and the cursor hasn't moved, y, Enter and
   // o act on the answer's record.
   const [onAnswer, setOnAnswer] = useState(false);
@@ -367,12 +377,20 @@ function Ledger({
     },
     [setCursorId],
   );
-  const openCard = useCallback(
+  // A click on a row: the lamp fades to it. Keys go through `select` and stay instant.
+  const selectByPointer = useCallback(
     (record: RecordData) => {
+      via.current = "pointer";
       select(record);
-      setCardOpen(true);
     },
     [select],
+  );
+  const openCard = useCallback(
+    (record: RecordData) => {
+      selectByPointer(record);
+      setCardOpen(true);
+    },
+    [selectByPointer],
   );
   const openEmail = useCallback(
     (record?: RecordData) => {
@@ -412,7 +430,9 @@ function Ledger({
     }
     const base = onAnswer ? -1 + (delta > 0 ? 1 : 0) : index + delta;
     const next = records[Math.min(records.length - 1, Math.max(0, base))];
-    if (next) select(next);
+    if (!next) return;
+    via.current = "key";
+    select(next);
   };
   const years = ledger.facets.years.map((year) => Number(year.value)).filter(Number.isFinite);
   const stepTo = (delta: -1 | 1) =>
@@ -439,6 +459,22 @@ function Ledger({
     return true;
   };
 
+  // The lit record's reason goes to the status bar; the row never grows a line.
+  useLitReason(showingSubscriptions ? subscription?.why : current?.why);
+  const emailOpen = Boolean(params.threadId) && activePane === "reader";
+  usePageKeys(
+    emailOpen || ledger.total === 0
+      ? []
+      : showingSubscriptions
+        ? ["archive.ask", "archive.open-email", "archive.issuer", "archive.filter"]
+        : [
+            "archive.ask",
+            "archive.open-email",
+            ...(current?.pdf ? ["archive.open-document"] : []),
+            "archive.copy-reference",
+            "archive.filter",
+          ],
+  );
   useShortcutScope("archive", !params.threadId || activePane !== "reader");
   useScopeController("archive", {
     down: () => move(1),
@@ -558,6 +594,7 @@ function Ledger({
           <ArrowLeft aria-hidden className="size-4" /> Archive
         </button>
         <RecordCard
+          emailButton
           record={cardRecord}
           onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
           onOpenDocument={() => void openDocument(cardRecord)}
@@ -677,52 +714,33 @@ function Ledger({
                   </section>
                 ) : null}
 
-                <div
-                  className="mx-5 mt-4 flex flex-wrap items-center gap-1.5"
-                  role="group"
-                  aria-label="Kind"
-                >
-                  {KIND_CHIPS.map((kindChip) => (
-                    <button
-                      key={kindChip.id}
-                      type="button"
-                      aria-pressed={!showingSubscriptions && chip === kindChip.id}
-                      onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
-                      className={cn(
-                        "min-h-8 rounded-sm border px-3 text-xs",
-                        !showingSubscriptions && chip === kindChip.id
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-                      )}
-                    >
-                      {kindChip.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    data-testid="subscriptions-chip"
-                    aria-pressed={showingSubscriptions}
-                    onClick={() => {
-                      setSection("subscriptions");
-                      setCardOpen(false);
+                <div className="mx-5 mt-4 flex items-center gap-3">
+                  <Segmented
+                    label="Kind"
+                    className="min-w-0 max-w-full overflow-x-auto"
+                    value={showingSubscriptions ? SUBSCRIPTIONS_SEGMENT : (chip ?? "")}
+                    options={KIND_SEGMENTS}
+                    onChange={(id) => {
+                      if (id === SUBSCRIPTIONS_SEGMENT) {
+                        setSection("subscriptions");
+                        setCardOpen(false);
+                        return;
+                      }
+                      const kindChip = KIND_CHIPS.find((candidate) => candidate.id === id);
+                      if (kindChip) setFilter({ ...filter, kinds: kindChip.kinds });
                     }}
-                    className={cn(
-                      "min-h-8 rounded-sm border px-3 text-xs",
-                      showingSubscriptions
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                  >
-                    Subscriptions
-                  </button>
-                  <button
+                  />
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
+                    title="Filters (g f)"
+                    aria-keyshortcuts="g f"
                     onClick={() => setFacetsOpen(true)}
-                    className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="type-body ml-auto h-7 shrink-0 gap-1.5 px-2 font-normal text-text-2 hover:bg-ink-lamp hover:text-text-1"
                   >
-                    <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
-                    <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
-                  </button>
+                    <SlidersHorizontal aria-hidden className="size-4" strokeWidth={1.75} /> Filters
+                  </Button>
                 </div>
                 {showingSubscriptions ? (
                   subscriptions.data ? (
@@ -801,10 +819,12 @@ function Ledger({
                           key={record.id}
                           record={record}
                           index={rowIndex}
-                          focused={!onAnswer && rowIndex === index}
+                          lit={!onAnswer && rowIndex === index}
+                          via={via.current}
                           best={record.id === bestId}
-                          onSelect={singlePane ? openCard : select}
-                          onOpen={(target) => openEmail(target)}
+                          onSelect={singlePane ? openCard : selectByPointer}
+                          onOpen={openEmail}
+                          onDocument={openDocumentFor}
                         />
                       );
                       if (rowIndex !== 0 || !recordHint.hint) return row;
@@ -834,9 +854,6 @@ function Ledger({
                   Show more ({records.length} of {ledger.matching})
                 </Button>
               </div>
-            ) : null}
-            {guide ? (
-              <KeyLine keys={guide.keys.filter((key) => !["?", "e", "t"].includes(key.key))} />
             ) : null}
           </div>
         </ResizablePanel>
@@ -927,14 +944,11 @@ function ActiveFilters({
           type="button"
           onClick={() => setFilter(part.clear)}
           aria-label={`Clear ${part.label}`}
-          className="inline-flex min-h-7 items-center gap-1 rounded-sm border border-border px-2 text-foreground hover:bg-accent"
+          className="inline-flex min-h-7 items-center gap-1 rounded-sm border border-rule px-2 text-text-1 hover:bg-ink-lamp"
         >
           {part.label} <X aria-hidden className="size-3" />
         </button>
       ))}
-      <span className="hidden md:inline">
-        <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> year
-      </span>
     </p>
   );
 }

@@ -796,6 +796,7 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
     assert_scoped(&s, |o| Request::ListScreenerQueue {
         account_id: o.account.clone(),
         limit: 10,
+        all_senders: false,
     })
     .await;
     assert_scoped(&s, |o| Request::TriageSearch {

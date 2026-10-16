@@ -121,6 +121,7 @@ pub(crate) fn populated() -> MessagesData {
         generated_at: now(),
         header: MESSAGES_GUIDE.header.into(),
         your_turn: vec![samir, jon],
+        your_turn_split: Default::default(),
         pinned: vec![maya],
         recent: vec![iris],
         quiet: vec![row(

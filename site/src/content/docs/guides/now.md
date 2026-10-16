@@ -16,9 +16,13 @@ It shows at most ten things, in four sections that never change order:
   most.
 
 Each section shows at most three items, then "and 11 more in Messages". A
-long list of people becomes one line: "14 people waiting on you: 7 you've
-written to, 7 new. Start with the three below." The headline, that line and
-"and 11 more in Messages" count the same people, so the numbers add up. A section with nothing in it
+long list of people becomes one line: "14 people waiting on you: 7 you write
+with, 7 others. Start with the three below." "You write with" are people
+you have written to; "others" are people who wrote to you and you have not
+answered, whether it is their first message or not. The headline, that line,
+"and 11 more in Messages", Messages' Your turn and the Messages count in the
+rail all count the same rows (a person once, a group thread once), so the
+numbers add up. A section with nothing in it
 disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
@@ -43,7 +47,7 @@ mxr now --format table
 Saturday morning. 14 people waiting on you, 1 thing to act on.
 
 PEOPLE  (and 11 more in Messages)
-  14 people waiting on you: 7 you've written to, 7 new. Start with the three below.
+  14 people waiting on you: 7 you write with, 7 others. Start with the three below.
   Samir Patel             Contract renewal details
     your turn since Friday
   Leo Park                Research notes: terminal workflows
@@ -232,8 +236,8 @@ puts it back. The digits only answer while a new sender is lit; everywhere
 else they stay the numbered tabs, and they never fire while you type in a
 field. Automated senders are never asked: their mail goes to Updates or
 Reading, and the row's why line names the rule. The
-[Screener](/guides/triage-flow/) page, under More, lists every sender you
-have decided on.
+[Screener](/guides/triage-flow/) page, under More, has a queue of the new
+senders its badge counts and a tab of every sender you have decided on.
 
 ## The rail
 
@@ -242,7 +246,7 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Entry | Key | Opens |
 |---|---|---|
 | Now | `g h` | The front page; its badge counts people whose turn it is and things to act on |
-| Messages | `g m` | People and groups, with their conversations inside |
+| Messages | `g m` | People and groups, with their conversations inside. The count is the people waiting on you, the same as Now |
 | To do | `g x` | Things email asked you to do, by when to act |
 | Updates | `g u` | Notifications as a briefing by source, twice a day. `g p` opens it too |
 | Reading | `g r` | Newsletters as an [edition](/guides/reading/), with a Later shelf. No count: nothing in it is owed |

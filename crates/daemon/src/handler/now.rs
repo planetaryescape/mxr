@@ -5,13 +5,14 @@
 //! things, and nothing past its relevancy window enters it. The caps live
 //! here so every client shows the same Now.
 
-use super::desk::{compose_desk, desk_lane};
+use super::desk::compose_desk;
 use super::mode_rules::{
     day_part, more_line, now_headline, overload_line, reading_fade, updates_line, EVENING_HOUR,
 };
 use super::modes::{inbox_modes, place_threads, InboxModes};
 use super::places::{scoped_cached_accounts, Placed};
 use super::todo_view::{bands, day_label, start_of_week};
+use super::turn_units::TurnUnits;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, TimeZone, Timelike, Utc};
@@ -26,9 +27,9 @@ use std::collections::{HashMap, HashSet};
 
 /// What Now and the rail are built from, read once.
 pub(super) struct NowSnapshot {
-    pub owed: Vec<DeskRowData>,
-    pub people_new: Vec<DeskRowData>,
-    pub waiting: Vec<DeskRowData>,
+    /// The people waiting on you, counted once for every surface
+    /// (`turn_units`): You owe first, then New from people.
+    pub turn: TurnUnits,
     /// To do's Now band, by act-by, inside its relevancy window.
     pub due_now: Vec<TodoData>,
     pub next_surface: Option<TodoNextData>,
@@ -40,39 +41,14 @@ pub(super) struct NowSnapshot {
 impl NowSnapshot {
     /// Work only: people whose turn it is with you, and things to act on.
     pub(super) fn badge(&self) -> u32 {
-        distinct_people([&self.owed, &self.people_new]) + count(self.due_now.len())
+        self.turn.split.total() + count(self.due_now.len())
     }
 
-    /// Everyone in Messages, waiting on them included: the rail's count.
-    /// People counts persons, not conversations.
-    pub(super) fn people_total(&self) -> u32 {
-        distinct_people([&self.owed, &self.people_new, &self.waiting])
+    /// People whose turn it is with you, never who you wait on: Now's
+    /// headline and People total, and the rail's Messages count.
+    pub(super) fn your_turn_total(&self) -> u32 {
+        self.turn.split.total()
     }
-
-    /// People on Now: whose turn it is with you, never who you wait on.
-    fn your_turn_total(&self) -> u32 {
-        distinct_people([&self.owed, &self.people_new])
-    }
-
-    /// Person rows in People's order (You owe, then New from people), each
-    /// person once, at their most pressing conversation.
-    fn person_rows(&self) -> impl Iterator<Item = &DeskRowData> {
-        let mut seen = HashSet::new();
-        self.owed
-            .iter()
-            .chain(&self.people_new)
-            .filter(move |row| seen.insert(row.counterparty_email.to_ascii_lowercase()))
-    }
-}
-
-/// How many different people the rows are with.
-fn distinct_people<const N: usize>(lanes: [&Vec<DeskRowData>; N]) -> u32 {
-    let people: HashSet<String> = lanes
-        .into_iter()
-        .flatten()
-        .map(|row| row.counterparty_email.to_ascii_lowercase())
-        .collect();
-    count(people.len())
 }
 
 pub(super) fn count(n: usize) -> u32 {
@@ -90,7 +66,6 @@ where
     Tz::Offset: std::fmt::Display,
 {
     let desk = compose_desk(state, account_id, now).await?;
-    let lane = |kind| desk_lane(&desk.rows, kind, u32::MAX).rows;
     // Hard rule: nothing past its relevancy window enters Now.
     let records = state
         .store
@@ -116,9 +91,7 @@ where
     ))
     .await?;
     Ok(NowSnapshot {
-        owed: lane(DeskLaneKind::Owed),
-        people_new: lane(DeskLaneKind::PeopleNew),
-        waiting: lane(DeskLaneKind::Waiting),
+        turn: desk.turn_units(),
         due_now,
         next_surface: bands.next_surface,
         inbox,
@@ -192,7 +165,7 @@ where
     });
     let headline = now_headline(
         &day_part(now, tz),
-        distinct_people([&snapshot.owed, &snapshot.people_new]),
+        snapshot.your_turn_total(),
         due_soon.total,
     );
     tracing::debug!(
@@ -226,7 +199,7 @@ async fn sender_questions(
     now: DateTime<Utc>,
 ) -> Result<HashMap<ThreadId, ScreenerQuestionData>, HandlerError> {
     let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
-    for row in snapshot.person_rows().take(NOW_SECTION_CAP) {
+    for row in snapshot.turn.rows.iter().take(NOW_SECTION_CAP) {
         by_account
             .entry(row.account_id.clone())
             .or_default()
@@ -254,7 +227,9 @@ where
 {
     let total = snapshot.your_turn_total();
     let rows: Vec<NowPersonData> = snapshot
-        .person_rows()
+        .turn
+        .rows
+        .iter()
         .take(NOW_SECTION_CAP)
         .map(|row| {
             let new_sender = asks.get(&row.thread_id).cloned();
@@ -267,9 +242,10 @@ where
         .collect();
     NowPeopleData {
         more_line: more_line(total, rows.len(), ModeKindData::Messages),
-        overload_line: overload_line(total, distinct_people([&snapshot.owed]), rows.len()),
+        overload_line: overload_line(snapshot.turn.split, rows.len()),
         rows,
         total,
+        split: snapshot.turn.split,
     }
 }
 

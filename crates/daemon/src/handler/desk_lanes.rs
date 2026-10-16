@@ -306,6 +306,12 @@ pub(super) struct ThreadLanes {
     pub rows: Vec<DraftRow>,
     pub elsewhere: DeskElsewhereData,
     pub last_from_people_at: Option<DateTime<Utc>>,
+    /// The other people (lowercased) in each thread that has a turn row,
+    /// for counting turns the way Messages lists them (`turn_units`).
+    pub turn_people: HashMap<ThreadId, Vec<String>>,
+    /// Lowercased senders the Screener badge counts. The Screener page
+    /// lists exactly these, so the two cannot disagree.
+    pub screener_senders: HashSet<String>,
 }
 
 pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
@@ -386,10 +392,17 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             },
             latest,
         ) {
+            if matches!(row.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew) {
+                lanes.turn_people.insert(
+                    row.row.thread_id.clone(),
+                    inputs.shape(thread).people().to_vec(),
+                );
+            }
             lanes.rows.push(row);
         }
     }
     lanes.elsewhere.screener = screener_senders.len() as u32;
+    lanes.screener_senders = screener_senders;
     lanes
 }
 

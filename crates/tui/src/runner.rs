@@ -998,6 +998,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::ListScreenerQueue {
                         account_id: account_id.clone(),
                         limit: 100,
+                        all_senders: false,
                     },
                 )
                 .await;
@@ -1995,7 +1996,7 @@ pub async fn run() -> anyhow::Result<()> {
                 .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::OwedReplies { rows },
+                        data: ResponseData::OwedReplies { rows, .. },
                     }) => Ok(rows),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),

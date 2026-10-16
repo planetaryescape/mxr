@@ -10,14 +10,21 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let action = action.unwrap_or(ScreenerAction::Queue { limit: 100 });
+    let action = action.unwrap_or(ScreenerAction::Queue {
+        limit: 100,
+        all_senders: false,
+    });
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_account(&mut client, account.as_deref()).await?;
 
     match action {
-        ScreenerAction::Queue { limit } => {
+        ScreenerAction::Queue { limit, all_senders } => {
             let resp = client
-                .request(Request::ListScreenerQueue { account_id, limit })
+                .request(Request::ListScreenerQueue {
+                    account_id,
+                    limit,
+                    all_senders,
+                })
                 .await?;
             render_queue(resp, format)?;
         }

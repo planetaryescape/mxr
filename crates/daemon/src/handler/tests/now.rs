@@ -459,7 +459,7 @@ async fn the_people_numbers_on_now_add_up() {
     }
     let data = now_at(&fx, Utc::now()).await;
     let total = data.people.total;
-    assert_eq!(total, 11, "your turn: 7 you've written to and 4 new");
+    assert_eq!(total, 11, "your turn: 7 you write with and 4 others");
     assert!(
         data.headline.contains("11 people waiting on you"),
         "{}",
@@ -471,7 +471,7 @@ async fn the_people_numbers_on_now_add_up() {
         .as_deref()
         .expect("a long list is one line");
     assert!(
-        line.starts_with("11 people waiting on you: 7 you've written to, 4 new."),
+        line.starts_with("11 people waiting on you: 7 you write with, 4 others."),
         "{line}"
     );
     let shown = data.people.rows.len() as u32;

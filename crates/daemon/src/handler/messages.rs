@@ -33,8 +33,8 @@ use mxr_protocol::{
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
     MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewData,
     MessagesPreviewKindData, MessagesRowData, MessagesRowKindData, MessagesTopicData,
-    MessagesTurnData, PersonMergeData, PersonPageData, PersonRefData, ResponseData, TopicStateData,
-    TrimmedData,
+    MessagesTurnData, PeopleSplitData, PersonMergeData, PersonPageData, PersonRefData,
+    ResponseData, TopicStateData, TrimmedData,
 };
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
@@ -360,7 +360,13 @@ fn place_topic(
 }
 
 /// Rows of one account, keyed and built, with each Your turn row's ratio.
-fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData, Option<f64>)> {
+/// `write_with` collects the (account, id) of rows with a You owe conversation: the
+/// people you write with, as the desk's lane decides it.
+fn account_rows(
+    gathered: &Gathered,
+    now: DateTime<Utc>,
+    write_with: &mut HashSet<(AccountId, String)>,
+) -> Vec<(MessagesRowData, Option<f64>)> {
     let mut grouped: HashMap<RowKey, Vec<Topic>> = HashMap::new();
     for topic in &gathered.topics {
         grouped
@@ -373,7 +379,16 @@ fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData
         .into_iter()
         .map(|(key, topics)| {
             let ratio = turn_ratio(&topics);
-            (build_row(key, topics, &ctx), ratio)
+            let owed = topics.iter().any(|t| {
+                t.turn
+                    .as_ref()
+                    .is_some_and(|r| r.lane == DeskLaneKind::Owed)
+            });
+            let row = build_row(key, topics, &ctx);
+            if owed {
+                write_with.insert((row.account_id.clone(), row.id.clone()));
+            }
+            (row, ratio)
         })
         .collect();
     // A pinned person with nothing in the window still has a face.
@@ -451,9 +466,10 @@ pub(super) async fn messages_at(
     let mut recent = Vec::new();
     let mut quiet = Vec::new();
     let mut thread_count = 0u32;
+    let mut write_with_ids = HashSet::new();
     for g in &gathered {
         thread_count += u32::try_from(g.topics.len()).unwrap_or(u32::MAX);
-        for (row, ratio) in account_rows(g, now) {
+        for (row, ratio) in account_rows(g, now, &mut write_with_ids) {
             if row.pinned && row.band != MessagesBandData::Pinned {
                 let mut face = row.clone();
                 face.band = MessagesBandData::Pinned;
@@ -471,6 +487,15 @@ pub(super) async fn messages_at(
     }
     rank_your_turn(&mut your_turn);
     let mut your_turn: Vec<MessagesRowData> = your_turn.into_iter().map(|(row, _)| row).collect();
+    // Counted before the Waiting on view clears the band, and by row, the
+    // unit Now and the rail count (`turn_units`).
+    let writes_with =
+        |row: &MessagesRowData| write_with_ids.contains(&(row.account_id.clone(), row.id.clone()));
+    let write_with = your_turn.iter().filter(|row| writes_with(row)).count();
+    let your_turn_split = PeopleSplitData {
+        write_with: super::now::count(write_with),
+        others: super::now::count(your_turn.len() - write_with),
+    };
     rank_by_recency(&mut pinned);
     pinned.truncate(PINNED_CAP);
     rank_by_recency(&mut recent);
@@ -505,14 +530,24 @@ pub(super) async fn messages_at(
         fill_previews(state, &gathered, band).await?;
     }
 
-    let lapsed = if your_turn.is_empty() {
+    let waiting_view = turn == Some(MessagesTurnData::Theirs);
+    let lapsed = if your_turn.is_empty() && !waiting_view {
         lapsed(state, &accounts, now).await?
     } else {
         Vec::new()
     };
-    let empty_state = your_turn.is_empty().then(|| {
+    // Judged on the view being shown: Waiting on is empty when no row
+    // waits on them, whatever Your turn holds.
+    let view_empty = if waiting_view {
+        pinned.is_empty() && recent_total == 0 && quiet_total == 0
+    } else {
+        your_turn.is_empty()
+    };
+    let empty_state = view_empty.then(|| {
         if row_count == 0 {
             messages_copy::NEVER_HAD_ANY.to_string()
+        } else if waiting_view {
+            messages_copy::WAITING_CLEAR.to_string()
         } else {
             messages_copy::CLEAR.to_string()
         }
@@ -533,6 +568,7 @@ pub(super) async fn messages_at(
         generated_at: now,
         header: messages_copy::HEADER.to_string(),
         your_turn,
+        your_turn_split,
         pinned,
         recent,
         quiet,

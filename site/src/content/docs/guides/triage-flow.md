@@ -41,7 +41,8 @@ queue is for strangers: anyone you have written to is never in it.
 - `paper-trail`: receipts and notifications. Their mail lives in [Paper trail](/guides/reading-and-paper-trail/), off the desk.
 
 ```bash
-mxr screener queue                 # senders waiting for a decision
+mxr screener queue                 # the new senders the Screener count counts
+mxr screener queue --all-senders   # everyone without a decision, however old
 mxr screener allow alice@example.com
 mxr screener deny spammer@example.com
 mxr screener feed newsletter@example.com

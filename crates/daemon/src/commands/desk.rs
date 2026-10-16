@@ -480,6 +480,7 @@ mod tests {
             due: lane(due),
             waiting: DeskLaneData::default(),
             people_new: DeskLaneData::default(),
+            people: Default::default(),
             elsewhere: DeskElsewhereData {
                 reading: 7,
                 ..Default::default()

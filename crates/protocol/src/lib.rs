@@ -191,6 +191,7 @@ mod tests {
                 }],
                 total: 1,
             },
+            people: Default::default(),
             elsewhere: DeskElsewhereData::default(),
             last_from_people_at: None,
             generated_at: now,

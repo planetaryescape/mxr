@@ -28,7 +28,7 @@ async fn owed_within(
     )
     .await
     {
-        ResponseData::OwedReplies { rows } => rows,
+        ResponseData::OwedReplies { rows, .. } => rows,
         other => panic!("expected owed replies, got {other:?}"),
     }
 }
@@ -329,7 +329,7 @@ async fn owed_on_a_store_copy() {
         all,
     };
     let rows = |data: ResponseData| match data {
-        ResponseData::OwedReplies { rows } => rows,
+        ResponseData::OwedReplies { rows, .. } => rows,
         other => panic!("expected owed replies, got {other:?}"),
     };
 

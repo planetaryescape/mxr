@@ -2195,10 +2195,14 @@ pub enum SavedAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ScreenerAction {
-    /// Show senders waiting for a decision (default if no subcommand)
+    /// Show senders waiting for a decision (default if no subcommand): the
+    /// ones the Screener count counts, first seen in the last 14 days
     Queue {
         #[arg(long, default_value = "100")]
         limit: u32,
+        /// Every sender without a decision, in any folder, however old
+        #[arg(long)]
+        all_senders: bool,
     },
     /// List all existing decisions
     List,

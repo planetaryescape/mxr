@@ -1009,7 +1009,7 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 ## D132: The app never contradicts itself
 
-**Chosen**: Every count and every claim about the user's mail comes from one daemon definition and is worded the same on every surface. "Waiting on you" means Messages' Your turn everywhere it appears: Now's summary, Messages, Focus & reply, Owed replies and the thread's relationship line. People you have never written to are counted separately as "new" and never as owed. Badge counts equal the page's own count. Units are always named ("49 conversations", "2 of 35 conversations").
+**Chosen**: Every count and every claim about the user's mail comes from one daemon definition and is worded the same on every surface. "Waiting on you" means Messages' Your turn everywhere it appears, counted as the rows Messages lists (a person once, a group thread once) and split in one place into "people you write with" (the You owe lane) and "others who wrote to you" (all of New from people, first-time or repeat). Now's headline and People total, the rail's Messages badge and Messages' Your turn header show the total. Owed replies and Focus & reply are the people you write with and say where the others are ("3 others who wrote to you are in Messages"). The thread's relationship line says "you owe a reply" only when the thread is in You owe or New from people; threads outside the desk's window have no such line. Waiting on has its own empty sentence. Screener's page lists the set its badge counts. Units are always named ("49 conversations", "2 of 35 conversations").
 
 **Considered**: Leaving each view its own definition and explaining the differences in copy.
 

@@ -30,7 +30,7 @@ pub async fn run(
 fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     match resp {
         Response::Ok {
-            data: ResponseData::OwedReplies { rows },
+            data: ResponseData::OwedReplies { rows, .. },
         } => match fmt {
             OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&rows)?),
             OutputFormat::Jsonl => {

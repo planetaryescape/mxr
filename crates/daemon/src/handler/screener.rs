@@ -8,6 +8,7 @@ use mxr_protocol::{
     ResponseData, ScreenerDecisionData, ScreenerDispositionData, ScreenerQueueEntryData,
 };
 use mxr_store::{ScreenerDecision, ScreenerDisposition};
+use std::collections::HashSet;
 
 fn disposition_from_proto(d: ScreenerDispositionData) -> ScreenerDisposition {
     match d {
@@ -29,12 +30,43 @@ fn disposition_to_proto(d: ScreenerDisposition) -> ScreenerDispositionData {
     }
 }
 
+/// The store lists at most this many queue entries per call.
+const STORE_QUEUE_MAX: u32 = 500;
+
+/// The Screener page. By default the set the desk's Screener count counts
+/// (inbox mail from senders first seen in the last 14 days, no decision),
+/// so the page and the badge always agree; `all_senders` lists every
+/// sender without a decision, in any folder, as before.
 pub(super) async fn list_queue(
     state: &AppState,
     account_id: &AccountId,
     limit: u32,
+    all_senders: bool,
 ) -> HandlerResult {
-    let entries = state.store.list_screener_queue(account_id, limit).await?;
+    if all_senders {
+        let entries = state.store.list_screener_queue(account_id, limit).await?;
+        return Ok(queue_response(entries));
+    }
+    let desk = super::desk::compose_desk(state, Some(account_id), Utc::now()).await?;
+    let counted: HashSet<String> = desk
+        .screener_senders
+        .into_iter()
+        .map(|(_, email)| email)
+        .collect();
+    // Every counted sender has mail from the last 14 days, so they sit at
+    // the head of the store's newest-first order.
+    let entries = state
+        .store
+        .list_screener_queue(account_id, STORE_QUEUE_MAX)
+        .await?
+        .into_iter()
+        .filter(|entry| counted.contains(&entry.sender_email.to_ascii_lowercase()))
+        .take(limit as usize)
+        .collect();
+    Ok(queue_response(entries))
+}
+
+fn queue_response(entries: Vec<mxr_store::ScreenerQueueEntry>) -> ResponseData {
     let data: Vec<ScreenerQueueEntryData> = entries
         .into_iter()
         .map(|e| ScreenerQueueEntryData {
@@ -45,7 +77,7 @@ pub(super) async fn list_queue(
             latest_at: e.latest_at,
         })
         .collect();
-    Ok(ResponseData::ScreenerQueue { entries: data })
+    ResponseData::ScreenerQueue { entries: data }
 }
 
 pub(super) async fn list_decisions(state: &AppState, account_id: &AccountId) -> HandlerResult {

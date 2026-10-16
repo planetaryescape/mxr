@@ -586,6 +586,10 @@ pub(crate) mod tests {
                     iris,
                 ],
                 total: 11,
+                split: mxr_protocol::PeopleSplitData {
+                    write_with: 7,
+                    others: 4,
+                },
                 more_line: Some("and 8 more in Messages".into()),
                 overload_line: Some(
                     "11 people are waiting on you. The three below are furthest past your usual pace."

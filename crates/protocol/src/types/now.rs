@@ -7,7 +7,8 @@ use mxr_core::id::*;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    DeskRowData, RecordMomentData, ScreenerQuestionData, TodoData, TodoFirstRunData, UpdateLineData,
+    DeskRowData, PeopleSplitData, RecordMomentData, ScreenerQuestionData, TodoData,
+    TodoFirstRunData, UpdateLineData,
 };
 
 /// Items each section shows before "and N more".
@@ -44,6 +45,10 @@ pub struct NowPeopleData {
     pub rows: Vec<NowPersonData>,
     /// Every person in Messages, shown or not.
     pub total: u32,
+    /// `total` split into people you write with and others who wrote to
+    /// you. `write_with + others == total`.
+    #[serde(default)]
+    pub split: PeopleSplitData,
     /// "and 8 more in Messages", when there are more.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub more_line: Option<String>,

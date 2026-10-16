@@ -19,10 +19,12 @@ For each, record what was run, the result, the date and the conclusion here unde
 |---|---|---|
 | Q1 | Is "the night desk" the right concept for the web app: one lit thing on a dark desk, the modes as sections, Now as the front page, the reader under the lamp, the assistant as the copy desk? BK never named a concept; this is the blueprint's proposal from his statements (D123). | Open; blueprint assumes the night desk. |
 | Q2 | Does "dense where you work, generous where you read" match what BK wants? In March BK asked for compact and terminal-like ("too much paddings, i want more of a terminal aesthetic"); since May he has asked for the email and the editor to "take center stage". Nobody has asked whether the March density still holds for lists (D125). | Open; blueprint assumes the split. |
-| Q3 | What does "waiting on you" mean: Messages' Your turn including new senders, or only people you've written to before? Today the surfaces disagree (S1). | Open; blueprint assumes Your turn for people you've written to, with first-time senders counted apart as "new" (D132). |
+| Q3 | What does "waiting on you" mean: Messages' Your turn including new senders, or only people you've written to before? Today the surfaces disagree (S1). | Decided by the orchestrator under D132 (2026-10-16), BK to confirm: the total is Messages' Your turn rows; it splits into "people you write with" (You owe) and "others who wrote to you" (every New from people row, repeat senders included). Built in W4a. |
 | Q4 | Does BK still want editor colour themes (catppuccin, gruvbox, nightfox, kanagawa, one), as he asked for the desktop app on 2026-04-22? The web app has Midnight, Eclipse, Paper and Light, and nobody revisited the request. | Open; blueprint assumes not now, and the generator (D139) makes them three values each if yes. |
 | Q5 | Should a proof let you drop single items before applying ("archive these 14, but not that one")? Today approval runs exactly the stored call (D122), so dropping items needs the daemon to accept a narrowed selection and record it as the user's edit. | Open; blueprint assumes whole-proof apply, or send back with a note. |
 | Q6 | Is square still BK's taste ("i'm not expecting to see rounded corners", 2026-03-22, for the desktop app)? D127 makes surfaces square and controls 3px. | Open; blueprint assumes yes. |
+
+## Spike results
 
 ### S4 result (2026-10-16)
 
@@ -38,3 +40,18 @@ Conclusion: moving the lamp is inside both budgets, so the lamp can be built on 
 - The first run failed by a factor of 200. `MessagesRoute` passed `useAdvanceOnRemoval` an `isPresent` that scanned all rows, and the hook calls it once per row on every lamp move, so one `j` was quadratic. A `Set` of row ids fixed it. The same shape (a per-row scan inside a per-move effect) will fail the budget in any list W3 converts.
 - Rows are memoised (`Row`, and the Messages person row on primitives and stable callbacks), so a lamp move re-renders the two rows it touches. The list shell still maps all 5,000 elements per move (about 20,000 of the 31,848 blocks, linear in the list). Virtualise the long lists (Inbox already is) or move the lit id into a per-row store subscription if a list has to hold more than a few thousand rows unvirtualised.
 - Looking up a row's membership inside the row (not in the list's map) removed another 20,000 blocks per step. Keep per-row lookups inside the memoised row.
+
+### S1 result (2026-10-16)
+
+Run at f209d84ef by reading each surface's daemon query. Every surface was built from the same desk lanes (`compose_desk`) except the thread line, the Waiting on view and Screener, but each counted them differently.
+
+- Desk lanes (`crates/daemon/src/handler/desk_lanes.rs`, `thread_row`): a thread is somebody's turn when its newest message is inbound, in the inbox, from a Person and not Copied. It is You owe when you wrote in the thread or to them (contacts, 30-day window) and drops after `turn_decay` (max of three times their cadence and 7 days). Everything else is New from people, including repeat senders you never answered ("wrote to you"), inside 7 days (30 for allowed senders).
+- Now (`now.rs`): the headline and People total counted distinct counterparty emails over You owe plus New from people. The rail's Messages badge added the Waiting on lane to that.
+- Messages (`messages.rs`, `messages_view.rs`): Your turn counted rows, so a person with several threads is one row, a group thread is its own row and two addresses of one person (`person_links`) are one row. Now counted emails, so groups and merged people disagreed.
+- Owed replies (`owed.rs`): the You owe lane only, as conversations.
+- Focus & reply (web `useFocusSession.ts`): the You owe lane, so it said nobody was waiting while Now counted people who had written for the first time or repeatedly.
+- Thread line (`thread_context.rs`): "you owe" whenever the newest message was not yours and not bulk, ignoring inbox, sender kind, whether you write with them, decay and Copied shape.
+- Waiting on (Messages with `turn=theirs`): the daemon cleared Your turn before it chose the empty sentence, so the view said "Nobody is waiting on you." for the inverse question.
+- Screener: the page was the store's all-time queue in any folder; the badge was inbox mail first seen in the last 14 days. On the fake data that is 28 against 17, and the repeat senders first seen 16 days ago are the difference.
+
+Conclusion: one bug (Waiting on's sentence), three real definition gaps (thread line, Focus, Screener) and one unit mismatch (emails against rows). D132 now says what the shared definition is. Built in W4a: `crates/daemon/src/handler/turn_units.rs` counts rows with Messages' own keys and splits by lane; Now, the rail, Messages, Owed and the desk's `people` field read it.

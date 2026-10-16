@@ -115,6 +115,14 @@ test.describe("at 1440px", () => {
     const title = await page.getByTestId("reading-reader").locator("header h1").boundingBox();
     const column = await body.boundingBox();
     expect(Math.abs((title?.x ?? 0) - (column?.x ?? 1000))).toBeLessThanOrEqual(1);
+    // The toolbar sits in the same column, on one row: its back arrow starts
+    // where the title does.
+    const toolbar = page.getByTestId("reading-reader").locator("header");
+    const back = toolbar.getByRole("button", { name: "Reading", exact: true }).locator("svg");
+    const arrow = await back.boundingBox();
+    expect(Math.abs((arrow?.x ?? 1000) - (title?.x ?? 0))).toBeLessThanOrEqual(1);
+    const later = await toolbar.getByRole("button", { name: "Later", exact: true }).boundingBox();
+    expect(Math.abs((later?.y ?? 1000) - (arrow?.y ?? 0))).toBeLessThanOrEqual(8);
     const ch = await widthInCh(body);
     expect(ch).toBeGreaterThanOrEqual(64);
     expect(ch).toBeLessThanOrEqual(70);

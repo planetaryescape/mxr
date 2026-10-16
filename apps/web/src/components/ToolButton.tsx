@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { ModeFrame } from "@/components/ModeFrame";
+import { ModeFrame, type FrameWidth } from "@/components/ModeFrame";
 import { READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,9 +67,18 @@ export function ToolButton({
  * with many labelled verbs fold onto a second line on a phone; a conversation's
  * stays at the height its list's header reserves.
  */
-export function ReaderToolbar({ wrap = false, children }: { wrap?: boolean; children: ReactNode }) {
+export function ReaderToolbar({
+  wrap = false,
+  width = "reader",
+  children,
+}: {
+  wrap?: boolean;
+  /** The frame of the column below it, so the toolbar starts where the title does. */
+  width?: Extract<FrameWidth, "reader" | "reading">;
+  children: ReactNode;
+}) {
   return (
-    <ModeFrame width="reader">
+    <ModeFrame width={width}>
       <div
         className={cn("flex items-center gap-1 px-3", wrap && "flex-wrap py-1")}
         style={wrap ? { minHeight: READER_TOOLBAR_HEIGHT } : { height: READER_TOOLBAR_HEIGHT }}

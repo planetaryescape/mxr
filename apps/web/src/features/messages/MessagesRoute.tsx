@@ -56,7 +56,7 @@ import {
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
 import { KeyLine } from "@/components/KeyLine";
-import { PageFrame } from "@/components/PageFrame";
+import { FramePanesContext, PageFrame } from "@/components/PageFrame";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
@@ -266,6 +266,8 @@ function MessagesBody({
   const listRef = useRef<HTMLDivElement>(null);
   const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
   const pane = useSplitPane("messages", PEOPLE_PANE_SIZE, { active: split });
+  // A person's page beside the list: the list's title steps down so one Display title shows.
+  const frames = useMemo(() => ({ split: split && pageOpen, inset: 0 }), [pageOpen, split]);
   // Into view when it is chosen, and when the daemon moves it to another
   // band (done here can send a person from Your turn to Recent).
   const selectedBand = selected?.band;
@@ -531,114 +533,116 @@ function MessagesBody({
 
   const empty = data.your_turn.length === 0;
   return (
-    <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
-      <ResizablePanel
-        id="messages-people"
-        hidden={!split && pageOpen}
-        {...pane.sidePanelProps}
-        className="flex min-h-0 flex-col"
-        elementRef={listRef}
-      >
-        <MessagesHeader search={search} guide={guide} />
-        <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-          {empty && data.empty_state ? (
-            <div data-testid="messages-empty" className="mx-5 mt-4">
-              <p className="text-base text-foreground">{data.empty_state}</p>
-              {(data.lapsed ?? []).map((lapsed) => (
-                <p
-                  key={lapsed.person.id}
-                  data-testid="lapsed-line"
-                  className="mt-1 text-sm text-muted-foreground"
-                >
-                  {lapsed.line}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          <MessagesList
-            data={data}
-            selectedId={selectedId}
-            quietOpen={quietOpen}
-            onToggleQuiet={() => setQuietOpen((open) => !open)}
-            onSelect={(id) => select(id, { open: true })}
-            memberships={memberships}
-            hidden={hiddenDone}
-            arrival={arrival}
-          />
-          {guide ? (
-            <KeyLine
-              keys={[
-                ...guide.keys.filter((key) => SHOWN_KEYS.has(key.key)),
-                { key: "?", verb: "what is this" },
-              ]}
-            />
-          ) : null}
-        </div>
-      </ResizablePanel>
-      {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}
-      {split || pageOpen ? (
+    <FramePanesContext.Provider value={frames}>
+      <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
-          id="messages-conversation"
-          {...pane.otherPanelProps}
-          className="flex min-h-0 min-w-0"
+          id="messages-people"
+          hidden={!split && pageOpen}
+          {...pane.sidePanelProps}
+          className="flex min-h-0 flex-col"
+          elementRef={listRef}
         >
-          {page ? (
-            <PersonPane
-              page={page}
-              topic={topic}
-              asSent={asSent}
-              replyAll={replyAll}
-              left={left}
+          <MessagesHeader search={search} guide={guide} />
+          <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+            {empty && data.empty_state ? (
+              <div data-testid="messages-empty" className="mx-5 mt-4">
+                <p className="text-base text-foreground">{data.empty_state}</p>
+                {(data.lapsed ?? []).map((lapsed) => (
+                  <p
+                    key={lapsed.person.id}
+                    data-testid="lapsed-line"
+                    className="mt-1 text-sm text-muted-foreground"
+                  >
+                    {lapsed.line}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            <MessagesList
+              data={data}
+              selectedId={selectedId}
+              quietOpen={quietOpen}
+              onToggleQuiet={() => setQuietOpen((open) => !open)}
+              onSelect={(id) => select(id, { open: true })}
+              memberships={memberships}
               hidden={hiddenDone}
-              arrival={arrival?.person === selectedId ? arrival : null}
-              loading={person.isPlaceholderData}
-              pending={gotIt.pending}
-              ackLoading={gotIt.loading}
-              onBack={() => setPageOpen(false)}
-              onTopic={(thread) => {
-                topicsHint.dismiss();
-                if (selectedId) select(selectedId, { topic: thread });
-              }}
-              onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
-              onReplyAllChange={setReplyAllOverride}
-              onReply={() => openReply(replyAll)}
-              onGotIt={startGotIt}
-              onGotItFocus={() => setGotItNeeded(true)}
-              topicsHint={
-                topicsHint.hint ? (
-                  <AnchoredHint hint={topicsHint.hint} onDismiss={topicsHint.dismiss} />
-                ) : undefined
-              }
-              gotItHint={
-                gotItHint.hint ? (
-                  <AnchoredHint hint={gotItHint.hint} onDismiss={gotItHint.dismiss} />
-                ) : undefined
-              }
-              onUndoGotIt={gotIt.undo}
-              onDone={done}
-              onTodo={() => void makeTodo()}
+              arrival={arrival}
             />
-          ) : person.isError ? (
-            <Centered
-              icon={<RefreshCw className="size-6" />}
-              title="Couldn't open this person"
-              body={person.error.message}
-            />
-          ) : selectedId ? (
-            <div className="flex-1" aria-busy="true" />
-          ) : (
-            <Centered
-              icon={<ChevronRight className="size-6" />}
-              title={allRows.length > 0 ? "Choose a conversation" : "Nobody here yet"}
-              body={
-                allRows.length > 0
-                  ? "Select someone from the list to open their conversations."
-                  : guide?.never_had_any
-              }
-            />
-          )}
+            {guide ? (
+              <KeyLine
+                keys={[
+                  ...guide.keys.filter((key) => SHOWN_KEYS.has(key.key)),
+                  { key: "?", verb: "what is this" },
+                ]}
+              />
+            ) : null}
+          </div>
         </ResizablePanel>
-      ) : null}
-    </ResizablePanelGroup>
+        {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}
+        {split || pageOpen ? (
+          <ResizablePanel
+            id="messages-conversation"
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
+            {page ? (
+              <PersonPane
+                page={page}
+                topic={topic}
+                asSent={asSent}
+                replyAll={replyAll}
+                left={left}
+                hidden={hiddenDone}
+                arrival={arrival?.person === selectedId ? arrival : null}
+                loading={person.isPlaceholderData}
+                pending={gotIt.pending}
+                ackLoading={gotIt.loading}
+                onBack={() => setPageOpen(false)}
+                onTopic={(thread) => {
+                  topicsHint.dismiss();
+                  if (selectedId) select(selectedId, { topic: thread });
+                }}
+                onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
+                onReplyAllChange={setReplyAllOverride}
+                onReply={() => openReply(replyAll)}
+                onGotIt={startGotIt}
+                onGotItFocus={() => setGotItNeeded(true)}
+                topicsHint={
+                  topicsHint.hint ? (
+                    <AnchoredHint hint={topicsHint.hint} onDismiss={topicsHint.dismiss} />
+                  ) : undefined
+                }
+                gotItHint={
+                  gotItHint.hint ? (
+                    <AnchoredHint hint={gotItHint.hint} onDismiss={gotItHint.dismiss} />
+                  ) : undefined
+                }
+                onUndoGotIt={gotIt.undo}
+                onDone={done}
+                onTodo={() => void makeTodo()}
+              />
+            ) : person.isError ? (
+              <Centered
+                icon={<RefreshCw className="size-6" />}
+                title="Couldn't open this person"
+                body={person.error.message}
+              />
+            ) : selectedId ? (
+              <div className="flex-1" aria-busy="true" />
+            ) : (
+              <Centered
+                icon={<ChevronRight className="size-6" />}
+                title={allRows.length > 0 ? "Choose a conversation" : "Nobody here yet"}
+                body={
+                  allRows.length > 0
+                    ? "Select someone from the list to open their conversations."
+                    : guide?.never_had_any
+                }
+              />
+            )}
+          </ResizablePanel>
+        ) : null}
+      </ResizablePanelGroup>
+    </FramePanesContext.Provider>
   );
 }

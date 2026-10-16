@@ -24,6 +24,8 @@ interface GatePage {
   path: string;
   /** The frame always has tabs, so it is taller. */
   tabs?: boolean;
+  /** A detail pane opens beside the list: one Display title, and the two headers' rules line up. */
+  detail?: boolean;
   /** Opens the first conversation: the reader frame wraps long titles, so its height is a minimum. */
   thread?: boolean;
 }
@@ -36,7 +38,8 @@ const PAGES: GatePage[] = [
   { name: "reading", path: "/reading", tabs: true },
   { name: "archive", path: "/archive" },
   { name: "inbox", path: "/m/inbox" },
-  { name: "thread", path: "/m/inbox", thread: true },
+  { name: "thread", path: "/m/inbox", thread: true, detail: true },
+  { name: "person", path: "/messages?person=person%3Asamir%40launchpad.example", detail: true },
   { name: "settings", path: "/settings/theme" },
   { name: "screener", path: "/screener", tabs: true },
 ];
@@ -133,6 +136,20 @@ for (const theme of THEMES) {
             // The title is the largest text on the page.
             const { title, other, text } = await largestOtherText(page);
             expect(title, `title ${title}px vs "${text}" ${other}px`).toBeGreaterThan(other);
+
+            // Beside a detail pane the list steps down to Title, so one Display shows,
+            // and both headers end on the same line.
+            if (gate.detail && width >= 1024) {
+              const bottoms = await frames.evaluateAll((nodes) =>
+                nodes.map((node) => node.getBoundingClientRect().bottom),
+              );
+              expect(bottoms).toHaveLength(2);
+              expect(Math.abs((bottoms[0] ?? 0) - (bottoms[1] ?? 0))).toBeLessThanOrEqual(1);
+              const sizes = await titles.evaluateAll((nodes) =>
+                nodes.map((node) => getComputedStyle(node).fontSize),
+              );
+              expect(sizes.filter((size) => size === "28px")).toHaveLength(1);
+            }
 
             // The first frame is the page's own: its height is fixed per width.
             const box = await frames.first().boundingBox();

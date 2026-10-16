@@ -490,12 +490,12 @@ function Bands({
       data-testid="reading-edition"
     >
       <SwipeLayer ref={swipeLayer} />
-      {edition.empty && view !== "later" ? (
-        <p data-testid="reading-clear" className="mx-5 mt-3 text-sm text-foreground/90">
-          {edition.empty.line}
-        </p>
-      ) : null}
       <ModeFrame>
+        {edition.empty && view !== "later" ? (
+          <p data-testid="reading-clear" className="mx-5 mt-3 text-sm text-foreground/90">
+            {edition.empty.line}
+          </p>
+        ) : null}
         {bands.map((band, bandIndex) => (
           <section key={band.band} aria-label={band.label} data-testid={`band-${band.band}`}>
             {bandIndex === 1 && sinceFirst && edition.left_off_here && view !== "later" ? (

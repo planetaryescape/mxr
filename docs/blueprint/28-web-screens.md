@@ -51,7 +51,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
   Not now: 1 to read this week
 ```
 
-**Intent.** The summary sentence is the page title: "Four things need you." in Display, so the first thing read is the answer. The freshness dot and the arrivals line are meta beneath it: present, not loud. The four sections (D110) are short lists with eyebrows, with no section boxes. The eye lands on the summary, then on the first person. Nothing is lit until a key is pressed or a row is clicked.
+**Intent.** The summary sentence is the page title: "Four things need you." in Display, so the first thing read is the answer. The freshness dot and the arrivals line are meta beneath it: present, not loud. The four sections (D110) are short lists with eyebrows, with no section boxes. The eye lands on the summary, then on the first person. Nothing is lit until a key is pressed or a row is clicked. As built in W1, the page title stays "Now" and the daemon's headline sits under the frame as a Heading, because real headlines run about 60 characters and do not fit Display at laptop widths.
 
 **The lit row** turns its trail into the verbs with keys; the status bar says why it's here.
 

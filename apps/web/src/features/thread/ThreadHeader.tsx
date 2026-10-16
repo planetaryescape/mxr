@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 
 import { ModeFrame } from "@/components/ModeFrame";
-import { PageFrame } from "@/components/PageFrame";
+import { PageFrame, READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -80,7 +80,7 @@ export function ThreadHeader({
   return (
     <header className="shrink-0 bg-background">
       <ModeFrame width="reader">
-        <div className="flex items-center gap-1 px-3 py-1.5">
+        <div className="flex items-center gap-1 px-3" style={{ height: READER_TOOLBAR_HEIGHT }}>
           <IconAction icon={X} label="Close" keys="Escape" command="close" />
           <IconAction
             icon={ChevronUp}
@@ -126,6 +126,7 @@ export function ThreadHeader({
       <PageFrame
         width="reader"
         wrapTitle
+        detail
         publishTitle={false}
         purposeTestId="thread-people"
         eyebrow={plural(data.thread.message_count, "message")}

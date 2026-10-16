@@ -1,5 +1,5 @@
 import { MoreHorizontal, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import { ModeFrame, type FrameWidth } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,23 @@ export interface PageAction {
   destructive?: boolean;
   disabled?: boolean;
 }
+
+/**
+ * Whether a list and a detail pane are side by side, so their headers can
+ * line up. A list's frame then uses Title (not Display) and reserves `inset`
+ * pixels for the detail pane's toolbar, which sits above the detail's frame;
+ * the detail's frame keeps Display and stays on one line. `detail` on a frame
+ * marks it as the detail pane's.
+ */
+export interface FramePanes {
+  split: boolean;
+  inset: number;
+}
+
+export const FramePanesContext = createContext<FramePanes>({ split: false, inset: 0 });
+
+/** The height of a reader's toolbar row: what a list frame beside it reserves. */
+export const READER_TOOLBAR_HEIGHT = 40;
 
 export interface PageFrameProps {
   /** A short label above the title: the section, or a count ("1 due today"). */
@@ -47,6 +64,8 @@ export interface PageFrameProps {
    * to two lines and the frame grows to fit. Pages keep one line.
    */
   wrapTitle?: boolean;
+  /** This is the detail pane's frame, beside a list's. */
+  detail?: boolean;
   /** Hand the title to the Topbar so it drops a crumb that repeats it. */
   publishTitle?: boolean;
   className?: string;
@@ -75,7 +94,8 @@ export function PageFrame({
   tabs,
   freshness,
   width = "list",
-  wrapTitle = false,
+  wrapTitle: wrapWanted = false,
+  detail = false,
   publishTitle = true,
   className,
   titleTestId,
@@ -83,6 +103,12 @@ export function PageFrame({
   purposeTestId = "mode-header",
 }: PageFrameProps) {
   usePublishPageTitle(publishTitle ? title : null);
+  const panes = useContext(FramePanesContext);
+  const listBesideDetail = panes.split && !detail;
+  // Beside a list, a wrapping title would push its rule off the list's.
+  const wrapTitle = wrapWanted && !(panes.split && detail);
+  const inset = listBesideDetail ? panes.inset : 0;
+  const baseHeight = tabs ? 120 : 88;
   const hasActions = Boolean(primary) || (overflow?.length ?? 0) > 0;
   return (
     <header
@@ -92,6 +118,7 @@ export function PageFrame({
     >
       <ModeFrame
         width={width}
+        style={inset ? { height: baseHeight + inset, paddingTop: 10 + inset } : undefined}
         className={cn(
           "flex flex-col px-5 pt-2.5",
           wrapTitle
@@ -114,7 +141,8 @@ export function PageFrame({
             id={titleId}
             data-testid={titleTestId}
             className={cn(
-              "type-title lg:type-display min-w-0 text-text-1",
+              "type-title min-w-0 text-text-1",
+              !listBesideDetail && "lg:type-display",
               wrapTitle ? "line-clamp-2 text-balance" : "truncate",
             )}
           >

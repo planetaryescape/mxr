@@ -69,6 +69,7 @@ export function PersonPane(props: PersonPaneProps) {
     >
       <PageFrame
         width="reader"
+        detail
         publishTitle={false}
         titleTestId="person-name"
         purposeTestId="relationship-line"

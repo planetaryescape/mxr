@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { PageFrame } from "./PageFrame";
+import { FramePanesContext, PageFrame } from "./PageFrame";
 import { usePageTitleStore } from "@/state/pageTitleStore";
 
 afterEach(() => usePageTitleStore.setState({ title: null }));
@@ -102,5 +102,28 @@ describe("PageFrame", () => {
       </>,
     );
     expect(usePageTitleStore.getState().title).toBe("Messages");
+  });
+
+  test("beside a detail pane the list steps down to Title and reserves the detail's toolbar", () => {
+    render(
+      <FramePanesContext.Provider value={{ split: true, inset: 40 }}>
+        <PageFrame title="Inbox" />
+        <PageFrame title="Subject" detail wrapTitle />
+      </FramePanesContext.Provider>,
+    );
+    const [list, detail] = screen.getAllByRole("heading", { level: 1 });
+    expect(list).not.toHaveClass("lg:type-display");
+    expect(detail).toHaveClass("lg:type-display");
+    const [listFrame, detailFrame] = screen.getAllByTestId("page-frame");
+    expect(listFrame?.firstElementChild).toHaveStyle({ height: "128px", paddingTop: "50px" });
+    // The detail stays on one line so its rule stays level with the list's.
+    expect(detail).toHaveClass("truncate");
+    expect(detailFrame?.firstElementChild).toHaveClass("sm:h-[88px]");
+  });
+
+  test("with no split a lone list keeps Display and its plain height", () => {
+    render(<PageFrame title="Inbox" />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveClass("lg:type-display");
+    expect(screen.getByTestId("page-frame").firstElementChild).not.toHaveAttribute("style");
   });
 });

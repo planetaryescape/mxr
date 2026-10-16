@@ -43,7 +43,8 @@ test.describe("at 1440px", () => {
     const list = (await mailList(page).boundingBox())!;
     const article = (await reader(page).boundingBox())!;
     expect(list.x + list.width).toBeLessThanOrEqual(article.x + 1);
-    expect(Math.abs(list.y - article.y)).toBeLessThan(120);
+    // The list starts under its page frame (128px beside a reader), the article at the top of its pane.
+    expect(Math.abs(list.y - article.y)).toBeLessThan(160);
   });
 });
 

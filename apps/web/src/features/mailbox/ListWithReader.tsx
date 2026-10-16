@@ -10,7 +10,12 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { ModeFrame } from "@/components/ModeFrame";
-import { PageFrame, type PageAction } from "@/components/PageFrame";
+import {
+  FramePanesContext,
+  PageFrame,
+  READER_TOOLBAR_HEIGHT,
+  type PageAction,
+} from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -121,6 +126,7 @@ export function ListWithReader({
   }, []);
   const hideList = threadOpen && (singlePane || readerLayout === "full");
   const split = threadOpen && !hideList;
+  const panes = useMemo(() => ({ split, inset: READER_TOOLBAR_HEIGHT }), [split]);
   // One saved width for every mail list, so Inbox, labels and search match.
   const pane = useSplitPane("mail-list", LIST_PANE_SIZE, { active: split });
 
@@ -201,155 +207,157 @@ export function ListWithReader({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
-        <ResizablePanel
-          id="list-pane"
-          data-parked={hideList || undefined}
-          {...pane.sidePanelProps}
-          className="flex min-h-0 flex-col"
-        >
-          <section
-            aria-label={title}
-            className="@container flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      <FramePanesContext.Provider value={panes}>
+        <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
+          <ResizablePanel
+            id="list-pane"
+            data-parked={hideList || undefined}
+            {...pane.sidePanelProps}
+            className="flex min-h-0 flex-col"
           >
-            <PageFrame
-              title={title}
-              titleContent={titleContent}
-              eyebrow={meta}
-              purpose={purpose}
-              primary={primary}
-              overflow={overflow}
-            />
-            {toolbar ? (
-              <div className="shrink-0 border-b border-rule-soft">
-                <ModeFrame className="px-4 py-2">{toolbar}</ModeFrame>
-              </div>
-            ) : null}
-            {filterOpen ? (
-              <div className="flex shrink-0 items-center gap-2 border-b border-rule-soft px-4 py-2">
-                <Filter className="size-3.5 shrink-0 text-muted-foreground" />
-                <input
-                  ref={filterRef}
-                  aria-label="Filter this list"
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      setFilter("");
-                      setFilterOpen(false);
-                      focusActivePane();
-                    } else if (
-                      event.key === "Enter" &&
-                      (event.metaKey || event.ctrlKey) &&
-                      filter.trim()
-                    ) {
-                      event.preventDefault();
-                      void navigate({ to: "/search", search: { q: filter.trim() } });
-                    } else if (event.key === "Enter" || event.key === "ArrowDown") {
-                      event.preventDefault();
-                      setActivePane("mailbox");
-                      focusActivePane();
-                    }
-                  }}
-                  placeholder="Filter loaded conversations by sender, subject or snippet"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                />
-                <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
-                  {filter ? `${shownCount} of ${loadedCount}` : ""}
-                </span>
-                {filter.trim() ? (
-                  <button
-                    type="button"
-                    onClick={() => void navigate({ to: "/search", search: { q: filter.trim() } })}
-                    className="shrink-0 text-xs text-primary hover:underline"
-                    title="Search all mail (⌘Enter)"
-                  >
-                    Search all mail
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {phase !== "ready" ? (
-              <ListSkeleton quiet={phase === "quiet"} />
-            ) : status.fetchStatus === "paused" && !hasData ? (
-              <Centered
-                icon={<RefreshCw className="size-6" />}
-                title="Waiting for mxr"
-                body={`Couldn't load ${title.toLowerCase()} yet. It will appear when mxr reconnects.`}
-                action={
-                  <Button size="sm" onClick={() => void status.refetch()}>
-                    Try again
-                  </Button>
-                }
+            <section
+              aria-label={title}
+              className="@container flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+            >
+              <PageFrame
+                title={title}
+                titleContent={titleContent}
+                eyebrow={meta}
+                purpose={purpose}
+                primary={primary}
+                overflow={overflow}
               />
-            ) : status.isError && !hasData ? (
-              <Centered
-                icon={<RefreshCw className="size-6" />}
-                title={`Couldn't load ${title.toLowerCase()}`}
-                body={status.error?.message}
-                action={
-                  <Button size="sm" onClick={() => void status.refetch()}>
-                    Try again
-                  </Button>
-                }
-              />
-            ) : (
-              <MailboxList
-                {...listProps}
-                groups={visibleGroups}
-                scopeKey={scopeKey}
-                onFilter={openFilter}
-                label={title}
-                activeThreadId={threadId}
-                previewOnFocus={threadOpen && !hideList}
-                onOpenRow={onOpenRow}
-                onCloseThread={threadOpen ? close : undefined}
-                empty={
-                  filter.trim() && loadedCount > 0 ? (
-                    <Centered
-                      icon={<Filter className="size-6" />}
-                      title="Nothing loaded matches"
-                      body={`No conversation in this list mentions “${filter.trim()}”.`}
-                      action={
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void navigate({ to: "/search", search: { q: filter.trim() } })
-                          }
-                        >
-                          Search all mail
-                        </Button>
+              {toolbar ? (
+                <div className="shrink-0 border-b border-rule-soft">
+                  <ModeFrame className="px-4 py-2">{toolbar}</ModeFrame>
+                </div>
+              ) : null}
+              {filterOpen ? (
+                <div className="flex shrink-0 items-center gap-2 border-b border-rule-soft px-4 py-2">
+                  <Filter className="size-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    ref={filterRef}
+                    aria-label="Filter this list"
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setFilter("");
+                        setFilterOpen(false);
+                        focusActivePane();
+                      } else if (
+                        event.key === "Enter" &&
+                        (event.metaKey || event.ctrlKey) &&
+                        filter.trim()
+                      ) {
+                        event.preventDefault();
+                        void navigate({ to: "/search", search: { q: filter.trim() } });
+                      } else if (event.key === "Enter" || event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setActivePane("mailbox");
+                        focusActivePane();
                       }
-                    />
-                  ) : (
-                    empty
-                  )
-                }
-              />
-            )}
-            {footer}
-          </section>
-        </ResizablePanel>
-        {/* The handle and reader stay mounted, parked off screen while
+                    }}
+                    placeholder="Filter loaded conversations by sender, subject or snippet"
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
+                    {filter ? `${shownCount} of ${loadedCount}` : ""}
+                  </span>
+                  {filter.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => void navigate({ to: "/search", search: { q: filter.trim() } })}
+                      className="shrink-0 text-xs text-primary hover:underline"
+                      title="Search all mail (⌘Enter)"
+                    >
+                      Search all mail
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {phase !== "ready" ? (
+                <ListSkeleton quiet={phase === "quiet"} />
+              ) : status.fetchStatus === "paused" && !hasData ? (
+                <Centered
+                  icon={<RefreshCw className="size-6" />}
+                  title="Waiting for mxr"
+                  body={`Couldn't load ${title.toLowerCase()} yet. It will appear when mxr reconnects.`}
+                  action={
+                    <Button size="sm" onClick={() => void status.refetch()}>
+                      Try again
+                    </Button>
+                  }
+                />
+              ) : status.isError && !hasData ? (
+                <Centered
+                  icon={<RefreshCw className="size-6" />}
+                  title={`Couldn't load ${title.toLowerCase()}`}
+                  body={status.error?.message}
+                  action={
+                    <Button size="sm" onClick={() => void status.refetch()}>
+                      Try again
+                    </Button>
+                  }
+                />
+              ) : (
+                <MailboxList
+                  {...listProps}
+                  groups={visibleGroups}
+                  scopeKey={scopeKey}
+                  onFilter={openFilter}
+                  label={title}
+                  activeThreadId={threadId}
+                  previewOnFocus={threadOpen && !hideList}
+                  onOpenRow={onOpenRow}
+                  onCloseThread={threadOpen ? close : undefined}
+                  empty={
+                    filter.trim() && loadedCount > 0 ? (
+                      <Centered
+                        icon={<Filter className="size-6" />}
+                        title="Nothing loaded matches"
+                        body={`No conversation in this list mentions “${filter.trim()}”.`}
+                        action={
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              void navigate({ to: "/search", search: { q: filter.trim() } })
+                            }
+                          >
+                            Search all mail
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      empty
+                    )
+                  }
+                />
+              )}
+              {footer}
+            </section>
+          </ResizablePanel>
+          {/* The handle and reader stay mounted, parked off screen while
             unused (app.css): registering either with the library on open
             reads layout mid-commit, which pushed opening a conversation
             past the speed gate. */}
-        <ResizableHandle
-          aria-label={`Resize ${title} list`}
-          data-parked={!split || undefined}
-          {...pane.handleProps}
-        />
-        <ResizablePanel
-          id="reader-pane"
-          data-parked={!threadOpen || undefined}
-          {...pane.otherPanelProps}
-          className="flex min-h-0 min-w-0"
-        >
-          {threadOpen ? <Outlet /> : null}
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <ResizableHandle
+            aria-label={`Resize ${title} list`}
+            data-parked={!split || undefined}
+            {...pane.handleProps}
+          />
+          <ResizablePanel
+            id="reader-pane"
+            data-parked={!threadOpen || undefined}
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
+            {threadOpen ? <Outlet /> : null}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </FramePanesContext.Provider>
     </ReaderNavContext.Provider>
   );
 }

@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   type ReactNode,
-  type RefObject,
 } from "react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
@@ -39,7 +38,7 @@ export function MessagesList({
   via,
   quietOpen,
   onToggleQuiet,
-  scrollRef,
+  scroller,
   onSelect,
   onReply,
   onDone,
@@ -53,7 +52,7 @@ export function MessagesList({
   quietOpen: boolean;
   onToggleQuiet: () => void;
   /** The element that scrolls the list: bands window their rows against it. */
-  scrollRef: RefObject<HTMLElement | null>;
+  scroller: HTMLElement | null;
   /** Must be stable (not re-created per render), so a lamp move leaves other rows alone. */
   onSelect: (id: string) => void;
   onReply: () => void;
@@ -65,10 +64,14 @@ export function MessagesList({
   /** The row a verb just moved to, marked once. */
   arrival: Arrival | null;
 }) {
-  const renderPerson = (row: MessagesRow) => (
+  const renderPerson = (row: MessagesRow, slot?: RowSlot) => (
     <PersonRow
       key={row.id}
       row={row}
+      slotIndex={slot?.index}
+      slotTop={slot?.top}
+      setSize={slot?.setSize}
+      measure={slot?.measure}
       memberships={memberships}
       lit={row.id === selectedId}
       via={via}
@@ -86,7 +89,7 @@ export function MessagesList({
           <VirtualRows
             rows={data.your_turn}
             selectedId={selectedId}
-            scrollRef={scrollRef}
+            scroller={scroller}
             renderRow={renderPerson}
           />
         </Band>
@@ -129,7 +132,7 @@ export function MessagesList({
           <VirtualRows
             rows={data.recent}
             selectedId={selectedId}
-            scrollRef={scrollRef}
+            scroller={scroller}
             renderRow={renderPerson}
           />
           {data.recent_total > data.recent.length ? (
@@ -159,7 +162,7 @@ export function MessagesList({
               <VirtualRows
                 rows={data.quiet}
                 selectedId={selectedId}
-                scrollRef={scrollRef}
+                scroller={scroller}
                 renderRow={renderPerson}
               />
             </>
@@ -204,27 +207,24 @@ const OVERSCAN = 12;
 function VirtualRows({
   rows,
   selectedId,
-  scrollRef,
+  scroller,
   renderRow,
 }: {
   rows: readonly MessagesRow[];
   selectedId: string | null;
-  scrollRef: RefObject<HTMLElement | null>;
-  renderRow: (row: MessagesRow) => ReactNode;
+  scroller: HTMLElement | null;
+  renderRow: (row: MessagesRow, slot: RowSlot) => ReactNode;
 }) {
   const listRef = useRef<HTMLUListElement>(null);
-  // State, so the virtualizer sees the scroller once it is attached.
-  const [scroller, setScroller] = useState<HTMLElement | null>(null);
   const [margin, setMargin] = useState(0);
   // Where this band starts inside the scroller (the bands above it, the empty state).
   // On every render, since a band above can resize without this band's rows changing;
   // setMargin bails out when the offset is the same, so it cannot loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    const element = scrollRef.current;
+    const element = scroller;
     const list = listRef.current;
     if (!element || !list) return;
-    setScroller(element);
     const top =
       list.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
     setMargin((current) => (Math.abs(current - top) < 1 ? current : Math.round(top)));
@@ -255,21 +255,24 @@ function VirtualRows({
       {(litItem ? [...windowed, litItem] : windowed).map((item) => {
         const row = rows[item.index];
         if (!row) return null;
-        return (
-          <div
-            key={item.key}
-            role="presentation"
-            data-index={item.index}
-            ref={virtualizer.measureElement}
-            className="absolute left-0 top-0 w-full"
-            style={{ transform: `translateY(${item.start - margin}px)` }}
-          >
-            {renderRow(row)}
-          </div>
-        );
+        // The row's own <li> carries the window's place, so the list holds only list items.
+        return renderRow(row, {
+          index: item.index,
+          top: item.start - margin,
+          setSize: rows.length,
+          measure: virtualizer.measureElement,
+        });
       })}
     </ul>
   );
+}
+
+/** Where a windowed row sits: its index, offset, the band's size and the virtualizer's measure. */
+export interface RowSlot {
+  index: number;
+  top: number;
+  setSize: number;
+  measure: (element: Element | null) => void;
 }
 
 function Face({ title, group = false }: { title: string; group?: boolean }) {
@@ -297,6 +300,10 @@ const PersonRow = memo(function PersonRow({
   onDone,
   hidden,
   arrival,
+  slotIndex,
+  slotTop,
+  setSize,
+  measure,
 }: {
   row: MessagesRow;
   /** Looked up here, not by the list, so a lamp move doesn't walk every row. */
@@ -310,6 +317,11 @@ const PersonRow = memo(function PersonRow({
   hidden: ReadonlySet<string>;
   /** Set while this row is the one a verb just moved to. */
   arrival: number | null;
+  /** Its place in a windowed band, as plain values so the memo holds on a lamp move. */
+  slotIndex?: number;
+  slotTop?: number;
+  setSize?: number;
+  measure?: (element: Element | null) => void;
 }) {
   const preview = row.preview;
   const modes = memberships?.get(row.topics[0]?.thread_id ?? "");
@@ -336,6 +348,12 @@ const PersonRow = memo(function PersonRow({
   if (allGone && !folding) return null;
   return (
     <Row
+      ref={measure}
+      data-index={slotIndex}
+      aria-setsize={setSize}
+      aria-posinset={slotIndex === undefined ? undefined : slotIndex + 1}
+      className={slotTop === undefined ? undefined : "absolute inset-x-0 top-0"}
+      style={slotTop === undefined ? undefined : { transform: `translateY(${slotTop}px)` }}
       lit={lit}
       via={via}
       unread={row.unread}

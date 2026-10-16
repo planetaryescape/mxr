@@ -1,11 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
-import { Button } from "@/components/ui/button";
 import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
 import { fetchThread } from "@/features/mailbox/api";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { PageError } from "@/components/PageParts";
 import { useOpenThread } from "@/state/openThreadStore";
 
 import { threadContextQuery, threadGistQuery } from "./context/api";
@@ -61,15 +59,12 @@ export function ThreadPane({
   if (query.isError) {
     return (
       <div className="flex min-w-0 flex-1 flex-col">
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't open this conversation"
-          body={query.error.message}
-          action={
-            <Button size="sm" onClick={() => void query.refetch()}>
-              Try again
-            </Button>
-          }
+          subject="this conversation"
+          error={query.error}
+          onRetry={() => void query.refetch()}
         />
       </div>
     );

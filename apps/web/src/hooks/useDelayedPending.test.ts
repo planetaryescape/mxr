@@ -13,7 +13,7 @@ function setup(pending: boolean) {
 }
 
 describe("useDelayedPending", () => {
-  it("shows nothing for a load under 300 ms", () => {
+  it("shows nothing for a load under 150 ms", () => {
     const { result, rerender } = setup(true);
     expect(result.current).toBe("quiet");
     act(() => vi.advanceTimersByTime(PENDING_DELAY_MS - 1));
@@ -24,7 +24,7 @@ describe("useDelayedPending", () => {
     expect(result.current).toBe("ready");
   });
 
-  it("shows the skeleton after 300 ms and holds it at least 400 ms", () => {
+  it("shows the skeleton after 150 ms and holds it at least 400 ms", () => {
     const { result, rerender } = setup(true);
     act(() => vi.advanceTimersByTime(PENDING_DELAY_MS));
     expect(result.current).toBe("skeleton");

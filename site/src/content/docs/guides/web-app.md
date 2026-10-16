@@ -412,9 +412,10 @@ for the row under the cursor.
 
 ## When mxr is unavailable
 
-If mxr becomes unreachable while the web app is open, a banner says so within
-a second or two. Mail already loaded may still be available; new pages and
-changes need mxr to answer. `j`, `k`, `Enter`, `Esc` and the `g` jumps keep
+If mxr becomes unreachable while the web app is open, one banner under the top
+bar says so within a second or two: "mxr isn't running. Showing what was loaded
+at 21:04." Mail already loaded stays on screen and the rail keeps every item;
+new pages and changes need mxr to answer. `j`, `k`, `Enter`, `Esc` and the `g` jumps keep
 working on loaded views. Views you haven't opened yet wait to load.
 
 Changes don't queue. Archive, trash, labels, snooze, Done, undo, send and
@@ -422,11 +423,22 @@ opening the composer are refused until mxr can be reached again, and nothing
 moves on screen. A reply you were writing keeps its text; the composer shows
 that it isn't saved and saves it once mxr is reachable again.
 
-The banner's **Copy command** button copies `mxr restart`. Run it on the
+The banner's **Copy start command** button copies `mxr restart`. Run it on the
 computer running mxr; for a remote bridge, check the tunnel or network first.
 The app checks again while disconnected. When mxr is reachable, the banner
-clears, lists refresh and live updates reconnect without a page reload. For
-request errors, expand **Technical details** to see the underlying error.
+clears, lists refresh and live updates reconnect without a page reload.
+
+## When a page is empty, loading or failed
+
+Every page shows one of three states instead of its own variety. An empty page
+sits at the top of the content, says what isn't there and, where there is
+somewhere better to go, names it ("Next: 3 in To do"). A loading page draws rows
+in the shape of its own list, but only after 150 ms, so a page that answers
+from cache never flashes one. A failed page says what happened in plain words,
+what still works, and offers the one action that can help: **Try again** for a
+failure a retry can fix, **Copy start command** when mxr isn't running, **Open
+token settings** when this browser isn't recognised, and **Go to Inbox** for a
+conversation or item that can't be found. The raw error is under **Details**.
 
 If live updates disconnect while other requests still work, the app refreshes
 loaded mail when the event connection returns. Your open draft keeps its text;

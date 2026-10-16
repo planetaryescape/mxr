@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, Pause, Play, RefreshCw } from "lucide-react";
+import { Pause, Play, RefreshCw } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -266,7 +266,6 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
           />
         ) : entries.length === 0 ? (
           <PageEmpty
-            icon={<History className="size-5" />}
             title="No activity in this window"
             body="Try a wider time range or fewer filters. mxr records actions as you use it."
           />

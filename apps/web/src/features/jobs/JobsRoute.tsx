@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { ListChecks } from "lucide-react";
 
 import { fetchJobs, type JobData } from "./api";
 import { Page } from "@/components/Page";
@@ -37,7 +36,6 @@ export function JobsRoute() {
         />
       ) : jobs.data.length === 0 ? (
         <PageEmpty
-          icon={<ListChecks className="size-5" />}
           title="No background jobs"
           body="Bulk actions over many messages run here so you can watch their progress."
         />

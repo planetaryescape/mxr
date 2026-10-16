@@ -13,6 +13,8 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { KeyChip } from "@/components/KeyChip";
 import { PageFrame } from "@/components/PageFrame";
+import { PageError } from "@/components/PageParts";
+import { explainError } from "@/components/RequestError";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { markDeskDone } from "@/features/desk/deskDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -192,7 +194,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
 
       {focus.error && current ? (
         <p className="px-5 py-2 text-xs text-destructive" role="status">
-          Some of who you owe couldn't be loaded: {focus.error.message}{" "}
+          Some of who you owe couldn't be loaded: {explainError(focus.error).heading}.{" "}
           <button type="button" className="underline" onClick={focus.refetch}>
             Try again
           </button>
@@ -200,22 +202,13 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
       ) : null}
 
       {failed ? (
-        <div
-          data-testid="focus-error"
-          className="mx-auto flex max-w-[34rem] flex-1 flex-col justify-center px-6 py-16"
-        >
-          <h2 className="text-balance text-xl font-semibold tracking-tight">
-            Couldn't load who you owe a reply.
-          </h2>
-          <p className="mt-2 text-base text-muted-foreground">{focus.error?.message}</p>
-          <div className="mt-6 flex gap-2">
-            <Button size="sm" onClick={focus.refetch}>
-              Try again
-            </Button>
-            <Button variant="outline" size="sm" onClick={leave}>
-              Back to mail
-            </Button>
-          </div>
+        <div data-testid="focus-error">
+          <PageError
+            framed
+            title="Couldn't load who you owe a reply"
+            error={focus.error}
+            onRetry={focus.refetch}
+          />
         </div>
       ) : finished ? (
         <FocusFinish

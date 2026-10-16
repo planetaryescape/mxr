@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -84,7 +83,6 @@ export function CadenceDashboard() {
           />
         ) : drift.data.rows.length === 0 ? (
           <PageEmpty
-            icon={<Eye className="size-5" />}
             title="Nobody is overdue"
             body={
               (watchlist.data?.entries.length ?? 0) === 0

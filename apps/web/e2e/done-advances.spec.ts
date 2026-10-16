@@ -308,7 +308,7 @@ test.describe("Messages: done here moves on", () => {
       await page.waitForTimeout(150);
     }
     await expect(page.getByTestId("messages-empty")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Nobody here yet")).toBeVisible();
+    await expect(page.getByTestId("messages-empty").getByRole("heading")).toBeVisible();
     await expect(page.getByTestId("conversation-subject")).toHaveCount(0);
   });
 

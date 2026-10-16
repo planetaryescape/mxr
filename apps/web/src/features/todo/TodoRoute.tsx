@@ -1,12 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronRight, ListTodo, RefreshCw } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -120,17 +119,13 @@ function Runway({
     <>
       <TodoHeader runway={data} guide={guide.data} />
       {phase !== "ready" ? (
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed shown={phase === "skeleton"} />
       ) : status.isError ? (
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load To do"
-          body={status.error.message}
-          action={
-            <Button size="sm" onClick={() => void status.refetch()}>
-              Try again
-            </Button>
-          }
+          error={status.error}
+          onRetry={() => void status.refetch()}
         />
       ) : data ? (
         <Bands runway={data} guide={guide.data} expiredOnOpen={expiredOnOpen} />
@@ -439,8 +434,9 @@ function Bands({
 
   if (neverHadAny) {
     return (
-      <Centered
-        icon={<ListTodo className="size-6" />}
+      <PageEmpty
+        framed
+        glyph="todo"
         title="Nothing here yet"
         body={[runway.empty_state ?? guide?.never_had_any, guide?.add_one?.replaceAll("`", "")]
           .filter(Boolean)

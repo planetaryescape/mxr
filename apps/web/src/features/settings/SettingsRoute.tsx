@@ -14,7 +14,6 @@ import {
   Mic,
   Palette,
   Pencil,
-  SearchX,
   Volume2,
   Users,
 } from "lucide-react";
@@ -184,7 +183,6 @@ export function SettingsRoute() {
   ) : (
     <Page eyebrow="Settings" title="Not found" width="narrow">
       <PageEmpty
-        icon={<SearchX className="size-5" />}
         title={`There is no "${requested}" settings page`}
         body="It may have moved. Pick a section from the list."
         action={

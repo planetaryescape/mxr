@@ -133,7 +133,6 @@ export function DeliveriesRoute() {
         />
       ) : rows.length === 0 ? (
         <PageEmpty
-          icon={<Package className="size-5" />}
           title={filter === "active" ? "Nothing on the way" : "No deliveries"}
           body="Shipping emails are picked up after each sync. Scan now to check recent mail again."
           action={

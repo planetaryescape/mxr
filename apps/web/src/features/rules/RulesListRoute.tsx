@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ListFilter, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -95,7 +95,6 @@ export function RulesListRoute() {
         />
       ) : rows.length === 0 ? (
         <PageEmpty
-          icon={<ListFilter className="size-5" />}
           title="No rules yet"
           body="Write a condition, check the dry run, then save it."
           action={

@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Hourglass } from "lucide-react";
 import { useState } from "react";
 
 import { fetchStaleThreads, rangeDays, type AnalyticsRange } from "./api";
@@ -57,7 +56,6 @@ export function StaleDashboard({ range }: { range: AnalyticsRange }) {
         />
       ) : stale.data.rows.length === 0 ? (
         <PageEmpty
-          icon={<Hourglass className="size-5" />}
           title="Nothing stale in this window"
           body="Every conversation in range has moved in the last two weeks."
         />

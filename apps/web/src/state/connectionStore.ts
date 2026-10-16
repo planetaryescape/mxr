@@ -26,6 +26,8 @@ export interface ConnectionStoreState {
   syncProgress?: SyncProgress;
   /** Set by `lib/daemonAvailability` once a probe finds no daemon. */
   daemonDown: boolean;
+  /** When the daemon last answered a request, for "showing what was loaded at 21:04". */
+  daemonLastAnsweredAt?: number;
   semanticReindexProgress?: { current: number; total: number };
   setState: (next: Partial<Omit<ConnectionStoreState, keyof Setters>>) => void;
 }

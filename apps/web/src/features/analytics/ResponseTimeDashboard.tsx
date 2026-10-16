@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Timer } from "lucide-react";
 import { useState } from "react";
 
 import { fetchResponseTime, rangeDays, type AnalyticsRange, type ResponseDirection } from "./api";
@@ -59,7 +58,6 @@ export function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
         />
       ) : !summary || summary.sample_count === 0 ? (
         <PageEmpty
-          icon={<Timer className="size-5" />}
           title="No reply pairs in this window"
           body="Widen the range, or switch direction."
         />

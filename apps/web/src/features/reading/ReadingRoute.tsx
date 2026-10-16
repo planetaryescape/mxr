@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { moveCommands, readingMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Bookmark, Newspaper, RefreshCw } from "lucide-react";
+import { Bookmark } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { NextPlace } from "@/features/modes/NextPlace";
 import { useModeDone } from "@/features/modes/modeDone";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { openMoveSenderFor } from "@/features/places/placeVerbs";
@@ -134,17 +135,13 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
         onLetGoAll={() => data && openLetGoAll(data, setDialog)}
       />
       {phase !== "ready" ? (
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed shown={phase === "skeleton"} />
       ) : status.isError ? (
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load Reading"
-          body={status.error.message}
-          action={
-            <Button size="sm" onClick={() => void status.refetch()}>
-              Try again
-            </Button>
-          }
+          error={status.error}
+          onRetry={() => void status.refetch()}
         />
       ) : data ? (
         <Bands edition={data} guide={guide.data} view={view} setDialog={setDialog} />
@@ -493,8 +490,9 @@ function Bands({
     const empty = edition.empty;
     if (view === "later") {
       return (
-        <Centered
-          icon={<Bookmark className="size-6" />}
+        <PageEmpty
+          framed
+          glyph="reading"
           title="Nothing on Later"
           body="Press b on an item or a link to keep it here. Later never fades, and a link's article is saved so it reads offline."
         />
@@ -502,10 +500,16 @@ function Bands({
     }
     return (
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-        <Centered
-          icon={<Newspaper className="size-6" />}
+        <PageEmpty
+          framed
+          glyph="reading"
           title={empty?.never_had_any ? "Nothing here yet" : "You're current"}
-          body={empty?.line ?? guide?.clear_for_now ?? ""}
+          body={
+            <>
+              {empty?.line ?? guide?.clear_for_now ?? ""}
+              <NextPlace current="reading" />
+            </>
+          }
           action={
             edition.later_count > 0 ? (
               <Link

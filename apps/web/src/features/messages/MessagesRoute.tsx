@@ -1,9 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   prefilledMessageIntent,
@@ -13,11 +11,12 @@ import {
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { NextPlace } from "@/features/modes/NextPlace";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
 import type { LampVia } from "@/components/Row";
@@ -100,20 +99,16 @@ export function MessagesRoute({
       {phase !== "ready" ? (
         <>
           <MessagesHeader search={search} guide={guide.data} />
-          <ListSkeleton quiet={phase === "quiet"} />
+          <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} />
         </>
       ) : messages.isError ? (
         <>
           <MessagesHeader search={search} guide={guide.data} />
-          <Centered
-            icon={<RefreshCw className="size-6" />}
+          <PageError
+            framed
             title="Couldn't load Messages"
-            body={messages.error.message}
-            action={
-              <Button size="sm" onClick={() => void messages.refetch()}>
-                Try again
-              </Button>
-            }
+            error={messages.error}
+            onRetry={() => void messages.refetch()}
           />
         </>
       ) : messages.data ? (
@@ -582,17 +577,21 @@ function MessagesBody({
           <MessagesHeader search={search} guide={guide} />
           <div className="min-h-0 flex-1 overflow-y-auto pb-6">
             {empty && data.empty_state ? (
-              <div data-testid="messages-empty" className="mx-5 mt-4">
-                <p className="text-base text-foreground">{data.empty_state}</p>
-                {(data.lapsed ?? []).map((lapsed) => (
-                  <p
-                    key={lapsed.person.id}
-                    data-testid="lapsed-line"
-                    className="mt-1 text-sm text-muted-foreground"
-                  >
-                    {lapsed.line}
-                  </p>
-                ))}
+              <div data-testid="messages-empty" className="mx-5 mt-6">
+                <PageEmpty
+                  glyph="messages"
+                  title={data.empty_state}
+                  body={
+                    <>
+                      {(data.lapsed ?? []).map((lapsed) => (
+                        <span key={lapsed.person.id} data-testid="lapsed-line" className="block">
+                          {lapsed.line}
+                        </span>
+                      ))}
+                      <NextPlace current="messages" />
+                    </>
+                  }
+                />
               </div>
             ) : null}
             <MessagesList
@@ -654,24 +653,22 @@ function MessagesBody({
                 onTodo={() => void makeTodo()}
               />
             ) : person.isError ? (
-              <Centered
-                icon={<RefreshCw className="size-6" />}
+              <PageError
+                framed
                 title="Couldn't open this person"
-                body={person.error.message}
+                subject="this person"
+                error={person.error}
+                onRetry={() => void person.refetch()}
               />
             ) : selectedId ? (
               <div className="flex-1" aria-busy="true" />
-            ) : (
-              <Centered
-                icon={<ChevronRight className="size-6" />}
-                title={allRows.length > 0 ? "Choose a conversation" : "Nobody here yet"}
-                body={
-                  allRows.length > 0
-                    ? "Select someone from the list to open their conversations."
-                    : guide?.never_had_any
-                }
+            ) : allRows.length > 0 ? (
+              <PageEmpty
+                framed
+                title="Choose a conversation"
+                body="Select someone from the list to open their conversations."
               />
-            )}
+            ) : null}
           </ResizablePanel>
         ) : null}
       </ResizablePanelGroup>

@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { BarChart3, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -175,7 +175,6 @@ function Dashboard({
     case undefined:
       return (
         <PageEmpty
-          icon={<BarChart3 className="size-5" />}
           title="No such dashboard"
           body={`"${requested}" is not an analytics view. Pick one of the tabs above.`}
         />

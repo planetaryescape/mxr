@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Clock, FileText, Mail, Paperclip, Plus, Trash2 } from "lucide-react";
+import { Clock, FileText, Paperclip, Plus, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
@@ -67,7 +67,6 @@ export function DraftsRoute() {
           />
         ) : rows.length === 0 ? (
           <PageEmpty
-            icon={<Mail className="size-5" />}
             title="No saved drafts"
             body="Drafts persisted in mxr’s local store appear here."
           />

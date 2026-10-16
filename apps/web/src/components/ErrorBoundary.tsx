@@ -1,8 +1,6 @@
-import { AlertTriangle } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
-import { RequestErrorDetails } from "@/components/RequestError";
+import { PageError } from "@/components/PageParts";
 
 interface Props {
   children: ReactNode;
@@ -36,14 +34,12 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       if (this.props.fallback) return this.props.fallback(this.state.error, this.reset);
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
-          <AlertTriangle className="size-6 text-destructive" />
-          <div className="text-md font-medium">Something went wrong</div>
-          <RequestErrorDetails error={this.state.error} />
-          <Button onClick={this.reset} variant="outline" size="sm">
-            Try again
-          </Button>
-        </div>
+        <PageError
+          framed
+          title="Something went wrong"
+          error={this.state.error}
+          onRetry={this.reset}
+        />
       );
     }
     return this.props.children;

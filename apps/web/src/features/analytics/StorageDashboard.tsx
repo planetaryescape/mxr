@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { HardDrive } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -89,7 +88,6 @@ export function StorageDashboard({ range }: { range: AnalyticsRange }) {
           />
         ) : rows.length === 0 ? (
           <PageEmpty
-            icon={<HardDrive className="size-5" />}
             title={needle ? "No rows match the filter" : "No storage data yet"}
             body={
               needle ? "Clear the filter to see every row." : "Sync mail, then rebuild analytics."

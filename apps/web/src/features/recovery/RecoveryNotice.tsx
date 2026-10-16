@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
-import { apiFetch } from "@/api/client";
+import { apiFetch, BridgeRequestError } from "@/api/client";
 import type { components } from "@/api/generated";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,6 +94,13 @@ export function useRecoveryStatus(api: RecoveryApi = bridgeRecoveryApi) {
   });
 }
 
+function isProtocolMismatch(error: unknown): boolean {
+  return (
+    error instanceof BridgeRequestError &&
+    (error.code === "protocol_mismatch" || error.status === 426)
+  );
+}
+
 export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi } = {}) {
   const queryClient = useQueryClient();
   const status = useRecoveryStatus(api);
@@ -132,11 +139,15 @@ export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi 
     },
   });
   const recovery = status.data;
+  // The "needs a protocol upgrade" card is for a daemon that answered with a
+  // mismatch. A stopped daemon is the offline banner's to say, and any other
+  // failed poll retries on its own every 15 seconds without a banner.
+  const protocolFailure = isProtocolMismatch(status.error);
   if (
     !recovery?.restore_pending &&
     !recovery?.held_drafts.length &&
     !recovery?.retained_intentions.length &&
-    !status.isError
+    !protocolFailure
   )
     return null;
   const currentOwner = recovery
@@ -170,14 +181,14 @@ export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi 
         <div className="min-w-0 flex-1 space-y-3">
           <div>
             <h2 id="recovery-notice-title" className="font-semibold">
-              {status.isError
+              {protocolFailure
                 ? "Recovery status unavailable"
                 : recovery?.restore_pending
                   ? "Restored profile is paused"
                   : "Restored profile recovery"}
             </h2>
             <p className="mt-1 text-muted-foreground">
-              {status.isError
+              {protocolFailure
                 ? "The selected daemon may need a protocol upgrade before recovery status is available. No retained work was activated."
                 : "Old queued work will not replay. A backup may predate a send; missing evidence does not prove the provider did not accept it. Original drafts stay held, including after activation."}
             </p>

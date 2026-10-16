@@ -212,6 +212,9 @@ test("returning from the reader keeps the cursor and the scroll position", async
  * rows it touches, not all 5,000.
  */
 test(`${ROWS} people: each j moves the lamp inside the same code budget`, async ({ page }) => {
+  // The gate is code executed, not time. Under precise coverage a starved runner
+  // takes ~3s a step, so the default 30s would fail on wall clock alone.
+  test.setTimeout(120_000);
   await stubBulkPeople(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Profiler.enable");

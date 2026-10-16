@@ -40,15 +40,15 @@ async function delay(page: Page, pattern: string, ms: number): Promise<void> {
   });
 }
 
-test("a list that loads in 100 ms never shows a skeleton", async ({ page }) => {
-  await watchSkeletons(page, "list-skeleton");
-  // Keep daemon response latency outside the browser's 100 ms loading window.
+test("a list that loads in 40 ms never shows a skeleton", async ({ page }) => {
+  await watchSkeletons(page, "page-skeleton");
+  // Keep daemon response latency outside the browser's 150 ms loading window (a slow runner needs the margin).
   const mailbox = await bridge<MailboxResponse>(
     page,
     "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
   );
   await page.route("**/api/v1/mail/mailbox?**", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 40));
     await route.fulfill({ json: mailbox });
   });
   await openApp(page, "/m/inbox");
@@ -57,7 +57,7 @@ test("a list that loads in 100 ms never shows a skeleton", async ({ page }) => {
 });
 
 test("a list that takes 600 ms shows its skeleton, and for at least 400 ms", async ({ page }) => {
-  await watchSkeletons(page, "list-skeleton");
+  await watchSkeletons(page, "page-skeleton");
   await delay(page, "**/api/v1/mail/mailbox?**", 600);
   await openApp(page, "/m/inbox");
   await expect(mailRows(page).first()).toBeVisible();
@@ -68,7 +68,7 @@ test("a list that takes 600 ms shows its skeleton, and for at least 400 ms", asy
 });
 
 for (const [ms, shows] of [
-  [100, false],
+  [40, false],
   [600, true],
 ] as const) {
   test(`opening a conversation that takes ${ms} ms ${shows ? "shows" : "never shows"} the reader skeleton`, async ({

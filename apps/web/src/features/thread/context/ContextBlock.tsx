@@ -221,9 +221,10 @@ function GistSlot({
 
 function unavailableCopy(data: ThreadGist | undefined, error?: string | null): string {
   if (data?.status === "blocked") {
-    return "Privacy settings keep this conversation from the configured model.";
+    return "Privacy settings keep this conversation from the configured model. The messages are all below.";
   }
-  if (data?.status === "disabled") return "No language model is available right now.";
-  if (error) return "Couldn't reach the daemon for a gist.";
-  return "The model didn't answer this time.";
+  if (data?.status === "disabled")
+    return "No language model is available right now. The messages are below.";
+  if (error) return "mxr couldn't be reached for a gist. The messages are below.";
+  return "The model didn't answer this time. The messages are below.";
 }

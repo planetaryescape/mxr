@@ -25,6 +25,6 @@ Flaky, pre-existing: the `aria-prohibited-attr` serious violation on `div[aria-l
 ## Follow-ups
 
 1. `region` on the sidebar resize handle. AppShell.tsx:228 renders the handle outside any landmark. Wrapping the handle's container in a labelled region, or hiding the handle from axe's region scan, fixes it. Not done here: AppShell is outside this rung's files.
-2. Loading skeleton `aria-label` on a generic div (MailViewParts.tsx). The fix is to give it `role="status"` (or to drop the label). Not done here: this file is outside the rung. It also explains the accessibility spec flake.
+2. Fixed in W4b: `MailViewParts.tsx` is gone and the shared `PageSkeleton` carries `role="status"` with its label, which also removes the accessibility spec flake.
 3. Badge/Chip merge. Deferred as the brief asked. `components/ui/badge.tsx` and `components/Chip.tsx` still both exist.
 4. `docs/issues/paper-theme-contrast.md` says two Paper labels are below 4.5:1. The rung 5 axe run did not reproduce this on any Paper page. That note is not updated here; whoever owns it should re-measure before closing it.

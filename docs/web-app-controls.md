@@ -50,6 +50,21 @@ Settings light More. The sheet traps focus, closes on Esc and on any
 navigation, and the page's keys stay under it while it is open. The top bar's
 search is the only search field.
 
+## Page states
+
+One empty, one loading and one error state serve every page (`PageEmpty`,
+`PageSkeleton`, `PageError` in `components/PageParts.tsx`); none adds a control
+beyond the one action it names.
+
+| State | What it shows | The one action |
+|---|---|---|
+| Empty | Top-aligned in the content column: a heading for what isn't here, one line naming the next useful place ("Next: 3 in To do"). A mode may use its 24px glyph; no other icon. | The action that fills the page, if there is one (Check for mail). |
+| Loading | The page's own `Row`s with placeholder bars, drawn only after 150 ms. | None. |
+| Error | A heading in plain words, a line saying what still works, and the raw error under Details. | Try again (a retry can help), Copy start command (mxr isn't running), Copy update command (protocol mismatch), Open token settings (this browser isn't recognised), Go to Inbox (a bad or unknown id). Never Try again for a lookup that can't succeed. |
+| Offline | Cached content stays. One banner under the top bar: "mxr isn't running. Showing what was loaded at 21:04." The rail keeps every item. | Copy start command (`mxr restart`). |
+
+`e2e/daemon-stopped.spec.ts` and `e2e/route-error.spec.ts` hold these.
+
 ## Assistant panel
 
 | Control | Where | Reason |

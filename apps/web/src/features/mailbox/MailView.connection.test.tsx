@@ -208,15 +208,15 @@ describe("cold mailbox connection state", () => {
 
     await waitForPausedColdQueries();
     // Query state can pause before React finishes the minimum skeleton display.
-    expect(await screen.findByText("Waiting for mxr", {}, { timeout: 5_000 })).toBeVisible();
-    expect(screen.getByText(/couldn't load inbox yet/i)).toBeVisible();
+    expect(await screen.findByText("mxr isn't running", {}, { timeout: 5_000 })).toBeVisible();
+    expect(screen.getByText(/nothing from this page was loaded/i)).toBeVisible();
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
 
     daemonDown = false;
     window.dispatchEvent(new Event("focus"));
 
     expect(await screen.findByText("Inbox zero", {}, { timeout: 5_000 })).toBeVisible();
-    expect(screen.queryByText("Waiting for mxr")).not.toBeInTheDocument();
+    expect(screen.queryByText("mxr isn't running")).not.toBeInTheDocument();
   });
 
   test("a cached message remains readable while the mailbox refetch is paused", async () => {
@@ -268,7 +268,7 @@ describe("cold mailbox connection state", () => {
     await waitForPausedColdQueries();
 
     expect(screen.getByText("Cached message stays readable")).toBeVisible();
-    expect(screen.queryByText("Waiting for mxr")).not.toBeInTheDocument();
+    expect(screen.queryByText("mxr isn't running")).not.toBeInTheDocument();
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
   });
 
@@ -285,7 +285,7 @@ describe("cold mailbox connection state", () => {
 
     await waitForPausedColdQueries();
 
-    expect(await screen.findByText("Waiting for mxr", {}, { timeout: 5_000 })).toBeVisible();
+    expect(await screen.findByText("mxr isn't running", {}, { timeout: 5_000 })).toBeVisible();
     expect(screen.queryByText("No label by that name")).not.toBeInTheDocument();
     expect(screen.queryByText("No saved search by that name")).not.toBeInTheDocument();
   });

@@ -2,7 +2,7 @@
 
 import { AvatarSkeleton } from "@/components/Avatar";
 
-/** `quiet`: the same frame, empty, for the first 300 ms of a load. */
+/** `quiet`: the same frame, empty, for the first 150 ms of a load. */
 export function ReaderSkeleton({ quiet = false }: { quiet?: boolean }) {
   return (
     <div

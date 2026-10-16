@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { MessageSquareReply, X } from "lucide-react";
+import { X } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchReplyQueue, setReplyLater, type ReplyQueueMessage } from "./api";
@@ -7,7 +7,7 @@ import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
-import { Centered } from "@/features/mailbox/MailViewParts";
+import { PageEmpty } from "@/components/PageParts";
 import { SweptClear } from "@/features/places/SweptClear";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
@@ -84,8 +84,8 @@ export function ReplyQueueRoute() {
             Press b on any conversation to add it here.
           </SweptClear>
         ) : (
-          <Centered
-            icon={<MessageSquareReply className="size-6" />}
+          <PageEmpty
+            framed
             title="Nothing waiting on a reply"
             body="Press b on any conversation to add it here."
           />

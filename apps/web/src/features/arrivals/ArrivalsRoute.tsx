@@ -1,11 +1,10 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
-import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
+import { PageError, PageSkeleton } from "@/components/PageParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -52,17 +51,13 @@ export function ArrivalsRoute({
         }
       />
       {phase !== "ready" ? (
-        <ListSkeleton quiet={phase === "quiet"} />
+        <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} />
       ) : list.isError ? (
-        <Centered
-          icon={<RefreshCw className="size-6" />}
+        <PageError
+          framed
           title="Couldn't load these emails"
-          body={list.error.message}
-          action={
-            <Button size="sm" onClick={() => void list.refetch()}>
-              Try again
-            </Button>
-          }
+          error={list.error}
+          onRetry={() => void list.refetch()}
         />
       ) : list.data && list.data.items.length > 0 ? (
         <ArrivalRows items={list.data.items} total={list.data.total} />

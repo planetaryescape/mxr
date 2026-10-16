@@ -2,6 +2,7 @@
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import { ThreadPane } from "./ThreadPane";
@@ -9,6 +10,11 @@ import { BridgeRequestError } from "@/api/client";
 import { createQueryClient } from "@/lib/queryClient";
 
 const mailbox = vi.hoisted(() => ({ fetchThread: vi.fn<(id: string) => Promise<unknown>>() }));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({ children }: { children: ReactNode }) => <a href="/m/inbox">{children}</a>,
+}));
 
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
@@ -38,8 +44,10 @@ describe("ThreadPane", () => {
         <ThreadPane threadId="missing-thread" />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("Couldn't open this conversation")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(await screen.findByText("Couldn't find this conversation")).toBeTruthy();
+    // A lookup that can't succeed offers the way out, never a retry.
+    expect(screen.getByRole("link", { name: "Go to Inbox" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(mailbox.fetchThread).toHaveBeenCalledTimes(1);
   });
 });

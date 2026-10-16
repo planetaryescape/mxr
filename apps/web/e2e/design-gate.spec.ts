@@ -29,6 +29,8 @@ interface GatePage {
   detail?: boolean;
   /** Opens the first conversation: the reader frame wraps long titles, so its height is a minimum. */
   thread?: boolean;
+  /** A test id that appears once the page's own data has loaded; the frame count is read after it. */
+  readyTestId?: string;
 }
 
 const PAGES: GatePage[] = [
@@ -44,6 +46,7 @@ const PAGES: GatePage[] = [
     name: "person",
     path: "/messages?person=person%3Asamir%40launchpad.example",
     detail: true,
+    readyTestId: "person-name",
   },
   { name: "settings", path: "/settings/theme" },
   { name: "screener", path: "/screener", tabs: true },
@@ -68,6 +71,8 @@ async function openPage(page: Page, gate: GatePage): Promise<void> {
     await page.keyboard.press("Enter");
     await expect(reader(page)).toBeVisible();
   }
+  // The person pane loads after the list, so a fixed wait can count its frame too early.
+  if (gate.readyTestId) await expect(page.getByTestId(gate.readyTestId)).toBeVisible();
   await expect(visibleFrames(page).first()).toBeVisible();
   // Let rows and fonts settle before the picture.
   await page.evaluate(() => document.fonts.ready);

@@ -313,7 +313,7 @@ for (const [density, height] of [
     await expect(rows.first()).toBeVisible();
     await page.keyboard.press("j");
     const heights = await rows.evaluateAll((nodes) =>
-      nodes.map((node) => node.firstElementChild?.getBoundingClientRect().height),
+      nodes.map((node) => node.querySelector(":scope > div")?.getBoundingClientRect().height),
     );
     expect(new Set(heights)).toEqual(new Set([height]));
   });

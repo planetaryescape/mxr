@@ -63,7 +63,9 @@ test("the arrivals line's counts sum, and each opens exactly that many emails", 
   const arrivalsDisclosure = page.getByTestId("arrivals");
   const summary = page.getByTestId("arrivals-summary");
   const shown = page.getByTestId("arrivals-line");
-  await expect(summary).toContainText(`${arrivals.total} arrived`);
+  // With mail the summary counts it; with none it says so in the daemon's words, never "0 arrived".
+  if (arrivals.total > 0) await expect(summary).toContainText(`${arrivals.total} arrived`);
+  else await expect(summary).not.toContainText("0 arrived");
   await expect(arrivalsDisclosure).not.toHaveAttribute("open");
   await expect(shown).not.toBeVisible();
   await summary.click();

@@ -25,14 +25,14 @@ pub enum CallState {
 /// How a call ended, from the result the loop stored for it.
 pub fn call_state(content: &str, is_error: bool) -> CallState {
     if content.starts_with(APPROVED_PREFIX) {
-        return if is_error {
+        return if is_error || refused(content) {
             CallState::Failed
         } else {
             CallState::Approved
         };
     }
     if content.starts_with(AUTO_APPROVED_PREFIX) {
-        return if is_error {
+        return if is_error || refused(content) {
             CallState::Failed
         } else {
             CallState::AutoApproved
@@ -61,7 +61,7 @@ pub fn call_state(content: &str, is_error: bool) -> CallState {
 /// mxr's own guard refused the call, such as a change sent without its
 /// confirm flag. Nothing ran, so it reads as a failure, not a finished step
 /// the model could report as done.
-pub(crate) fn refused(content: &str) -> bool {
+pub fn refused(content: &str) -> bool {
     serde_json::from_str::<Value>(&readable_result(content, usize::MAX))
         .is_ok_and(|value| value.get("blocked").and_then(Value::as_bool) == Some(true))
 }

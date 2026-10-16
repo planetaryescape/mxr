@@ -111,6 +111,7 @@ struct MemorySink {
     appended: Mutex<Vec<ToolChatMessage>>,
     written: Mutex<Vec<String>>,
     summaries: Mutex<Vec<Summary>>,
+    progress: Mutex<Vec<Progress>>,
 }
 
 #[async_trait]
@@ -119,7 +120,9 @@ impl TurnSink for MemorySink {
         self.appended.lock().unwrap().push(message.clone());
         Ok(())
     }
-    async fn progress(&self, _progress: Progress) {}
+    async fn progress(&self, progress: Progress) {
+        self.progress.lock().unwrap().push(progress);
+    }
     fn writing(&self, text: &str) {
         self.written.lock().unwrap().push(text.to_string());
     }
@@ -691,4 +694,51 @@ async fn a_crowded_window_is_summarised_before_the_call() {
         .await;
     assert_eq!(model.requests().len(), 2);
     assert_eq!(sink.summaries.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_approved_call_mxr_blocks_is_stored_as_a_failure_and_shows_as_running() {
+    let model = ScriptedModel::new(vec![answer("Done.")]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let assistant = agent(&model, &host, &sink);
+    // An approved change whose arguments lack `confirm`: mxr's guard answers
+    // `blocked`, as it does for a got-it without its token.
+    let pending = vec![PendingItem {
+        call_id: "c1".into(),
+        kind: PendingKind::Approval {
+            tool: "mxr_mutate".into(),
+            arguments: json!({"action": "archive", "message_ids": ["m1"]}),
+            reason: "Archive it.".into(),
+            preview: None,
+            preview_error: None,
+        },
+    }];
+    assistant
+        .resume(
+            &mut history,
+            pending,
+            HashMap::from([("c1".to_string(), Decision::Approve)]),
+        )
+        .await
+        .unwrap();
+    let stored = sink.appended.lock().unwrap().clone();
+    let Some(ToolChatMessage::Tool {
+        content, is_error, ..
+    }) = stored.first()
+    else {
+        panic!("expected the stored result, got {stored:?}");
+    };
+    assert!(*is_error, "a blocked approved call is an error");
+    assert_eq!(call_state(content, *is_error), CallState::Failed);
+    // Stored before the fix, with the error flag off, it still reads as failed.
+    assert_eq!(call_state(content, false), CallState::Failed);
+    let progress = sink.progress.lock().unwrap().clone();
+    assert!(
+        progress.iter().any(|p| matches!(p,
+            Progress::Calling { tool, reason, arguments }
+                if tool == "mxr_mutate" && reason == "Archive it." && arguments["action"] == "archive")),
+        "the approved call shows as running: {progress:?}"
+    );
 }

@@ -4,7 +4,7 @@
 use super::links::{linked_objects, KnownLinks};
 use super::parse_pending;
 use super::readout::{listed_rows, readout};
-use super::titles::{change_title, step_title, Context};
+use super::titles::{change_title, settled_state, step_title, Context};
 use mxr_assistant::{
     call_state, prompt, readable_result, CallState, MessageMeta, PendingItem, PendingKind,
 };
@@ -135,9 +135,9 @@ pub(crate) fn conversation_view(
             *text = links.apply(text);
         }
     }
+    fill_titles(&mut items, &pending);
     mark_failed_steps(&mut items);
     attach_rows(&mut items, &listed);
-    fill_titles(&mut items, &pending);
 
     AssistantConversationData {
         id: row.id.clone(),
@@ -233,6 +233,9 @@ fn fill_titles(items: &mut [AssistantItemData], pending: &[PendingItem]) {
                 PendingKind::Approval { preview, .. } => preview.as_ref(),
                 PendingKind::Question { .. } => None,
             });
+        // A result that says nothing happened is a failure whatever state
+        // it was stored in, so the glyph, the title and the failure note agree.
+        *state = settled_state(tool, *state, result.as_deref());
         *title = Some(step_title(
             tool,
             arguments,

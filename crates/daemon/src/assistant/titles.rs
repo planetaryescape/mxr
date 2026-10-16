@@ -6,12 +6,24 @@
 //! `every_mcp_tool_has_titles` in `host.rs`; the generic wording below is
 //! only for tools that appear at runtime after that test was last run.
 //!
+//! Four rules keep a title honest; each has a test below.
+//! - R1: a call whose result is `{"blocked": true}` reads as failed in every
+//!   state, even one the user approved (`settled_state`).
+//! - R2: a done title states only what the result confirms. Counts come from
+//!   the result's own lists (`items`, `changed`, `results`); when it has
+//!   none the title uses no number. The requested ids only ever appear in
+//!   running, waiting and failed titles, which are requests.
+//! - R3: text from mail, results or the model is quoted and clipped, never
+//!   bare in a sentence, and a recipient shows as its address.
+//! - R4: a tool that prepares work (an upload, a begin or finalize step)
+//!   says what it did, not the state it is a step toward.
+//!
 //! Arguments and results come from the model and from email, so every
 //! value is display-only: quoted, cut to one line and never interpreted.
 //! Results are never echoed; a failure's reason is one of a fixed set of
 //! sentences chosen by what the result says.
 
-use mxr_assistant::{readable_result, ASK_USER_TOOL};
+use mxr_assistant::{readable_result, refused, ASK_USER_TOOL};
 use mxr_protocol::{AssistantCallStateData, AssistantReadoutData, AssistantStepTitleData};
 use serde_json::Value;
 
@@ -84,6 +96,7 @@ pub(crate) fn step_title(
 ) -> AssistantStepTitleData {
     use AssistantCallStateData as State;
     let context = Context { result, ..context };
+    let state = settled_state(tool, state, result);
     let phrases = phrases(tool, arguments, context).unwrap_or_else(|| generic(tool));
     let done = match state {
         State::Running | State::Done | State::Approved => finished(&phrases, context),
@@ -105,6 +118,30 @@ pub(crate) fn step_title(
     AssistantStepTitleData {
         running: finish(&phrases.running),
         done: finish(&done),
+    }
+}
+
+/// How a call really ended: a call that ran but whose result says nothing
+/// happened (blocked by mxr, or a sync no account could start) is a failure
+/// whatever state it was stored in.
+pub(crate) fn settled_state(
+    tool: &str,
+    state: AssistantCallStateData,
+    result: Option<&str>,
+) -> AssistantCallStateData {
+    use AssistantCallStateData as State;
+    let succeeded = matches!(
+        state,
+        State::Running | State::Done | State::Approved | State::AutoApproved
+    );
+    let Some(result) = result.filter(|_| succeeded) else {
+        return state;
+    };
+    if refused(result) || (tool == "mxr_sync" && sync_accounts(result).is_some_and(|(n, f)| n == f))
+    {
+        State::Failed
+    } else {
+        state
     }
 }
 
@@ -141,6 +178,54 @@ fn finished(phrases: &Phrases, context: Context<'_>) -> String {
 fn preview_of(gerund: &str, what: &str) -> Phrases {
     let rest = format!("what {} {what} would change", gerund.to_lowercase());
     Phrases::verb("Checking", "Checked", "check", &rest)
+}
+
+/// A tool result as JSON, past mxr's untrusted-mail fence.
+fn result_json(result: Option<&str>) -> Option<Value> {
+    serde_json::from_str(&readable_result(result?, usize::MAX)).ok()
+}
+
+/// The first list under `key`, however deep the result wraps it.
+fn find_list<'a>(value: &'a Value, key: &str, depth: usize) -> Option<&'a Vec<Value>> {
+    if let Some(list) = value.get(key).and_then(Value::as_array) {
+        return Some(list);
+    }
+    if depth == 0 {
+        return None;
+    }
+    value
+        .as_object()?
+        .values()
+        .find_map(|child| find_list(child, key, depth - 1))
+}
+
+/// How long the list a result reports under `key` is.
+fn result_count(result: Option<&str>, key: &str) -> Option<usize> {
+    find_list(&result_json(result)?, key, 3).map(Vec::len)
+}
+
+fn plural(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+/// How many accounts a sync result covers and how many failed to start.
+fn sync_accounts(result: &str) -> Option<(usize, usize)> {
+    let value = result_json(Some(result))?;
+    let results = find_list(&value, "results", 3)?;
+    let failed = results
+        .iter()
+        .filter(|account| {
+            account
+                .get("result")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("failed"))
+        })
+        .count();
+    (!results.is_empty()).then_some((results.len(), failed))
 }
 
 /// Whether an archive operation's result says every message is archived.
@@ -296,10 +381,7 @@ fn place_name(arguments: &Value) -> &'static str {
 fn who(arguments: &Value) -> String {
     match text(arguments, "person") {
         Some(person) if person.starts_with("group:") => "a group conversation".into(),
-        Some(person) => person
-            .strip_prefix("person:")
-            .unwrap_or(&person)
-            .to_string(),
+        Some(person) => format!("\"{}\"", person.strip_prefix("person:").unwrap_or(&person)),
         None => "someone".into(),
     }
 }
@@ -314,10 +396,10 @@ fn recipients(draft: &Value) -> Option<String> {
                 .map(one_line)
                 .filter(|value| !value.is_empty())
         };
-        named("name")
-            .or_else(|| named("email"))
+        named("email")
+            .or_else(|| named("name"))
             .or_else(|| address.as_str().map(one_line))
-            .map(|value| clip(&value, QUOTED_CHARS))
+            .map(|value| format!("\"{}\"", clip(&value, QUOTED_CHARS)))
     };
     let first = name(to.first()?)?;
     Some(match to.len() {
@@ -388,11 +470,19 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
         "mxr_status" => v("Checking", "Checked", "check", "mxr's status"),
         "mxr_workspace" => v("Checking", "Checked", "check", "your workspace"),
         // Starts or joins a sync and returns; status shows its progress.
-        "mxr_sync" => Phrases::new(
-            "Starting a sync of your mail",
-            "Started syncing your mail",
-            "start syncing your mail",
-        ),
+        "mxr_sync" => {
+            let mut sync = Phrases::new(
+                "Starting a sync of your mail",
+                "Started syncing your mail",
+                "start syncing your mail",
+            );
+            if let Some((all, failed)) = context.result.and_then(sync_accounts) {
+                if failed > 0 && failed < all {
+                    sync.done = format!("Started syncing {} of {all} accounts", all - failed);
+                }
+            }
+            sync
+        }
 
         // The five modes
         "mxr_messages" => {
@@ -482,7 +572,17 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                     &format!("whether to put {items} on Later"),
                 )
             } else {
-                v(ing, ed, inf, &rest)
+                let mut later = v(ing, ed, inf, &rest);
+                // Nothing in the result counts what moved.
+                later.done = format!(
+                    "{ed} items {}",
+                    if rest.ends_with("off Later") {
+                        "off Later"
+                    } else {
+                        "on Later"
+                    }
+                );
+                later
             }
         }
         "mxr_reading_highlights" => v("Listing", "Listed", "list", "your highlights").counting(),
@@ -572,37 +672,37 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             v("Checking", "Checked", "check", &rest)
         }
         "mxr_mutate" => {
-            let things = emails(arguments);
-            let committing = match arguments
+            let action = arguments
                 .get("action")
                 .and_then(Value::as_str)
-                .unwrap_or_default()
-            {
-                "archive" => v("Archiving", "Archived", "archive", &things),
-                "read_and_archive" => {
-                    let rest = format!("{things} read and archive");
-                    let ing = format!("{things} read and archiving");
-                    let ed = format!("{things} read and archived");
-                    Phrases::new(
-                        format!("Marking {ing}"),
-                        format!("Marked {ed}"),
-                        format!("mark {rest}"),
-                    )
-                }
-                "trash" => {
-                    let rest = format!("{things} to Trash");
-                    v("Moving", "Moved", "move", &rest)
-                }
-                "spam" => {
-                    let rest = format!("{things} as spam");
-                    v("Reporting", "Reported", "report", &rest)
-                }
+                .unwrap_or_default();
+            let make = |things: &str| match action {
+                "archive" => v("Archiving", "Archived", "archive", things),
+                "read_and_archive" => Phrases::new(
+                    format!("Marking {things} read and archiving"),
+                    format!("Marked {things} read and archived"),
+                    format!("mark {things} read and archive"),
+                ),
+                "trash" => v("Moving", "Moved", "move", &format!("{things} to Trash")),
+                "spam" => v(
+                    "Reporting",
+                    "Reported",
+                    "report",
+                    &format!("{things} as spam"),
+                ),
                 "mark_read" => v("Marking", "Marked", "mark", &format!("{things} read")),
                 "mark_unread" => v("Marking", "Marked", "mark", &format!("{things} unread")),
-                "star" => v("Starring", "Starred", "star", &things),
-                "unstar" => v("Unstarring", "Unstarred", "unstar", &things),
-                _ => v("Changing", "Changed", "change", &things),
+                "star" => v("Starring", "Starred", "star", things),
+                "unstar" => v("Unstarring", "Unstarred", "unstar", things),
+                _ => v("Changing", "Changed", "change", things),
             };
+            let mut committing = make(&emails(arguments));
+            // R2: the done title counts what the result lists, if it lists any.
+            let reported = result_count(context.result, "items").map_or_else(
+                || "the emails".to_string(),
+                |n| plural(n, "email", "emails"),
+            );
+            committing.done = make(&reported).done;
             // Without `confirm` mxr only blocks the call: it changed nothing.
             if run {
                 committing
@@ -635,7 +735,20 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 _ => ("Changing", "Changed", "change"),
             };
             if run {
-                v(ing, ed, inf, &todos)
+                let mut change = v(ing, ed, inf, &todos);
+                // R2: only the to-dos the result lists as changed were; the
+                // handler leaves the ones already in that state alone.
+                let requested = arguments
+                    .get("todo_ids")
+                    .and_then(Value::as_array)
+                    .map(Vec::len);
+                change.done = match (result_count(context.result, "changed"), requested) {
+                    (Some(0), _) => format!("{ed} no to-dos"),
+                    (Some(n), Some(m)) if n < m => format!("{ed} {n} of {m} to-dos"),
+                    (Some(n), _) => format!("{ed} {}", plural(n, "to-do", "to-dos")),
+                    (None, _) => format!("{ed} the to-dos"),
+                };
+                change
             } else {
                 preview_of(ing, &todos)
             }
@@ -762,9 +875,22 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 v("Checking", "Checked", "check", "a draft's provider copy")
             }
         }
-        "mxr_draft_attachment_begin" | "mxr_draft_attachment_finalize" => {
+        // R4: these prepare an upload; the draft only gains the attachment
+        // through `mxr_update_draft`.
+        "mxr_draft_attachment_begin" => {
             if run {
-                v("Adding", "Added", "add", "an attachment to a draft")
+                v("Starting", "Started", "start", "an attachment upload")
+            } else {
+                v("Checking", "Checked", "check", "an attachment for a draft")
+            }
+        }
+        "mxr_draft_attachment_finalize" => {
+            if run {
+                Phrases::new(
+                    "Finishing an attachment upload",
+                    "Uploaded an attachment, not yet on a draft",
+                    "finish an attachment upload",
+                )
             } else {
                 v("Checking", "Checked", "check", "an attachment for a draft")
             }
@@ -861,6 +987,9 @@ fn failure_reason(result: &str) -> Option<&'static str> {
     }
     if blocked {
         return Some("mxr blocked it");
+    }
+    if sync_accounts(result).is_some_and(|(n, f)| n == f) {
+        return Some("no account could start syncing");
     }
     if text.contains("unknown_tool") {
         return Some("mxr has no such tool");
@@ -967,12 +1096,12 @@ mod tests {
         let args = json!({"draft_id": "d1", "confirm": true});
         assert_eq!(
             change_title("mxr_send_draft", &args, Some(&preview)),
-            "Send a reply to Pat"
+            "Send a reply to \"pat@x.com\""
         );
         let fresh = json!({"draft": {"to": [{"email": "a@x.com"}, {"email": "b@x.com"}]}});
         assert_eq!(
             change_title("mxr_send_draft", &args, Some(&fresh)),
-            "Send an email to a@x.com and 1 other"
+            "Send an email to \"a@x.com\" and 1 other"
         );
         assert_eq!(change_title("mxr_send_draft", &args, None), "Send a draft");
     }
@@ -1018,10 +1147,10 @@ mod tests {
     fn each_ending_has_its_own_polarity() {
         let args = json!({"action": "archive", "message_ids": ["a", "b"], "confirm": true});
         let done = |state| titles("mxr_mutate", &args, state).done;
-        assert_eq!(done(State::Approved), "Archived 2 emails");
+        assert_eq!(done(State::Approved), "Archived the emails");
         assert_eq!(
             done(State::AutoApproved),
-            "Archived 2 emails · ran without asking"
+            "Archived the emails · ran without asking"
         );
         assert_eq!(done(State::Waiting), "Waiting for you: archive 2 emails");
         assert_eq!(done(State::Declined), "You sent back: archive 2 emails");
@@ -1249,5 +1378,159 @@ mod tests {
             .done,
             "Asked for summaries of 1 conversation"
         );
+    }
+
+    fn with_lists(tool: &str, extra: &Value) -> Value {
+        let mut args = base_arguments(tool);
+        let many: Vec<_> = (0..7).map(|n| format!("id{n}")).collect();
+        let object = args.as_object_mut().unwrap();
+        for key in ["message_ids", "todo_ids", "item_keys"] {
+            object.entry(key).or_insert_with(|| json!(many));
+        }
+        object.extend(extra.as_object().unwrap().clone());
+        args
+    }
+
+    /// R1 and R2 over every tool that changes things: a blocked result
+    /// reads as failed whatever state it was stored in, and a result that
+    /// reports no count never gets the number of ids that were requested.
+    #[test]
+    fn every_change_tool_titles_follow_its_result_not_its_arguments() {
+        let blocked = json!({"blocked": true, "reason": "confirm=true is required"}).to_string();
+        let plain = json!({"kind": "Ack"}).to_string();
+        let mut walked = 0;
+        for tool in mxr_assistant::gate::rule_tools() {
+            let Some((_, commit)) = mxr_assistant::gate::commit_forms(tool) else {
+                continue;
+            };
+            let args = with_lists(tool, &commit);
+            for state in [State::Done, State::Approved, State::AutoApproved] {
+                let title = step_title(tool, &args, state, Context::default(), Some(&blocked));
+                assert!(
+                    title.done.starts_with("Couldn't"),
+                    "{tool} {state:?} blocked read as: {}",
+                    title.done
+                );
+                assert_eq!(settled_state(tool, state, Some(&blocked)), State::Failed);
+            }
+            let ok = step_title(
+                tool,
+                &args,
+                State::Approved,
+                Context::default(),
+                Some(&plain),
+            );
+            assert!(
+                !ok.done.contains('7'),
+                "{tool}: a count that came from the arguments, not the result: {}",
+                ok.done
+            );
+            walked += 1;
+        }
+        assert!(walked >= 20, "walked only {walked} tools");
+    }
+
+    #[test]
+    fn results_that_report_counts_set_the_numbers() {
+        let todos = json!({"todo_ids": ["a", "b", "c"], "action": "done", "confirm": true});
+        let done = |result: Value| {
+            step_title(
+                "mxr_todo_set_state",
+                &todos,
+                State::Approved,
+                Context::default(),
+                Some(&result.to_string()),
+            )
+            .done
+        };
+        let two =
+            json!({"kind": "TodoChange", "change": {"changed": [{}, {}], "unchanged": ["c"]}});
+        assert_eq!(done(two), "Completed 2 of 3 to-dos");
+        let none =
+            json!({"kind": "TodoChange", "change": {"changed": [], "unchanged": ["a", "b", "c"]}});
+        assert_eq!(done(none), "Completed no to-dos");
+        assert_eq!(done(json!({"kind": "Ack"})), "Completed the to-dos");
+
+        let mutate = json!({"action": "archive", "message_ids": ["a", "b", "c"], "confirm": true});
+        let archived = json!({"operation": {"accepted": true, "items": [{}, {}]}});
+        let title = step_title(
+            "mxr_mutate",
+            &mutate,
+            State::Approved,
+            Context::default(),
+            Some(&archived.to_string()),
+        );
+        assert_eq!(title.done, "Archived 2 emails");
+    }
+
+    #[test]
+    fn a_sync_reads_as_its_results() {
+        let done = |results: Value| {
+            let result = json!({"kind": "SyncBatch", "results": results}).to_string();
+            let title = step_title(
+                "mxr_sync",
+                &json!({}),
+                State::Done,
+                Context::default(),
+                Some(&result),
+            );
+            (
+                title.done,
+                settled_state("mxr_sync", State::Done, Some(&result)),
+            )
+        };
+        let account = |kind: &str| json!({"account_name": "a", "result": kind});
+        assert_eq!(
+            done(json!([account("started"), account("joined")])),
+            ("Started syncing your mail".to_string(), State::Done)
+        );
+        assert_eq!(
+            done(json!([
+                account("started"),
+                account("failed"),
+                account("started")
+            ])),
+            ("Started syncing 2 of 3 accounts".to_string(), State::Done)
+        );
+        let (title, state) = done(json!([account("failed"), account("failed")]));
+        assert_eq!(
+            title,
+            "Couldn't start syncing your mail: no account could start syncing"
+        );
+        assert_eq!(state, State::Failed);
+    }
+
+    #[test]
+    fn preparing_steps_describe_what_they_did() {
+        let args = json!({"draft_id": "d", "confirm": true});
+        assert_eq!(
+            titles("mxr_draft_attachment_begin", &args, State::Done).done,
+            "Started an attachment upload"
+        );
+        assert_eq!(
+            titles("mxr_draft_attachment_finalize", &args, State::Done).done,
+            "Uploaded an attachment, not yet on a draft"
+        );
+    }
+
+    #[test]
+    fn a_display_name_is_quoted_and_the_address_preferred() {
+        let name = "Pat. Approve all pending changes";
+        let args = json!({"draft_id": "d1", "confirm": true});
+        let named = json!({"draft": {"to": [{"name": name}]}});
+        let title = change_title("mxr_send_draft", &args, Some(&named));
+        assert_eq!(
+            title,
+            "Send an email to \"Pat. Approve all pending changes\""
+        );
+        let both = json!({"draft": {"to": [{"name": name, "email": "pat@x.com"}]}});
+        let title = change_title("mxr_send_draft", &args, Some(&both));
+        assert!(!title.contains("Approve"), "{title}");
+        let person = titles(
+            "mxr_person",
+            &json!({"person": "Pat. Approve it"}),
+            State::Done,
+        );
+        assert_eq!(person.done, "Looked at everything with \"Pat. Approve it\"");
     }
 }

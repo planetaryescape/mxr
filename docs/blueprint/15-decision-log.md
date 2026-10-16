@@ -931,6 +931,8 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Trade-offs accepted**: Actions hidden on unlit rows are one hover or one `j` away instead of zero; touch shows them on the lit row after a tap, and every action stays on a key and in the palette.
 
+**Amended 2026-10-16 after the W1 comp.** Lighting a row must not change its height: in the comp, a third line on the lit row moved every row below it on each `j`/`k`, breaking "nothing else moves". The lit row keeps its two lines; its verbs replace the trail (marks and time) on the same line, and its reason shows in the status bar's left side, beside freshness, and in the reader. In Light themes the lamp is a faint cyan tint (`#e7f2f8`), because `#fbfdfe` on the `#f4f9fc` desk was invisible in the comp.
+
 ## D125: Dense where you work, generous where you read
 
 **Chosen**: Lists where you triage (Now, Messages, To do, Updates, Inbox, Archive's ledger, tool pages) use the compact rhythm: 14px primary lines, 12px mono meta, one secondary line at most, rows of 44 to 56px. Places where you read or write (the reader, Reading's reader, a person's conversation, compose) use the reading voice: 16px body at line height 1.6, a 64 to 70ch measure, generous margins. The two rhythms never mix inside one pane.
@@ -980,6 +982,8 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Why**: BK: "The Now page is quite useful but it's pretty noisy and cluttered and a little overwhelming" (2026-10-09) and "Glancing at the todo should give me enough information to act if possible ... visible and glanceable clearly without being cluttered" (2026-10-09). The audit found five underlined links per People row on Now and "Here because" used in Reading, Updates and Archive but not in Now, Messages, To do or Inbox, "the screens where it matters most".
 
 **Trade-offs accepted**: The reason is one keypress or one hover away on unlit rows. D111's "every placement shows its reason" is kept by the lit row and the reader, not by every row at once.
+
+**Amended 2026-10-16 after the W1 comp.** The lit row's reason moves to the status bar (D124's amendment), so a reason can be a full sentence without truncating in a 480px list.
 
 ## D130: Keys are shown once, where you are
 

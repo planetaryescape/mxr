@@ -373,7 +373,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
       </header>
       <div
         ref={columnRef}
-        className="reader-root reading-themed min-h-0 flex-1 overflow-y-auto"
+        // Both-edges gutter: with a classic scrollbar (WebKit shows one once the issue
+        // overflows) the article centres in a narrower box than the toolbar and title
+        // above it, and the shared left edge slips by half the scrollbar. Overlay
+        // scrollbars take no space, so nothing changes there.
+        className="reader-root reading-themed min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
         data-testid="reader-column"
         {...rootProps}
       >

@@ -41,7 +41,11 @@ export function EmptyState({
       <h3 className="type-heading px-1 text-text-1">
         Ask about your mail, or have it do the tedious part.
       </h3>
-      <ul aria-label="Ways to start" className="-mx-3">
+      <ul
+        aria-label="Ways to start"
+        className="-mx-3"
+        style={{ "--row-height": "44px" } as React.CSSProperties}
+      >
         {suggestionsFor(view).map((text) => (
           <Row
             key={text}

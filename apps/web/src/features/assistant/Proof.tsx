@@ -141,7 +141,7 @@ export function Proof({
       ) : (
         <div className="mt-3 px-4">
           {warning ? <p className="type-meta mb-2 text-danger">{warning}</p> : null}
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
             <QuietKey keys="n" label="send back with a note" onClick={() => setRejecting(true)} />
             <QuietKey
               keys="x"
@@ -191,7 +191,7 @@ export function QuietKey({
       type="button"
       aria-pressed={pressed}
       onClick={onClick}
-      className="type-meta inline-flex h-8 items-center gap-1.5 px-1.5 text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
+      className="type-meta inline-flex h-8 items-center gap-1.5 px-1.5 whitespace-nowrap text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
     >
       <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip>
       {label}

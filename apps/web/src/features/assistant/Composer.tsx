@@ -104,11 +104,11 @@ function Disclosure() {
     <span
       title={
         data.leaves_machine
-          ? "Your messages and the mail it reads go to this provider"
-          : "Nothing leaves this machine"
+          ? `${data.model} runs off this machine: your messages and the mail it reads go to its provider`
+          : `${data.model} runs on this machine: nothing leaves it`
       }
     >
-      {data.model} · {data.leaves_machine ? "sent off this machine" : "runs on this machine"}
+      {data.model} · {data.leaves_machine ? "cloud" : "local"}
     </span>
   );
 }

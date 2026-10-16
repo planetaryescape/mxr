@@ -555,41 +555,50 @@ const PLUMBING = /mxr_[a-z_]+|[{]\s*"/;
 
 for (const theme of THEMES) {
   test.describe(`${theme} theme: the copy desk`, () => {
-    test.beforeEach(async ({ page }) => {
-      await page.addInitScript((chosen) => {
-        localStorage.setItem(
-          "mxr.uiPrefs",
-          JSON.stringify({ state: { theme: chosen }, version: 6 }),
-        );
-      }, theme);
-    });
-
     for (const gate of ASSISTANT_PAGES) {
-      test(`the panel beside ${gate.name}, in every state`, async ({ page }, testInfo) => {
+      test(`the panel beside ${gate.name}, in every state`, async ({
+        browser,
+        baseURL,
+      }, testInfo) => {
         for (const state of ASSISTANT_GATE_STATES) {
           for (const width of WIDTHS) {
             await test.step(`${state} at ${width}px`, async () => {
-              await page.unrouteAll({ behavior: "ignoreErrors" });
-              await mockAssistant(page, state);
-              await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-              await openApp(page, gate.path);
-              const panel = page.getByRole("region", { name: "Assistant" });
-              await expect(panel).toBeVisible();
-              await expect(panel.getByLabel("Message the assistant")).toBeVisible();
-              await page.evaluate(() => document.fonts.ready);
-              if (state === "running") {
-                await expect(panel.getByRole("status")).toContainText("Reading your request");
-              }
-              if (state === "finished") {
-                await expect(panel.getByText("gemma4 · local")).toBeVisible();
-              }
-              await page.waitForTimeout(300);
-              await attach(page, testInfo, `assistant-${state}-${gate.name}-${theme}-${width}`);
-              if (state === "finished") {
-                await panel.getByRole("button", { name: /3 steps|2 steps/ }).click();
-                await panel.getByRole("button", { name: /Searched your mail/ }).click();
-                await page.waitForTimeout(200);
-                await attach(page, testInfo, `assistant-steps-${gate.name}-${theme}-${width}`);
+              // A fresh context per picture: each state brings its own stored panel and routes.
+              const context = await browser.newContext({
+                baseURL: baseURL ?? undefined,
+                colorScheme: "dark",
+                viewport: { width, height: width === 390 ? 844 : 900 },
+              });
+              try {
+                const page = await context.newPage();
+                await page.addInitScript((chosen) => {
+                  localStorage.setItem(
+                    "mxr.uiPrefs",
+                    JSON.stringify({ state: { theme: chosen }, version: 6 }),
+                  );
+                }, theme);
+                await mockAssistant(page, state);
+                await openApp(page, gate.path);
+                const panel = page.getByRole("region", { name: "Assistant" });
+                await expect(panel).toBeVisible();
+                await expect(panel.getByLabel("Message the assistant")).toBeVisible();
+                await page.evaluate(() => document.fonts.ready);
+                if (state === "running") {
+                  await expect(panel.getByRole("status")).toContainText("Reading your request");
+                }
+                if (state === "finished") {
+                  await expect(panel.getByTestId("model-mark")).toBeVisible();
+                }
+                await page.waitForTimeout(300);
+                await attach(page, testInfo, `assistant-${state}-${gate.name}-${theme}-${width}`);
+                if (state === "finished") {
+                  await panel.getByRole("button", { name: /\d steps?/ }).click();
+                  await panel.getByRole("button", { name: /Searched your mail/ }).click();
+                  await page.waitForTimeout(200);
+                  await attach(page, testInfo, `assistant-steps-${gate.name}-${theme}-${width}`);
+                }
+              } finally {
+                await context.close();
               }
             });
           }
@@ -610,7 +619,7 @@ test.describe("the copy desk's rules", () => {
     await mockAssistant(page, "finished");
     await openApp(page, "/now");
     const panel = page.getByRole("region", { name: "Assistant" });
-    await expect(panel.getByText("gemma4 · local")).toBeVisible();
+    await expect(panel.getByTestId("model-mark")).toBeVisible();
     // The reply's rows and chips are there; the plumbing is not.
     await expect(
       panel.getByRole("list", { name: "The emails and people in this reply" }),

@@ -1,5 +1,6 @@
 import { Archive, BellRing, ChevronDown, Clock, Loader2, Paperclip, Send } from "lucide-react";
 
+import { Segmented } from "@/components/Segmented";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,7 +12,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { describeChoice } from "@/features/time/api";
 import { useResolvedPresets } from "@/features/time/useNaturalTime";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ export function ComposeActionBar({
   suggestion,
 }: ComposeActionBarProps) {
   return (
-    <footer className="shrink-0 border-t border-border bg-card/30">
+    <footer className="shrink-0 border-t border-rule">
       <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2">
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />
@@ -138,19 +138,15 @@ export function ComposeActionBar({
           )}
           Attach
         </Button>
-        <ToggleGroup
-          type="single"
+        <Segmented
+          label="Editor mode"
           value={editorPreference}
-          onValueChange={(value) => value && onEditorChange(value as ComposeEditor)}
-          aria-label="Editor mode"
-        >
-          <ToggleGroupItem value="tiptap" size="sm" className="px-2.5 text-2xs">
-            Rich text
-          </ToggleGroupItem>
-          <ToggleGroupItem value="codemirror-vim" size="sm" className="px-2.5 text-2xs">
-            Markdown
-          </ToggleGroupItem>
-        </ToggleGroup>
+          options={[
+            ["tiptap", "Rich text"],
+            ["codemirror-vim", "Markdown"],
+          ]}
+          onChange={(value) => onEditorChange(value as ComposeEditor)}
+        />
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-3">
           <DraftQualityBadges suggestion={suggestion} compact />
           {saveError ? (

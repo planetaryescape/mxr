@@ -487,6 +487,10 @@
   max-width: var(--frame-reader);
 }
 
+.mode-frame[data-frame="reading"] {
+  max-width: var(--frame-reading);
+}
+
 .mode-frame[data-frame="narrow"] {
   max-width: 44rem;
 }

@@ -30,7 +30,7 @@ export function TiptapComposeEditor({
     editorProps: {
       attributes: {
         class:
-          "mx-auto h-full min-h-full w-full max-w-[720px] px-6 py-6 pb-14 text-md leading-[1.65] outline-none",
+          "type-reading h-full min-h-full w-full max-w-[var(--reading-measure)] px-5 py-6 pb-14 text-text-1 outline-none",
         role: "textbox",
         "aria-label": "Message body",
       },
@@ -114,7 +114,7 @@ function TiptapToolbar({ editor }: { editor: Editor | null }) {
     <div
       role="toolbar"
       aria-label="Text formatting"
-      className="mx-auto flex w-full max-w-[720px] shrink-0 items-center gap-0.5 border-b border-border/60 px-4 py-1"
+      className="flex w-full shrink-0 items-center gap-0.5 border-b border-rule-soft px-3 py-1"
     >
       <ToolbarButton
         label="Bold"

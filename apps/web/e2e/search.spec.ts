@@ -24,9 +24,17 @@ test("operator chips show each token and removing one rewrites the query", async
 
 test("clicking a sender facet narrows the query and the results", async ({ page }) => {
   await openList(page, "/search?q=canary");
+  // The filters are one key away, not on the page until asked for.
+  await expect(page.getByTestId("search-filters")).toHaveCount(0);
+  await page.keyboard.press("g");
+  await page.keyboard.press("f");
+  await expect(page.getByTestId("search-filters")).toBeVisible();
   const facet = page.locator('button[title*=" unread"]').first();
   await expect(facet).toBeVisible();
-  const facetCount = Number((await facet.locator("span").last().textContent())?.trim());
+  // Counts are messages: the tooltip says so, and the chip leaves them off beside conversations.
+  const facetCount = Number(
+    /(\d+) messages?,/.exec((await facet.getAttribute("title")) ?? "")?.[1],
+  );
   const before = await mailRows(page).count();
 
   await facet.click();

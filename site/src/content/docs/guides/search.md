@@ -219,3 +219,11 @@ newer_than:7d' --format json` and `mxr summarize` for any thread with
 - [Archive](/guides/archive/): the answer box over records
 - [Recipes — fzf / jq](/guides/recipes/)
 - [CLI — `mxr search`](/reference/cli/search/)
+
+## Search results in the web app
+
+The results page is titled with your query and counts what its rows are
+("4 conversations"). Exact, Hybrid and Meaning sit under the box. Show, Sort,
+Account and the sender, list or category chips are behind **Filters** (`g f`).
+The chips show a count only when the rows are messages, since the counts are
+messages.

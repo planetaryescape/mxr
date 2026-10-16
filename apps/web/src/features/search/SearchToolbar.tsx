@@ -3,7 +3,7 @@
  * the "narrow by" facet chips above the results list.
  */
 
-import { Bookmark, BookmarkPlus, Search, X } from "lucide-react";
+import { Bookmark, BookmarkPlus, ListFilter, Search, X } from "lucide-react";
 import type { RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ export function SearchToolbar({
   realAccounts,
   facetGroups,
   update,
+  filtersOpen,
+  onFiltersToggle,
   onSaveClick,
   onManageClick,
 }: {
@@ -50,11 +52,21 @@ export function SearchToolbar({
   realAccounts: RuntimeAccount[];
   facetGroups: SearchAggregationRow[] | undefined;
   update: (next: SearchUpdate) => void;
+  /** The scope, sort, account and narrow-by controls are shown. */
+  filtersOpen: boolean;
+  onFiltersToggle: () => void;
   onSaveClick: () => void;
   onManageClick: () => void;
 }) {
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const tokens = parseSearchTokens(q);
+  // What the filters have been moved off, so a closed panel still says it is narrowing.
+  const narrowed = [
+    scope !== "threads",
+    sort !== (scope === "triage" ? "verdict" : "relevance"),
+    verdict !== undefined,
+    account !== undefined,
+  ].filter(Boolean).length;
 
   return (
     <div className="pt-0.5">
@@ -106,7 +118,8 @@ export function SearchToolbar({
           <Bookmark className="size-4" />
         </Button>
       </form>
-      {tokens.length > 0 ? (
+      {/* Plain words alone are the title and the box; chips earn their place once an operator is in. */}
+      {tokens.some((token) => token.kind === "operator") ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {tokens.map((token) => (
             <button
@@ -138,61 +151,78 @@ export function SearchToolbar({
           ]}
           onChange={(value) => update({ mode: value as SearchMode })}
         />
-        <CompactSelect
-          label="Show"
-          value={scope}
-          onChange={(value) =>
-            update({
-              scope: value as Scope,
-              sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
-            })
-          }
-          options={[
-            ["threads", "Conversations"],
-            ["messages", "Messages"],
-            ["attachments", "Attachments"],
-            ["triage", "Triage"],
-          ]}
-        />
-        <CompactSelect
-          label="Sort"
-          value={sort}
-          onChange={(value) => update({ sort: value as SearchSort })}
-          options={[
-            ["relevance", "Best match"],
-            ["newest", "Newest"],
-            ["oldest", "Oldest"],
-            ...(scope === "triage" ? ([["verdict", "Verdict"]] as [string, string][]) : []),
-          ]}
-        />
-        {scope === "triage" ? (
-          <CompactSelect
-            label="Verdict"
-            value={verdict ?? "ALL"}
-            onChange={(value) => update({ verdict: value === "ALL" ? null : (value as Verdict) })}
-            options={[
-              ["ALL", "Any"],
-              ["ACTION", "Action"],
-              ["FYI", "FYI"],
-              ["ROUTINE", "Routine"],
-            ]}
-          />
-        ) : null}
-        {realAccounts.length > 1 ? (
-          <CompactSelect
-            label="Account"
-            value={account ?? "ALL"}
-            onChange={(value) => update({ account: value === "ALL" ? null : value })}
-            options={[
-              ["ALL", "All accounts"],
-              ...realAccounts.map(
-                (row) => [row.account_id, row.email || row.name] as [string, string],
-              ),
-            ]}
-          />
-        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={filtersOpen}
+          aria-keyshortcuts="g f"
+          title="Filters (g f)"
+          onClick={onFiltersToggle}
+          className="type-body h-7 gap-1.5 px-2 font-normal text-text-2 hover:bg-ink-lamp hover:text-text-1"
+        >
+          <ListFilter aria-hidden className="size-4" strokeWidth={1.75} />
+          Filters{narrowed > 0 ? ` · ${narrowed}` : ""}
+        </Button>
       </div>
-      {q && (facetGroups?.length ?? 0) > 1 ? (
+      {filtersOpen ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="search-filters">
+          <CompactSelect
+            label="Show"
+            value={scope}
+            onChange={(value) =>
+              update({
+                scope: value as Scope,
+                sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
+              })
+            }
+            options={[
+              ["threads", "Conversations"],
+              ["messages", "Messages"],
+              ["attachments", "Attachments"],
+              ["triage", "Triage"],
+            ]}
+          />
+          <CompactSelect
+            label="Sort"
+            value={sort}
+            onChange={(value) => update({ sort: value as SearchSort })}
+            options={[
+              ["relevance", "Best match"],
+              ["newest", "Newest"],
+              ["oldest", "Oldest"],
+              ...(scope === "triage" ? ([["verdict", "Verdict"]] as [string, string][]) : []),
+            ]}
+          />
+          {scope === "triage" ? (
+            <CompactSelect
+              label="Verdict"
+              value={verdict ?? "ALL"}
+              onChange={(value) => update({ verdict: value === "ALL" ? null : (value as Verdict) })}
+              options={[
+                ["ALL", "Any"],
+                ["ACTION", "Action"],
+                ["FYI", "FYI"],
+                ["ROUTINE", "Routine"],
+              ]}
+            />
+          ) : null}
+          {realAccounts.length > 1 ? (
+            <CompactSelect
+              label="Account"
+              value={account ?? "ALL"}
+              onChange={(value) => update({ account: value === "ALL" ? null : value })}
+              options={[
+                ["ALL", "All accounts"],
+                ...realAccounts.map(
+                  (row) => [row.account_id, row.email || row.name] as [string, string],
+                ),
+              ]}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {filtersOpen && q && (facetGroups?.length ?? 0) > 1 ? (
         <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
           <CompactSelect
             label="Narrow by"
@@ -217,7 +247,10 @@ export function SearchToolbar({
               className="inline-flex shrink-0 items-center gap-1.5 rounded-sm border border-border px-2.5 py-0.5 text-xs hover:border-primary/60 hover:bg-accent"
             >
               <span className="max-w-[16ch] truncate">{shortFacet(row.label)}</span>
-              <span className="font-mono text-2xs text-muted-foreground">{row.count}</span>
+              {/* Counts are messages; beside any other unit they would not add up to the rows. */}
+              {scope === "messages" ? (
+                <span className="font-mono text-2xs text-muted-foreground">{row.count}</span>
+              ) : null}
             </button>
           ))}
         </div>

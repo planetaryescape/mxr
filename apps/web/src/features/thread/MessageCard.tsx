@@ -93,29 +93,25 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         data-message-id={message.id}
         data-focused={focused || undefined}
         data-collapsed="true"
-        className={cn("group relative border-b border-border/70", focused && "bg-accent/60")}
+        className={cn("group relative border-b border-rule-soft", focused && "bg-ink-lamp")}
       >
         {focused ? (
-          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
+          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-signal" />
         ) : null}
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={false}
-          className="grid w-full grid-cols-[32px_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2.5 text-left hover:bg-accent/40"
+          className="grid w-full grid-cols-[32px_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2.5 text-left hover:bg-ink-lamp"
         >
           <Avatar name={name} />
           <span
-            className={cn("truncate text-sm", message.unread ? "font-semibold" : "font-medium")}
+            className={cn("type-body truncate", message.unread ? "font-semibold" : "font-medium")}
           >
             {name}
           </span>
-          <span className="truncate text-sm text-fg-2">{message.snippet}</span>
-          <time
-            dateTime={message.date}
-            title={message.date_full}
-            className="font-mono text-2xs text-muted-foreground tabular-nums"
-          >
+          <span className="type-body truncate text-text-2">{message.snippet}</span>
+          <time dateTime={message.date} title={message.date_full} className="type-meta text-text-3">
             <When value={message.date} />
           </time>
         </button>
@@ -132,10 +128,10 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
       data-testid="thread-message"
       data-message-id={message.id}
       data-focused={focused || undefined}
-      className={cn("relative border-b border-border/70", focused && "bg-accent/20")}
+      className={cn("relative border-b border-rule-soft", focused && "bg-ink-lamp/50")}
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
+        <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-signal" />
       ) : null}
       <header className="flex items-start gap-3 px-5 pb-2 pt-4">
         <Avatar name={name} size="lg" />
@@ -189,7 +185,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         </span>
       </header>
 
-      <div className="px-5 pb-5 pl-[64px]">
+      <div className="px-5 pb-6">
         {calendar ? <InviteCard messageId={message.id} metadata={calendar} /> : null}
         <MessageContent
           message={message}

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Segmented } from "@/components/Segmented";
 import { PageFrame } from "@/components/PageFrame";
+import { ReaderToolbar, ToolButton } from "@/components/ToolButton";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
@@ -42,7 +43,6 @@ import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
 import { PARAGRAPH_ATTRIBUTE, selectionParagraph } from "./paragraphAnchor";
 import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
 import { readingRootProps, useAppTheme } from "./readerAppearance";
-import { ReaderToolButton } from "./ReaderToolButton";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
@@ -270,15 +270,14 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
       <header className="shrink-0">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs text-muted-foreground sm:px-5">
-          <button
-            type="button"
+        <ReaderToolbar wrap>
+          <ToolButton
+            icon={ArrowLeft}
+            label="Reading"
+            keys="Escape"
+            hint="Back to Reading"
             onClick={back}
-            className="inline-flex items-center gap-1 hover:text-foreground"
-            aria-label="Back to Reading (Esc)"
-          >
-            <ArrowLeft className="size-3.5" /> Reading
-          </button>
+          />
           {hasArticle ? (
             <Segmented
               label="What to read"
@@ -291,13 +290,13 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             />
           ) : null}
           {view === "article" && !article ? null : (
-            <span data-testid="minutes-left" className="tabular-nums">
+            <span data-testid="minutes-left" className="type-meta px-2 text-text-3">
               {left > 0 ? `${left} min left` : "Read to the end"}
             </span>
           )}
           <ReaderSettingsMenu />
           <span className="ml-auto flex flex-wrap items-center gap-1">
-            <ReaderToolButton
+            <ToolButton
               label="Later"
               keys="b"
               icon={Bookmark}
@@ -310,7 +309,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 )
               }
             />
-            <ReaderToolButton
+            <ToolButton
               label="Let go"
               keys="e"
               icon={Check}
@@ -319,15 +318,15 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 next();
               }}
             />
-            <ReaderToolButton label="Highlight" keys="h" icon={Highlighter} onClick={highlight} />
-            <ReaderToolButton
+            <ToolButton label="Highlight" keys="h" icon={Highlighter} onClick={highlight} />
+            <ToolButton
               label={original ? "Cleaned" : "Original"}
               keys="R"
               icon={FileText}
               hint={original ? "Back to the cleaned layout" : "Show the sender's layout"}
               onClick={toggleOriginal}
             />
-            <ReaderToolButton
+            <ToolButton
               testId="reader-marginalia"
               label={sentTo ? "In Marginalia" : "Marginalia"}
               keys="M"
@@ -339,7 +338,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               }
               onClick={openMarginalia}
             />
-            <ReaderToolButton
+            <ToolButton
               testId="reader-unsubscribe"
               label="Unsubscribe"
               keys="D"
@@ -347,9 +346,9 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               onClick={() => setUnsubscribing(true)}
             />
           </span>
-        </div>
+        </ReaderToolbar>
         <PageFrame
-          width="reader"
+          width="reading"
           wrapTitle
           publishTitle={false}
           purposeTestId="reading-source"
@@ -385,96 +384,97 @@ function Reader({ detail }: { detail: ReadingDetail }) {
         ) : (
           <article
             ref={textRef}
-            className="reading-page mx-auto w-full max-w-[66ch] px-4 pb-16 pt-8 sm:px-6"
-            style={articleHtml ? { maxWidth: "var(--reader-max-width)" } : undefined}
+            // The title above and the text share one column, so the page has a single left edge.
+            data-frame="reading"
+            className="reading-page mode-frame px-5 pb-16 pt-8"
+            // The measure is in ch of the reader's own face and size, so a larger text keeps its line length.
+            style={{ fontSize: "var(--reader-size)", fontFamily: "var(--reader-font)" }}
           >
-            {view === "article" ? (
-              <ArticleStatus
-                fetching={fetching}
-                detail={detail}
-                onFetch={() => void openArticle()}
-              />
-            ) : null}
-            {view === "article" && !article ? null : (
-              <>
-                {articleHtml && rawHtml ? (
-                  <PrivacyLine
-                    html={rawHtml}
-                    imagesAllowed={imagesAllowed}
-                    onShowImages={() => setRemoteAllowed(true)}
-                    senderEmail={item.sender_email}
-                    onAlwaysAllowSender={allowSender}
-                    showImagesKey={null}
+            <div className="max-w-[var(--reading-measure)]">
+              {view === "article" ? (
+                <ArticleStatus
+                  fetching={fetching}
+                  detail={detail}
+                  onFetch={() => void openArticle()}
+                />
+              ) : null}
+              {view === "article" && !article ? null : (
+                <>
+                  {articleHtml && rawHtml ? (
+                    <PrivacyLine
+                      html={rawHtml}
+                      imagesAllowed={imagesAllowed}
+                      onShowImages={() => setRemoteAllowed(true)}
+                      senderEmail={item.sender_email}
+                      onAlwaysAllowSender={allowSender}
+                      showImagesKey={null}
+                    />
+                  ) : null}
+                  <div ref={bodyRef}>
+                    {articleHtml ? (
+                      <ReaderArticle
+                        html={articleHtml}
+                        paragraphs={paragraphs}
+                        marks={marks}
+                        allowRemoteImages={imagesAllowed}
+                      />
+                    ) : (
+                      <Paragraphs paragraphs={paragraphs} marks={marks} />
+                    )}
+                  </div>
+                  <HighlightToolbar
+                    containerRef={bodyRef}
+                    itemKey={item.item_key}
+                    view={showingArticle ? "article" : "issue"}
+                    highlights={highlights}
+                    onOpenMarginalia={openMarginalia}
                   />
-                ) : null}
-                <div ref={bodyRef}>
-                  {articleHtml ? (
-                    <ReaderArticle
-                      html={articleHtml}
-                      paragraphs={paragraphs}
-                      marks={marks}
-                      allowRemoteImages={imagesAllowed}
-                    />
-                  ) : (
-                    <Paragraphs paragraphs={paragraphs} marks={marks} />
-                  )}
-                </div>
-                <HighlightToolbar
-                  containerRef={bodyRef}
-                  itemKey={item.item_key}
-                  view={showingArticle ? "article" : "issue"}
-                  highlights={highlights}
-                  onOpenMarginalia={openMarginalia}
-                />
-              </>
-            )}
-            {view === "issue" && (item.links?.length ?? 0) > 0 ? (
-              <IssueLinks detail={detail} />
-            ) : null}
-            {highlights.length > 0 ? (
-              <section aria-label="Your highlights" className="mt-10 border-t border-border pt-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Your highlights
-                </h2>
-                <ul className="mt-2 grid gap-2" data-testid="reading-highlights">
-                  {highlights.map((h) => (
-                    <HighlightRow
-                      key={h.id}
-                      highlight={h}
-                      itemKey={item.item_key}
-                      onOpenMarginalia={openMarginalia}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-            <footer
-              data-testid="end-of-issue"
-              className="mt-12 border-t border-border pt-4 text-sm text-muted-foreground"
-            >
-              <p>From this source: {source.evidence}.</p>
-              <p className="-ml-2 mt-2 flex flex-wrap items-center gap-1">
-                <ReaderToolButton label="Next" keys="n" onClick={next} />
-                <ReaderToolButton
-                  label="Later"
-                  keys="b"
-                  onClick={() => void putOnLater(item.item_key)}
-                />
-                <ReaderToolButton
-                  label="Let go"
-                  keys="e"
-                  onClick={() => {
-                    void letGo([item.thread_id]);
-                    next();
-                  }}
-                />
-                <ReaderToolButton
-                  label="Unsubscribe"
-                  keys="D"
-                  onClick={() => setUnsubscribing(true)}
-                />
-              </p>
-            </footer>
+                </>
+              )}
+              {view === "issue" && (item.links?.length ?? 0) > 0 ? (
+                <IssueLinks detail={detail} />
+              ) : null}
+              {highlights.length > 0 ? (
+                <section aria-label="Your highlights" className="mt-10 border-t border-border pt-4">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Your highlights
+                  </h2>
+                  <ul className="mt-2 grid gap-2" data-testid="reading-highlights">
+                    {highlights.map((h) => (
+                      <HighlightRow
+                        key={h.id}
+                        highlight={h}
+                        itemKey={item.item_key}
+                        onOpenMarginalia={openMarginalia}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              <footer
+                data-testid="end-of-issue"
+                className="mt-12 border-t border-border pt-4 text-sm text-muted-foreground"
+              >
+                <p>From this source: {source.evidence}.</p>
+                <p className="-ml-2 mt-2 flex flex-wrap items-center gap-1">
+                  <ToolButton label="Next" keys="n" onClick={next} />
+                  <ToolButton
+                    label="Later"
+                    keys="b"
+                    onClick={() => void putOnLater(item.item_key)}
+                  />
+                  <ToolButton
+                    label="Let go"
+                    keys="e"
+                    onClick={() => {
+                      void letGo([item.thread_id]);
+                      next();
+                    }}
+                  />
+                  <ToolButton label="Unsubscribe" keys="D" onClick={() => setUnsubscribing(true)} />
+                </p>
+              </footer>
+            </div>
           </article>
         )}
       </div>

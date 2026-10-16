@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { ThreadContext, ThreadGist } from "./api";
@@ -77,8 +77,9 @@ describe("ContextBlock", () => {
       "Asks you to confirm who owns the rollout check",
     );
     expect(screen.getByTestId("thread-gist-source")).toHaveTextContent(
-      "Local model qwen2.5 · from this thread",
+      "qwen2.5 · local · from this thread",
     );
+    expect(within(slot).getByTestId("model-mark")).toHaveTextContent("qwen2.5 · local");
     fireEvent.click(screen.getByRole("button", { name: "Show in message" }));
     expect(onRevealAsk).toHaveBeenCalledOnce();
   });

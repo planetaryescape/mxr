@@ -70,7 +70,7 @@ describe("DraftAssistPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /generate/i }));
 
     expect(await screen.findByTestId("draft-provenance-line")).toHaveTextContent(
-      "Local model gemma4 · used 1 of your emails to Alice · history used",
+      "gemma4 · local · used 1 of your emails to Alice · history used",
     );
     expect(screen.getByRole("button", { name: "Sources (1)" })).toBeInTheDocument();
   });

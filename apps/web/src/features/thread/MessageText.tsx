@@ -38,8 +38,8 @@ export function MessageText({
       data-testid="message-text"
       className={
         plain
-          ? "max-w-[var(--reading-measure)] font-mono text-sm leading-6 text-foreground"
-          : "max-w-[var(--reading-measure)] text-base leading-[1.65] text-foreground"
+          ? "max-w-[var(--reading-measure)] font-mono text-sm leading-6 text-text-1"
+          : "type-reading max-w-[var(--reading-measure)] text-text-1"
       }
     >
       {segments.map((segment, index) => (

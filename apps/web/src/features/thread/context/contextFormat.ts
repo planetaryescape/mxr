@@ -96,18 +96,23 @@ export function promiseViews(context: ThreadContext, now = new Date()): PromiseV
 }
 
 /**
- * Where the model text came from: "Local model qwen2.5 · from this thread",
- * "Cloud model gpt-4o-mini · from this thread only".
+ * What the model read, for the line after its mark: "from this thread",
+ * "from this thread only" when it ran off this machine.
+ */
+export function provenanceScope(provenance: AiProvenance, personName: string | null): string {
+  const withHistory = provenance.sources.includes("relationship_history");
+  if (withHistory) return `from this thread and your history${personName ? ` with ${personName}` : ""}`;
+  return provenance.locality === "local" ? "from this thread" : "from this thread only";
+}
+
+/**
+ * Where the model text came from, in one string for the places that can't
+ * draw a mark: "Local model qwen2.5 · from this thread", "Cloud model
+ * gpt-4o-mini · from this thread only".
  */
 export function provenanceLabel(provenance: AiProvenance, personName: string | null): string {
   const place = provenance.locality === "local" ? "Local model" : "Cloud model";
-  const withHistory = provenance.sources.includes("relationship_history");
-  const source = withHistory
-    ? `from this thread and your history${personName ? ` with ${personName}` : ""}`
-    : provenance.locality === "local"
-      ? "from this thread"
-      : "from this thread only";
-  return `${place} ${provenance.model} · ${source}`;
+  return `${place} ${provenance.model} · ${provenanceScope(provenance, personName)}`;
 }
 
 /** "Alice" from "Alice Park"; an address stays whole. */

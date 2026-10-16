@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  draftProvenanceLine,
+  draftProvenanceDetail,
   draftSourceLabel,
   draftSourceRoute,
   type DraftProvenance,
@@ -33,18 +33,18 @@ function provenance(overrides: Partial<DraftProvenance> = {}): DraftProvenance {
 
 // The same wording as `DraftProvenanceData::summary_line` in mxr-protocol,
 // so the CLI, TUI and web say one thing.
-describe("draftProvenanceLine", () => {
+describe("draftProvenanceDetail", () => {
   test("names the person when every example was to them", () => {
-    const line = draftProvenanceLine(
+    const line = draftProvenanceDetail(
       provenance({
         voice_examples: [source(), source({ message_id: "m2", person: "MAYA@example.com" })],
       }),
     );
-    expect(line).toBe("Local model gemma4 · used 2 of your emails to Maya · history used");
+    expect(line).toBe("used 2 of your emails to Maya · history used");
   });
 
   test("mixed recipients and a rewrite are said plainly", () => {
-    const line = draftProvenanceLine(
+    const line = draftProvenanceDetail(
       provenance({
         voice_examples: [source(), source({ person: "sam@example.com", person_name: null })],
         rewrite: {
@@ -56,23 +56,23 @@ describe("draftProvenanceLine", () => {
       }),
     );
     expect(line).toBe(
-      "Local model gemma4 · used 2 of your emails · history used · rewritten by cloud model gpt-4o-mini",
+      "used 2 of your emails · history used · rewritten by cloud model gpt-4o-mini",
     );
   });
 
   test("a rewrite that was not used, or not run, says so", () => {
     const rewrite = { model: "gpt-4o-mini", locality: "cloud", history_used: false } as const;
     expect(
-      draftProvenanceLine(provenance({ rewrite: { ...rewrite, outcome: "rejected" } })),
+      draftProvenanceDetail(provenance({ rewrite: { ...rewrite, outcome: "rejected" } })),
     ).toMatch(/rewrite attempted by cloud model gpt-4o-mini, not used$/);
     expect(
-      draftProvenanceLine(provenance({ rewrite: { ...rewrite, outcome: "skipped" } })),
+      draftProvenanceDetail(provenance({ rewrite: { ...rewrite, outcome: "skipped" } })),
     ).toMatch(/rewrite by cloud model gpt-4o-mini skipped to keep your history local$/);
   });
 
   test("a kept rewrite names a later dropped pass on its own", () => {
     expect(
-      draftProvenanceLine(
+      draftProvenanceDetail(
         provenance({
           rewrite: {
             model: "first-pass",
@@ -87,8 +87,8 @@ describe("draftProvenanceLine", () => {
   });
 
   test("a cloud model that saw no history says so", () => {
-    expect(draftProvenanceLine(provenance({ locality: "cloud", history_used: false }))).toBe(
-      "Cloud model gemma4 · history not used",
+    expect(draftProvenanceDetail(provenance({ locality: "cloud", history_used: false }))).toBe(
+      "history not used",
     );
   });
 });

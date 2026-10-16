@@ -1,8 +1,8 @@
 /*
- * Where an AI draft came from, in words: which model (local or cloud), how
- * many of your emails shaped the voice, whether your history was used, and
- * where each source opens. The CLI and TUI word the line the same way
- * (`DraftProvenanceData::summary_line` in mxr-protocol).
+ * Where an AI draft came from, in words: how many of your emails shaped the
+ * voice, whether your history was used, and where each source opens. The
+ * model and where it ran are the ModelMark's job. The CLI and TUI word the
+ * line the same way (`DraftProvenanceData::summary_line` in mxr-protocol).
  */
 
 import type { components } from "@/api/generated";
@@ -10,20 +10,15 @@ import { firstName } from "@/features/thread/context/contextFormat";
 
 export type DraftProvenance = components["schemas"]["DraftProvenanceData"];
 export type DraftSource = components["schemas"]["DraftSourceData"];
-type Locality = components["schemas"]["AiLocalityData"];
-
-function modelLabel(locality: Locality, model: string): string {
-  return `${locality === "local" ? "Local" : "Cloud"} model ${model}`;
-}
 
 /** "Maya" from "Maya Chen"; the address when there's no name. */
 export function shortPerson(source: DraftSource): string {
   return firstName({ display_name: source.person_name ?? null, email: source.person });
 }
 
-/** "Local model gemma4 · used 5 of your emails to Maya · history used". */
-export function draftProvenanceLine(provenance: DraftProvenance): string {
-  const parts = [modelLabel(provenance.locality, provenance.model)];
+/** What the draft was written from, after the model: "used 5 of your emails to Maya · history used". */
+export function draftProvenanceDetail(provenance: DraftProvenance): string {
+  const parts: string[] = [];
   const examples = provenance.voice_examples ?? [];
   const first = examples[0];
   if (first) {

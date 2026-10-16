@@ -128,14 +128,17 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     <ComposeEditorPanel controller={controller} />
   ) : null;
 
+  // A sheet is something the user asked for (popout, fullscreen) and gets a scrim. An
+  // inline draft whose thread is gone docks in the corner instead, so going back to the
+  // list never throws a modal over it.
+  const sheet = surface !== "inline";
+  const inThread = surface === "inline" && slot !== null;
   const chrome = (
     <div
       data-compose-surface
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden border border-border-strong bg-background",
-        surface === "inline"
-          ? "max-h-[70vh] min-h-[320px] rounded-none"
-          : "h-full rounded-none shadow-2xl",
+        "flex min-h-0 flex-col overflow-hidden border border-rule",
+        inThread ? "max-h-[70vh] min-h-[320px] bg-background" : "h-full bg-ink-overlay shadow-2xl",
       )}
       onKeyDown={(event) => {
         if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
@@ -144,37 +147,36 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         }
       }}
     >
-      <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card/40 px-2">
-        <span className="px-1 font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          {intent.title}
-        </span>
-        <span className="flex items-center gap-1">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-rule px-5">
+        <h2 className="type-title min-w-0 truncate text-text-1">{intent.title}</h2>
+        <span className="-mr-2 flex items-center gap-1">
           <SurfaceButton
             label="Inline"
             active={surface === "inline"}
             onClick={() => setSurface("inline")}
-            icon={<Minimize2 className="size-3" />}
+            icon={<Minimize2 className="size-3.5" />}
           />
           <SurfaceButton
             label="Popout"
             active={surface === "overlay"}
             onClick={() => setSurface("overlay")}
-            icon={<PictureInPicture2 className="size-3" />}
+            icon={<PictureInPicture2 className="size-3.5" />}
           />
           <SurfaceButton
             label="Fullscreen (⇧⌘F)"
             active={surface === "fullscreen"}
             onClick={() => setSurface("fullscreen")}
-            icon={<Maximize2 className="size-3" />}
+            icon={<Maximize2 className="size-3.5" />}
           />
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label="Close composer (saves draft)"
             title="Close composer (saves draft)"
+            className="text-text-2"
             onClick={() => void controller.requestClose()}
           >
-            <X className="size-3.5" />
+            <X className="size-4" />
           </Button>
         </span>
       </div>
@@ -188,19 +190,27 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
 
   const fullscreen = surface === "fullscreen";
   return (
-    <div
-      role="dialog"
-      aria-modal="false"
-      aria-label={intent.title}
-      className={cn(
-        "fixed z-40 flex flex-col",
-        fullscreen
-          ? "inset-4"
-          : "bottom-4 right-4 h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))]",
-      )}
-    >
-      {chrome}
-    </div>
+    <>
+      {/* Writing is its own state: the rows behind dim and stop answering the pointer. */}
+      {sheet ? (
+        <div data-testid="compose-scrim" aria-hidden className="fixed inset-0 z-40 bg-scrim" />
+      ) : null}
+      <div
+        role="dialog"
+        aria-modal="false"
+        aria-label={intent.title}
+        className={cn(
+          "fixed z-40 flex flex-col",
+          fullscreen
+            ? "inset-4"
+            : sheet
+              ? "inset-x-3 bottom-3 top-12 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-14 sm:w-[min(720px,calc(100vw-2rem))]"
+              : "bottom-4 right-4 h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))]",
+        )}
+      >
+        {chrome}
+      </div>
+    </>
   );
 }
 
@@ -217,10 +227,12 @@ function SurfaceButton({
 }) {
   return (
     <Button
-      variant={active ? "secondary" : "ghost"}
+      variant="ghost"
       size="icon-sm"
       aria-label={label}
+      aria-pressed={active}
       title={label}
+      className={active ? "bg-signal-soft text-text-1" : "text-text-2"}
       onClick={onClick}
     >
       {icon}

@@ -36,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatLongDate, formatTime, formatWhen, startOfDay } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
+import { StatusDot } from "@/components/StatusDot";
 
 const DOT_TONE = {
   ok: "bg-success",
@@ -99,7 +100,7 @@ export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
       <button
         type="button"
         className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 rounded px-1 hover:bg-muted hover:text-foreground",
+          "inline-flex shrink-0 items-center gap-1.5 rounded-sm px-1 hover:bg-muted hover:text-foreground",
           compact && "h-8 font-mono text-2xs text-muted-foreground",
         )}
         aria-label={
@@ -109,10 +110,9 @@ export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
         }
         data-testid="freshness-trigger"
       >
-        <span
-          aria-hidden
+        <StatusDot
           data-tone={healthTone(sync.health)}
-          className={cn("size-1.5 shrink-0 rounded-full", DOT_TONE[healthTone(sync.health)])}
+          className={cn("size-1.5", DOT_TONE[healthTone(sync.health)])}
         />
         <span>{latest}</span>
       </button>
@@ -152,7 +152,7 @@ export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
           ) : (
             <Link
               {...syncDetailsLink(sync)}
-              className="inline-flex min-w-0 items-center gap-1 rounded px-1 text-warning hover:bg-muted"
+              className="inline-flex min-w-0 items-center gap-1 rounded-sm px-1 text-warning hover:bg-muted"
               title="Sync details"
               data-testid="freshness-warning"
             >

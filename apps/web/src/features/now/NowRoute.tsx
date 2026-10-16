@@ -2,7 +2,9 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ModeColumns, ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
+import { partOfDay } from "@/features/desk/deskCopy";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Button } from "@/components/ui/button";
@@ -84,14 +86,18 @@ export function NowRoute() {
 
 /** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
+  // The day's headline is the title: the answer before the page's name.
+  const headline = now && now.item_count > 0 ? now.headline : null;
+  const today = new Date();
+  const weekday = today.toLocaleDateString(undefined, { weekday: "long" });
   return (
-    <ModeHeader width="wide" title="Now" subtitle={guide?.header ?? now?.header}>
-      {now && now.item_count > 0 ? (
-        <p data-testid="now-headline" className="mt-1.5 text-balance text-md text-foreground">
-          {now.headline}
-        </p>
-      ) : null}
-    </ModeHeader>
+    <PageFrame
+      width="wide"
+      eyebrow={`Now · ${weekday} ${partOfDay(today)}`}
+      title={headline ?? "Now"}
+      titleTestId={headline ? "now-headline" : undefined}
+      purpose={guide?.header ?? now?.header}
+    />
   );
 }
 

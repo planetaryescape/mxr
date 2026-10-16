@@ -13,7 +13,8 @@ import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { keysForModeGuide } from "@/features/modes/guideKeys";
-import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -130,18 +131,13 @@ function Runway({
 /** The mode's name, its job in one line, and the day's headline. */
 function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide }) {
   return (
-    <ModeHeader
+    <PageFrame
+      eyebrow={runway?.headline ? <span data-testid="todo-headline">{runway.headline}</span> : null}
       title="To do"
-      subtitle={
+      purpose={
         guide?.header ?? runway?.header ?? "Things email asked you to do, ordered by when to act."
       }
-    >
-      {runway?.headline ? (
-        <p data-testid="todo-headline" className="mt-1.5 text-balance text-md text-foreground">
-          {runway.headline}
-        </p>
-      ) : null}
-    </ModeHeader>
+    />
   );
 }
 

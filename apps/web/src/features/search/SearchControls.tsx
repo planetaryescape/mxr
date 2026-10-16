@@ -34,7 +34,7 @@ export function Segmented({
           aria-checked={value === id}
           onClick={() => onChange(id)}
           className={cn(
-            "rounded px-2 py-0.5 text-xs",
+            "rounded-sm px-2 py-0.5 text-xs",
             value === id
               ? "bg-accent font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",

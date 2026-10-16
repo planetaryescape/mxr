@@ -111,7 +111,7 @@ export function SendConfirmDialog({
 
         <dl
           aria-label="Recipients"
-          className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-lg border border-border bg-muted px-3 py-2 text-xs"
+          className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-none border border-border bg-muted px-3 py-2 text-xs"
         >
           {recipientRows.map(([label, addresses]) => (
             <div key={label} className="contents">
@@ -162,7 +162,7 @@ export function SendConfirmDialog({
               <button
                 key={collaborator.email}
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-foreground hover:border-primary/50 hover:bg-muted"
+                className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/40 px-2 py-0.5 text-foreground hover:border-primary/50 hover:bg-muted"
                 title={collaborator.reason}
                 aria-label={`Add ${collaborator.email} to Cc`}
                 onClick={() => onAddCc(collaborator.email)}
@@ -176,7 +176,7 @@ export function SendConfirmDialog({
 
         {blocked ? (
           overridable ? (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+            <div className="flex items-start gap-2 rounded-none border border-destructive/30 bg-destructive/10 px-3 py-2">
               <Checkbox
                 id={overrideId}
                 checked={overridden}

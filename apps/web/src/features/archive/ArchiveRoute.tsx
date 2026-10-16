@@ -13,7 +13,8 @@ import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
-import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useReplaceSearch, useSearchParam } from "@/hooks/useSearchParam";
@@ -209,31 +210,29 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
 /** The mode's name, its job in one line, and how many records it holds. */
 function ArchiveHeader({ ledger, guide }: { ledger?: RecordLedger; guide?: ModeGuide }) {
   return (
-    <ModeHeader
-      width="wide"
-      title="Archive"
-      subtitle={
-        guide?.header ??
-        ledger?.header ??
-        "Receipts, orders, bookings and documents. Ask for what you need."
-      }
-      actions={
-        ledger && ledger.total > 0 ? (
-          <span
-            data-testid="records-total"
-            className="font-mono text-xs tabular-nums text-muted-foreground"
-          >
-            {plural(ledger.total, "record")}
-          </span>
-        ) : null
-      }
-    >
+    <>
+      <PageFrame
+        width="wide"
+        title="Archive"
+        purpose={
+          guide?.header ??
+          ledger?.header ??
+          "Receipts, orders, bookings and documents. Ask for what you need."
+        }
+        freshness={
+          ledger && ledger.total > 0 ? (
+            <span data-testid="records-total">{plural(ledger.total, "record")}</span>
+          ) : null
+        }
+      />
       {ledger?.first_run ? (
-        <p data-testid="records-first-run" className="mt-1 text-xs text-muted-foreground">
-          {ledger.first_run.line}
-        </p>
+        <ModeFrame width="wide" className="px-5 pt-2">
+          <p data-testid="records-first-run" className="type-meta text-text-3">
+            {ledger.first_run.line}
+          </p>
+        </ModeFrame>
       ) : null}
-    </ModeHeader>
+    </>
   );
 }
 
@@ -690,7 +689,7 @@ function Ledger({
                       aria-pressed={!showingSubscriptions && chip === kindChip.id}
                       onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
                       className={cn(
-                        "min-h-8 rounded-full border px-3 text-xs",
+                        "min-h-8 rounded-sm border px-3 text-xs",
                         !showingSubscriptions && chip === kindChip.id
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -708,7 +707,7 @@ function Ledger({
                       setCardOpen(false);
                     }}
                     className={cn(
-                      "min-h-8 rounded-full border px-3 text-xs",
+                      "min-h-8 rounded-sm border px-3 text-xs",
                       showingSubscriptions
                         ? "border-primary bg-primary/10 text-foreground"
                         : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -928,7 +927,7 @@ function ActiveFilters({
           type="button"
           onClick={() => setFilter(part.clear)}
           aria-label={`Clear ${part.label}`}
-          className="inline-flex min-h-7 items-center gap-1 rounded-full border border-border px-2 text-foreground hover:bg-accent"
+          className="inline-flex min-h-7 items-center gap-1 rounded-sm border border-border px-2 text-foreground hover:bg-accent"
         >
           {part.label} <X aria-hidden className="size-3" />
         </button>

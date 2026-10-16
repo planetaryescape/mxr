@@ -26,7 +26,7 @@ export function SendCountdownTitle({ deadline }: { deadline: number }) {
 
 export function SendCountdownBar({ seconds }: { seconds: number }) {
   return (
-    <span aria-hidden className="mt-2 block h-0.5 w-full overflow-hidden rounded-full bg-muted">
+    <span aria-hidden className="mt-2 block h-0.5 w-full overflow-hidden bg-muted">
       <span
         data-testid="send-countdown-bar"
         className="countdown-drain block h-full w-full bg-primary"

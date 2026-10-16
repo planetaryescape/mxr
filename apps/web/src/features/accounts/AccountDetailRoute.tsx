@@ -217,40 +217,33 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       eyebrow="Accounts"
       title={account.name || account.email}
       description={`${account.email} · ${account.provider_kind}${account.is_default ? " · default" : ""}${account.enabled ? "" : " · disabled"}`}
-      actions={
-        <>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => test.mutate()}
-            disabled={test.isPending}
-          >
-            {test.isPending ? "Testing…" : "Test connection"}
-          </Button>
-          {isOauthAccount(account) ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => reauth.mutate()}
-              disabled={reauth.isPending || Boolean(authSessionId)}
-            >
-              <KeyRound className="size-3" />
-              Sign in again
-            </Button>
-          ) : null}
-          {!account.is_default ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => makeDefault.mutate()}
-              disabled={makeDefault.isPending}
-            >
-              <CheckCircle2 className="size-3" />
-              Make default
-            </Button>
-          ) : null}
-        </>
-      }
+      overflow={[
+        {
+          label: test.isPending ? "Testing…" : "Test connection",
+          onSelect: () => test.mutate(),
+          disabled: test.isPending,
+        },
+        ...(isOauthAccount(account)
+          ? [
+              {
+                label: "Sign in again",
+                icon: KeyRound,
+                onSelect: () => reauth.mutate(),
+                disabled: reauth.isPending || Boolean(authSessionId),
+              },
+            ]
+          : []),
+        ...(account.is_default
+          ? []
+          : [
+              {
+                label: "Make default",
+                icon: CheckCircle2,
+                onSelect: () => makeDefault.mutate(),
+                disabled: makeDefault.isPending,
+              },
+            ]),
+      ]}
     >
       {session ? (
         <PageSection title="Sign in">

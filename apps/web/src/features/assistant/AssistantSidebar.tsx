@@ -254,7 +254,7 @@ function Composer({
     <form
       onSubmit={submit}
       className={cn(
-        "rounded-lg border border-border bg-surface shadow-sm shadow-black/10",
+        "rounded-none border border-border bg-surface shadow-sm shadow-black/10",
         "focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-ring/20",
         disabled && "opacity-60",
       )}
@@ -375,7 +375,7 @@ function EmptyState({ disabled, onPick }: { disabled: boolean; onPick: (text: st
   return (
     <div className="flex min-h-full flex-col justify-end gap-6 pb-2">
       <div className="space-y-3">
-        <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-primary">
+        <span className="inline-flex size-9 items-center justify-center rounded-none border border-border bg-surface text-primary">
           <BotMessageSquare className="size-5" aria-hidden="true" />
         </span>
         <div className="space-y-1">

@@ -19,11 +19,11 @@ export function PageSkeleton({ rows = 6, label = "Loading" }: { rows?: number; l
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="grid gap-1.5 border-b border-border/60 py-3">
           <div
-            className="h-3 w-1/3 animate-pulse rounded bg-muted"
+            className="h-3 w-1/3 animate-pulse rounded-sm bg-muted"
             style={{ animationDelay: `${index * 40}ms` }}
           />
           <div
-            className="h-2.5 w-2/3 animate-pulse rounded bg-muted/70"
+            className="h-2.5 w-2/3 animate-pulse rounded-sm bg-muted/70"
             style={{ animationDelay: `${index * 40}ms` }}
           />
         </div>

@@ -66,6 +66,7 @@ export function ReplyQueueRoute() {
     <ListWithReader
       basePath="/reply-queue"
       title="Reply queue"
+      purpose="Conversations you marked to answer."
       meta={rows.length > 0 ? plural(rows.length, "message") : null}
       groups={groups}
       scopeKey="reply-queue"

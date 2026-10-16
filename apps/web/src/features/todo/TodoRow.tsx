@@ -26,6 +26,7 @@ import {
   type PrimaryAction,
 } from "./todoRows";
 import { useTodoHidden } from "./todoVerbs";
+import { StatusDot } from "@/components/StatusDot";
 
 /**
  * The runway bar: how much of the time between showing up and the
@@ -40,12 +41,12 @@ export function RunwayBar({ fill, className }: { fill: number; className?: strin
       data-testid="runway-bar"
       data-fill={fill.toFixed(2)}
       className={cn(
-        "relative inline-block h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-border",
+        "relative inline-block h-1.5 w-20 shrink-0 overflow-hidden bg-border",
         className,
       )}
     >
       <span
-        className="absolute inset-0 origin-left rounded-full bg-muted-foreground"
+        className="absolute inset-0 origin-left bg-muted-foreground"
         style={{ transform: `scaleX(${fill})` }}
       />
     </span>
@@ -138,12 +139,13 @@ export function ProvenanceChip({
         className="cursor-pointer hover:text-foreground"
       >
         {unchecked > 0 ? (
-          <span
+          <StatusDot
+            aria-hidden={false}
             aria-label={`${unchecked} to check`}
-            className="inline-block size-1.5 rounded-full border border-current"
+            className="size-1.5 border border-current"
           />
         ) : (
-          <span aria-hidden className="inline-block size-1.5 rounded-full bg-current" />
+          <StatusDot className="size-1.5 bg-current" />
         )}
         from {source}
         {unchecked > 0 ? `, ${unchecked} to check` : ""}
@@ -338,7 +340,7 @@ export const TodoRow = memo(function TodoRow({
       )}
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-2 left-0 w-[2px] rounded-full bg-primary" />
+        <span aria-hidden className="absolute inset-y-2 left-0 w-[2px] bg-primary" />
       ) : null}
       <div className="flex flex-col gap-2 @2xl:flex-row @2xl:items-start @2xl:gap-4">
         <div className="flex min-w-0 flex-1 gap-3">

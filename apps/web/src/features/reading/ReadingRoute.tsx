@@ -47,7 +47,9 @@ import {
   rememberLayout,
 } from "./readingVerbs";
 import { KeyLine } from "@/components/KeyLine";
-import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { pageTabClass } from "@/components/Page";
+import { PageFrame } from "@/components/PageFrame";
 import { SectionHeading } from "@/components/SectionHeading";
 
 export const EDITION_KEY = (scope: string) => [...READING_KEY, "edition", scope] as const;
@@ -178,36 +180,40 @@ function EditionHeader({
   const later = edition?.later_count ?? 0;
   const anything = (edition?.bands.length ?? 0) > 0;
   return (
-    <ModeHeader
+    <PageFrame
       title={view === "later" ? "Later" : "Reading"}
-      subtitle={
+      purpose={
         view === "later"
           ? "What you kept to read. It never fades."
           : (guide?.header ?? edition?.header ?? "")
       }
-      actions={
-        <>
-          {view === "later" ? (
-            <Link to="/reading" className="text-xs text-muted-foreground hover:text-foreground">
-              Back to the edition
-            </Link>
-          ) : (
-            <Link
-              to="/reading"
-              search={{ view: "later" }}
-              data-testid="later-count"
-              className="inline-flex items-center gap-1.5 text-xs text-foreground/90 hover:text-foreground"
-            >
-              <Bookmark aria-hidden className="size-3.5" /> Later{" "}
-              <span className="tabular-nums">{later}</span>
-            </Link>
-          )}
-          {view !== "later" && anything ? (
-            <Button variant="outline" size="xs" onClick={onLetGoAll}>
-              Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
-            </Button>
-          ) : null}
-        </>
+      tabs={
+        <nav aria-label="Reading views" className="-mb-px flex h-8 gap-6">
+          <Link
+            to="/reading"
+            aria-current={view === "later" ? undefined : "page"}
+            className={pageTabClass(view !== "later")}
+          >
+            Edition
+          </Link>
+          <Link
+            to="/reading"
+            search={{ view: "later" }}
+            data-testid="later-count"
+            aria-current={view === "later" ? "page" : undefined}
+            className={pageTabClass(view === "later")}
+          >
+            <Bookmark aria-hidden className="mr-1 inline size-3.5" />
+            Later <span className="type-meta ml-1 text-text-3">{later}</span>
+          </Link>
+        </nav>
+      }
+      primary={
+        view !== "later" && anything ? (
+          <Button size="sm" onClick={onLetGoAll}>
+            Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
+          </Button>
+        ) : null
       }
     />
   );

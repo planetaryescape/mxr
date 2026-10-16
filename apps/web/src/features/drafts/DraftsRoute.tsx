@@ -41,7 +41,7 @@ export function DraftsRoute() {
     <Page
       title="Drafts"
       description="Drafts saved in mxr. Open one to keep writing."
-      actions={
+      primary={
         <Button
           size="sm"
           onClick={() => useComposeUi.getState().openCompose(newMessageIntent(), "overlay")}
@@ -121,7 +121,7 @@ function DraftRow({
             </span>
           ) : null}
           {draft.content_kind === "html" ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono uppercase">HTML</span>
+            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono uppercase">HTML</span>
           ) : null}
           {draft.attachment_count > 0 ? (
             <span className="inline-flex items-center gap-1">

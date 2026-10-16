@@ -102,7 +102,7 @@ export function SavedSearchManager({
                   onBlur={(event) =>
                     update.mutate({ name: search.name, patch: { icon: event.target.value } })
                   }
-                  className="h-6 w-7 cursor-pointer rounded border border-border bg-transparent"
+                  className="h-6 w-7 cursor-pointer rounded-sm border border-border bg-transparent"
                 />
                 <Button
                   variant="ghost"

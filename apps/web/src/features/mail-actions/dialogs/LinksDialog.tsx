@@ -112,7 +112,7 @@ export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: 
         {thread.isLoading ? (
           <div className="grid gap-1">
             {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-muted/60" />
+              <div key={i} className="h-10 animate-pulse rounded-sm bg-muted/60" />
             ))}
           </div>
         ) : links.length === 0 ? (
@@ -155,7 +155,7 @@ export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: 
                     event.stopPropagation();
                     copy(link);
                   }}
-                  className="invisible cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground group-hover:visible"
+                  className="invisible cursor-pointer rounded-sm p-1 text-muted-foreground hover:text-foreground group-hover:visible"
                 >
                   <Copy className="size-3.5" />
                 </span>

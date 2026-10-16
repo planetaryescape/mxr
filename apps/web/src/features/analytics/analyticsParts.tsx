@@ -71,8 +71,8 @@ export function BarList({
                 {row.display}
               </span>
             </div>
-            <div className="mt-1 h-1.5 rounded-full bg-muted/60" aria-hidden="true">
-              <div className="h-1.5 rounded-full bg-chart-1" style={{ width }} />
+            <div className="mt-1 h-1.5 bg-muted/60" aria-hidden="true">
+              <div className="h-1.5 bg-chart-1" style={{ width }} />
             </div>
           </>
         );

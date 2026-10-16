@@ -61,7 +61,7 @@ function JobRow({ job }: { job: JobData }) {
         <span className="text-sm font-medium">{job.kind.replace(/_/g, " ")}</span>
         <span className={cn("font-mono text-2xs", STATUS_TONE[job.status])}>{job.status}</span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+      <div className="mt-2 h-1.5 overflow-hidden bg-muted" aria-hidden="true">
         <div
           className={cn("h-full", job.status === "failed" ? "bg-destructive" : "bg-primary")}
           style={{ width: `${pct}%` }}

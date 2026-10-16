@@ -49,6 +49,7 @@ export function OwedRoute() {
     <ListWithReader
       basePath="/owed"
       title="Owed replies"
+      purpose="People waiting on you, most overdue first."
       meta={rows.length > 0 ? plural(rows.length, "conversation") : null}
       groups={groups}
       scopeKey={`owed|${account ?? "all"}`}

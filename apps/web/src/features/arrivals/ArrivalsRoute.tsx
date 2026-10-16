@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -35,20 +36,21 @@ export function ArrivalsRoute({
       aria-labelledby="arrivals-title"
       className="flex min-h-0 flex-1 flex-col bg-background"
     >
-      <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 id="arrivals-title" className="text-lg font-semibold tracking-tight">
-            {list.data ? listTitle(list.data.total, bucket, list.data.since) : "Arrivals"}
-          </h1>
-          <Link to="/now" className="text-xs text-muted-foreground hover:underline">
+      <PageFrame
+        titleId="arrivals-title"
+        eyebrow={
+          <Link to="/now" className="hover:text-text-1 hover:underline">
             Back to Now
           </Link>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Newest first. <KeyChip>X</KeyChip> moves an email, <KeyChip>K</KeyChip> everything from
-          its sender.
-        </p>
-      </header>
+        }
+        title={list.data ? listTitle(list.data.total, bucket, list.data.since) : "Arrivals"}
+        purpose={
+          <>
+            Newest first. <KeyChip>X</KeyChip> moves an email, <KeyChip>K</KeyChip> everything from
+            its sender.
+          </>
+        }
+      />
       {phase !== "ready" ? (
         <ListSkeleton quiet={phase === "quiet"} />
       ) : list.isError ? (

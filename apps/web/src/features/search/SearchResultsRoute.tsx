@@ -169,6 +169,7 @@ export function SearchResultsRoute() {
         basePath="/search"
         preserveSearch
         title="Search"
+        purpose={q.trim() ? `Results for “${q.trim()}”` : "Find mail by words or by meaning."}
         meta={
           q && results.isSuccess
             ? `${plural(total, "result")}${scope === "triage" && typeof llmCalls === "number" ? ` · ${plural(llmCalls, "LLM call")}` : ""}`

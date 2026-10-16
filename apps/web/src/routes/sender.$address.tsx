@@ -10,6 +10,7 @@ import {
   getRelationshipProfile,
   type ThreadBriefing,
 } from "@/features/mailbox/api";
+import { Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/sender/$address")({
@@ -37,33 +38,26 @@ function SenderProfilePage() {
 
   if (!accountId)
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Add an account before opening a sender profile.
-      </div>
+      <Page eyebrow="Sender profile" title={address}>
+        <p className="type-body text-text-2">Add an account before opening a sender profile.</p>
+      </Page>
     );
 
   const briefingResult: ThreadBriefing | undefined = briefing.data?.briefing;
 
   return (
-    <div className="space-y-4 p-6">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-            Sender profile
-          </div>
-          <h1 className="break-words text-xl font-semibold tracking-tight">{address}</h1>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={briefing.isPending}
-          onClick={() => briefing.mutate()}
-        >
+    <Page
+      eyebrow="Sender profile"
+      title={address}
+      description="What your mail says about this sender."
+      primary={
+        <Button size="sm" disabled={briefing.isPending} onClick={() => briefing.mutate()}>
           <FileText className="size-3" />
           {briefing.isPending ? "Briefing…" : "Recipient briefing"}
         </Button>
-      </header>
-
+      }
+      className="space-y-4"
+    >
       {briefingResult ? (
         <section className="space-y-2 rounded-md border border-border bg-muted/30 p-4">
           <h2 className="text-sm font-semibold">Recipient briefing</h2>
@@ -98,6 +92,6 @@ function SenderProfilePage() {
           </pre>
         )}
       </section>
-    </div>
+    </Page>
   );
 }

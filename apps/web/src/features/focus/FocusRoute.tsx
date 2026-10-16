@@ -12,6 +12,7 @@ import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { KeyChip } from "@/components/KeyChip";
+import { PageFrame } from "@/components/PageFrame";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { markDeskDone } from "@/features/desk/deskDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -148,43 +149,46 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
       }}
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
     >
-      <header className="shrink-0 border-b border-border">
-        <div className="flex h-11 items-center gap-3 px-5">
-          <span className="hidden font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground sm:inline">
-            Focus & reply
-          </span>
-          {current ? (
-            <span className="min-w-0 truncate text-sm tabular-nums" data-testid="focus-progress">
-              <span className="text-foreground">
+      <PageFrame
+        title="Focus & reply"
+        purpose={
+          focus.gathering && current ? (
+            <span role="status">Finding everyone else you owe…</span>
+          ) : (
+            "Answer the people you owe, one at a time."
+          )
+        }
+        freshness={
+          current ? (
+            <span data-testid="focus-progress">
+              <span className="text-text-1">
                 {progress.position} of {progress.total}
               </span>
-              <span className="text-muted-foreground"> · {current.sender}</span>
+              {" · "}
+              {current.sender}
             </span>
-          ) : null}
-          {focus.gathering && current ? (
-            <span className="text-2xs text-muted-foreground" role="status">
-              Finding everyone else you owe…
-            </span>
-          ) : null}
-          <Button variant="ghost" size="sm" onClick={leave} className="ml-auto gap-2">
+          ) : null
+        }
+        primary={
+          <Button variant="outline" size="sm" onClick={leave} className="gap-2">
             Leave <KeyChip className="h-4 px-1">esc</KeyChip>
           </Button>
-        </div>
+        }
+      />
+      <div
+        role="progressbar"
+        aria-label="Replies done"
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.done}
+        className="h-0.5 shrink-0 bg-border/60"
+      >
         <div
-          role="progressbar"
-          aria-label="Replies done"
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.done}
-          className="h-0.5 bg-border/60"
-        >
-          <div
-            data-testid="focus-progress-bar"
-            className="h-full origin-left bg-primary transition-transform duration-base ease-out"
-            style={{ transform: `scaleX(${progress.total ? progress.done / progress.total : 0})` }}
-          />
-        </div>
-      </header>
+          data-testid="focus-progress-bar"
+          className="h-full origin-left bg-primary transition-transform duration-base ease-out"
+          style={{ transform: `scaleX(${progress.total ? progress.done / progress.total : 0})` }}
+        />
+      </div>
 
       {focus.error && current ? (
         <p className="px-5 py-2 text-xs text-destructive" role="status">
@@ -229,12 +233,10 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
             {current ? (
               <>
                 <div className="px-5 pt-4">
-                  <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
+                  <h2 className="type-heading text-balance text-text-1">
                     {current.subject || "(no subject)"}
-                  </h1>
-                  <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                    {current.reason}
-                  </p>
+                  </h2>
+                  <p className="type-meta mt-0.5 text-text-3">{current.reason}</p>
                 </div>
                 <FocusThread key={current.threadId} threadId={current.threadId} />
               </>
@@ -257,7 +259,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
                 <button
                   type="button"
                   onClick={focus.reopenReply}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-3 text-left text-sm text-muted-foreground hover:border-border-strong"
+                  className="flex w-full items-center gap-2 rounded-none border border-border bg-surface/60 px-4 py-3 text-left text-sm text-muted-foreground hover:border-border-strong"
                 >
                   <MessageSquareReply className="size-4" aria-hidden />
                   Reply to {current.sender}…<KeyChip className="ml-auto">r</KeyChip>

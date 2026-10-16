@@ -110,12 +110,14 @@ export function DeliveriesRoute() {
     <Page
       title="Deliveries"
       description="Packages detected in your mail. Mark one delivered, or dismiss a false positive."
-      actions={
-        <Button variant="outline" size="sm" onClick={() => scan.mutate()} disabled={scan.isPending}>
-          <ScanSearch className="size-3" />
-          {scan.isPending ? "Scanning…" : "Scan for deliveries"}
-        </Button>
-      }
+      overflow={[
+        {
+          label: scan.isPending ? "Scanning…" : "Scan for deliveries",
+          icon: ScanSearch,
+          onSelect: () => scan.mutate(),
+          disabled: scan.isPending,
+        },
+      ]}
       tabs={<PageTabs label="Delivery filter" value={filter} onChange={setFilter} tabs={FILTERS} />}
     >
       {deliveries.isPending ? (

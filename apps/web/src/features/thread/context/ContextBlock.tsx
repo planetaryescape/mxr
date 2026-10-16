@@ -84,7 +84,7 @@ export function ContextBlock({
                 onClick={() => onResolvePromise(promise.id)}
                 aria-label={`Mark done: ${promise.text}`}
                 title="Mark done"
-                className="mt-0.5 shrink-0 rounded text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
+                className="mt-0.5 shrink-0 rounded-sm text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
               >
                 <Check className="size-3.5" />
               </button>

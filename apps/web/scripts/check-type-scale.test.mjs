@@ -40,8 +40,13 @@ describe("check-type-scale: valid classes pass", () => {
 
 describe("check-type-scale: allowlist", () => {
   test("a file keeps its literal only where it is listed", () => {
-    expect(allowed("features/reading/ReadingReader.tsx")).toBe(true);
-    expect(allowed("features/reading/ReadingRoute.tsx")).toBe(false);
+    const listed = new Map([["features/reading/ReadingReader.tsx", "an example entry"]]);
+    expect(allowed("features/reading/ReadingReader.tsx", listed)).toBe(true);
+    expect(allowed("features/reading/ReadingRoute.tsx", listed)).toBe(false);
+  });
+
+  test("the default list is empty: every size is a token", () => {
+    expect(allowed("features/reading/ReadingReader.tsx")).toBe(false);
   });
 
   test("a directory entry covers files below it, not files that share a prefix", () => {

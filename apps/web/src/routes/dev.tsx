@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Activity, AlertTriangle, CheckCircle2 } from "lucide-react";
 
+import { Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiFetch } from "@/api/client";
 import { useBridgeToken } from "@/hooks/useBridgeToken";
 import { useConnectionStore } from "@/state/connectionStore";
@@ -33,66 +33,61 @@ function DevPage() {
   });
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="border-b border-border px-6 py-4">
-        <h1 className="text-md font-semibold">/dev: bridge smoke check</h1>
-        <p className="mt-1 text-2xs text-muted-foreground">
-          Verifies the SPA can reach the daemon bridge end-to-end. Lives in dev builds only.
-        </p>
+    <Page
+      title="Bridge smoke check"
+      description="Checks the app can reach the daemon bridge. Dev builds only."
+    >
+      <div className="grid gap-4">
+        <Card title="Bridge token">
+          <KeyValue k="present" v={hasToken ? "yes" : "no"} status={hasToken ? "ok" : "warn"} />
+          {hasToken ? (
+            <KeyValue k="token" v={`${token.slice(0, 8)}…${token.slice(-4)}`} tone="muted" />
+          ) : (
+            <p className="text-2xs text-warning">
+              No token in localStorage. Re-run <code>mxr web</code> or paste a token in
+              <code> /settings/token</code>.
+            </p>
+          )}
+        </Card>
+
+        <Card title="GET /api/v1/admin/health (unauthenticated)">
+          {health.isLoading ? <Spinner /> : null}
+          {health.error ? <ErrorRow error={health.error} /> : null}
+          {health.data ? (
+            <>
+              <KeyValue k="status" v={health.data.status} status="ok" />
+              <KeyValue k="service" v={health.data.service} />
+              <KeyValue k="protocol_version" v={String(health.data.protocol_version)} />
+            </>
+          ) : null}
+        </Card>
+
+        <Card title="GET /api/v1/admin/status (authenticated)">
+          {!hasToken ? (
+            <p className="text-2xs text-muted-foreground">Skipped: no token.</p>
+          ) : status.isLoading ? (
+            <Spinner />
+          ) : status.error ? (
+            <ErrorRow error={status.error} />
+          ) : (
+            <pre className="max-h-[40vh] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-2xs">
+              {JSON.stringify(status.data, null, 2)}
+            </pre>
+          )}
+          <Button size="sm" variant="outline" onClick={() => status.refetch()} className="mt-2">
+            Refetch
+          </Button>
+        </Card>
+
+        <Card title="WebSocket /api/v1/events">
+          <KeyValue
+            k="state"
+            v={connState}
+            status={connState === "connected" ? "ok" : connState === "offline" ? "err" : "warn"}
+          />
+        </Card>
       </div>
-      <ScrollArea className="flex-1">
-        <div className="grid gap-4 p-6">
-          <Card title="Bridge token">
-            <KeyValue k="present" v={hasToken ? "yes" : "no"} status={hasToken ? "ok" : "warn"} />
-            {hasToken ? (
-              <KeyValue k="token" v={`${token.slice(0, 8)}…${token.slice(-4)}`} tone="muted" />
-            ) : (
-              <p className="text-2xs text-warning">
-                No token in localStorage. Re-run <code>mxr web</code> or paste a token in
-                <code> /settings/token</code>.
-              </p>
-            )}
-          </Card>
-
-          <Card title="GET /api/v1/admin/health (unauthenticated)">
-            {health.isLoading ? <Spinner /> : null}
-            {health.error ? <ErrorRow error={health.error} /> : null}
-            {health.data ? (
-              <>
-                <KeyValue k="status" v={health.data.status} status="ok" />
-                <KeyValue k="service" v={health.data.service} />
-                <KeyValue k="protocol_version" v={String(health.data.protocol_version)} />
-              </>
-            ) : null}
-          </Card>
-
-          <Card title="GET /api/v1/admin/status (authenticated)">
-            {!hasToken ? (
-              <p className="text-2xs text-muted-foreground">Skipped: no token.</p>
-            ) : status.isLoading ? (
-              <Spinner />
-            ) : status.error ? (
-              <ErrorRow error={status.error} />
-            ) : (
-              <pre className="max-h-[40vh] overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-2xs">
-                {JSON.stringify(status.data, null, 2)}
-              </pre>
-            )}
-            <Button size="sm" variant="outline" onClick={() => status.refetch()} className="mt-2">
-              Refetch
-            </Button>
-          </Card>
-
-          <Card title="WebSocket /api/v1/events">
-            <KeyValue
-              k="state"
-              v={connState}
-              status={connState === "connected" ? "ok" : connState === "offline" ? "err" : "warn"}
-            />
-          </Card>
-        </div>
-      </ScrollArea>
-    </div>
+    </Page>
   );
 }
 

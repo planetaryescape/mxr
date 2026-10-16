@@ -96,7 +96,7 @@ export const DeskRow = memo(function DeskRow({
         <span
           aria-hidden
           className={cn(
-            "absolute inset-y-1.5 left-0 w-[2px] rounded-full",
+            "absolute inset-y-1.5 left-0 w-[2px]",
             state.focused ? "bg-primary" : "bg-primary/45",
           )}
         />

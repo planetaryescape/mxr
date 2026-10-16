@@ -56,7 +56,7 @@ import {
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
 import { KeyLine } from "@/components/KeyLine";
-import { ModeHeader } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
@@ -96,18 +96,12 @@ export function MessagesRoute({
     <section aria-label="Messages" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {phase !== "ready" ? (
         <>
-          <ModeHeader
-            title={search.turn === "theirs" ? "Waiting on" : "Messages"}
-            subtitle={guide.data?.header}
-          />
+          <MessagesHeader search={search} guide={guide.data} />
           <ListSkeleton quiet={phase === "quiet"} />
         </>
       ) : messages.isError ? (
         <>
-          <ModeHeader
-            title={search.turn === "theirs" ? "Waiting on" : "Messages"}
-            subtitle={guide.data?.header}
-          />
+          <MessagesHeader search={search} guide={guide.data} />
           <Centered
             icon={<RefreshCw className="size-6" />}
             title="Couldn't load Messages"
@@ -123,6 +117,15 @@ export function MessagesRoute({
         <MessagesBody data={messages.data} guide={guide.data} search={search} threadId={threadId} />
       ) : null}
     </section>
+  );
+}
+
+function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: ModeGuide }) {
+  return (
+    <PageFrame
+      title={search.turn === "theirs" ? "Waiting on" : "Messages"}
+      purpose={guide?.header}
+    />
   );
 }
 
@@ -536,10 +539,7 @@ function MessagesBody({
         className="flex min-h-0 flex-col"
         elementRef={listRef}
       >
-        <ModeHeader
-          title={search.turn === "theirs" ? "Waiting on" : "Messages"}
-          subtitle={guide?.header}
-        />
+        <MessagesHeader search={search} guide={guide} />
         <div className="min-h-0 flex-1 overflow-y-auto pb-6">
           {empty && data.empty_state ? (
             <div data-testid="messages-empty" className="mx-5 mt-4">

@@ -18,12 +18,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Relative to src/. A directory entry covers every file below it. */
-export const ALLOWLIST = new Map([
-  [
-    "features/reading/ReadingReader.tsx",
-    "reader title is 24px, then 28px from sm: and there is no token between 2xl (24) and 3xl (32)",
-  ],
-]);
+export const ALLOWLIST = new Map([]);
 
 /** A literal size: a number with px or rem, inside `text-[...]`, after a class boundary. */
 const LITERAL = /(?<![\w-])text-\[\s*\d*\.?\d+\s*(?:px|rem)\s*\]/g;

@@ -88,7 +88,7 @@ export function Transcript({
         if (block.kind === "user") {
           return (
             <li key={`u${block.item.seq}`} className="flex justify-end">
-              <p className="max-w-[88%] rounded-lg rounded-br-sm bg-muted px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground">
+              <p className="max-w-[88%] rounded-none bg-muted px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground">
                 {block.item.text}
               </p>
             </li>

@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, FolderArchive, Inbox, Search } from "lucide-react";
 import { useId, useState } from "react";
 
-import { ModeHeader } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -17,7 +17,7 @@ export function FindRoute() {
   const inputId = useId();
   return (
     <section aria-label="Find" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-      <ModeHeader title="Find" />
+      <PageFrame title="Find" purpose="Search all your mail, or go straight to a place." />
       <form
         role="search"
         className="flex gap-2 px-5 pt-4"

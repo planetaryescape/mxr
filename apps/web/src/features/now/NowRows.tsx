@@ -67,7 +67,7 @@ function RowFrame({
       )}
     >
       {state.focused ? (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary" />
+        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] bg-primary" />
       ) : null}
       <Link
         {...(itemTarget(item) as { to: string })}
@@ -273,10 +273,7 @@ export function UpdatesCard({
           )}
         >
           {state.focused ? (
-            <span
-              aria-hidden
-              className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary"
-            />
+            <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] bg-primary" />
           ) : null}
           <div className="min-w-0">
             <p data-testid="now-updates-line" className="text-sm text-foreground/90">

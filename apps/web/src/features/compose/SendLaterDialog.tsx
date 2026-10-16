@@ -80,7 +80,7 @@ export function SendLaterDialog({
               <Button
                 key={preset.input}
                 variant="outline"
-                className="h-auto justify-start rounded-lg px-3 py-2 text-left"
+                className="h-auto justify-start rounded-md px-3 py-2 text-left"
                 onClick={() => {
                   if (choice) void time.runExclusive(() => confirm(choice));
                 }}
@@ -100,7 +100,7 @@ export function SendLaterDialog({
           })}
         </div>
 
-        <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
+        <div className="space-y-2 rounded-none border border-border bg-muted/40 p-3">
           <Label htmlFor="send-later-time">Or type a time</Label>
           <NaturalTimeInput
             id="send-later-time"

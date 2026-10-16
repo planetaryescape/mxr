@@ -65,6 +65,7 @@ export function SnoozedRoute() {
     <ListWithReader
       basePath="/snoozed"
       title="Snoozed"
+      purpose="Mail you sent away until later."
       meta={rows.length > 0 ? plural(rows.length, "conversation") : null}
       groups={groups}
       scopeKey="snoozed"

@@ -53,7 +53,7 @@ export function ToneControls({
     <Collapsible open={adjustOpen} onOpenChange={setAdjustOpen}>
       <div className="flex items-center gap-2">
         {contextNote ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-2xs text-primary">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-primary/15 px-2 py-0.5 text-2xs text-primary">
             {contextNote}
           </span>
         ) : (

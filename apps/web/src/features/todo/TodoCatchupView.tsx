@@ -77,7 +77,7 @@ function PlainRow({
       )}
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-2 left-0 w-[2px] rounded-full bg-primary" />
+        <span aria-hidden className="absolute inset-y-2 left-0 w-[2px] bg-primary" />
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-3">

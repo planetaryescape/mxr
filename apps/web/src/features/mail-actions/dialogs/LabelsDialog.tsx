@@ -162,7 +162,7 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
                     <span
                       aria-hidden
                       className={cn(
-                        "grid size-4 place-items-center rounded-[4px] border",
+                        "grid size-4 place-items-center rounded-sm border",
                         state === "none"
                           ? "border-border-strong"
                           : "border-primary bg-primary text-primary-foreground",
@@ -181,7 +181,7 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
                       type="button"
                       tabIndex={-1}
                       aria-label={`Manage ${name}`}
-                      className="invisible rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:visible"
+                      className="invisible rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:visible"
                       onClick={(event) => {
                         event.stopPropagation();
                         setManaging(name);

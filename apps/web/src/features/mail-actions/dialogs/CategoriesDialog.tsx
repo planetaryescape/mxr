@@ -285,7 +285,7 @@ export function CategoriesDialog({
                       <span
                         aria-hidden
                         className={cn(
-                          "grid size-4 place-items-center rounded-[4px] border",
+                          "grid size-4 place-items-center rounded-sm border",
                           current === "none"
                             ? "border-border-strong"
                             : "border-primary bg-primary text-primary-foreground",
@@ -317,7 +317,7 @@ export function CategoriesDialog({
                         type="button"
                         tabIndex={0}
                         aria-label={`Manage ${category.name}`}
-                        className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                        className="grid size-7 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                         onKeyDown={(event) => {
                           // cmdk owns Enter on its items; let this button activate itself.
                           if (event.key === "Enter" || event.key === " ") event.stopPropagation();

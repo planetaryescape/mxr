@@ -79,7 +79,7 @@ export function InviteCard({
       role="region"
       aria-label="Calendar invite"
       className={cn(
-        "rounded-lg border bg-card text-card-foreground shadow-sm p-4 mb-4",
+        "rounded-none border bg-card text-card-foreground shadow-sm p-4 mb-4",
         cancelled && "border-red-500/40",
         !cancelled && metadata.is_update && "border-amber-500/40",
         !cancelled && !metadata.is_update && !viewerPartstat && "border-primary/40",

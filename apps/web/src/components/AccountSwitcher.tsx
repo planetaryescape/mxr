@@ -106,7 +106,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
         ) : null}
         {rows.map((row) => (
           <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
-            <span className="grid size-5 place-items-center rounded bg-muted font-mono text-2xs">
+            <span className="grid size-5 place-items-center rounded-sm bg-muted font-mono text-2xs">
               {initials(row.name || row.email)}
             </span>
             <span className="min-w-0 flex-1">

@@ -208,7 +208,7 @@ export function EventsPanel() {
                     </td>
                     <td className="px-2 py-1.5">
                       <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold uppercase ${levelClasses(entry.level)}`}
+                        className={`inline-block rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase ${levelClasses(entry.level)}`}
                       >
                         {entry.level}
                       </span>
@@ -237,7 +237,7 @@ export function EventsPanel() {
                             </div>
                           )}
                           {entry.details && (
-                            <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-background/50 p-2 text-foreground">
+                            <pre className="mt-1 whitespace-pre-wrap break-all rounded-sm bg-background/50 p-2 text-foreground">
                               {entry.details}
                             </pre>
                           )}

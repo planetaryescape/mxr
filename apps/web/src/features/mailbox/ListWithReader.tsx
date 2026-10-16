@@ -9,7 +9,8 @@ import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRem
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
-import { ModeFrame, PageTitle } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame, type PageAction } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -46,15 +47,16 @@ interface ListWithReaderProps extends Pick<
   /** URL of the list; an open conversation lives at `${basePath}/<thread>`. */
   basePath: string;
   title: string;
+  /** The title as rendered, when it holds links (the desk's counts). `title` still names the list. */
+  titleContent?: ReactNode;
+  /** One line saying what this list is for. */
+  purpose?: ReactNode;
+  /** A count or short label above the title ("12 conversations"). */
   meta?: ReactNode;
-  actions?: ReactNode;
-  /** Extra header content under the title row (filters, tabs). */
+  primary?: ReactNode;
+  overflow?: readonly PageAction[];
+  /** Filters and notes between the page frame and the list. */
   toolbar?: ReactNode;
-  /**
-   * Replaces the title row with a page heading of its own (the desk's
-   * greeting). `title` still names the list for assistive tech.
-   */
-  heading?: ReactNode;
   /** A line under the list, outside the listbox (the desk's everything-else links). */
   footer?: ReactNode;
   groups: MessageGroupView[];
@@ -73,10 +75,12 @@ interface ListWithReaderProps extends Pick<
 export function ListWithReader({
   basePath,
   title,
+  titleContent,
+  purpose,
   meta,
-  actions,
+  primary,
+  overflow,
   toolbar,
-  heading,
   footer,
   groups,
   scopeKey,
@@ -208,69 +212,64 @@ export function ListWithReader({
             aria-label={title}
             className="@container flex min-h-0 min-w-0 flex-1 flex-col bg-background"
           >
-            <header className="shrink-0 border-b border-border">
-              <ModeFrame>
-                {heading ?? (
-                  <div className="flex h-11 items-center gap-3 px-5">
-                    <PageTitle>{title}</PageTitle>
-                    {meta ? (
-                      <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
-                        {meta}
-                      </span>
-                    ) : null}
-                    <span className="ml-auto flex items-center gap-0.5">{actions}</span>
-                  </div>
-                )}
-                {toolbar ? <div className="px-4 pb-2.5">{toolbar}</div> : null}
-                {filterOpen ? (
-                  <div className="flex items-center gap-2 border-t border-border px-4 py-2">
-                    <Filter className="size-3.5 shrink-0 text-muted-foreground" />
-                    <input
-                      ref={filterRef}
-                      aria-label="Filter this list"
-                      value={filter}
-                      onChange={(event) => setFilter(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          setFilter("");
-                          setFilterOpen(false);
-                          focusActivePane();
-                        } else if (
-                          event.key === "Enter" &&
-                          (event.metaKey || event.ctrlKey) &&
-                          filter.trim()
-                        ) {
-                          event.preventDefault();
-                          void navigate({ to: "/search", search: { q: filter.trim() } });
-                        } else if (event.key === "Enter" || event.key === "ArrowDown") {
-                          event.preventDefault();
-                          setActivePane("mailbox");
-                          focusActivePane();
-                        }
-                      }}
-                      placeholder="Filter loaded conversations by sender, subject or snippet"
-                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                    />
-                    <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
-                      {filter ? `${shownCount} of ${loadedCount}` : ""}
-                    </span>
-                    {filter.trim() ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void navigate({ to: "/search", search: { q: filter.trim() } })
-                        }
-                        className="shrink-0 text-xs text-primary hover:underline"
-                        title="Search all mail (⌘Enter)"
-                      >
-                        Search all mail
-                      </button>
-                    ) : null}
-                  </div>
+            <PageFrame
+              title={title}
+              titleContent={titleContent}
+              eyebrow={meta}
+              purpose={purpose}
+              primary={primary}
+              overflow={overflow}
+            />
+            {toolbar ? (
+              <div className="shrink-0 border-b border-rule-soft">
+                <ModeFrame className="px-4 py-2">{toolbar}</ModeFrame>
+              </div>
+            ) : null}
+            {filterOpen ? (
+              <div className="flex shrink-0 items-center gap-2 border-b border-rule-soft px-4 py-2">
+                <Filter className="size-3.5 shrink-0 text-muted-foreground" />
+                <input
+                  ref={filterRef}
+                  aria-label="Filter this list"
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setFilter("");
+                      setFilterOpen(false);
+                      focusActivePane();
+                    } else if (
+                      event.key === "Enter" &&
+                      (event.metaKey || event.ctrlKey) &&
+                      filter.trim()
+                    ) {
+                      event.preventDefault();
+                      void navigate({ to: "/search", search: { q: filter.trim() } });
+                    } else if (event.key === "Enter" || event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActivePane("mailbox");
+                      focusActivePane();
+                    }
+                  }}
+                  placeholder="Filter loaded conversations by sender, subject or snippet"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
+                  {filter ? `${shownCount} of ${loadedCount}` : ""}
+                </span>
+                {filter.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/search", search: { q: filter.trim() } })}
+                    className="shrink-0 text-xs text-primary hover:underline"
+                    title="Search all mail (⌘Enter)"
+                  >
+                    Search all mail
+                  </button>
                 ) : null}
-              </ModeFrame>
-            </header>
+              </div>
+            ) : null}
             {phase !== "ready" ? (
               <ListSkeleton quiet={phase === "quiet"} />
             ) : status.fetchStatus === "paused" && !hasData ? (

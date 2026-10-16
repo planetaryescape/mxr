@@ -26,6 +26,7 @@ import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import { formatTime } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
+import { StatusDot } from "@/components/StatusDot";
 
 const DOT_TONE = {
   ok: "bg-success",
@@ -60,12 +61,13 @@ export function SyncHealthDot({ accountId, className }: { accountId: string; cla
   if (!account) return null;
   const tone = healthTone(health);
   return (
-    <span
+    <StatusDot
       role="img"
+      aria-hidden={false}
       aria-label={`Sync: ${words}`}
       title={words}
       data-tone={tone}
-      className={cn("inline-block size-1.5 shrink-0 rounded-full", DOT_TONE[tone], className)}
+      className={cn("size-1.5", DOT_TONE[tone], className)}
     />
   );
 }
@@ -82,7 +84,7 @@ export function SyncHealthWords({ accountId }: { accountId: string }) {
       data-testid="account-sync-health"
       data-tone={tone}
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT_TONE[tone])} />
+      <StatusDot className={cn("size-1.5", DOT_TONE[tone])} />
       {words}
     </span>
   );
@@ -124,7 +126,7 @@ export function AccountSyncDetails({
   return (
     <div className="space-y-2 text-sm" data-testid="account-sync-details">
       <p className={cn("flex items-center gap-2", TEXT_TONE[tone])} role="status">
-        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT_TONE[tone])} />
+        <StatusDot className={cn("size-1.5", DOT_TONE[tone])} />
         {words}
       </p>
       <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-y-1 text-muted-foreground">

@@ -114,7 +114,7 @@ export function SearchPalette() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
-        className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-xl border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]"
+        className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-none border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]"
         onKeyDownCapture={handleKeyDown}
       >
         <DialogTitle className="sr-only">Search mail</DialogTitle>

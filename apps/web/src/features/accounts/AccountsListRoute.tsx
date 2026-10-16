@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { RuntimeAccount } from "@/features/compose/api";
 import { SyncHealthWords } from "@/features/freshness/AccountSyncHealth";
+import { StatusDot } from "@/components/StatusDot";
 
 export function AccountsListRoute() {
   const qc = useQueryClient();
@@ -50,7 +51,7 @@ export function AccountsListRoute() {
     <Page
       title="Accounts"
       description="Mailboxes the daemon syncs, and which one sends by default."
-      actions={
+      primary={
         <Button size="sm" asChild>
           <Link to="/accounts/$key" params={{ key: "new" }}>
             <Plus className="size-3" />
@@ -88,15 +89,12 @@ export function AccountsListRoute() {
                 title={
                   <span className="flex items-center gap-2">
                     {account.enabled ? null : (
-                      <span
-                        aria-hidden="true"
-                        className="size-1.5 rounded-full bg-muted-foreground"
-                      />
+                      <StatusDot className="size-1.5 bg-muted-foreground" />
                     )}
                     {account.name || account.email}
                     {account.enabled ? <SyncHealthWords accountId={account.account_id} /> : null}
                     {account.is_default ? (
-                      <span className="rounded bg-primary-muted px-1.5 font-mono text-2xs text-primary">
+                      <span className="rounded-sm bg-primary-muted px-1.5 font-mono text-2xs text-primary">
                         default
                       </span>
                     ) : null}

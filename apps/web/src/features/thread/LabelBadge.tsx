@@ -7,14 +7,13 @@ import type { CSSProperties } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import type { MessageLabelView } from "@/features/mailbox/types";
+import { StatusDot } from "@/components/StatusDot";
 
 export function LabelBadge({ label }: { label: MessageLabelView }) {
   const style = labelBadgeStyle(labelDisplayColor(label));
   return (
     <Badge variant={style ? "outline" : "secondary"} style={style} title={label.name}>
-      {style ? (
-        <span className="size-1.5 rounded-full" style={{ backgroundColor: style.color }} />
-      ) : null}
+      {style ? <StatusDot className="size-1.5" style={{ backgroundColor: style.color }} /> : null}
       {label.name}
     </Badge>
   );

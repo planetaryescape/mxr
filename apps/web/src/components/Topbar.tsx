@@ -79,6 +79,9 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
   // Every real route is a child of the root, so a root-only match list means
   // no route matched and the path is just noise in the crumb.
   const unmatched = useRouterState({ select: (s) => s.matches.length <= 1 });
+  // The page's own title names a second-level page ("Language model", not
+  // its URL slug "llm"); the slug is only the fallback before it publishes.
+  const pageTitle = usePageTitleStore((s) => s.title);
   const parts = path
     .split("/")
     .filter(Boolean)
@@ -122,7 +125,7 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     return crumbs;
   }
   if (parts.length > 1 && parts[0] !== "sender") {
-    return [{ label: title, to: `/${parts[0]}` }, { label: humanize(parts[1] ?? "") }];
+    return [{ label: title, to: `/${parts[0]}` }, { label: pageTitle ?? humanize(parts[1] ?? "") }];
   }
   if (parts[0] === "sender" && parts[1]) return [{ label: title }, { label: parts[1] }];
   return [{ label: title }];

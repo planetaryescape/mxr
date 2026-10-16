@@ -23,6 +23,7 @@ import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
 import { ModeChip } from "@/features/arrivals/ModeChip";
+import { UnreadDot } from "@/components/UnreadDot";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
@@ -118,12 +119,7 @@ export const MailboxRow = memo(function MailboxRow({
           )}
         />
       ) : null}
-      {row.unread ? (
-        <span
-          aria-hidden
-          className="absolute left-3 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-unread-marker"
-        />
-      ) : null}
+      {row.unread ? <UnreadDot className="absolute left-3 top-1/2 -translate-y-1/2" /> : null}
 
       {/* Lead: avatar that becomes a checkbox. */}
       <div className="row-span-2 self-start pt-0.5 @2xl:row-span-1 @2xl:self-center @2xl:pt-0">
@@ -135,7 +131,7 @@ export const MailboxRow = memo(function MailboxRow({
           <span
             aria-hidden
             onClick={stop(() => onToggleSelection(row, false))}
-            className="relative grid size-7 cursor-pointer place-items-center rounded-full"
+            className="relative grid size-7 cursor-pointer place-items-center"
           >
             <span
               className={cn(
@@ -147,7 +143,7 @@ export const MailboxRow = memo(function MailboxRow({
             </span>
             <span
               className={cn(
-                "absolute inset-0 grid place-items-center rounded-full border transition-opacity",
+                "absolute inset-1 grid place-items-center rounded-sm border transition-opacity",
                 selected
                   ? "border-primary bg-primary text-primary-foreground opacity-100"
                   : cn(
@@ -394,7 +390,7 @@ function QuickButton({
     <span
       title={label}
       onClick={onClick}
-      className="grid size-7 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       {children}
     </span>

@@ -8,16 +8,18 @@ import { cn } from "@/lib/utils";
 import type { RecordAnswer, RecordAnswerList, RecordData, RecordField } from "./api";
 import { amountUnchecked, longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
 import { SectionHeading } from "@/components/SectionHeading";
+import { StatusDot } from "@/components/StatusDot";
 
 /** An unchecked money or date field: an open dot, never red. */
 export function OpenDot({ label = "unchecked" }: { label?: string }) {
   return (
-    <span
+    <StatusDot
       role="img"
+      aria-hidden={false}
       aria-label={label}
       title="Nobody has checked this yet: press , to fix or confirm it"
       data-testid="unchecked-dot"
-      className="inline-block size-2 shrink-0 rounded-full border border-muted-foreground"
+      className="size-2 border border-muted-foreground"
     />
   );
 }
@@ -177,7 +179,7 @@ export function RecordCard({
                   type="button"
                   onClick={() => onCopy(field)}
                   aria-label={`Copy ${field.label.toLowerCase()} (${field.field === "amount" ? "Y" : "y"})`}
-                  className="inline-flex items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="inline-flex items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   <Copy aria-hidden className="size-3" />
                   <KeyChip className="h-4 px-1">{field.field === "amount" ? "Y" : "y"}</KeyChip>
@@ -335,7 +337,7 @@ export function AnswerCard({
           <button
             type="button"
             onClick={() => onCopy(card.copy)}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Copy aria-hidden className="size-3" /> copy <KeyChip className="h-4 px-1">y</KeyChip>
           </button>

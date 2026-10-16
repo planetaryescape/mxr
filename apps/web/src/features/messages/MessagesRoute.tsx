@@ -16,10 +16,13 @@ import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
 import type { LampVia } from "@/components/Row";
+import type { LeaveVia } from "@/lib/leaving";
 import { useLitReason } from "@/state/litReasonStore";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
@@ -352,74 +355,78 @@ function MessagesBody({
   // person's next topic still in Messages, else the next person. While a
   // topic's page is still loading, `e` waits: the page on screen is the
   // one just done.
-  const done = useCallback(() => {
-    if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
-    const thread = conversation.thread_id;
-    if (hiddenDone.has(thread)) return;
-    const next = afterDone({
-      topics: page.topics,
-      thread,
-      open: stillOpen,
-      rows,
-      person: selectedId,
-      hidden: hiddenDone,
-    });
-    const what =
-      next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
-    const from = selectedId;
-    // Where the move leaves the page: undo goes back only from there.
-    const landed =
-      next.kind === "topic"
-        ? { person: from, topic: next.topic.thread_id }
-        : next.kind === "person"
-          ? { person: next.row.id, topic: undefined }
-          : { person: undefined, topic: undefined };
-    if (next.kind === "topic") advanceTo(from, next.topic.thread_id);
-    else if (next.kind === "person") advanceTo(next.row.id);
-    else clearSelection();
-    const account = useUiPrefs.getState().accountScope;
-    const label = "subject" in what ? what.subject : what.person;
-    void markModeDone("messages", [thread], {
-      message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
-      onUndone: () => {
-        const now = here.current;
-        const stayed =
-          now.mounted &&
-          useUiPrefs.getState().accountScope === account &&
-          now.person === landed.person &&
-          // Landing on a person names their default topic in the URL.
-          (now.topic === landed.topic ||
-            (landed.topic === undefined && now.topic === autoTopic.current));
-        if (stayed) {
-          advanceTo(from, thread);
-          return;
-        }
-        // They moved on: the undo puts it back without pulling them away.
-        toast.info(`Restored: ${label}`, {
-          action: {
-            label: "Open",
-            onClick: () => {
-              if (useUiPrefs.getState().accountScope !== account) {
-                useUiPrefs.getState().setAccountScope(account);
-              }
-              void navigate({ to: "/messages", search: { person: from, topic: thread } });
+  const done = useCallback(
+    (how: LeaveVia = "key") => {
+      if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
+      const thread = conversation.thread_id;
+      if (hiddenDone.has(thread)) return;
+      const next = afterDone({
+        topics: page.topics,
+        thread,
+        open: stillOpen,
+        rows,
+        person: selectedId,
+        hidden: hiddenDone,
+      });
+      const what =
+        next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
+      const from = selectedId;
+      // Where the move leaves the page: undo goes back only from there.
+      const landed =
+        next.kind === "topic"
+          ? { person: from, topic: next.topic.thread_id }
+          : next.kind === "person"
+            ? { person: next.row.id, topic: undefined }
+            : { person: undefined, topic: undefined };
+      if (next.kind === "topic") advanceTo(from, next.topic.thread_id);
+      else if (next.kind === "person") advanceTo(next.row.id);
+      else clearSelection();
+      const account = useUiPrefs.getState().accountScope;
+      const label = "subject" in what ? what.subject : what.person;
+      void markModeDone("messages", [thread], {
+        via: how,
+        message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
+        onUndone: () => {
+          const now = here.current;
+          const stayed =
+            now.mounted &&
+            useUiPrefs.getState().accountScope === account &&
+            now.person === landed.person &&
+            // Landing on a person names their default topic in the URL.
+            (now.topic === landed.topic ||
+              (landed.topic === undefined && now.topic === autoTopic.current));
+          if (stayed) {
+            advanceTo(from, thread);
+            return;
+          }
+          // They moved on: the undo puts it back without pulling them away.
+          toast.info(`Restored: ${label}`, {
+            action: {
+              label: "Open",
+              onClick: () => {
+                if (useUiPrefs.getState().accountScope !== account) {
+                  useUiPrefs.getState().setAccountScope(account);
+                }
+                void navigate({ to: "/messages", search: { person: from, topic: thread } });
+              },
             },
-          },
-        });
-      },
-    });
-  }, [
-    advanceTo,
-    clearSelection,
-    conversation,
-    hiddenDone,
-    navigate,
-    page,
-    person.isPlaceholderData,
-    rows,
-    selectedId,
-    stillOpen,
-  ]);
+          });
+        },
+      });
+    },
+    [
+      advanceTo,
+      clearSelection,
+      conversation,
+      hiddenDone,
+      navigate,
+      page,
+      person.isPlaceholderData,
+      rows,
+      selectedId,
+      stillOpen,
+    ],
+  );
 
   const target = useCallback(async () => {
     if (!conversation) return null;
@@ -518,7 +525,7 @@ function MessagesBody({
     reply: () => openReply(replyAll),
     replyAll: () => openReply(true),
     gotIt: startGotIt,
-    done,
+    done: () => done("key"),
     makeTodo: () => void makeTodo(),
     replyLater: () => void replyLater(),
     pin: () => void pin(),
@@ -559,11 +566,47 @@ function MessagesBody({
     latest.current.select(id, { open: true });
   }, []);
   const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
-  const onDoneRow = useCallback(() => latest.current.done(), []);
+  const onDoneRow = useCallback(() => latest.current.done("pointer"), []);
 
   // The daemon says when the view being shown is empty (Waiting on has its
   // own line), so Your turn's rows are not the test.
   const empty = data.empty_state != null;
+  // Your turn is the work; Waiting on is a view of its own and has no finish.
+  const finished = useLowTide(
+    "messages",
+    search.turn === "theirs",
+    data.your_turn.length > 0 || !empty,
+    { daily: true },
+  );
+  const emptyState = data.empty_state ? (
+    <PageEmpty
+      framed={allRows.length === 0}
+      glyph={finished ? undefined : "messages"}
+      moment={finished ? <FinishingMoment /> : undefined}
+      title={data.empty_state}
+      body={
+        <>
+          {(data.lapsed ?? []).map((lapsed) => (
+            <span key={lapsed.person.id} data-testid="lapsed-line" className="block">
+              {lapsed.line}
+            </span>
+          ))}
+          <NextPlace current="messages" />
+        </>
+      }
+    />
+  ) : null;
+  // No rows at all: the empty state is the page, not a line in a narrow column beside a blank pane.
+  if (empty && allRows.length === 0) {
+    return (
+      <>
+        <MessagesHeader search={search} guide={guide} />
+        <div data-testid="messages-empty" className="min-h-0 flex-1 overflow-y-auto">
+          {emptyState}
+        </div>
+      </>
+    );
+  }
   return (
     <FramePanesContext.Provider value={frames}>
       <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
@@ -576,22 +619,9 @@ function MessagesBody({
         >
           <MessagesHeader search={search} guide={guide} />
           <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-            {empty && data.empty_state ? (
+            {empty && emptyState ? (
               <div data-testid="messages-empty" className="mx-5 mt-6">
-                <PageEmpty
-                  glyph="messages"
-                  title={data.empty_state}
-                  body={
-                    <>
-                      {(data.lapsed ?? []).map((lapsed) => (
-                        <span key={lapsed.person.id} data-testid="lapsed-line" className="block">
-                          {lapsed.line}
-                        </span>
-                      ))}
-                      <NextPlace current="messages" />
-                    </>
-                  }
-                />
+                {emptyState}
               </div>
             ) : null}
             <MessagesList
@@ -617,41 +647,43 @@ function MessagesBody({
             className="flex min-h-0 min-w-0"
           >
             {page ? (
-              <PersonPane
-                page={page}
-                topic={topic}
-                asSent={asSent}
-                replyAll={replyAll}
-                left={left}
-                hidden={hiddenDone}
-                arrival={arrival?.person === selectedId ? arrival : null}
-                loading={person.isPlaceholderData}
-                pending={gotIt.pending}
-                ackLoading={gotIt.loading}
-                onBack={() => setPageOpen(false)}
-                onTopic={(thread) => {
-                  topicsHint.dismiss();
-                  if (selectedId) select(selectedId, { topic: thread });
-                }}
-                onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
-                onReplyAllChange={setReplyAllOverride}
-                onReply={() => openReply(replyAll)}
-                onGotIt={startGotIt}
-                onGotItFocus={() => setGotItNeeded(true)}
-                topicsHint={
-                  topicsHint.hint ? (
-                    <AnchoredHint hint={topicsHint.hint} onDismiss={topicsHint.dismiss} />
-                  ) : undefined
-                }
-                gotItHint={
-                  gotItHint.hint ? (
-                    <AnchoredHint hint={gotItHint.hint} onDismiss={gotItHint.dismiss} />
-                  ) : undefined
-                }
-                onUndoGotIt={gotIt.undo}
-                onDone={done}
-                onTodo={() => void makeTodo()}
-              />
+              <div className="reader-arrive flex min-h-0 min-w-0 flex-1">
+                <PersonPane
+                  page={page}
+                  topic={topic}
+                  asSent={asSent}
+                  replyAll={replyAll}
+                  left={left}
+                  hidden={hiddenDone}
+                  arrival={arrival?.person === selectedId ? arrival : null}
+                  loading={person.isPlaceholderData}
+                  pending={gotIt.pending}
+                  ackLoading={gotIt.loading}
+                  onBack={() => setPageOpen(false)}
+                  onTopic={(thread) => {
+                    topicsHint.dismiss();
+                    if (selectedId) select(selectedId, { topic: thread });
+                  }}
+                  onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
+                  onReplyAllChange={setReplyAllOverride}
+                  onReply={() => openReply(replyAll)}
+                  onGotIt={startGotIt}
+                  onGotItFocus={() => setGotItNeeded(true)}
+                  topicsHint={
+                    topicsHint.hint ? (
+                      <AnchoredHint hint={topicsHint.hint} onDismiss={topicsHint.dismiss} />
+                    ) : undefined
+                  }
+                  gotItHint={
+                    gotItHint.hint ? (
+                      <AnchoredHint hint={gotItHint.hint} onDismiss={gotItHint.dismiss} />
+                    ) : undefined
+                  }
+                  onUndoGotIt={gotIt.undo}
+                  onDone={() => done("pointer")}
+                  onTodo={() => void makeTodo()}
+                />
+              </div>
             ) : person.isError ? (
               <PageError
                 framed

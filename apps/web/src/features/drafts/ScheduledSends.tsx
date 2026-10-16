@@ -45,9 +45,7 @@ export function ScheduledSends() {
   const cancel = useMutation({
     mutationFn: (send: ScheduledSend) => cancelScheduledSend(send.draft_id),
     onSuccess: (_result, send) => {
-      toast.success("Send cancelled", {
-        description: `"${send.subject.trim() || "(no subject)"}" is back in your drafts.`,
-      });
+      toast.success(`Send cancelled. "${send.subject.trim() || "(no subject)"}" is in Drafts`);
       void qc.invalidateQueries({ queryKey: ["scheduled-sends"] });
       void qc.invalidateQueries({ queryKey: ["drafts"] });
     },

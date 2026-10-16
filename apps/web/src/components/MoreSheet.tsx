@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { isEntryActive, type NavEntry } from "@/components/navMap";
 import { NavMark, useNavSections } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
-import { overlayMotion } from "@/components/ui/motion";
+import { overlayMotion, scrimMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
@@ -41,7 +41,7 @@ export function MoreSheet() {
         <DialogPrimitive.Overlay
           className={cn(
             "fixed inset-0 z-50 bg-scrim data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-            overlayMotion,
+            scrimMotion,
           )}
         />
         <DialogPrimitive.Content

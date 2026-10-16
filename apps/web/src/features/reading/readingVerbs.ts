@@ -159,9 +159,7 @@ export async function highlightSelection(
   }
   try {
     await saveHighlight({ ...payload, note: note?.trim() || undefined, paragraph });
-    toast.success("Highlight saved", {
-      description: "Search finds it, and mxr reading export --markdown lists it.",
-    });
+    toast.success("Highlight saved");
     await getActiveQueryClient()?.invalidateQueries({
       queryKey: [...READING_KEY, "item", itemKey],
     });
@@ -291,7 +289,6 @@ export async function openInMarginalia(
   }
   if (!options.connected) {
     toast.message("Marginalia isn't connected", {
-      description: "Connect it once in Settings, with a token from its Account page.",
       action: { label: "Connect", onClick: options.onConnect },
     });
     return false;
@@ -310,10 +307,7 @@ export async function openInMarginalia(
       tab?.close();
       if (url) toast.error("Marginalia gave an address mxr won't open");
     }
-    toast.success(sent.copy, {
-      id,
-      description: "Highlights you make there come back to this item.",
-    });
+    toast.success(sent.copy, { id });
     await refreshReading();
     return true;
   } catch (error) {

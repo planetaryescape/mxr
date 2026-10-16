@@ -187,7 +187,6 @@ export function offerUndo(
   show(message, {
     id: toastId,
     duration: UNDO_TOAST_DURATION_MS,
-    description: "Press u to undo",
     action: { label: createElement(UndoLabel), onClick: () => void undo() },
   });
   return undo;

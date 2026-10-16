@@ -107,6 +107,33 @@
 }
 
 /*
+ * A reader arriving beside its list (docs/blueprint/26 "Motion"): it slides
+ * 16px in from the right with a fade, so it reads as "opened beside", not
+ * "the page changed". It runs when the reader mounts, not when the open
+ * conversation changes. Reduced motion keeps the fade and drops the slide.
+ */
+@utility reader-arrive {
+  animation: reader-arrive var(--motion-duration-base) var(--ease-out) both;
+}
+
+:root[data-motion="reduced"] .reader-arrive {
+  animation: fade-in var(--motion-duration-fast) var(--ease-out) both;
+}
+
+@keyframes reader-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
  * Change landing (docs/blueprint/27 "Feedback"): a 2px signal underline on
  * a row the assistant just changed, fading over 600ms. Only opacity moves,
  * so reduced motion keeps it. The row must be `relative`.
@@ -664,6 +691,15 @@ svg.low-tide {
 .swipe-tone-destructive {
   background-color: color-mix(in oklch, var(--destructive) 22%, var(--background));
   color: var(--destructive);
+}
+
+/*
+ * A modal sheet (compose, a dialog) sets pointer-events: none on the body, and
+ * a toast would inherit it: its Undo could not be clicked while a sheet is
+ * open, and the click would land on the sheet beneath.
+ */
+[data-sonner-toast] {
+  pointer-events: auto;
 }
 
 /*

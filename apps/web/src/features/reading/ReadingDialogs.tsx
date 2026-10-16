@@ -67,13 +67,11 @@ export function ReadingUnsubscribeDialog({
       if (result?.error) {
         toast.error(`Couldn't unsubscribe from ${source.name}`, { description: result.error });
       } else {
-        toast.success(`Unsubscribed from ${source.name}`, {
-          description: !archive
-            ? "The mail you already have stays."
-            : result && result.archived_count > 0
-              ? `Let go of ${plural(result.archived_count, "issue")} too.`
-              : undefined,
-        });
+        toast.success(
+          archive && result && result.archived_count > 0
+            ? `Unsubscribed from ${source.name} and let go of ${plural(result.archived_count, "issue")}`
+            : `Unsubscribed from ${source.name}`,
+        );
       }
       await refreshReading();
       onClose();

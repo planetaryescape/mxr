@@ -76,7 +76,7 @@ export function UnsubscribeDialog({
         if (undo) useUndo.getState().recordUndo(undo, mutationId ?? undefined);
         else useUndo.getState().recordNoUndo();
         toast.success(`Unsubscribed and archived ${plural(outcome.archived_count, "message")}`, {
-          duration: undo ? UNDO_TOAST_DURATION_MS : 6000,
+          duration: undo ? UNDO_TOAST_DURATION_MS : undefined,
           action: undo ? { label: "Undo archive", onClick: () => void undo() } : undefined,
         });
         void invalidateMailQueries();

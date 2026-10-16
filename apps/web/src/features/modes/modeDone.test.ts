@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { resetLeaving } from "@/lib/leaving";
 import { useUndo } from "@/state/undoStore";
 
 import { doneToast, markModeDone, useModeDone, type ModeDoneOutcome } from "./modeDone";
@@ -47,6 +48,53 @@ describe("done here's toast", () => {
     expect(useModeDone.getState().hidden.todo.has("t1")).toBe(false);
     store.show("messages", ["t1"]);
     expect(useModeDone.getState().hidden.messages.has("t1")).toBe(false);
+  });
+
+  test("a row folds when the done asked for it, and drops out once its fold settles", () => {
+    const store = useModeDone.getState();
+    store.fold("messages", ["t2"]);
+    expect(useModeDone.getState().folding.messages.has("t2")).toBe(true);
+    expect(useModeDone.getState().folding.todo.has("t2")).toBe(false);
+    store.settle("messages", ["t2"]);
+    expect(useModeDone.getState().folding.messages.has("t2")).toBe(false);
+  });
+});
+
+describe("done here's fold follows how it was asked for", () => {
+  const answer = {
+    kind: "ModeDone",
+    dry_run: false,
+    items: [{ thread_id: "t3", mode: "messages", provider: "Gmail", copy: "Done." }],
+  };
+
+  test("a pointer folds the row while the request is out; nothing is left folding after", async () => {
+    resetLeaving();
+    let seen = false;
+    fetchMock.mockImplementationOnce(() => {
+      seen = useModeDone.getState().folding.messages.has("t3");
+      return Promise.resolve(answer);
+    });
+    await markModeDone("messages", ["t3"], { via: "pointer" });
+    expect(seen).toBe(true);
+    expect(useModeDone.getState().folding.messages.has("t3")).toBe(false);
+  });
+
+  test("a key repeat drops the row without a fold", async () => {
+    resetLeaving();
+    fetchMock.mockResolvedValue(answer);
+    let during = true;
+    fetchMock.mockImplementationOnce(() => {
+      during = useModeDone.getState().folding.messages.has("t3");
+      return Promise.resolve(answer);
+    });
+    // The first key of a burst folds; the second, straight after, does not.
+    await markModeDone("messages", ["t3"], { via: "key" });
+    fetchMock.mockImplementationOnce(() => {
+      during = useModeDone.getState().folding.messages.has("t3");
+      return Promise.resolve(answer);
+    });
+    await markModeDone("messages", ["t3"], { via: "key" });
+    expect(during).toBe(false);
   });
 });
 

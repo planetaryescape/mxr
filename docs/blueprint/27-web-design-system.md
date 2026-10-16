@@ -106,7 +106,9 @@ Tokens stay: `--duration-fast` 120ms, `--duration-base` 180ms, `--duration-slow`
 - `--duration-land: 600ms` for the change-landing underline.
 - **"Section put to bed"** is defined per mode, for the finishing moment (D134): Now has no items; Messages has no Your turn; To do has no item due today or earlier; Updates' current digest is let go; Reading's edition is read or let go; Archive has no finishing moment. The scene plays once per section per day, recorded in local storage (a per-viewer convenience; losing it only replays the scene).
 
-`scripts/check-motion.mjs` gains: handlers bound to keyboard events must not start transitions (checked by convention: transitions only in components that receive a `via: "pointer" | "key"` prop and skip on `"key"`).
+`scripts/check-motion.mjs` gains: handlers bound to keyboard events must not start transitions (checked by convention: transitions only in components that receive a `via: "pointer" | "key"` prop and skip on `"key"`). Shipped in W8b: a file that takes `LampVia` or `LeaveVia` may name a `transition`, an `animate-*` class or a fold only behind `via === "pointer"` or a row's `leaving`.
+
+**One key folds, a repeat doesn't (W8b).** A single `e` shows where its row went: it folds like a pointer's done. Presses within 600ms of the last one drop their row at once, so clearing a list by key stays instant and the speed gate (j, k, s, e) is unaffected. Reduced motion never folds.
 
 ## Iconography
 

@@ -62,7 +62,7 @@ export const copyAmount = (record: RecordData) => copyText(amountCopy(record), "
 export async function openDocument(record: RecordData): Promise<void> {
   const pdf = record.pdf;
   if (!pdf) {
-    toast.info("No PDF on this record", { description: "Press o to open the email instead." });
+    toast.info("No PDF on this record. Press o to open the email");
     return;
   }
   if (refuseWhileDaemonDown("open the document")) return;

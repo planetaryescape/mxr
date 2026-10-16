@@ -7,6 +7,7 @@ import { shellKey } from "@/features/mailbox/api";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
 import { refetchAfterGap } from "@/lib/daemonAvailability";
 import { useConnectionStore, type SyncProgress } from "@/state/connectionStore";
+import { useLanding } from "@/state/landingStore";
 
 const CLEAR_SYNC_PROGRESS_DELAY_MS = 1_000;
 let clearSyncProgressHandle: ReturnType<typeof setTimeout> | undefined;
@@ -21,6 +22,10 @@ export function useDaemonEventInvalidation(): void {
         // the same invalidation the mutation layer uses.
         switch (event.type) {
           case "NewMessages":
+            // What arrived wears the landing mark where it shows (a sync, or another client).
+            useLanding.getState().land(arrivedIds(event.envelopes));
+            void invalidateMailQueries(qc);
+            break;
           case "MessageUnsnoozed":
           // A move in any client: every mode, Now's line and Inbox's chips.
           case "ModesChanged":
@@ -85,6 +90,14 @@ export function useDaemonEventInvalidation(): void {
       [qc],
     ),
   );
+}
+
+/** Message and thread ids of the newest arrivals; the event carries a capped sample. */
+function arrivedIds(envelopes: unknown): string[] {
+  if (!Array.isArray(envelopes)) return [];
+  return (envelopes as ReadonlyArray<Record<string, unknown>>)
+    .flatMap((envelope) => [envelope.id, envelope.thread_id])
+    .filter((id): id is string => typeof id === "string");
 }
 
 /**

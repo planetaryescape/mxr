@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { copyCommand, START_COMMAND } from "@/lib/copyCommand";
+import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 
 /** The event stream alone dropping only matters once it stays down. */
@@ -41,7 +42,44 @@ function Banner({
   );
 }
 
+/** How long a leaving banner is held so it can fade (the fast motion duration). */
+const FADE_OUT_MS = 120;
+
+/**
+ * The banner renders nothing when all is well, so a fade out needs the last
+ * banner kept on screen while it goes: it fades in on mount and, once there
+ * is nothing to say, fades out and unmounts. Reduced motion keeps the fades.
+ */
 export function OfflineBanner() {
+  const banner = useBannerContent();
+  const present = banner !== null;
+  // The last banner, kept on screen while it fades out.
+  const last = useRef<ReactNode>(null);
+  if (banner) last.current = banner;
+  const [gone, setGone] = useState(!present);
+  useEffect(() => {
+    if (present) {
+      setGone(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setGone(true), FADE_OUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [present]);
+  const shown = banner ?? (gone ? null : last.current);
+  if (!shown) return null;
+  return (
+    <div
+      className={cn(
+        "shrink-0 duration-fast",
+        present ? "animate-in fade-in-0" : "animate-out fade-out-0 fill-mode-forwards",
+      )}
+    >
+      {shown}
+    </div>
+  );
+}
+
+function useBannerContent(): ReactNode {
   const state = useConnectionStore((s) => s.state);
   const protocolMismatch = useConnectionStore((s) => s.protocolMismatch);
   const lastAnsweredAt = useConnectionStore((s) => s.daemonLastAnsweredAt);

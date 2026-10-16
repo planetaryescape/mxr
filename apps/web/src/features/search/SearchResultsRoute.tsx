@@ -142,9 +142,7 @@ export function SearchResultsRoute() {
   const save = useMutation({
     mutationFn: createSavedSearch,
     onSuccess: (_, input) => {
-      toast.success(`Saved “${input.name}”`, {
-        description: "It's in the sidebar under Saved searches.",
-      });
+      toast.success(`Saved “${input.name}” to the sidebar`);
       setSaveOpen(false);
       void qc.invalidateQueries({ queryKey: ["saved-searches"] });
       void qc.invalidateQueries({ queryKey: ["shell"] });

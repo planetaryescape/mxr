@@ -14,6 +14,7 @@ import { soundFor, VERB_FEEDBACK, type Verb } from "@/features/mail-actions/verb
 import { playSound } from "@/features/sound/player";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
+import { foldsFor, type LeaveVia } from "@/lib/leaving";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import {
@@ -55,19 +56,14 @@ export const useTodoHidden = create<TodoHiddenState>((set) => ({
     ),
 }));
 
-/** Reduced motion: rows disappear at once instead of folding up. */
-function motionReduced(): boolean {
-  return document.documentElement.dataset.motion === "reduced";
-}
-
 /**
- * Start a row's exit. A pointer folds it up (the lamp ties the click to the
- * result); a key drops it at once so repeats stay instant (D101). Reduced
- * motion drops it at once either way.
+ * Start a row's exit. It folds up when `foldsFor` says so (a pointer, or the
+ * first key of a burst); otherwise it drops at once so repeats stay instant
+ * (D101).
  */
-function startLeaving(ids: readonly string[], how: "key" | "pointer" = "pointer"): void {
-  if (how === "key" || motionReduced()) useTodoHidden.getState().hide(ids);
-  else useTodoHidden.getState().leave(ids);
+function startLeaving(ids: readonly string[], how: LeaveVia = "pointer"): void {
+  if (foldsFor(how)) useTodoHidden.getState().leave(ids);
+  else useTodoHidden.getState().hide(ids);
 }
 
 /**
@@ -158,7 +154,7 @@ function titled(change: TodoChange, verb: string): string {
 }
 
 /** `e`: tick off. The row folds up and joins Done this week. */
-export function markDone(todos: readonly Todo[], how: "key" | "pointer" = "pointer") {
+export function markDone(todos: readonly Todo[], how: LeaveVia = "pointer") {
   const ids = todos.map((todo) => todo.id);
   if (ids.length === 0 || refuseWhileDaemonDown("tick it off")) return;
   startLeaving(ids, how);
@@ -177,7 +173,7 @@ export function markDone(todos: readonly Todo[], how: "key" | "pointer" = "point
  * ("Ticked off. Archived in Gmail."). Undo is the daemon's. A to-do with no
  * email is ticked off on its own.
  */
-export async function tickOff(todo: Todo, how: "key" | "pointer" = "pointer"): Promise<void> {
+export async function tickOff(todo: Todo, how: LeaveVia = "pointer"): Promise<void> {
   const threadId = todo.thread_id;
   if (!threadId) {
     await markDone([todo], how);
@@ -233,7 +229,7 @@ export function resolveSuggestion(todo: Todo, action: "preview" | "accept" | "di
 }
 
 /** `X`: not a to-do, kept as a correction so that email never comes back. */
-export function markNotTodo(todos: readonly Todo[], how: "key" | "pointer" = "pointer") {
+export function markNotTodo(todos: readonly Todo[], how: LeaveVia = "pointer") {
   const ids = todos.map((todo) => todo.id);
   if (ids.length === 0 || refuseWhileDaemonDown("change it")) return;
   startLeaving(ids, how);

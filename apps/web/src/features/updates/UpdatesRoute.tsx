@@ -6,6 +6,8 @@ import type { LampVia } from "@/components/Row";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Button } from "@/components/ui/button";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { moveCommands, updateMoveSubject } from "@/features/arrivals/moveSubjects";
@@ -192,6 +194,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
 
   // Routine counts as lines even while it is collapsed.
   const hasLines = rows.length > 0 || routine.sources > 0;
+  // Updates is put to bed when the current digest is let go (docs/blueprint/27).
+  const finished = useLowTide("updates", false, hasLines, { daily: true });
   // One hint under the first suggested to-do, one under the first line,
   // and the digest's let go under its button.
   const firstSuggestion = rows.find((row) => row.line.todo_suggestion && !row.line.in_todo)?.line;
@@ -434,7 +438,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
             digest.empty_state ? (
               <div className="mx-5 mt-6">
                 <PageEmpty
-                  glyph="updates"
+                  glyph={finished ? undefined : "updates"}
+                  moment={finished ? <FinishingMoment /> : undefined}
                   title={digest.empty_state}
                   body={
                     <>

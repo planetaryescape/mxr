@@ -1,10 +1,12 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { Avatar, AvatarGlyph } from "@/components/Avatar";
 import { ModeMarks, NewMark } from "@/components/ModeMark";
+import { modelMarkTitle } from "@/components/ModelMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
+import { useModeDone } from "@/features/modes/modeDone";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
 import { NewSenderChips } from "@/features/modes/NewSenderChips";
 import { cn } from "@/lib/utils";
@@ -229,6 +231,16 @@ const PersonRow = memo(function PersonRow({
   const topicCount = row.topics.filter(
     (topic) => topic.state !== "done" && !hidden.has(topic.thread_id),
   ).length;
+  // Every topic done: the row is leaving. It folds if the done asked for that, else it is gone.
+  const allGone =
+    row.topics.some((topic) => hidden.has(topic.thread_id)) &&
+    row.topics.every((topic) => topic.state === "done" || hidden.has(topic.thread_id));
+  const folding = useModeDone((s) => row.topics.some((t) => s.folding.messages.has(t.thread_id)));
+  const settle = useModeDone((s) => s.settle);
+  const landIds = useMemo(
+    () => row.topics.flatMap((topic) => [topic.thread_id, ...topic.message_ids.slice(-20)]),
+    [row.topics],
+  );
   const subject = row.kind === "group" ? row.topics[0]?.subject : undefined;
   const newSender = modes?.new_sender;
   const secondary = preview
@@ -236,11 +248,26 @@ const PersonRow = memo(function PersonRow({
       ? `\u201c${preview.text}\u201d`
       : preview.text
     : subject;
+  if (allGone && !folding) return null;
   return (
     <Row
       lit={lit}
       via={via}
       unread={row.unread}
+      leaving={allGone}
+      land={landIds}
+      onAnimationEnd={
+        allGone
+          ? (event) => {
+              // The row's own fold, not an arrival glow inside it.
+              if (event.target !== event.currentTarget) return;
+              settle(
+                "messages",
+                row.topics.map((topic) => topic.thread_id),
+              );
+            }
+          : undefined
+      }
       onClick={() => onSelect(row.id)}
       lead={<Face title={row.title} group={row.kind === "group"} />}
       primary={
@@ -266,7 +293,7 @@ const PersonRow = memo(function PersonRow({
             data-kind={preview?.kind}
             title={
               preview?.kind === "ask" && preview.model
-                ? `The ask, from a summary by ${preview.model}`
+                ? `The ask. ${modelMarkTitle(preview.model)}`
                 : undefined
             }
           >

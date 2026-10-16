@@ -1,8 +1,9 @@
-import { useParams, useSearch } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { KeyChip } from "@/components/KeyChip";
 import { Segmented } from "@/components/Segmented";
 import type { LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
@@ -552,6 +553,18 @@ function Ledger({
             .filter(Boolean)
             .join(" ")
             .replaceAll("`", "") || "Records file here as mxr reads your mail."
+        }
+        action={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/m/$mailbox" params={{ mailbox: "inbox" }}>
+                Open Inbox
+              </Link>
+            </Button>
+            <span className="type-meta text-text-3">
+              To file one by hand, light an email and press <KeyChip>T</KeyChip>.
+            </span>
+          </div>
         }
       />
     );

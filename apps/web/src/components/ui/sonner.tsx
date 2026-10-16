@@ -1,10 +1,13 @@
 import { CircleCheck, CircleX, Info, TriangleAlert } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { Toaster as SonnerToaster, useSonner } from "sonner";
+import { useEffect, useRef, useState } from "react";
+import { toast, Toaster as SonnerToaster, useSonner } from "sonner";
 
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-/** The visual undo prompt is brief; the independent keyboard undo stays live. */
+import { cornerAvoiding, type ToastCorner } from "./toastPlacement";
+
+/** D140: a toast goes after 5 seconds, 8 when it carries an Undo. The independent keyboard undo stays live. */
+export const TOAST_DURATION_MS = 5_000;
 export const UNDO_TOAST_DURATION_MS = 8_000;
 
 /* Keep quiet feedback below Search and Compose in the app header. */
@@ -13,8 +16,6 @@ const BELOW_TOPBAR = "calc(var(--shell-topbar-h) + 0.75rem)";
 const ABOVE_STATUSBAR = "calc(var(--shell-statusbar-h) + 0.75rem)";
 const ABOVE_MOBILE_TABS = "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)";
 
-type ToastPosition = "top-right" | "bottom-right";
-
 const ICONS = {
   success: <CircleCheck className="size-4" aria-hidden />,
   info: <Info className="size-4" aria-hidden />,
@@ -22,7 +23,56 @@ const ICONS = {
   error: <CircleX className="size-4" aria-hidden />,
 };
 
-export function Toaster({ position = "bottom-right" }: { position?: ToastPosition }) {
+/** `lib/actions/keyHints.ts` shows its tip under this id. */
+const KEY_HINT_ID = "key-hint";
+
+/** Sonner switches to its mobile layout at this width. */
+const MOBILE_WIDTH = 600;
+
+function pxVar(name: string, fallback: number): number {
+  const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/** The lit row's box, if a row is lit. */
+function litRowBox(): DOMRect | null {
+  return document.querySelector<HTMLElement>('[data-lit="true"]')?.getBoundingClientRect() ?? null;
+}
+
+/**
+ * One toast at a time: a new one replaces the one before (the activity log
+ * keeps them all), and it takes the corner that leaves the lit row clear.
+ */
+function useOneAtATime(preferred: ToastCorner): ToastCorner {
+  // The key hint is a tip with its own spot at the bottom centre, never a result: it stays
+  // beside the Undo toast of the action it teaches.
+  const toasts = useSonner().toasts.filter((item) => item.id !== KEY_HINT_ID);
+  const [corner, setCorner] = useState(preferred);
+  const newest = toasts[0]?.id;
+  useEffect(() => {
+    // Sonner lists the newest first.
+    for (const older of toasts.slice(1)) toast.dismiss(older.id);
+  }, [toasts]);
+  useEffect(() => {
+    if (newest === undefined) {
+      setCorner(preferred);
+      return;
+    }
+    const mobile = window.innerWidth < MOBILE_WIDTH;
+    setCorner(
+      cornerAvoiding(preferred, litRowBox(), {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        top: pxVar("--shell-topbar-h", 48) + 12,
+        bottom: mobile ? 72 : pxVar("--shell-statusbar-h", 28) + 12,
+      }),
+    );
+  }, [newest, preferred]);
+  return corner;
+}
+
+export function Toaster({ position: preferred = "bottom-right" }: { position?: ToastCorner }) {
+  const position = useOneAtATime(preferred);
   const theme = useUiPrefs((s) => s.theme);
   const resolved =
     theme === "system" ? "system" : theme === "light" || theme === "paper" ? "light" : "dark";
@@ -40,8 +90,8 @@ export function Toaster({ position = "bottom-right" }: { position?: ToastPositio
         mobileOffset={
           position === "top-right" ? { top: BELOW_TOPBAR } : { bottom: ABOVE_MOBILE_TABS }
         }
-        duration={4_000}
-        visibleToasts={3}
+        duration={TOAST_DURATION_MS}
+        visibleToasts={1}
         closeButton
         icons={ICONS}
         toastOptions={{
@@ -63,7 +113,7 @@ export function Toaster({ position = "bottom-right" }: { position?: ToastPositio
  */
 function AssertiveErrors() {
   const { toasts } = useSonner();
-  const latest = toasts.findLast((toast) => toast.type === "error");
+  const latest = toasts.find((item) => item.type === "error");
   const text = latest && typeof latest.title === "string" ? latest.title : "";
   return (
     <div aria-live="assertive" aria-atomic="true" className="sr-only">

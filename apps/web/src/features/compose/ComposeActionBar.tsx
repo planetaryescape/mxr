@@ -64,11 +64,11 @@ export function ComposeActionBar({
 }: ComposeActionBarProps) {
   return (
     <footer className="shrink-0 border-t border-rule">
-      <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2">
+      <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-1 gap-y-1 sm:gap-x-2 px-3 py-2 sm:px-5">
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />
           Send
-          <kbd className="ml-0.5 rounded-sm border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-2xs leading-none">
+          <kbd className="ml-0.5 rounded-sm max-sm:hidden border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0.5 font-mono text-2xs leading-none">
             ⌘↵
           </kbd>
         </Button>
@@ -120,6 +120,8 @@ export function ComposeActionBar({
           disabled={busy}
           aria-label="Send later"
           title="Send later (⇧⌘L)"
+          // The send menu has it too; on a phone the room goes to the editor switch.
+          className="max-sm:hidden"
         >
           <Clock className="size-3.5" />
         </Button>
@@ -136,7 +138,7 @@ export function ComposeActionBar({
           ) : (
             <Paperclip className="size-3.5" />
           )}
-          Attach
+          <span className="max-sm:sr-only">Attach</span>
         </Button>
         <Segmented
           label="Editor mode"

@@ -3,6 +3,7 @@ import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "r
 
 import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
+import { useLanded } from "@/state/landingStore";
 
 /** How the lamp got to a row. Only a pointer fades; a key must feel instant (D101). */
 export type LampVia = "key" | "pointer";
@@ -17,6 +18,12 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   unread?: boolean;
   /** The row is folding away (pointer done). Not interactive meanwhile. */
   leaving?: boolean;
+  /**
+   * Message and thread ids this row stands for. When a change the assistant
+   * or a sync made lands on any of them, the row wears the landing underline
+   * for 600ms (docs/blueprint/26 "Motion").
+   */
+  land?: readonly (string | null | undefined)[];
   /** Avatar, checkbox, source mark or amount. */
   lead?: ReactNode;
   /** The lead is a control (a checkbox): it sits beside the row's link, not inside it. */
@@ -38,6 +45,8 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   hint?: ReactNode;
 }
 
+const NO_IDS: readonly string[] = [];
+
 const MAIN = "relative flex min-w-0 flex-1 items-center gap-3 text-left outline-none";
 
 /**
@@ -56,6 +65,7 @@ export const Row = memo(function Row({
   via = "key",
   unread = false,
   leaving = false,
+  land = NO_IDS,
   lead,
   leadControl = false,
   primary,
@@ -68,6 +78,7 @@ export const Row = memo(function Row({
   ref,
   ...rest
 }: RowProps) {
+  const landed = useLanded(...land);
   const text = (
     <>
       {leadControl ? null : lead}
@@ -89,6 +100,7 @@ export const Row = memo(function Row({
       className={cn(
         "group/row relative mx-2",
         leaving && "row-fold pointer-events-none",
+        landed && "landed",
         className,
       )}
     >
@@ -152,7 +164,9 @@ export const Row = memo(function Row({
 /**
  * One verb on a lit row: its key and its name, as in "r reply". A verb with
  * no key (a tool page's action) shows its name only; with `href` it is a link
- * that leaves the app, drawn the same.
+ * that leaves the app, drawn the same. `plain` draws it as text for a row
+ * that is itself a listbox option, which can't hold controls: the keyboard
+ * runs the verb with its key, the pointer with a click on the text.
  */
 export function RowVerb({
   keys,
@@ -163,6 +177,9 @@ export function RowVerb({
   ariaLabel,
   className,
   Icon,
+  plain = false,
+  title,
+  nameFrom = "sm",
 }: {
   keys?: string;
   label: string;
@@ -173,6 +190,14 @@ export function RowVerb({
   testId?: string;
   ariaLabel?: string;
   className?: string;
+  plain?: boolean;
+  title?: string;
+  /**
+   * Where the name shows: from the viewport's `sm` width, or only once the
+   * list is wide (`@xl/list`), so a narrow list with a reader beside it keeps
+   * its room for the sender and the keys alone say it.
+   */
+  nameFrom?: "sm" | "list";
 }) {
   const classes = cn(
     "inline-flex h-7 items-center gap-1.5 whitespace-nowrap px-1.5 hover:text-text-1 focus-visible:text-text-1",
@@ -183,10 +208,29 @@ export function RowVerb({
     <>
       {keys ? <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip> : null}
       {Icon ? <Icon aria-hidden className="size-4 sm:hidden" /> : null}
-      <span className="hidden sm:inline">{label}</span>
-      {Icon ? null : <span className="sm:hidden">{label.split(" ")[0]}</span>}
+      <span className={nameFrom === "list" ? "hidden @xl/list:inline" : "hidden sm:inline"}>
+        {label}
+      </span>
+      {Icon || nameFrom === "list" ? null : (
+        <span className="sm:hidden">{label.split(" ")[0]}</span>
+      )}
     </>
   );
+  if (plain) {
+    return (
+      <span
+        aria-hidden
+        title={title ?? `${label} (${keys})`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick?.();
+        }}
+        className={cn(classes, "cursor-pointer")}
+      >
+        {content}
+      </span>
+    );
+  }
   if (href) {
     return (
       <a

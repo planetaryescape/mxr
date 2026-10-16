@@ -167,7 +167,7 @@ test("reduced motion keeps the fade and drops the scale", async ({ page }) => {
   expect(moving).toEqual([]);
 });
 
-test("full motion scales dialogs in, and rows never animate the keyboard cursor", async ({
+test("full motion lifts dialogs in, and rows never animate the keyboard cursor", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -183,11 +183,12 @@ test("full motion scales dialogs in, and rows never animate the keyboard cursor"
   await page.keyboard.press("Z");
   const dialog = page.getByRole("dialog", { name: "Snooze until…" });
   await expect(dialog).toBeVisible();
-  const scale = await dialog.evaluate((node) =>
-    getComputedStyle(node).getPropertyValue("--tw-enter-scale").trim(),
+  // The sheet rises 8px as it fades in (docs/blueprint/26 "Motion").
+  const rise = await dialog.evaluate((node) =>
+    getComputedStyle(node).getPropertyValue("--tw-enter-translate-y").trim(),
   );
-  expect(scale).not.toBe("1");
-  expect(scale).not.toBe("");
+  expect(rise).not.toBe("0");
+  expect(rise).not.toBe("");
 
   // The detector used in the reduced-motion test does see a turning spinner.
   expect(await mountSpinner(page)).toBe("spin");

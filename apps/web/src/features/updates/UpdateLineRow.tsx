@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
-import { memo, useRef, useState, type ReactNode } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { ModelMark } from "@/components/ModelMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +120,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const trailing = trailingItem(line, gist?.about ?? line.fact);
   const canToDo = !line.in_todo && Boolean(line.todo_suggestion || line.latest_message_id);
   const fact = trackStands ? track : (gist?.about ?? line.fact);
+  const landIds = useMemo(
+    () => [...(line.thread_ids ?? []), ...(line.message_ids ?? []).slice(-20)],
+    [line.thread_ids, line.message_ids],
+  );
 
   return (
     <Row
@@ -132,6 +137,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       lit={lit}
       via={via}
       leaving={leaving}
+      land={landIds}
       // Focus comes back here when the menu closes, so Space peeks in the normal flow.
       tabIndex={-1}
       onClick={(event) => {
@@ -437,7 +443,11 @@ function Peek({
         </p>
       ) : null}
       {line.time_label ? <p>At {line.time_label}</p> : null}
-      {gist ? <p data-testid="update-gist-source">{emailSourceLabel(gist)}</p> : null}
+      {gist ? (
+        <p data-testid="update-gist-source">
+          <EmailSource gist={gist} />
+        </p>
+      ) : null}
       {line.suggestion ? (
         <div data-testid="update-suggestion" className="space-y-1.5">
           <p className="text-text-1">{line.suggestion}</p>
@@ -481,13 +491,20 @@ function Peek({
   );
 }
 
-/** "Local model gemma4 · from this email": where the line's words came from. */
-function emailSourceLabel(gist: RowGist): string {
+/** "gemma4 · local · from this email": where the line's words came from. */
+function EmailSource({ gist }: { gist: RowGist }) {
   const provenance = gist.provenance;
-  if (!provenance) return `${gist.source}, summarised by the model`;
-  const place = provenance.locality === "local" ? "Local model" : "Cloud model";
-  const scope = provenance.locality === "local" ? "from this email" : "from this email only";
-  return `${place} ${provenance.model} · ${scope}`;
+  if (!provenance) return <span className="type-meta text-text-3">{gist.source}</span>;
+  const cloud = provenance.locality === "cloud";
+  return (
+    <>
+      <ModelMark model={provenance.model} leavesMachine={cloud} />
+      <span className="type-meta text-text-3">
+        {" "}
+        · {cloud ? "from this email only" : "from this email"}
+      </span>
+    </>
+  );
 }
 
 /**

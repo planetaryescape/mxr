@@ -9,6 +9,7 @@
 import { BellRing, X } from "lucide-react";
 import { useState } from "react";
 
+import { ModelMark } from "@/components/ModelMark";
 import { Button } from "@/components/ui/button";
 import { describeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
@@ -82,9 +83,12 @@ function PromiseCard({ offer }: { offer: PromiseOffer }) {
             </p>
           )}
           {offer.provenance ? (
-            <p className="mt-1 font-mono text-2xs text-muted-foreground">
-              {offer.provenance.locality === "local" ? "Local model" : "Cloud model"}{" "}
-              {offer.provenance.model} · from your message
+            <p className="mt-1 text-2xs">
+              <ModelMark
+                model={offer.provenance.model}
+                leavesMachine={offer.provenance.locality === "cloud"}
+              />
+              <span className="type-meta text-text-3"> · from your message</span>
             </p>
           ) : null}
         </div>

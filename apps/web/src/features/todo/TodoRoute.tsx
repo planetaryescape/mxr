@@ -5,6 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
+import { NextPlace } from "@/features/modes/NextPlace";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
@@ -404,6 +407,13 @@ function Bands({
   }, [items]);
   const { now: nowItems, coming: comingItems, whenever: wheneverItems, done: doneItems } = byBand;
   const neverHadAny = !hasItems && runway.done_this_week.length === 0 && runway.catchup_count === 0;
+  // To do is put to bed when nothing is due today or earlier (docs/blueprint/27).
+  const finished = useLowTide(
+    "todo",
+    neverHadAny,
+    nowItems.some((item) => !leaving.has(item.todo.id)),
+    { daily: true },
+  );
 
   const row = (item: RunwayItem) => {
     const at = position.get(item) ?? 0;
@@ -484,9 +494,19 @@ function Bands({
               {nowItems.map(row)}
             </ul>
           ) : (
-            <p data-testid="todo-empty" className="mx-5 py-2 text-sm text-muted-foreground">
-              {runway.empty_state ?? guide?.clear_for_now}
-            </p>
+            <div data-testid="todo-empty" className="mx-5 py-2">
+              {finished ? (
+                <PageEmpty
+                  moment={<FinishingMoment />}
+                  title={runway.empty_state ?? guide?.clear_for_now ?? "Clear for now."}
+                  body={<NextPlace current="todo" />}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {runway.empty_state ?? guide?.clear_for_now}
+                </p>
+              )}
+            </div>
           )}
 
           {groups.length > 0 ? (

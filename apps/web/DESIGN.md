@@ -26,3 +26,16 @@ When the rules don't give a good result, use an option rather than editing gener
 Contrast-increased mode (the explicit preference and `prefers-contrast: more`) is generated too: `muted-foreground` and `subtle-foreground` are re-solved to 11.4 and 9.7 on dark themes and 8.5 on light ones, borders and input borders step further from the desk, the ring moves further from the desk, and the accent becomes `--primary` darker or lighter only if it is under 6.5:1 on the desk. The result is the `[data-contrast="increased"][data-theme="..."]` block per theme.
 
 Colours that mark counts and unread items use `--unread-marker` and `--unread-marker-foreground` (`text-unread-marker`, `bg-unread-marker`), never `text-primary` or `text-signal`.
+
+## Motion
+
+Motion explains change and never decorates (D134). Durations are the `--motion-duration-*` tokens; only transform and opacity move; `check-motion.mjs` fails anything else.
+
+- **Leaving.** A done row folds away in 120ms (`row-fold` on `Row`'s `leaving`) while the lamp is already on the next row. `lib/leaving.ts` decides whether it folds: a pointer always does, a key only for the first press of a burst (presses within 600ms of the last one drop their row at once), and reduced motion never does. Messages folds through `useModeDone().folding`, To do and Updates through their `leaving` sets.
+- **Keys never animate.** A component that takes a `via: "pointer" | "key"` prop (`LampVia`, `LeaveVia`) may start a transition or animation only behind `via === "pointer"` or `leaving`. `check-motion.mjs` enforces it.
+- **Arriving.** A reader pane mounts inside `.reader-arrive`: 16px from the right with a fade over 180ms; reduced motion keeps the 120ms fade.
+- **Overlays.** `scrimMotion` fades a scrim in over 120ms and `sheetMotion` rises a sheet 8px over 180ms. Dialogs, alert dialogs, the More sheet and the compose sheet use them.
+- **Landing.** `Row` takes `land`, the message and thread ids it stands for; when the assistant or a sync changes one of them it wears a 2px signal underline that fades over 600ms (`landingStore`). The assistant's lists catch up after the mark, so a changed row is held for the 600ms; a sync's new row appears with the mark and nothing is held.
+- **Finishing.** The low tide plays in `PageEmpty`'s `moment` slot, once per mode per day (`features/low-tide/lowTideMemory.ts`): Messages when Your turn is clear, To do when nothing is due today or earlier, Updates when its digest is let go. Archive has none. Reduced motion shows the words and no scene.
+- **Toasts.** One at a time, 5 seconds (8 with Undo), a single line, in the corner that leaves the lit row clear (`toastPlacement.ts`). See `docs/web-app-controls.md`.
+- **Skeletons.** `PageSkeleton` bars pulse only without reduced motion. A page that loads through `useDelayedPending` shows nothing for 150ms and holds a skeleton shown for at least 400ms.

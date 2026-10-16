@@ -559,6 +559,8 @@ for (const theme of THEMES) {
         browser,
         baseURL,
       }, testInfo) => {
+        // Eighteen pictures, each in a fresh context.
+        test.setTimeout(300_000);
         for (const state of ASSISTANT_GATE_STATES) {
           for (const width of WIDTHS) {
             await test.step(`${state} at ${width}px`, async () => {

@@ -705,7 +705,9 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
     >
       <span className="shrink-0 whitespace-nowrap">{group.label}</span>
       {typeof group.count === "number" ? (
-        <span className="shrink-0 font-semibold tabular-nums text-primary">{group.count}</span>
+        <span className="shrink-0 font-semibold tabular-nums text-unread-marker">
+          {group.count}
+        </span>
       ) : null}
       {action ? (
         // Mouse-only like `more`; its key (shown) works from anywhere.

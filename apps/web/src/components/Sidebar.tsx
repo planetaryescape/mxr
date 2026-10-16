@@ -433,14 +433,14 @@ function SidebarLink({
           data-testid="rail-count"
           className={cn(
             "type-meta group-hover:hidden",
-            entry.quietCount ? "text-text-3" : "font-semibold text-signal",
+            entry.quietCount ? "text-text-3" : "font-semibold text-unread-marker",
           )}
         >
           {count > 9999 ? "9999+" : count.toLocaleString()}
         </span>
       ) : null}
       {collapsed && count && !entry.quietCount ? (
-        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-signal" />
+        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-unread-marker" />
       ) : null}
     </Link>
   );

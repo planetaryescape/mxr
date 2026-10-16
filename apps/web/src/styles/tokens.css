@@ -1,17 +1,25 @@
 /*
- * mxr web — design tokens. The single source for colour, type, radius,
- * spacing, density and motion. Nothing else in the app declares theme
+ * mxr web: design tokens. The design source is docs/blueprint/27-web-design-system.md
+ * (D137), with the concept in 26-web-design-concept.md; this file is where
+ * chapter 27's roles live as CSS. Nothing else in the app declares theme
  * colours; components reach them through Tailwind (`bg-background`,
  * `text-muted-foreground`) or `var(--token)` in CSS.
  *
+ * Each theme defines the same roles: ink depths (--ink-room, --ink-desk,
+ * --ink-lamp, --ink-overlay), three text tiers (--text-1..3) and signal
+ * colours (--signal, --cue, --danger, --ok). The names from before the
+ * redesign (--background, --foreground, --muted-foreground, --primary…) are
+ * aliases of those roles, so existing classes keep working while screens move
+ * to the roles.
+ *
  * Colours are complete values, not HSL channels, so `var(--x)` works
- * anywhere without a wrapper. The default theme follows DESIGN.md: navy
- * ink surfaces, cyan signal, a small yellow cue, and Recursive for every
- * voice (its MONO axis supplies the monospace).
+ * anywhere without a wrapper. The default theme is Midnight: navy ink, cyan
+ * signal, a small yellow cue, and Recursive for every voice (its MONO axis
+ * supplies the monospace). Type roles are in type.css.
  */
 
 @import "tailwindcss";
-@import "@fontsource-variable/recursive/mono.css";
+@import "@fontsource-variable/recursive/full.css";
 
 @theme {
   --font-sans: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
@@ -31,11 +39,19 @@
 
   --spacing: 0.25rem;
 
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 7px;
-  --radius-xl: 10px;
-  --radius-2xl: 14px;
+  /*
+   * Square by default (D127). Controls (buttons, inputs, chips, menus) get
+   * 3px; surfaces, panes, rows and sheets get none. Every Tailwind radius
+   * step reads the control radius so a stray `rounded-md` can't exceed it;
+   * check-shape.mjs keeps `rounded-lg` and `rounded-full` out of the source.
+   */
+  --radius-control: 3px;
+  --radius-xs: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-control);
+  --radius-2xl: var(--radius-control);
 
   --row-height-compact: 34px;
   --row-height-regular: 56px;
@@ -98,6 +114,21 @@
  * Tailwind colour utilities, mapped once to the theme variables below.
  */
 @theme inline {
+  --color-ink-room: var(--ink-room);
+  --color-ink-desk: var(--ink-desk);
+  --color-ink-lamp: var(--ink-lamp);
+  --color-ink-overlay: var(--ink-overlay);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-cue: var(--cue);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-scrim: var(--scrim);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
@@ -168,22 +199,39 @@
 [data-theme="midnight"] {
   color-scheme: dark;
 
-  --background: #0d161f;
-  --foreground: #e2e9f0;
-  --fg-2: #bbc5d1;
+  /* Roles (docs/blueprint/27): the values every other token below aliases. */
+  --ink-room: #080f17;
+  --ink-desk: #0d161f;
+  --ink-lamp: #17202a;
+  --ink-overlay: #1f2a35;
+  --scrim: rgb(4 9 14 / 0.55);
+  --text-1: #e2e9f0;
+  --text-2: #a6b2c0;
+  --text-3: #808fa0;
+  --signal: #5cd5fc;
+  --signal-soft: #01394a;
+  --cue: #f8ca65;
+  --danger: #fd8a8c;
+  --ok: #68d7a1;
+  --rule-soft: #202a34;
+  --rule: #2b3742;
 
-  --surface: #17202a;
-  --surface-elevated: #1f2a35;
-  --card: #17202a;
-  --card-foreground: #e2e9f0;
-  --popover: #1f2a35;
-  --popover-foreground: #e2e9f0;
+  --background: var(--ink-desk);
+  --foreground: var(--text-1);
+  --fg-2: var(--text-2);
+
+  --surface: var(--ink-lamp);
+  --surface-elevated: var(--ink-overlay);
+  --card: var(--ink-lamp);
+  --card-foreground: var(--text-1);
+  --popover: var(--ink-overlay);
+  --popover-foreground: var(--text-1);
 
   --muted: #1c2632;
-  --muted-foreground: #99a6b5;
+  --muted-foreground: var(--text-2);
   --subtle: #232f3c;
-  --subtle-foreground: #8795a5;
-  --faint: #657383;
+  --subtle-foreground: var(--text-3);
+  --faint: var(--text-3);
 
   --border: #2b3742;
   --border-strong: #424f5c;
@@ -191,21 +239,21 @@
   --input: #1c2632;
   --ring: #54ddff;
 
-  --primary: #5cd5fc;
+  --primary: var(--signal);
   --primary-foreground: #031826;
-  --primary-muted: #01394a;
+  --primary-muted: var(--signal-soft);
   --secondary: #232f3c;
   --secondary-foreground: #d3dce5;
   --accent: #1c2632;
   --accent-foreground: #e2e9f0;
 
-  --destructive: #fd8a8c;
+  --destructive: var(--danger);
   --destructive-foreground: #1c0508;
-  --success: #68d7a1;
+  --success: var(--ok);
   --success-foreground: #04170d;
-  --warning: #f8ca65;
+  --warning: var(--cue);
   --warning-foreground: #1d1500;
-  --vip: #f8ca65;
+  --vip: var(--cue);
   --vip-foreground: #1d1500;
   --pending: #baaaf8;
   --pending-foreground: #120a2b;
@@ -218,8 +266,8 @@
   --thread-line: #424f5c;
   --selection: color-mix(in oklab, #5cd5fc 9%, #17202a);
 
-  --sidebar: #080f17;
-  --sidebar-foreground: #bbc5d1;
+  --sidebar: var(--ink-room);
+  --sidebar-foreground: var(--text-2);
   --sidebar-primary: #5cd5fc;
   --sidebar-primary-foreground: #031826;
   --sidebar-accent: #17202a;
@@ -241,22 +289,39 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --background: #f4f9fc;
-  --foreground: #10263b;
-  --fg-2: #4b6479;
+  /* Roles (docs/blueprint/27). The lamp is a tint, not a lift: lit rows keep their height. */
+  --ink-room: #e8f0f5;
+  --ink-desk: #f4f9fc;
+  --ink-lamp: #e7f2f8;
+  --ink-overlay: #fdfeff;
+  --scrim: rgb(16 38 59 / 0.18);
+  --text-1: #10263b;
+  --text-2: #3e566b;
+  --text-3: #5a6e80;
+  --signal: #006f93;
+  --signal-soft: #d5eff7;
+  --cue: #7a5400;
+  --danger: #b42330;
+  --ok: #1f7a4d;
+  --rule-soft: #d7e5ed;
+  --rule: #b9cedc;
 
-  --surface: #fafcfe;
-  --surface-elevated: #fdfeff;
-  --card: #fafcfe;
-  --card-foreground: #10263b;
-  --popover: #fdfeff;
-  --popover-foreground: #10263b;
+  --background: var(--ink-desk);
+  --foreground: var(--text-1);
+  --fg-2: var(--text-2);
+
+  --surface: var(--ink-lamp);
+  --surface-elevated: var(--ink-overlay);
+  --card: var(--ink-lamp);
+  --card-foreground: var(--text-1);
+  --popover: var(--ink-overlay);
+  --popover-foreground: var(--text-1);
 
   --muted: #e5f0f6;
-  --muted-foreground: #4b6479;
+  --muted-foreground: var(--text-2);
   --subtle: #d7e7f0;
-  --subtle-foreground: #5b7489;
-  --faint: #8aa0b2;
+  --subtle-foreground: var(--text-3);
+  --faint: var(--text-3);
 
   --border: #d7e5ed;
   --border-strong: #b9cedc;
@@ -264,21 +329,21 @@
   --input: #e5f0f6;
   --ring: #006f93;
 
-  --primary: #006f93;
+  --primary: var(--signal);
   --primary-foreground: #f4f9fc;
-  --primary-muted: #d5eff7;
+  --primary-muted: var(--signal-soft);
   --secondary: #e5f0f6;
   --secondary-foreground: #10263b;
   --accent: #e9f3f8;
   --accent-foreground: #10263b;
 
-  --destructive: #c2323f;
+  --destructive: var(--danger);
   --destructive-foreground: #fdf4f5;
-  --success: #1d7a4c;
+  --success: var(--ok);
   --success-foreground: #f0fbf5;
-  --warning: #7a5400;
+  --warning: var(--cue);
   --warning-foreground: #fff8e5;
-  --vip: #9a6a00;
+  --vip: var(--cue);
   --vip-foreground: #fff8e5;
   --pending: #5b45c4;
   --pending-foreground: #f4f1ff;
@@ -290,8 +355,8 @@
   --thread-line: #b9cedc;
   --selection: #d5eff7;
 
-  --sidebar: #eaf3f8;
-  --sidebar-foreground: #344f66;
+  --sidebar: var(--ink-room);
+  --sidebar-foreground: var(--text-2);
   --sidebar-primary: #006f93;
   --sidebar-primary-foreground: #f4f9fc;
   --sidebar-accent: #dcebf3;
@@ -315,22 +380,39 @@
 [data-theme="eclipse"] {
   color-scheme: dark;
 
-  --background: oklch(14.5% 0.01 290);
-  --foreground: oklch(89% 0.008 290);
-  --fg-2: oklch(78% 0.01 290);
+  /* Roles, derived from this theme's own values until the generator lands (D139). */
+  --ink-room: oklch(12% 0.009 290);
+  --ink-desk: oklch(14.5% 0.01 290);
+  --ink-lamp: oklch(18% 0.012 290);
+  --ink-overlay: oklch(21.5% 0.014 290);
+  --scrim: rgb(5 3 10 / 0.6);
+  --text-1: oklch(89% 0.008 290);
+  --text-2: oklch(76% 0.01 290);
+  --text-3: oklch(62% 0.012 290);
+  --signal: oklch(80% 0.13 330);
+  --signal-soft: oklch(30% 0.07 330);
+  --cue: oklch(86% 0.13 85);
+  --danger: oklch(76% 0.14 20);
+  --ok: oklch(80% 0.13 160);
+  --rule-soft: oklch(22% 0.012 290);
+  --rule: oklch(26% 0.014 290);
 
-  --surface: oklch(18% 0.012 290);
-  --surface-elevated: oklch(21.5% 0.014 290);
-  --card: oklch(18% 0.012 290);
-  --card-foreground: oklch(89% 0.008 290);
-  --popover: oklch(21.5% 0.014 290);
-  --popover-foreground: oklch(89% 0.008 290);
+  --background: var(--ink-desk);
+  --foreground: var(--text-1);
+  --fg-2: var(--text-2);
+
+  --surface: var(--ink-lamp);
+  --surface-elevated: var(--ink-overlay);
+  --card: var(--ink-lamp);
+  --card-foreground: var(--text-1);
+  --popover: var(--ink-overlay);
+  --popover-foreground: var(--text-1);
 
   --muted: oklch(20% 0.013 290);
-  --muted-foreground: oklch(70% 0.012 290);
+  --muted-foreground: var(--text-2);
   --subtle: oklch(25% 0.014 290);
-  --subtle-foreground: oklch(64% 0.012 290);
-  --faint: oklch(52% 0.014 290);
+  --subtle-foreground: var(--text-3);
+  --faint: var(--text-3);
 
   --border: oklch(26% 0.014 290);
   --border-strong: oklch(36% 0.016 290);
@@ -338,21 +420,21 @@
   --input: oklch(20% 0.013 290);
   --ring: oklch(80% 0.13 330);
 
-  --primary: oklch(80% 0.13 330);
+  --primary: var(--signal);
   --primary-foreground: oklch(17% 0.02 300);
-  --primary-muted: oklch(30% 0.07 330);
+  --primary-muted: var(--signal-soft);
   --secondary: oklch(23% 0.013 290);
   --secondary-foreground: oklch(84% 0.008 290);
   --accent: oklch(21% 0.013 290);
   --accent-foreground: oklch(89% 0.008 290);
 
-  --destructive: oklch(76% 0.14 20);
+  --destructive: var(--danger);
   --destructive-foreground: oklch(17% 0.02 300);
-  --success: oklch(80% 0.13 160);
+  --success: var(--ok);
   --success-foreground: oklch(17% 0.02 300);
-  --warning: oklch(86% 0.13 85);
+  --warning: var(--cue);
   --warning-foreground: oklch(17% 0.02 300);
-  --vip: oklch(86% 0.13 85);
+  --vip: var(--cue);
   --vip-foreground: oklch(17% 0.02 300);
   --pending: oklch(78% 0.11 293);
   --pending-foreground: oklch(17% 0.02 300);
@@ -365,8 +447,8 @@
   --ask-mark: oklch(86% 0.13 85 / 0.18);
   --ask-mark-rule: oklch(86% 0.13 85 / 0.85);
 
-  --sidebar: oklch(12% 0.009 290);
-  --sidebar-foreground: oklch(78% 0.01 290);
+  --sidebar: var(--ink-room);
+  --sidebar-foreground: var(--text-2);
   --sidebar-primary: oklch(80% 0.13 330);
   --sidebar-primary-foreground: oklch(17% 0.02 300);
   --sidebar-accent: oklch(18% 0.012 290);
@@ -388,22 +470,39 @@
 [data-theme="paper"] {
   color-scheme: light;
 
-  --background: hsl(36 30% 96%);
-  --foreground: hsl(30 18% 16%);
-  --fg-2: hsl(30 12% 34%);
+  /* Roles, derived from this theme's own values until the generator lands (D139). */
+  --ink-room: hsl(36 24% 93%);
+  --ink-desk: hsl(36 30% 96%);
+  --ink-lamp: hsl(34 32% 91%);
+  --ink-overlay: hsl(36 30% 99%);
+  --scrim: rgb(48 36 24 / 0.2);
+  --text-1: hsl(30 18% 16%);
+  --text-2: hsl(30 12% 34%);
+  --text-3: hsl(30 10% 40%);
+  --signal: hsl(14 75% 38%);
+  --signal-soft: hsl(14 60% 91%);
+  --cue: hsl(36 80% 32%);
+  --danger: hsl(0 65% 42%);
+  --ok: hsl(140 50% 30%);
+  --rule-soft: hsl(36 20% 85%);
+  --rule: hsl(30 15% 74%);
 
-  --surface: hsl(36 30% 98%);
-  --surface-elevated: hsl(36 30% 99%);
-  --card: hsl(36 30% 98%);
-  --card-foreground: hsl(30 18% 16%);
-  --popover: hsl(36 30% 99%);
-  --popover-foreground: hsl(30 18% 16%);
+  --background: var(--ink-desk);
+  --foreground: var(--text-1);
+  --fg-2: var(--text-2);
+
+  --surface: var(--ink-lamp);
+  --surface-elevated: var(--ink-overlay);
+  --card: var(--ink-lamp);
+  --card-foreground: var(--text-1);
+  --popover: var(--ink-overlay);
+  --popover-foreground: var(--text-1);
 
   --muted: hsl(36 22% 91%);
-  --muted-foreground: hsl(30 12% 34%);
+  --muted-foreground: var(--text-2);
   --subtle: hsl(36 20% 87%);
-  --subtle-foreground: hsl(30 10% 42%);
-  --faint: hsl(30 10% 62%);
+  --subtle-foreground: var(--text-3);
+  --faint: var(--text-3);
 
   --border: hsl(36 20% 85%);
   --border-strong: hsl(30 15% 74%);
@@ -411,21 +510,21 @@
   --input: hsl(36 22% 92%);
   --ring: hsl(14 75% 42%);
 
-  --primary: hsl(14 75% 38%);
+  --primary: var(--signal);
   --primary-foreground: hsl(36 30% 98%);
-  --primary-muted: hsl(14 60% 91%);
+  --primary-muted: var(--signal-soft);
   --secondary: hsl(36 22% 91%);
   --secondary-foreground: hsl(30 18% 16%);
   --accent: hsl(36 25% 93%);
   --accent-foreground: hsl(30 18% 16%);
 
-  --destructive: hsl(0 65% 42%);
+  --destructive: var(--danger);
   --destructive-foreground: hsl(36 30% 98%);
-  --success: hsl(140 50% 30%);
+  --success: var(--ok);
   --success-foreground: hsl(36 30% 98%);
-  --warning: hsl(36 80% 32%);
+  --warning: var(--cue);
   --warning-foreground: hsl(36 30% 98%);
-  --vip: hsl(36 90% 38%);
+  --vip: var(--cue);
   --vip-foreground: hsl(36 30% 98%);
   --pending: hsl(258 50% 48%);
   --pending-foreground: hsl(36 30% 98%);
@@ -437,8 +536,8 @@
   --thread-line: hsl(30 15% 74%);
   --selection: hsl(14 60% 91%);
 
-  --sidebar: hsl(36 24% 93%);
-  --sidebar-foreground: hsl(30 14% 28%);
+  --sidebar: var(--ink-room);
+  --sidebar-foreground: var(--text-2);
   --sidebar-primary: hsl(14 75% 38%);
   --sidebar-primary-foreground: hsl(36 30% 98%);
   --sidebar-accent: hsl(36 22% 89%);
@@ -500,9 +599,10 @@
 }
 
 /*
- * Recursive MONO axis presets. Weight stays on `font-weight` (a `wght`
- * entry here would override every bold in the app). The loaded file has
- * only the wght and MONO axes, so UI text is the linear voice.
+ * Recursive axis presets. Weight stays on `font-weight` (a `wght` entry
+ * here would override every bold in the app). full.css carries all the axes
+ * (wght, MONO, CASL, CRSV, slnt); UI text is the linear voice, and type.css
+ * turns CASL up for the reading voice.
  */
 :root {
   --rec-ui: "MONO" 0;

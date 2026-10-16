@@ -57,7 +57,7 @@ function CardFrame({
   return (
     <section
       aria-label={label}
-      className="overflow-hidden rounded-lg border border-border border-l-2 border-l-primary bg-surface shadow-sm shadow-black/10"
+      className="overflow-hidden rounded-none border border-border border-l-2 border-l-primary bg-surface shadow-sm shadow-black/10"
     >
       <p className="flex items-center gap-1.5 border-b border-border/60 px-3 py-1.5 font-mono text-2xs tracking-wider text-primary uppercase">
         <Icon className="size-3.5" aria-hidden="true" />
@@ -324,7 +324,7 @@ function QuestionField({
                   aria-hidden="true"
                   className={cn(
                     "mt-0.5 flex size-3.5 shrink-0 items-center justify-center border",
-                    question.multi_select ? "rounded-[3px]" : "rounded-full",
+                    "rounded-[3px]",
                     chosen
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border-strong",
@@ -334,7 +334,7 @@ function QuestionField({
                     question.multi_select ? (
                       <Check className="size-2.5" strokeWidth={3} />
                     ) : (
-                      <span className="size-1.5 rounded-full bg-primary-foreground" />
+                      <span className="size-1.5 bg-primary-foreground" />
                     )
                   ) : null}
                 </span>

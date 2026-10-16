@@ -190,7 +190,7 @@ export function SubscriptionCard({
                       type="button"
                       onClick={onCopyAmount}
                       aria-label="Copy amount (Y)"
-                      className="inline-flex items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="inline-flex items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                     >
                       <Copy aria-hidden className="size-3" />
                       <KeyChip className="h-4 px-1">Y</KeyChip>

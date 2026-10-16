@@ -4,7 +4,8 @@ import { toast } from "sonner";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { KeyChip } from "@/components/KeyChip";
-import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import { useThreadModes } from "@/features/modes/membership";
@@ -15,6 +16,7 @@ import { ConversationView } from "./Conversation";
 import { GotItBar } from "./GotItBar";
 import { topicLabel, topicStateLabel, type Arrival } from "./messagesView";
 import type { PendingAck } from "./useGotIt";
+import { StatusDot } from "@/components/StatusDot";
 
 export interface PersonPaneProps {
   page: PersonPage;
@@ -65,38 +67,38 @@ export function PersonPane(props: PersonPaneProps) {
       data-testid="person-page"
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
-      <ModeHeader width="reader">
-        <div className="flex items-baseline gap-3">
+      <PageFrame
+        width="reader"
+        detail
+        publishTitle={false}
+        titleTestId="person-name"
+        purposeTestId="relationship-line"
+        eyebrow={
           <button
             type="button"
             onClick={props.onBack}
             aria-label="Back to the people"
-            className="grid size-7 shrink-0 place-items-center self-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
+            className="inline-flex items-center gap-1 hover:text-text-1 md:hidden"
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-3" /> People
           </button>
-          <h2 data-testid="person-name" className="min-w-0 truncate text-lg font-semibold">
-            {row.title}
-          </h2>
-          <p
-            data-testid="person-header-line"
-            className="ml-auto shrink-0 text-xs text-muted-foreground"
-          >
-            {page.header_line}
-          </p>
-        </div>
-        <p data-testid="relationship-line" className="mt-1 text-sm text-muted-foreground">
-          {page.relationship_line}
-        </p>
-        {props.left > 0 ? (
-          <p data-testid="topics-left" className="mt-1 text-xs text-muted-foreground">
-            {props.left === 1 ? "1 topic" : `${props.left} topics`} left with {row.title}
-          </p>
-        ) : null}
-        {(page.merge_suggestions ?? []).map((suggestion) => (
-          <MergeLine key={suggestion.addresses.join(",")} suggestion={suggestion} />
-        ))}
-      </ModeHeader>
+        }
+        title={row.title}
+        purpose={page.relationship_line}
+        freshness={<span data-testid="person-header-line">{page.header_line}</span>}
+      />
+      {props.left > 0 || (page.merge_suggestions ?? []).length > 0 ? (
+        <ModeFrame width="reader" className="px-5 pt-2">
+          {props.left > 0 ? (
+            <p data-testid="topics-left" className="type-meta text-text-3">
+              {props.left === 1 ? "1 topic" : `${props.left} topics`} left with {row.title}
+            </p>
+          ) : null}
+          {(page.merge_suggestions ?? []).map((suggestion) => (
+            <MergeLine key={suggestion.addresses.join(",")} suggestion={suggestion} />
+          ))}
+        </ModeFrame>
+      ) : null}
       <nav aria-label="Topics" className="shrink-0 border-b border-border">
         <ModeFrame width="reader" className="px-3 py-2">
           <p className="px-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -131,10 +133,7 @@ export function PersonPane(props: PersonPaneProps) {
                     {arrived ? <ArrivalGlow key={props.arrival?.key} /> : null}
                     <span className="min-w-0 flex-1 truncate">
                       {topic.state === "your_turn" ? (
-                        <span
-                          aria-hidden
-                          className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
-                        />
+                        <StatusDot className="mr-1.5 size-1.5 bg-primary align-middle" />
                       ) : null}
                       {topicLabel(topic)}
                     </span>
@@ -197,7 +196,7 @@ export function PersonPane(props: PersonPaneProps) {
                   type="button"
                   data-testid="composer"
                   onClick={props.onReply}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-2.5 text-left text-sm text-muted-foreground hover:border-border-strong"
+                  className="flex w-full items-center gap-2 rounded-none border border-border bg-surface/60 px-4 py-2.5 text-left text-sm text-muted-foreground hover:border-border-strong"
                 >
                   <MessageSquareReply className="size-4 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>

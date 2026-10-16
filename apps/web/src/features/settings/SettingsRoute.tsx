@@ -30,9 +30,10 @@ import { SnippetsSection } from "./SnippetsSection";
 import { TokenSection } from "./TokenSection";
 import { VoiceSection } from "./VoiceSection";
 import { FactList, PageEmpty } from "@/components/PageParts";
-import { Page } from "@/components/Page";
+import { Page, pageTabClass } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
 interface SectionDef {
@@ -152,6 +153,8 @@ function findSection(id: string): SectionDef | undefined {
 export function SettingsRoute() {
   const { section: requested } = useParams({ from: "/settings/$section" });
   const section = findSection(requested);
+  // md is where the side nav appears; below it the sections become tabs.
+  const narrow = useMediaQuery("(max-width: 767px)");
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -192,7 +195,7 @@ export function SettingsRoute() {
           title={section.label}
           description={section.description}
           width="narrow"
-          tabs={<NarrowSectionPicker current={section.id} />}
+          tabs={narrow ? <NarrowSectionPicker current={section.id} /> : undefined}
         >
           {section.render()}
         </Page>
@@ -216,20 +219,17 @@ export function SettingsRoute() {
   );
 }
 
-/** Below md the side nav is hidden; a compact section list takes its place. */
+/** Below md the side nav is hidden; the sections become the page's tabs. */
 function NarrowSectionPicker({ current }: { current: string }) {
   return (
-    <ul aria-label="Settings sections" className="-mx-1 flex gap-1 overflow-x-auto pb-2 md:hidden">
+    <ul aria-label="Settings sections" className="-mb-px flex h-8 gap-5">
       {SECTIONS.map(({ id, label }) => (
-        <li key={id}>
+        <li key={id} className="shrink-0">
           <Link
             to="/settings/$section"
             params={{ section: id }}
             aria-current={id === current ? "page" : undefined}
-            className={cn(
-              "flex min-h-6 items-center whitespace-nowrap rounded-md px-2 py-1 text-xs",
-              id === current ? "bg-primary-muted text-foreground" : "text-muted-foreground",
-            )}
+            className={pageTabClass(id === current)}
           >
             {label}
           </Link>

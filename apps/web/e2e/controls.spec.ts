@@ -14,7 +14,8 @@ const INVENTORY = {
   topbar: ["Search mail", "Assistant", "Compose new email"],
   // "Latest mail 5m ago": the age changes, the control does not.
   statusBar: ["Sync now", "Latest mail", "all keys"],
-  listHeader: ["Show single messages"],
+  // The page frame's ⋯ menu, which holds the conversations / single messages switch.
+  listHeader: ["More actions"],
   readerHeader: [
     "Close (Esc)",
     "Previous conversation (N)",

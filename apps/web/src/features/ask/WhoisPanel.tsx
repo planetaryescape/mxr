@@ -85,7 +85,7 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
           </SectionHeading>
           <ul className="flex flex-wrap gap-1">
             {info.topics.map((topic) => (
-              <li key={topic} className="rounded bg-muted px-1.5 py-0.5 text-2xs">
+              <li key={topic} className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs">
                 {topic}
               </li>
             ))}

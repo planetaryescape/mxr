@@ -93,7 +93,7 @@ function PromiseCard({ offer }: { offer: PromiseOffer }) {
           onClick={() => dismissOffer(offer.id)}
           aria-label="Not now"
           title="Not now"
-          className="-mr-1 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          className="-mr-1 shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>

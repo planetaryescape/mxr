@@ -26,7 +26,7 @@ export function SyntaxHelp() {
         <div className="grid gap-1">
           {searchSyntaxRows.map(([operator, description]) => (
             <div key={operator} className="flex items-center justify-between gap-3 text-xs">
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{operator}</code>
+              <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono">{operator}</code>
               <span className="text-muted-foreground">{description}</span>
             </div>
           ))}

@@ -73,7 +73,7 @@ export function RelationshipPanel({
           {commitments.slice(0, 5).map((commitment) => (
             <div
               key={commitment.id}
-              className="rounded border border-border/70 bg-background/50 px-2 py-1.5"
+              className="rounded-sm border border-border/70 bg-background/50 px-2 py-1.5"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">

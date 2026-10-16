@@ -1,0 +1,67 @@
+/*
+ * Type roles (docs/blueprint/27, D126). A page has one display or title,
+ * then headings, then body; size steps mean hierarchy. These are the only
+ * places a size and a weight are chosen together, so a screen asks for a
+ * role (`type-title`), never a size plus a weight.
+ *
+ * Weight goes on `font-weight`, and only the MONO and CASL axes are set
+ * here, because a `wght` entry in font-variation-settings would override
+ * the weight. Sizes and line heights are in rem so browser zoom and text
+ * size settings still scale them.
+ */
+
+@utility type-display {
+  font-size: 1.75rem;
+  line-height: 2.125rem;
+  font-weight: 650;
+  font-variation-settings: "MONO" 0;
+  letter-spacing: -0.01em;
+}
+
+@utility type-title {
+  font-size: 1.25rem;
+  line-height: 1.625rem;
+  font-weight: 600;
+  font-variation-settings: "MONO" 0;
+  letter-spacing: -0.005em;
+}
+
+@utility type-heading {
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  font-variation-settings: "MONO" 0;
+}
+
+@utility type-body {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 420;
+  font-variation-settings: "MONO" 0;
+}
+
+@utility type-reading {
+  font-size: 1rem;
+  line-height: 1.625rem;
+  font-weight: 400;
+  font-variation-settings:
+    "MONO" 0,
+    "CASL" 0.3;
+}
+
+@utility type-meta {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 450;
+  font-variation-settings: "MONO" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-weight: 550;
+  font-variation-settings: "MONO" 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

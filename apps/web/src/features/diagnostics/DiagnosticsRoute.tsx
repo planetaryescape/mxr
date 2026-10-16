@@ -20,7 +20,6 @@ import { LogsPanel } from "./LogsPanel";
 import { OverviewPanel } from "./OverviewPanel";
 import { SemanticPanel } from "./SemanticPanel";
 import { Page, PageTabs } from "@/components/Page";
-import { Button } from "@/components/ui/button";
 import { ActivityBrowser } from "@/features/activity/ActivityRoute";
 
 export { DiagnosticValue } from "./DiagnosticValue";
@@ -105,12 +104,14 @@ export function DiagnosticsRoute() {
       title="Diagnostics"
       description="Daemon health, sync, logs, events and semantic search."
       width="full"
-      actions={
-        <Button variant="outline" size="sm" onClick={() => bug.mutate()} disabled={bug.isPending}>
-          <Bug className="size-3" />
-          Copy bug report
-        </Button>
-      }
+      overflow={[
+        {
+          label: "Copy bug report",
+          icon: Bug,
+          onSelect: () => bug.mutate(),
+          disabled: bug.isPending,
+        },
+      ]}
       tabs={
         <PageTabs
           label="Diagnostics panels"

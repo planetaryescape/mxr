@@ -3,6 +3,7 @@ import { ListTodo, MessagesSquare, Newspaper, Search, Sun, type LucideIcon } fro
 
 import { useRailQuery } from "@/features/modes/rail";
 import { cn } from "@/lib/utils";
+import { CountBadge } from "@/components/CountBadge";
 
 interface Tab {
   key: string;
@@ -61,10 +62,10 @@ export function MobileTabs() {
             <tab.Icon aria-hidden className="size-5" />
             <span className="truncate">{tab.label}</span>
             {tab.key === "now" && badge > 0 ? (
-              <span className="absolute right-[calc(50%-1.25rem)] top-1 rounded-full bg-primary px-1 font-mono text-2xs leading-4 text-primary-foreground tabular-nums">
+              <CountBadge className="absolute right-[calc(50%-1.25rem)] top-1">
                 <span className="sr-only">, </span>
                 {badge}
-              </span>
+              </CountBadge>
             ) : null}
           </Link>
         );

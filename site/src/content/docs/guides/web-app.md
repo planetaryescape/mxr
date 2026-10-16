@@ -160,6 +160,17 @@ intentionally want it to talk to the installed runtime.
 
 Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 
+## The page header
+
+Every page opens with the same header: a title, one line saying what the
+page is for, and at most one main button on the right. Anything else the page
+can do is in the **⋯** menu next to it, and a page with sections (Reading's
+Edition and Later, Settings on a phone, Screener's Queue and Decisions) shows
+them as tabs under the title. The header keeps the same height from page to
+page at a given width, so moving between pages never shifts what is under it.
+Filters and pickers, such as the Screener's account picker, sit at the top of
+the page's content instead.
+
 ## Now and the rail
 
 The web app opens on [Now](/guides/now/): the few things that need you now,
@@ -258,7 +269,7 @@ each.
 
 - **Conversations or messages.** The list groups mail into conversations by
   default. An action on a conversation covers every message in it, as in the
-  TUI's thread mode. The button in the list header switches to single
+  TUI's thread mode. The **⋯** menu in the list header switches to single
   messages.
 - **Open and move.** Move through the list, open a conversation beside it,
   step to the next or previous conversation without acting, or archive and
@@ -481,7 +492,7 @@ The **Screener** page has a **Queue** tab of first-time senders and a
 **Allow**, **Deny**, **Feed** and **Paper trail**, each with a key that
 decides for the highlighted sender
 ([screener keys](/reference/keybindings/#screener)). With more than one account, a
-picker in the header chooses which account's queue you are screening.
+picker above the list chooses which account's queue you are screening.
 
 ## Sender standalone route
 

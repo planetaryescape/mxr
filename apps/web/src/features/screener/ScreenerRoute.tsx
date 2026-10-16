@@ -90,7 +90,7 @@ export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
           ? "First-time senders wait here until you decide. Each account has its own queue."
           : "First-time senders wait here until you decide."
       }
-      actions={accountPicker}
+      toolbar={accountPicker}
       tabs={
         <PageTabs
           label="Screener views"

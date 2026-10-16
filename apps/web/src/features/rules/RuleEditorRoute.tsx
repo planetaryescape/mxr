@@ -35,7 +35,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +117,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
   const condition = useDebounced(form.condition.trim(), 350);
   const isCategory = hasCategoryActions(form.action) || hasCategoryActions(saved?.action ?? "");
   const [deletePreview, setDeletePreview] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const isSorting =
     isCategory ||
     form.action
@@ -279,58 +279,61 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
       eyebrow="Rules"
       title={isNew ? "New rule" : saved.name}
       description="Preview what a rule matches before you save or apply it."
-      actions={
-        <>
-          {!isNew ? (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" disabled={remove.isPending}>
-                  <Trash2 className="size-3" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete {saved.name}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {isCategory
-                      ? "Preview removal of this rule’s category sources. Manual choices and other rules remain."
-                      : "The rule stops running. Mail it already changed stays as it is."}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    variant="destructive"
-                    onClick={() => {
-                      if (isCategory) {
-                        setDeletePreview(true);
-                        setApplyConfirmOpen(true);
-                      } else remove.mutate();
-                    }}
-                  >
-                    Delete rule
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          ) : null}
-          <Button
-            size="sm"
-            onClick={() => {
-              if (isCategory) {
-                setDeletePreview(false);
-                setApplyConfirmOpen(true);
-              } else save.mutate(form);
-            }}
-            disabled={!canSave || save.isPending || applySorting.isPending || applyNow.isPending}
-          >
-            <Check className="size-3" />
-            {isNew ? "Save rule" : "Save changes"}
-          </Button>
-        </>
+      overflow={
+        isNew
+          ? []
+          : [
+              {
+                label: "Delete",
+                icon: Trash2,
+                destructive: true,
+                disabled: remove.isPending,
+                onSelect: () => setDeleteOpen(true),
+              },
+            ]
+      }
+      primary={
+        <Button
+          size="sm"
+          onClick={() => {
+            if (isCategory) {
+              setDeletePreview(false);
+              setApplyConfirmOpen(true);
+            } else save.mutate(form);
+          }}
+          disabled={!canSave || save.isPending || applySorting.isPending || applyNow.isPending}
+        >
+          <Check className="size-3" />
+          {isNew ? "Save rule" : "Save changes"}
+        </Button>
       }
     >
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {saved?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {isCategory
+                ? "Preview removal of this rule’s category sources. Manual choices and other rules remain."
+                : "The rule stops running. Mail it already changed stays as it is."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (isCategory) {
+                  setDeletePreview(true);
+                  setApplyConfirmOpen(true);
+                } else remove.mutate();
+              }}
+            >
+              Delete rule
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="grid gap-x-10 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <PageSection title="Definition">
           <fieldset

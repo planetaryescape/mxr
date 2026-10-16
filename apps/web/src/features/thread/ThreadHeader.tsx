@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame, READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -77,9 +78,9 @@ export function ThreadHeader({
 }: ThreadHeaderProps) {
   const people = data.thread.participants.map((person) => person.name?.trim() || person.email);
   return (
-    <header className="shrink-0 border-b border-border bg-background">
+    <header className="shrink-0 bg-background">
       <ModeFrame width="reader">
-        <div className="flex items-center gap-1 px-3 pt-2">
+        <div className="flex items-center gap-1 px-3" style={{ height: READER_TOOLBAR_HEIGHT }}>
           <IconAction icon={X} label="Close" keys="Escape" command="close" />
           <IconAction
             icon={ChevronUp}
@@ -121,27 +122,30 @@ export function ThreadHeader({
             />
           </span>
         </div>
-        <div className="px-5 pb-3 pt-2">
-          <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
-            {data.thread.subject || "(no subject)"}
-          </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{plural(data.thread.message_count, "message")}</span>
-            {people.length > 0 ? (
-              <>
-                <span aria-hidden>·</span>
-                <span className="truncate">
-                  {people.slice(0, 4).join(", ")}
-                  {people.length > 4 ? ` and ${people.length - 4} more` : ""}
-                </span>
-              </>
-            ) : null}
-            {labels.map((label) => (
-              <LabelBadge key={label.id} label={label} />
-            ))}
-          </div>
-        </div>
       </ModeFrame>
+      <PageFrame
+        width="reader"
+        wrapTitle
+        detail
+        publishTitle={false}
+        purposeTestId="thread-people"
+        eyebrow={plural(data.thread.message_count, "message")}
+        title={data.thread.subject || "(no subject)"}
+        purpose={
+          people.length > 0
+            ? `${people.slice(0, 4).join(", ")}${people.length > 4 ? ` and ${people.length - 4} more` : ""}`
+            : undefined
+        }
+        freshness={
+          labels.length > 0 ? (
+            <span className="flex items-center gap-1">
+              {labels.map((label) => (
+                <LabelBadge key={label.id} label={label} />
+              ))}
+            </span>
+          ) : null
+        }
+      />
     </header>
   );
 }
@@ -204,7 +208,7 @@ function ViewSwitch({ view }: { view: ReaderView }) {
             if (view !== option.id) runPointerCommand("reader", option.command);
           }}
           className={cn(
-            "rounded px-2 py-0.5 text-xs",
+            "rounded-sm px-2 py-0.5 text-xs",
             view === option.id
               ? "bg-accent font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",

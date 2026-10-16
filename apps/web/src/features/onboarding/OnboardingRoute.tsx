@@ -459,7 +459,7 @@ function FirstSync({
               : "Waiting for the first sync to start…"}
         </div>
         <div
-          className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+          className="mt-3 h-1.5 overflow-hidden bg-muted"
           role="progressbar"
           aria-label="First sync progress"
           aria-valuemin={0}

@@ -72,15 +72,12 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       )}
     >
       {focused ? (
-        <span
-          aria-hidden
-          className="absolute -left-0.5 top-3 h-8 w-[2px] rounded-full bg-primary"
-        />
+        <span aria-hidden className="absolute -left-0.5 top-3 h-8 w-[2px] bg-primary" />
       ) : null}
       <h3
         className={cn(
           "text-balance font-semibold leading-snug tracking-tight text-foreground",
-          lead ? "text-xl" : "text-md",
+          lead ? "text-lg" : "text-md",
         )}
       >
         <a
@@ -238,7 +235,7 @@ function LinkRow({
         handlers.onFocus(link.item_key);
       }}
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 rounded px-2 py-0.5 text-sm",
+        "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 rounded-sm px-2 py-0.5 text-sm",
         focused && "bg-accent",
       )}
     >

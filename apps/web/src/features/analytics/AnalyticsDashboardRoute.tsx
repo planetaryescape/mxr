@@ -15,7 +15,6 @@ import { SubscriptionsDashboard } from "./SubscriptionsDashboard";
 import { WrappedDashboard } from "./WrappedDashboard";
 import { Page, PageTabs } from "@/components/Page";
 import { PageEmpty } from "@/components/PageParts";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -105,33 +104,30 @@ export function AnalyticsDashboardRoute() {
       title={current?.label ?? "Analytics"}
       description={current?.description}
       width="full"
-      actions={
-        <>
-          {current?.ranged ? (
-            <Select value={range} onValueChange={(value) => setRange(value as AnalyticsRange)}>
-              <SelectTrigger className="h-8 w-28 text-xs" aria-label="Time range">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RANGES.map((item) => (
-                  <SelectItem key={item.id} value={item.id} className="text-xs">
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => rebuild.mutate()}
-            disabled={rebuild.isPending}
-          >
-            <RefreshCw className="size-3" />
-            Rebuild
-          </Button>
-        </>
+      toolbar={
+        current?.ranged ? (
+          <Select value={range} onValueChange={(value) => setRange(value as AnalyticsRange)}>
+            <SelectTrigger className="h-8 w-28 text-xs" aria-label="Time range">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RANGES.map((item) => (
+                <SelectItem key={item.id} value={item.id} className="text-xs">
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : undefined
       }
+      overflow={[
+        {
+          label: "Rebuild",
+          icon: RefreshCw,
+          onSelect: () => rebuild.mutate(),
+          disabled: rebuild.isPending,
+        },
+      ]}
       tabs={
         <PageTabs
           label="Analytics dashboards"

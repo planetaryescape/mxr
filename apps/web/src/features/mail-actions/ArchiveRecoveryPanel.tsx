@@ -42,7 +42,7 @@ export function ArchiveRecoveryPanel() {
   if (operations.length === 0 && !error) return null;
   return (
     <aside
-      className="fixed bottom-10 right-4 z-40 max-h-[70vh] max-w-xl overflow-auto rounded border border-border bg-background p-3 shadow-lg"
+      className="fixed bottom-10 right-4 z-40 max-h-[70vh] max-w-xl overflow-auto rounded-sm border border-border bg-background p-3 shadow-lg"
       aria-label="Archive recovery"
     >
       <button type="button" onClick={() => setOpen(!open)}>

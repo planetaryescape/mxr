@@ -364,7 +364,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
       title="Activity"
       description="A local record of what you did in the TUI, CLI and web. It never leaves this machine."
       width="full"
-      actions={controls}
+      toolbar={controls}
     >
       <div className="mx-auto max-w-[84rem]">{body}</div>
     </Page>

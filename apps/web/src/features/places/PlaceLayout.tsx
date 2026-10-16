@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
+import { FramePanesContext, READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
 import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -46,6 +47,7 @@ export function PlaceLayout({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hideList = threadOpen && (singlePane || wideReader || readerLayout === "full");
   const split = threadOpen && !hideList;
+  const panes = useMemo(() => ({ split, inset: READER_TOOLBAR_HEIGHT }), [split]);
   const pane = useSplitPane(`place${basePath.replace("/", ":")}`, LIST_PANE_SIZE, {
     active: split,
   });
@@ -97,38 +99,40 @@ export function PlaceLayout({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
-        <ResizablePanel
-          id="place-list"
-          data-parked={hideList || undefined}
-          {...pane.sidePanelProps}
-          className="flex min-h-0 flex-col"
-        >
-          <section
-            aria-label={label}
-            className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      <FramePanesContext.Provider value={panes}>
+        <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
+          <ResizablePanel
+            id="place-list"
+            data-parked={hideList || undefined}
+            {...pane.sidePanelProps}
+            className="flex min-h-0 flex-col"
           >
-            {children}
-          </section>
-        </ResizablePanel>
-        {/* The handle and reader stay mounted, parked off screen while
+            <section
+              aria-label={label}
+              className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+            >
+              {children}
+            </section>
+          </ResizablePanel>
+          {/* The handle and reader stay mounted, parked off screen while
             unused (app.css): registering either with the library on open
             reads layout mid-commit, which pushed opening a conversation
             past the speed gate. */}
-        <ResizableHandle
-          aria-label={`Resize ${label} list`}
-          data-parked={!split || undefined}
-          {...pane.handleProps}
-        />
-        <ResizablePanel
-          id="place-reader"
-          data-parked={!threadOpen || undefined}
-          {...pane.otherPanelProps}
-          className="flex min-h-0 min-w-0"
-        >
-          {threadOpen ? <Outlet /> : null}
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <ResizableHandle
+            aria-label={`Resize ${label} list`}
+            data-parked={!split || undefined}
+            {...pane.handleProps}
+          />
+          <ResizablePanel
+            id="place-reader"
+            data-parked={!threadOpen || undefined}
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
+            {threadOpen ? <Outlet /> : null}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </FramePanesContext.Provider>
     </ReaderNavContext.Provider>
   );
 }

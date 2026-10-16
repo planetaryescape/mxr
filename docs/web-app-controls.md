@@ -25,11 +25,24 @@ The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
 Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
 Waiting on, Snoozed and Subscriptions sit under More.
 
+## Page header
+
+Every page wears one frame (`PageFrame`, docs/blueprint/27): the title, a
+one-line purpose, at most one primary button and a **⋯** menu, with tabs
+under the title when the page has sections. Nothing else goes in the header.
+Filters and pickers (the Screener's account picker, Analytics' time range)
+sit at the top of the page's content.
+
+| Control | Where | Reason |
+|---|---|---|
+| Primary action | Page header, at most one | Frequency: the page's main verb (New rule, Add account, Let go of all, Save changes, Leave in Focus). |
+| More actions (⋯) | Page header | The page's other actions, each with its words, in one menu. |
+
 ## Lists (inbox, labels, saved searches)
 
 | Control | Reason |
 |---|---|
-| Conversations / single messages | Discoverability: shows which grouping is on, a mode people otherwise can't see. |
+| More actions (⋯) | The list's only header control. It holds Conversations / single messages, which names the grouping that is on. Discoverability: a mode people otherwise can't see. It moved here from its own icon button in W1 (the page frame has one menu and no other controls). |
 
 Row buttons (archive, trash, read, snooze, star) appear on hover only, and
 the bulk bar only while rows are selected.

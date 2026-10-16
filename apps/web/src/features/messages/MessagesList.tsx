@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
-import { Avatar } from "@/components/Avatar";
+import { Avatar, AvatarGlyph } from "@/components/Avatar";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
 import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { MessagesData, MessagesRow } from "./api";
 import { rowTime, type Arrival } from "./messagesView";
 import { SectionHeading } from "@/components/SectionHeading";
+import { StatusDot } from "@/components/StatusDot";
 
 /**
  * The people, in the daemon's bands: Your turn (closest first, then most
@@ -82,10 +83,7 @@ export function MessagesList({
                     {row.title.split(/\s+/)[0]}
                   </span>
                   {row.your_turn ? (
-                    <span
-                      aria-hidden
-                      className="absolute right-1 top-1 size-2 rounded-full bg-primary"
-                    />
+                    <StatusDot className="absolute right-1 top-1 size-2 bg-primary" />
                   ) : null}
                 </button>
               </li>
@@ -174,12 +172,9 @@ function Face({ title, group = false }: { title: string; group?: boolean }) {
   // A group has no one sender to colour, so it gets the neutral people glyph.
   if (!group) return <Avatar name={title} size="lg" />;
   return (
-    <span
-      aria-hidden
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-foreground/80"
-    >
+    <AvatarGlyph size="lg">
       <Users className="size-3.5" />
-    </span>
+    </AvatarGlyph>
   );
 }
 
@@ -244,9 +239,10 @@ function PersonRow({
               {rowTime(row)}
             </span>
             {row.your_turn ? (
-              <span
+              <StatusDot
+                aria-hidden={false}
                 aria-label="Your turn"
-                className="size-2 shrink-0 self-center rounded-full bg-primary"
+                className="size-2 self-center bg-primary"
               />
             ) : null}
           </span>

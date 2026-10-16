@@ -42,7 +42,7 @@ function Choice({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "min-h-8 rounded-full border px-3 text-xs",
+        "min-h-8 rounded-sm border px-3 text-xs",
         pressed
           ? "border-primary bg-primary/10 text-foreground"
           : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -95,7 +95,7 @@ export function FacetsPanel({
         data-testid="facets-panel"
         className={cn(
           "max-h-[85dvh] grid-cols-[minmax(0,1fr)] overflow-y-auto",
-          tray && "bottom-0 top-auto max-w-none translate-y-0 rounded-t-lg sm:rounded-b-none",
+          tray && "bottom-0 top-auto max-w-none translate-y-0 rounded-t-none sm:rounded-b-none",
         )}
       >
         <DialogHeader>

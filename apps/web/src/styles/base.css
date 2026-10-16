@@ -195,7 +195,7 @@
 
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
-    border-radius: 5px;
+    border-radius: 0;
     border: 2px solid var(--background);
   }
 

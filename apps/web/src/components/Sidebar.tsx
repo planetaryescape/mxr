@@ -50,6 +50,7 @@ import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { StatusDot } from "@/components/StatusDot";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -393,7 +394,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={!isFolded}
-                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
+                  className="group mb-0.5 flex w-full items-center gap-1 rounded-sm px-2 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
                 >
                   <ChevronRight
                     className={cn("size-3 transition-transform", !isFolded && "rotate-90")}
@@ -505,10 +506,7 @@ function SidebarLink({
       )}
     >
       {active ? (
-        <span
-          aria-hidden
-          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary"
-        />
+        <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 bg-sidebar-primary" />
       ) : null}
       <entry.Icon
         className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")}
@@ -543,7 +541,7 @@ function SidebarLink({
         </span>
       ) : null}
       {collapsed && count && !entry.quietCount ? (
-        <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-primary" />
       ) : null}
     </Link>
   );

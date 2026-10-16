@@ -42,7 +42,7 @@ export function AnchoredHint({
         }}
         aria-label="Dismiss hint (Esc)"
         title="Dismiss hint (Esc)"
-        className="-my-0.5 grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="-my-0.5 grid size-6 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <X className="size-3.5" aria-hidden />
       </button>

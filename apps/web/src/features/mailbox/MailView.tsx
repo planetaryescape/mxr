@@ -9,7 +9,6 @@ import { Centered, ListSkeleton } from "./MailViewParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMailboxQuery, useShellQuery } from "./useMailboxQuery";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { formatRelative, plural } from "@/lib/format";
 import { useConnectionStore } from "@/state/connectionStore";
@@ -107,36 +106,37 @@ function LensView({ lens }: { lens: MailLens }) {
       // Inbox is the everything view: each row names the mode it went to.
       modeChips={lens.key === "inbox"}
       empty={<EmptyLens lens={lens} />}
+      purpose={lensPurpose(lens)}
       // One persistent control: which grouping is on. The list refreshes
       // itself from daemon events; Sync now lives in the status bar and the
       // palette (docs/web-app-controls.md).
-      actions={
-        <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={
-                  listMode === "threads" ? "Show single messages" : "Group into conversations"
-                }
-                onClick={() => setListMode(listMode === "threads" ? "messages" : "threads")}
-              >
-                {listMode === "threads" ? (
-                  <SquareStack className="size-4" />
-                ) : (
-                  <Rows3 className="size-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {listMode === "threads" ? "Showing conversations" : "Showing single messages"}
-            </TooltipContent>
-          </Tooltip>
-        </>
-      }
+      overflow={[
+        {
+          label: listMode === "threads" ? "Show single messages" : "Group into conversations",
+          icon: listMode === "threads" ? SquareStack : Rows3,
+          onSelect: () => setListMode(listMode === "threads" ? "messages" : "threads"),
+        },
+      ]}
     />
   );
+}
+
+/** What each list is for, in a line; a label or saved search says what it gathers. */
+const SYSTEM_PURPOSE = new Map([
+  ["inbox", "Everything that arrived. Each row names the mode it went to."],
+  ["starred", "Messages you starred."],
+  ["sent", "Mail you sent."],
+  ["drafts", "Messages you started and haven't sent."],
+  ["archive", "Mail you're done with. Search finds it."],
+  ["spam", "Mail the provider marked as spam."],
+  ["trash", "Deleted mail, until the provider empties it."],
+]);
+
+function lensPurpose(lens: MailLens): string {
+  if (lens.section === "labels") return `Mail labelled ${lens.label}.`;
+  if (lens.section === "categories") return `Mail sorted into ${lens.label}.`;
+  if (lens.section === "saved") return "A saved search, run again each time you open it.";
+  return SYSTEM_PURPOSE.get(lens.key) ?? "Mail in this place.";
 }
 
 /**

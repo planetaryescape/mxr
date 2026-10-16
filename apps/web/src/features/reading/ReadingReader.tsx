@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpenText, ExternalLink, Loader2, MailX, RefreshCw } from
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
@@ -249,7 +250,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
-      <header className="shrink-0 border-b border-border">
+      <header className="shrink-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs text-muted-foreground sm:px-5">
           <button
             type="button"
@@ -263,7 +264,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <div
               role="radiogroup"
               aria-label="What to read"
-              className="inline-flex rounded-md border border-border"
+              className="inline-flex rounded-sm border border-border"
             >
               <button
                 type="button"
@@ -328,6 +329,20 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             </span>
           </span>
         </div>
+        <PageFrame
+          width="reader"
+          wrapTitle
+          publishTitle={false}
+          purposeTestId="reading-source"
+          title={showingArticle && article.title ? article.title : item.title}
+          purpose={
+            showingArticle
+              ? [article.site_name ?? domainLabel(item.domain), article.byline]
+                  .filter(Boolean)
+                  .join(" · ")
+              : `${item.source} · ${formatLongDate(item.arrived_at)}`
+          }
+        />
         <div className="h-[2px] w-full bg-border/60" aria-hidden>
           <div
             data-testid="reading-progress"
@@ -354,16 +369,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             className="reading-page mx-auto w-full max-w-[66ch] px-4 pb-16 pt-8 sm:px-6"
             style={articleHtml ? { maxWidth: "var(--reader-max-width)" } : undefined}
           >
-            <h1 className="text-balance text-2xl font-semibold leading-tight tracking-tight sm:text-[28px]">
-              {showingArticle && article.title ? article.title : item.title}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {showingArticle
-                ? [article.site_name ?? domainLabel(item.domain), article.byline]
-                    .filter(Boolean)
-                    .join(" · ")
-                : `${item.source} · ${formatLongDate(item.arrived_at)}`}
-            </p>
             {view === "article" ? (
               <ArticleStatus
                 fetching={fetching}

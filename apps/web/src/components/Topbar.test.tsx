@@ -122,4 +122,31 @@ describe("Topbar route changes", () => {
     expect(breadcrumb).toHaveTextContent("Now");
     act(() => usePageTitleStore.getState().setTitle(null));
   });
+
+  test("a second-level crumb is the page's title, not its URL slug", async () => {
+    const rootRoute = createRootRoute({ component: () => <Topbar /> });
+    const route = createRoute({ getParentRoute: () => rootRoute, path: "/settings/$section" });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([route]),
+      history: createMemoryHistory({ initialEntries: ["/settings/llm"] }),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(shellKey, {});
+    queryClient.setQueryData(["admin-status-is-demo"], { is_demo: false });
+    await router.load();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    // Before the page publishes, the slug is the fallback.
+    await waitFor(() => expect(breadcrumb).toHaveTextContent("SettingsLLM"));
+
+    act(() => usePageTitleStore.getState().setTitle("Language model"));
+    expect(breadcrumb).toHaveTextContent("SettingsLanguage model");
+    expect(breadcrumb).not.toHaveTextContent("LLM");
+    act(() => usePageTitleStore.getState().setTitle(null));
+  });
 });

@@ -6,6 +6,7 @@
 import { ChevronDown, FileText, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { StatusDot } from "@/components/StatusDot";
 
 export interface ThreadSummaryView {
   model?: string;
@@ -24,7 +25,7 @@ export function ThreadSummaryAccordion({
   onExpandedChange: (expanded: boolean) => void;
 }) {
   return (
-    <section className="mb-4 rounded-lg border border-border bg-surface">
+    <section className="mb-4 rounded-none border border-border bg-surface">
       <button
         type="button"
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
@@ -53,7 +54,7 @@ export function ThreadSummaryAccordion({
             <ul className="space-y-1.5">
               {summary.bullets.map((item) => (
                 <li key={item} className="flex gap-2">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <StatusDot className="mt-2 size-1.5 bg-primary" />
                   <span className="min-w-0 break-words">{item}</span>
                 </li>
               ))}
@@ -69,7 +70,7 @@ export function ThreadSummaryAccordion({
 
 export function ThreadSummaryLoading() {
   return (
-    <section className="mb-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+    <section className="mb-4 rounded-none border border-border/80 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
       <span className="flex items-center gap-2">
         <RefreshCw className="size-3.5 animate-spin" />
         Summarizing thread…

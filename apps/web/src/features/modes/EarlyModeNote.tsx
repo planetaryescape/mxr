@@ -19,7 +19,7 @@ export function EarlyModeNote({ mode }: { mode: string }) {
         <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
           <span
             data-testid="early-version"
-            className="rounded border border-border px-1 font-mono text-2xs uppercase tracking-wide"
+            className="rounded-sm border border-border px-1 font-mono text-2xs uppercase tracking-wide"
           >
             early version
           </span>

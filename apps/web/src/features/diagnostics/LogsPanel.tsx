@@ -173,7 +173,7 @@ export function LogsPanel() {
                   <td className="px-2 py-1">
                     {row.level && (
                       <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold uppercase ${levelClasses(row.level)}`}
+                        className={`inline-block rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase ${levelClasses(row.level)}`}
                       >
                         {row.level}
                       </span>

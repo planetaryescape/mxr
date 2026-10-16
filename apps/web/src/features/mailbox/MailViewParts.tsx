@@ -5,6 +5,8 @@
 
 import type { ReactNode } from "react";
 
+import { AvatarSkeleton } from "@/components/Avatar";
+
 /**
  * `quiet`: the first 300 ms of a load show the same frame, empty (see
  * `useDelayedPending`), so a fast load never flashes a skeleton.
@@ -19,18 +21,18 @@ export function ListSkeleton({ quiet = false }: { quiet?: boolean }) {
     >
       {Array.from({ length: quiet ? 0 : 12 }, (_, index) => (
         <div key={index} className="flex items-center gap-3 border-b border-border/60 px-3 py-3">
-          <div className="size-7 shrink-0 animate-pulse rounded-full bg-muted" />
+          <AvatarSkeleton />
           <div className="grid flex-1 gap-1.5">
             <div
-              className="h-3 w-1/3 animate-pulse rounded bg-muted"
+              className="h-3 w-1/3 animate-pulse rounded-sm bg-muted"
               style={{ animationDelay: `${index * 40}ms` }}
             />
             <div
-              className="h-3 w-3/4 animate-pulse rounded bg-muted/70"
+              className="h-3 w-3/4 animate-pulse rounded-sm bg-muted/70"
               style={{ animationDelay: `${index * 40}ms` }}
             />
           </div>
-          <div className="h-3 w-12 animate-pulse rounded bg-muted/60" />
+          <div className="h-3 w-12 animate-pulse rounded-sm bg-muted/60" />
         </div>
       ))}
     </div>

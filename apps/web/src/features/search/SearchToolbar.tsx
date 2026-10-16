@@ -213,7 +213,7 @@ export function SearchToolbar({
                   q: `${q} ${facetOperator(groupBy)}:${quoteIfNeeded(facetValue(row.key, row.label))}`.trim(),
                 })
               }
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs hover:border-primary/60 hover:bg-accent"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-sm border border-border px-2.5 py-0.5 text-xs hover:border-primary/60 hover:bg-accent"
             >
               <span className="max-w-[16ch] truncate">{shortFacet(row.label)}</span>
               <span className="font-mono text-2xs text-muted-foreground">{row.count}</span>

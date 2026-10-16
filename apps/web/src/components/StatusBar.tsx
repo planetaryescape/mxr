@@ -37,7 +37,7 @@ export function StatusBar() {
           <span>
             syncing {sync.total > 0 ? `${sync.current}/${plural(sync.total, "message")}` : "…"}
           </span>
-          <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+          <span aria-hidden className="h-1 w-16 overflow-hidden bg-muted">
             <span
               className="block h-full origin-left bg-primary transition-transform"
               style={{
@@ -50,7 +50,7 @@ export function StatusBar() {
         <button
           type="button"
           onClick={() => void syncNow()}
-          className="inline-flex items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
+          className="inline-flex items-center gap-1 rounded-sm px-1 hover:bg-muted hover:text-foreground"
           aria-label="Sync now"
         >
           <RefreshCw className="size-3" />
@@ -81,7 +81,7 @@ export function StatusBar() {
         <button
           type="button"
           onClick={() => setHelpOpen(true)}
-          className="inline-flex shrink-0 items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
+          className="inline-flex shrink-0 items-center gap-1 rounded-sm px-1 hover:bg-muted hover:text-foreground"
         >
           <KeyChip>?</KeyChip>
           <span>all keys</span>

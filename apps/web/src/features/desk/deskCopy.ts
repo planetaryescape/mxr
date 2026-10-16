@@ -27,7 +27,7 @@ export interface DeskHeadline {
   sub: string | null;
 }
 
-function partOfDay(now: Date): string {
+export function partOfDay(now: Date): string {
   const hour = now.getHours();
   if (hour >= 5 && hour < 12) return "morning";
   if (hour >= 12 && hour < 17) return "afternoon";

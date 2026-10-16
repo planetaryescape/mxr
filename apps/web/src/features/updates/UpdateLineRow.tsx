@@ -148,7 +148,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       )}
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary" />
+        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] bg-primary" />
       ) : null}
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm @xl:flex-nowrap">
         <span

@@ -5,6 +5,7 @@
  */
 
 @import "./tokens.css";
+@import "./type.css";
 @import "./base.css";
 @import "./shadcn.css";
 @import "tw-animate-css";
@@ -408,6 +409,14 @@
   max-width: var(--frame-reader);
 }
 
+.mode-frame[data-frame="narrow"] {
+  max-width: 44rem;
+}
+
+.mode-frame[data-frame="full"] {
+  max-width: none;
+}
+
 .mode-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -688,7 +697,7 @@ svg.low-tide {
   margin: 2px 0;
   padding: 0 6px;
   border: 1px solid var(--reader-border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font: 11px/18px var(--font-sans);
   color: var(--reader-muted);
   white-space: nowrap;

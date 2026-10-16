@@ -172,30 +172,34 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
 
   const title = lane ? LANE_TITLES[lane] : messages ? "Messages" : "Desk";
   const laneTotal = lane && desk.data ? desk.data[lane].total : null;
+  const heading = !lane && desk.data ? deskHeading(desk.data, basePath) : null;
   const partial = partialLane(desk.data, lane);
   return (
     <ListWithReader
       basePath={basePath}
       preserveSearch
-      title={title}
-      meta={laneTotal ? plural(laneTotal, "conversation") : null}
-      actions={
-        lane ? (
-          <Link to={basePath} className="text-xs text-muted-foreground hover:text-foreground">
-            {messages ? "Back to Messages" : "Back to the desk"}
-          </Link>
+      meta={
+        laneTotal || lane ? (
+          <>
+            {laneTotal ? plural(laneTotal, "conversation") : null}
+            {lane ? (
+              <>
+                {laneTotal ? " · " : null}
+                <Link to={basePath} className="hover:text-text-1 hover:underline">
+                  {messages ? "Back to Messages" : "Back to the desk"}
+                </Link>
+              </>
+            ) : null}
+          </>
         ) : null
       }
-      heading={
-        !lane && desk.data ? (
-          <>
-            {messages ? <EarlyModeNote mode="messages" /> : null}
-            <DeskHeading desk={desk.data} basePath={basePath} />
-          </>
-        ) : undefined
-      }
+      title={title}
+      titleContent={heading?.content}
+      purpose={heading?.purpose}
       toolbar={
-        lane && partial ? (
+        !lane && messages ? (
+          <EarlyModeNote mode="messages" />
+        ) : lane && partial ? (
           <p className="text-xs text-muted-foreground">
             Showing {partial.shown.toLocaleString()} of {partial.total.toLocaleString()}.{" "}
             <button
@@ -224,37 +228,33 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
 }
 
 /** The greeting, whose counts double as links to each lane in full. */
-function DeskHeading({ desk, basePath }: { desk: Desk; basePath: string }) {
+function deskHeading(desk: Desk, basePath: string) {
   const headline = deskHeadline(desk);
-  return (
-    <div className="px-5 pb-3.5 pt-4">
-      <h1 className="text-balance text-lg font-semibold tracking-tight text-foreground">
-        {headline.lead}{" "}
-        {headline.counts.length > 0 ? (
-          <>
-            {headline.counts.map((count, position) => (
-              <span key={count.lane}>
-                {position > 0 ? ", " : null}
-                <Link
-                  to={basePath}
-                  search={{ lane: count.lane }}
-                  className="underline decoration-border-strong decoration-1 underline-offset-4 hover:decoration-primary"
-                >
-                  {count.text}
-                </Link>
-              </span>
-            ))}
-            .
-          </>
-        ) : (
-          <span className="font-normal text-muted-foreground">{headline.calm}</span>
-        )}
-      </h1>
-      {headline.sub ? (
-        <p className="mt-1 text-pretty text-sm text-muted-foreground">{headline.sub}</p>
-      ) : null}
-    </div>
+  const content = (
+    <>
+      {headline.lead}{" "}
+      {headline.counts.length > 0 ? (
+        <>
+          {headline.counts.map((count, position) => (
+            <span key={count.lane}>
+              {position > 0 ? ", " : null}
+              <Link
+                to={basePath}
+                search={{ lane: count.lane }}
+                className="underline decoration-rule decoration-1 underline-offset-4 hover:decoration-signal"
+              >
+                {count.text}
+              </Link>
+            </span>
+          ))}
+          .
+        </>
+      ) : (
+        <span className="font-normal text-text-2">{headline.calm}</span>
+      )}
+    </>
   );
+  return { content, purpose: headline.sub };
 }
 
 /** Everything that is not work, as one quiet line of links. */

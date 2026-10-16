@@ -23,7 +23,7 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
     <section
       aria-label="Got it, about to send"
       data-testid="got-it-preview"
-      className="mx-4 mb-3 rounded-lg border border-primary/50 bg-surface px-4 py-3"
+      className="mx-4 mb-3 rounded-none border border-primary/50 bg-surface px-4 py-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-xs text-muted-foreground">
@@ -44,7 +44,7 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
       >
         {pending.plan.text}
       </p>
-      <div className="mt-2 h-0.5 overflow-hidden rounded bg-border" aria-hidden>
+      <div className="mt-2 h-0.5 overflow-hidden rounded-sm bg-border" aria-hidden>
         <div
           className="h-full origin-left bg-primary"
           style={{ transform: `scaleX(${total > 0 ? left / total : 0})` }}

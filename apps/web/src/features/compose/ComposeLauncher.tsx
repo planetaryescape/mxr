@@ -79,7 +79,7 @@ export function ComposeLauncher() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="top-[22vh] translate-y-0 gap-0 overflow-hidden rounded-xl border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[640px]">
+      <DialogContent className="top-[22vh] translate-y-0 gap-0 overflow-hidden rounded-none border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[640px]">
         <DialogTitle className="sr-only">Compose message</DialogTitle>
         <div className="border-b border-border px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-medium">

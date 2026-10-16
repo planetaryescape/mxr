@@ -25,6 +25,7 @@ import {
   type Ref,
 } from "react";
 
+import { Avatar } from "@/components/Avatar";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { fetchContactsAutocomplete } from "./api";
@@ -199,24 +200,21 @@ export function RecipientField({
                   key={chip}
                   title={invalid ? `Invalid address: ${chip}` : undefined}
                   className={cn(
-                    "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted py-0.5 pl-0.5 pr-1.5 text-xs text-foreground",
+                    "inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted py-0.5 pl-0.5 pr-1.5 text-xs text-foreground",
                     invalid && "bg-destructive/10 text-destructive ring-1 ring-destructive/50",
                   )}
                 >
-                  <span
-                    className={cn(
-                      "flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-2xs font-semibold text-primary",
-                      invalid && "bg-destructive/20 text-destructive",
-                    )}
-                  >
-                    {initials(chip)}
-                  </span>
+                  <Avatar
+                    name={displayName(chip)}
+                    size="sm"
+                    className={invalid ? "opacity-60" : undefined}
+                  />
                   <span className="truncate" title={chip}>
                     {displayName(chip)}
                   </span>
                   <button
                     type="button"
-                    className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                    className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
                     onClick={() => removeAt(index)}
                     onKeyDown={(event) => {
                       if (event.key !== "Backspace" && event.key !== "Delete") return;
@@ -284,9 +282,7 @@ export function RecipientField({
                   }}
                   onMouseEnter={() => setHighlight(index)}
                 >
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-2xs font-semibold text-primary">
-                    {initials(suggestion.display_name || suggestion.email)}
-                  </span>
+                  <Avatar name={suggestion.display_name || suggestion.email} size="sm" />
                   <span className="min-w-0">
                     <div className="truncate text-xs text-foreground">
                       {suggestion.display_name || suggestion.email}
@@ -363,14 +359,4 @@ function displayName(value: string): string {
   const match = value.match(/^(.*?)\s*<[^>]+>$/);
   const name = match?.[1]?.trim();
   return name || extractEmail(value);
-}
-
-function initials(value: string): string {
-  const source = displayName(value).includes("@")
-    ? extractEmail(value).split("@")[0]
-    : displayName(value);
-  const words = (source ?? "").split(/[.\s_-]+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return (words[0]?.slice(0, 2) ?? "?").toUpperCase();
-  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
 }

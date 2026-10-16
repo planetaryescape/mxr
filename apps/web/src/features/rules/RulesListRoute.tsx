@@ -76,7 +76,7 @@ export function RulesListRoute() {
     <Page
       title="Rules"
       description="Automations the daemon runs during sync. Dry-run a rule before you trust it."
-      actions={
+      primary={
         <Button size="sm" asChild>
           <Link to="/rules/$id" params={{ id: "new" }}>
             <Plus className="size-3" />

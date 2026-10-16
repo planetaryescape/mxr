@@ -2,7 +2,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ModeColumns, ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Button } from "@/components/ui/button";
@@ -84,14 +85,18 @@ export function NowRoute() {
 
 /** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
+  const headline = now && now.item_count > 0 ? now.headline : null;
   return (
-    <ModeHeader width="wide" title="Now" subtitle={guide?.header ?? now?.header}>
-      {now && now.item_count > 0 ? (
-        <p data-testid="now-headline" className="mt-1.5 text-balance text-md text-foreground">
-          {now.headline}
-        </p>
+    <>
+      <PageFrame width="wide" title="Now" purpose={guide?.header ?? now?.header} />
+      {headline ? (
+        <ModeFrame width="wide">
+          <p data-testid="now-headline" className="type-heading mx-5 mt-3 text-balance text-text-1">
+            {headline}
+          </p>
+        </ModeFrame>
       ) : null}
-    </ModeHeader>
+    </>
   );
 }
 

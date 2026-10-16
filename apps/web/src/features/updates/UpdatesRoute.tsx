@@ -12,7 +12,8 @@ import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide } from "@/features/modes/api";
-import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ModeFrame } from "@/components/ModeFrame";
+import { PageFrame } from "@/components/PageFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useSearchParam } from "@/hooks/useSearchParam";
@@ -89,7 +90,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
   const data = status.data;
   const subtitle = guide.data?.header ?? data?.header ?? DEFAULT_SUBTITLE;
   // Before the digest shows, the header is the title and subtitle alone.
-  const plainHeader = <ModeHeader title="Updates" subtitle={subtitle} />;
+  const plainHeader = <PageFrame title="Updates" purpose={subtitle} />;
   if (phase !== "ready") {
     return (
       <>
@@ -372,14 +373,13 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
 
   return (
     <>
-      <ModeHeader
+      <PageFrame
         title="Updates"
-        subtitle={subtitle}
-        actions={
+        purpose={subtitle}
+        primary={
           digest.let_go_line ? (
             <Button
               size="sm"
-              variant="outline"
               data-testid="updates-let-go-all"
               onClick={() => {
                 dismissLetGoHint();

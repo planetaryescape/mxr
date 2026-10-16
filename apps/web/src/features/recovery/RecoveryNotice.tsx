@@ -207,7 +207,7 @@ export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi 
               {recovery.held_drafts.map((draft) => (
                 <div
                   key={draft.draft_id}
-                  className="flex flex-wrap items-center gap-2 rounded border border-border/60 p-2"
+                  className="flex flex-wrap items-center gap-2 rounded-sm border border-border/60 p-2"
                 >
                   <span className="min-w-0 flex-1">
                     <strong>{draft.subject || "(no subject)"}</strong>
@@ -264,7 +264,7 @@ export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi 
               ))}
               {currentDraftPreview ? (
                 <div
-                  className="space-y-2 rounded border border-border p-3"
+                  className="space-y-2 rounded-sm border border-border p-3"
                   aria-label="Prepared draft preview"
                 >
                   <p className="font-medium">

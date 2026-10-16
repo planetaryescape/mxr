@@ -8,12 +8,15 @@
  * draft is never hidden.
  */
 
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Maximize2, Minimize2, PictureInPicture2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { PageError } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
+import { overlayMotion, scrimMotion, sheetMotion } from "@/components/ui/motion";
+import { focusActivePane } from "@/lib/keys/focusPane";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
 import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
@@ -191,28 +194,68 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   }
 
   const fullscreen = surface === "fullscreen";
-  return (
-    <>
-      {/* Writing is its own state: the rows behind dim and stop answering the pointer. */}
-      {sheet ? (
-        <div data-testid="compose-scrim" aria-hidden className="fixed inset-0 z-40 bg-scrim" />
-      ) : null}
+  if (!sheet) {
+    // An inline draft whose thread is gone docks in the corner: not modal, so the list stays usable.
+    return (
       <div
         role="dialog"
-        aria-modal="false"
         aria-label={intent.title}
-        className={cn(
-          "fixed z-40 flex flex-col",
-          fullscreen
-            ? "inset-4"
-            : sheet
-              ? "inset-x-3 bottom-3 top-12 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-14 sm:w-[min(720px,calc(100vw-2rem))]"
-              : "bottom-4 right-4 h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))]",
-        )}
+        className="fixed bottom-4 right-4 z-40 flex h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))] flex-col"
       >
         {chrome}
       </div>
-    </>
+    );
+  }
+  // A popout or fullscreen sheet is modal: focus stays inside it, Esc leaves (the draft is
+  // saved first), and focus returns to where it was. The scrim and the sheet fade and rise
+  // like every overlay (docs/blueprint/26 "Motion").
+  return (
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) void controller.requestClose();
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          data-testid="compose-scrim"
+          className={cn(
+            "fixed inset-0 z-40 bg-scrim data-[state=open]:animate-in data-[state=open]:fade-in-0",
+            scrimMotion,
+          )}
+        />
+        <DialogPrimitive.Content
+          aria-label={intent.title}
+          aria-describedby={undefined}
+          // The editor focuses itself (useComposeAutofocus); the trap only has to hold it.
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={() => {
+            // Radix puts focus back where it was; when that is gone (a key opened the sheet
+            // from the page), the pane gets it.
+            requestAnimationFrame(() => {
+              if (document.activeElement === document.body) focusActivePane();
+            });
+          }}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            // Esc belongs to vim inside the Markdown editor, and to an open suggestion list.
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest(".cm-editor, [aria-expanded='true']")) event.preventDefault();
+          }}
+          className={cn(
+            "fixed z-40 flex flex-col outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0",
+            overlayMotion,
+            sheetMotion,
+            fullscreen
+              ? "inset-0 sm:inset-4"
+              : "inset-0 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-14 sm:w-[min(720px,calc(100vw-2rem))]",
+          )}
+        >
+          <DialogPrimitive.Title className="sr-only">{intent.title}</DialogPrimitive.Title>
+          {chrome}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 

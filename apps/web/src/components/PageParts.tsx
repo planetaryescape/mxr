@@ -14,6 +14,7 @@ import { explainError, type ErrorFix } from "@/components/RequestError";
 import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { copyCommand, START_COMMAND, UPDATE_COMMAND } from "@/lib/copyCommand";
+import { useDaemonDown } from "@/lib/daemonAvailability";
 import { cn } from "@/lib/utils";
 
 /*
@@ -126,6 +127,9 @@ export function PageSkeleton({
 }
 
 function ErrorAction({ fix, onRetry }: { fix: ErrorFix; onRetry?: () => void }) {
+  // The banner under the top bar already offers the start command while mxr is
+  // down; a second button on the page says the same thing twice.
+  const daemonDown = useDaemonDown();
   switch (fix) {
     case "retry":
       return onRetry ? (
@@ -142,6 +146,7 @@ function ErrorAction({ fix, onRetry }: { fix: ErrorFix; onRetry?: () => void }) 
         </Button>
       );
     case "start":
+      if (daemonDown) return null;
       return (
         <Button variant="outline" size="sm" onClick={() => copyCommand(START_COMMAND)}>
           Copy start command
@@ -231,7 +236,7 @@ export function PageEmpty({
   const Glyph = glyph ? MODE_GLYPHS[glyph] : null;
   return (
     <StateColumn framed={framed} testId="page-empty" className="flex flex-col items-start gap-1">
-      {moment ? <div className="mb-4">{moment}</div> : null}
+      {moment ? <div className="mb-4 animate-in fade-in-0 duration-base">{moment}</div> : null}
       {Glyph ? <Glyph aria-hidden className="mb-2 size-6 text-text-3" /> : null}
       <h2 className="type-heading text-text-1">{title}</h2>
       {body ? <p className="type-body max-w-[65ch] text-text-2">{body}</p> : null}

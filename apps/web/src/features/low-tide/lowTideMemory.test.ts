@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { claimLowTide, noteWork, useLowTide, type TideState } from "./lowTideMemory";
+import { claimLowTide, localDay, noteWork, useLowTide, type TideState } from "./lowTideMemory";
 
 function blocked(): never {
   throw new Error("blocked");
@@ -33,6 +33,25 @@ describe("low tide memory", () => {
     expect(claimLowTide("desk")).toBe(false);
     noteWork("desk");
     expect(claimLowTide("desk")).toBe(true);
+  });
+
+  it("a daily moment plays once a day, and again the next day it is earned", () => {
+    noteWork("todo");
+    expect(claimLowTide("todo", "2026-10-16")).toBe(true);
+    noteWork("todo");
+    expect(claimLowTide("todo", "2026-10-16")).toBe(false);
+    noteWork("todo");
+    expect(claimLowTide("todo", "2026-10-17")).toBe(true);
+  });
+
+  it("a daily moment is still earned by work, not by a place that was always clear", () => {
+    expect(claimLowTide("messages", "2026-10-16")).toBe(false);
+    noteWork("messages");
+    expect(claimLowTide("messages", "2026-10-16")).toBe(true);
+  });
+
+  it("names the viewer's local day", () => {
+    expect(localDay(new Date(2026, 9, 6, 23, 59))).toBe("2026-10-06");
   });
 
   it("keeps places apart", () => {

@@ -34,16 +34,17 @@ const tokenTheme = EditorView.theme({
     lineHeight: "1.65",
     fontFamily: "var(--font-mono)",
   },
+  // The whole writing area is the editor: a click anywhere in it lands the caret.
   ".cm-content": {
+    minHeight: "100%",
     padding: "20px 20px 56px 20px",
     fontFamily: "var(--font-mono)",
     caretColor: "var(--foreground)",
   },
   // Line numbers mean nothing in an email; the vim status line is enough.
   ".cm-gutters": { display: "none" },
-  // Mixed in oklab: oklch takes transparent's missing hue as 0, which tints
-  // the line pink and reads as a validation error.
-  ".cm-activeLine": { backgroundColor: "color-mix(in oklab, var(--muted) 55%, transparent)" },
+  // An email is prose, not code: a highlighted line made an empty body read as a one-line strip.
+  ".cm-activeLine": { backgroundColor: "transparent" },
   ".cm-cursor": { borderLeftColor: "var(--foreground)" },
   "&.cm-focused": { outline: "none" },
   ".cm-selectionBackground": {

@@ -471,6 +471,27 @@ what still works, and offers the one action that can help: **Try again** for a
 failure a retry can fix, **Copy start command** when mxr isn't running, **Open
 token settings** when this browser isn't recognised, and **Go to Inbox** for a
 conversation or item that can't be found. The raw error is under **Details**.
+When mxr isn't running, the banner under the top bar carries **Copy start
+command**, and the page doesn't repeat it.
+
+An empty Messages with nobody listed uses the whole page, and Archive's empty
+page links to the Inbox and says how to file an email by hand.
+
+## Finishing a page, and what changes in front of you
+
+A done row folds away and the light is already on the next one. Press `e` once
+and you see the fold; press it repeatedly and the rows drop at once. When you
+put Messages, To do or Updates to bed, a small shore settles where the list
+was, once per mode per day, followed by where the work is next ("Next: 3 in
+To do"). A change the assistant makes, or mail that arrives while the page is
+open, shows on its rows as a thin underline that fades in under a second.
+
+A toast says what happened in a line, with **Undo** when the change can be
+undone. There is one at a time, in the bottom right corner (top right in
+Focus), clear of the row you are on. It goes after 5 seconds, or 8 with
+Undo. With **Settings > Appearance > Motion** on **Reduced** (or your system
+set to reduce motion) rows leave at once, panels only fade and the shore is
+skipped.
 
 If live updates disconnect while other requests still work, the app refreshes
 loaded mail when the event connection returns. Your open draft keeps its text;
@@ -496,7 +517,10 @@ on a card until you approve it.
 
 Compose opens in place, for a new message, a reply, reply all or a forward.
 A reply opens under the conversation; you can pop it
-out or go fullscreen. New messages start in the To field and replies in the
+out or go fullscreen. A popped-out or fullscreen compose is a modal sheet:
+Tab stays inside it, `Esc` saves the draft and leaves (inside the Markdown
+editor `Esc` stays with vim, so use `:q`), and focus goes back to where you
+were. On a phone it covers the whole screen. New messages start in the To field and replies in the
 body. The editor is Markdown with vim keys by default; **Settings →
 Compose** switches to rich text.
 

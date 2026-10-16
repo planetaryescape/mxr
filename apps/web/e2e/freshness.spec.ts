@@ -62,7 +62,8 @@ test.describe("desktop", () => {
   test("the status bar shows when the newest mail arrived, with the exact time on hover", async ({
     page,
   }) => {
-    await openApp(page, "/now");
+    // Not Now: a lit row there shortens this to "28m ago" beside its reason (see now.spec.ts).
+    await openApp(page, "/archive");
     const reply = await bridge<FreshnessReply>(page, "/api/v1/mail/freshness");
     const newest = reply.freshness.newest_message_at;
     expect(newest).toBeTruthy();

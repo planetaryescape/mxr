@@ -318,3 +318,20 @@ for (const [density, height] of [
     expect(new Set(heights)).toEqual(new Set([height]));
   });
 }
+
+test("the status bar says why the lit row is here, and goes back to freshness when none is lit", async ({
+  page,
+}) => {
+  await waitForNow(page);
+  await openApp(page, "/now");
+  await expect(page.locator("[data-lit='true']")).toHaveCount(1);
+  const reason = page.getByTestId("status-reason");
+  await expect(reason).toContainText("Here because:");
+  await expect(page.getByTestId("freshness-trigger")).toHaveText(/^(just now|\d+[mhd] ago)$/);
+  // Leaving Now clears it: the page that set it is gone.
+  await page.keyboard.press("g");
+  await page.keyboard.press("i");
+  await expect(page).toHaveURL(/\/m\/inbox$/);
+  await expect(reason).toHaveCount(0);
+  await expect(page.getByTestId("freshness-trigger")).toHaveText(/^Latest mail /);
+});

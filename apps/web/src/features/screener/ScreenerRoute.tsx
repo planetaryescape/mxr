@@ -30,6 +30,7 @@ import { formatWhen, formatRelative, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useScopeController } from "@/lib/keys/controllers";
 import { usePageKeys } from "@/state/pageKeysStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 type Tab = "queue" | "decisions";
 
@@ -61,6 +62,7 @@ export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
   // are the same account's.
   const scope = useUiPrefs((s) => s.accountScope);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const accountsHeld = useHeldPending(accounts.isPending);
   const accountList = accounts.data?.accounts ?? [];
   // The user's pick, else the account a link named, else the app's scope,
   // else the first account.
@@ -106,7 +108,7 @@ export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
         />
       }
     >
-      {accounts.isPending ? (
+      {accounts.isPending || accountsHeld ? (
         <PageSkeleton label="Loading accounts" />
       ) : accounts.isError ? (
         <PageError
@@ -138,6 +140,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
     queryFn: () =>
       allSenders ? fetchScreenerQueue(accountId, true) : fetchScreenerQueue(accountId),
   });
+  const queueHeld = useHeldPending(queue.isPending);
   const decide = useMutation({
     mutationFn: ({
       entry,
@@ -191,7 +194,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
       : [],
   );
 
-  if (queue.isPending) return <PageSkeleton label="Loading screener queue" />;
+  if (queue.isPending || queueHeld) return <PageSkeleton label="Loading screener queue" />;
   if (queue.isError)
     return (
       <PageError
@@ -281,6 +284,7 @@ function ScreenerDecisions({ accountId }: { accountId: string }) {
     queryKey: ["screener-decisions", accountId],
     queryFn: () => fetchScreenerDecisions(accountId),
   });
+  const decisionsHeld = useHeldPending(decisions.isPending);
   const clear = useMutation({
     mutationFn: (senderEmail: string) => clearScreenerDecision({ accountId, senderEmail }),
     onSuccess: (_result, senderEmail) => {
@@ -292,7 +296,7 @@ function ScreenerDecisions({ accountId }: { accountId: string }) {
   });
   const rows = decisions.data?.decisions ?? [];
 
-  if (decisions.isPending) return <PageSkeleton label="Loading decisions" />;
+  if (decisions.isPending || decisionsHeld) return <PageSkeleton label="Loading decisions" />;
   if (decisions.isError)
     return (
       <PageError

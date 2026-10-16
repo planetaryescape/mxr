@@ -226,6 +226,54 @@ Retrieval eval, top-5 hit rate per mode:
 |---|---|---|---:|---|---:|---|
 | | | | | | | |
 
+### W8c design gate (2026-10-17)
+
+Graded by the worker who built W8c, so every row is a proposal until a reviewer who did not build it confirms it (E1). Base `f3260a6ed` (main with W8b #507 and the Messages windowing fix #508), plus the W8c branch. Walked on the FakeProvider daemon in Midnight, Light, Paper and Eclipse at 1440 and 390 wide, with the seven journeys in [26](blueprint/26-web-design-concept.md#the-journeys-end-to-end). Each sheet is the four themes in a 2x2 grid; the twelve most telling are in [assets/web-design-gate](assets/web-design-gate/).
+
+The walk drove Playwright (the e2e harness boots the fake daemon and runs all 56 theme and width combinations the same way each time), not agent-browser. The walking spec is a scratch file and is not committed.
+
+Judged against 26 (hierarchy and restraint) and 27 (system):
+
+| Check | Grade | Evidence |
+|---|---|---|
+| One lit row | Pass | One lit row on Now, Messages with a person open, To do, Updates, Reading and Inbox in all four themes. Messages' first open shows none lit until the list has focus (`j2-messages` sheet); that is the existing behaviour, not changed here. |
+| One page frame | Pass | `design-gate.spec` (one `h1` per frame, fixed frame height per width, title the largest text) green in all four themes at three widths. |
+| Type scale | Pass | `check-type-scale.mjs` in lint; the same spec asserts the title is the largest text. |
+| Quiet chrome | Pass | Rail, top bar and status bar stay below the content in every sheet. Toasts were the loud exception (filled success and info blocks); fixed, see below. |
+| Nothing competes with the hero | Pass after fix | Confirmation toasts now sit on the overlay surface (`j3-star-toast`). Warning and error toasts keep their colour on purpose. |
+| Consistent spacing | Pass | Page frames, section eyebrows and row rhythm line up across modes in the sheets. |
+| Square surfaces, 3px controls | Pass | `check-shape.mjs`; no round surface outside people, dots and counts in any sheet. |
+| No orphaned or duplicated controls | Partial | The Reading issue repeats Later and Let go in its toolbar and again in the end-of-article footer (`j4-issue-1440`). Left as is: the footer is the reading end, the toolbar is the top; BK decides. |
+| Truncation reads well | Pass after fix | Two fixed: Updates at 390 hid the fact behind the source's host (`j3-updates-390`), and Archive's kind tabs were cut mid-letter (`j7-answer-390`). Still partial: at 390 with a fine pointer, the lit To do and Reading rows show key chips that squeeze the title (`j3-todo-390`). A touch device hides the chips (`pointer-coarse:hidden` in `Row.tsx`), so this was seen only in a narrow desktop window and not on a coarse pointer. |
+| Phone tab bar never covers content | Pass | Lists scroll above it; the compose sheet and assistant take the whole screen on purpose (`j2-compose-sheet-390`, `j5-assistant-proof-390`). |
+
+Journeys:
+
+| Journey | Result |
+|---|---|
+| 1 Evening clear-down (Now, open a row) | Pass in all themes and widths. |
+| 2 Answer a person (Messages, person open, compose sheet) | Pass. Compose's From address now shows at 390. |
+| 3 Tick off a to-do, clear Updates (To do, Updates, a toast, put to bed) | Pass after the two truncation fixes. The finishing scene shows in all four themes; with reduced motion it shows its still frame and words (Midnight, both widths). |
+| 4 Read (Reading, an issue) | Pass; duplicate footer actions noted above. |
+| 5 Ask the copy desk (a proof) | Pass; no sparkle anywhere, the panel is marked by `gemma4 · local`. |
+| 6 Check nothing was missed (Inbox, a thread) | Pass. |
+| 7 Find a record (Archive, an answer) | Pass after the tab-strip fix. |
+
+Rubric criteria this gate evidences:
+
+| Criterion | Grade | Evidence |
+|---|---|---|
+| B2 Motion with a job | 3 | `check-motion.mjs`; `motion.spec` and `delight.spec` now agree that reduced motion shows the finishing scene as a still frame with its words (D134), for Now, the desk and Messages, To do and Updates. |
+| B4 Earned delight | 2 | Three modes' scenes verified in four themes. A 3 needs the dogfooding log (E2). |
+| B7 Typographic craft | 2 | A recorded visual review across four themes and two widths now exists (the one the 2026-10-01 grade asked for). The reading measure is still the 55 to 90 characters `reading.spec` accepts. |
+| B8 Honest, quiet system states | 2 | Toasts are quiet. Skeletons hold 400ms everywhere, not only on the mode pages (`useHeldPending`). |
+| C3 Never guilt the user | 2 | Copy review of the sheets found one defect: a failed archive toasts "Archived failed" (`mutationFailure.ts`). Not changed here. |
+| X9 Model text is marked | 2 | `ModelMark` carries who wrote it; D141 forbids an icon standing for AI and `check-ai-marks.mjs` holds it. |
+| E1 Independent grading | 1 | Everything above is the builder's grade. |
+| E2 Dogfooding | Pending | Needs BK's week of use in `docs/dogfooding-log.md`. Not a pass. |
+
+Checks that were still red when the sheets were taken: none. What stays open: the duplicate Reading footer, the "Archived failed" wording, and E1 and E2.
+
 ## v2 rubric (history)
 
 The v2 criteria and grades below stay as the record. v3 carries over B1

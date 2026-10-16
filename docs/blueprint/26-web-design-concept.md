@@ -183,7 +183,7 @@ Motion explains change and never decorates (D134). Durations are the existing to
 | Assistant steps | The live line's text crossfades, 120ms; streamed replies fade in per word, 120ms, never replayed on reload. | The research's streaming rule. |
 | Section put to bed | The low-tide scene, 1800ms, once per section per day. | The earned moment. |
 
-Reduced motion keeps only opacity fades of 120ms and skips the scene. `scripts/check-motion.mjs` already guards durations and properties; it gains the rule that keyboard-triggered transitions are instant.
+Reduced motion keeps only opacity fades of 120ms. The finishing scene shows as its still frame, with its words and no animation: a picture is not motion, and the finish is the reward (D134). `scripts/check-motion.mjs` already guards durations and properties; it gains the rule that keyboard-triggered transitions are instant.
 
 ## Hierarchy and restraint
 

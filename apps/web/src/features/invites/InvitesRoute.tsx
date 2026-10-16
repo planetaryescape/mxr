@@ -22,6 +22,7 @@ import {
   type InviteAction,
 } from "@/features/invites/useInviteResponse";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const PARTSTAT_LABELS: Record<CalendarPartstatView, string> = {
   accepted: "Accepted",
@@ -162,6 +163,7 @@ export function InvitesRoute() {
     queryKey: ["invites", account ?? "all"],
     queryFn: () => fetchInvites(account),
   });
+  const invitesHeld = useHeldPending(invites.isPending);
   const rows = invites.data?.invites ?? [];
   const { rowProps } = useLitRow(rows.map((invite) => invite.id));
 
@@ -170,7 +172,7 @@ export function InvitesRoute() {
       title="Invites"
       description="Calendar invites found in your mail, across accounts. RSVPs send after a short undo window."
     >
-      {invites.isPending ? (
+      {invites.isPending || invitesHeld ? (
         <PageSkeleton rows={4} label="Loading invites" />
       ) : invites.isError ? (
         <PageError

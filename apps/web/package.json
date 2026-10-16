@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ./.oxlintrc.json --disable-nested-config --react-plugin --vitest-plugin --deny-warnings src && node ./scripts/check-motion.mjs && node ./scripts/check-type-scale.mjs && node ./scripts/check-shape.mjs && node ./scripts/check-frames.mjs && node ./scripts/gen-themes.mjs --check",
+    "lint": "oxlint -c ./.oxlintrc.json --disable-nested-config --react-plugin --vitest-plugin --deny-warnings src && node ./scripts/check-motion.mjs && node ./scripts/check-ai-marks.mjs && node ./scripts/check-type-scale.mjs && node ./scripts/check-shape.mjs && node ./scripts/check-frames.mjs && node ./scripts/gen-themes.mjs --check",
     "lint:fix": "oxlint -c ./.oxlintrc.json --disable-nested-config --react-plugin --vitest-plugin --fix src",
     "format": "oxfmt -c ./.oxfmt.json --write \"src/**/*.{ts,tsx,css}\" \"!src/routeTree.gen.ts\" \"scripts/**/*.mjs\"",
     "format:check": "oxfmt -c ./.oxfmt.json --check \"src/**/*.{ts,tsx,css}\" \"!src/routeTree.gen.ts\" \"scripts/**/*.mjs\"",

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatWhen, formatRelative } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 /**
  * TUI "Cadence drift": contacts you watch, flagged when they have been
@@ -33,10 +34,12 @@ export function CadenceDashboard() {
     queryKey: ["analytics", "cadence-drift", accountId],
     queryFn: () => fetchCadenceDrift(accountId),
   });
+  const driftHeld = useHeldPending(drift.isPending);
   const watchlist = useQuery({
     queryKey: ["analytics", "cadence-watch", accountId],
     queryFn: () => fetchCadenceWatchlist(accountId),
   });
+  const watchlistHeld = useHeldPending(watchlist.isPending);
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["analytics", "cadence-drift"] });
     void qc.invalidateQueries({ queryKey: ["analytics", "cadence-watch"] });
@@ -73,7 +76,7 @@ export function CadenceDashboard() {
   return (
     <div className="grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
       <PageSection title="Overdue" description="Watched contacts quiet for longer than usual.">
-        {drift.isPending ? (
+        {drift.isPending || driftHeld ? (
           <PageSkeleton label="Loading cadence drift" />
         ) : drift.isError ? (
           <PageError
@@ -129,7 +132,7 @@ export function CadenceDashboard() {
           </Button>
         </form>
         <PageNote>Leave days empty to learn the rhythm from past mail.</PageNote>
-        {watchlist.isPending ? (
+        {watchlist.isPending || watchlistHeld ? (
           <PageSkeleton rows={3} label="Loading watchlist" />
         ) : watchlist.isError ? (
           <PageError

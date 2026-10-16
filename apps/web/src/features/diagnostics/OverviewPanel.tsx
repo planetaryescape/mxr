@@ -10,6 +10,7 @@ import { PageSection } from "@/components/Page";
 import { FactList, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
 import { formatRelative, plural } from "@/lib/format";
 import { formatBytes } from "@/lib/utils";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 interface SyncStatusRow {
   account_id: string;
@@ -66,12 +67,14 @@ export function OverviewPanel({
     | Record<string, FeatureHealth>
     | undefined;
   const report = doctor.data?.report;
+  const statusHeld = useHeldPending(status.isPending);
+  const doctorHeld = useHeldPending(doctor.isPending);
   const findings = Array.isArray(report?.findings) ? (report.findings as unknown[]) : [];
 
   return (
     <div className="grid gap-x-10 xl:grid-cols-2">
       <PageSection title="Daemon">
-        {status.isPending ? (
+        {statusHeld ? (
           <PageSkeleton rows={3} label="Loading daemon status" />
         ) : status.isError ? (
           <PageError
@@ -103,7 +106,7 @@ export function OverviewPanel({
       </PageSection>
 
       <PageSection title="Sync">
-        {status.isPending ? (
+        {statusHeld ? (
           <PageSkeleton rows={2} label="Loading sync status" />
         ) : syncRows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No accounts are syncing.</p>
@@ -143,7 +146,7 @@ export function OverviewPanel({
               />
             ))}
           </RuledList>
-        ) : status.isPending || doctor.isPending ? (
+        ) : statusHeld || doctorHeld ? (
           <PageSkeleton rows={4} label="Loading feature health" />
         ) : (
           <p className="text-sm text-muted-foreground">No feature health reported.</p>
@@ -151,7 +154,7 @@ export function OverviewPanel({
       </PageSection>
 
       <PageSection title="Doctor">
-        {doctor.isPending ? (
+        {doctorHeld ? (
           <PageSkeleton rows={4} label="Loading doctor report" />
         ) : doctor.isError ? (
           <PageError

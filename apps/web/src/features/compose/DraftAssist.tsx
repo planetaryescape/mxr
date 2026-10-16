@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, PenLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -75,7 +75,7 @@ export function DraftAssist({
             type="button"
             className="group flex w-full items-center gap-2 py-2.5 text-left outline-none"
           >
-            <Sparkles className="size-4 shrink-0 text-primary" />
+            <PenLine className="size-4 shrink-0 text-text-3" />
             <span className="text-xs font-medium text-foreground">Draft for me</span>
             <span className="hidden min-w-0 truncate text-2xs text-muted-foreground sm:inline">
               Knows how you write to this person. Describe it and edit freely.
@@ -107,7 +107,7 @@ export function DraftAssist({
                 {generating ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <Sparkles className="size-3.5" />
+                  <PenLine className="size-3.5" />
                 )}
                 Generate
               </Button>

@@ -3,6 +3,7 @@ import { PageSection } from "@/components/Page";
 import { FactList, PageSkeleton } from "@/components/PageParts";
 
 import { semanticProfiles, type SemanticProfile, type SemanticStatusSnapshot } from "./api";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function SemanticPanel({
   status,
@@ -32,6 +33,7 @@ export function SemanticPanel({
   onUse: (profile: SemanticProfile) => void;
 }) {
   const profiles = new Map((status?.profiles ?? []).map((record) => [record.profile, record]));
+  const loadingHeld = useHeldPending(loading);
   const busy = enablePending || backfillPending || reindexPending || installPending || usePending;
   return (
     <PageSection
@@ -61,8 +63,8 @@ export function SemanticPanel({
         </div>
       }
     >
-      {!status ? (
-        loading ? (
+      {!status || loadingHeld ? (
+        loadingHeld ? (
           <PageSkeleton rows={3} label="Loading semantic status" />
         ) : (
           <p className="text-sm text-muted-foreground">The daemon reported no semantic status.</p>

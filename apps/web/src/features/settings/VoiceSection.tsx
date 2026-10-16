@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { fetchAccounts } from "@/features/accounts/api";
 import { formatRelative, plural } from "@/lib/format";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 interface UserVoiceProfile {
   account_id: string;
@@ -58,6 +59,7 @@ export function VoiceSection() {
     enabled: Boolean(accountId),
     retry: false,
   });
+  const voiceHeld = useHeldPending(voice.isPending);
   const rebuild = useMutation({
     mutationFn: () => rebuildVoice(accountId ?? ""),
     onSuccess: () => {
@@ -94,7 +96,7 @@ export function VoiceSection() {
           </Button>
         </div>
       </SettingRow>
-      {!accountId ? null : voice.isPending ? (
+      {!accountId ? null : voice.isPending || voiceHeld ? (
         <PageSkeleton rows={3} label="Loading voice profile" />
       ) : voice.isError ? (
         <PageError

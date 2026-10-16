@@ -84,7 +84,7 @@ export function Toaster({ position: preferred = "bottom-right" }: { position?: T
       <SonnerToaster
         theme={resolved}
         position={position}
-        // Colour by type (app.css maps sonner's rich colours to theme tokens).
+        // Rich colours only paint warning and error; app.css gives success and info the overlay surface (D140).
         richColors
         offset={position === "top-right" ? { top: BELOW_TOPBAR } : { bottom: ABOVE_STATUSBAR }}
         mobileOffset={

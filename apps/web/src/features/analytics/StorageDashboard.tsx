@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { formatWhen, plural } from "@/lib/format";
 import { formatBytes } from "@/lib/utils";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const GROUPS: { id: StorageGroupBy; label: string }[] = [
   { id: "sender", label: "Sender" },
@@ -43,10 +44,12 @@ export function StorageDashboard({ range }: { range: AnalyticsRange }) {
     queryKey: ["analytics", "storage", groupBy],
     queryFn: () => fetchStorageBreakdown(groupBy, 50),
   });
+  const breakdownHeld = useHeldPending(breakdown.isPending);
   const largest = useQuery({
     queryKey: ["analytics", "largest", range],
     queryFn: () => fetchLargestMessages(25, rangeDays(range)),
   });
+  const largestHeld = useHeldPending(largest.isPending);
 
   const needle = keyword.trim().toLowerCase();
   const rows = (breakdown.data?.rows ?? []).filter((row) => row.key.toLowerCase().includes(needle));
@@ -78,7 +81,7 @@ export function StorageDashboard({ range }: { range: AnalyticsRange }) {
           placeholder="Filter rows"
           className="mb-3 h-8 max-w-xs text-xs"
         />
-        {breakdown.isPending ? (
+        {breakdown.isPending || breakdownHeld ? (
           <PageSkeleton label="Loading storage" />
         ) : breakdown.isError ? (
           <PageError
@@ -108,7 +111,7 @@ export function StorageDashboard({ range }: { range: AnalyticsRange }) {
         )}
       </PageSection>
       <PageSection title="Largest messages" description="Opens the sender's mail, as in the TUI.">
-        {largest.isPending ? (
+        {largest.isPending || largestHeld ? (
           <PageSkeleton label="Loading largest messages" />
         ) : largest.isError ? (
           <PageError

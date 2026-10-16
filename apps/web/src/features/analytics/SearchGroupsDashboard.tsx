@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { fetchSearchGroups, searchGroupsKey, type SearchGroupBy } from "@/features/search/api";
 import { plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const GROUPS: { id: SearchGroupBy; label: string }[] = [
   { id: "from", label: "Sender" },
@@ -34,6 +35,7 @@ export function SearchGroupsDashboard() {
     queryFn: ({ signal }) => fetchSearchGroups(params, { signal }),
     enabled: query.trim().length > 0,
   });
+  const groupsHeld = useHeldPending(groups.isPending);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -73,7 +75,7 @@ export function SearchGroupsDashboard() {
       <PageNote>Any search query works. Select a group to open its messages as a search.</PageNote>
       {!query ? (
         <PageEmpty title="Type a query to group" />
-      ) : groups.isPending ? (
+      ) : groups.isPending || groupsHeld ? (
         <PageSkeleton label="Grouping results" />
       ) : groups.isError ? (
         <PageError

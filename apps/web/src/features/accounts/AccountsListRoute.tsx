@@ -21,12 +21,14 @@ import { Button } from "@/components/ui/button";
 import type { RuntimeAccount } from "@/features/compose/api";
 import { SyncHealthWords } from "@/features/freshness/AccountSyncHealth";
 import { StatusDot } from "@/components/StatusDot";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function AccountsListRoute() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirmDisable, setConfirmDisable] = useState<RuntimeAccount | null>(null);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const accountsHeld = useHeldPending(accounts.isPending);
   const makeDefault = useMutation({
     mutationFn: setDefaultAccount,
     onSuccess: () => {
@@ -60,7 +62,7 @@ export function AccountsListRoute() {
         </Button>
       }
     >
-      {accounts.isPending ? (
+      {accounts.isPending || accountsHeld ? (
         <PageSkeleton rows={3} label="Loading accounts" />
       ) : accounts.isError ? (
         <PageError

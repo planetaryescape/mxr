@@ -13,6 +13,7 @@ import {
   RuledRow,
 } from "@/components/PageParts";
 import { formatWhen, plural } from "@/lib/format";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 type Perspective = "mine" | "theirs";
 
@@ -28,6 +29,7 @@ export function StaleDashboard({ range }: { range: AnalyticsRange }) {
     queryKey: ["analytics", "stale", perspective, range],
     queryFn: () => fetchStaleThreads(perspective, 14, rangeDays(range)),
   });
+  const staleHeld = useHeldPending(stale.isPending);
 
   return (
     <PageSection
@@ -46,7 +48,7 @@ export function StaleDashboard({ range }: { range: AnalyticsRange }) {
         Conversations silent for more than 14 days where{" "}
         {perspective === "mine" ? "the last message came to you" : "you sent the last message"}.
       </PageNote>
-      {stale.isPending ? (
+      {stale.isPending || staleHeld ? (
         <PageSkeleton label="Loading stale threads" />
       ) : stale.isError ? (
         <PageError

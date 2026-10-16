@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { formatBytes } from "@/lib/utils";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -26,9 +27,10 @@ export function WrappedDashboard({ range }: { range: AnalyticsRange }) {
     queryKey: ["analytics", "wrapped", range],
     queryFn: () => fetchWrapped(range),
   });
+  const wrappedHeld = useHeldPending(wrapped.isPending);
   const [story, setStory] = useState(false);
 
-  if (wrapped.isPending) return <PageSkeleton rows={8} label="Loading wrapped" />;
+  if (wrapped.isPending || wrappedHeld) return <PageSkeleton rows={8} label="Loading wrapped" />;
   if (wrapped.isError)
     return (
       <PageError

@@ -27,12 +27,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { plural } from "@/lib/format";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function RulesListRoute() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const rules = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
+  const rulesHeld = useHeldPending(rules.isPending);
   const remove = useMutation({
     mutationFn: async (name: string) => {
       const rule = rules.data?.rules.find((r) => ruleName(r) === name);
@@ -85,7 +87,7 @@ export function RulesListRoute() {
         </Button>
       }
     >
-      {rules.isPending ? (
+      {rules.isPending || rulesHeld ? (
         <PageSkeleton label="Loading rules" />
       ) : rules.isError ? (
         <PageError

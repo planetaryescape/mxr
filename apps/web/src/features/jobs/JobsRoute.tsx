@@ -5,6 +5,7 @@ import { Page } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton, RuledList } from "@/components/PageParts";
 import { formatRelative, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const STATUS_TONE: Record<string, string> = {
   queued: "text-muted-foreground",
@@ -23,10 +24,11 @@ export function JobsRoute() {
         ? 2_000
         : 15_000,
   });
+  const jobsHeld = useHeldPending(jobs.isPending);
 
   return (
     <Page title="Jobs" description="Long-running mail operations: progress, failures and undo ids.">
-      {jobs.isPending ? (
+      {jobs.isPending || jobsHeld ? (
         <PageSkeleton rows={4} label="Loading jobs" />
       ) : jobs.isError ? (
         <PageError

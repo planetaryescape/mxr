@@ -104,7 +104,7 @@ Today's `--text-*` steps stay as the scale under the roles.
 Tokens stay: `--duration-fast` 120ms, `--duration-base` 180ms, `--duration-slow` 280ms, `--duration-scene` 1800ms; `--ease-out` `cubic-bezier(.23,1,.32,1)`. The moments and their motion are in [26](26-web-design-concept.md#motion). Two additions:
 
 - `--duration-land: 600ms` for the change-landing underline.
-- **"Section put to bed"** is defined per mode, for the finishing moment (D134): Now has no items; Messages has no Your turn; To do has no item due today or earlier; Updates' current digest is let go; Reading's edition is read or let go; Archive has no finishing moment. The scene plays once per section per day, recorded in local storage (a per-viewer convenience; losing it only replays the scene).
+- **"Section put to bed"** is defined per mode, for the finishing moment (D134): Now has no items; Messages has no Your turn; To do has no item due today or earlier; Updates' current digest is let go; Reading's edition is read or let go; Archive has no finishing moment. The scene plays once per section per day, recorded in local storage (a per-viewer convenience; losing it only replays the scene). With reduced motion the scene is its still frame (D134, W8c).
 
 `scripts/check-motion.mjs` gains: handlers bound to keyboard events must not start transitions (checked by convention: transitions only in components that receive a `via: "pointer" | "key"` prop and skip on `"key"`). Shipped in W8b: a file that takes `LampVia` or `LeaveVia` may name a `transition`, an `animate-*` class or a fold only behind `via === "pointer"` or a row's `leaving`.
 
@@ -112,7 +112,7 @@ Tokens stay: `--duration-fast` 120ms, `--duration-base` 180ms, `--duration-slow`
 
 ## Iconography
 
-lucide only, stroke 1.75, 16px in rows and controls, 14px in meta and the status bar, 20px in the phone tab bar (touch targets). Each mode has one glyph, used for its rail item, its mode mark and its toasts: Now `Sun`, Messages `MessagesSquare`, To do `ListChecks`, Updates `Bell`, Reading `Newspaper`, Archive `Archive`, Inbox `Inbox`. Look-alike icons in the rail's collapsed state (clock, stopwatch, hourglass; shield twice) are replaced: the collapsed rail shows only the modes and Inbox (D133). Icons never appear without a label except in the collapsed rail, the top bar's three buttons and the reader toolbar, and each has a tooltip with its key.
+lucide only, stroke 1.75, 16px in rows and controls, 14px in meta and the status bar, 20px in the phone tab bar (touch targets). Each mode has one glyph, used for its rail item, its mode mark and its toasts: Now `Sun`, Messages `MessagesSquare`, To do `ListChecks`, Updates `Bell`, Reading `Newspaper`, Archive `Archive`, Inbox `Inbox`. Look-alike icons in the rail's collapsed state (clock, stopwatch, hourglass; shield twice) are replaced: the collapsed rail shows only the modes and Inbox (D133). No icon stands for AI (D141): a model feature is named for what it does and wears a task icon if the slot needs one (`PenLine` to draft, `TextQuote` to summarize), never the sparkle, a wand or a robot; who wrote the output is shown by `ModelMark` in words (D136). `check-ai-marks.mjs` enforces it. Icons never appear without a label except in the collapsed rail, the top bar's three buttons and the reader toolbar, and each has a tooltip with its key.
 
 ## The page frame
 

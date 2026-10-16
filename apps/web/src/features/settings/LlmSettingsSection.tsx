@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 interface LlmConfig {
   enabled: boolean;
@@ -100,6 +101,7 @@ export function LlmSettingsSection() {
     queryFn: () => apiFetch<{ status: LlmStatus }>("/api/v1/platform/llm/status"),
   });
   const [draft, setDraft] = useState<LlmConfig | null>(null);
+  const draftHeld = useHeldPending(draft === null);
   const currentStatus = status.data?.status;
   const configUnsupported = config.isError && isNotFoundError(config.error);
 
@@ -176,7 +178,7 @@ export function LlmSettingsSection() {
           </Alert>
         ) : null}
 
-        {draft ? (
+        {draft && !draftHeld ? (
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-border/60 py-3">
               <div>

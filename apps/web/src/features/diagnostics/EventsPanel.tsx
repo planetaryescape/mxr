@@ -6,6 +6,7 @@ import { fetchEventCategories, fetchEventCount, fetchEvents, type EventLogEntry 
 import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const LEVELS = ["all", "trace", "debug", "info", "warn", "error"] as const;
 const WINDOWS = [
@@ -77,6 +78,7 @@ export function EventsPanel() {
       }),
     refetchOnWindowFocus: false,
   });
+  const eventsHeld = useHeldPending(events.isPending);
 
   const count = useQuery({
     queryKey: ["diagnostics", "events", "count", baseFilter],
@@ -165,7 +167,7 @@ export function EventsPanel() {
         </div>
       </div>
 
-      {events.isPending && <PageSkeleton rows={8} label="Loading events" />}
+      {(events.isPending || eventsHeld) && <PageSkeleton rows={8} label="Loading events" />}
       {events.isError && (
         <PageError
           title="Events unavailable"

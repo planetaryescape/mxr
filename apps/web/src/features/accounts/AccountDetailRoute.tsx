@@ -49,6 +49,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AccountSyncDetails } from "@/features/freshness/AccountSyncHealth";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function AccountDetailRoute() {
   const { key } = useParams({ from: "/accounts/$key" });
@@ -60,6 +61,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const accountsHeld = useHeldPending(accounts.isPending);
   const account = accounts.data?.accounts.find(
     (item) => item.key === keyParam || item.account_id === keyParam,
   );
@@ -68,6 +70,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     queryFn: () => fetchAccountAddresses(account?.account_id ?? ""),
     enabled: Boolean(account?.account_id),
   });
+  const addressesHeld = useHeldPending(addresses.isPending);
   const [alias, setAlias] = useState("");
   const [purgeLocalData, setPurgeLocalData] = useState(false);
   const [authSessionId, setAuthSessionId] = useState<string | null>(null);
@@ -176,7 +179,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     reauth.mutate();
   }, [account, authSessionId, reauth]);
 
-  if (accounts.isPending)
+  if (accounts.isPending || accountsHeld)
     return (
       <Page title="Account" eyebrow="Accounts">
         <PageSkeleton rows={4} label="Loading account" />
@@ -363,7 +366,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
             Add
           </Button>
         </form>
-        {addresses.isPending ? (
+        {addresses.isPending || addressesHeld ? (
           <PageSkeleton rows={2} label="Loading addresses" />
         ) : addresses.isError ? (
           <PageError

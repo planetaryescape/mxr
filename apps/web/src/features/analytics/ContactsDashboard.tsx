@@ -14,6 +14,7 @@ import {
 } from "@/components/PageParts";
 import { Input } from "@/components/ui/input";
 import { formatWhen, plural } from "@/lib/format";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function ContactsDashboard() {
   const drill = useDrillToSearch();
@@ -22,10 +23,12 @@ export function ContactsDashboard() {
     queryKey: ["analytics", "contacts", "asymmetry"],
     queryFn: () => fetchContactAsymmetry(),
   });
+  const asymmetryHeld = useHeldPending(asymmetry.isPending);
   const decay = useQuery({
     queryKey: ["analytics", "contacts", "decay", thresholdDays],
     queryFn: () => fetchContactDecay(40, thresholdDays),
   });
+  const decayHeld = useHeldPending(decay.isPending);
 
   return (
     <div className="grid gap-x-10 lg:grid-cols-2">
@@ -33,7 +36,7 @@ export function ContactsDashboard() {
         title="Asymmetry"
         description="Contacts who write far more than you reply, or the reverse."
       >
-        {asymmetry.isPending ? (
+        {asymmetry.isPending || asymmetryHeld ? (
           <PageSkeleton label="Loading asymmetry" />
         ) : asymmetry.isError ? (
           <PageError
@@ -79,7 +82,7 @@ export function ContactsDashboard() {
         }
       >
         <PageNote>No inbound mail for at least {plural(thresholdDays, "day")}.</PageNote>
-        {decay.isPending ? (
+        {decay.isPending || decayHeld ? (
           <PageSkeleton label="Loading decay" />
         ) : decay.isError ? (
           <PageError

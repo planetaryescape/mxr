@@ -1096,3 +1096,13 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Why**: BK's 2026-10-09 words and commit `4b4b52452` already moved them; this writes the rule down so new features don't invent their own feedback.
 
 **Trade-offs accepted**: Bursts of changes show only the last toast; the activity log keeps them all.
+
+## D141: No icon stands for AI
+
+**Chosen**: A model feature is named for what it does, with a task icon if the slot needs one: `PenLine` to draft or write, `TextQuote` to summarize. The sparkle (lucide `Sparkles`, `Sparkle`, `WandSparkles`) and `BotMessageSquare` are not used anywhere, and neither is the sparkle emoji. Who wrote the output is shown in words by `ModelMark` (`model · local` or `model · cloud`, D136). The accent colour is not used to mark a model feature. `scripts/check-ai-marks.mjs` in `npm run lint` fails an import of those icons or a sparkle emoji in `apps/web/src`.
+
+**Considered**: The sparkle, the industry default for "AI".
+
+**Why**: BK, 2026-10-16: "the sparkly emoji/icon is really overdone for AI, it screams vibe coded". D136 already marks provenance in words, so an icon adds nothing a reader can use, and a shared symbol makes every product look the same.
+
+**Trade-offs accepted**: A model feature is no longer recognisable at a glance from its icon, so its label and `ModelMark` have to carry it.

@@ -33,7 +33,7 @@
 | 23 | [Daemon portability](23-daemon-portability.md) | Durable drafts, recoverable actions, portable files, API contracts, client targeting and headless restore; ordered implementation slices for a future SwiftUI client or personal VPS |
 | 24 | [Remote hosting and clients](24-remote-hosting-and-clients.md) | Proposed `mxr serve` / `mxr connect`, authenticated Tailscale hosting, saved targets, registrations, presence, shutdown/reconnect and deregistration |
 | 25 | [The assistant](25-assistant.md) | The in-app chat agent: daemon loop over the MCP tools, approval enforced in code, ask_user questions, append-only history, web sidebar and `mxr assistant` |
-| 26 | [Web design concept](26-web-design-concept.md) | The night desk: what the web app is to the person, the mental model, map and journeys, principles, key moments, motion, hierarchy and the design gate (D123-D140) |
+| 26 | [Web design concept](26-web-design-concept.md) | The night desk: what the web app is to the person, the mental model, map and journeys, principles, key moments, motion, hierarchy and the design gate (D123-D141) |
 | 27 | [Web design system](27-web-design-system.md) | Tokens (three ink depths, three text tiers, type roles, shape, motion) and the shared parts every screen uses: page frame, row, reason and model marks, keys, controls, overlays, states, and the lints that keep them shared |
 | 28 | [Web screens](28-web-screens.md) | Every main screen under the lamp, with mockups: what the eye lands on, what recedes, and what changes from today |
 | 29 | [The assistant as the copy desk](29-assistant-design.md) | The assistant's presentation in web and TUI: wire-line steps in the daemon's words, a live line, the app's own objects, proofs to sign |

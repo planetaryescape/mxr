@@ -170,8 +170,9 @@ fn attach_rows(
     listed: &HashMap<usize, Vec<AssistantReadoutRowData>>,
 ) {
     let mut turn_start = 0;
-    for index in 0..items.len() {
-        match &items[index] {
+    let mut attached: Vec<(usize, Vec<AssistantReadoutRowData>)> = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        match item {
             AssistantItemData::User { .. } => turn_start = index + 1,
             AssistantItemData::Assistant { text, .. } => {
                 let named = linked_objects(text);
@@ -196,11 +197,14 @@ fn attach_rows(
                     }
                 }
                 best.truncate(REPLY_ROWS);
-                if let AssistantItemData::Assistant { rows, .. } = &mut items[index] {
-                    *rows = best;
-                }
+                attached.push((index, best));
             }
             _ => {}
+        }
+    }
+    for (index, best) in attached {
+        if let Some(AssistantItemData::Assistant { rows, .. }) = items.get_mut(index) {
+            *rows = best;
         }
     }
 }
@@ -563,12 +567,12 @@ mod tests {
         }
     }
 
-    fn reply_rows(item: &AssistantItemData) -> Vec<&str> {
+    fn reply_rows(item: &AssistantItemData) -> Option<Vec<&str>> {
         match item {
             AssistantItemData::Assistant { rows, .. } => {
-                rows.iter().map(|row| row.title.as_str()).collect()
+                Some(rows.iter().map(|row| row.title.as_str()).collect())
             }
-            _ => panic!("not a reply"),
+            _ => None,
         }
     }
 
@@ -590,7 +594,7 @@ mod tests {
             reply_with("First [D](mxr:thread/t-dddddddd), then [B](mxr:thread/t-bbbbbbbb)."),
         ];
         attach_rows(&mut items, &listed);
-        assert_eq!(reply_rows(&items[2]), ["D", "B"]);
+        assert_eq!(reply_rows(&items[2]), Some(vec!["D", "B"]));
     }
 
     #[test]
@@ -607,7 +611,11 @@ mod tests {
         ];
         let mut items = two_steps;
         attach_rows(&mut items, &listed);
-        assert!(reply_rows(&items[3]).is_empty(), "one each from two steps");
+        assert_eq!(
+            reply_rows(&items[3]),
+            Some(vec![]),
+            "one each from two steps"
+        );
 
         // A step from an earlier turn is not this reply's.
         let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
@@ -619,7 +627,7 @@ mod tests {
             reply_with("[A](mxr:thread/t-aaaaaaaa) and [B](mxr:thread/t-bbbbbbbb)"),
         ];
         attach_rows(&mut items, &listed);
-        assert!(reply_rows(&items[4]).is_empty());
+        assert_eq!(reply_rows(&items[4]), Some(vec![]));
     }
 
     #[test]
@@ -631,7 +639,7 @@ mod tests {
             reply_with("[A](mxr:thread/t-aaaaaaaa) and again [A](mxr:thread/t-aaaaaaaa)"),
         ];
         attach_rows(&mut items, &listed);
-        assert!(reply_rows(&items[2]).is_empty());
+        assert_eq!(reply_rows(&items[2]), Some(vec![]));
     }
 
     #[test]
@@ -649,7 +657,10 @@ mod tests {
             reply_with(&text),
         ];
         attach_rows(&mut items, &listed);
-        assert_eq!(reply_rows(&items[2]).len(), REPLY_ROWS);
+        assert_eq!(
+            reply_rows(&items[2]).map(|rows| rows.len()),
+            Some(REPLY_ROWS)
+        );
     }
 
     #[test]
@@ -668,12 +679,21 @@ mod tests {
         ];
         fill_titles(&mut items, &[]);
         let title = |item: &AssistantItemData| match item {
-            AssistantItemData::ToolCall { title, .. } => title.clone().unwrap(),
-            _ => panic!("not a step"),
+            AssistantItemData::ToolCall { title, .. } => title.clone(),
+            _ => None,
         };
-        assert_eq!(title(&items[0]).done, "Waiting for you: archive 2 emails");
-        assert_eq!(title(&items[0]).running, "Archiving 2 emails");
-        assert_eq!(title(&items[1]).done, "Couldn't star 1 email");
+        let waiting = title(&items[0]).map(|t| (t.running, t.done));
+        assert_eq!(
+            waiting,
+            Some((
+                "Archiving 2 emails".to_string(),
+                "Waiting for you: archive 2 emails".to_string()
+            ))
+        );
+        assert_eq!(
+            title(&items[1]).map(|t| t.done),
+            Some("Couldn't star 1 email".to_string())
+        );
     }
 
     #[test]

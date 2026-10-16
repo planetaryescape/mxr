@@ -303,9 +303,11 @@ jobs:
     # most expensive job in the matrix (full Playwright suite plus the
     # production-build speed gate), so it's the main target of that gate.
     if: (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    # The suite runs serially against one daemon (~4 min locally, plus
-    # retries on CI), on top of the cargo build.
-    timeout-minutes: 40
+    # The suite runs serially against one daemon, on top of the cargo build.
+    # By October 2026 it took 28-33 min on a 4-vCPU runner before the speed
+    # gate, so 40 cut off slow runs (main 0e112cb72). Splitting it into shards
+    # would halve the wall time but repeat the cargo build in each shard.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: apps/web

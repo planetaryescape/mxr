@@ -94,3 +94,21 @@ export async function modKey(page: Page): Promise<"Meta" | "Control"> {
   });
   return mac ? "Meta" : "Control";
 }
+
+/**
+ * Resolves once every running CSS animation and transition has finished.
+ * Measuring a box before then reads a slide-in mid-flight; WebKit's frames
+ * arrive later than Chromium's, so a bounding box taken right after
+ * `toBeVisible` can be a few pixels off.
+ */
+export async function animationsSettled(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    // An infinite animation (a spinner) never finishes, so it is left out.
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished),
+    ).then(() => {}),
+  );
+}

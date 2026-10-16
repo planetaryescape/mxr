@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { allowClipboard, readClipboard } from "./helpers/clipboard";
 import { mailList, mailRows, modKey, openList, reader } from "./helpers/mail";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -93,7 +94,7 @@ test("L lists the conversation's links; Enter opens one and y copies it", async 
   page,
   context,
 }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await allowClipboard(context);
   await openList(page, "/m/inbox");
   // A conversation whose body carries links (most demo mail does).
   for (let step = 0; step < 12; step += 1) {
@@ -113,7 +114,7 @@ test("L lists the conversation's links; Enter opens one and y copies it", async 
     }
     const href = (await options.first().locator(".font-mono").innerText()).trim();
     await page.keyboard.press("y");
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(href);
+    await expect.poll(() => readClipboard(page)).toBe(href);
 
     // Links open in a new tab with noopener; record the call rather than
     // depend on a demo host that doesn't resolve.

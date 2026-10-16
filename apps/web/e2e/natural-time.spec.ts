@@ -84,13 +84,18 @@ test('"fri 3" offers 15:00 and 03:00, and the snooze stores the time the preview
   }, until);
   expect(local).toEqual({ day: 5, hour: 15, minute: 0 });
 
-  // The daemon reports the same wake time.
+  // The daemon reports the same wake time. Poll: the dialog closes when the
+  // request is sent, and WebKit asks before the daemon has stored it.
   const state = readE2EState();
-  const response = await page.request.get(`${state.bridgeUrl}/api/v1/mail/snoozed`, {
-    headers: { Authorization: `Bearer ${state.token}` },
-  });
-  const { snoozed } = (await response.json()) as { snoozed: { wake_at: string }[] };
-  expect(snoozed.map((entry) => Date.parse(entry.wake_at))).toContain(Date.parse(until));
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(`${state.bridgeUrl}/api/v1/mail/snoozed`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      const { snoozed } = (await response.json()) as { snoozed: { wake_at: string }[] };
+      return snoozed.map((entry) => Date.parse(entry.wake_at));
+    })
+    .toContain(Date.parse(until));
 
   // And the Snoozed view shows it.
   await pressSequence(page, "g", "n");

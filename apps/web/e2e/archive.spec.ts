@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import { allowClipboard, readClipboard } from "./helpers/clipboard";
 import { mailList, openList } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
@@ -73,7 +74,7 @@ test("the answer box returns the booking reference with where it came from, and 
   page,
   context,
 }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await allowClipboard(context);
   await waitForRecords(page);
   await openApp(page, "/archive");
   // The answer box is one key away: "/" focuses it, nothing does on arrival.
@@ -89,7 +90,7 @@ test("the answer box returns the booking reference with where it came from, and 
   await page.keyboard.press("Enter");
   await page.keyboard.press("y");
   await expect(page.locator("[data-sonner-toast]").first()).toContainText("K7QX2M copied");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("K7QX2M");
+  expect(await readClipboard(page)).toBe("K7QX2M");
 });
 
 test("a query no record matches says so before searching all mail", async ({ page }) => {

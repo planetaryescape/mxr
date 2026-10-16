@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { mailRows, openList, reader } from "./helpers/mail";
+import { animationsSettled, mailRows, openList, reader } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
 /*
@@ -112,6 +112,7 @@ test.describe("at 1440px", () => {
     await openApp(page, `/reading/item/${encodeURIComponent(await firstReadingKey(page))}`);
     const body = page.getByTestId("reader-text").locator("[data-article-body]");
     await expect(body).toBeVisible();
+    await animationsSettled(page);
     const title = await page.getByTestId("reading-reader").locator("header h1").boundingBox();
     const column = await body.boundingBox();
     expect(Math.abs((title?.x ?? 0) - (column?.x ?? 1000))).toBeLessThanOrEqual(1);

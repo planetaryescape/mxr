@@ -100,11 +100,21 @@ async function stubCachedGists(page: Page): Promise<() => number> {
   return () => requests;
 }
 
-test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, ({ page }) =>
-  flingThroughTheList(page, false));
+const NO_COVERAGE =
+  "counts V8 block coverage over the Chrome DevTools Protocol, which WebKit has no equivalent of";
 
-test(`${ROWS} rows with gist lines stay under the same budget`, ({ page }) =>
-  flingThroughTheList(page, true));
+test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName === "webkit", NO_COVERAGE);
+  return flingThroughTheList(page, false);
+});
+
+test(`${ROWS} rows with gist lines stay under the same budget`, ({ page, browserName }) => {
+  test.skip(browserName === "webkit", NO_COVERAGE);
+  return flingThroughTheList(page, true);
+});
 
 async function flingThroughTheList(page: Page, gists: boolean) {
   const gistRequests = gists ? await stubCachedGists(page) : () => 0;
@@ -217,7 +227,11 @@ test("returning from the reader keeps the cursor and the scroll position", async
  * same on a fast laptop and a starved runner): a lamp move re-renders the two
  * rows it touches, not all 5,000.
  */
-test(`${ROWS} people: each j moves the lamp inside the same code budget`, async ({ page }) => {
+test(`${ROWS} people: each j moves the lamp inside the same code budget`, async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName === "webkit", NO_COVERAGE);
   // The gate is code executed, not time. Under precise coverage a starved runner
   // takes ~3s a step, so the default 30s would fail on wall clock alone.
   test.setTimeout(120_000);

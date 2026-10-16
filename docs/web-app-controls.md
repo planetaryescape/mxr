@@ -49,10 +49,7 @@ Updates, Archive, Inbox, a conversation in the inbox, every tool page and
 Settings light More. The sheet traps focus, closes on Esc and on any
 navigation, and the page's keys stay under it while it is open. The top bar's
 search is the only search field.
-||||||| parent of e1f64a802 (feat: the assistant panel as a copy desk (wire lines, proofs, chips, landing))
-The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
-Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
-Waiting on, Snoozed and Subscriptions sit under More.
+
 ## Assistant panel
 
 | Control | Where | Reason |
@@ -64,10 +61,6 @@ Waiting on, Snoozed and Subscriptions sit under More.
 | Stop | Live line, only while a turn runs | Frequency: ends the turn. |
 | Apply (`y`), send back with a note (`n`), exact call (`x`) | A waiting proof | The one primary of the panel, with the two quiet ways out. The keys answer only while the proof has focus and never while typing. |
 | Options (`1` to `6`), Answer, Skip | A waiting question | The question's answer and its way out. |
-
-The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
-Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
-Waiting on, Snoozed and Subscriptions sit under More.
 
 ## Page header
 

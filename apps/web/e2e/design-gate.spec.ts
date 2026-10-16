@@ -529,7 +529,6 @@ for (const theme of THEMES) {
     });
   });
 }
-||||||| parent of e1f64a802 (feat: the assistant panel as a copy desk (wire lines, proofs, chips, landing))
 
 /*
  * The copy desk (docs/blueprint/29): the assistant panel open beside Now and

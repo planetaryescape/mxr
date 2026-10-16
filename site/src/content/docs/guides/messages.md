@@ -33,7 +33,11 @@ that conversation directly. Opening Messages from navigation returns to the list
 
 Closeness comes from your own history with them, counted on your machine:
 how often you've written to each other, how recently, and for how long.
-Your turn uses the same rule as Now's People, so the two always agree.
+Your turn uses the same rule as Now's People, so the two always agree: Now's
+headline, the Messages count in the rail and the Your turn rows are the same
+number, which `your_turn_split` in `mxr messages --format json` divides into
+people you write with and others who wrote to you. The Waiting on view
+(`turn=theirs`) is empty with "Nobody you're waiting to hear from."
 
 A turn nobody took goes quiet after three times your usual interval with
 that person, or a week when there's no history, and never stays longer

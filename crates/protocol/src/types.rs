@@ -1452,6 +1452,12 @@ pub enum Request {
         account_id: AccountId,
         #[serde(default = "default_screener_limit")]
         limit: u32,
+        /// Every sender ever without a decision, in any folder. The default
+        /// is the set the desk's Screener count counts: inbox mail from
+        /// senders first seen in the last 14 days, so the count and the
+        /// list always agree (and `limit` only applies with `all_senders`).
+        #[serde(default)]
+        all_senders: bool,
     },
     /// All screener decisions for an account.
     ListScreenerDecisions {
@@ -3873,6 +3879,11 @@ pub enum ResponseData {
     /// Returned by `Request::ListOwedReplies`.
     OwedReplies {
         rows: Vec<OwedReplyRowData>,
+        /// The desk's people split for the account (default mode only):
+        /// `write_with` is the people these rows are with, `others` the
+        /// people who wrote to you and wait in Messages.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        people: Option<PeopleSplitData>,
     },
     /// Returned by `Request::ArchiveAsk`.
     ArchiveAnswer {
@@ -4006,6 +4017,9 @@ pub enum ResponseData {
         due: DeskLaneData,
         waiting: DeskLaneData,
         people_new: DeskLaneData,
+        /// People waiting on you, split as every surface counts them.
+        #[serde(default)]
+        people: PeopleSplitData,
         elsewhere: DeskElsewhereData,
         /// The latest message from a person that reached the inbox, for
         /// "nothing from people since ..." lines.

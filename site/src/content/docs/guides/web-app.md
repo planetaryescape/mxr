@@ -399,7 +399,8 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 Reply later (the reply queue; reply later adds to it) and the other queues the TUI shows as
 lenses live in the rail's Views and Mail groups: owed replies (the desk's
 You owe lane in full: people you have written to waiting on you, most
-overdue first), invites and subscriptions. On the reply queue each row has a
+overdue first; the others who wrote to you are in Messages and the page says how
+many), invites and subscriptions. On the reply queue each row has a
 **Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)
 which works through owed replies and the reply queue one conversation at a
 time.
@@ -526,7 +527,10 @@ The **Screener** page has a **Queue** tab of first-time senders and a
 **Allow**, **Deny**, **Feed** and **Paper trail**, shown on the lit row with
 `1` to `4` (the TUI's `a`, `d`, `f`, `p` work too) to decide for that sender
 ([screener keys](/reference/keybindings/#screener)). With more than one account, a
-picker above the list chooses which account's queue you are screening.
+picker above the list chooses which account's queue you are screening. The
+queue lists the senders the Screener count counts: first seen in the last 14
+days, mail in your inbox. **Show all senders** adds everyone without a
+decision, however old.
 
 ## Sender standalone route
 

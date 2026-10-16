@@ -143,16 +143,16 @@ pub(super) async fn build_thread_context(
         _ => None,
     };
 
-    let owed_reply = newest_first.first().and_then(|newest| {
-        let bulk = !matches!(newest.unsubscribe, UnsubscribeMethod::None)
-            || counterparty.as_ref().is_some_and(|person| {
-                person.bulk_sender && newest.from.email.eq_ignore_ascii_case(&person.email)
-            });
-        (!is_yours(newest) && !bulk).then(|| OwedReplyHereData {
-            message_id: newest.id.clone(),
-            since: newest.date,
-        })
-    });
+    // "You owe a reply" only when the desk has this thread as someone's
+    // turn (You owe or New from people). An old thread past its window, a
+    // newsletter, a thread you were copied on or one in the archive has no
+    // line, so this agrees with Now, Messages and the Owed page.
+    let owed_reply = super::desk::thread_turn(state, &account_id, thread_id, chrono::Utc::now())
+        .await?
+        .map(|row| OwedReplyHereData {
+            message_id: row.message_id,
+            since: row.since,
+        });
 
     Ok(ThreadContextData {
         thread_id: thread_id.clone(),
@@ -333,10 +333,10 @@ mod tests {
             Some(39)
         );
         assert!(!person.bulk_sender);
-        assert_eq!(
-            facts.owed_reply.map(|owed| owed.message_id),
-            Some(newest.id.clone())
-        );
+        // These messages are not in the inbox, so it is nobody's turn on
+        // the desk and the thread says nothing is owed (the positive case,
+        // on the desk's lanes, is in tests/one_waiting.rs).
+        assert!(facts.owed_reply.is_none());
         let mut whats: Vec<_> = facts
             .promises
             .iter()

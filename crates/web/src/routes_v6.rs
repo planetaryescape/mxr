@@ -1755,6 +1755,10 @@ struct ScreenerQueueQuery {
     account_id: String,
     #[serde(default = "default_screener_limit")]
     limit: u32,
+    /// Every sender without a decision, not just the set the Screener
+    /// count counts.
+    #[serde(default)]
+    all_senders: bool,
 }
 
 fn default_screener_limit() -> u32 {
@@ -1774,6 +1778,7 @@ async fn list_screener_queue(
         Request::ListScreenerQueue {
             account_id,
             limit: query.limit,
+            all_senders: query.all_senders,
         },
     )
     .await?;

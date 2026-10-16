@@ -6,11 +6,26 @@
 //! lives in `app/` once the lens state is wired through.
 
 use super::desk_lens::short_duration;
-use mxr_protocol::OwedReplyRowData;
+use mxr_protocol::{OwedReplyRowData, PeopleSplitData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    rows: &[OwedReplyRowData],
+    people: Option<PeopleSplitData>,
+    theme: &crate::theme::Theme,
+) {
+    // Where the people who wrote to you but you don't write with are.
+    let others = people.filter(|people| people.others > 0).map(|people| {
+        let n = people.others;
+        format!(
+            "  {n} {} who wrote to you {} in Messages.",
+            if n == 1 { "other" } else { "others" },
+            if n == 1 { "is" } else { "are" }
+        )
+    });
     let block = Block::bordered()
         .title(" Owed Replies ")
         .border_type(BorderType::Rounded)
@@ -19,7 +34,7 @@ pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &cr
     frame.render_widget(block, area);
 
     if rows.is_empty() {
-        let msg = Paragraph::new(vec![
+        let mut lines = vec![
             Line::from(""),
             Line::from(Span::styled(
                 "  Inbox zero on owed replies.",
@@ -27,10 +42,17 @@ pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &cr
             )),
             Line::from(""),
             Line::from(Span::styled(
-                "  Nothing waiting on you right now.",
+                "  Nobody you write with is waiting on a reply.",
                 Style::default().fg(theme.text_muted),
             )),
-        ]);
+        ];
+        if let Some(others) = others {
+            lines.push(Line::from(Span::styled(
+                others,
+                Style::default().fg(theme.text_muted),
+            )));
+        }
+        let msg = Paragraph::new(lines);
         frame.render_widget(msg, inner);
         return;
     }
@@ -64,6 +86,13 @@ pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &cr
         ]));
     }
 
+    if let Some(others) = others {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            others,
+            Style::default().fg(theme.text_muted),
+        )));
+    }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
@@ -111,12 +140,14 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 80, 12),
                 &[],
+                None,
                 &crate::theme::Theme::default(),
             );
         });
         assert!(rendered.contains("Inbox zero on owed replies."));
         assert!(rendered.contains("Owed Replies"));
-        assert!(rendered.contains("Nothing waiting on you"));
+        assert!(rendered.contains("Nobody you write with is waiting on a reply."));
+        assert!(!rendered.contains("in Messages"));
     }
 
     #[test]
@@ -130,6 +161,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 12),
                 &rows,
+                None,
                 &crate::theme::Theme::default(),
             );
         });
@@ -149,6 +181,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 6),
                 &rows,
+                None,
                 &crate::theme::Theme::default(),
             );
         });
@@ -170,6 +203,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 12),
                 &rows,
+                None,
                 &crate::theme::Theme::default(),
             );
         });
@@ -179,5 +213,24 @@ mod tests {
             first < second,
             "lens must preserve caller's order; got first={first} second={second}"
         );
+    }
+
+    #[test]
+    fn empty_lane_says_where_the_others_are() {
+        let people = Some(PeopleSplitData {
+            write_with: 0,
+            others: 3,
+        });
+        let rendered = render_to_string(80, 12, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 80, 12),
+                &[],
+                people,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(rendered.contains("3 others who wrote to you are in Messages."));
+        assert!(!rendered.contains("Nothing waiting on you"));
     }
 }

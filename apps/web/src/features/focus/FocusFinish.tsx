@@ -16,6 +16,7 @@ export function FocusFinish({
   empty,
   deferred,
   more,
+  others,
   onRevisit,
   onContinue,
   onLeave,
@@ -28,6 +29,8 @@ export function FocusFinish({
   deferred: number;
   /** Owed conversations the desk lane didn't return. */
   more: number;
+  /** People who wrote to you but you don't write with: they wait in Messages. */
+  others: number;
   onRevisit: () => void;
   onContinue: () => void;
   onLeave: () => void;
@@ -40,8 +43,8 @@ export function FocusFinish({
       : deferred > 0
         ? `${plural(deferred, "conversation")} skipped.`
         : empty
-          ? "Nobody is waiting on a reply from you."
-          : "Low tide. That's everyone.";
+          ? "Nobody you write with is waiting on a reply."
+          : "Low tide. That's everyone you write with.";
   // Earned only by working through the queue: a session that started empty
   // has nothing to celebrate.
   const cleared = more === 0 && deferred === 0 && !empty;
@@ -57,6 +60,9 @@ export function FocusFinish({
       <p className="mt-2 text-pretty text-base leading-6 text-muted-foreground tabular-nums">
         {replied > 0 ? `${plural(replied, "conversation")} handled. ` : null}
         {more > 0 ? `${plural(more, "more conversation")} waiting on a reply. ` : null}
+        {others > 0
+          ? `${plural(others, "other")} who wrote to you ${others === 1 ? "is" : "are"} in Messages. `
+          : null}
         {next ? (
           <>
             Next thing due:{" "}

@@ -63,8 +63,11 @@ About **Done, no reply needed**:
 ## Finish
 
 - **Everyone answered:** focus mode shows low tide ("Low tide. That's
-  everyone.") and the next promise you made that is due, for example "Next
-  thing due: Mon, send the notes to nora@example.com."
+  everyone you write with.") and the next promise you made that is due, for
+  example "Next thing due: Mon, send the notes to nora@example.com." People
+  who wrote to you and you have not written to are in Messages, not in the
+  queue, and the end says how many: "3 others who wrote to you are in
+  Messages."
 - **You skipped the last ones:** the end says how many you skipped, with
   **Come back to it**.
 - **More than one batch:** the queue loads up to 5,000 rows. Past that, the

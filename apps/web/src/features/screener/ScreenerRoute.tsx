@@ -133,9 +133,11 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
   const qc = useQueryClient();
   const [focused, setFocused] = useState(0);
   const via = useRef<LampVia>("key");
+  const [allSenders, setAllSenders] = useState(false);
   const queue = useQuery({
-    queryKey: ["screener", accountId],
-    queryFn: () => fetchScreenerQueue(accountId),
+    queryKey: ["screener", accountId, allSenders],
+    queryFn: () =>
+      allSenders ? fetchScreenerQueue(accountId, true) : fetchScreenerQueue(accountId),
   });
   const decide = useMutation({
     mutationFn: ({
@@ -199,18 +201,35 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
         onRetry={() => void queue.refetch()}
       />
     );
+  const scope = (
+    <Button variant="link" size="xs" onClick={() => setAllSenders((current) => !current)}>
+      {allSenders ? "Only new senders" : "Show all senders"}
+    </Button>
+  );
   if (rows.length === 0)
     return (
-      <PageEmpty
-        icon={<Shield className="size-5" />}
-        title="Queue empty"
-        body="No unknown senders are waiting. New ones land here before they reach your inbox."
-      />
+      <>
+        <PageEmpty
+          icon={<Shield className="size-5" />}
+          title="Queue empty"
+          body={
+            allSenders
+              ? "Every sender has a decision."
+              : "No new senders are waiting. New ones land here before they reach your inbox."
+          }
+        />
+        <div className="mt-2 flex justify-center">{scope}</div>
+      </>
     );
 
   return (
     <>
-      <p className="type-meta mb-3 px-2 text-text-3">{plural(rows.length, "sender")} waiting.</p>
+      <p className="type-meta mb-3 flex flex-wrap items-center gap-x-3 px-2 text-text-3">
+        <span>
+          {plural(rows.length, "sender")} {allSenders ? "without a decision." : "waiting."}
+        </span>
+        {scope}
+      </p>
       <ul aria-label="Screener queue">
         {rows.map((entry, index) => {
           const name = entry.display_name || entry.sender_email;

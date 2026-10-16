@@ -566,7 +566,9 @@ function MessagesBody({
   const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
   const onDoneRow = useCallback(() => latest.current.done(), []);
 
-  const empty = data.your_turn.length === 0;
+  // The daemon says when the view being shown is empty (Waiting on has its
+  // own line), so Your turn's rows are not the test.
+  const empty = data.empty_state != null;
   return (
     <FramePanesContext.Provider value={frames}>
       <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>

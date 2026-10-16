@@ -12,6 +12,8 @@ use super::desk_lanes::{
 };
 use super::desk_timers::DeskTimers;
 use super::mail_kind::{self, SenderKind};
+use super::messages_view::People;
+use super::turn_units::{TurnKeys, TurnUnits};
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
@@ -42,12 +44,14 @@ pub(super) async fn get_desk_at(
     let started = std::time::Instant::now();
     let desk = compose_desk(state, account_id, now).await?;
     let lane = |kind| desk_lane(&desk.rows, kind, lane_limit);
+    let people = desk.turn_units().split;
     let data = ResponseData::Desk {
         account_id: account_id.cloned(),
         owed: lane(DeskLaneKind::Owed),
         due: lane(DeskLaneKind::Due),
         waiting: lane(DeskLaneKind::Waiting),
         people_new: lane(DeskLaneKind::PeopleNew),
+        people,
         elsewhere: desk.elsewhere,
         last_from_people_at: desk.last_from_people_at,
         generated_at: now,
@@ -63,9 +67,22 @@ pub(super) async fn get_desk_at(
 /// Every desk row, each conversation in its highest lane, plus the counts.
 pub(super) struct ComposedDesk {
     pub rows: Vec<DeskRowData>,
+    /// How each turn conversation is counted (`turn_units`).
+    pub turn_keys: TurnKeys,
+    /// The senders the Screener count counts, per account.
+    pub screener_senders: Vec<(AccountId, String)>,
     elsewhere: DeskElsewhereData,
     last_from_people_at: Option<DateTime<Utc>>,
     accounts: usize,
+}
+
+impl ComposedDesk {
+    /// The people waiting on you, counted once (`turn_units`).
+    pub(super) fn turn_units(&self) -> TurnUnits {
+        let owed = desk_lane(&self.rows, DeskLaneKind::Owed, u32::MAX).rows;
+        let new = desk_lane(&self.rows, DeskLaneKind::PeopleNew, u32::MAX).rows;
+        TurnUnits::from_lanes(&self.turn_keys, &owed, &new)
+    }
 }
 
 /// The desk for one account, or every enabled account, at `now`.
@@ -87,15 +104,25 @@ pub(super) async fn compose_desk(
     };
 
     let mut rows = Vec::new();
+    let mut turn_keys = TurnKeys::default();
+    let mut screener_senders = Vec::new();
     let mut elsewhere = DeskElsewhereData::default();
     let mut last_from_people_at: Option<DateTime<Utc>> = None;
     for account in &accounts {
         let desk = account_desk(state, account, now).await?;
         rows.extend(desk.rows);
+        turn_keys.extend(desk.turn_keys);
+        screener_senders.extend(
+            desk.screener_senders
+                .into_iter()
+                .map(|email| (account.clone(), email)),
+        );
         elsewhere.reading += desk.elsewhere.reading;
         elsewhere.paper_trail += desk.elsewhere.paper_trail;
-        elsewhere.screener += desk.elsewhere.screener;
+        // The Screener page composes one account, so the count is that
+        // account's: the first with anyone waiting, which the link opens.
         if desk.elsewhere.screener > 0 && elsewhere.screener_account.is_none() {
+            elsewhere.screener = desk.elsewhere.screener;
             elsewhere.screener_account = Some(account.clone());
         }
         elsewhere.invites += desk.elsewhere.invites;
@@ -104,6 +131,8 @@ pub(super) async fn compose_desk(
     elsewhere.deliveries = count_active_deliveries(state, &accounts).await?;
     Ok(ComposedDesk {
         rows: dedupe_by_precedence(rows),
+        turn_keys,
+        screener_senders,
         elsewhere,
         last_from_people_at,
         accounts: accounts.len(),
@@ -124,6 +153,60 @@ pub(super) fn desk_lane(rows: &[DeskRowData], kind: DeskLaneKind, limit: u32) ->
         rows: lane_rows,
         total,
     }
+}
+
+/// The turn row (You owe or New from people) a thread has on the composed
+/// desk, or `None` when it is nobody's turn: not in the inbox, not from a
+/// person, copied only, decayed, snoozed, put away, or outranked by another
+/// lane (a watched person's Waiting on). The lane rule on this thread alone
+/// is a cheap first test, since most threads fail it; only a thread that
+/// passes is checked against the composed desk, which is what Now, Messages
+/// and the rail count, so the thread line says "you owe" exactly when they
+/// count it.
+pub(super) async fn thread_turn(
+    state: &AppState,
+    account_id: &AccountId,
+    thread_id: &ThreadId,
+    now: DateTime<Utc>,
+) -> Result<Option<DeskRowData>, super::HandlerError> {
+    let store = &state.store;
+    let messages = store
+        .desk_messages_in_threads(account_id, std::slice::from_ref(thread_id))
+        .await?;
+    let timers = DeskTimers::new(
+        store.desk_reply_later(account_id).await?,
+        store
+            .desk_reminders(account_id, now - Duration::days(DESK_WINDOW_DAYS))
+            .await?,
+    );
+    let senders = Senders::load(state, account_id, &messages).await?;
+    let is_self = self_matcher(state, account_id).await?;
+    let dismissed = super::modes::messages_dismissals(state, account_id).await?;
+    let lanes = thread_lanes(&AccountInputs {
+        account_id,
+        messages: &messages,
+        contacts: &senders.contacts,
+        screener: &senders.screener,
+        dismissed: &dismissed,
+        timers: &timers,
+        is_self: &is_self,
+        moves: &senders.moves,
+        treatments: &senders.treatments,
+        shape: super::conversation_shape::shape_config(state),
+        now,
+    });
+    let in_turn = lanes.rows.iter().any(|draft| {
+        draft.row.thread_id == *thread_id
+            && matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+    });
+    if !in_turn {
+        return Ok(None);
+    }
+    let desk = compose_desk(state, Some(account_id), now).await?;
+    Ok(desk.rows.into_iter().find(|row| {
+        row.thread_id == *thread_id
+            && matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+    }))
 }
 
 /// Whether an address is this account's own (any of its addresses).
@@ -293,6 +376,8 @@ impl Senders {
 
 struct AccountDesk {
     rows: Vec<DeskRowData>,
+    turn_keys: TurnKeys,
+    screener_senders: HashSet<String>,
     elsewhere: DeskElsewhereData,
     last_from_people_at: Option<DateTime<Utc>>,
 }
@@ -342,6 +427,15 @@ async fn account_desk(
         now,
     });
 
+    let people = People::new(&store.person_links(account_id).await?);
+    let mut turn_keys = TurnKeys::default();
+    turn_keys.add_account(
+        account_id,
+        &people,
+        &lanes.turn_people,
+        lanes.rows.iter().map(|draft| &draft.row),
+    );
+    let screener_senders = std::mem::take(&mut lanes.screener_senders);
     let mut rows: Vec<(DeskRowData, Option<PaceDirection>)> = lanes
         .rows
         .drain(..)
@@ -459,6 +553,8 @@ async fn account_desk(
     lanes.elsewhere.invites = count_pending_invites(state, account_id, now).await?;
     Ok(AccountDesk {
         rows,
+        turn_keys,
+        screener_senders,
         elsewhere: lanes.elsewhere,
         last_from_people_at: lanes.last_from_people_at,
     })

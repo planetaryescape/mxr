@@ -4,6 +4,7 @@
 //! the topics and each message's new text, so the CLI, TUI, web and agents
 //! show the same people, the same order and the same words.
 
+use super::PeopleSplitData;
 use mxr_core::id::*;
 use mxr_core::types::Address;
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,8 @@ pub mod messages_copy {
     pub const NEVER_HAD_ANY: &str = "When someone writes to you and you've written to them, they show up here, one row per person, with what they asked you.";
     /// Followed by up to three people whose usual pace lapsed, as facts.
     pub const CLEAR: &str = "Nobody is waiting on you.";
+    /// The empty line of the Waiting on view (`turn=theirs`).
+    pub const WAITING_CLEAR: &str = "Nobody you're waiting to hear from.";
     /// The full explanation `?` leads with. Nothing shows it unasked.
     pub const ABOUT: &str = "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).";
     pub const LANDS_HERE: &str = "People you write to and who write to you, one row each; a group thread is its own row, and a thread you were only copied on goes to Updates.";
@@ -256,6 +259,10 @@ pub struct MessagesData {
     /// `messages_copy::HEADER`.
     pub header: String,
     pub your_turn: Vec<MessagesRowData>,
+    /// Your turn's people, split as Now and the rail count them. With
+    /// `turn=theirs` Your turn is cleared but this still describes it.
+    #[serde(default)]
+    pub your_turn_split: PeopleSplitData,
     pub pinned: Vec<MessagesRowData>,
     pub recent: Vec<MessagesRowData>,
     pub quiet: Vec<MessagesRowData>,

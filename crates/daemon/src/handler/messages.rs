@@ -11,7 +11,7 @@
 //!   client shows the same words and the same "trimmed" marker.
 
 use super::conversation_shape::Shape;
-use super::desk::{self_matcher, Senders};
+use super::desk::{compose_desk, self_matcher, Senders};
 use super::desk_lanes::{
     apply_pace, clean_subject, current_messages, is_outbound, last_stored, thread_lanes,
     AccountInputs, DESK_WINDOW_DAYS,
@@ -76,9 +76,20 @@ impl Gathered {
     }
 }
 
+/// A thread the composed desk says is someone's turn, with the row key the
+/// desk counted it under (`TurnKeys`).
+struct DeskTurn {
+    row: DeskRowData,
+    key: RowKey,
+}
+
 /// Which threads to gather: the recent window, or a fixed set.
 enum Scope<'a> {
-    Window,
+    /// The recent window, plus every thread the composed desk says is
+    /// someone's turn (`turns`, this account's You owe and New from people
+    /// rows after the desk's precedence). Your turn is the desk's, so the
+    /// window decides only what else shows in Recent and Quiet.
+    Window(HashMap<ThreadId, DeskTurn>),
     Threads(&'a [ThreadId]),
 }
 
@@ -94,16 +105,18 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
-    let mut messages = match scope {
-        Scope::Window => {
+    let (mut messages, desk_turns) = match scope {
+        Scope::Window(turns) => {
             let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
             let mut messages = store
                 .desk_thread_messages(account_id, now - Duration::days(days))
                 .await?;
-            // A conversation a time you set brought back may be older.
+            // A conversation a time you set brought back, or one the desk
+            // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
             let mut back: Vec<ThreadId> = timers
                 .maybe_back(now)
+                .chain(turns.keys())
                 .filter(|thread| !loaded.contains(thread))
                 .cloned()
                 .collect::<HashSet<_>>()
@@ -111,9 +124,12 @@ async fn gather(
                 .collect();
             back.sort_by_key(ThreadId::as_str);
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
-            messages
+            (messages, Some(turns))
         }
-        Scope::Threads(threads) => store.desk_messages_in_threads(account_id, threads).await?,
+        Scope::Threads(threads) => (
+            store.desk_messages_in_threads(account_id, threads).await?,
+            None,
+        ),
     };
     messages.sort_by(|a, b| {
         a.thread_id
@@ -151,12 +167,22 @@ async fn gather(
             shape,
             now,
         };
-        let mut turns: HashMap<ThreadId, DeskRowData> = thread_lanes(&inputs)
-            .rows
-            .into_iter()
-            .filter(|draft| matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew))
-            .map(|draft| (draft.row.thread_id.clone(), draft.row))
-            .collect();
+        // A fixed set of threads (a person's page) has no composed desk
+        // to read, so its turns come from the lane rule on those threads.
+        let mut turns: HashMap<ThreadId, (DeskRowData, Option<RowKey>)> = match desk_turns {
+            Some(turns) => turns
+                .into_iter()
+                .map(|(thread, turn)| (thread, (turn.row, Some(turn.key))))
+                .collect(),
+            None => thread_lanes(&inputs)
+                .rows
+                .into_iter()
+                .filter(|draft| {
+                    matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+                })
+                .map(|draft| (draft.row.thread_id.clone(), (draft.row, None)))
+                .collect(),
+        };
         let mut topics = Vec::new();
         let mut threads = HashMap::new();
         let mut names: HashMap<String, (DateTime<Utc>, String)> = HashMap::new();
@@ -186,15 +212,24 @@ async fn gather(
                 }
             }
             let shape = inputs.shape(thread);
-            if !shape.in_messages() || thread.iter().all(|m| m.trashed) {
+            // Someone's turn is always a row, whatever the thread's shape
+            // (a reply-later thread you were only copied on).
+            if (!shape.in_messages() && !turns.contains_key(&thread_id))
+                || thread.iter().all(|m| m.trashed)
+            {
                 continue;
             }
+            let (turn, desk_key) = match turns.remove(&thread_id) {
+                Some((row, key)) => (Some(row), key),
+                None => (None, None),
+            };
             if let Some(topic) = place_topic(
                 account_id,
                 thread,
                 &shape,
                 &people,
-                turns.remove(&thread_id),
+                turn,
+                desk_key,
                 dismissed
                     .get(&thread_id)
                     .is_some_and(|mark| mark.covers(thread)),
@@ -296,6 +331,8 @@ fn place_topic(
     shape: &Shape,
     people: &People,
     turn: Option<DeskRowData>,
+    // The key the composed desk counted this turn under, when it did.
+    desk_key: Option<RowKey>,
     done: bool,
     is_self: &dyn Fn(&str) -> bool,
     now: DateTime<Utc>,
@@ -309,9 +346,22 @@ fn place_topic(
             others.push(primary);
         }
     }
-    let key = match (shape, others.as_slice()) {
-        (_, [only]) => RowKey::Person(only.clone()),
-        (Shape::Group(_), _) => RowKey::Group(thread[0].thread_id.clone()),
+    let key = match (shape, others.len(), &turn) {
+        _ if desk_key.is_some() => {
+            let key = desk_key?;
+            if let RowKey::Person(primary) = &key {
+                others = vec![primary.clone()];
+            }
+            key
+        }
+        (_, 1, _) => RowKey::Person(others[0].clone()),
+        (Shape::Group(_), _, _) => RowKey::Group(thread[0].thread_id.clone()),
+        // The turn row names who it is with; `turn_units` counts it the same.
+        (_, 0, Some(row)) => {
+            let primary = people.primary(&row.counterparty_email);
+            others.push(primary.clone());
+            RowKey::Person(primary)
+        }
         _ => return None,
     };
     let you_last = is_outbound(latest, is_self);
@@ -442,9 +492,27 @@ pub(super) async fn messages_at(
 ) -> Result<MessagesData, HandlerError> {
     let started = std::time::Instant::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
+    // Your turn is the composed desk's: the same accounts' rows after
+    // lane precedence, over the desk's own window, as Now and the rail
+    // count them (`turn_units`).
+    let desk = compose_desk(state, account_id, now).await?;
+    // From the same desk, so it holds when the Waiting on view clears
+    // Your turn below.
+    let your_turn_split = desk.turn_units().split;
+    let mut turns: HashMap<AccountId, HashMap<ThreadId, DeskTurn>> = HashMap::new();
+    for row in desk.rows {
+        if matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew) {
+            let key = desk.turn_keys.key(&row);
+            turns
+                .entry(row.account_id.clone())
+                .or_default()
+                .insert(row.thread_id.clone(), DeskTurn { row, key });
+        }
+    }
     let mut gathered = Vec::new();
     for account in &accounts {
-        gathered.push(gather(state, account, Scope::Window, now).await?);
+        let own = turns.remove(account).unwrap_or_default();
+        gathered.push(gather(state, account, Scope::Window(own), now).await?);
     }
     let mut your_turn = Vec::new();
     let mut pinned = Vec::new();
@@ -505,14 +573,24 @@ pub(super) async fn messages_at(
         fill_previews(state, &gathered, band).await?;
     }
 
-    let lapsed = if your_turn.is_empty() {
+    let waiting_view = turn == Some(MessagesTurnData::Theirs);
+    let lapsed = if your_turn.is_empty() && !waiting_view {
         lapsed(state, &accounts, now).await?
     } else {
         Vec::new()
     };
-    let empty_state = your_turn.is_empty().then(|| {
+    // Judged on the view being shown: Waiting on is empty when no row
+    // waits on them, whatever Your turn holds.
+    let view_empty = if waiting_view {
+        pinned.is_empty() && recent_total == 0 && quiet_total == 0
+    } else {
+        your_turn.is_empty()
+    };
+    let empty_state = view_empty.then(|| {
         if row_count == 0 {
             messages_copy::NEVER_HAD_ANY.to_string()
+        } else if waiting_view {
+            messages_copy::WAITING_CLEAR.to_string()
         } else {
             messages_copy::CLEAR.to_string()
         }
@@ -533,6 +611,7 @@ pub(super) async fn messages_at(
         generated_at: now,
         header: messages_copy::HEADER.to_string(),
         your_turn,
+        your_turn_split,
         pinned,
         recent,
         quiet,

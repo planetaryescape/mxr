@@ -231,6 +231,9 @@ pub struct SubscriptionsPageState {
 #[derive(Debug, Clone, Default)]
 pub struct OwedRepliesPageState {
     pub entries: Vec<mxr_protocol::OwedReplyRowData>,
+    /// The daemon's count of people you write with and others who wrote
+    /// to you, the one Now, Messages and the rail use.
+    pub people: Option<mxr_protocol::PeopleSplitData>,
 }
 
 /// The desk as last fetched: lanes in display order plus the everything-else

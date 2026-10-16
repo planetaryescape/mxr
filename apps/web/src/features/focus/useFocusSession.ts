@@ -62,6 +62,8 @@ function useOwedLane(scope: string | null) {
     rows: lane?.rows ?? NO_ROWS,
     /** Owed conversations beyond what the lane returned. */
     more: lane ? Math.max(0, lane.total - lane.rows.length) : 0,
+    /** People who wrote to you and wait in Messages, not here. */
+    others: desk.data?.people?.others ?? 0,
     pending: desk.isPending,
     error: desk.error,
     refetch: () => desk.refetch(),
@@ -202,6 +204,7 @@ export function useFocusSession(lane?: "owed", start?: string) {
     error: owed.error ?? (withReplyLater ? replyLater.error : null) ?? null,
     /** Owed conversations the lane didn't return (it is capped). */
     more: owed.more,
+    others: owed.others,
     /** Conversations skipped when nothing else was left. */
     deferred: session.deferred.length,
     /** Ask again; after a capped lane, the ones you replied to have

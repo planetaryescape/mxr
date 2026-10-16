@@ -13147,7 +13147,7 @@
           "screener": {
             "type": "integer",
             "format": "int32",
-            "description": "Senders with recent mail and no screener decision.",
+            "description": "Senders with recent mail and no screener decision. Across every\naccount it is the count of `screener_account` alone, the one queue\nthe Screener page opens, so the badge equals that page.",
             "minimum": 0
           },
           "screener_account": {
@@ -16678,6 +16678,10 @@
             "items": {
               "$ref": "#/components/schemas/MessagesRowData"
             }
+          },
+          "your_turn_split": {
+            "$ref": "#/components/schemas/PeopleSplitData",
+            "description": "Your turn's people, split as Now and the rail count them. With\n`turn=theirs` Your turn is cleared but this still describes it."
           }
         }
       },
@@ -18039,6 +18043,10 @@
             },
             "description": "At most three people, each once at their most pressing\nconversation: You owe first, then New from people, then Waiting on."
           },
+          "split": {
+            "$ref": "#/components/schemas/PeopleSplitData",
+            "description": "`total` split into people you write with and others who wrote to\nyou. `write_with + others == total`."
+          },
           "total": {
             "type": "integer",
             "format": "int32",
@@ -18361,6 +18369,26 @@
           },
           "request_id": {
             "type": "string"
+          }
+        }
+      },
+      "PeopleSplitData": {
+        "type": "object",
+        "description": "Who is waiting on you, split the one way every surface agrees on:\npeople you write with (the You owe lane) and others who wrote to you\n(all of New from people, first-time or repeat). One unit is one row as\nMessages lists it: a person once, a group thread once.",
+        "required": [
+          "write_with",
+          "others"
+        ],
+        "properties": {
+          "others": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "write_with": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -26634,6 +26662,10 @@
               "account_id": {
                 "$ref": "#/components/schemas/AccountId"
               },
+              "all_senders": {
+                "type": "boolean",
+                "description": "Every sender ever without a decision, in any folder. The default\nis the set the desk's Screener count counts: inbox mail from\nsenders first seen in the last 14 days, so the count and the\nlist always agree (and `limit` only applies with `all_senders`)."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -33286,6 +33318,17 @@
                   "OwedReplies"
                 ]
               },
+              "people": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PeopleSplitData",
+                    "description": "The desk's people split for the account (default mode only):\n`write_with` is the people these rows are with, `others` the\npeople who wrote to you and wait in Messages."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "rows": {
                 "type": "array",
                 "items": {
@@ -33943,6 +33986,10 @@
               },
               "owed": {
                 "$ref": "#/components/schemas/DeskLaneData"
+              },
+              "people": {
+                "$ref": "#/components/schemas/PeopleSplitData",
+                "description": "People waiting on you, split as every surface counts them."
               },
               "people_new": {
                 "$ref": "#/components/schemas/DeskLaneData"

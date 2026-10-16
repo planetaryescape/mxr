@@ -76,6 +76,23 @@ pub struct DeskRowData {
     pub back_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Who is waiting on you, split the one way every surface agrees on:
+/// people you write with (the You owe lane) and others who wrote to you
+/// (all of New from people, first-time or repeat). One unit is one row as
+/// Messages lists it: a person once, a group thread once.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PeopleSplitData {
+    pub write_with: u32,
+    pub others: u32,
+}
+
+impl PeopleSplitData {
+    pub const fn total(self) -> u32 {
+        self.write_with + self.others
+    }
+}
+
 impl DeskRowData {
     /// Whether a list gist's ask replaces this row's reason: on the lanes
     /// that show asks, unless a time you set brought the row back, which
@@ -108,7 +125,9 @@ pub struct DeskElsewhereData {
     pub deliveries: u32,
     /// Upcoming invites you have not answered.
     pub invites: u32,
-    /// Senders with recent mail and no screener decision.
+    /// Senders with recent mail and no screener decision. Across every
+    /// account it is the count of `screener_account` alone, the one queue
+    /// the Screener page opens, so the badge equals that page.
     pub screener: u32,
     /// The first account (in account order) with senders waiting on a
     /// screener decision, so a link from an all-accounts desk opens a queue

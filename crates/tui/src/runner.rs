@@ -998,6 +998,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::ListScreenerQueue {
                         account_id: account_id.clone(),
                         limit: 100,
+                        all_senders: false,
                     },
                 )
                 .await;
@@ -1980,7 +1981,7 @@ pub async fn run() -> anyhow::Result<()> {
             let account_id = app.default_account_id().cloned();
             let _ = submit_task(&queued, async move {
                 let Some(account_id) = account_id else {
-                    return AsyncResult::OwedReplies(Ok(Vec::new()));
+                    return AsyncResult::OwedReplies(Ok((Vec::new(), None)));
                 };
                 let resp = ipc_call(
                     &bg,
@@ -1995,8 +1996,8 @@ pub async fn run() -> anyhow::Result<()> {
                 .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::OwedReplies { rows },
-                    }) => Ok(rows),
+                        data: ResponseData::OwedReplies { rows, people },
+                    }) => Ok((rows, people)),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc(
@@ -4335,12 +4336,25 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
-                        AsyncResult::OwedReplies(Ok(rows)) => {
+                        AsyncResult::OwedReplies(Ok((rows, people))) => {
                             if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {
-                                app.status_message =
-                                    Some(crate::app::LOW_TIDE.to_string());
+                                // Say what the Focus finish says: it is everyone you
+                                // write with, and where the others are.
+                                app.status_message = Some(match people {
+                                    Some(people) if people.others > 0 => format!(
+                                        "Low tide. That's everyone you write with. {} who wrote to you {} in Messages.",
+                                        if people.others == 1 {
+                                            "1 other".to_string()
+                                        } else {
+                                            format!("{} others", people.others)
+                                        },
+                                        if people.others == 1 { "is" } else { "are" },
+                                    ),
+                                    _ => crate::app::LOW_TIDE.to_string(),
+                                });
                             }
                             app.mailbox.owed_page.entries = rows;
+                            app.mailbox.owed_page.people = people;
                             app.mailbox.selected_index = app
                                 .mailbox
                                 .selected_index

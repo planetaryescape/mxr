@@ -9,8 +9,8 @@ use chrono::{DateTime, Duration, TimeZone, Timelike, Utc};
 use mxr_core::id::AccountId;
 use mxr_core::types::ProviderKind;
 use mxr_protocol::{
-    DeskLaneKind, DeskRowData, ModeKindData, ModeMembershipData, ScreenerChoiceData,
-    ScreenerQuestionData, SenderKindData,
+    DeskLaneKind, DeskRowData, ModeKindData, ModeMembershipData, PeopleSplitData,
+    ScreenerChoiceData, ScreenerQuestionData, SenderKindData,
 };
 use mxr_store::DeskDismissal;
 use std::collections::HashMap;
@@ -335,28 +335,29 @@ pub(super) fn more_line(total: u32, shown: usize, mode: ModeKindData) -> Option<
 /// People waiting on you past this many becomes one line instead of a pile.
 pub(super) const OVERLOAD_PEOPLE: u32 = 5;
 
-/// "11 people waiting on you: 7 you've written to, 4 new. Start with the
-/// three below." (Sunsama's workload warning.) `total` is the same number
-/// the headline and "and N more" count from, and `owed + new == total`, so
-/// every number on Now checks against the others. You owe comes first,
-/// sorted by how far past your usual pace.
-pub(super) fn overload_line(total: u32, owed: u32, shown: usize) -> Option<String> {
+/// "11 people waiting on you: 7 you write with, 4 others. Start with the
+/// three below." (Sunsama's workload warning.) The split is the one
+/// every surface counts (`turn_units`), `write_with + others == total`,
+/// and the headline, the rail and Messages' Your turn count the same
+/// total. You owe comes first, sorted by how far past your usual pace.
+pub(super) fn overload_line(split: PeopleSplitData, shown: usize) -> Option<String> {
+    let PeopleSplitData { write_with, others } = split;
+    let total = split.total();
     (total > OVERLOAD_PEOPLE).then(|| {
-        let new = total.saturating_sub(owed);
         let which = match shown {
             1 => "the one below",
             2 => "the two below",
             _ => "the three below",
         };
-        if new == 0 {
+        if others == 0 {
             format!(
                 "{total} people waiting on you. Start with {which}, furthest past your usual pace."
             )
-        } else if owed == 0 {
-            format!("{total} new people waiting on you. Start with {which}.")
+        } else if write_with == 0 {
+            format!("{total} others wrote to you and are waiting. Start with {which}.")
         } else {
             format!(
-                "{total} people waiting on you: {owed} you've written to, {new} new. Start with {which}."
+                "{total} people waiting on you: {write_with} you write with, {others} others. Start with {which}."
             )
         }
     })
@@ -575,16 +576,21 @@ mod tests {
             Some("and 8 more in Messages")
         );
         assert!(more_line(3, 3, ModeKindData::Todo).is_none());
-        assert!(overload_line(OVERLOAD_PEOPLE, OVERLOAD_PEOPLE, 3).is_none());
+        let split = |write_with, others| PeopleSplitData { write_with, others };
+        assert!(overload_line(split(2, OVERLOAD_PEOPLE - 2), 3).is_none());
         assert_eq!(
-            overload_line(11, 7, 3).as_deref(),
+            overload_line(split(7, 4), 3).as_deref(),
             Some(
-                "11 people waiting on you: 7 you've written to, 4 new. Start with the three below."
+                "11 people waiting on you: 7 you write with, 4 others. Start with the three below."
             )
         );
         assert_eq!(
-            overload_line(6, 0, 2).as_deref(),
-            Some("6 new people waiting on you. Start with the two below.")
+            overload_line(split(0, 6), 2).as_deref(),
+            Some("6 others wrote to you and are waiting. Start with the two below.")
+        );
+        assert_eq!(
+            overload_line(split(6, 0), 3).as_deref(),
+            Some("6 people waiting on you. Start with the three below, furthest past your usual pace.")
         );
         assert_eq!(
             updates_line(23, 9, &["GitHub".into(), "Vercel".into(), "Stripe".into()]),

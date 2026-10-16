@@ -312,6 +312,7 @@ expression: summary
     "OwedReplyHereData",
     "OwedReplyRowData",
     "PendingPairing",
+    "PeopleSplitData",
     "PersonMergeData",
     "PersonPageData",
     "PersonRefData",

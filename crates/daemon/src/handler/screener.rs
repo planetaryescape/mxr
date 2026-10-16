@@ -29,12 +29,39 @@ fn disposition_to_proto(d: ScreenerDisposition) -> ScreenerDispositionData {
     }
 }
 
+/// The Screener page. By default the set the desk's Screener count counts
+/// (inbox mail from senders first seen in the last 14 days, no decision),
+/// so the page and the badge always agree; `all_senders` lists every
+/// sender without a decision, in any folder, as before. The default
+/// lists every counted sender whatever `limit` says, so the page never
+/// shows fewer than the badge; `limit` applies to `all_senders`.
 pub(super) async fn list_queue(
     state: &AppState,
     account_id: &AccountId,
     limit: u32,
+    all_senders: bool,
 ) -> HandlerResult {
-    let entries = state.store.list_screener_queue(account_id, limit).await?;
+    if all_senders {
+        let entries = state.store.list_screener_queue(account_id, limit).await?;
+        return Ok(queue_response(entries));
+    }
+    let desk = super::desk::compose_desk(state, Some(account_id), Utc::now()).await?;
+    let mut counted: Vec<String> = desk
+        .screener_senders
+        .into_iter()
+        .map(|(_, email)| email)
+        .collect();
+    counted.sort_unstable();
+    // Narrowed in the query, so no counted sender is pushed out by newer
+    // ones the badge does not count.
+    let entries = state
+        .store
+        .list_screener_queue_for(account_id, &counted)
+        .await?;
+    Ok(queue_response(entries))
+}
+
+fn queue_response(entries: Vec<mxr_store::ScreenerQueueEntry>) -> ResponseData {
     let data: Vec<ScreenerQueueEntryData> = entries
         .into_iter()
         .map(|e| ScreenerQueueEntryData {
@@ -45,7 +72,7 @@ pub(super) async fn list_queue(
             latest_at: e.latest_at,
         })
         .collect();
-    Ok(ResponseData::ScreenerQueue { entries: data })
+    ResponseData::ScreenerQueue { entries: data }
 }
 
 pub(super) async fn list_decisions(state: &AppState, account_id: &AccountId) -> HandlerResult {

@@ -736,7 +736,7 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
     entries.extend([
         RailEntryData {
             quiet: Some(quiet_count(state, &accounts, now).await?),
-            ..mode_entry(ModeKindData::Messages, Some(snapshot.people_total()))
+            ..mode_entry(ModeKindData::Messages, Some(snapshot.your_turn_total()))
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),
         mode_entry(

@@ -155,7 +155,7 @@ test("g F works through the queue: send and next, skip, snooze, then a calm fini
   await page.keyboard.press(`${await editorModKey(page)}+Enter`);
   const finish = page.getByTestId("focus-finish");
   await expect(finish).toBeVisible();
-  await expect(finish).toContainText("That's everyone.");
+  await expect(finish).toContainText("That's everyone you write with.");
   await expect(finish).toContainText("3 conversations handled");
 
   // Esc goes back where focus mode was opened from.
@@ -292,10 +292,10 @@ test("a failed load is an error to retry, never a finish", async ({ page }) => {
   );
   await openApp(page, "/focus");
   await expect(page.getByTestId("focus-error")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/Nobody is waiting|That's everyone/)).toHaveCount(0);
+  await expect(page.getByText(/Nobody you write with|That's everyone/)).toHaveCount(0);
   fail = false;
   await page.getByTestId("focus-error").getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByTestId("focus-finish")).toContainText("Nobody is waiting");
+  await expect(page.getByTestId("focus-finish")).toContainText("Nobody you write with");
 });
 
 test("a cut-short lane says how many more are waiting, never that's everyone", async ({ page }) => {

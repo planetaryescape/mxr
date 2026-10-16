@@ -10,14 +10,21 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let action = action.unwrap_or(ScreenerAction::Queue { limit: 100 });
+    let action = action.unwrap_or(ScreenerAction::Queue {
+        limit: 100,
+        all_senders: false,
+    });
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_account(&mut client, account.as_deref()).await?;
 
     match action {
-        ScreenerAction::Queue { limit } => {
+        ScreenerAction::Queue { limit, all_senders } => {
             let resp = client
-                .request(Request::ListScreenerQueue { account_id, limit })
+                .request(Request::ListScreenerQueue {
+                    account_id,
+                    limit,
+                    all_senders,
+                })
                 .await?;
             render_queue(resp, format)?;
         }
@@ -128,7 +135,9 @@ fn render_queue(resp: Response, format: Option<OutputFormat>) -> anyhow::Result<
             OutputFormat::Jsonl => println!("{}", jsonl(&entries)?),
             _ => {
                 if entries.is_empty() {
-                    println!("Screener queue is empty — every sender has a decision");
+                    println!(
+                        "No new senders waiting. Older ones: mxr screener queue --all-senders"
+                    );
                 } else {
                     for e in &entries {
                         let name = e.display_name.as_deref().unwrap_or(e.sender_email.as_str());

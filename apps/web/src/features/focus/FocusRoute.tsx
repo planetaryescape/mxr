@@ -223,6 +223,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
           empty={progress.total === 0}
           deferred={focus.deferred}
           more={focus.more}
+          others={focus.others}
           onRevisit={focus.revisit}
           onContinue={focus.refetch}
           onLeave={leave}

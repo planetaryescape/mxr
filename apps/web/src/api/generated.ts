@@ -6138,7 +6138,9 @@ export interface components {
             reading: number;
             /**
              * Format: int32
-             * @description Senders with recent mail and no screener decision.
+             * @description Senders with recent mail and no screener decision. Across every
+             *     account it is the count of `screener_account` alone, the one queue
+             *     the Screener page opens, so the badge equals that page.
              */
             screener: number;
             screener_account?: components["schemas"]["AccountId"] | null;
@@ -7394,6 +7396,11 @@ export interface components {
              */
             thread_count: number;
             your_turn: components["schemas"]["MessagesRowData"][];
+            /**
+             * @description Your turn's people, split as Now and the rail count them. With
+             *     `turn=theirs` Your turn is cleared but this still describes it.
+             */
+            your_turn_split?: components["schemas"]["PeopleSplitData"];
         };
         /**
          * @description Someone whose usual pace lapsed, for the clear state: a fact, never a
@@ -7899,6 +7906,11 @@ export interface components {
              */
             rows: components["schemas"]["NowPersonData"][];
             /**
+             * @description `total` split into people you write with and others who wrote to
+             *     you. `write_with + others == total`.
+             */
+            split?: components["schemas"]["PeopleSplitData"];
+            /**
              * Format: int32
              * @description Every person in Messages, shown or not.
              */
@@ -8018,6 +8030,18 @@ export interface components {
             failed_attempts: number;
             name: string;
             request_id: string;
+        };
+        /**
+         * @description Who is waiting on you, split the one way every surface agrees on:
+         *     people you write with (the You owe lane) and others who wrote to you
+         *     (all of New from people, first-time or repeat). One unit is one row as
+         *     Messages lists it: a person once, a group thread once.
+         */
+        PeopleSplitData: {
+            /** Format: int32 */
+            others: number;
+            /** Format: int32 */
+            write_with: number;
         };
         /** @description Returned by `Request::MergePeople` and `Request::SplitPerson`. */
         PersonMergeData: {
@@ -10525,6 +10549,13 @@ export interface components {
               }
             | {
                   account_id: components["schemas"]["AccountId"];
+                  /**
+                   * @description Every sender ever without a decision, in any folder. The default
+                   *     is the set the desk's Screener count counts: inbox mail from
+                   *     senders first seen in the last 14 days, so the count and the
+                   *     list always agree (and `limit` only applies with `all_senders`).
+                   */
+                  all_senders?: boolean;
                   /** @enum {string} */
                   cmd: "ListScreenerQueue";
                   /** Format: int32 */
@@ -12268,6 +12299,7 @@ export interface components {
             | {
                   /** @enum {string} */
                   kind: "OwedReplies";
+                  people?: components["schemas"]["PeopleSplitData"] | null;
                   rows: components["schemas"]["OwedReplyRowData"][];
               }
             | {
@@ -12434,6 +12466,8 @@ export interface components {
                    */
                   last_from_people_at?: string | null;
                   owed: components["schemas"]["DeskLaneData"];
+                  /** @description People waiting on you, split as every surface counts them. */
+                  people?: components["schemas"]["PeopleSplitData"];
                   people_new: components["schemas"]["DeskLaneData"];
                   waiting: components["schemas"]["DeskLaneData"];
               }

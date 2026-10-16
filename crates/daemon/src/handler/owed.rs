@@ -1,8 +1,11 @@
 //! `Request::ListOwedReplies`: the replies you owe.
 //!
 //! The default is the desk's You owe lane, computed by the desk itself so
-//! the two never disagree (D103). `all` keeps the raw store list (every
-//! thread whose latest inbound has no later outbound) for scripts.
+//! the two never disagree (D103). `people` counts them the way Now and
+//! Messages do: `write_with` is the people these rows are with and
+//! `others` the people who wrote to you, who wait in Messages. `all` keeps
+//! the raw store list (every thread whose latest inbound has no later
+//! outbound) for scripts.
 
 use super::desk::{compose_desk, desk_lane};
 use super::desk_lanes::{pace_ratio, pace_seconds};
@@ -10,7 +13,7 @@ use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::AccountId;
-use mxr_protocol::{DeskLaneKind, OwedReplyRowData, ResponseData};
+use mxr_protocol::{DeskLaneKind, OwedReplyRowData, PeopleSplitData, ResponseData};
 
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
@@ -28,12 +31,13 @@ pub(super) async fn list_owed_replies(
     account_id: &AccountId,
     query: OwedQuery,
 ) -> HandlerResult {
-    let rows = if query.all {
-        raw_rows(state, account_id, query).await?
+    let (rows, people) = if query.all {
+        (raw_rows(state, account_id, query).await?, None)
     } else {
-        desk_rows(state, account_id, query, Utc::now()).await?
+        let (rows, split) = desk_rows(state, account_id, query, Utc::now()).await?;
+        (rows, Some(split))
     };
-    Ok(ResponseData::OwedReplies { rows })
+    Ok(ResponseData::OwedReplies { rows, people })
 }
 
 /// The desk's You owe lane in its own order, narrowed by the windows,
@@ -43,11 +47,12 @@ async fn desk_rows(
     account_id: &AccountId,
     query: OwedQuery,
     now: DateTime<Utc>,
-) -> Result<Vec<OwedReplyRowData>, super::HandlerError> {
+) -> Result<(Vec<OwedReplyRowData>, PeopleSplitData), super::HandlerError> {
     let desk = compose_desk(state, Some(account_id), now).await?;
     let owed = desk_lane(&desk.rows, DeskLaneKind::Owed, u32::MAX);
+    let split = desk.turn_units().split;
     let days_ago = |days: u32| now - Duration::days(i64::from(days));
-    Ok(owed
+    let rows = owed
         .rows
         .into_iter()
         .filter(|row| {
@@ -71,7 +76,8 @@ async fn desk_rows(
             subject: row.subject,
             latest_inbound_at: row.since,
         })
-        .collect())
+        .collect();
+    Ok((rows, split))
 }
 
 async fn raw_rows(

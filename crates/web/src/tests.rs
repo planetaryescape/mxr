@@ -5051,7 +5051,10 @@ async fn parity_routes_dispatch_daemon_requests() {
                 Request::ListAccounts => ResponseData::Accounts {
                     accounts: vec![sample_account(&account_for_ipc)],
                 },
-                Request::ListOwedReplies { .. } => ResponseData::OwedReplies { rows: Vec::new() },
+                Request::ListOwedReplies { .. } => ResponseData::OwedReplies {
+                    rows: Vec::new(),
+                    people: None,
+                },
                 Request::ListSavedSearchUnreadCounts => ResponseData::SavedSearchUnreadCounts {
                     counts: [(search_for_ipc.clone(), 4)].into_iter().collect(),
                 },
@@ -5256,6 +5259,7 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
                     due: mxr_protocol::DeskLaneData::default(),
                     waiting: mxr_protocol::DeskLaneData::default(),
                     people_new: mxr_protocol::DeskLaneData::default(),
+                    people: Default::default(),
                     elsewhere: mxr_protocol::DeskElsewhereData::default(),
                     last_from_people_at: None,
                     generated_at: chrono::Utc::now(),

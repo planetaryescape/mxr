@@ -7,7 +7,7 @@ Triage unknown senders: classify them as allow / deny / feed / paper-trail. Loca
 Usage: mxr screener [OPTIONS] [COMMAND]
 
 Commands:
-  queue        Show senders waiting for a decision (default if no subcommand)
+  queue        Show senders waiting for a decision (default if no subcommand): the ones the Screener count counts, first seen in the last 14 days
   list         List all existing decisions
   allow        Allow this sender into the inbox
   deny         Auto-trash and mark-read this sender's mail on ingest

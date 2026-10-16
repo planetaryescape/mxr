@@ -14,6 +14,10 @@ const INVENTORY = {
   topbar: ["Search mail", "Assistant", "Compose new email"],
   // "Latest mail 5m ago": the age changes, the control does not.
   statusBar: ["Sync now", "Latest mail", "keys"],
+  // The rail's groups fold; its footer holds the theme and the collapse control.
+  rail: ["Mail", "Views", "Tools", "Labels"],
+  railFooter: ["Collapse sidebar"],
+  railCollapsedFooter: ["More places", "Expand sidebar"],
   // The page frame's ⋯ menu, which holds the conversations / single messages switch.
   listHeader: ["More actions"],
   readerHeader: [
@@ -138,4 +142,24 @@ test("focus mode and the places keep exactly their inventoried controls", async 
   expect(await names(updatesHeader)).toEqual(
     hasDigest ? INVENTORY.updatesHeaderWithDigest : INVENTORY.updatesHeader,
   );
+});
+
+test("the rail keeps exactly its inventoried controls, expanded and collapsed", async ({
+  page,
+}) => {
+  await openApp(page, "/now");
+  const rail = page.getByRole("complementary", { name: "Mailboxes" });
+  await expect(rail.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+  const groups = (await names(rail)).filter((name) =>
+    INVENTORY.rail.some((known) => known === name),
+  );
+  expect(groups).toEqual(INVENTORY.rail);
+  const footer = (await names(rail)).filter((name) => /sidebar$|^More places$/.test(name));
+  expect(footer).toEqual(INVENTORY.railFooter);
+  await rail.getByRole("button", { name: "Collapse sidebar" }).click();
+  const collapsed = (await names(rail)).filter((name) => /sidebar$|^More places$/.test(name));
+  expect(collapsed).toEqual(INVENTORY.railCollapsedFooter);
+  // Collapsed, the groups are gone: the modes and Inbox are all it lists.
+  await expect(rail.getByRole("button", { name: "Mail", exact: true })).toHaveCount(0);
+  await rail.getByRole("button", { name: "Expand sidebar" }).click();
 });

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, ExternalLink, Package, ScanSearch, X } from "lucide-react";
+import { Check, ExternalLink, Mail, Package, ScanSearch, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,7 +13,9 @@ import {
   type DeliveryFilter,
 } from "./api";
 import { Page, PageTabs } from "@/components/Page";
-import { PageEmpty, PageError, PageSkeleton, RuledList } from "@/components/PageParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { Row, RowVerb } from "@/components/Row";
+import { useLitRow } from "@/components/useLitRow";
 import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -102,6 +104,7 @@ export function DeliveriesRoute() {
   });
 
   const rows = deliveries.data?.deliveries ?? [];
+  const { rowProps } = useLitRow(rows.map((delivery) => delivery.id));
   const busy = resolve.isPending || dismiss.isPending;
   const openEmail = (threadId: string) =>
     void navigate({ to: "/m/$mailbox/$threadId", params: { mailbox: "archive", threadId } });
@@ -145,93 +148,72 @@ export function DeliveriesRoute() {
           }
         />
       ) : (
-        <RuledList label="Deliveries">
+        <ul aria-label="Deliveries">
           {rows.map((delivery) => {
             const title =
               delivery.merchant || (delivery.carrier ? carrierName(delivery.carrier) : "Package");
             const items = delivery.items.map((item) => item.name).join(", ");
             const eta = when(delivery);
+            const detail = [
+              items,
+              delivery.carrier && delivery.merchant ? carrierName(delivery.carrier) : null,
+              delivery.order_number ? `order ${delivery.order_number}` : null,
+              delivery.tracking_number,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            const threadId = delivery.thread_id;
             return (
-              <li
+              <Row
                 key={delivery.id}
-                className="flex items-start gap-3 border-b border-border/60 px-2 py-3"
-              >
-                <Package className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-sm font-medium">{title}</span>
+                {...rowProps(delivery.id)}
+                lead={<Package aria-hidden className="size-4 text-text-3" />}
+                primary={title}
+                secondary={detail || undefined}
+                trail={
+                  <>
+                    {eta ? <span>{eta}</span> : null}
                     <span
                       className={cn(
-                        "font-mono text-2xs",
                         ATTENTION.has(delivery.status)
-                          ? "text-warning"
+                          ? "text-cue"
                           : delivery.status === "delivered"
-                            ? "text-success"
-                            : "text-primary",
+                            ? "text-ok"
+                            : "text-text-2",
                       )}
                     >
                       {STATUS_LABELS[delivery.status] ?? delivery.status}
                     </span>
-                    {eta ? <span className="text-xs text-muted-foreground">{eta}</span> : null}
-                  </div>
-                  {items ? (
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{items}</div>
-                  ) : null}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-2xs text-muted-foreground">
-                    {delivery.carrier && delivery.merchant ? (
-                      <span>{carrierName(delivery.carrier)}</span>
-                    ) : null}
-                    {delivery.order_number ? <span>order {delivery.order_number}</span> : null}
-                    {delivery.tracking_number ? <span>{delivery.tracking_number}</span> : null}
+                  </>
+                }
+                verbs={
+                  <>
                     {delivery.tracking_url ? (
-                      <a
-                        href={delivery.tracking_url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                      >
-                        Track <ExternalLink className="size-3" />
-                      </a>
+                      <RowVerb label="Track" Icon={ExternalLink} href={delivery.tracking_url} />
                     ) : null}
-                    {delivery.thread_id ? (
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => delivery.thread_id && openEmail(delivery.thread_id)}
-                      >
-                        Open email
-                      </button>
+                    {threadId ? (
+                      <RowVerb label="Open email" Icon={Mail} onClick={() => openEmail(threadId)} />
                     ) : null}
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {!delivery.delivered_at ? (
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => resolve.mutate(delivery.id)}
-                      aria-label={`Mark ${title} delivered`}
-                      title="Mark delivered"
-                    >
-                      <Check className="size-3.5" />
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => dismiss.mutate(delivery.id)}
-                    aria-label={`Dismiss ${title}`}
-                    title="Dismiss (not a delivery)"
-                  >
-                    <X className="size-3.5" />
-                  </Button>
-                </div>
-              </li>
+                    {!delivery.delivered_at ? (
+                      <RowVerb
+                        label="Delivered"
+                        Icon={Check}
+                        ariaLabel={`Mark ${title} delivered`}
+                        onClick={() => !busy && resolve.mutate(delivery.id)}
+                      />
+                    ) : null}
+                    <RowVerb
+                      label="Dismiss"
+                      Icon={X}
+                      ariaLabel={`Dismiss ${title}`}
+                      onClick={() => !busy && dismiss.mutate(delivery.id)}
+                    />
+                  </>
+                }
+              />
             );
           })}
-        </RuledList>
+        </ul>
       )}
     </Page>
   );

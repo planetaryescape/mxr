@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -148,22 +149,59 @@ export const Row = memo(function Row({
   );
 });
 
-/** One verb on a lit row: its key and its name, as in "r reply". */
+/**
+ * One verb on a lit row: its key and its name, as in "r reply". A verb with
+ * no key (a tool page's action) shows its name only; with `href` it is a link
+ * that leaves the app, drawn the same.
+ */
 export function RowVerb({
   keys,
   label,
   onClick,
+  href,
   testId,
   ariaLabel,
   className,
+  Icon,
 }: {
-  keys: string;
+  keys?: string;
   label: string;
-  onClick: () => void;
+  /** On a phone the verb is this icon alone, so four of them still leave the row its name. */
+  Icon?: LucideIcon;
+  onClick?: () => void;
+  href?: string;
   testId?: string;
   ariaLabel?: string;
   className?: string;
 }) {
+  const classes = cn(
+    "inline-flex h-7 items-center gap-1.5 whitespace-nowrap px-1.5 hover:text-text-1 focus-visible:text-text-1",
+    Icon && "max-sm:min-w-9 max-sm:justify-center",
+    className,
+  );
+  const content = (
+    <>
+      {keys ? <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip> : null}
+      {Icon ? <Icon aria-hidden className="size-4 sm:hidden" /> : null}
+      <span className="hidden sm:inline">{label}</span>
+      {Icon ? null : <span className="sm:hidden">{label.split(" ")[0]}</span>}
+    </>
+  );
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        data-testid={testId}
+        aria-label={ariaLabel ?? label}
+        onClick={(event) => event.stopPropagation()}
+        className={classes}
+      >
+        {content}
+      </a>
+    );
+  }
   return (
     <button
       type="button"
@@ -172,16 +210,11 @@ export function RowVerb({
       onClick={(event) => {
         // The row under it is also clickable; a verb is its own act.
         event.stopPropagation();
-        onClick();
+        onClick?.();
       }}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 whitespace-nowrap px-1.5 hover:text-text-1 focus-visible:text-text-1",
-        className,
-      )}
+      className={classes}
     >
-      <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip>
-      <span className="hidden sm:inline">{label}</span>
-      <span className="sm:hidden">{label.split(" ")[0]}</span>
+      {content}
     </button>
   );
 }

@@ -32,7 +32,7 @@ const PAGE_TITLES: Record<string, string> = {
   todo: "To do",
   search: "Search",
   drafts: "Drafts",
-  "reply-queue": "Reply queue",
+  "reply-queue": "Reply later",
   owed: "Owed replies",
   focus: "Focus & reply",
   snoozed: "Snoozed",
@@ -124,6 +124,8 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     if (parts[0] === "reading" && parts[1] === "item") crumbs.push({ label: "Reader" });
     return crumbs;
   }
+  // The phone's settings list is the Settings page itself, not a section of it.
+  if (parts[0] === "settings" && parts[1] === "all") return [{ label: "Settings" }];
   if (parts.length > 1 && parts[0] !== "sender") {
     return [{ label: title, to: `/${parts[0]}` }, { label: pageTitle ?? humanize(parts[1] ?? "") }];
   }
@@ -166,7 +168,11 @@ export function Topbar() {
 
   return (
     <div className="flex w-full min-w-0 items-center gap-3">
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-sm">
+      <nav
+        aria-label="Breadcrumb"
+        // A phone's page frame carries the title; a trail squeezed to a lone chevron is noise.
+        className="flex min-w-0 flex-1 items-center gap-1 text-sm max-sm:flex-none max-sm:[&>span:not([data-demo])]:hidden"
+      >
         {visible.map((crumb, index) => {
           const last = index === visible.length - 1;
           // Only the last crumb gives way on a narrow bar: a parent crumb
@@ -200,6 +206,7 @@ export function Topbar() {
         })}
         {isDemo ? (
           <span
+            data-demo
             className="ml-2 shrink-0 rounded-sm border border-warning/50 px-1.5 font-mono text-2xs uppercase tracking-wider text-warning"
             title="Demo profile: no real mail is touched"
           >
@@ -213,7 +220,7 @@ export function Topbar() {
       <Button
         type="button"
         variant="outline"
-        className="h-8 w-[min(360px,34vw)] shrink justify-start gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
+        className="h-8 w-[min(360px,34vw)] shrink justify-start max-sm:w-auto max-sm:flex-1 gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
         onClick={() => setSearchOpen(true)}
         aria-label="Search mail"
       >

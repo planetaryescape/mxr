@@ -249,13 +249,14 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Archive | `g e` | Filed receipts, orders, bookings, bills and documents |
 | Inbox | `g i` | Everything, newest first |
 
-Screener, Reply queue, Waiting on, Snoozed and Subscriptions are under
-**More**. Subscriptions no longer has a `g` key; `g u` opens Updates.
+Screener, Waiting on, Subscriptions, Snoozed and Reply later are in the rail's
+Views and Mail groups. Subscriptions no longer has a `g` key; `g u` opens
+Updates.
 `mxr modes rail` prints the same list with counts.
 
 On a phone the web app shows five tabs instead: Now, Messages, To do,
-Reading and Find. Find holds search, Archive and Inbox. Updates opens from
-the card on Now.
+Reading and More. More opens a sheet with Updates, Archive, Inbox and
+every other page. Updates also opens from the card on Now.
 
 ## The desk's lanes, and Messages
 

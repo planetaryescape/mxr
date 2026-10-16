@@ -21,9 +21,34 @@ gains or loses a control, so this page and the app can't drift apart.
 | keys (`?`) | Status bar | Discoverability: the way into every key. |
 | Key strip | Status bar | Discoverability: the page's three to five main verbs (`usePageKeys`), or the registry's live keys on a page that names none. Not buttons. Whole verbs drop from the end when space is short, and the reason shortens first. Hidden under `(pointer: coarse)`. |
 
-The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
-Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
-Waiting on, Snoozed and Subscriptions sit under More.
+### The rail
+
+The rail is dimmer than the page: labels in the second text tier, icons in the
+third, the page you are on on the lamp. It holds Now, Messages, To do,
+Updates, Reading, Archive and Inbox, then four folded groups: Mail (Starred,
+Sent, Drafts, Snoozed, Reply later, All Mail, Spam, Trash), Views (Waiting on,
+Owed replies, Screener, Subscriptions, Invites, Deliveries), Tools (Search,
+Analytics, Rules, Accounts, Activity, Jobs, Diagnostics, Settings) and Labels,
+each with a 6px square of its colour. Only Now, Messages and To do carry a
+count (and the Screener, while senders wait). Its items are fixed: a stopped
+daemon never adds, removes or moves one.
+
+| Control | Where | Reason |
+|---|---|---|
+| Mail, Views, Tools, Labels (fold) | Rail | Discoverability: names the groups and keeps the rail short. |
+| Collapse / expand sidebar | Rail footer | Frequency: a person who wants the room, once. The collapsed rail is the modes and Inbox only, each with its key in a tooltip. |
+| More places | Collapsed rail footer | Discoverability: opens the same sheet as the phone's More, so Mail, Views, Tools and Labels stay reachable when the rail is narrow. |
+| Theme | Rail footer | Frequency: the quick light/dark switch. |
+
+### The phone
+
+Five tabs: Now, Messages, To do, Reading and More. More opens a sheet (on the
+overlay ink over a scrim) with Updates, Archive, Inbox and the rail's four
+groups, so every destination is reachable. The lit tab always matches the page:
+Updates, Archive, Inbox, a conversation in the inbox, every tool page and
+Settings light More. The sheet traps focus, closes on Esc and on any
+navigation, and the page's keys stay under it while it is open. The top bar's
+search is the only search field.
 
 ## Page header
 

@@ -53,6 +53,7 @@ import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$th
 import { Route as RulesIdRouteImport } from './routes/rules.$id'
 import { Route as SearchThreadIdRouteImport } from './routes/search.$threadId'
 import { Route as SenderAddressRouteImport } from './routes/sender.$address'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
 import { Route as SnoozedThreadIdRouteImport } from './routes/snoozed.$threadId'
 import { Route as TodoThreadIdRouteImport } from './routes/todo.$threadId'
@@ -286,6 +287,11 @@ const SenderAddressRoute = SenderAddressRouteImport.update({
   path: '/sender/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsSectionRoute = SettingsSectionRouteImport.update({
   id: '/settings/$section',
   path: '/settings/$section',
@@ -397,6 +403,7 @@ export interface FileRoutesByFullPath {
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
   '/updates/$threadId': typeof UpdatesThreadIdRoute
+  '/settings/': typeof SettingsIndexRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
   '/m/label/$name': typeof MLabelNameRouteWithChildren
@@ -455,6 +462,7 @@ export interface FileRoutesByTo {
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
   '/updates/$threadId': typeof UpdatesThreadIdRoute
+  '/settings': typeof SettingsIndexRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
   '/m/label/$name': typeof MLabelNameRouteWithChildren
@@ -514,6 +522,7 @@ export interface FileRoutesById {
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
   '/updates/$threadId': typeof UpdatesThreadIdRoute
+  '/settings/': typeof SettingsIndexRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/category/$categoryId': typeof MCategoryCategoryIdRouteWithChildren
   '/m/label/$name': typeof MLabelNameRouteWithChildren
@@ -574,6 +583,7 @@ export interface FileRouteTypes {
     | '/snoozed/$threadId'
     | '/todo/$threadId'
     | '/updates/$threadId'
+    | '/settings/'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
     | '/m/label/$name'
@@ -632,6 +642,7 @@ export interface FileRouteTypes {
     | '/snoozed/$threadId'
     | '/todo/$threadId'
     | '/updates/$threadId'
+    | '/settings'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
     | '/m/label/$name'
@@ -690,6 +701,7 @@ export interface FileRouteTypes {
     | '/snoozed/$threadId'
     | '/todo/$threadId'
     | '/updates/$threadId'
+    | '/settings/'
     | '/m/$mailbox/$threadId'
     | '/m/category/$categoryId'
     | '/m/label/$name'
@@ -735,6 +747,7 @@ export interface RootRouteChildren {
   MMailboxRoute: typeof MMailboxRouteWithChildren
   SenderAddressRoute: typeof SenderAddressRoute
   SettingsSectionRoute: typeof SettingsSectionRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   MCategoryCategoryIdRoute: typeof MCategoryCategoryIdRouteWithChildren
   MLabelNameRoute: typeof MLabelNameRouteWithChildren
   MSavedSlugRoute: typeof MSavedSlugRouteWithChildren
@@ -1048,6 +1061,13 @@ declare module '@tanstack/react-router' {
       path: '/sender/$address'
       fullPath: '/sender/$address'
       preLoaderRoute: typeof SenderAddressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/$section': {
@@ -1376,6 +1396,7 @@ const rootRouteChildren: RootRouteChildren = {
   MMailboxRoute: MMailboxRouteWithChildren,
   SenderAddressRoute: SenderAddressRoute,
   SettingsSectionRoute: SettingsSectionRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   MCategoryCategoryIdRoute: MCategoryCategoryIdRouteWithChildren,
   MLabelNameRoute: MLabelNameRouteWithChildren,
   MSavedSlugRoute: MSavedSlugRouteWithChildren,

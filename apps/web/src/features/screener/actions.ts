@@ -4,15 +4,33 @@
 
 import type { Action } from "@/lib/actions/types";
 
-function decision(id: string, command: string, label: string, shortcut: string): Action {
-  return { id, command, label, shortcut, group: "Triage", scopes: ["screener"] };
+/**
+ * The lit row's choice is a number (1 Allow, 2 Deny, 3 Feed, 4 Paper trail),
+ * like a new sender's; the TUI modal's letters answer the same way.
+ */
+function decision(
+  id: string,
+  command: string,
+  label: string,
+  number: string,
+  letter: string,
+): Action {
+  return {
+    id,
+    command,
+    label,
+    shortcut: number,
+    aliases: [letter],
+    group: "Triage",
+    scopes: ["screener"],
+  };
 }
 
 export const screenerActions: Action[] = [
-  decision("screener.allow", "allow", "Allow sender", "a"),
-  decision("screener.deny", "deny", "Deny sender", "d"),
-  decision("screener.feed", "feed", "Send to feed", "f"),
-  decision("screener.paper-trail", "paperTrail", "Send to paper trail", "p"),
+  decision("screener.allow", "allow", "Allow sender", "1", "a"),
+  decision("screener.deny", "deny", "Deny sender", "2", "d"),
+  decision("screener.feed", "feed", "Send to feed", "3", "f"),
+  decision("screener.paper-trail", "paperTrail", "Send to paper trail", "4", "p"),
   {
     id: "screener.down",
     command: "down",

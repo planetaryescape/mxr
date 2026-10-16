@@ -121,8 +121,8 @@ export const useUiPrefs = create<UiPrefsState>()(
       vipAllowlist: [],
       undoSendSeconds: 10,
       accountScope: null,
-      // The sidebar leads with places; everything else starts folded.
-      collapsedSections: ["more", "labels", "tools"],
+      // The rail leads with the modes and Inbox; its groups start folded.
+      collapsedSections: ["mail", "views", "tools", "labels"],
       listMode: "threads",
       readerView: "formatted",
       remoteImageSenders: [],
@@ -203,7 +203,7 @@ export const useUiPrefs = create<UiPrefsState>()(
     {
       name: "mxr.uiPrefs",
       storage: createJSONStorage(() => uiPrefsStorage()),
-      version: 6,
+      version: 7,
       merge: (persisted, current) => mergeUiPrefs(persisted, current),
       // persist merges what migrate returns over the defaults, so a partial
       // state is what it expects at runtime; its type says the whole store.
@@ -218,7 +218,8 @@ export const useUiPrefs = create<UiPrefsState>()(
  * v4: Now replaced the desk as the front page, so a saved "desk" home is
  * Now. v5 adds sender-specific HTML canvas preferences; previous explicit
  * Dark and Original choices stay as they were. v6 adds system/default/increased
- * contrast, defaulting existing users to system.
+ * contrast, defaulting existing users to system. v7 splits the rail's "More"
+ * into Mail and Views: a folded More folds both.
  */
 export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
   let state: Partial<UiPrefsState> =
@@ -229,6 +230,18 @@ export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiP
   }
   if (version < 4 && state.home !== "inbox") state = { ...state, home: "now" };
   if (version < 6) state = { ...state, contrast: "system" };
+  if (version < 7 && Array.isArray(state.collapsedSections)) {
+    const sections = state.collapsedSections;
+    // A folded More folds both of its successors; an open one leaves them open.
+    if (sections.includes("more")) {
+      state = {
+        ...state,
+        collapsedSections: [
+          ...new Set([...sections.filter((id) => id !== "more"), "mail", "views"]),
+        ],
+      };
+    }
+  }
   let migrated = state;
   if ("emailHtmlTheme" in migrated && !isEmailHtmlTheme(migrated.emailHtmlTheme)) {
     migrated = { ...migrated };

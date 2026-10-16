@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shield, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Ban, Check, Receipt, Rss, Shield, Users, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -11,9 +11,10 @@ import {
   type ScreenerDisposition,
   type ScreenerEntry,
 } from "./api";
-import { KeyChip } from "@/components/KeyChip";
+import { Avatar } from "@/components/Avatar";
 import { Page, PageTabs } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
+import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -26,21 +27,23 @@ import { fetchAccounts } from "@/features/accounts/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatWhen, formatRelative, plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useScopeController } from "@/lib/keys/controllers";
+import { usePageKeys } from "@/state/pageKeysStore";
 
 type Tab = "queue" | "decisions";
 
-// A red button on every row turns the page into a column of red: Deny reads
-// neutral until it is the one being pointed at or focused.
-const DENY_CLASS =
-  "hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive focus-visible:ring-destructive/20 dark:hover:bg-destructive/20 dark:focus-visible:ring-destructive/40";
-
-/** Button order and key hints mirror `screenerActions` (a, d, f, p). */
-const DECISIONS: { disposition: ScreenerDisposition; label: string; key: string }[] = [
-  { disposition: "allow", label: "Allow", key: "a" },
-  { disposition: "deny", label: "Deny", key: "d" },
-  { disposition: "feed", label: "Feed", key: "f" },
-  { disposition: "paper_trail", label: "Paper trail", key: "p" },
+/** The lit row's choice. The number answers beside the TUI's letter (a, d, f, p). */
+const DECISIONS: {
+  disposition: ScreenerDisposition;
+  label: string;
+  key: string;
+  Icon: LucideIcon;
+}[] = [
+  { disposition: "allow", label: "Allow", key: "1", Icon: Check },
+  { disposition: "deny", label: "Deny", key: "2", Icon: Ban },
+  { disposition: "feed", label: "Feed", key: "3", Icon: Rss },
+  { disposition: "paper_trail", label: "Paper trail", key: "4", Icon: Receipt },
 ];
 
 const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {
@@ -129,6 +132,7 @@ export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
 function ScreenerQueue({ accountId }: { accountId: string }) {
   const qc = useQueryClient();
   const [focused, setFocused] = useState(0);
+  const via = useRef<LampVia>("key");
   const queue = useQuery({
     queryKey: ["screener", accountId],
     queryFn: () => fetchScreenerQueue(accountId),
@@ -171,9 +175,20 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
     deny: () => decideFocused("deny"),
     feed: () => decideFocused("feed"),
     paperTrail: () => decideFocused("paper_trail"),
-    down: () => setFocused((current) => Math.min(rows.length - 1, current + 1)),
-    up: () => setFocused((current) => Math.max(0, current - 1)),
+    down: () => {
+      via.current = "key";
+      setFocused((current) => Math.min(rows.length - 1, current + 1));
+    },
+    up: () => {
+      via.current = "key";
+      setFocused((current) => Math.max(0, current - 1));
+    },
   });
+  usePageKeys(
+    rows.length > 0
+      ? ["screener.allow", "screener.deny", "screener.feed", "screener.paper-trail"]
+      : [],
+  );
 
   if (queue.isPending) return <PageSkeleton label="Loading screener queue" />;
   if (queue.isError)
@@ -195,40 +210,50 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
 
   return (
     <>
-      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>{plural(rows.length, "sender")} waiting.</span>
-        <span className="inline-flex items-center gap-1">
-          <KeyChip>j</KeyChip>
-          <KeyChip>k</KeyChip> to move, then the key on each button
-        </span>
-      </p>
-      <RuledList label="Screener queue">
-        {rows.map((entry, index) => (
-          <RuledRow
-            key={entry.sender_email}
-            current={index === focused}
-            title={entry.display_name || entry.sender_email}
-            meta={`${entry.sender_email} · ${plural(entry.message_count, "message")} · ${entry.latest_subject}`}
-            aside={formatWhen(entry.latest_at)}
-            onOpen={() => setFocused(index)}
-            openLabel={`Focus ${entry.sender_email}`}
-            actions={DECISIONS.map(({ disposition, label, key }) => (
-              <Button
-                key={disposition}
-                variant="outline"
-                className={disposition === "deny" ? DENY_CLASS : undefined}
-                size="xs"
-                disabled={decide.isPending}
-                onClick={() => decide.mutate({ entry, disposition })}
-                aria-keyshortcuts={index === focused ? key : undefined}
-              >
-                {label}
-                {index === focused ? <KeyChip className="ml-0.5 h-4 px-1">{key}</KeyChip> : null}
-              </Button>
-            ))}
-          />
-        ))}
-      </RuledList>
+      <p className="type-meta mb-3 px-2 text-text-3">{plural(rows.length, "sender")} waiting.</p>
+      <ul aria-label="Screener queue">
+        {rows.map((entry, index) => {
+          const name = entry.display_name || entry.sender_email;
+          return (
+            <Row
+              key={entry.sender_email}
+              data-testid="screener-row"
+              lit={index === focused}
+              via={via.current}
+              lead={<Avatar name={name} />}
+              primary={name}
+              secondary={`${entry.sender_email} · ${plural(entry.message_count, "message")} · ${entry.latest_subject}`}
+              trail={<span>{formatWhen(entry.latest_at)}</span>}
+              verbs={DECISIONS.map(({ disposition, label, key, Icon }) => (
+                <RowVerb
+                  key={disposition}
+                  keys={key}
+                  label={label}
+                  Icon={Icon}
+                  ariaLabel={`${label} ${entry.sender_email}`}
+                  onClick={() => {
+                    if (!decide.isPending) decide.mutate({ entry, disposition });
+                  }}
+                  className={cn(decide.isPending && "pointer-events-none opacity-50")}
+                />
+              ))}
+              renderMain={(content, className) => (
+                <button
+                  type="button"
+                  className={className}
+                  aria-label={`Focus ${entry.sender_email}`}
+                  onClick={() => {
+                    via.current = "pointer";
+                    setFocused(index);
+                  }}
+                >
+                  {content}
+                </button>
+              )}
+            />
+          );
+        })}
+      </ul>
     </>
   );
 }

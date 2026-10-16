@@ -296,7 +296,7 @@ export const navigationActions: Action[] = [
   // Triage views. The same chords open the TUI's lenses and modals.
   {
     id: "nav.reply-queue",
-    label: "Reply queue",
+    label: "Reply later",
     group: "Triage",
     icon: Reply,
     shortcut: "g q",

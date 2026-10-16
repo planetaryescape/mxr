@@ -6,6 +6,7 @@ import { ArchiveRecoveryPanel } from "@/features/mail-actions/ArchiveRecoveryPan
 import { AssistantSplit } from "@/features/assistant/AssistantSplit";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileTabs } from "@/components/MobileTabs";
+import { MoreSheet } from "@/components/MoreSheet";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RecoveryNotice } from "@/features/recovery/RecoveryNotice";
 import { Sidebar } from "@/components/Sidebar";
@@ -163,6 +164,7 @@ export function AppShell() {
   const mountDialogs = useOnceTrue(mailDialog);
   const mountHelp = useOnceTrue(helpOpen);
   const mountPromises = useOnceTrue(promiseOffered);
+  const mountMore = useOnceTrue(useModals((s) => s.moreSheetOpen));
 
   // With no account, every mail action fails ("No runtime account
   // configured"), so the shell offers only the way to add one. Hooks stay
@@ -259,6 +261,7 @@ export function AppShell() {
                     <StatusBar />
                   </footer>
                   <MobileTabs />
+                  {mountMore ? <MoreSheet /> : null}
                   <Suspense fallback={null}>
                     {mountPalette ? <CommandPaletteMount /> : null}
                     {mountLauncher ? <ComposeLauncher /> : null}

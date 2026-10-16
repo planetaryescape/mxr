@@ -104,8 +104,8 @@ test("g i goes to arrival order and g m comes back; Waiting on is Messages, thei
   await pressSequence(page, "g", "m");
   await expect(page).toHaveURL(/\/messages$/);
 
-  // Waiting on lives under More now.
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  // Waiting on lives under the rail's Views group.
+  await page.getByRole("button", { name: "Views", exact: true }).click();
   await sidebar(page).getByRole("link", { name: "Waiting on" }).click();
   await expect(page).toHaveURL(/\/messages\?turn=theirs$/);
   await expect(page.getByRole("heading", { level: 1, name: "Waiting on" }).first()).toBeVisible();

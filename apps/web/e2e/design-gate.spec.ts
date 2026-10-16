@@ -39,7 +39,11 @@ const PAGES: GatePage[] = [
   { name: "archive", path: "/archive" },
   { name: "inbox", path: "/m/inbox" },
   { name: "thread", path: "/m/inbox", thread: true, detail: true },
-  { name: "person", path: "/messages?person=person%3Asamir%40launchpad.example", detail: true },
+  {
+    name: "person",
+    path: "/messages?person=person%3Asamir%40launchpad.example",
+    detail: true,
+  },
   { name: "settings", path: "/settings/theme" },
   { name: "screener", path: "/screener", tabs: true },
 ];
@@ -117,7 +121,10 @@ for (const theme of THEMES) {
       test(`${gate.name} wears one page frame at every width`, async ({ page }, testInfo) => {
         for (const width of WIDTHS) {
           await test.step(`${width}px`, async () => {
-            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.setViewportSize({
+              width,
+              height: width === 390 ? 844 : 900,
+            });
             await openPage(page, gate);
             await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
@@ -153,8 +160,8 @@ for (const theme of THEMES) {
 
             // The first frame is the page's own: its height is fixed per width.
             const box = await frames.first().boundingBox();
-            // Settings' sections are tabs only where the side nav is hidden.
-            const tabs = gate.tabs ?? (gate.name === "settings" && width < 768);
+            // Settings' sections are the page's tabs from md up; below it they are a list.
+            const tabs = gate.tabs ?? (gate.name === "settings" && width >= 768);
             await expect(frames.first()).toHaveAttribute("data-tabs", String(tabs));
             const expected = frameHeight(width, tabs);
             if (gate.thread) {
@@ -182,12 +189,20 @@ for (const theme of THEMES) {
 /** Rows on every list page: each draws one `Row` per item, with its own `data-lit`. */
 const ROW_PAGES = [
   { name: "now", path: "/now", rows: '[data-testid="now-row"]' },
-  { name: "messages", path: "/messages", rows: 'li:has([data-testid="messages-row"])' },
+  {
+    name: "messages",
+    path: "/messages",
+    rows: 'li:has([data-testid="messages-row"])',
+  },
   { name: "todo", path: "/todo", rows: '[data-testid="todo-row"]' },
   { name: "updates", path: "/updates", rows: '[data-testid="update-line"]' },
   { name: "reading", path: "/reading", rows: '[data-testid="reading-item"]' },
   { name: "archive", path: "/archive", rows: '[data-testid="record-row"]' },
-  { name: "inbox", path: "/m/inbox", rows: '[data-testid="mailbox-list"] [data-lit]' },
+  {
+    name: "inbox",
+    path: "/m/inbox",
+    rows: '[data-testid="mailbox-list"] [data-lit]',
+  },
 ] as const;
 
 /** The list pages whose rows carry the page's keys in the status strip. */
@@ -235,7 +250,10 @@ for (const theme of THEMES) {
       }, testInfo) => {
         for (const width of WIDTHS) {
           await test.step(`${width}px`, async () => {
-            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.setViewportSize({
+              width,
+              height: width === 390 ? 844 : 900,
+            });
             await openApp(page, gate.path);
             await expect(page.locator(gate.rows).first()).toBeVisible();
             await page.evaluate(() => document.fonts.ready);
@@ -260,7 +278,10 @@ for (const theme of THEMES) {
     }, testInfo) => {
       for (const width of WIDTHS) {
         await test.step(`${width}px`, async () => {
-          await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+          await page.setViewportSize({
+            width,
+            height: width === 390 ? 844 : 900,
+          });
           await openApp(page, "/messages");
           const noor = page.locator('li:has([data-testid="messages-row"])').filter({
             hasText: "Noor Haddad",
@@ -288,7 +309,11 @@ for (const theme of THEMES) {
 
 /** Touch emulation makes `(pointer: coarse)` true; Chrome ignores a media-feature override for it. */
 test.describe("under a coarse pointer", () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: { width: 1440, height: 900 } });
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 1440, height: 900 },
+  });
 
   for (const gate of KEY_PAGES) {
     test(`${gate.name}: no key chip shows`, async ({ page }) => {
@@ -368,7 +393,10 @@ for (const theme of THEMES) {
     }, testInfo) => {
       for (const width of WIDTHS) {
         await test.step(`${width}px`, async () => {
-          await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+          await page.setViewportSize({
+            width,
+            height: width === 390 ? 844 : 900,
+          });
           await openApp(page, "/updates");
           await expect(page.locator('[data-testid="update-line"]').first()).toBeVisible();
           await page.keyboard.press("Space");
@@ -388,6 +416,113 @@ for (const theme of THEMES) {
           await expect(reader(page)).toBeVisible();
           await page.waitForTimeout(400);
           await attach(page, testInfo, `inbox-reader-${theme}-${width}`);
+        });
+      }
+    });
+  });
+}
+
+/** W5: the map. The rail, the phone's More sheet, Settings, and two tool pages, in every theme. */
+for (const theme of THEMES) {
+  test.describe(`${theme} theme: W5 navigation`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript((chosen) => {
+        localStorage.setItem(
+          "mxr.uiPrefs",
+          JSON.stringify({ state: { theme: chosen }, version: 6 }),
+        );
+      }, theme);
+    });
+
+    test("the rail, expanded and collapsed, and the phone's More sheet", async ({
+      page,
+    }, testInfo) => {
+      for (const width of WIDTHS) {
+        await test.step(`${width}px`, async () => {
+          await page.setViewportSize({
+            width,
+            height: width === 390 ? 844 : 900,
+          });
+          await openApp(page, "/updates");
+          await expect(page.locator("#main")).toBeVisible();
+          await page.evaluate(() => document.fonts.ready);
+          if (width === 390) {
+            await page.getByTestId("mobile-tabs").getByRole("button", { name: "More" }).click();
+            await expect(page.getByTestId("more-sheet")).toBeVisible();
+            await page.waitForTimeout(300);
+            await attach(page, testInfo, `more-sheet-${theme}-${width}`);
+            return;
+          }
+          const rail = page.getByRole("complementary", { name: "Mailboxes" });
+          if (width === 1440) {
+            // Expanded, with every group open: the dim tiers read against the page.
+            for (const group of ["Mail", "Views", "Tools", "Labels"]) {
+              await rail.getByRole("button", { name: group, exact: true }).click();
+            }
+            await page.waitForTimeout(250);
+            await attach(page, testInfo, `rail-expanded-${theme}-${width}`);
+            await page.getByRole("button", { name: "Collapse sidebar" }).click();
+          }
+          // Collapsed: the modes and Inbox, nothing else.
+          await expect(rail.getByRole("link")).toHaveCount(7);
+          await page.waitForTimeout(250);
+          await attach(page, testInfo, `rail-collapsed-${theme}-${width}`);
+        });
+      }
+    });
+
+    test("settings, the phone's list, and two tool pages", async ({ page }, testInfo) => {
+      for (const width of WIDTHS) {
+        await test.step(`${width}px`, async () => {
+          await page.setViewportSize({
+            width,
+            height: width === 390 ? 844 : 900,
+          });
+          const pages: [string, string][] = [
+            ["settings", "/settings/llm"],
+            ["subscriptions", "/subscriptions"],
+            ["activity", "/activity"],
+          ];
+          if (width === 390) pages.unshift(["settings-list", "/settings/all"]);
+          for (const [name, path] of pages) {
+            await openApp(page, path);
+            await expect(page.locator("#main h1:visible")).toHaveCount(1);
+            await page.evaluate(() => document.fonts.ready);
+            await page.waitForTimeout(400);
+            // No sideways scroll, and a settings page has one nav, not two.
+            const overflow = await page.evaluate(
+              () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            );
+            expect(overflow, `${name} at ${width}px`).toBeLessThanOrEqual(0);
+            if (name === "settings") {
+              await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(
+                width >= 768 ? 1 : 0,
+              );
+            }
+            await attach(page, testInfo, `${name}-${theme}-${width}`);
+          }
+        });
+      }
+    });
+
+    test("screener, with a lit row and its choice", async ({ page }, testInfo) => {
+      for (const width of WIDTHS) {
+        await test.step(`${width}px`, async () => {
+          await page.setViewportSize({
+            width,
+            height: width === 390 ? 844 : 900,
+          });
+          await openApp(page, "/screener");
+          const rows = page.getByTestId("screener-row");
+          await expect(rows.first()).toBeVisible();
+          await expect(page.locator("#main [data-lit='true']")).toHaveCount(1);
+          await page.waitForTimeout(300);
+          const heights = await rows.evaluateAll((nodes) =>
+            nodes.slice(0, 4).map((node) => node.getBoundingClientRect().height),
+          );
+          // Lighting never changes a row's height.
+          expect(new Set(heights).size).toBe(1);
+          await attach(page, testInfo, `screener-${theme}-${width}`);
         });
       }
     });

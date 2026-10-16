@@ -169,18 +169,18 @@ describe("home and sidebar prefs", () => {
   test("new installs land on Now with only places unfolded", () => {
     const initial = useUiPrefs.getInitialState();
     expect(initial.home).toBe("now");
-    expect(initial.collapsedSections).toEqual(["more", "labels", "tools"]);
+    expect(initial.collapsedSections).toEqual(["mail", "views", "tools", "labels"]);
   });
 
-  test("saved v2 prefs keep their choices, fold More and Labels and land on Now", () => {
+  test("saved v2 prefs keep their choices, fold Mail, Views and Labels and land on Now", () => {
     expect(migrateUiPrefs({ theme: "paper", collapsedSections: ["tools", "saved"] }, 2)).toEqual({
       theme: "paper",
-      collapsedSections: ["tools", "saved", "more", "labels"],
+      collapsedSections: ["tools", "saved", "labels", "mail", "views"],
       home: "now",
       contrast: "system",
     });
     expect(migrateUiPrefs(undefined, 1)).toEqual({
-      collapsedSections: ["tools", "more", "labels"],
+      collapsedSections: ["tools", "labels", "mail", "views"],
       home: "now",
       contrast: "system",
     });
@@ -196,9 +196,18 @@ describe("home and sidebar prefs", () => {
     expect(migrateUiPrefs(inbox, 3)).toEqual({ ...inbox, contrast: "system" });
   });
 
-  test("v6 prefs pass through untouched", () => {
+  test("v6 prefs with More open or absent pass through untouched", () => {
     const saved = { home: "now", collapsedSections: [] };
     expect(migrateUiPrefs(saved, 6)).toBe(saved);
+  });
+
+  test("a folded More folds Mail and Views; an open More leaves them open", () => {
+    expect(migrateUiPrefs({ collapsedSections: ["more", "tools"] }, 6)).toEqual({
+      collapsedSections: ["tools", "mail", "views"],
+    });
+    expect(migrateUiPrefs({ collapsedSections: ["labels"] }, 6)).toEqual({
+      collapsedSections: ["labels"],
+    });
   });
 });
 

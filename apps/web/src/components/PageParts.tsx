@@ -128,18 +128,19 @@ export function RuledRow({
 }) {
   const text = (
     <>
-      <div className="truncate text-sm font-medium text-foreground">{title}</div>
-      {meta ? (
-        <div className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">{meta}</div>
-      ) : null}
+      <div className="type-body truncate text-text-1">{title}</div>
+      {meta ? <div className="type-meta truncate text-text-2">{meta}</div> : null}
     </>
   );
   return (
     <li
       aria-current={current ? "true" : undefined}
       className={cn(
-        "group flex items-center gap-3 border-b border-border/60 px-2 py-2.5",
-        current ? "bg-primary-muted" : "hover:bg-muted/40",
+        // The lamp, not a tint: the current row is the one lit thing (D124).
+        "group relative flex items-center gap-3 px-3 py-2.5",
+        current
+          ? "bg-ink-lamp before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-signal"
+          : "hover:bg-ink-lamp/50",
         className,
       )}
     >
@@ -156,11 +157,7 @@ export function RuledRow({
         <div className="min-w-0 flex-1">{text}</div>
       )}
       {children}
-      {aside ? (
-        <div className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
-          {aside}
-        </div>
-      ) : null}
+      {aside ? <div className="type-meta shrink-0 text-text-3">{aside}</div> : null}
       {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
     </li>
   );

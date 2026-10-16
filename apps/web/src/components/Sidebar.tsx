@@ -1,148 +1,42 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  Archive,
-  BarChart3,
   Bookmark,
-  CalendarDays,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Clock,
-  FileText,
+  Ellipsis,
   FolderOpen,
-  History,
-  Hourglass,
-  Inbox,
-  ListChecks,
-  MailX,
-  Package,
-  Reply,
-  Search,
-  Send,
-  Settings,
   Shield,
-  ShieldAlert,
-  Star,
-  Stethoscope,
-  Tag,
-  Trash2,
-  Users,
-  Timer,
-  Workflow,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import {
+  isEntryActive,
+  MAIL_ENTRIES,
+  TOOL_ENTRIES,
+  VIEW_ENTRIES,
+  type NavEntry,
+  type NavSection,
+} from "@/components/navMap";
 import { railNavEntries } from "@/components/sidebarRail";
+import { StatusDot } from "@/components/StatusDot";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeskQuery, type Desk } from "@/features/desk/api";
-import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
+import { lensesFromShell } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { useRailQuery } from "@/features/modes/rail";
-import { fetchReplyQueue } from "@/features/reply-queue/api";
+import { labelColor } from "@/features/thread/LabelBadge";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { formatChord } from "@/lib/keys/chord";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import { StatusDot } from "@/components/StatusDot";
-
-type Icon = ComponentType<{ className?: string }>;
-
-export interface NavEntry {
-  key: string;
-  to: string;
-  /** Query the place is defined by (Messages, waiting on them). */
-  search?: { turn: "theirs" } | { account?: string };
-  /** Says what a count covers when the page it opens shows less of it. */
-  hint?: string;
-  label: string;
-  Icon: Icon;
-  /** Only work carries a count: owed and due, the reply queue, screening. */
-  count?: number;
-  /** A quiet count (what a mode holds), not work: muted, never a dot. */
-  quietCount?: boolean;
-  /** "Early version: …": the mode is built on an existing view. */
-  early?: string;
-  shortcut?: string;
-}
-
-interface NavSection {
-  id: string;
-  title?: string;
-  foldable: boolean;
-  entries: NavEntry[];
-}
-
-const SYSTEM_ICONS: Record<string, Icon> = {
-  inbox: Inbox,
-  starred: Star,
-  sent: Send,
-  archive: Archive,
-  spam: ShieldAlert,
-  trash: Trash2,
-};
-
-const SYSTEM_SHORTCUTS: Record<string, string> = {
-  inbox: "g i",
-  starred: "g s",
-  sent: "g t",
-  archive: "g a",
-  spam: "g !",
-  trash: "g #",
-};
-
-/** Rarer triage lists under "More", after the ones the modes replaced. */
-const MORE_TRIAGE: NavEntry[] = [
-  { key: "owed", to: "/owed", label: "Owed replies", Icon: Hourglass, shortcut: "g o" },
-  { key: "invites", to: "/invites", label: "Invites", Icon: CalendarDays, shortcut: "g v" },
-  { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
-];
-
-const TOOLS: NavEntry[] = [
-  { key: "search", to: "/search", label: "Search", Icon: Search, shortcut: "2" },
-  { key: "analytics", to: "/analytics", label: "Analytics", Icon: BarChart3, shortcut: "g A" },
-  { key: "rules", to: "/rules", label: "Rules", Icon: Workflow, shortcut: "3" },
-  { key: "accounts", to: "/accounts", label: "Accounts", Icon: Users, shortcut: "4" },
-  { key: "activity", to: "/activity", label: "Activity", Icon: History, shortcut: "g y" },
-  { key: "jobs", to: "/jobs", label: "Jobs", Icon: ListChecks },
-  {
-    key: "diagnostics",
-    to: "/diagnostics",
-    label: "Diagnostics",
-    Icon: Stethoscope,
-    shortcut: "5",
-  },
-  { key: "settings", to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "g c" },
-];
-
-/** Every system folder except the inbox, which is a place of its own. */
-function folderEntries(lenses: MailLens[]): NavEntry[] {
-  const entries: NavEntry[] = lenses
-    .filter((lens) => lens.section === "system" && lens.key !== "drafts" && lens.key !== "inbox")
-    .map((lens) => ({
-      key: lens.key,
-      to: lens.path,
-      label: lens.label,
-      Icon: SYSTEM_ICONS[lens.key] ?? Inbox,
-      shortcut: SYSTEM_SHORTCUTS[lens.key],
-    }));
-  // Drafts has its own page, not a label lens.
-  const afterSent = entries.findIndex((entry) => entry.key === "sent") + 1;
-  entries.splice(afterSent > 0 ? afterSent : entries.length, 0, {
-    key: "drafts",
-    to: "/drafts",
-    label: "Drafts",
-    Icon: FileText,
-    shortcut: "g d",
-  });
-  return entries;
-}
 
 /**
  * Screener, only while someone new waits for a decision. Same rule as the
@@ -167,48 +61,20 @@ export function screenerEntry(desk: Desk): NavEntry | null {
 }
 
 /** Sections whose entries open a mail list, so the keyboard follows. */
-const LIST_SECTIONS = new Set(["places", "saved", "more", "labels", "categories"]);
+const LIST_SECTIONS = new Set(["places", "saved", "mail", "views", "labels", "categories"]);
 
-function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
-  const base = entry.to;
-  if (base === "/settings/theme") return path.startsWith("/settings");
-  const onPath = path === base || path.startsWith(`${base}/`);
-  // Messages and "Waiting on" share a path; the turn tells them apart.
-  if (base === "/messages") {
-    const entryTurn = entry.search && "turn" in entry.search ? entry.search.turn : null;
-    return onPath && entryTurn === (lane === "theirs" ? "theirs" : null);
-  }
-  return onPath;
-}
-
-export function Sidebar({ collapsed }: { collapsed: boolean }) {
-  const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
-  const userCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
-  const folded = useUiPrefs((s) => s.collapsedSections);
-  const toggleSection = useUiPrefs((s) => s.toggleSection);
-  const setSectionCollapsed = useUiPrefs((s) => s.setSectionCollapsed);
-  const navigate = useNavigate();
-  const path = useRouterState({ select: (s) => s.location.pathname });
-  const lane = useRouterState({
-    select: (s) =>
-      "turn" in s.location.search
-        ? s.location.search.turn
-        : "lane" in s.location.search
-          ? s.location.search.lane
-          : undefined,
-  });
+/**
+ * The map's sections, in order: the rail (Now, the five modes, Inbox), then
+ * Mail, Views, Tools and Labels (D133). Mail, Views and Tools are fixed data
+ * and never depend on the daemon answering; only the Screener's count, the
+ * mode counts, labels and saved searches do. The rail and the phone's More
+ * sheet both read this.
+ */
+export function useNavSections(): NavSection[] {
   const shell = useShellQuery();
-  const activePane = useMailboxPane((s) => s.activePane);
-  const setActivePane = useMailboxPane((s) => s.setActivePane);
-  const focusIndex = useMailboxPane((s) => s.sidebarIndex);
-  const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
-  const listRef = useRef<HTMLDivElement>(null);
-
   const desk = useDeskQuery();
   const rail = useRailQuery();
-  const replyQueue = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
-
-  const sections = useMemo<NavSection[]>(() => {
+  return useMemo<NavSection[]>(() => {
     const lenses = lensesFromShell(shell.data);
     const labels = lenses.filter((lens) => lens.section === "labels");
     const categories = lenses.filter((lens) => lens.section === "categories");
@@ -225,37 +91,31 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       early: entry.early,
       hint: [entry.header, entry.early].filter(Boolean).join(" ") || undefined,
     }));
-    // The views the modes replaced, still a key away under More. The
-    // Screener's page is decision history; new senders are asked on their row.
-    const screener: NavEntry = (desk.data ? screenerEntry(desk.data) : null) ?? {
-      key: "screener",
-      to: "/screener",
-      label: "Screener",
-      Icon: Shield,
-      shortcut: "g S",
-    };
-    const replaced: NavEntry[] = [
-      screener,
-      {
-        key: "reply-queue",
-        to: "/reply-queue",
-        label: "Reply queue",
-        Icon: Reply,
-        count: replyQueue.data?.messages.length,
-        shortcut: "g q",
-      },
-      {
-        key: "waiting",
-        to: "/messages",
-        search: { turn: "theirs" },
-        label: "Waiting on",
-        Icon: Timer,
-        shortcut: "g w",
-      },
-      { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
-      { key: "subscriptions", to: "/subscriptions", label: "Subscriptions", Icon: MailX },
+    // The Screener's page is decision history; new senders are asked on their row.
+    const screener = desk.data ? screenerEntry(desk.data) : null;
+    const views = VIEW_ENTRIES.map((entry) =>
+      entry.key === "screener" && screener ? screener : entry,
+    );
+    const result: NavSection[] = [
+      { id: "places", foldable: false, entries: places },
+      { id: "mail", title: "Mail", foldable: true, entries: MAIL_ENTRIES },
+      { id: "views", title: "Views", foldable: true, entries: views },
+      { id: "tools", title: "Tools", foldable: true, entries: TOOL_ENTRIES },
     ];
-    const result: NavSection[] = [{ id: "places", foldable: false, entries: places }];
+    if (labels.length > 0) {
+      result.push({
+        id: "labels",
+        title: "Labels",
+        foldable: true,
+        entries: labels.map((lens) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: FolderOpen,
+          color: labelColor(lens.label),
+        })),
+      });
+    }
     if (saved.length > 0) {
       result.push({
         id: "saved",
@@ -267,25 +127,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           label: lens.label,
           Icon: Bookmark,
           shortcut: index < 9 ? `g ${index + 1}` : undefined,
-        })),
-      });
-    }
-    result.push({
-      id: "more",
-      title: "More",
-      foldable: true,
-      entries: [...replaced, ...folderEntries(lenses), ...MORE_TRIAGE],
-    });
-    if (labels.length > 0) {
-      result.push({
-        id: "labels",
-        title: "Labels",
-        foldable: true,
-        entries: labels.map((lens) => ({
-          key: lens.key,
-          to: lens.path,
-          label: lens.label,
-          Icon: Tag,
         })),
       });
     }
@@ -302,9 +143,40 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         })),
       });
     }
-    result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });
     return result;
-  }, [desk.data, rail.data, replyQueue.data, shell.data]);
+  }, [desk.data, rail.data, shell.data]);
+}
+
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
+  const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
+  const userCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const folded = useUiPrefs((s) => s.collapsedSections);
+  const toggleSection = useUiPrefs((s) => s.toggleSection);
+  const setSectionCollapsed = useUiPrefs((s) => s.setSectionCollapsed);
+  const setMoreOpen = useModals((s) => s.setMoreSheetOpen);
+  const navigate = useNavigate();
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const lane = useRouterState({
+    select: (s) =>
+      "turn" in s.location.search
+        ? s.location.search.turn
+        : "lane" in s.location.search
+          ? s.location.search.lane
+          : undefined,
+  });
+  const activePane = useMailboxPane((s) => s.activePane);
+  const setActivePane = useMailboxPane((s) => s.setActivePane);
+  const focusIndex = useMailboxPane((s) => s.sidebarIndex);
+  const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // The collapsed rail is the modes and Inbox only (D133): the rest is one
+  // click away in the More sheet, so the narrow rail stays a rail.
+  const allSections = useNavSections();
+  const sections = useMemo(
+    () => (collapsed ? allSections.filter((section) => section.id === "places") : allSections),
+    [allSections, collapsed],
+  );
 
   // Keyboard walks only what is visible: folded sections contribute their
   // header, not their entries.
@@ -344,7 +216,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   // Keep the keyboard cursor on the page the user is on when they arrive.
   useEffect(() => {
     if (sidebarFocused) return;
-    const index = visible.findIndex(({ entry }) => isActive(path, lane, entry));
+    const index = visible.findIndex(({ entry }) => isEntryActive(path, lane, entry));
     if (index >= 0 && index !== focusIndex) setFocusIndex(index);
   }, [focusIndex, lane, path, setFocusIndex, sidebarFocused, visible]);
 
@@ -370,7 +242,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         setActivePane("sidebar");
       }}
     >
-      <div className="border-b border-sidebar-border p-2">
+      <div className="border-b border-rule-soft p-2">
         <AccountSwitcher collapsed={collapsed} />
       </div>
 
@@ -380,29 +252,25 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         data-active-pane={sidebarFocused ? "true" : undefined}
       >
         {sections.map((section) => {
-          // Folded groups stay folded in the icon rail too: it shows places.
           const isFolded = section.foldable && folded.includes(section.id);
-          if (collapsed && isFolded) return null;
           return (
             <nav
               key={section.id}
               aria-label={section.title ?? "Places"}
               className={cn(section.id !== "places" && "mt-3")}
             >
-              {section.title && !collapsed ? (
+              {section.title ? (
                 <button
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={!isFolded}
-                  className="group mb-0.5 flex w-full items-center gap-1 rounded-sm px-2 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
+                  className="type-eyebrow group mb-0.5 flex w-full items-center gap-1 rounded-sm px-2 py-1 text-text-3 hover:text-text-2"
                 >
                   <ChevronRight
                     className={cn("size-3 transition-transform", !isFolded && "rotate-90")}
                   />
                   {section.title}
                 </button>
-              ) : section.title && collapsed ? (
-                <div className="mx-3 my-2 border-t border-sidebar-border" aria-hidden />
               ) : null}
               {isFolded
                 ? null
@@ -420,7 +288,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                           if (LIST_SECTIONS.has(section.id)) setActivePane("mailbox");
                         }}
                         collapsed={collapsed}
-                        active={isActive(path, lane, entry)}
+                        active={isEntryActive(path, lane, entry)}
                         focused={sidebarFocused && clamp(focusIndex) === index}
                       />
                     );
@@ -428,7 +296,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                     return section.id === "places" &&
                       (entry.key === "messages" || entry.key === "inbox") ? (
                       <Fragment key={entry.key}>
-                        <div aria-hidden className="mx-2 my-1.5 border-t border-sidebar-border" />
+                        <div aria-hidden className="mx-2 my-1.5 border-t border-rule-soft" />
                         {link}
                       </Fragment>
                     ) : (
@@ -442,11 +310,29 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
       <div
         className={cn(
-          "flex border-t border-sidebar-border p-1.5",
+          "flex border-t border-rule-soft p-1.5",
           collapsed ? "flex-col items-center gap-1" : "items-center justify-between",
         )}
       >
         <ThemePicker />
+        {collapsed ? (
+          // The groups the narrow rail leaves out stay reachable on every width.
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setMoreOpen(true)}
+                aria-label="More places"
+                data-more-trigger
+                className="text-text-3"
+              >
+                <Ellipsis className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Mail, views, tools and labels</TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -454,6 +340,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
               size="icon-sm"
               onClick={() => setCollapsed(!userCollapsed)}
               aria-label={userCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="text-text-3"
             >
               {userCollapsed ? (
                 <ChevronsRight className="size-4" />
@@ -469,6 +356,22 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
     </div>
   );
+}
+
+/** The mark before a nav label: its icon, or a label's own colour as a square. */
+export function NavMark({ entry, className }: { entry: NavEntry; className?: string }) {
+  if (entry.color) {
+    return (
+      <span
+        aria-hidden
+        className={cn("flex size-4 shrink-0 items-center justify-center", className)}
+      >
+        {/* A validated hex (labelColor), never raw data in a style value. */}
+        <span className="size-1.5" style={{ backgroundColor: entry.color }} />
+      </span>
+    );
+  }
+  return <entry.Icon className={cn("size-4 shrink-0", className)} />;
 }
 
 function SidebarLink({
@@ -491,41 +394,37 @@ function SidebarLink({
     <Link
       to={entry.to}
       search={entry.search}
+      // The router would call Messages current on Waiting on; the nav decides.
+      activeOptions={{ exact: true }}
       title={entry.hint}
       onClick={onActivate}
       data-nav-index={index}
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? `${entry.label}${count ? `, ${count}` : ""}` : undefined}
       className={cn(
-        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-sm",
+        "group relative flex h-8 items-center gap-2.5 px-2 text-sm",
         collapsed && "justify-center px-0",
+        // The rail is dimmer than the page (D133): labels in the second text
+        // tier, icons in the third; only the page you are on reaches the first.
         active
-          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+          ? "bg-ink-lamp font-medium text-text-1"
+          : "text-text-2 hover:bg-ink-lamp/60 hover:text-text-1",
         focused && "ring-1 ring-inset ring-sidebar-ring",
       )}
     >
-      {active ? (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 bg-sidebar-primary" />
-      ) : null}
-      <entry.Icon
-        className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")}
-      />
+      <NavMark entry={entry} className={active ? "text-text-2" : "text-text-3"} />
       {!collapsed ? (
         <span className="min-w-0 flex-1 truncate">
           {entry.label}
           {entry.early ? (
-            <span
-              data-testid="rail-early"
-              className="ml-1.5 font-mono text-2xs uppercase tracking-wide text-muted-foreground"
-            >
+            <span data-testid="rail-early" className="type-meta ml-1.5 uppercase text-text-3">
               early
             </span>
           ) : null}
         </span>
       ) : null}
       {!collapsed && entry.shortcut ? (
-        <span className="hidden font-mono text-2xs text-muted-foreground group-hover:inline">
+        <span className="type-meta hidden text-text-3 group-hover:inline">
           {formatChord(entry.shortcut)}
         </span>
       ) : null}
@@ -533,15 +432,15 @@ function SidebarLink({
         <span
           data-testid="rail-count"
           className={cn(
-            "font-mono text-2xs tabular-nums group-hover:hidden",
-            entry.quietCount ? "text-muted-foreground" : "font-semibold text-sidebar-primary",
+            "type-meta group-hover:hidden",
+            entry.quietCount ? "text-text-3" : "font-semibold text-signal",
           )}
         >
           {count > 9999 ? "9999+" : count.toLocaleString()}
         </span>
       ) : null}
       {collapsed && count && !entry.quietCount ? (
-        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-primary" />
+        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-signal" />
       ) : null}
     </Link>
   );
@@ -552,9 +451,7 @@ function SidebarLink({
       <TooltipContent side="right">
         {entry.label}
         {entry.shortcut ? (
-          <span className="ml-2 font-mono text-muted-foreground">
-            {formatChord(entry.shortcut)}
-          </span>
+          <span className="ml-2 font-mono text-text-3">{formatChord(entry.shortcut)}</span>
         ) : null}
       </TooltipContent>
     </Tooltip>

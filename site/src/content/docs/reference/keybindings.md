@@ -579,7 +579,7 @@ Work on every page except while typing in a field or compose.
 | `g n` | Go to Snoozed | Web only |
 | `g #` | Go to Trash | Web only |
 | `g !` | Go to Spam | Web only |
-| `g q` | Reply queue |  |
+| `g q` | Reply later |  |
 | `g o` | Owed replies |  |
 | `g v`, `9` | Calendar invites |  |
 | `g r` | Reading |  |
@@ -702,10 +702,10 @@ In the mail list they act on the selection or the row under the cursor; in the r
 
 | Key | Action | Note |
 |-----|--------|------|
-| `a` | Allow sender |  |
-| `d` | Deny sender |  |
-| `f` | Send to feed |  |
-| `p` | Send to paper trail |  |
+| `1`, `a` | Allow sender |  |
+| `2`, `d` | Deny sender |  |
+| `3`, `f` | Send to feed |  |
+| `4`, `p` | Send to paper trail |  |
 | `j`, `ArrowDown` | Next sender |  |
 | `k`, `ArrowUp` | Previous sender |  |
 

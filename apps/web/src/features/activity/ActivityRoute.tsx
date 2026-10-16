@@ -14,6 +14,7 @@ import {
   type ActivityTier,
   type ClientKind,
 } from "./api";
+import { describeAction, isRecordingPaused } from "./describeAction";
 import { Page } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import {
@@ -101,6 +102,14 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
     refetchOnWindowFocus: false,
   });
 
+  // Pause and Resume are one control: the log's newest marker says which applies.
+  const marker = useQuery({
+    queryKey: ["activity", "marker"],
+    queryFn: () => fetchActivityList({ action: ["activity.paused", "activity.resumed"], limit: 1 }),
+    refetchOnWindowFocus: false,
+  });
+  const paused = isRecordingPaused(marker.data?.entries[0], Date.now());
+
   const pauseMut = useMutation({
     mutationFn: () => pauseActivity(null),
     onSuccess: () => {
@@ -142,24 +151,27 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
       >
         <RefreshCw className="size-3.5" />
       </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => pauseMut.mutate()}
-        disabled={pauseMut.isPending}
-      >
-        <Pause className="size-3" />
-        Pause recording
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => resumeMut.mutate()}
-        disabled={resumeMut.isPending}
-      >
-        <Play className="size-3" />
-        Resume
-      </Button>
+      {paused ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => resumeMut.mutate()}
+          disabled={resumeMut.isPending || marker.isPending}
+        >
+          <Play className="size-3" />
+          Resume recording
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => pauseMut.mutate()}
+          disabled={pauseMut.isPending || marker.isPending}
+        >
+          <Pause className="size-3" />
+          Pause recording
+        </Button>
+      )}
     </>
   );
 
@@ -276,10 +288,10 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
                   </th>
                   <th className="px-2 py-2 text-left font-normal">Time</th>
                   <th className="px-2 py-2 text-left font-normal">Source</th>
-                  <th className="px-2 py-2 text-left font-normal">Action</th>
+                  <th className="px-2 py-2 text-left font-normal">What happened</th>
                   <th className="px-2 py-2 text-left font-normal">Target</th>
                   <th className="px-2 py-2 text-left font-normal">Tier</th>
-                  <th className="px-2 py-2 text-left font-normal">Context</th>
+                  <th className="px-2 py-2 text-left font-normal">Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,7 +314,9 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
                       {formatTimestamp(entry.ts)}
                     </td>
                     <td className="px-2 py-1.5 font-mono text-2xs text-primary">{entry.source}</td>
-                    <td className="px-2 py-1.5 font-mono text-2xs">{entry.action}</td>
+                    <td title={entry.action} className="whitespace-nowrap px-2 py-1.5 text-sm">
+                      {describeAction(entry.action)}
+                    </td>
                     <td className="whitespace-nowrap px-2 py-1.5 font-mono text-2xs text-muted-foreground">
                       {entry.target_kind && entry.target_id
                         ? `${entry.target_kind}:${entry.target_id.slice(0, 12)}`

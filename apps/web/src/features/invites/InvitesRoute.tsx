@@ -3,7 +3,9 @@ import { Calendar, Check, HelpCircle, MoreHorizontal, X } from "lucide-react";
 
 import { fetchInvites, type CalendarInviteData } from "./api";
 import { Page } from "@/components/Page";
-import { PageEmpty, PageError, PageSkeleton, RuledList } from "@/components/PageParts";
+import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { Row, RowVerb } from "@/components/Row";
+import { useLitRow, type LitRowProps } from "@/components/useLitRow";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatLongDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { CalendarMetadataView, CalendarPartstatView } from "@/features/mailbox/types";
 import {
   openInviteComment,
@@ -66,7 +69,7 @@ function organizerText(metadata: CalendarMetadataView): string {
   return org.name ? `${org.name} <${org.email}>` : org.email;
 }
 
-function InviteRow({ invite }: { invite: CalendarInviteData }) {
+function InviteRow({ invite, rowProps }: { invite: CalendarInviteData; rowProps: LitRowProps }) {
   const { metadata, message_id } = invite;
   const { begin, pendingAction } = useInviteResponse({ messageId: message_id });
 
@@ -79,75 +82,58 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
       viewerPartstat === "needs_action" ||
       viewerPartstat === "delegated");
 
-  const handleClick = (action: InviteAction) => begin(action);
   const handleComment = (action: InviteAction) => openInviteComment(message_id, action);
-
+  const secondary = [whenText(metadata), metadata.location, organizerText(metadata)]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <li className="flex items-start gap-3 border-b border-border/60 px-2 py-3">
-      <div className="mt-0.5 text-muted-foreground">
-        <Calendar className="size-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {cancelled && (
-            <span className="font-mono text-2xs uppercase tracking-wide text-destructive">
-              Cancelled
-            </span>
-          )}
-          {!cancelled && metadata.is_update && (
-            <span className="font-mono text-2xs uppercase tracking-wide text-warning">Updated</span>
-          )}
-          <span
-            className={
-              cancelled
-                ? "truncate text-sm font-medium line-through text-muted-foreground"
-                : "truncate text-sm font-medium"
-            }
-          >
-            {metadata.summary || "(no title)"}
-          </span>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-          {whenText(metadata) && (
-            <span className={cancelled ? "line-through" : ""}>{whenText(metadata)}</span>
-          )}
-          {metadata.location && <span>· {metadata.location}</span>}
-          {organizerText(metadata) && <span>· {organizerText(metadata)}</span>}
-        </div>
-
-        {showActions ? (
-          <div
-            className="mt-2 flex flex-wrap items-center gap-2"
-            role="group"
-            aria-label="Invite response"
-          >
-            <Button
-              variant={pendingAction === "accept" ? "default" : "outline"}
-              size="xs"
-              onClick={() => handleClick("accept")}
-              disabled={pendingAction !== null && pendingAction !== "accept"}
-            >
-              <Check className="size-3" /> Accept
-            </Button>
-            <Button
-              variant={pendingAction === "tentative" ? "default" : "outline"}
-              size="xs"
-              onClick={() => handleClick("tentative")}
-              disabled={pendingAction !== null && pendingAction !== "tentative"}
-            >
-              <HelpCircle className="size-3" /> Tentative
-            </Button>
-            <Button
-              variant={pendingAction === "decline" ? "default" : "outline"}
-              size="xs"
-              onClick={() => handleClick("decline")}
-              disabled={pendingAction !== null && pendingAction !== "decline"}
-            >
-              <X className="size-3" /> Decline
-            </Button>
+    <Row
+      {...rowProps}
+      lead={<Calendar aria-hidden className="size-4 text-text-3" />}
+      primary={
+        <span className={cancelled ? "line-through text-text-3" : undefined}>
+          {metadata.summary || "(no title)"}
+        </span>
+      }
+      secondary={secondary || undefined}
+      trail={
+        cancelled ? (
+          <span className="text-danger">Cancelled</span>
+        ) : metadata.is_update ? (
+          <span className="text-cue">Updated</span>
+        ) : viewerPartstat && !showActions ? (
+          <span className={PARTSTAT_TONE[viewerPartstat]}>{PARTSTAT_LABELS[viewerPartstat]}</span>
+        ) : null
+      }
+      verbs={
+        showActions ? (
+          <div role="group" aria-label="Invite response" className="flex items-center gap-1">
+            <RowVerb
+              label="Accept"
+              Icon={Check}
+              className={cn(pendingAction === "accept" && "text-text-1")}
+              onClick={() => pendingAction === null && begin("accept")}
+            />
+            <RowVerb
+              label="Tentative"
+              Icon={HelpCircle}
+              className={cn(pendingAction === "tentative" && "text-text-1")}
+              onClick={() => pendingAction === null && begin("tentative")}
+            />
+            <RowVerb
+              label="Decline"
+              Icon={X}
+              className={cn(pendingAction === "decline" && "text-text-1")}
+              onClick={() => pendingAction === null && begin("decline")}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="xs" aria-label="More invite actions">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="More invite actions"
+                  className="text-text-2"
+                >
                   <MoreHorizontal className="size-3.5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -164,16 +150,9 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        ) : (
-          !cancelled &&
-          viewerPartstat && (
-            <p className={`mt-1.5 font-mono text-2xs ${PARTSTAT_TONE[viewerPartstat]}`}>
-              {PARTSTAT_LABELS[viewerPartstat]}
-            </p>
-          )
-        )}
-      </div>
-    </li>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -184,6 +163,7 @@ export function InvitesRoute() {
     queryFn: () => fetchInvites(account),
   });
   const rows = invites.data?.invites ?? [];
+  const { rowProps } = useLitRow(rows.map((invite) => invite.id));
 
   return (
     <Page
@@ -205,11 +185,11 @@ export function InvitesRoute() {
           body="Invites in synced mail show up here, ready to accept or decline."
         />
       ) : (
-        <RuledList label="Calendar invites">
+        <ul aria-label="Calendar invites">
           {rows.map((invite) => (
-            <InviteRow key={invite.id} invite={invite} />
+            <InviteRow key={invite.id} invite={invite} rowProps={rowProps(invite.id)} />
           ))}
-        </RuledList>
+        </ul>
       )}
     </Page>
   );

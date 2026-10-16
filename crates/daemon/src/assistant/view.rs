@@ -1,9 +1,10 @@
 //! The conversation as clients show it: user and assistant messages, and
 //! each tool call joined with how it ended.
 
-use super::links::KnownLinks;
+use super::links::{linked_objects, KnownLinks};
 use super::parse_pending;
-use super::readout::readout;
+use super::readout::{listed_rows, readout};
+use super::titles::{change_title, settled_state, step_title, Context};
 use mxr_assistant::{
     call_state, prompt, readable_result, CallState, MessageMeta, PendingItem, PendingKind,
 };
@@ -11,7 +12,7 @@ use mxr_llm::ToolChatMessage;
 use mxr_protocol::{
     AssistantCallStateData, AssistantConversationData, AssistantConversationSummaryData,
     AssistantItemData, AssistantOutcomeData, AssistantPendingData, AssistantQuestionData,
-    AssistantQuestionOptionData, AssistantStatusData,
+    AssistantQuestionOptionData, AssistantReadoutRowData, AssistantStatusData,
 };
 use mxr_store::{AssistantConversationRow, AssistantMessageRow};
 use std::collections::{HashMap, HashSet};
@@ -46,6 +47,12 @@ pub(crate) fn conversation_view(
     // What the model was given, so the emails and people its replies name
     // link to the right place.
     let mut links = KnownLinks::default();
+    // Everything each step listed, by the step's place in `items`, for the
+    // rows a reply names.
+    let mut listed: HashMap<usize, Vec<AssistantReadoutRowData>> = HashMap::new();
+    // Each result whole, by its step's place in `items`: titles and the
+    // failure checks read these, since `result` is cut for clients.
+    let mut wholes: HashMap<usize, String> = HashMap::new();
     for row in messages {
         let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
             tracing::warn!(seq = row.seq, "skipping an unreadable assistant message");
@@ -72,6 +79,7 @@ pub(crate) fn conversation_view(
                         text,
                         model: meta.model.clone(),
                         failed_call_ids: Vec::new(),
+                        rows: Vec::new(),
                         created_at: row.created_at,
                     });
                 }
@@ -94,6 +102,7 @@ pub(crate) fn conversation_view(
                         state,
                         result: None,
                         readout: None,
+                        title: None,
                         created_at: row.created_at,
                     });
                 }
@@ -117,6 +126,8 @@ pub(crate) fn conversation_view(
                     let whole = readable_result(&content, usize::MAX);
                     *found = readout(&whole);
                     *result = Some(readable_result(&whole, RESULT_PREVIEW_CHARS));
+                    listed.insert(*index, listed_rows(&whole));
+                    wholes.insert(*index, whole.clone());
                     links.add_result(&whole);
                 }
             }
@@ -128,19 +139,153 @@ pub(crate) fn conversation_view(
             *text = links.apply(text);
         }
     }
+    fill_titles(&mut items, &pending, &wholes);
     mark_failed_steps(&mut items);
+    attach_rows(&mut items, &listed);
 
     AssistantConversationData {
         id: row.id.clone(),
         title: row.title.clone(),
         status: status(&row.status),
         last_outcome: row.last_outcome.as_deref().and_then(outcome),
-        last_error: row.last_error.clone(),
+        last_error: row.last_error.as_deref().map(plain_error),
+        last_error_detail: row
+            .last_error
+            .as_deref()
+            .filter(|raw| plain_error(raw) != *raw)
+            .map(str::to_string),
         created_at: row.created_at,
         updated_at: row.updated_at,
         auto_approve: row.auto_approve,
         items: with_summary(items, row),
         pending: pending.into_iter().map(pending_view).collect(),
+    }
+}
+
+/// Most rows a reply gets.
+const REPLY_ROWS: usize = 8;
+
+/// Put the rows a reply names under it: when it links two or more emails
+/// or people that one step of its own turn listed, those rows, in the
+/// order the reply names them. The step that lists most of them wins; a
+/// later step wins a tie, being the one the reply most likely reads from.
+fn attach_rows(
+    items: &mut [AssistantItemData],
+    listed: &HashMap<usize, Vec<AssistantReadoutRowData>>,
+) {
+    let mut turn_start = 0;
+    let mut attached: Vec<(usize, Vec<AssistantReadoutRowData>)> = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        match item {
+            AssistantItemData::User { .. } => turn_start = index + 1,
+            AssistantItemData::Assistant { text, .. } => {
+                let named = linked_objects(text);
+                if named.len() < 2 {
+                    continue;
+                }
+                let mut best: Vec<AssistantReadoutRowData> = Vec::new();
+                for step in turn_start..index {
+                    let Some(rows) = listed.get(&step) else {
+                        continue;
+                    };
+                    let matched: Vec<AssistantReadoutRowData> = named
+                        .iter()
+                        .filter_map(|link| {
+                            rows.iter()
+                                .find(|row| row.link.as_ref() == Some(link))
+                                .cloned()
+                        })
+                        .collect();
+                    if matched.len() >= 2 && matched.len() >= best.len() {
+                        best = matched;
+                    }
+                }
+                best.truncate(REPLY_ROWS);
+                attached.push((index, best));
+            }
+            _ => {}
+        }
+    }
+    for (index, best) in attached {
+        if let Some(AssistantItemData::Assistant { rows, .. }) = items.get_mut(index) {
+            *rows = best;
+        }
+    }
+}
+
+/// Give each step its words, now that its state, result and (for a call
+/// waiting on the user) preview are known.
+fn fill_titles(
+    items: &mut [AssistantItemData],
+    pending: &[PendingItem],
+    wholes: &HashMap<usize, String>,
+) {
+    for (index, item) in items.iter_mut().enumerate() {
+        let AssistantItemData::ToolCall {
+            call_id,
+            tool,
+            arguments,
+            state,
+            title,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        let whole = wholes.get(&index).map(String::as_str);
+        let preview = pending
+            .iter()
+            .find(|waiting| waiting.call_id == *call_id)
+            .and_then(|waiting| match &waiting.kind {
+                PendingKind::Approval { preview, .. } => preview.as_ref(),
+                PendingKind::Question { .. } => None,
+            });
+        // A result that says nothing happened is a failure whatever state
+        // it was stored in, so the glyph, the title and the failure note agree.
+        *state = settled_state(tool, *state, whole);
+        *title = Some(step_title(
+            tool,
+            arguments,
+            *state,
+            Context {
+                preview,
+                result: whole,
+            },
+            whole,
+        ));
+    }
+}
+
+/// A turn's failure as a sentence with what to do next. The raw text names
+/// the model's provider and is kept in `last_error_detail`.
+fn plain_error(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let has = |needle: &str| lower.contains(needle);
+    let settings = "Settings › Language model";
+    if has("empty completion") {
+        format!(
+            "The model stopped answering. Send your message again, or switch models in {settings}."
+        )
+    } else if has("unreachable") {
+        format!("mxr couldn't reach the model. Check that it is running, or switch models in {settings}.")
+    } else if has("rate-limited") {
+        "The model's provider is limiting requests right now. Wait a moment, then send your message again.".to_string()
+    } else if has("timed out") {
+        format!("The model took too long to answer. Send your message again, or switch to a faster model in {settings}.")
+    } else if has("authentication failed") {
+        format!("The model's provider didn't accept the API key. Check it in {settings}.")
+    } else if has("privacy policy") {
+        format!("Your privacy settings don't let the assistant use this model. Change the model in {settings}.")
+    } else if has("disabled in config") {
+        format!("The language model is switched off. Turn it on in {settings}.")
+    } else if has("paused for") {
+        "The model kept failing, so mxr paused it for a while. Try again in a minute.".to_string()
+    } else if has("can't call tools") {
+        format!("This model can't use mxr's tools. Choose another in {settings}.")
+    } else if has("tools didn't start") {
+        "The assistant's tools didn't start. Send your message again; if it keeps happening, restart mxr.".to_string()
+    } else {
+        crate::output::terminal_text(raw).into_owned()
     }
 }
 
@@ -258,6 +403,7 @@ fn pending_view(item: PendingItem) -> AssistantPendingData {
             preview_error,
         } => AssistantPendingData::Approval {
             call_id: item.call_id,
+            title: Some(change_title(&tool, &arguments, preview.as_ref())),
             tool,
             arguments,
             reason,
@@ -346,6 +492,7 @@ mod tests {
             state,
             result: None,
             readout: None,
+            title: None,
             created_at: 0,
         }
     }
@@ -356,6 +503,7 @@ mod tests {
             text: "Starred it.".into(),
             model: None,
             failed_call_ids: Vec::new(),
+            rows: Vec::new(),
             created_at: 0,
         }
     }
@@ -372,7 +520,7 @@ mod tests {
     #[test]
     fn a_reply_names_the_failed_steps_before_it_that_no_retry_redid() {
         use AssistantCallStateData::{AutoApproved, Done, Failed};
-        let star = json!({"action": "star", "message_ids": ["m1"]});
+        let star = json!({"action": "star", "message_ids": ["m1"], "confirm": true});
         let mut items = vec![
             user(1),
             step("bad-shape", json!({"action": {"is_starred": true}}), Failed),
@@ -405,5 +553,202 @@ mod tests {
         assert_eq!(failed_ids(&items[2]), Some(vec!["bad-shape"]));
         assert_eq!(failed_ids(&items[9]), Some(vec!["other"]));
         assert_eq!(failed_ids(&items[11]), Some(vec![]));
+    }
+
+    fn row(title: &str, thread: &str) -> AssistantReadoutRowData {
+        AssistantReadoutRowData {
+            title: title.into(),
+            detail: None,
+            link: Some(mxr_protocol::AssistantLinkData::Thread {
+                thread_id: thread.into(),
+            }),
+        }
+    }
+
+    fn reply_with(text: &str) -> AssistantItemData {
+        AssistantItemData::Assistant {
+            seq: 9,
+            text: text.into(),
+            model: None,
+            failed_call_ids: Vec::new(),
+            rows: Vec::new(),
+            created_at: 0,
+        }
+    }
+
+    fn reply_rows(item: &AssistantItemData) -> Option<Vec<&str>> {
+        match item {
+            AssistantItemData::Assistant { rows, .. } => {
+                Some(rows.iter().map(|row| row.title.as_str()).collect())
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_reply_gets_the_rows_it_names_in_the_order_it_names_them() {
+        // The step lists a, b, c, d; the reply names d then b.
+        let listed = HashMap::from([(
+            1,
+            vec![
+                row("A", "t-aaaaaaaa"),
+                row("B", "t-bbbbbbbb"),
+                row("C", "t-cccccccc"),
+                row("D", "t-dddddddd"),
+            ],
+        )]);
+        let mut items = vec![
+            user(0),
+            step("s", json!({}), AssistantCallStateData::Done),
+            reply_with("First [D](mxr:thread/t-dddddddd), then [B](mxr:thread/t-bbbbbbbb)."),
+        ];
+        attach_rows(&mut items, &listed);
+        assert_eq!(reply_rows(&items[2]), Some(vec!["D", "B"]));
+    }
+
+    #[test]
+    fn rows_need_two_named_objects_from_one_step_of_the_same_turn() {
+        let listed = HashMap::from([
+            (1, vec![row("A", "t-aaaaaaaa")]),
+            (2, vec![row("B", "t-bbbbbbbb")]),
+        ]);
+        let two_steps = vec![
+            user(0),
+            step("s1", json!({}), AssistantCallStateData::Done),
+            step("s2", json!({}), AssistantCallStateData::Done),
+            reply_with("[A](mxr:thread/t-aaaaaaaa) and [B](mxr:thread/t-bbbbbbbb)"),
+        ];
+        let mut items = two_steps;
+        attach_rows(&mut items, &listed);
+        assert_eq!(
+            reply_rows(&items[3]),
+            Some(vec![]),
+            "one each from two steps"
+        );
+
+        // A step from an earlier turn is not this reply's.
+        let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
+        let mut items = vec![
+            user(0),
+            step("old", json!({}), AssistantCallStateData::Done),
+            reply_with("done"),
+            user(3),
+            reply_with("[A](mxr:thread/t-aaaaaaaa) and [B](mxr:thread/t-bbbbbbbb)"),
+        ];
+        attach_rows(&mut items, &listed);
+        assert_eq!(reply_rows(&items[4]), Some(vec![]));
+    }
+
+    #[test]
+    fn a_reply_that_links_one_object_or_names_it_twice_gets_no_rows() {
+        let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
+        let mut items = vec![
+            user(0),
+            step("s", json!({}), AssistantCallStateData::Done),
+            reply_with("[A](mxr:thread/t-aaaaaaaa) and again [A](mxr:thread/t-aaaaaaaa)"),
+        ];
+        attach_rows(&mut items, &listed);
+        assert_eq!(reply_rows(&items[2]), Some(vec![]));
+    }
+
+    #[test]
+    fn rows_are_capped_at_eight() {
+        let many: Vec<_> = (0..12)
+            .map(|n| row(&format!("R{n}"), &format!("t-{n:08}")))
+            .collect();
+        let text: String = (0..12)
+            .map(|n| format!("[R{n}](mxr:thread/t-{n:08}) "))
+            .collect();
+        let listed = HashMap::from([(1, many)]);
+        let mut items = vec![
+            user(0),
+            step("s", json!({}), AssistantCallStateData::Done),
+            reply_with(&text),
+        ];
+        attach_rows(&mut items, &listed);
+        assert_eq!(
+            reply_rows(&items[2]).map(|rows| rows.len()),
+            Some(REPLY_ROWS)
+        );
+    }
+
+    #[test]
+    fn steps_are_titled_from_their_own_state_and_arguments() {
+        let mut items = vec![
+            step(
+                "a",
+                json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": true}),
+                AssistantCallStateData::Waiting,
+            ),
+            step(
+                "b",
+                json!({"action": "star", "message_ids": ["m1"]}),
+                AssistantCallStateData::Failed,
+            ),
+        ];
+        fill_titles(&mut items, &[], &HashMap::new());
+        let title = |item: &AssistantItemData| match item {
+            AssistantItemData::ToolCall { title, .. } => title.clone(),
+            _ => None,
+        };
+        let waiting = title(&items[0]).map(|t| (t.running, t.done));
+        assert_eq!(
+            waiting,
+            Some((
+                "Archiving 2 emails".to_string(),
+                "Waiting for you: archive 2 emails".to_string()
+            ))
+        );
+        assert_eq!(
+            title(&items[1]).map(|t| t.done),
+            Some("Couldn't star 1 email".to_string())
+        );
+    }
+
+    #[test]
+    fn a_waiting_approval_carries_the_daemons_title() {
+        let view = pending_view(PendingItem {
+            call_id: "c1".into(),
+            kind: PendingKind::Approval {
+                tool: "mxr_mutate".into(),
+                arguments: json!({"action": "archive", "message_ids": ["a", "b", "c"], "confirm": true}),
+                reason: "old".into(),
+                preview: None,
+                preview_error: None,
+            },
+        });
+        assert!(matches!(
+            view,
+            AssistantPendingData::Approval { title: Some(ref title), .. } if title == "Archive 3 emails"
+        ));
+    }
+
+    #[test]
+    fn known_failures_become_a_sentence_and_unknown_ones_stay_raw() {
+        assert_eq!(
+            plain_error("LLM returned an empty completion"),
+            "The model stopped answering. Send your message again, or switch models in Settings › Language model."
+        );
+        assert!(plain_error("LLM endpoint unreachable: connection refused")
+            .starts_with("mxr couldn't reach"));
+        assert!(plain_error("LLM request timed out after 120s").contains("too long"));
+        assert_eq!(plain_error("something new broke"), "something new broke");
+    }
+
+    #[test]
+    fn titles_read_the_whole_result_not_the_copy_cut_for_clients() {
+        let mut items = vec![step("a", json!({}), AssistantCallStateData::Done)];
+        if let Some(AssistantItemData::ToolCall { tool, result, .. }) = items.get_mut(0) {
+            *tool = "mxr_sync".into();
+            // What a client got: cut, so not valid JSON.
+            *result = Some("{\"results\":[{\"result\":\"failed\"},".into());
+        }
+        let whole = json!({"results": [{"result": "failed"}, {"result": "failed"}]}).to_string();
+        fill_titles(&mut items, &[], &HashMap::from([(0, whole)]));
+        let state = match &items[0] {
+            AssistantItemData::ToolCall { state, .. } => Some(*state),
+            _ => None,
+        };
+        assert_eq!(state, Some(AssistantCallStateData::Failed));
     }
 }

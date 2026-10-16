@@ -12,7 +12,7 @@ use crate::app::{AssistantFocus, AssistantPrompt, AssistantState};
 use crate::theme::Theme;
 use mxr_protocol::{
     AssistantCallStateData, AssistantItemData, AssistantOutcomeData, AssistantPendingData,
-    AssistantProgressData, AssistantStatusData,
+    AssistantProgressData, AssistantStatusData, AssistantStepTitleData,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -273,13 +273,13 @@ fn push_user(lines: &mut Vec<Line<'static>>, text: &str, width: usize, theme: &T
 
 fn state_glyph(state: AssistantCallStateData, theme: &Theme) -> Span<'static> {
     let (glyph, color) = match state {
-        AssistantCallStateData::Running => ("…", theme.accent),
+        AssistantCallStateData::Running => ("◌", theme.accent),
         AssistantCallStateData::Done | AssistantCallStateData::Answered => ("✓", theme.text_muted),
         AssistantCallStateData::Approved | AssistantCallStateData::AutoApproved => {
             ("✓", theme.accent)
         }
-        AssistantCallStateData::Waiting => ("◆", theme.warning),
-        AssistantCallStateData::Failed => ("✗", theme.error),
+        AssistantCallStateData::Waiting => ("◇", theme.warning),
+        AssistantCallStateData::Failed => ("✕", theme.error),
         AssistantCallStateData::Declined | AssistantCallStateData::Cancelled => {
             ("⊘", theme.text_muted)
         }
@@ -288,7 +288,26 @@ fn state_glyph(state: AssistantCallStateData, theme: &Theme) -> Span<'static> {
     Span::styled(format!("{glyph} "), Style::default().fg(color))
 }
 
-fn step_label(tool: &str, reason: &str, result: Option<&str>) -> String {
+/// A step in words: the daemon's title for its state, or, from an older
+/// daemon that sends none, the model's reason.
+fn step_label(
+    tool: &str,
+    reason: &str,
+    result: Option<&str>,
+    state: AssistantCallStateData,
+    title: Option<&AssistantStepTitleData>,
+) -> String {
+    if let Some(title) = title {
+        let words = if state == AssistantCallStateData::Running {
+            &title.running
+        } else {
+            &title.done
+        };
+        return match answered_with(result).filter(|_| tool == "ask_user") {
+            Some(answer) => format!("{words}: {answer}"),
+            None => words.clone(),
+        };
+    }
     if tool == "ask_user" {
         let reason = if reason.is_empty() {
             "Asked you a question"
@@ -319,10 +338,16 @@ fn failed_steps(items: &[AssistantItemData], failed_call_ids: &[String]) -> Vec<
                 tool,
                 reason,
                 result,
+                state,
+                title,
                 ..
-            } if failed_call_ids.contains(call_id) => {
-                Some(step_label(tool, reason, result.as_deref()))
-            }
+            } if failed_call_ids.contains(call_id) => Some(step_label(
+                tool,
+                reason,
+                result.as_deref(),
+                *state,
+                title.as_ref(),
+            )),
             _ => None,
         })
         .collect()
@@ -383,6 +408,7 @@ pub(crate) fn transcript_lines(
             AssistantItemData::Assistant {
                 text,
                 failed_call_ids,
+                rows,
                 ..
             } => {
                 push_wrapped(
@@ -397,18 +423,28 @@ pub(crate) fn transcript_lines(
                     Style::default(),
                     Style::default().fg(theme.text_primary),
                 );
+                for row in rows {
+                    let line = match &row.detail {
+                        Some(detail) => format!("{}  {detail}", row.title),
+                        None => row.title.clone(),
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("  • ", muted),
+                        Span::styled(
+                            truncate(&one_line(&line), width.saturating_sub(4)),
+                            Style::default().fg(theme.text_secondary),
+                        ),
+                    ]));
+                }
                 let failed = failed_steps(items, failed_call_ids);
                 if !failed.is_empty() {
                     let error = Style::default().fg(theme.error);
                     let head = if failed.len() == 1 {
-                        "This step failed, whatever the reply says:".to_string()
+                        "This didn't happen, whatever the reply says:"
                     } else {
-                        format!(
-                            "These {} steps failed, whatever the reply says:",
-                            failed.len()
-                        )
+                        "These didn't happen, whatever the reply says:"
                     };
-                    push_wrapped(&mut lines, "! ", &head, width, error, error.bold());
+                    push_wrapped(&mut lines, "! ", head, width, error, error.bold());
                     for label in failed {
                         push_wrapped(&mut lines, "  ", &format!("✕ {label}"), width, error, error);
                     }
@@ -472,10 +508,17 @@ pub(crate) fn transcript_lines(
                             state: call_state,
                             result,
                             readout,
+                            title,
                             ..
                         } = step
                         {
-                            let label = step_label(tool, reason, result.as_deref());
+                            let label = step_label(
+                                tool,
+                                reason,
+                                result.as_deref(),
+                                *call_state,
+                                title.as_ref(),
+                            );
                             let glyph = state_glyph(*call_state, theme);
                             let indent = "  ";
                             for (row_index, row) in wrap(&one_line(&label), width.saturating_sub(2))
@@ -529,16 +572,16 @@ pub(crate) fn transcript_lines(
 
     if conversation.status == AssistantStatusData::Idle {
         let outcome = match conversation.last_outcome {
+            // The daemon words known failures as a sentence with what to do
+            // next and keeps the raw text in the detail.
             Some(AssistantOutcomeData::Failed) => Some((
-                format!(
-                    "That turn failed: {}. Send a message to try again.",
-                    one_line(
-                        conversation
-                            .last_error
-                            .as_deref()
-                            .unwrap_or("unknown error")
-                    )
-                ),
+                match (&conversation.last_error, &conversation.last_error_detail) {
+                    (Some(sentence), Some(_)) => one_line(sentence),
+                    (raw, _) => format!(
+                        "That turn failed: {}. Send a message to try again.",
+                        one_line(raw.as_deref().unwrap_or("unknown error"))
+                    ),
+                },
                 theme.error,
             )),
             Some(AssistantOutcomeData::StepLimit) => Some((
@@ -584,6 +627,7 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 tool,
                 arguments,
                 reason,
+                title,
                 preview,
                 preview_error,
             } => {
@@ -591,7 +635,11 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 push_wrapped(
                     &mut lines,
                     "",
-                    &describe_change(tool, arguments),
+                    &one_line(
+                        &title
+                            .clone()
+                            .unwrap_or_else(|| describe_change(tool, arguments)),
+                    ),
                     width,
                     strong,
                     strong,
@@ -824,16 +872,20 @@ fn footer_lines(
     }
     if state.running() {
         let doing = match &state.progress {
-            Some(AssistantProgressData::Calling { tool, reason }) => {
+            // An older daemon sends no title: its reason is all there is.
+            Some(AssistantProgressData::Calling {
+                tool,
+                reason,
+                title: None,
+            }) => {
                 if reason.is_empty() {
                     tool_words(tool)
                 } else {
                     one_line(reason)
                 }
             }
-            Some(AssistantProgressData::Writing { .. }) => "Writing…".into(),
-            Some(AssistantProgressData::Summarizing) => "Summarising earlier messages".into(),
-            Some(AssistantProgressData::Thinking { .. }) | None => "Thinking".into(),
+            Some(progress) => one_line(&progress.live_line()),
+            None => AssistantProgressData::Thinking { step: 1 }.live_line(),
         };
         let elapsed = state
             .started_at
@@ -841,7 +893,7 @@ fn footer_lines(
             .unwrap_or_default();
         let room = width.saturating_sub(elapsed.width() + 2);
         lines.push(Line::from(vec![
-            Span::styled("◐ ", Style::default().fg(theme.accent)),
+            Span::styled("◌ ", Style::default().fg(theme.accent)),
             Span::styled(
                 truncate(&doing, room),
                 Style::default().fg(theme.text_secondary),
@@ -995,6 +1047,7 @@ mod tests {
         pending: Vec<AssistantPendingData>,
     ) -> AssistantConversationData {
         AssistantConversationData {
+            last_error_detail: None,
             id: "c1".into(),
             title: "Tidy newsletters".into(),
             status,
@@ -1018,6 +1071,7 @@ mod tests {
 
     fn step(seq: i64, reason: &str, state: AssistantCallStateData) -> AssistantItemData {
         AssistantItemData::ToolCall {
+            title: None,
             seq,
             call_id: format!("call{seq}"),
             tool: "mxr_search".into(),
@@ -1078,6 +1132,7 @@ mod tests {
             Vec::new(),
         ));
         state.progress = Some(AssistantProgressData::Calling {
+            title: None,
             tool: "mxr_search".into(),
             reason: "Count opens per sender".into(),
         });
@@ -1102,6 +1157,7 @@ mod tests {
                 ),
             ],
             vec![AssistantPendingData::Approval {
+                title: None,
                 call_id: "call3".into(),
                 tool: "mxr_mutate".into(),
                 arguments: json!({"action": "archive", "message_ids": ["a", "b", "c"]}),
@@ -1128,6 +1184,7 @@ mod tests {
             AssistantStatusData::AwaitingUser,
             vec![user(1, "Make a rule for Acme receipts")],
             vec![AssistantPendingData::Approval {
+                title: None,
                 call_id: "call2".into(),
                 tool: "mxr_rule".into(),
                 arguments: json!({"name": "Acme receipts", "query": "from:acme.test"}),
@@ -1246,6 +1303,7 @@ mod tests {
         let mut state = open_state();
         state.conversation_id = Some("c1".into());
         let reply = |seq, failed: &str| AssistantItemData::Assistant {
+            rows: Vec::new(),
             seq,
             text: "Starred it.".into(),
             model: None,
@@ -1268,7 +1326,7 @@ mod tests {
         let screen = render(&state);
         assert_eq!(
             screen
-                .matches("This step failed, whatever the reply says:")
+                .matches("This didn't happen, whatever the reply")
                 .count(),
             2,
             "{screen}"
@@ -1279,6 +1337,230 @@ mod tests {
             2,
             "only the steps the replies name: {screen}"
         );
+    }
+
+    fn titled(
+        seq: i64,
+        state: AssistantCallStateData,
+        running: &str,
+        done: &str,
+    ) -> AssistantItemData {
+        let mut item = step(seq, "The model's odd reason", state);
+        if let AssistantItemData::ToolCall { title, .. } = &mut item {
+            *title = Some(AssistantStepTitleData {
+                running: running.into(),
+                done: done.into(),
+            });
+        }
+        item
+    }
+
+    #[test]
+    fn steps_read_as_the_daemons_wire_lines_not_the_models_reason() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Running,
+            vec![
+                user(1, "what shipped"),
+                titled(
+                    2,
+                    AssistantCallStateData::Done,
+                    "Searching your mail for \"shipped\"",
+                    "Searched your mail: 14 found",
+                ),
+                titled(
+                    3,
+                    AssistantCallStateData::Running,
+                    "Reading a conversation",
+                    "Read a conversation",
+                ),
+                titled(
+                    4,
+                    AssistantCallStateData::Failed,
+                    "Starring 1 email",
+                    "Couldn't star 1 email: it needs your confirmation first",
+                ),
+                titled(
+                    5,
+                    AssistantCallStateData::Waiting,
+                    "Archiving 14 emails",
+                    "Waiting for you: archive 14 emails",
+                ),
+            ],
+            Vec::new(),
+        ));
+        state.progress = Some(AssistantProgressData::Calling {
+            tool: "mxr_read_thread".into(),
+            reason: "The model's odd reason".into(),
+            title: Some("Reading a conversation".into()),
+        });
+        let screen = render(&state);
+        for line in [
+            "✓ Searched your mail: 14 found",
+            "◌ Reading a conversation",
+            "✕ Couldn't star 1 email: it needs",
+            "◇ Waiting for you: archive 14",
+        ] {
+            assert!(screen.contains(line), "{line}\n{screen}");
+        }
+        assert!(!screen.contains("odd reason"), "{screen}");
+        assert!(
+            !screen.contains("Thinking") && !screen.contains("Working"),
+            "{screen}"
+        );
+    }
+
+    #[test]
+    fn the_live_line_says_what_the_turn_is_doing() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Running,
+            vec![user(1, "hi")],
+            Vec::new(),
+        ));
+        for (progress, line) in [
+            (None, "Reading your request"),
+            (
+                Some(AssistantProgressData::Thinking { step: 3 }),
+                "Deciding what to do next",
+            ),
+            (
+                Some(AssistantProgressData::Writing {
+                    text: String::new(),
+                }),
+                "Writing the answer",
+            ),
+            (
+                Some(AssistantProgressData::Summarizing),
+                "Making room: summarising earlier",
+            ),
+        ] {
+            state.progress = progress;
+            let screen = render(&state);
+            assert!(screen.contains(line), "{line}\n{screen}");
+        }
+    }
+
+    #[test]
+    fn an_approval_uses_the_daemons_title() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "archive them")],
+            vec![AssistantPendingData::Approval {
+                title: Some("Archive 14 emails".into()),
+                call_id: "call3".into(),
+                tool: "mxr_mutate".into(),
+                arguments: json!({"action": "archive", "message_ids": ["a"]}),
+                reason: "Old shipping notices".into(),
+                preview: None,
+                preview_error: None,
+            }],
+        ));
+        let screen = render(&state);
+        assert!(screen.contains("Archive 14 emails"), "{screen}");
+        assert!(!screen.contains("Archive 1 message"), "{screen}");
+    }
+
+    #[test]
+    fn a_reply_lists_the_rows_the_daemon_attached() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Idle,
+            vec![
+                user(1, "who wrote"),
+                AssistantItemData::Assistant {
+                    seq: 2,
+                    text: "These two wrote.".into(),
+                    model: None,
+                    failed_call_ids: Vec::new(),
+                    rows: vec![
+                        mxr_protocol::AssistantReadoutRowData {
+                            title: "Weekly sync".into(),
+                            detail: Some("Quinn".into()),
+                            link: None,
+                        },
+                        mxr_protocol::AssistantReadoutRowData {
+                            title: "Invoice".into(),
+                            detail: None,
+                            link: None,
+                        },
+                    ],
+                    created_at: 0,
+                },
+            ],
+            Vec::new(),
+        ));
+        let screen = render(&state);
+        assert!(screen.contains("• Weekly sync  Quinn"), "{screen}");
+        assert!(screen.contains("• Invoice"), "{screen}");
+    }
+
+    #[test]
+    fn daemon_text_with_escape_sequences_draws_as_plain_text() {
+        let hostile = "\u{1b}[2J\u{1b}[Hforged\u{202e}gnp\u{9b}";
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![
+                user(1, "who wrote"),
+                titled(2, AssistantCallStateData::Done, hostile, hostile),
+                AssistantItemData::Assistant {
+                    seq: 3,
+                    text: "Two wrote.".into(),
+                    model: None,
+                    failed_call_ids: Vec::new(),
+                    rows: vec![mxr_protocol::AssistantReadoutRowData {
+                        title: hostile.into(),
+                        detail: Some(hostile.into()),
+                        link: None,
+                    }],
+                    created_at: 0,
+                },
+            ],
+            vec![AssistantPendingData::Approval {
+                title: Some(hostile.into()),
+                call_id: "c".into(),
+                tool: "mxr_mutate".into(),
+                arguments: json!({}),
+                reason: hostile.into(),
+                preview: None,
+                preview_error: None,
+            }],
+        ));
+        state.progress = Some(AssistantProgressData::Calling {
+            tool: "mxr_search".into(),
+            reason: String::new(),
+            title: Some(hostile.into()),
+        });
+        let screen = render(&state);
+        assert!(screen.contains("forged"), "{screen}");
+        assert!(
+            !screen.chars().any(|c| c.is_control() && c != '\n') && !screen.contains('\u{202e}'),
+            "{screen:?}"
+        );
+    }
+
+    #[test]
+    fn a_reworded_failure_shows_as_the_sentence_alone() {
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        let mut failed = conversation(AssistantStatusData::Idle, vec![user(1, "hi")], Vec::new());
+        failed.last_outcome = Some(AssistantOutcomeData::Failed);
+        failed.last_error = Some("The model stopped answering. Send your message again.".into());
+        failed.last_error_detail = Some("LLM returned an empty completion".into());
+        state.conversation = Some(failed);
+        let screen = render(&state);
+        assert!(screen.contains("The model stopped answering."), "{screen}");
+        assert!(!screen.contains("empty completion"), "{screen}");
+        assert!(!screen.contains("That turn failed"), "{screen}");
     }
 
     #[test]

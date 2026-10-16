@@ -297,9 +297,19 @@ fn print_conversation(
             AssistantItemData::Assistant {
                 text,
                 failed_call_ids,
+                rows,
                 ..
             } => {
                 println!("{text}\n");
+                for row in rows {
+                    match &row.detail {
+                        Some(detail) => println!("  - {}  {detail}", row.title),
+                        None => println!("  - {}", row.title),
+                    }
+                }
+                if !rows.is_empty() {
+                    println!();
+                }
                 // Small models sometimes say they did what failed: name
                 // the steps before the reply that did, from mxr's record.
                 let failed: Vec<&str> = conversation
@@ -310,10 +320,13 @@ fn print_conversation(
                             call_id,
                             tool,
                             reason,
+                            title,
                             ..
-                        } if failed_call_ids.contains(call_id) => {
-                            Some(if reason.is_empty() { tool } else { reason }.as_str())
-                        }
+                        } if failed_call_ids.contains(call_id) => Some(match title {
+                            Some(title) => title.done.as_str(),
+                            None if reason.is_empty() => tool.as_str(),
+                            None => reason.as_str(),
+                        }),
                         _ => None,
                     })
                     .collect();
@@ -329,10 +342,17 @@ fn print_conversation(
                 reason,
                 state,
                 result,
+                title,
                 ..
             } => {
-                let reason = if reason.is_empty() { tool } else { reason };
-                println!("  · {reason} [{tool}, {}]", state_label(*state));
+                // The daemon's words; the model's reason stays in `--format json`.
+                let words = match title {
+                    Some(title) if *state == AssistantCallStateData::Running => &title.running,
+                    Some(title) => &title.done,
+                    None if reason.is_empty() => tool,
+                    None => reason,
+                };
+                println!("  · {words} [{tool}, {}]", state_label(*state));
                 if let Some(id) = undo_id(*state, result.as_deref()) {
                     println!("    undo within a minute: mxr undo {id}");
                 }
@@ -346,10 +366,15 @@ fn print_conversation(
         ),
         AssistantStatusData::AwaitingUser => print_pending(conversation),
         AssistantStatusData::Idle => match conversation.last_outcome {
-            Some(AssistantOutcomeData::Failed) => println!(
-                "The turn failed: {}",
-                conversation.last_error.as_deref().unwrap_or("unknown error")
-            ),
+            Some(AssistantOutcomeData::Failed) => match (
+                conversation.last_error.as_deref(),
+                &conversation.last_error_detail,
+            ) {
+                // The daemon reworded a known failure; the raw text is in
+                // `--format json`.
+                (Some(sentence), Some(_)) => println!("{sentence}"),
+                (raw, _) => println!("The turn failed: {}", raw.unwrap_or("unknown error")),
+            },
             Some(AssistantOutcomeData::StepLimit) => println!(
                 "Stopped after many steps. Continue with: mxr assistant send --conversation {} \"go on\"",
                 conversation.id
@@ -370,10 +395,14 @@ fn print_pending(conversation: &AssistantConversationData) {
                 tool,
                 arguments,
                 reason,
+                title,
                 preview,
                 preview_error,
             } => {
-                println!("\nWaiting for your approval: {reason}");
+                match title {
+                    Some(title) => println!("\nWaiting for your approval: {title}\n  {reason}"),
+                    None => println!("\nWaiting for your approval: {reason}"),
+                }
                 println!("  {tool} {arguments}");
                 if let Some(preview) = preview {
                     let messages = preview_messages(preview);

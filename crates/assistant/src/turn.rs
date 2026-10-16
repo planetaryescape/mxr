@@ -81,8 +81,15 @@ pub struct MessageMeta {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Progress {
-    Thinking { step: u32 },
-    Calling { tool: String, reason: String },
+    Thinking {
+        step: u32,
+    },
+    Calling {
+        tool: String,
+        reason: String,
+        /// The call's arguments, so the sink can put it in words.
+        arguments: Value,
+    },
     Summarizing,
 }
 
@@ -236,14 +243,27 @@ impl Agent<'_> {
         match (&item.kind, decision) {
             (
                 PendingKind::Approval {
-                    tool, arguments, ..
+                    tool,
+                    arguments,
+                    reason,
+                    ..
                 },
                 Decision::Approve,
             ) => {
                 if self.cancel.is_cancelled() {
                     return cancelled_result(call_id);
                 }
+                self.sink
+                    .progress(Progress::Calling {
+                        tool: tool.clone(),
+                        reason: reason.clone(),
+                        arguments: arguments.clone(),
+                    })
+                    .await;
                 let output = self.host.call(tool, arguments.clone()).await;
+                // Same rule as a call that ran without asking: mxr's own
+                // refusal is a failure, not something that was done.
+                let is_error = output.is_error || crate::outcome::refused(&output.content);
                 ToolChatMessage::Tool {
                     call_id,
                     content: format!(
@@ -251,7 +271,7 @@ impl Agent<'_> {
                         crate::outcome::APPROVED_PREFIX,
                         prompt::tool_result(&output.content)
                     ),
-                    is_error: output.is_error,
+                    is_error,
                 }
             }
             (_, Decision::Reject { reason }) => ToolChatMessage::Tool {
@@ -467,6 +487,7 @@ impl Agent<'_> {
                     .progress(Progress::Calling {
                         tool: call.name.clone(),
                         reason,
+                        arguments: arguments.clone(),
                     })
                     .await;
                 let output = self.host.call(&call.name, arguments).await;
@@ -480,6 +501,7 @@ impl Agent<'_> {
                     .progress(Progress::Calling {
                         tool: call.name.clone(),
                         reason,
+                        arguments: arguments.clone(),
                     })
                     .await;
                 let output = self.host.call(&call.name, arguments).await;

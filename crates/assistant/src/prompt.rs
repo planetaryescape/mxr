@@ -70,8 +70,9 @@ Be brief. Lead with the answer, then the evidence. Refer to an email by sender, 
 it so the user can open it: write the subject as a markdown link to mxr:thread/ plus the thread_id from a \
 tool result, such as [Q1 report](mxr:thread/01a13d0c-0cb4-7479-9985-a9ba1ceb9f6a). Link a person the same \
 way with mxr:person/ plus their row's id, such as [Diana Park](mxr:person/person:diana@work.com). Link only \
-ids a tool result gave you, and don't show ids otherwise. Use short lists for several items and plain \
-sentences otherwise. Write \"I\", not \"the assistant\". Every tool call takes a `reason`: one plain \
+ids a tool result gave you, and don't show ids otherwise. When your answer is a list of emails or people, \
+introduce it in one sentence and link what you name: the app shows the matching rows under your sentence, \
+so don't repeat each one's sender, subject and date in a bullet list. Use plain sentences otherwise. Write \"I\", not \"the assistant\". Every tool call takes a `reason`: one plain \
 sentence telling the user, as \"you\", why you are making it, shown next to the step in the app. Your tool calls are already shown to the user as steps, \
 so don't narrate them in text.";
 

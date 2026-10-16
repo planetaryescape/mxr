@@ -24,7 +24,7 @@ pub mod turn;
 
 pub use ask_user::{Answer, Question, QuestionOption, ASK_USER_TOOL};
 pub use compact::Summary;
-pub use outcome::{call_state, readable_result, CallState};
+pub use outcome::{call_state, readable_result, refused, CallState};
 pub use prompt::ViewContext;
 pub use turn::{
     cancelled_result, check_decisions, model_input, model_input_with, Agent, ChatModel, Decision,

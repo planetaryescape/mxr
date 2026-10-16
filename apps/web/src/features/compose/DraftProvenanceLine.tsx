@@ -2,10 +2,11 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useState } from "react";
 
+import { ModelMark } from "@/components/ModelMark";
 import { formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  draftProvenanceLine,
+  draftProvenanceDetail,
   draftSourceLabel,
   draftSourceRoute,
   type DraftProvenance,
@@ -29,9 +30,13 @@ export function DraftProvenanceLine({
   const conversation = provenance.conversation ?? [];
   const count = voice.length + conversation.length;
   return (
-    <div data-testid="draft-provenance" className={cn("text-2xs text-muted-foreground", className)}>
+    <div data-testid="draft-provenance" className={cn("type-meta text-text-3", className)}>
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span data-testid="draft-provenance-line">{draftProvenanceLine(provenance)}</span>
+        <span data-testid="draft-provenance-line">
+          <ModelMark model={provenance.model} leavesMachine={provenance.locality === "cloud"} />
+          {" · "}
+          {draftProvenanceDetail(provenance)}
+        </span>
         {count > 0 ? (
           <button
             type="button"

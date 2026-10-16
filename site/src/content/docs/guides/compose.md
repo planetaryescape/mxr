@@ -532,3 +532,11 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 - [LLM features — draft assist](/guides/llm-features/)
 - [Recipes — compose loops](/guides/recipes/#with-editor--compose-loops)
 - [CLI — `mxr compose`](/reference/cli/compose/) and [`mxr drafts`](/reference/cli/drafts/)
+
+## The compose sheet in the web app
+
+Popout and fullscreen open the editor as a sheet over a scrim, so the rows
+behind stop answering until you close it (the draft is saved). A reply started
+inline stays in the thread; if you leave the thread it docks in the corner
+without a scrim. **Rich text** and **Markdown** are one switch. The Markdown
+editor is the vim one and shows its mode line; Rich text has none.

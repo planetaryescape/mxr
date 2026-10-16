@@ -94,11 +94,12 @@
   --default-transition-timing-function: var(--ease-out);
 
   /*
-   * About 70 characters of running text a line (Baymard: 50-75; WCAG 1.4.8:
+   * About 75 characters of running text a line (Baymard: 50-75; WCAG 1.4.8:
    * at most 80). A "ch" is the width of a zero, wider than the average
-   * letter, so 62ch holds about 70 characters of prose in Recursive.
+   * letter, so 66ch holds about 75 characters of prose in Recursive, and
+   * the roadmap's gate is 64 to 70ch at 1440px.
    */
-  --reading-measure: 62ch;
+  --reading-measure: 66ch;
   /*
    * Page frames (components/ModeFrame.tsx): the one column a page's header,
    * teaching card and content share, centred in whatever width main has.
@@ -110,6 +111,8 @@
   --frame-list: 72rem;
   --frame-reader: 61.25rem;
   --frame-wide: 112rem;
+  /* Room for the reading measure at the reader's largest comfortable face, plus the 20px gutters. */
+  --frame-reading: 50rem;
 }
 
 /*

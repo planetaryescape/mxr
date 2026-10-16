@@ -35,8 +35,7 @@ const tokenTheme = EditorView.theme({
     fontFamily: "var(--font-mono)",
   },
   ".cm-content": {
-    maxWidth: "720px",
-    padding: "20px 24px 56px 24px",
+    padding: "20px 20px 56px 20px",
     fontFamily: "var(--font-mono)",
     caretColor: "var(--foreground)",
   },

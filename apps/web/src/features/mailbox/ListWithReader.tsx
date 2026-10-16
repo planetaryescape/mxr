@@ -69,6 +69,8 @@ interface ListWithReaderProps extends Pick<
   status: ListStatus;
   /** Keep the list's query string when a conversation opens (search). */
   preserveSearch?: boolean;
+  /** What `g f` does instead of filtering the loaded rows (search opens its own filters). */
+  onFilterKey?: () => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function ListWithReader({
   status,
   empty,
   preserveSearch = false,
+  onFilterKey,
   ...listProps
 }: ListWithReaderProps) {
   const navigate = useNavigate();
@@ -306,7 +309,7 @@ export function ListWithReader({
                   {...listProps}
                   groups={visibleGroups}
                   scopeKey={scopeKey}
-                  onFilter={openFilter}
+                  onFilter={onFilterKey ?? openFilter}
                   label={title}
                   activeThreadId={threadId}
                   previewOnFocus={threadOpen && !hideList}

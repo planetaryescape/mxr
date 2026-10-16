@@ -89,7 +89,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
+      className="flex min-w-0 flex-1 flex-col overflow-hidden"
       onKeyDown={controller.handleComposeKeyDown}
     >
       {folded ? (

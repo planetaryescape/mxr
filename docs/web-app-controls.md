@@ -105,12 +105,26 @@ and acted on with the same keys as a list.
 | Previous / next conversation | Frequency: moving through the queue. Shows N / n. |
 | Archive | Frequency: the most common verb. Shows e. |
 | Snooze | Deferral is a first-class verb (A5). Shows Z. |
-| Formatted / Reader / Plain | Discoverability: which view is on. |
+| Formatted / Reader / Plain | Discoverability: which view is on. The shared segmented control. |
 | More | Everything else, each with its key. |
 | Per message: star, reply to this message, more | Replying to an earlier message and starring one message need a target the thread-level keys don't give. |
 
 Reply sits at the end of the thread (the reply field), where reading ends,
 not in the toolbar.
+
+One toolbar style (W6): the conversation reader and the Reading reader use the
+same quiet button (`ToolButton`, no border, secondary text, key in the tooltip).
+Reading's labels drop to icons on phones. The reading measure is 66ch in both.
+The gist, the AI overview and AI drafts carry the model mark (`gemma4 · local`).
+
+## Compose and search
+
+| Control | Reason |
+|---|---|
+| Popout, fullscreen, close | The sheet's surfaces; popout and fullscreen sit over a scrim. |
+| Rich text / Markdown | The shared segmented control; the vim mode line shows only in Markdown. |
+| Search: Exact / Hybrid / Meaning | Discoverability: the mode that is on. |
+| Search: Filters | Everything else (Show, Sort, Account, narrow-by chips), behind `g f`, so one result does not sit under a dozen controls. |
 
 ## Focus & reply
 

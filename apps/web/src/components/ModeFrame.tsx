@@ -4,12 +4,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * The page grid every mode page shares (styles in app.css, widths in
- * tokens.css). "list" (72rem) for rows, "reader" (980px) for a conversation,
+ * tokens.css). "list" (72rem) for rows, "reader" (980px) for a conversation, "reading" (the
+ * reading measure plus gutters) for the page of one thing being read,
  * "wide" for a page that splits into `ModeColumns` on a wide screen, "narrow"
  * (44rem) for forms and "full" for dashboards. The frame must sit inside a
  * `mode-page` container for "wide" to widen.
  */
-export type FrameWidth = "list" | "reader" | "wide" | "narrow" | "full";
+export type FrameWidth = "list" | "reader" | "reading" | "wide" | "narrow" | "full";
 
 export function ModeFrame({
   width = "list",

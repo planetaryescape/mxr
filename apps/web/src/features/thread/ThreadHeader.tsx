@@ -28,8 +28,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { ModeFrame } from "@/components/ModeFrame";
-import { PageFrame, READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
+import { PageFrame } from "@/components/PageFrame";
+import { Segmented } from "@/components/Segmented";
+import { ReaderToolbar, TOOL_BUTTON_CLASS, ToolbarRule, ToolButton } from "@/components/ToolButton";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -39,12 +40,10 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { MessageLabelView, ThreadResponse } from "@/features/mailbox/types";
 import { runPointerCommand } from "@/lib/actions/keyHints";
 import { formatChord } from "@/lib/keys/chord";
 import { plural } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { ReaderView } from "@/state/uiPrefsStore";
 
 import { LabelBadge } from "./LabelBadge";
@@ -79,30 +78,29 @@ export function ThreadHeader({
   const people = data.thread.participants.map((person) => person.name?.trim() || person.email);
   return (
     <header className="shrink-0 bg-background">
-      <ModeFrame width="reader">
-        <div className="flex items-center gap-1 px-3" style={{ height: READER_TOOLBAR_HEIGHT }}>
-          <IconAction icon={X} label="Close" keys="Escape" command="close" />
-          <IconAction
-            icon={ChevronUp}
-            label="Previous conversation"
-            keys="N"
-            command="prevThread"
-            disabled={!position || position.index <= 0}
-          />
-          <IconAction
-            icon={ChevronDown}
-            label="Next conversation"
-            keys="n"
-            command="nextThread"
-            disabled={!position || position.index >= position.total - 1}
-          />
-          {position ? (
-            <span className="ml-1 font-mono text-2xs text-muted-foreground tabular-nums">
-              {position.index + 1} of {plural(position.total, "conversation")}
-            </span>
-          ) : null}
-          <span className="mx-2 h-5 w-px bg-border" aria-hidden />
-          {/*
+      <ReaderToolbar>
+        <IconAction icon={X} label="Close" keys="Escape" command="close" />
+        <IconAction
+          icon={ChevronUp}
+          label="Previous conversation"
+          keys="N"
+          command="prevThread"
+          disabled={!position || position.index <= 0}
+        />
+        <IconAction
+          icon={ChevronDown}
+          label="Next conversation"
+          keys="n"
+          command="nextThread"
+          disabled={!position || position.index >= position.total - 1}
+        />
+        {position ? (
+          <span className="type-meta ml-1 text-text-3">
+            {position.index + 1} of {plural(position.total, "conversation")}
+          </span>
+        ) : null}
+        <ToolbarRule />
+        {/*
           Persistent controls, each earning its place: Close, previous and
           next move through the queue (used on every thread); Archive is the
           most frequent verb; Snooze is deferral, a first-class verb; the
@@ -110,19 +108,18 @@ export function ThreadHeader({
           with its key, and in the command palette. Reply sits at the end of
           the thread (ReplyField), where reading ends.
         */}
-          <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
-          <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
-          <span className="ml-auto flex items-center gap-1">
-            <ViewSwitch view={view} />
-            <MoreMenu
-              hasAttachments={hasAttachments}
-              canReplyAll={canReplyAll}
-              starred={starred}
-              full={full}
-            />
-          </span>
-        </div>
-      </ModeFrame>
+        <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
+        <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
+        <span className="ml-auto flex items-center gap-1">
+          <ViewSwitch view={view} />
+          <MoreMenu
+            hasAttachments={hasAttachments}
+            canReplyAll={canReplyAll}
+            starred={starred}
+            full={full}
+          />
+        </span>
+      </ReaderToolbar>
       <PageFrame
         width="reader"
         wrapTitle
@@ -151,7 +148,7 @@ export function ThreadHeader({
 }
 
 function IconAction({
-  icon: Icon,
+  icon,
   label,
   keys,
   command,
@@ -164,60 +161,36 @@ function IconAction({
   disabled?: boolean;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`${label} (${formatChord(keys)})`}
-          disabled={disabled}
-          onClick={run(command)}
-        >
-          <Icon className="size-4 text-muted-foreground" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {label} <span className="ml-1 font-mono text-muted-foreground">{formatChord(keys)}</span>
-      </TooltipContent>
-    </Tooltip>
+    <ToolButton
+      iconOnly
+      icon={icon}
+      label={label}
+      keys={keys}
+      disabled={disabled}
+      onClick={run(command)}
+    />
   );
 }
 
-const VIEWS: { id: ReaderView; label: string; keys: string; command: string }[] = [
-  { id: "formatted", label: "Formatted", keys: "H", command: "viewHtml" },
-  { id: "reader", label: "Reader", keys: "R", command: "viewReader" },
-  { id: "plain", label: "Plain", keys: "R or H again", command: "viewPlain" },
+const VIEWS: { id: ReaderView; label: string; command: string }[] = [
+  { id: "formatted", label: "Formatted", command: "viewHtml" },
+  { id: "reader", label: "Reader", command: "viewReader" },
+  { id: "plain", label: "Plain", command: "viewPlain" },
 ];
 
 function ViewSwitch({ view }: { view: ReaderView }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label="Message view"
-      className="mr-1 hidden rounded-md border border-border p-0.5 @xl:flex"
-    >
-      {VIEWS.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          role="radio"
-          aria-checked={view === option.id}
-          title={option.keys ? `${option.label} (${option.keys})` : option.label}
-          // Choosing the current view is a no-op; the key commands toggle.
-          onClick={() => {
-            if (view !== option.id) runPointerCommand("reader", option.command);
-          }}
-          className={cn(
-            "rounded-sm px-2 py-0.5 text-xs",
-            view === option.id
-              ? "bg-accent font-medium text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Message view"
+      value={view}
+      options={VIEWS.map((option) => [option.id, option.label])}
+      // Choosing the current view is a no-op; the key commands toggle.
+      onChange={(id) => {
+        const option = VIEWS.find((candidate) => candidate.id === id);
+        if (option && view !== option.id) runPointerCommand("reader", option.command);
+      }}
+      className="mr-1 hidden @xl:inline-flex"
+    />
   );
 }
 
@@ -281,8 +254,13 @@ function MoreMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="More actions">
-          <MoreHorizontal className="size-4 text-muted-foreground" />
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="More actions"
+          className={`${TOOL_BUTTON_CLASS} w-7 px-0`}
+        >
+          <MoreHorizontal aria-hidden className="size-4" strokeWidth={1.75} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">

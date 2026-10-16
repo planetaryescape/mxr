@@ -140,7 +140,10 @@ test("the ask lands without moving the messages and is marked in the message", a
 
   await expect(page.getByTestId("thread-ask")).toContainText("Asks you to confirm who owns");
   await expect(page.getByTestId("thread-gist-source")).toHaveText(
-    "Local model stub-7b · from this thread",
+    "stub-7b · local · from this thread",
+  );
+  await expect(page.getByTestId("thread-gist").getByTestId("model-mark")).toHaveText(
+    "stub-7b · local",
   );
 
   // Formatted view: the mark is inside the sanitized frame, split around <b>.

@@ -10,10 +10,11 @@
 import { Check, RefreshCw } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
+import { ModelMark } from "@/components/ModelMark";
 import { cn } from "@/lib/utils";
 
 import type { ThreadContext, ThreadGist } from "./api";
-import { contextFacts, firstName, promiseViews, provenanceLabel } from "./contextFormat";
+import { contextFacts, firstName, promiseViews, provenanceScope } from "./contextFormat";
 
 export interface GistState {
   /** A model is configured and the thread is long: the slot is reserved. */
@@ -48,7 +49,7 @@ export function ContextBlock({
     <section
       aria-label="Context"
       data-testid="thread-context"
-      className="mx-5 mb-1 mt-4 max-w-[var(--reading-measure)] border-l border-primary/50 pl-4"
+      className="mx-5 mb-2 mt-4 max-w-[var(--reading-measure)] border-l border-signal/50 pl-4"
     >
       {gist.reserved ? (
         <GistSlot
@@ -58,10 +59,7 @@ export function ContextBlock({
         />
       ) : null}
       {facts.length > 0 ? (
-        <p
-          data-testid="thread-context-facts"
-          className="text-pretty text-xs leading-5 text-muted-foreground tabular-nums"
-        >
+        <p data-testid="thread-context-facts" className="type-body text-pretty text-text-2">
           {facts.map((part, index) => (
             <span key={part}>
               {index > 0 ? <span aria-hidden> · </span> : null}
@@ -73,10 +71,7 @@ export function ContextBlock({
       {promises.length > 0 ? (
         <ul aria-label="Open promises" className="mt-1 space-y-0.5">
           {promises.map((promise) => (
-            <li
-              key={promise.id}
-              className="group flex items-start gap-1.5 text-xs leading-5 text-foreground/90"
-            >
+            <li key={promise.id} className="type-body group flex items-start gap-1.5 text-text-1">
               <span className="min-w-0 text-pretty">{promise.text}</span>
               <button
                 type="button"
@@ -84,7 +79,7 @@ export function ContextBlock({
                 onClick={() => onResolvePromise(promise.id)}
                 aria-label={`Mark done: ${promise.text}`}
                 title="Mark done"
-                className="mt-0.5 shrink-0 rounded-sm text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
+                className="mt-0.5 shrink-0 rounded-sm text-text-3 opacity-60 hover:text-text-1 hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
               >
                 <Check className="size-3.5" />
               </button>
@@ -135,20 +130,27 @@ function GistSlot({
         expanded ? "min-h-[9rem] @xl:min-h-[7.5rem]" : "h-[9rem] overflow-hidden @xl:h-[7.5rem]",
       )}
     >
-      <p className="flex h-4 items-center gap-3 font-mono text-2xs leading-4 text-muted-foreground">
-        <span className="min-w-0 truncate" data-testid="thread-gist-source">
-          {ready && data?.provenance
-            ? provenanceLabel(data.provenance, personName)
-            : gist.loading
-              ? "Reading this conversation…"
-              : "No gist this time"}
-        </span>
+      <p className="type-meta flex h-4 items-center gap-3 text-text-3">
+        {ready && data?.provenance ? (
+          <span className="min-w-0 truncate" data-testid="thread-gist-source">
+            <ModelMark
+              model={data.provenance.model}
+              leavesMachine={data.provenance.locality === "cloud"}
+            />
+            {" · "}
+            {provenanceScope(data.provenance, personName)}
+          </span>
+        ) : (
+          <span className="min-w-0 truncate" data-testid="thread-gist-source">
+            {gist.loading ? "Reading this conversation…" : "No gist this time"}
+          </span>
+        )}
         {clamped || expanded ? (
           <button
             type="button"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
-            className="shrink-0 text-primary hover:underline"
+            className="ml-auto shrink-0 text-signal hover:underline"
           >
             {expanded ? "Show less" : "Show all"}
           </button>
@@ -165,7 +167,7 @@ function GistSlot({
               data-clamp
               data-testid="thread-gist-text"
               className={cn(
-                "text-pretty text-md leading-6 text-foreground",
+                "type-reading text-pretty text-text-1",
                 !expanded && "line-clamp-3 @xl:line-clamp-2",
               )}
             >
@@ -174,22 +176,19 @@ function GistSlot({
             <p
               data-clamp
               data-testid="thread-ask"
-              className={cn(
-                "mt-1.5 text-pretty text-sm leading-[1.375rem]",
-                !expanded && "line-clamp-2",
-              )}
+              className={cn("type-body mt-1.5 text-pretty", !expanded && "line-clamp-2")}
             >
               {data.ask ? (
                 <>
-                  <span className="font-medium text-warning">Asks you to</span>{" "}
-                  <span className="text-foreground">{data.ask.summary}</span>
+                  <span className="font-medium text-cue">Asks you to</span>{" "}
+                  <span className="text-text-1">{data.ask.summary}</span>
                   {data.ask.quote ? (
                     <>
                       {" "}
                       <button
                         type="button"
                         onClick={onRevealAsk}
-                        className="whitespace-nowrap text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+                        className="whitespace-nowrap text-signal underline decoration-signal/40 underline-offset-2 hover:decoration-signal"
                       >
                         Show in message
                       </button>
@@ -197,18 +196,18 @@ function GistSlot({
                   ) : null}
                 </>
               ) : (
-                <span className="text-muted-foreground">Nothing asked of you.</span>
+                <span className="text-text-3">Nothing asked of you.</span>
               )}
             </p>
           </>
         ) : !gist.loading ? (
-          <p className="text-pretty text-sm leading-[1.375rem] text-muted-foreground">
+          <p className="type-body text-pretty text-text-3">
             {unavailableCopy(data, gist.error)}{" "}
             {data?.status !== "blocked" ? (
               <button
                 type="button"
                 onClick={gist.retry}
-                className="inline-flex items-center gap-1 text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-signal hover:underline"
               >
                 <RefreshCw className="size-3" /> Try again
               </button>

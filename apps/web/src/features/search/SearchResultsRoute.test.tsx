@@ -64,6 +64,7 @@ vi.mock("@/features/recovery/RecoveryNotice", () => ({
 // paging and the empty state.
 vi.mock("@/features/mailbox/ListWithReader", () => ({
   ListWithReader: (props: {
+    title: string;
     meta?: ReactNode;
     toolbar?: ReactNode;
     groups: MessageGroupView[];
@@ -72,6 +73,7 @@ vi.mock("@/features/mailbox/ListWithReader", () => ({
     onLoadMore?: () => void;
   }) => (
     <div>
+      <h1>{props.title}</h1>
       <p>{props.meta}</p>
       {props.toolbar}
       {props.groups.length === 0 ? (
@@ -125,6 +127,15 @@ function renderWithQueryClient(children: ReactNode) {
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 }
 
+const facet = (label: string) => ({
+  key: `${label}@example.com`,
+  label,
+  count: 2,
+  unread: 1,
+  oldest: 1_779_000_000,
+  newest: 1_779_086_400,
+});
+
 describe("SearchResultsRoute", () => {
   beforeEach(() => {
     Object.defineProperty(Element.prototype, "scrollIntoView", {
@@ -176,7 +187,28 @@ describe("SearchResultsRoute", () => {
     expect(await screen.findByTestId("mailbox-list")).toBeVisible();
     expect(screen.getByText("Subject 1")).toBeVisible();
     expect(screen.getByText("Subject 2")).toBeVisible();
-    expect(screen.getByText("2 results")).toBeVisible();
+    expect(screen.getByText("2 conversations")).toBeVisible();
+  });
+
+  test("the query is the page's title, and the filters wait behind one button", async () => {
+    searchApi.fetchSearchGroups.mockResolvedValue({
+      query: "invoice",
+      group_by: "from",
+      total: rows.length,
+      groups: [facet("Ada"), facet("Sam")],
+    });
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    expect(await screen.findByRole("heading", { name: "invoice", level: 1 })).toBeVisible();
+    expect(screen.getByRole("radiogroup", { name: "Search mode" })).toBeVisible();
+    expect(screen.queryByTestId("search-filters")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Narrow by" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    expect(screen.getByTestId("search-filters")).toBeVisible();
+    expect(await screen.findByRole("combobox", { name: "Narrow by" })).toBeVisible();
+    // Facet counts are messages, so beside conversation rows they are left off.
+    expect(screen.getByRole("button", { name: /Ada/ }).textContent).not.toMatch(/\d/);
   });
 
   test("search account options include cached accounts from restored profiles", async () => {
@@ -188,6 +220,7 @@ describe("SearchResultsRoute", () => {
     ];
     renderWithQueryClient(<SearchResultsRoute />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
     fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
     expect(await screen.findByRole("option", { name: "cached@example.com" })).toBeVisible();
   });
@@ -200,6 +233,7 @@ describe("SearchResultsRoute", () => {
     ];
     renderWithQueryClient(<SearchResultsRoute />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
     fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
     expect(await screen.findByRole("option", { name: "active@example.com" })).toBeVisible();
     expect(screen.getByRole("option", { name: "personal@example.com" })).toBeVisible();

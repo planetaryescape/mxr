@@ -35,6 +35,18 @@ import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const SEARCH_PAGE_LIMIT = 100;
+/** What a result row is, so the count above them names the same thing. */
+const UNIT: Record<Scope, string> = {
+  threads: "conversation",
+  messages: "message",
+  attachments: "attachment",
+  triage: "result",
+};
+const MODE_PURPOSE: Record<SearchMode, string> = {
+  lexical: "Mail with these exact words.",
+  hybrid: "Mail with these words, or close in meaning.",
+  semantic: "Mail that means this, whatever the words.",
+};
 const SEARCH_LENS = { kind: "search" } as const;
 
 /**
@@ -57,6 +69,7 @@ export function SearchResultsRoute() {
   const [draft, setDraft] = useState(q);
   const [saveOpen, setSaveOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setDraft(q), [q]);
@@ -158,6 +171,8 @@ export function SearchResultsRoute() {
       realAccounts={realAccounts}
       facetGroups={facets.data?.groups}
       update={update}
+      filtersOpen={filtersOpen}
+      onFiltersToggle={() => setFiltersOpen((open) => !open)}
       onSaveClick={() => setSaveOpen(true)}
       onManageClick={() => setManageOpen(true)}
     />
@@ -168,13 +183,15 @@ export function SearchResultsRoute() {
       <ListWithReader
         basePath="/search"
         preserveSearch
-        title="Search"
-        purpose={q.trim() ? `Results for “${q.trim()}”` : "Find mail by words or by meaning."}
+        // The query is the page's name, as a mode's cut is: what you asked for.
+        title={q.trim() || "Search"}
+        purpose={q.trim() ? MODE_PURPOSE[mode] : "Find mail by words or by meaning."}
         meta={
           q && results.isSuccess
-            ? `${plural(total, "result")}${scope === "triage" && typeof llmCalls === "number" ? ` · ${plural(llmCalls, "LLM call")}` : ""}`
+            ? `${plural(total, UNIT[scope])}${scope === "triage" && typeof llmCalls === "number" ? ` · ${plural(llmCalls, "LLM call")}` : ""}`
             : null
         }
+        onFilterKey={() => setFiltersOpen((open) => !open)}
         toolbar={toolbar}
         groups={groups}
         scopeKey={`search|${q}|${mode}|${scope}|${account ?? "all"}`}

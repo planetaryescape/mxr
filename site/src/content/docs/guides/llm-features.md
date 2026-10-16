@@ -374,6 +374,10 @@ read from what the request actually did, not from your config:
 - **Local model** or **Cloud model** comes from the endpoint that answered.
   If a config reload lands mid-request, the draft still describes the model
   that wrote it.
+- The web app shows the model as a mark beside the text, `gemma4 · local` or
+  `gemma4 · cloud`, with where it ran in its tooltip. Gists, the AI overview
+  and drafts all wear it. The overview knows the model but not where it ran,
+  so its mark shows only the model.
 - **history used** means your past emails, the habits measured from them,
   or the relationship summary went into the prompt. **history not used**
   means none did, for example a cloud model without

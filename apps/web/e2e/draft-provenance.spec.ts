@@ -129,7 +129,7 @@ test("a drafted reply says which model wrote it, and each source opens the cited
 
   const provenance = composer(page).getByTestId("draft-provenance");
   await expect(provenance.getByTestId("draft-provenance-line")).toHaveText(
-    "Local model stub-7b · used 1 of your emails to Maya · history used",
+    "stub-7b · local · used 1 of your emails to Maya · history used",
   );
   await provenance.getByRole("button", { name: "Sources (2)" }).click();
 

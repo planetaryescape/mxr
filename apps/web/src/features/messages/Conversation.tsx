@@ -5,19 +5,17 @@ import { useId, useState } from "react";
 import { KeyChip } from "@/components/KeyChip";
 import { fetchThread } from "@/features/mailbox/api";
 import { MessageBody } from "@/features/thread/MessageBody";
-import { cn } from "@/lib/utils";
 import { emailHtmlThemeForSender, useUiPrefs } from "@/state/uiPrefsStore";
 
 import type { Conversation as ConversationData, ConversationMessage } from "./api";
 import { letterLead, paragraphBlocks, splitAsk } from "./messagesView";
 
 /**
- * One topic as a conversation of new texts. Length decides the shape, not
- * the medium: a note of three lines or fewer reads compactly like chat
- * (theirs left, yours right, a faint tint and no bubble); anything longer
- * is a full-width letter that opens on its first paragraph, or the one
- * holding the ask. Removed text is marked, and the message as sent is one
- * key away.
+ * One topic as a conversation of new texts: each message a ruled section in
+ * the reading voice, the sender and time in meta above it (docs/blueprint/28
+ * "Messages"). A long message opens on its first paragraph, or the one holding
+ * the ask; the quoted history is folded to one line, and the message as sent
+ * is one key away. `data-layout` still carries the daemon's length call.
  */
 export function ConversationView({
   conversation,
@@ -30,9 +28,9 @@ export function ConversationView({
   onToggleAsSent: (messageId: string) => void;
 }) {
   return (
-    <ol data-testid="conversation" className="flex flex-col gap-4 px-5 py-4">
+    <ol data-testid="conversation" className="flex flex-col px-5 py-2">
       {conversation.earlier_count > 0 ? (
-        <li className="text-center text-xs text-muted-foreground">
+        <li className="type-meta py-2 text-text-3">
           {conversation.earlier_count} earlier messages
         </li>
       ) : null}
@@ -75,7 +73,6 @@ function MessageItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
-  const compact = message.layout === "compact";
   const { lead, hidden } = letterLead(message);
   const shown = expanded || hidden === 0 ? message.text : lead;
   const mine = message.from_me;
@@ -84,11 +81,10 @@ function MessageItem({
       data-testid="conversation-message"
       data-layout={message.layout}
       data-from-me={mine ? "true" : "false"}
-      className={cn("flex flex-col", compact && mine ? "items-end" : "items-start")}
+      className="flex flex-col items-start border-t border-rule-soft py-4 first:border-t-0"
     >
-      <p className="mb-1 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground/90">{who(message)}</span> ·{" "}
-        {when(message.date)}
+      <p className="type-meta mb-1.5 text-text-3">
+        <span className="text-text-2">{who(message)}</span> · {when(message.date)}
       </p>
       {asSent ? (
         <AsSent
@@ -99,19 +95,11 @@ function MessageItem({
       ) : message.only_quoted ? (
         // Nothing new in it: the placeholder says so, and the message as
         // sent (the marker below, or v) is how to read it.
-        <p data-testid="only-quoted" className="text-sm italic text-muted-foreground">
+        <p data-testid="only-quoted" className="type-body italic text-text-3">
           {message.text}
         </p>
       ) : (
-        <div
-          id={bodyId}
-          className={cn(
-            "text-base leading-6 text-foreground",
-            compact
-              ? cn("max-w-[34rem] rounded-md px-3 py-1.5", mine ? "bg-primary/10" : "bg-muted/60")
-              : "w-full max-w-[66ch]",
-          )}
-        >
+        <div id={bodyId} className="type-reading w-full max-w-[66ch] text-text-1">
           {paragraphBlocks(shown).map((block) => (
             <p key={block.at} className="whitespace-pre-wrap [&+p]:mt-3">
               {splitAsk(block.text, message.ask_quote).map((part) =>
@@ -119,7 +107,7 @@ function MessageItem({
                   <mark
                     key={part.at}
                     data-testid="ask-quote"
-                    className="rounded-sm bg-primary/20 px-0.5 text-foreground"
+                    className="rounded-sm bg-signal-soft px-0.5 text-text-1"
                   >
                     {part.text}
                   </mark>
@@ -132,7 +120,7 @@ function MessageItem({
         </div>
       )}
       {!asSent && message.source === "provider_snippet" ? (
-        <p data-testid="provider-preview" className="mt-1 text-xs text-muted-foreground">
+        <p data-testid="provider-preview" className="type-meta mt-1 text-text-3">
           {message.text.trim()
             ? "Provider preview only; the full message is unavailable."
             : "No provider preview is available; the full message is unavailable."}{" "}
@@ -145,14 +133,14 @@ function MessageItem({
           </button>
         </p>
       ) : null}
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="type-meta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-text-3">
         {!asSent && hidden > 0 ? (
           <button
             type="button"
             aria-controls={bodyId}
             aria-expanded={expanded}
             onClick={() => setExpanded((open) => !open)}
-            className="hover:text-foreground hover:underline"
+            className="hover:text-text-1 hover:underline"
           >
             {expanded ? "Show less" : `Read all ${message.paragraphs} paragraphs`}
           </button>
@@ -169,7 +157,7 @@ function MessageItem({
             data-testid="trimmed-marker"
             onClick={onToggleAsSent}
             title="Show the message as sent (o or v)"
-            className="inline-flex items-center gap-1 hover:text-foreground"
+            className="inline-flex items-center gap-1 hover:text-text-1"
           >
             {asSent ? "back to what they wrote" : (message.trimmed_label ?? "show it as sent")}
             <KeyChip className="h-4 px-1">v</KeyChip>

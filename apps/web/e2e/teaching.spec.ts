@@ -137,7 +137,11 @@ test("never more than one hint, and dismissing one doesn't bring up the next", a
   await expect(hints(page)).toHaveCount(0);
   const updates = page.getByTestId("now-section-updates");
   if ((await updates.count()) > 0) {
-    await updates.getByTestId("now-row").hover();
+    // Pointing at a row doesn't light it any more; the lamp has to reach the card.
+    for (let press = 0; press < 12; press += 1) {
+      if ((await updates.getByTestId("now-row").getAttribute("data-focused")) === "true") break;
+      await page.keyboard.press("j");
+    }
     await expect(updates.getByTestId("hint")).toContainText("A lets go of this digest only");
     await expect(hints(page)).toHaveCount(1);
   }

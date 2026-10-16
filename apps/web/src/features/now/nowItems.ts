@@ -45,6 +45,20 @@ export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] 
   return items;
 }
 
+/**
+ * Where the lamp is: the row with `key`, found by id and never by position, so
+ * a refetch that reorders the list keeps the lamp on the same row. A key that
+ * is no longer here (its row left, or a stale link) falls to the first row,
+ * where exactly one row is always lit, until the page moves the lamp to the
+ * row's neighbour (`useAdvanceOnRemoval`).
+ */
+export function litIndex(items: readonly { key: string }[], key: string | null): number {
+  return Math.max(
+    0,
+    items.findIndex((item) => item.key === key),
+  );
+}
+
 export interface ItemTarget {
   to: string;
   search?: { row: string };

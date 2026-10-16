@@ -1,10 +1,12 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
+import { memo } from "react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { Avatar, AvatarGlyph } from "@/components/Avatar";
-import { AlsoInLine } from "@/features/modes/AlsoInLine";
-import type { ThreadModes } from "@/features/modes/membership";
-import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
+import { ModeMarks, NewMark } from "@/components/ModeMark";
+import { Row, RowVerb, type LampVia } from "@/components/Row";
+import { otherModes, type ThreadModes } from "@/features/modes/membership";
+import { NewSenderChips } from "@/features/modes/NewSenderChips";
 import { cn } from "@/lib/utils";
 
 import type { MessagesData, MessagesRow } from "./api";
@@ -21,18 +23,25 @@ import { StatusDot } from "@/components/StatusDot";
 export function MessagesList({
   data,
   selectedId,
+  via,
   quietOpen,
   onToggleQuiet,
   onSelect,
+  onReply,
+  onDone,
   memberships,
   hidden,
   arrival,
 }: {
   data: MessagesData;
   selectedId: string | null;
+  via: LampVia;
   quietOpen: boolean;
   onToggleQuiet: () => void;
+  /** Must be stable (not re-created per render), so a lamp move leaves other rows alone. */
   onSelect: (id: string) => void;
+  onReply: () => void;
+  onDone: () => void;
   /** Which modes hold each row's first topic, for "Also in" and a new sender's question. */
   memberships?: ReadonlyMap<string, ThreadModes>;
   /** Threads whose done is on its way: no longer counted on their row. */
@@ -40,10 +49,6 @@ export function MessagesList({
   /** The row a verb just moved to, marked once. */
   arrival: Arrival | null;
 }) {
-  const modesOf = (row: MessagesRow) => {
-    const thread = row.topics[0]?.thread_id;
-    return thread ? memberships?.get(thread) : undefined;
-  };
   return (
     <div data-testid="messages-list" className="pt-2">
       {data.your_turn.length > 0 ? (
@@ -52,9 +57,12 @@ export function MessagesList({
             <PersonRow
               key={row.id}
               row={row}
-              modes={modesOf(row)}
-              selected={row.id === selectedId}
+              memberships={memberships}
+              lit={row.id === selectedId}
+              via={via}
               onSelect={onSelect}
+              onReply={onReply}
+              onDone={onDone}
               hidden={hidden}
               arrival={arrival?.person === row.id ? arrival.key : null}
             />
@@ -76,7 +84,10 @@ export function MessagesList({
                   onClick={() => onSelect(row.id)}
                   aria-label={`${row.title}${row.your_turn ? ", your turn" : ""}`}
                   aria-current={row.id === selectedId ? "true" : undefined}
-                  className="relative flex flex-col items-center gap-1 rounded-md px-1.5 py-1 hover:bg-accent"
+                  className={cn(
+                    "relative flex flex-col items-center gap-1 rounded-md px-1.5 py-1 hover:bg-ink-lamp",
+                    row.id === selectedId && "bg-ink-lamp",
+                  )}
                 >
                   <Face title={row.title} />
                   <span className="max-w-[4.5rem] truncate text-2xs text-foreground/85">
@@ -97,9 +108,12 @@ export function MessagesList({
             <PersonRow
               key={row.id}
               row={row}
-              modes={modesOf(row)}
-              selected={row.id === selectedId}
+              memberships={memberships}
+              lit={row.id === selectedId}
+              via={via}
               onSelect={onSelect}
+              onReply={onReply}
+              onDone={onDone}
               hidden={hidden}
               arrival={arrival?.person === row.id ? arrival.key : null}
             />
@@ -132,9 +146,12 @@ export function MessagesList({
                 <PersonRow
                   key={row.id}
                   row={row}
-                  modes={modesOf(row)}
-                  selected={row.id === selectedId}
+                  memberships={memberships}
+                  lit={row.id === selectedId}
+                  via={via}
                   onSelect={onSelect}
+                  onReply={onReply}
+                  onDone={onDone}
                   hidden={hidden}
                   arrival={arrival?.person === row.id ? arrival.key : null}
                 />
@@ -178,99 +195,119 @@ function Face({ title, group = false }: { title: string; group?: boolean }) {
   );
 }
 
-function PersonRow({
+/**
+ * One person. Memoised on primitives and stable callbacks, so moving the lamp
+ * re-renders the row that lost it and the row that gained it, not the list
+ * (spike S4, docs/blueprint/31).
+ */
+const PersonRow = memo(function PersonRow({
   row,
-  modes,
-  selected,
+  memberships,
+  lit,
+  via,
   onSelect,
+  onReply,
+  onDone,
   hidden,
   arrival,
 }: {
   row: MessagesRow;
-  modes?: ThreadModes;
-  selected: boolean;
+  /** Looked up here, not by the list, so a lamp move doesn't walk every row. */
+  memberships?: ReadonlyMap<string, ThreadModes>;
+  /** The lamp is on this row: its person page is the one open. */
+  lit: boolean;
+  via: LampVia;
   onSelect: (id: string) => void;
+  onReply: () => void;
+  onDone: () => void;
   hidden: ReadonlySet<string>;
   /** Set while this row is the one a verb just moved to. */
   arrival: number | null;
 }) {
   const preview = row.preview;
+  const modes = memberships?.get(row.topics[0]?.thread_id ?? "");
   const topicCount = row.topics.filter(
     (topic) => topic.state !== "done" && !hidden.has(topic.thread_id),
   ).length;
   const subject = row.kind === "group" ? row.topics[0]?.subject : undefined;
+  const newSender = modes?.new_sender;
+  const secondary = preview
+    ? preview.kind === "ask"
+      ? `\u201c${preview.text}\u201d`
+      : preview.text
+    : subject;
   return (
-    <li>
-      <button
-        type="button"
-        data-testid="messages-row"
-        data-row-id={row.id}
-        data-band={row.band}
-        aria-current={selected ? "true" : undefined}
-        title={row.why}
-        onClick={() => onSelect(row.id)}
-        className={cn(
-          "relative flex w-full items-start gap-3 px-4 py-2 text-left",
-          selected ? "bg-accent" : "hover:bg-accent/60",
-        )}
-      >
-        {arrival !== null ? <ArrivalGlow key={arrival} /> : null}
-        <Face title={row.title} group={row.kind === "group"} />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span
-              data-testid="row-title"
-              className={cn(
-                "min-w-0 flex-1 truncate text-sm",
-                row.your_turn ? "font-semibold" : "font-medium",
-              )}
-            >
-              {row.title}
-            </span>
-            {topicCount > 1 ? (
-              <span
-                data-testid="row-topic-count"
-                className="shrink-0 text-xs tabular-nums text-muted-foreground"
-              >
-                {topicCount} topics
-              </span>
-            ) : null}
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-              {rowTime(row)}
-            </span>
-            {row.your_turn ? (
-              <StatusDot
-                aria-hidden={false}
-                aria-label="Your turn"
-                className="size-2 self-center bg-primary"
-              />
-            ) : null}
+    <Row
+      lit={lit}
+      via={via}
+      unread={row.unread}
+      onClick={() => onSelect(row.id)}
+      lead={<Face title={row.title} group={row.kind === "group"} />}
+      primary={
+        <>
+          <span
+            data-testid="row-title"
+            className={cn(row.your_turn || row.unread ? "font-semibold" : undefined)}
+          >
+            {row.title}
           </span>
-          {subject ? (
-            <span className="block truncate text-xs text-muted-foreground">{subject}</span>
-          ) : null}
-          {preview ? (
-            <span
-              data-testid="row-preview"
-              data-kind={preview.kind}
-              title={
-                preview.kind === "ask" && preview.model
-                  ? `The ask, from a summary by ${preview.model}`
-                  : undefined
-              }
-              className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
-            >
-              {preview.kind === "ask" ? `“${preview.text}”` : preview.text}
+          {topicCount > 1 ? (
+            <span data-testid="row-topic-count" className="type-meta ml-2 tabular-nums text-text-3">
+              {topicCount} topics
             </span>
           ) : null}
-          <AlsoInLine modes={modes} here="messages" keys={false} links={false} className="mt-0.5" />
-        </span>
-      </button>
-      {modes?.new_sender ? (
-        <div className="px-4 pb-2 pl-[3.75rem]">
-          <NewSenderQuestion question={modes.new_sender} label={row.title} />
-        </div>
-      ) : null}
-    </li>
+          {newSender ? <NewMark className="ml-2" /> : null}
+        </>
+      }
+      secondary={
+        secondary ? (
+          <span
+            data-testid="row-preview"
+            data-kind={preview?.kind}
+            title={
+              preview?.kind === "ask" && preview.model
+                ? `The ask, from a summary by ${preview.model}`
+                : undefined
+            }
+          >
+            {secondary}
+          </span>
+        ) : undefined
+      }
+      trail={
+        <>
+          <ModeMarks modes={otherModes(modes, "messages")} />
+          <span className="whitespace-nowrap tabular-nums">{rowTime(row)}</span>
+        </>
+      }
+      verbs={
+        newSender ? (
+          <NewSenderChips question={newSender} label={row.title} />
+        ) : (
+          <>
+            <RowVerb keys="r" label="reply" ariaLabel={`Reply to ${row.title}`} onClick={onReply} />
+            <RowVerb keys="e" label="done here" ariaLabel="Done here (e)" onClick={onDone} />
+          </>
+        )
+      }
+      renderMain={(content, className) => (
+        <button
+          type="button"
+          data-testid="messages-row"
+          data-row-id={row.id}
+          data-band={row.band}
+          aria-current={lit ? "true" : undefined}
+          title={row.why}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(row.id);
+          }}
+          className={cn(className, "focus-visible:ring-2 focus-visible:ring-signal")}
+        >
+          {arrival !== null ? <ArrivalGlow key={arrival} /> : null}
+          {content}
+        </button>
+      )}
+    />
   );
-}
+});

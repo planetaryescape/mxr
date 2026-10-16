@@ -11,6 +11,7 @@ import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useKeyScope } from "@/state/keyScopeStore";
+import { useLitReasonStore } from "@/state/litReasonStore";
 import { useModals } from "@/state/modalStore";
 
 export function StatusBar() {
@@ -20,6 +21,8 @@ export function StatusBar() {
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const ctx = useActionContext();
   const hints = useActionPrimaryHints(ctx, 5);
+  const reason = useLitReasonStore((s) => s.reason);
+  const note = useLitReasonStore((s) => s.note);
   // The status bar is mounted on every page, so it owns the one live
   // subscription; the phone's topbar indicator reads the same query.
   useFreshnessLive();
@@ -65,7 +68,7 @@ export function StatusBar() {
       <span aria-hidden className="text-faint">
         │
       </span>
-      <FreshnessIndicator />
+      <FreshnessIndicator reason={reason} note={note} />
       <span className="ml-auto flex min-w-0 items-center gap-3 overflow-hidden">
         {pendingPrefix ? (
           <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">

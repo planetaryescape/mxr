@@ -8,6 +8,7 @@
 
 import { Check, Clock, MessageSquarePlus, Pin, Reply, ReplyAll, ThumbsUp } from "lucide-react";
 
+import { newSenderActions } from "@/features/modes/newSenderActions";
 import type { Action, CommandAction } from "@/lib/actions/types";
 
 function key(
@@ -72,4 +73,6 @@ export const messagesActions: Action[] = [
   key("messages.escape", "escape", "Dismiss the hint, or back to the people", "Escape", {
     hideInPalette: true,
   }),
+  // Last, so the status strip (first five live keys) keeps the page's own verbs.
+  ...newSenderActions("messages"),
 ];

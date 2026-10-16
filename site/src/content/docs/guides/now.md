@@ -203,8 +203,12 @@ exactly that set when you confirm. See
 ## See which other modes hold an email
 
 One email can be in several modes: the landlord who asks "are you around
-Thursday?" and sends a lease to sign by Monday is in Messages and To do. The
-reader and the rows in Messages say so, in that mode's words:
+Thursday?" and sends a lease to sign by Monday is in Messages and To do. On
+Now and in Messages, a row shows a small glyph for each other mode that
+holds it (the same glyph the sidebar uses for that mode), and hovering a
+glyph says why: "In To do: Sign the document from Sam Okafor, act by Mon 5
+Oct". The reader and the person's page keep the sentence, in that mode's
+words:
 
 ```text
 Also in To do: Sign the document from Sam Okafor, act by Mon 5 Oct  g x
@@ -218,11 +222,16 @@ mxr modes why MESSAGE_ID          # or --thread THREAD_ID
 
 ## Answer a new sender's one question
 
-When a person writes to you for the first time, their row asks once where
-their mail belongs: "New sender. Keep in Messages?" with Messages, Updates,
-Reading and Block as the answers. Answering moves the sender for their future
-mail too, and undo puts it back. Automated senders are never asked: their
-mail goes to Updates or Reading, and the row's why line names the rule. The
+When a person writes to you for the first time, their row carries a `new`
+mark. Put the lamp on it (`j`, or a click) and the row's actions give way to
+four glyph buttons, one per answer, with the keys `1` Messages, `2` Updates,
+`3` Reading and `4` Block; hover a glyph for its name. The status bar spells
+it out while the row is lit: "New sender: 1 Messages · 2 Updates · 3 Reading
+· 4 Block". Answering moves the sender for their future mail too, and undo
+puts it back. The digits only answer while a new sender is lit; everywhere
+else they stay the numbered tabs, and they never fire while you type in a
+field. Automated senders are never asked: their mail goes to Updates or
+Reading, and the row's why line names the rule. The
 [Screener](/guides/triage-flow/) page, under More, lists every sender you
 have decided on.
 

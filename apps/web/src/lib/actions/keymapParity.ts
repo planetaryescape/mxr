@@ -499,6 +499,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
+  {
+    context: "now",
+    keys: ["1", "2", "3", "4"],
+    bound: "both",
+    why: "On a lit new sender the web answers its question with 1 to 4 (Messages, Updates, Reading, Block); everywhere else they stay the numbered tabs, and the TUI keeps them as tabs",
+  },
   // Messages.
   {
     context: "messages",
@@ -512,6 +518,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "messages",
+    keys: ["1", "2", "3", "4"],
+    bound: "both",
+    why: "On a lit new sender the web answers its question with 1 to 4 (Messages, Updates, Reading, Block); everywhere else they stay the numbered tabs, and the TUI keeps them as tabs",
   },
   {
     context: "messages",

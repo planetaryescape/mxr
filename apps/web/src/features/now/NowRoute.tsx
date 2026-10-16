@@ -15,6 +15,7 @@ import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
+import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
 import { doneToast, markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { tickOff } from "@/features/todo/todoVerbs";
@@ -22,11 +23,15 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
+import type { LampVia } from "@/components/Row";
+import { useLitReason } from "@/state/litReasonStore";
+import { rowPerson } from "@/features/desk/deskCopy";
 
 import { useNowQuery, type Now } from "./api";
 import { LetGoDigestDialog } from "./LetGoDigestDialog";
 import {
   itemTarget,
+  litIndex,
   nowItems,
   type CardItem,
   type NowItem,
@@ -34,7 +39,7 @@ import {
   type PickItem,
   type TodoItem,
 } from "./nowItems";
-import { PersonRow, ReadingRow, TodoRow, UpdatesCard } from "./NowRows";
+import { PersonRow, ReadingRow, TodoRow, UpdatesRow } from "./NowRows";
 import { SectionHeading } from "@/components/SectionHeading";
 import { KeyLine } from "@/components/KeyLine";
 
@@ -45,8 +50,25 @@ import { KeyLine } from "@/components/KeyLine";
  * Now. Acting on a row does it in that row's own mode: Enter opens it
  * there, `e` is done here.
  */
-/** The "more in Messages" style link on a section heading. */
-const MORE_LINK = "text-xs text-muted-foreground hover:text-foreground hover:underline";
+/** The "and 8 more in Messages" link, inside the People eyebrow. */
+const MORE_LINK = "hover:text-text-1 hover:underline";
+
+/** How long a row folds after a pointer done (`--duration-fast`). */
+const FOLD_MS = 120;
+
+/** The lit item's reason for the status bar. The Updates digest has none of its own. */
+function reasonOf(item: NowItem | undefined): string | null {
+  switch (item?.kind) {
+    case "person":
+      return item.person.why;
+    case "todo":
+      return item.todo.why;
+    case "reading":
+      return item.pick.why;
+    default:
+      return null;
+  }
+}
 
 export function NowRoute() {
   const now = useNowQuery();
@@ -104,14 +126,32 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   const navigate = useNavigate();
   const hidden = useModeDone((s) => s.hidden);
   const items = useMemo(() => nowItems(now, hidden), [hidden, now]);
+  // Every row, done or not: a row done with the pointer stays in the list while it folds.
+  const everyItem = useMemo(() => nowItems(now, NONE_HIDDEN), [now]);
   // In the URL, so coming back to Now (or a copied link) lands on the same row.
   const [cursorKey, setCursorKey] = useSearchParam("row");
   const [letGo, setLetGo] = useState(false);
-  const index = Math.max(
-    0,
-    items.findIndex((item) => item.key === cursorKey),
-  );
+  // The row is found by its id, never by position, so a refetch that reorders
+  // the list keeps the lamp on the same row. A row that left falls to the first
+  // until `useAdvanceOnRemoval` moves it to the neighbour.
+  const index = litIndex(items, cursorKey);
   const current: NowItem | undefined = items[index];
+  // Only a pointer fades the lamp or folds a row (D101): a key never animates.
+  const via = useRef<LampVia>("key");
+  const [folding, setFolding] = useState<ReadonlySet<string>>(new Set());
+  const fold = useCallback((key: string) => {
+    if (document.documentElement.dataset.motion === "reduced") return;
+    setFolding((open) => new Set(open).add(key));
+    window.setTimeout(
+      () =>
+        setFolding((open) => {
+          const next = new Set(open);
+          next.delete(key);
+          return next;
+        }),
+      FOLD_MS + 20,
+    );
+  }, []);
   // A row done here leaves: the cursor takes the next one.
   const itemKeys = useMemo(() => items.map((item) => item.key), [items]);
   useAdvanceOnRemoval({
@@ -122,22 +162,19 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   });
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [index]);
+    listRef.current?.querySelector(`[data-focused="true"]`)?.scrollIntoView({ block: "nearest" });
+  }, [current?.key]);
 
-  // "Also in To do: …" on each row, from the daemon's membership. Keyed
-  // on every row, hidden or not, so a done in flight doesn't refetch it.
+  // The mode marks on each row, from the daemon's membership. Keyed on every
+  // row, hidden or not, so a done in flight doesn't refetch it.
   const threadIds = useMemo(
-    () =>
-      nowItems(now, NONE_HIDDEN).flatMap((item) =>
-        "threadId" in item && item.threadId ? [item.threadId] : [],
-      ),
-    [now],
+    () => everyItem.flatMap((item) => ("threadId" in item && item.threadId ? [item.threadId] : [])),
+    [everyItem],
   );
   const memberships = useThreadModesMap(threadIds).data;
 
-  // "Each row comes from a mode" sits under the first why line; letting go
-  // of the digest is explained when the cursor reaches its card.
+  // "Each row comes from a mode" sits under the first row; letting go of the
+  // digest is explained when the cursor reaches its card.
   const firstWhy = items.find((item) => item.kind !== "updates");
   const fromMode = useHint("now", "now.from_mode", {
     ready: firstWhy !== undefined,
@@ -157,8 +194,10 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     [dismissFromMode, navigate, setCursorKey],
   );
   const done = useCallback(
-    (item: NowItem) => {
+    (item: NowItem, how: LampVia) => {
       dismissFromMode();
+      via.current = how;
+      if (how === "pointer" && item.kind !== "updates") fold(item.key);
       switch (item.kind) {
         case "person":
           void markModeDone("messages", [item.threadId], { message: withDoneHereHint(doneToast) });
@@ -174,7 +213,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           setLetGo(true);
       }
     },
-    [dismissFromMode, dismissLetGo],
+    [dismissFromMode, dismissLetGo, fold],
   );
   const reply = useCallback((item: NowItem) => {
     if (item.kind !== "person") return;
@@ -182,26 +221,40 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
       .getState()
       .openCompose(replyIntent(item.person.row.message_id, "single"), "overlay");
   }, []);
-  const select = useCallback((item: NowItem) => setCursorKey(item.key), [setCursorKey]);
-  const letGoDigest = () => {
+  const select = useCallback(
+    (item: NowItem, how: LampVia) => {
+      via.current = how;
+      setCursorKey(item.key);
+    },
+    [setCursorKey],
+  );
+  const openFromRow = useCallback((item: NowItem) => open(item), [open]);
+  const letGoDigest = useCallback(() => {
     dismissLetGo();
     setLetGo(true);
-  };
+  }, [dismissLetGo]);
 
   const move = (delta: number) => {
     const next = items[Math.min(items.length - 1, Math.max(0, index + delta))];
-    if (next) setCursorKey(next.key);
+    if (!next) return;
+    via.current = "key";
+    setCursorKey(next.key);
   };
+  const litPerson = current?.kind === "person" ? current : null;
+  const litSender = litPerson?.person.new_sender;
+  // The status bar says why the lit row is here; the row itself never grows a line.
+  useLitReason(reasonOf(current), litSender ? NEW_SENDER_NOTE : null);
   useShortcutScope("now", true);
   useScopeController("now", {
     down: () => move(1),
     up: () => move(-1),
     open: () => current && open(current),
     openEmail: () => current && current.kind !== "updates" && open(current, { email: true }),
-    done: () => current && done(current),
+    done: () => current && done(current, "key"),
     reply: () => current && reply(current),
     letGoDigest: now.updates ? letGoDigest : undefined,
     closeHint,
+    ...newSenderCommands(litSender, litPerson ? rowPerson(litPerson.person.row) : ""),
     ...moveCommands(() => (current ? nowMoveSubject(current) : null)),
   });
 
@@ -209,27 +262,34 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     return <NowEmpty now={now} />;
   }
 
-  const position = new Map(items.map((item, at) => [item.key, at]));
+  const position = new Map(everyItem.map((item, at) => [item.key, at]));
+  const liveKeys = new Set(itemKeys);
+  const shown = everyItem.filter((item) => liveKeys.has(item.key) || folding.has(item.key));
   const hintFor = (item: NowItem) => {
-    const shown =
-      item === firstWhy && fromMode.hint
+    const active =
+      item.key === firstWhy?.key && fromMode.hint
         ? fromMode
         : item.kind === "updates" && letGoHint.hint
           ? letGoHint
           : null;
-    return shown?.hint ? <AnchoredHint hint={shown.hint} onDismiss={shown.dismiss} /> : undefined;
+    return active?.hint ? (
+      <AnchoredHint hint={active.hint} onDismiss={active.dismiss} />
+    ) : undefined;
   };
   const rowState = (item: NowItem) => ({
     index: position.get(item.key) ?? 0,
-    focused: (position.get(item.key) ?? -1) === index,
+    lit: item.key === current?.key,
+    via: via.current,
+    leaving: !liveKeys.has(item.key),
     onSelect: select,
+    onOpen: openFromRow,
     onDone: done,
     hint: hintFor(item),
   });
-  const people = items.filter((item): item is PersonItem => item.kind === "person");
-  const due = items.filter((item): item is TodoItem => item.kind === "todo");
-  const card = items.find((item): item is CardItem => item.kind === "updates");
-  const pick = items.find((item): item is PickItem => item.kind === "reading");
+  const people = shown.filter((item): item is PersonItem => item.kind === "person");
+  const due = shown.filter((item): item is TodoItem => item.kind === "todo");
+  const card = shown.find((item): item is CardItem => item.kind === "updates");
+  const pick = shown.find((item): item is PickItem => item.kind === "reading");
 
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -243,25 +303,23 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           <div className="min-w-0">
             {people.length > 0 ? (
               <section aria-labelledby="now-people" data-testid="now-section-people">
-                <SectionHeading
-                  id="now-people"
-                  className="mx-5 mb-1 mt-4"
-                  actions={
-                    now.people.more_line ? (
+                <SectionHeading id="now-people" className="mx-5 mb-1 mt-4">
+                  People
+                  {now.people.more_line ? (
+                    <>
+                      {" · "}
                       <Link to="/messages" data-testid="now-more" className={MORE_LINK}>
                         {now.people.more_line}
                       </Link>
-                    ) : null
-                  }
-                >
-                  People
+                    </>
+                  ) : null}
                 </SectionHeading>
                 {now.people.overload_line ? (
-                  <p data-testid="now-overload" className="mx-5 mb-1 text-sm text-foreground/90">
+                  <p data-testid="now-overload" className="type-body mx-5 mb-1 text-text-2">
                     {now.people.overload_line}
                   </p>
                 ) : null}
-                <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+                <ul className="grid grid-cols-[minmax(0,1fr)]">
                   {people.map((item) => (
                     <PersonRow
                       key={item.key}
@@ -276,20 +334,18 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
             ) : null}
             {due.length > 0 ? (
               <section aria-labelledby="now-due" data-testid="now-section-due">
-                <SectionHeading
-                  id="now-due"
-                  className="mx-5 mb-1 mt-4"
-                  actions={
-                    now.due_soon.more_line ? (
+                <SectionHeading id="now-due" className="mx-5 mb-1 mt-4">
+                  Due soon
+                  {now.due_soon.more_line ? (
+                    <>
+                      {" · "}
                       <Link to="/todo" data-testid="now-more" className={MORE_LINK}>
                         {now.due_soon.more_line}
                       </Link>
-                    ) : null
-                  }
-                >
-                  Due soon
+                    </>
+                  ) : null}
                 </SectionHeading>
-                <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+                <ul className="grid grid-cols-[minmax(0,1fr)]">
                   {due.map((item) => (
                     <TodoRow
                       key={item.key}
@@ -303,7 +359,16 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
             ) : null}
           </div>
           <div className="min-w-0">
-            {card ? <UpdatesCard item={card} onLetGo={letGoDigest} {...rowState(card)} /> : null}
+            {card ? (
+              <section aria-labelledby="now-updates" data-testid="now-section-updates">
+                <SectionHeading id="now-updates" className="mx-5 mb-1 mt-4">
+                  Updates
+                </SectionHeading>
+                <ul className="grid grid-cols-[minmax(0,1fr)]">
+                  <UpdatesRow item={card} onLetGo={letGoDigest} {...rowState(card)} />
+                </ul>
+              </section>
+            ) : null}
             {pick ? (
               <section aria-labelledby="now-reading" data-testid="now-section-reading">
                 <SectionHeading id="now-reading" className="mx-5 mb-1 mt-4">
@@ -321,8 +386,8 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           </div>
         </ModeColumns>
         {now.not_now ? (
-          <p data-testid="now-not-now" className="mx-5 mt-5 text-xs text-muted-foreground">
-            <Link to="/reading" className="hover:text-foreground hover:underline">
+          <p data-testid="now-not-now" className="type-meta mx-5 mt-5 text-text-3">
+            <Link to="/reading" className="hover:text-text-1 hover:underline">
               {now.not_now}
             </Link>
           </p>

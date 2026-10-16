@@ -7,6 +7,7 @@
 
 import { Check, Reply } from "lucide-react";
 
+import { newSenderActions } from "@/features/modes/newSenderActions";
 import type { Action, CommandAction } from "@/lib/actions/types";
 
 function key(
@@ -39,4 +40,6 @@ export const nowActions: Action[] = [
     tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
   key("now.close-hint", "closeHint", "Dismiss the hint", "Escape", { hideInPalette: true }),
+  // Last, so the status strip (first five live keys) keeps the page's own verbs.
+  ...newSenderActions("now"),
 ];

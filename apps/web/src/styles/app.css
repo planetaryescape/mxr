@@ -86,6 +86,27 @@
 }
 
 /*
+ * A list row leaving (docs/blueprint/27 "Rows"): it fades and folds up in the
+ * fast duration, only when the pointer did it. The next row is lit in the
+ * same frame; a key drops the row at once with no animation.
+ */
+@utility row-fold {
+  animation: row-fold var(--motion-duration-fast) var(--motion-ease) forwards;
+  transform-origin: top;
+}
+
+:root[data-motion="reduced"] .row-fold {
+  animation: none;
+}
+
+@keyframes row-fold {
+  to {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+}
+
+/*
  * "Now showing": after a done moves on, the row and header it opened glow
  * once and fade. Only opacity moves, so reduced motion keeps it.
  */

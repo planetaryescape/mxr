@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { stubBulkPeople } from "./helpers/bulkPeople";
+import { openApp } from "./helpers/state";
 import { expectCursorOn, mailList, mailRows, openList, reader } from "./helpers/mail";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -199,4 +201,74 @@ test("returning from the reader keeps the cursor and the scroll position", async
 
   await expectCursorOn(page, cursor!);
   await expect.poll(async () => Math.abs((await rowOffset()) - before)).toBeLessThan(80);
+});
+
+/**
+ * Spike S4: the lamp on a long list of `Row`s. Messages' people stand in for
+ * the long lists W3 moves onto `Row`. Moving the lamp must stay inside the
+ * scroll budget above, counted the same way (V8 block coverage, which is the
+ * same on a fast laptop and a starved runner): a lamp move re-renders the two
+ * rows it touches, not all 5,000.
+ */
+test(`${ROWS} people: each j moves the lamp inside the same code budget`, async ({ page }) => {
+  await stubBulkPeople(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Profiler.enable");
+  await cdp.send("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
+  await openApp(page, "/messages");
+  await expect(page.getByTestId("messages-row").first()).toBeVisible();
+  // The first press lights the first row; count from the second.
+  await page.keyboard.press("j");
+  await expect(page.locator("[data-lit='true'] [data-row-id]")).toHaveAttribute(
+    "data-row-id",
+    "bulk-person-0",
+  );
+  await cdp.send("Profiler.takePreciseCoverage");
+  for (let step = 0; step < STEPS; step += 1) {
+    await page.keyboard.press("j");
+    await expect(page.locator("[data-lit='true'] [data-row-id]")).toHaveAttribute(
+      "data-row-id",
+      `bulk-person-${step + 1}`,
+    );
+  }
+  const { result } = await cdp.send("Profiler.takePreciseCoverage");
+  await cdp.send("Profiler.stopPreciseCoverage");
+  let blocks = 0;
+  let rowBlocks = 0;
+  for (const script of result) {
+    if (!LIST_CODE.test(script.url)) continue;
+    let scriptBlocks = 0;
+    for (const fn of script.functions) for (const range of fn.ranges) scriptBlocks += range.count;
+    blocks += scriptBlocks;
+    if (/\/components\/Row\.tsx/.test(script.url)) rowBlocks += scriptBlocks;
+  }
+  if (process.env.MXR_COVERAGE_TOP) {
+    const rows: { name: string; url: string; count: number }[] = [];
+    for (const script of result) {
+      if (!LIST_CODE.test(script.url)) continue;
+      for (const fn of script.functions) {
+        rows.push({
+          name: fn.functionName,
+          url: script.url.replace(/^.*\/src\//, ""),
+          count: fn.ranges.reduce((sum, range) => sum + range.count, 0),
+        });
+      }
+    }
+    rows.sort((a, b) => b.count - a.count);
+    console.log(
+      rows
+        .slice(0, 12)
+        .map((row) => `${row.count} ${row.name} ${row.url}`)
+        .join("\n"),
+    );
+  }
+  // A build whose URLs stop matching would pass on zero: Row must have run.
+  expect(rowBlocks / STEPS, "Row code executed per step").toBeGreaterThan(0);
+  console.log(`large-list (lamp, ${ROWS} people): ${Math.round(blocks / STEPS)} list blocks/step`);
+  test.info().annotations.push({
+    type: "perf",
+    description: `lamp blocks/step ${Math.round(blocks / STEPS)} (Row ${Math.round(rowBlocks / STEPS)})`,
+  });
+  expect(blocks / STEPS, "list code executed per lamp move").toBeLessThan(BLOCKS_PER_STEP);
+  await expect(page.locator("[data-lit='true']")).toHaveCount(1);
 });

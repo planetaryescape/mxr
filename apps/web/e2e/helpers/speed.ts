@@ -18,8 +18,14 @@ export const KEY_TO_PAINT_P95_MS = Number(process.env.MXR_KEY_TO_PAINT_BUDGET_MS
  * - `row-leaves`: the row under the cursor is gone from the list.
  * - `star-toggles`: the row under the cursor flipped its starred state.
  * - `thread-opens`: the reader shows a conversation with its messages.
+ * - `lamp-moves`: the lit `Row` (Now, Messages) is a different row.
  */
-export type PaintedChange = "cursor-moves" | "row-leaves" | "star-toggles" | "thread-opens";
+export type PaintedChange =
+  | "cursor-moves"
+  | "row-leaves"
+  | "star-toggles"
+  | "thread-opens"
+  | "lamp-moves";
 
 /** Frames to wait for the change before calling the sample a miss (about 1 s at 60 Hz). */
 const MAX_FRAMES = 60;
@@ -77,6 +83,17 @@ export async function installKeyToPaintProbe(page: Page): Promise<void> {
           const id = activeId();
           const before = starred(id);
           return () => id !== null && starred(id) !== before;
+        }
+        case "lamp-moves": {
+          const litId = () =>
+            document
+              .querySelector("[data-lit='true'] [data-row-id]")
+              ?.getAttribute("data-row-id") ?? null;
+          const before = litId();
+          return () => {
+            const now = litId();
+            return now !== null && now !== before;
+          };
         }
         case "thread-opens": {
           const before = openThread();

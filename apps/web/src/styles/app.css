@@ -694,6 +694,15 @@ svg.low-tide {
 }
 
 /*
+ * A modal sheet (compose, a dialog) sets pointer-events: none on the body, and
+ * a toast would inherit it: its Undo could not be clicked while a sheet is
+ * open, and the click would land on the sheet beneath.
+ */
+[data-sonner-toast] {
+  pointer-events: auto;
+}
+
+/*
  * Toasts: sonner's rich colours, mapped to the theme tokens. Its light
  * defaults fall below WCAG AA (warning text is 3.1:1), and its blue info
  * clashes with the cyan signal, so each type takes the theme's solid tone

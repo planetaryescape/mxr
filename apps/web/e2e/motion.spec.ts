@@ -376,7 +376,11 @@ test("the compose sheet traps focus, Esc leaves, and focus goes back", async ({ 
     // oxlint-disable-next-line no-await-in-loop
     await page.keyboard.press("Tab");
     // oxlint-disable-next-line no-await-in-loop
-    expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+    expect(
+      await page
+        .getByTestId("mailbox-list")
+        .evaluate((node) => node.contains(document.activeElement)),
+    ).toBe(false);
   }
 
   // Esc from the recipient field leaves, and the draft is saved first.

@@ -251,7 +251,10 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
               : "inset-0 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-14 sm:w-[min(720px,calc(100vw-2rem))]",
           )}
         >
-          <DialogPrimitive.Title className="sr-only">{intent.title}</DialogPrimitive.Title>
+          <DialogPrimitive.Title asChild>
+            {/* The visible heading is in the chrome; this names the dialog without a second heading. */}
+            <span className="sr-only">{intent.title}</span>
+          </DialogPrimitive.Title>
           {chrome}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

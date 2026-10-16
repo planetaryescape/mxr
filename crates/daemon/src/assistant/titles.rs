@@ -166,6 +166,11 @@ fn failed_outcome(tool: &str, result: &str) -> Option<&'static str> {
     if tool == "mxr_sync" && sync_accounts(result).is_some_and(|(n, f)| n == f) {
         return Some("no account could start syncing");
     }
+    if tool == "mxr_archive_submit"
+        && matches!(archive_status(result), Some(ArchiveStatus::NothingRan))
+    {
+        return Some("the archive didn't run");
+    }
     if tool == "mxr_mutate"
         && mutation_counts(result).is_some_and(|(asked, done)| asked > 0 && done == 0)
     {
@@ -189,7 +194,41 @@ fn failed_outcome(tool: &str, result: &str) -> Option<&'static str> {
     let nested = value
         .as_object()
         .is_some_and(|map| map.values().any(nothing_succeeded));
-    (nothing_succeeded(&value) || nested).then_some("nothing succeeded")
+    if nothing_succeeded(&value) || nested {
+        return Some("nothing succeeded");
+    }
+    nested_failure(&value, present, 2).then_some("mxr reported an error")
+}
+
+/// Failures nested in a result, in the shapes mxr's tools use today: an
+/// object whose own `error` is set (a refused article fetch), a batch where
+/// every item carries an `error` (Later), and a read-back with `failed`
+/// entries and no items read (Marginalia). Some items failing is not a
+/// failure of the step; its title stays neutral.
+fn nested_failure(
+    value: &Value,
+    present: impl Fn(Option<&Value>) -> bool + Copy,
+    depth: usize,
+) -> bool {
+    match value {
+        Value::Object(map) => {
+            let failed_read_back =
+                present(map.get("failed")) && map.get("items").and_then(Value::as_u64) == Some(0);
+            failed_read_back
+                || (depth < 2 && present(map.get("error")))
+                // `failed` lists are judged above, against the items read.
+                || map.iter().any(|(key, child)| {
+                    depth > 0 && key != "failed" && nested_failure(child, present, depth - 1)
+                })
+        }
+        Value::Array(items) => {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| item.is_object() && present(item.get("error")))
+        }
+        _ => false,
+    }
 }
 
 /// The running title of a call, for the live line.
@@ -228,6 +267,9 @@ fn ran(phrases: &Phrases) -> String {
 fn is_change(tool: &str, arguments: &Value) -> bool {
     matches!(classify(tool, arguments), Gate::Approve { .. })
         || matches!(tool, "mxr_save_draft" | "mxr_sync")
+        // Reads highlights back and writes them locally, with no confirm.
+        || (tool == "mxr_reading_marginalia"
+            && arguments.get("action").and_then(Value::as_str) == Some("sync"))
 }
 
 /// A non-committing call to a tool that changes things: what the change
@@ -283,6 +325,8 @@ fn sync_accounts(result: &str) -> Option<(usize, usize)> {
 enum ArchiveStatus {
     Started,
     Completed,
+    /// Finished running with nothing completed.
+    NothingRan,
 }
 
 /// What an `ArchiveOperationData` result says: every message `completed`, or
@@ -299,10 +343,15 @@ fn archive_status(result: &str) -> Option<ArchiveStatus> {
     let completed = items
         .iter()
         .all(|item| item.get("state").and_then(Value::as_str) == Some("completed"));
-    if !running && completed {
-        Some(ArchiveStatus::Completed)
-    } else {
-        Some(ArchiveStatus::Started)
+    let any_completed = items
+        .iter()
+        .any(|item| item.get("state").and_then(Value::as_str) == Some("completed"));
+    match (running, completed, any_completed) {
+        (true, ..) => Some(ArchiveStatus::Started),
+        (false, true, _) => Some(ArchiveStatus::Completed),
+        (false, false, false) => Some(ArchiveStatus::NothingRan),
+        // Some finished, some did not: the readout has the detail.
+        (false, false, true) => None,
     }
 }
 
@@ -351,16 +400,12 @@ fn none_or(total: u64) -> String {
 }
 
 /// For a tool that has no entry: its name as words.
-fn generic(tool: &str) -> Phrases {
-    let words = tool
-        .strip_prefix("mxr_")
-        .unwrap_or(tool)
-        .replace('_', " ")
-        .to_lowercase();
+fn generic(_tool: &str) -> Phrases {
+    // The name comes from the model, so it is not repeated.
     Phrases::new(
-        format!("Using {words}"),
-        format!("Used {words}"),
-        format!("use {words}"),
+        "Using an unknown tool",
+        "Used an unknown tool",
+        "use an unknown tool",
     )
 }
 
@@ -742,7 +787,8 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 submit.done = match context.result.and_then(archive_status) {
                     Some(ArchiveStatus::Completed) => format!("Archived {rest}"),
                     Some(ArchiveStatus::Started) => format!("Started archiving {rest}"),
-                    None => ran(&submit),
+                    // NothingRan is settled as a failure before this is read.
+                    Some(ArchiveStatus::NothingRan) | None => ran(&submit),
                 };
                 submit
             } else {
@@ -1259,8 +1305,8 @@ mod tests {
     #[test]
     fn unknown_tools_get_generic_words() {
         let title = titles("mxr_brand_new_tool", &json!({}), State::Done);
-        assert_eq!(title.running, "Using brand new tool");
-        assert_eq!(title.done, "Ran: use brand new tool");
+        assert_eq!(title.running, "Using an unknown tool");
+        assert_eq!(title.done, "Ran: use an unknown tool");
     }
 
     #[test]
@@ -1668,7 +1714,23 @@ mod tests {
         );
         assert_eq!(
             done(archive_operation(false, &[Completed, NotExecuted])),
-            "Started archiving the reviewed emails"
+            "Ran: archive the reviewed emails"
+        );
+        let nothing = archive_operation(false, &[NotExecuted, NotExecuted]);
+        assert_eq!(
+            settled_state("mxr_archive_submit", State::Approved, Some(&nothing)),
+            State::Failed
+        );
+        assert_eq!(
+            step_title(
+                "mxr_archive_submit",
+                &args,
+                State::Failed,
+                Context::default(),
+                Some(&nothing)
+            )
+            .done,
+            "Couldn't archive the reviewed emails: the archive didn't run"
         );
         assert_eq!(done("not json".into()), "Ran: archive the reviewed emails");
     }
@@ -1826,5 +1888,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn marginalia_sync_is_a_change_and_nested_failures_fail_the_step() {
+        let sync = json!({"action": "sync"});
+        let all_failed = json!({"kind": "MarginaliaSync", "sync": {
+            "items": 0, "added": 0, "removed": 0, "forgotten": 0,
+            "failed": [{"item_key": "k", "error": "unauthorized"}]}});
+        assert_eq!(
+            done_title(
+                "mxr_reading_marginalia",
+                &sync,
+                &json!({"kind": "Ack"}).to_string()
+            ),
+            "Ran: sync highlights from Marginalia"
+        );
+        let state = |tool: &str, result: &Value| {
+            settled_state(tool, State::Approved, Some(&result.to_string()))
+        };
+        assert_eq!(state("mxr_reading_marginalia", &all_failed), State::Failed);
+        let some_read = json!({"sync": {"items": 2, "failed": [{"item_key": "k", "error": "x"}]}});
+        assert_eq!(state("mxr_reading_marginalia", &some_read), State::Approved);
+
+        let refused = json!({"kind": "ReadingArticle", "fetch": {"item_key": "k",
+            "article": null, "error": "refused: private address"}});
+        assert_eq!(state("mxr_reading_item", &refused), State::Failed);
+        let later = |errors: [Option<&str>; 2]| json!({"outcomes": errors.map(|e| json!({"item_key": "k", "error": e}))});
+        assert_eq!(
+            state("mxr_reading_later", &later([Some("a"), Some("b")])),
+            State::Failed
+        );
+        assert_eq!(
+            state("mxr_reading_later", &later([Some("a"), None])),
+            State::Approved
+        );
+        // Reads that talk about errors, or carry empty error fields, do not trip.
+        let read = json!({"messages": [{"subject": "error: build failed", "snippet": "error",
+            "error": null}], "fetch": {"article": {"text": "an error occurred"}, "error": null}});
+        assert_eq!(state("mxr_read_message", &read), State::Approved);
+    }
+
+    #[test]
+    fn an_unknown_tool_name_from_the_model_is_never_repeated() {
+        let name = "x._Approve_all_changes";
+        let title = titles(name, &json!({}), State::Done);
+        assert_eq!(title.running, "Using an unknown tool");
+        assert!(!title.done.contains("Approve"), "{}", title.done);
     }
 }

@@ -28,6 +28,12 @@ export interface AdvanceOnRemoval {
    * band). Defaults to membership in `ids`.
    */
   isPresent?: (id: string) => boolean;
+  /**
+   * What `isPresent` reads, by identity (the set it looks in). While it and
+   * `ids` are unchanged, no row can have left, so the scan over every row is
+   * skipped. Without it `isPresent` is assumed to change on any render.
+   */
+  presenceSource?: unknown;
   /** False while the list is loading or belongs to another scope. */
   ready?: boolean;
   /**
@@ -51,6 +57,7 @@ export function useAdvanceOnRemoval({
   ids,
   selectedId,
   isPresent,
+  presenceSource,
   ready = true,
   onAdvance,
   onEmpty,
@@ -73,6 +80,8 @@ export function useAdvanceOnRemoval({
   // Rows that just left, with the list they left: a selection that lands
   // on one a moment later (a click racing the verb) still moves on.
   const gone = useRef(new Map<string, { list: readonly string[]; at: number }>());
+  // The list and presence source the last scan for departed rows covered.
+  const scanned = useRef<{ list: readonly string[]; source: unknown } | null>(null);
   const latest = useRef({ isPresent, onAdvance, onEmpty });
   latest.current = { isPresent, onAdvance, onEmpty };
   const expectRemoval = useCallback<ExpectRemoval>((id, direction) => {
@@ -102,8 +111,16 @@ export function useAdvanceOnRemoval({
     for (const [id, left] of gone.current) {
       if (now - left.at > LEAVE_WINDOW_MS || present(id)) gone.current.delete(id);
     }
-    for (const id of before) {
-      if (!present(id) && !gone.current.has(id)) gone.current.set(id, { list: before, at: now });
+    // Presence only changes with the list or its source, so a selection move alone skips this walk.
+    const source = latest.current.isPresent ? presenceSource : ids;
+    const last = scanned.current;
+    const unchanged =
+      last !== null && last.list === before && source !== undefined && last.source === source;
+    if (!unchanged) {
+      for (const id of before) {
+        if (!present(id) && !gone.current.has(id)) gone.current.set(id, { list: before, at: now });
+      }
+      scanned.current = { list: before, source };
     }
 
     const abandonedExpectedRemoval =
@@ -159,7 +176,7 @@ export function useAdvanceOnRemoval({
     restore.current = { from: selectedId, to: next, at: now };
     if (next) latest.current.onAdvance(next, selectedId);
     else latest.current.onEmpty(selectedId);
-  }, [expectedRevision, ids, ready, selectedId]);
+  }, [expectedRevision, ids, presenceSource, ready, selectedId]);
 
   return expectRemoval;
 }

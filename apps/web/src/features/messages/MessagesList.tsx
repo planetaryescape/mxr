@@ -1,5 +1,16 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
-import { memo, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { Avatar, AvatarGlyph } from "@/components/Avatar";
@@ -28,6 +39,7 @@ export function MessagesList({
   via,
   quietOpen,
   onToggleQuiet,
+  scrollRef,
   onSelect,
   onReply,
   onDone,
@@ -40,6 +52,8 @@ export function MessagesList({
   via: LampVia;
   quietOpen: boolean;
   onToggleQuiet: () => void;
+  /** The element that scrolls the list: bands window their rows against it. */
+  scrollRef: RefObject<HTMLElement | null>;
   /** Must be stable (not re-created per render), so a lamp move leaves other rows alone. */
   onSelect: (id: string) => void;
   onReply: () => void;
@@ -51,24 +65,30 @@ export function MessagesList({
   /** The row a verb just moved to, marked once. */
   arrival: Arrival | null;
 }) {
+  const renderPerson = (row: MessagesRow) => (
+    <PersonRow
+      key={row.id}
+      row={row}
+      memberships={memberships}
+      lit={row.id === selectedId}
+      via={via}
+      onSelect={onSelect}
+      onReply={onReply}
+      onDone={onDone}
+      hidden={hidden}
+      arrival={arrival?.person === row.id ? arrival.key : null}
+    />
+  );
   return (
     <div data-testid="messages-list" className="pt-2">
       {data.your_turn.length > 0 ? (
         <Band id="band-your-turn" title="Your turn" testId="band-your_turn">
-          {data.your_turn.map((row) => (
-            <PersonRow
-              key={row.id}
-              row={row}
-              memberships={memberships}
-              lit={row.id === selectedId}
-              via={via}
-              onSelect={onSelect}
-              onReply={onReply}
-              onDone={onDone}
-              hidden={hidden}
-              arrival={arrival?.person === row.id ? arrival.key : null}
-            />
-          ))}
+          <VirtualRows
+            rows={data.your_turn}
+            selectedId={selectedId}
+            scrollRef={scrollRef}
+            renderRow={renderPerson}
+          />
         </Band>
       ) : null}
       {data.pinned.length > 0 ? (
@@ -106,24 +126,16 @@ export function MessagesList({
       ) : null}
       {data.recent.length > 0 ? (
         <Band id="band-recent" title="Recent" testId="band-recent">
-          {data.recent.map((row) => (
-            <PersonRow
-              key={row.id}
-              row={row}
-              memberships={memberships}
-              lit={row.id === selectedId}
-              via={via}
-              onSelect={onSelect}
-              onReply={onReply}
-              onDone={onDone}
-              hidden={hidden}
-              arrival={arrival?.person === row.id ? arrival.key : null}
-            />
-          ))}
+          <VirtualRows
+            rows={data.recent}
+            selectedId={selectedId}
+            scrollRef={scrollRef}
+            renderRow={renderPerson}
+          />
           {data.recent_total > data.recent.length ? (
-            <li className="px-5 py-1 text-xs text-muted-foreground">
+            <p className="px-5 py-1 text-xs text-muted-foreground">
               and {data.recent_total - data.recent.length} more
-            </li>
+            </p>
           ) : null}
         </Band>
       ) : null}
@@ -143,22 +155,14 @@ export function MessagesList({
             Quiet ({data.quiet_total})
           </button>
           {quietOpen ? (
-            <ul className="grid grid-cols-[minmax(0,1fr)]">
-              {data.quiet.map((row) => (
-                <PersonRow
-                  key={row.id}
-                  row={row}
-                  memberships={memberships}
-                  lit={row.id === selectedId}
-                  via={via}
-                  onSelect={onSelect}
-                  onReply={onReply}
-                  onDone={onDone}
-                  hidden={hidden}
-                  arrival={arrival?.person === row.id ? arrival.key : null}
-                />
-              ))}
-            </ul>
+            <>
+              <VirtualRows
+                rows={data.quiet}
+                selectedId={selectedId}
+                scrollRef={scrollRef}
+                renderRow={renderPerson}
+              />
+            </>
           ) : null}
         </section>
       ) : null}
@@ -182,8 +186,89 @@ function Band({
       <SectionHeading id={id} className="px-5 pb-1 pt-2">
         {title}
       </SectionHeading>
-      <ul className="grid grid-cols-[minmax(0,1fr)]">{children}</ul>
+      {children}
     </section>
+  );
+}
+
+/** Estimate only: rows are measured once drawn. */
+const ROW_ESTIMATE_PX = 52;
+const OVERSCAN = 12;
+
+/**
+ * A band's people, drawn only near the screen. On 5,000 people the browser's
+ * style and layout of the DOM, not React, was the cost of a j (spike S4), so
+ * a long band mounts a screenful and a lamp move touches two rows of it.
+ * The lit row is scrolled to by index, since it may not be mounted yet.
+ */
+function VirtualRows({
+  rows,
+  selectedId,
+  scrollRef,
+  renderRow,
+}: {
+  rows: readonly MessagesRow[];
+  selectedId: string | null;
+  scrollRef: RefObject<HTMLElement | null>;
+  renderRow: (row: MessagesRow) => ReactNode;
+}) {
+  const listRef = useRef<HTMLUListElement>(null);
+  // State, so the virtualizer sees the scroller once it is attached.
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  const [margin, setMargin] = useState(0);
+  // Where this band starts inside the scroller (the bands above it, the empty state).
+  // On every render, since a band above can resize without this band's rows changing;
+  // setMargin bails out when the offset is the same, so it cannot loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (!element || !list) return;
+    setScroller(element);
+    const top =
+      list.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
+    setMargin((current) => (Math.abs(current - top) < 1 ? current : Math.round(top)));
+  });
+  const getItemKey = useCallback((index: number) => rows[index]?.id ?? index, [rows]);
+  const indexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows]);
+  const litIndex = selectedId ? indexById.get(selectedId) : undefined;
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scroller,
+    estimateSize: () => ROW_ESTIMATE_PX,
+    overscan: OVERSCAN,
+    getItemKey,
+    scrollMargin: margin,
+  });
+  useEffect(() => {
+    if (litIndex !== undefined) virtualizer.scrollToIndex(litIndex, { align: "auto" });
+  }, [litIndex, virtualizer]);
+  // The lit row stays mounted wherever it is: a phone hides the list while a person's
+  // page is open (no height, so no window), and the row must still be there on return.
+  const windowed = virtualizer.getVirtualItems();
+  const litItem =
+    litIndex !== undefined && !windowed.some((item) => item.index === litIndex)
+      ? virtualizer.measurementsCache[litIndex]
+      : undefined;
+  return (
+    <ul ref={listRef} style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+      {(litItem ? [...windowed, litItem] : windowed).map((item) => {
+        const row = rows[item.index];
+        if (!row) return null;
+        return (
+          <div
+            key={item.key}
+            role="presentation"
+            data-index={item.index}
+            ref={virtualizer.measureElement}
+            className="absolute left-0 top-0 w-full"
+            style={{ transform: `translateY(${item.start - margin}px)` }}
+          >
+            {renderRow(row)}
+          </div>
+        );
+      })}
+    </ul>
   );
 }
 

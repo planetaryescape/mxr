@@ -271,10 +271,12 @@ function MessagesBody({
     ids: rowIds,
     selectedId: search.person ?? null,
     isPresent: (id) => allRowIds.has(id),
+    presenceSource: allRowIds,
     onAdvance: (id) => advanceTo(id),
     onEmpty: clearSelection,
   });
   const listRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
   const pane = useSplitPane("messages", PEOPLE_PANE_SIZE, { active: split });
   // A person's page beside the list: the list's title steps down so one Display title shows.
@@ -618,7 +620,7 @@ function MessagesBody({
           elementRef={listRef}
         >
           <MessagesHeader search={search} guide={guide} />
-          <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
             {empty && emptyState ? (
               <div data-testid="messages-empty" className="mx-5 mt-6">
                 {emptyState}
@@ -630,6 +632,7 @@ function MessagesBody({
               via={via.current}
               quietOpen={quietOpen}
               onToggleQuiet={() => setQuietOpen((open) => !open)}
+              scrollRef={scrollRef}
               onSelect={onSelectRow}
               onReply={onReplyRow}
               onDone={onDoneRow}

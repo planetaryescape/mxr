@@ -50,6 +50,9 @@ pub(crate) fn conversation_view(
     // Everything each step listed, by the step's place in `items`, for the
     // rows a reply names.
     let mut listed: HashMap<usize, Vec<AssistantReadoutRowData>> = HashMap::new();
+    // Each result whole, by its step's place in `items`: titles and the
+    // failure checks read these, since `result` is cut for clients.
+    let mut wholes: HashMap<usize, String> = HashMap::new();
     for row in messages {
         let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
             tracing::warn!(seq = row.seq, "skipping an unreadable assistant message");
@@ -124,6 +127,7 @@ pub(crate) fn conversation_view(
                     *found = readout(&whole);
                     *result = Some(readable_result(&whole, RESULT_PREVIEW_CHARS));
                     listed.insert(*index, listed_rows(&whole));
+                    wholes.insert(*index, whole.clone());
                     links.add_result(&whole);
                 }
             }
@@ -135,7 +139,7 @@ pub(crate) fn conversation_view(
             *text = links.apply(text);
         }
     }
-    fill_titles(&mut items, &pending);
+    fill_titles(&mut items, &pending, &wholes);
     mark_failed_steps(&mut items);
     attach_rows(&mut items, &listed);
 
@@ -211,21 +215,24 @@ fn attach_rows(
 
 /// Give each step its words, now that its state, result and (for a call
 /// waiting on the user) preview are known.
-fn fill_titles(items: &mut [AssistantItemData], pending: &[PendingItem]) {
-    for item in items {
+fn fill_titles(
+    items: &mut [AssistantItemData],
+    pending: &[PendingItem],
+    wholes: &HashMap<usize, String>,
+) {
+    for (index, item) in items.iter_mut().enumerate() {
         let AssistantItemData::ToolCall {
             call_id,
             tool,
             arguments,
             state,
-            result,
-            readout,
             title,
             ..
         } = item
         else {
             continue;
         };
+        let whole = wholes.get(&index).map(String::as_str);
         let preview = pending
             .iter()
             .find(|waiting| waiting.call_id == *call_id)
@@ -235,17 +242,16 @@ fn fill_titles(items: &mut [AssistantItemData], pending: &[PendingItem]) {
             });
         // A result that says nothing happened is a failure whatever state
         // it was stored in, so the glyph, the title and the failure note agree.
-        *state = settled_state(tool, *state, result.as_deref());
+        *state = settled_state(tool, *state, whole);
         *title = Some(step_title(
             tool,
             arguments,
             *state,
             Context {
-                readout: readout.as_ref(),
                 preview,
-                result: None,
+                result: whole,
             },
-            result.as_deref(),
+            whole,
         ));
     }
 }
@@ -680,7 +686,7 @@ mod tests {
                 AssistantCallStateData::Failed,
             ),
         ];
-        fill_titles(&mut items, &[]);
+        fill_titles(&mut items, &[], &HashMap::new());
         let title = |item: &AssistantItemData| match item {
             AssistantItemData::ToolCall { title, .. } => title.clone(),
             _ => None,
@@ -727,5 +733,22 @@ mod tests {
             .starts_with("mxr couldn't reach"));
         assert!(plain_error("LLM request timed out after 120s").contains("too long"));
         assert_eq!(plain_error("something new broke"), "something new broke");
+    }
+
+    #[test]
+    fn titles_read_the_whole_result_not_the_copy_cut_for_clients() {
+        let mut items = vec![step("a", json!({}), AssistantCallStateData::Done)];
+        if let Some(AssistantItemData::ToolCall { tool, result, .. }) = items.get_mut(0) {
+            *tool = "mxr_sync".into();
+            // What a client got: cut, so not valid JSON.
+            *result = Some("{\"results\":[{\"result\":\"failed\"},".into());
+        }
+        let whole = json!({"results": [{"result": "failed"}, {"result": "failed"}]}).to_string();
+        fill_titles(&mut items, &[], &HashMap::from([(0, whole)]));
+        let state = match &items[0] {
+            AssistantItemData::ToolCall { state, .. } => Some(*state),
+            _ => None,
+        };
+        assert_eq!(state, Some(AssistantCallStateData::Failed));
     }
 }

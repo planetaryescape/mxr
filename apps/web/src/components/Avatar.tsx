@@ -5,6 +5,7 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const SIZES = {
+  xs: "size-4 text-2xs",
   sm: "size-5 text-2xs",
   md: "size-7 text-2xs [[data-density=compact]_&]:size-6",
   lg: "size-8 text-xs",
@@ -16,7 +17,7 @@ type AvatarSize = keyof typeof SIZES;
  * A sender's initials on their stable hue. Inbox, Messages and the thread
  * all draw it here, so one sender wears one colour everywhere. `lg` is the
  * Messages row and the thread card; `md` is a mail row; `sm` sits inside a
- * recipient chip. Round shapes are for people and dots only (D127).
+ * recipient chip; `xs` (16px) sits in a line of text, like a person chip in the assistant's reply. Round shapes are for people and dots only (D127).
  */
 export function Avatar({
   name,

@@ -7,6 +7,8 @@ The assistant is a chat you have with your mailbox. Ask it what needs a reply th
 
 It reads and searches on its own. Every change it wants to make stops and waits for you, with a preview of exactly what it will touch. When it needs you to choose (which account, which of three matching emails, how wide a cleanup) it asks with a card of options.
 
+In the web app the panel reads like a page from a copy desk. Your messages are quoted, each step it takes is one plain line, its answer is set in the reading type with the emails and people it names drawn as chips and rows you can open, and a change it wants to make arrives as a proof for you to sign. Nothing in the default view shows a tool name, an id or JSON; those are under **Details**.
+
 ## Open it
 
 In the web app, press `⌘.` (`Ctrl+.` on Linux and Windows) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. On narrow windows it slides over the page instead. It is closed until you open it, and it remembers whether you left it open.
@@ -45,13 +47,16 @@ The assistant also knows what you have open: the screen, the thread in the reade
 
 ## Approve or reject each change
 
-When the assistant wants to change something, the turn pauses and a card appears:
+When the assistant wants to change something, the turn pauses and a proof appears:
 
 - **The change in words**, such as "Archive 14 emails", and the reason the assistant gave.
-- **What it touches**: the messages by subject and sender, or the draft it would send.
-- **Exact call**: the tool and arguments that run if you approve.
+- **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more"), or the draft it would send with its recipients, subject and body.
+- **Can't be undone**, in red above the button, for sending, trash, spam, deleting and rules.
+- **Exact call**, under `x`: the tool and arguments that run if you approve.
 
-**Approve** runs exactly that call, once. **Reject** runs nothing; add a note to tell the assistant why or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
+**Apply** (`y` in the web app) runs exactly that call, once, and the proof folds into a line such as "Archived 14 emails" with **Undo** where mxr can undo it; the rows it changed in the page beside the assistant wear a thin cyan underline that fades. **Send back with a note** (`n`) runs nothing and tells the assistant why, or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
+
+The keys work while the proof has the keyboard and never while you are typing, so a `y` in the message box or the note can't apply anything. Press `Esc` in the message box to hand the keyboard to a waiting proof, or click it. A question takes `1` to `6` for its options, `Enter` to answer, and a "Something else" row in the same list; the answer then shows in the conversation as your own quoted reply.
 
 The same from the terminal: `send`, `approve`, `reject` and `answer` wait for the turn to finish and print what is waiting with the command that answers it.
 
@@ -63,17 +68,19 @@ mxr assistant answer asst_01… call_9 --choose "Work"
 
 ## Let reversible changes run on their own
 
-For a long cleanup, approving every archive gets old. The shield button in the sidebar's header (or `mxr assistant trust <id>`) lets that one conversation run reversible changes without asking: archiving, marking read or unread, stars, moves between modes, Later, categories and to-do state. A line under the header says it is on. Sending, deleting, trash, spam, rules and anything that talks to another service still wait for you. Steps that ran this way say "ran without asking". Turn it off with the same button, or `mxr assistant trust <id> --off`.
+For a long cleanup, approving every archive gets old. The state written beside the conversation's title in the sidebar's header ("asks first" or "trusted"), or `mxr assistant trust <id>`, lets that one conversation run reversible changes without asking: archiving, marking read or unread, stars, moves between modes, Later, categories and to-do state. Open the menu there to turn it on or off; it says what it covers. Sending, deleting, trash, spam, rules and anything that talks to another service still wait for you. Steps that ran this way say "ran without asking". Turn it off from the same menu, or `mxr assistant trust <id> --off`.
 
 Only you can switch this on. The assistant can't ask for it, and nothing in an email can turn it on.
 
 ## See what it did
 
-Replies appear as the model writes them. Each step the assistant takes shows as one plain line that mxr writes, such as "Searching your mail for "shipped"" while it runs and "Searched your mail: 14 found" after, and the line above the message box says what it is doing now ("Reading your request", "Writing the answer"). When the reply names several emails or people from one search, the TUI and CLI list them under it. A step that fails reads "Couldn't star 1 email: it needs your confirmation first". The reason the assistant gave is in `mxr assistant show --format json`. Once a turn ends the steps fold into one line such as "5 steps · 1 changed · 1 failed", and a reply after steps that failed is followed by a note naming them, "This didn't happen, whatever the reply says", so a reply that claims more than happened doesn't stand alone. A step a later retry redid isn't named. A change mxr refused to make, such as one sent without its confirmation, counts as failed. Open a step to see what it looked for and what it found: the first few emails or people, each of which opens in the app, and how many more there were. **Raw call** under that shows the exact call and what mxr returned. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`. Changes that mxr can undo by id (archiving, read state and stars made in one step) show an **Undo** button on their step for about a minute (in the terminal, `mxr assistant` prints the `mxr undo` command); undoing doesn't tell the assistant, so mention it if it matters for what comes next.
+Replies appear as the model writes them, set in the reading type, and end with the model that wrote them and where it ran ("gemma4 · local"). Each step the assistant takes shows as one plain line that mxr writes, such as "Searching your mail for "shipped"" while it runs and "Searched your mail: 14 found" after. The line above the message box says what it is doing now ("Reading your request", "Writing the answer") with the seconds it has taken and **Stop**, and when one step runs long it names the model ("gemma4 is slow on this; 24s"). A change that ran reads "Ran: archive 3 emails" unless mxr could confirm the result, and a step that fails reads "Couldn't star 1 email: it needs your confirmation first".
 
-Replies link the emails and people they name. A subject opens that email in All Mail and a name opens the person's row in Messages, with the assistant still open beside it, and the address in the browser points at that email, so you can copy it. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
+Once a turn ends the steps fold into one line such as "3 steps · 14 found · 1 change waiting" (with "· 1 failed" in red), and the line always opens. Open a step to see what it found: the first few emails or people as rows, each of which opens in the app, and how many more there were. **Details** under that shows the exact call and what mxr returned. A reply after steps that failed is followed by a red-ruled note, "These didn't happen, whatever the reply says:", with each failed step's line, so a reply that claims more than happened doesn't stand alone. A step a later retry redid isn't named. A change mxr refused to make, such as one sent without its confirmation, counts as failed. A turn that fails outright shows one plain sentence about what to do next, with the raw error under **Details**. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`. Changes that mxr can undo by id (archiving, read state and stars made in one step) show an **Undo** on their line for about a minute (in the terminal, `mxr assistant` prints the `mxr undo` command); undoing doesn't tell the assistant, so mention it if it matters for what comes next.
 
-Past conversations are under the history button, under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
+Replies link the emails and people they name as chips: a person with their avatar, an email with its subject. An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
+
+Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `d` deletes it, under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
 ## What it reads, and where it goes
 

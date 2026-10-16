@@ -7,7 +7,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   assistantKeys,
@@ -25,7 +25,10 @@ import {
 } from "./api";
 import { useAssistantUi } from "./assistantStore";
 import type { DaemonEvent } from "@/api/events";
+import { changedIds } from "./wire";
+import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
+import { LANDING_MS, useLanding } from "@/state/landingStore";
 import { useOpenThread } from "@/state/openThreadStore";
 import { useSelection } from "@/state/selectionStore";
 
@@ -176,4 +179,32 @@ export function useAssistantActions() {
     onSuccess: settle,
   });
   return { send, answer, stop, trust };
+}
+
+/**
+ * When a change the assistant makes lands (a proof applied, or a trusted
+ * conversation's step ran), the rows it changed in the page beside wear the
+ * landing mark. Changes already applied when a conversation is first shown
+ * are history and don't land again.
+ */
+export function useLandChanges(conversation: AssistantConversation | undefined): void {
+  const seen = useRef<{ id: string | null; calls: Set<string> }>({ id: null, calls: new Set() });
+  useEffect(() => {
+    if (!conversation) return;
+    const applied = conversation.items.filter(
+      (item): item is Extract<typeof item, { kind: "tool_call" }> =>
+        item.kind === "tool_call" && (item.state === "approved" || item.state === "auto_approved"),
+    );
+    if (seen.current.id !== conversation.id) {
+      seen.current = { id: conversation.id, calls: new Set(applied.map((item) => item.call_id)) };
+      return;
+    }
+    const fresh = applied.filter((item) => !seen.current.calls.has(item.call_id));
+    if (fresh.length === 0) return;
+    for (const item of fresh) seen.current.calls.add(item.call_id);
+    useLanding.getState().land(fresh.flatMap(changedIds));
+    // The lists catch up once the mark has been seen.
+    // Not cleared on re-run: a refetch of the conversation must not cancel it.
+    window.setTimeout(() => void invalidateMailQueries(), LANDING_MS);
+  }, [conversation]);
 }

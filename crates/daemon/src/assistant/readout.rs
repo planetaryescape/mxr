@@ -341,6 +341,31 @@ mod tests {
     }
 
     #[test]
+    fn a_search_names_its_emails_with_subject_sender_and_conversation() {
+        // The shape mxr_search returns: ids and a score, plus the subject
+        // and sender the MCP tool adds so the readout can draw rows.
+        let out = read(json!({
+            "kind": "SearchResults",
+            "results": [
+                {"message_id": "m1", "thread_id": "t1", "score": 1.0, "mode": "lexical",
+                 "subject": "CI failed on main",
+                 "from": {"name": "GitHub Actions", "email": "ci@github.example"}},
+            ],
+            "total": 14,
+            "has_more": true,
+        }));
+        assert_eq!(out.total, Some(14));
+        assert_eq!(out.rows[0].title, "CI failed on main");
+        assert_eq!(out.rows[0].detail.as_deref(), Some("GitHub Actions"));
+        assert_eq!(
+            out.rows[0].link,
+            Some(AssistantLinkData::Thread {
+                thread_id: "t1".into()
+            })
+        );
+    }
+
+    #[test]
     fn text_and_empty_results_have_no_readout() {
         assert_eq!(readout("not json"), None);
         assert_eq!(readout("{}"), None);

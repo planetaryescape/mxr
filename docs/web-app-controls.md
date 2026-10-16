@@ -50,6 +50,18 @@ Settings light More. The sheet traps focus, closes on Esc and on any
 navigation, and the page's keys stay under it while it is open. The top bar's
 search is the only search field.
 
+## Assistant panel
+
+| Control | Where | Reason |
+|---|---|---|
+| Trust state ("asks first" or "trusted") | Panel header, beside the title | Discoverability: a mode that changes who is responsible must be visible. Its menu says what runs without asking and turns it on or off. |
+| Past conversations | Panel header | Frequency: the way back to a conversation. Rows with `j`, `k`, `Enter`, `d`. |
+| New conversation | Panel header | Frequency. |
+| Close | Panel header | Discoverability: shows `⌘.`. |
+| Stop | Live line, only while a turn runs | Frequency: ends the turn. |
+| Apply (`y`), send back with a note (`n`), exact call (`x`) | A waiting proof | The one primary of the panel, with the two quiet ways out. The keys answer only while the proof has focus and never while typing. |
+| Options (`1` to `6`), Answer, Skip | A waiting question | The question's answer and its way out. |
+
 ## Page header
 
 Every page wears one frame (`PageFrame`, docs/blueprint/27): the title, a

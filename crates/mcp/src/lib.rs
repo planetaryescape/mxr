@@ -161,6 +161,51 @@ impl MxrMcpServer {
         response_to_json(response).map(McpJson)
     }
 
+    /// Search answers with ids and scores only. Add each result's subject
+    /// and sender so the model, and the rows the assistant shows, can name
+    /// the emails. Best effort: a result that can't be named stays as it was.
+    async fn name_search_results(&self, result: &mut Value) {
+        let Some(items) = result.get_mut("results").and_then(Value::as_array_mut) else {
+            return;
+        };
+        let ids: Vec<MessageId> = items
+            .iter()
+            .filter_map(|item| item.get("message_id")?.as_str()?.parse().ok())
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let Ok(Response::Ok {
+            data: ResponseData::Envelopes { envelopes },
+        }) = self
+            .requester
+            .request(Request::ListEnvelopesByIds { message_ids: ids })
+            .await
+        else {
+            return;
+        };
+        let named: std::collections::HashMap<String, &mxr_core::Envelope> = envelopes
+            .iter()
+            .map(|envelope| (envelope.id.as_str(), envelope))
+            .collect();
+        for item in items {
+            let Some(envelope) = item
+                .get("message_id")
+                .and_then(Value::as_str)
+                .and_then(|id| named.get(id))
+            else {
+                continue;
+            };
+            if let Some(object) = item.as_object_mut() {
+                object.insert("subject".into(), json!(envelope.subject));
+                object.insert(
+                    "from".into(),
+                    json!({"name": envelope.from.name, "email": envelope.from.email}),
+                );
+            }
+        }
+    }
+
     async fn ensure_category_name_available(
         &self,
         category_id: Option<CategoryId>,
@@ -900,16 +945,19 @@ impl MxrMcpServer {
         &self,
         Parameters(input): Parameters<SearchInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        self.daemon_json(Request::Search {
-            query: input.query,
-            limit: input.limit.unwrap_or(25).min(100),
-            offset: input.offset.unwrap_or(0),
-            account_id: parse_optional_id(input.account_id)?,
-            mode: None,
-            sort: None,
-            explain: input.explain.unwrap_or(false),
-        })
-        .await
+        let McpJson(mut result) = self
+            .daemon_json(Request::Search {
+                query: input.query,
+                limit: input.limit.unwrap_or(25).min(100),
+                offset: input.offset.unwrap_or(0),
+                account_id: parse_optional_id(input.account_id)?,
+                mode: None,
+                sort: None,
+                explain: input.explain.unwrap_or(false),
+            })
+            .await?;
+        self.name_search_results(&mut result).await;
+        Ok(McpJson(result))
     }
 
     #[tool(
@@ -2791,6 +2839,82 @@ mod tests {
                 }),
             }
         }
+    }
+
+    /// Answers a search with ids only, as the daemon does, and the
+    /// envelope lookup with the one email it knows.
+    #[derive(Debug)]
+    struct SearchRequester {
+        message_id: MessageId,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for SearchRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            let data = match request {
+                Request::Search { .. } => ResponseData::SearchResults {
+                    results: vec![mxr_protocol::SearchResultItem {
+                        message_id: self.message_id.clone(),
+                        account_id: AccountId::new(),
+                        thread_id: ThreadId::new(),
+                        score: 1.0,
+                        mode: mxr_core::SearchMode::Lexical,
+                    }],
+                    total: 1,
+                    has_more: false,
+                    next_offset: None,
+                    explain: None,
+                },
+                Request::ListEnvelopesByIds { message_ids } => {
+                    assert_eq!(message_ids, vec![self.message_id.clone()]);
+                    ResponseData::Envelopes {
+                        envelopes: vec![serde_json::from_value(json!({
+                            "id": self.message_id,
+                            "account_id": AccountId::new(),
+                            "provider_id": "p1",
+                            "thread_id": ThreadId::new(),
+                            "message_id_header": null,
+                            "in_reply_to": null,
+                            "references": [],
+                            "from": {"name": "Quinn Dev", "email": "quinn@work.com"},
+                            "to": [], "cc": [], "bcc": [],
+                            "subject": "CI failed on main",
+                            "date": "2026-10-01T09:00:00Z",
+                            "flags": "READ",
+                            "snippet": "",
+                            "has_attachments": false,
+                            "size_bytes": 1,
+                            "unsubscribe": "None",
+                        }))
+                        .expect("fixture envelope")],
+                    }
+                }
+                other => anyhow::bail!("unexpected request {other:?}"),
+            };
+            Ok(Response::Ok { data })
+        }
+    }
+
+    #[tokio::test]
+    async fn search_results_name_their_emails() {
+        let message_id = MessageId::new();
+        let server = MxrMcpServer::new(SearchRequester {
+            message_id: message_id.clone(),
+        });
+        let McpJson(result) = server
+            .search(Parameters(SearchInput {
+                query: "CI".into(),
+                account_id: None,
+                limit: None,
+                offset: None,
+                explain: None,
+            }))
+            .await
+            .expect("search");
+        let item = &result["results"][0];
+        assert_eq!(item["subject"], "CI failed on main");
+        assert_eq!(item["from"]["name"], "Quinn Dev");
+        assert_eq!(item["message_id"], json!(message_id));
     }
 
     #[tokio::test]

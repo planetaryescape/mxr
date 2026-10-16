@@ -1,3 +1,5 @@
+import { modelMarkTitle } from "@/components/ModelMark";
+
 import type { RowGist } from "./rowGists";
 
 /** The line in words, for a row's accessible name. */
@@ -11,7 +13,11 @@ export function gistText(gist: RowGist): string {
  * sentence itself.
  */
 export function gistTitle(gist: RowGist): string {
-  return `${gistText(gist)}\n${gist.source}, summarised by the model`;
+  const { provenance } = gist;
+  const mark = provenance
+    ? modelMarkTitle(provenance.model, provenance.locality === "cloud")
+    : "Written by a model";
+  return `${gistText(gist)}\n${gist.source}. ${mark}`;
 }
 
 /** "Asks: confirm who owns the rollout check", in the reader's ask colour. */

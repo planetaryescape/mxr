@@ -281,8 +281,12 @@ export const TodoRow = memo(function TodoRow({
 }: TodoRowProps) {
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
-  const secondary = useClockLabel((now) => rowSecondary(todo, now) ?? "");
-  const cue = useClockLabel((now) => String(dueByToday(todo, now)));
+  // One subscription to the minute clock: the due-today flag, then the secondary line.
+  const clock = useClockLabel(
+    (now) => `${dueByToday(todo, now) ? "1" : "0"}${rowSecondary(todo, now) ?? ""}`,
+  );
+  const cue = clock.startsWith("1");
+  const secondary = clock.slice(1);
   const done = band === "done";
   const { unchecked } = provenanceSummary(todo.fields);
   const unfinished = todo.resolution?.status === "pending" || Boolean(todo.looks_done);
@@ -298,6 +302,7 @@ export const TodoRow = memo(function TodoRow({
       lit={lit}
       via={via}
       leaving={leaving}
+      land={[todo.thread_id, todo.source_message_id]}
       onClick={() => onSelect(todo)}
       onAnimationEnd={leaving ? () => hide([todo.id]) : undefined}
       leadControl
@@ -334,7 +339,7 @@ export const TodoRow = memo(function TodoRow({
         <>
           {secondary}
           {/* A phone has no room for the window in the trail, so it follows who it is from. */}
-          <span className={cn("sm:hidden", cue === "true" && !done && "text-cue")}>
+          <span className={cn("sm:hidden", cue && !done && "text-cue")}>
             {secondary ? " · " : null}
             {todo.when_label}
           </span>
@@ -356,10 +361,7 @@ export const TodoRow = memo(function TodoRow({
           ) : null}
           <span
             data-testid="todo-when"
-            className={cn(
-              "hidden max-w-[16rem] truncate sm:inline",
-              cue === "true" && !done && "text-cue",
-            )}
+            className={cn("hidden max-w-[16rem] truncate sm:inline", cue && !done && "text-cue")}
           >
             {todo.when_label}
           </span>

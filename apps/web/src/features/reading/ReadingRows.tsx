@@ -78,6 +78,7 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
       aria-current={lit ? "true" : undefined}
       lit={lit}
       via={via}
+      land={[item.thread_id, item.message_id]}
       className={cn(fading && !shelf && "reading-fading")}
       onMouseDown={() => handlers.onPoint(item.item_key)}
       lead={<Newspaper aria-hidden className="size-4 shrink-0 text-text-3" strokeWidth={1.75} />}

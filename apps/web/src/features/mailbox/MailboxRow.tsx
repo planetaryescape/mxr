@@ -3,8 +3,7 @@ import { memo, type MouseEvent } from "react";
 
 import type { MessageRowView } from "./types";
 import { Chip } from "@/components/Chip";
-import { KeyChip } from "@/components/KeyChip";
-import { Row, type LampVia } from "@/components/Row";
+import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
@@ -12,7 +11,6 @@ import { parseAddress, plural } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
-import { useLanded } from "@/state/landingStore";
 import { ModeChip } from "@/features/arrivals/ModeChip";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
@@ -73,8 +71,6 @@ export const MailboxRow = memo(function MailboxRow({
   // This row's own line: when it lands, only this row re-renders.
   const gist = useRowGist(row.thread_id);
   const when = useWhen(row.date);
-  // The assistant changed this row: it wears the landing underline for 600ms.
-  const landed = useLanded(row.thread_id, row.id);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
   const stop = (handler: () => void) => (event: MouseEvent) => {
@@ -93,11 +89,8 @@ export const MailboxRow = memo(function MailboxRow({
       via={via}
       unread={row.unread}
       // A `li` outside a `ul` still draws its disc marker; the virtual list wraps rows in divs.
-      className={cn(
-        "cursor-default select-none list-none",
-        selected && "bg-primary-muted/70",
-        landed && "landed",
-      )}
+      className={cn("cursor-default select-none list-none", selected && "bg-primary-muted/70")}
+      land={[row.thread_id, row.id]}
       onClick={(event) => {
         if (!readOnly && (event.metaKey || event.ctrlKey)) {
           onToggleSelection(row, false);
@@ -122,7 +115,7 @@ export const MailboxRow = memo(function MailboxRow({
           >
             <span
               className={cn(
-                "transition-opacity",
+                via === "pointer" && "transition-opacity",
                 selected || selecting ? "opacity-0" : "group-hover/row:opacity-0",
               )}
             >
@@ -130,7 +123,8 @@ export const MailboxRow = memo(function MailboxRow({
             </span>
             <span
               className={cn(
-                "absolute inset-1 grid place-items-center rounded-sm border transition-opacity",
+                "absolute inset-1 grid place-items-center rounded-sm border",
+                via === "pointer" && "transition-opacity",
                 selected
                   ? "border-primary bg-primary text-primary-foreground opacity-100"
                   : cn(
@@ -208,7 +202,9 @@ export const MailboxRow = memo(function MailboxRow({
         rowAction || !readOnly ? (
           <>
             {rowAction ? (
-              <MailVerb
+              <RowVerb
+                plain
+                nameFrom="list"
                 keys="w"
                 label={rowAction.label}
                 title={`${rowAction.describe(row)} (w)`}
@@ -221,7 +217,9 @@ export const MailboxRow = memo(function MailboxRow({
             {readOnly
               ? null
               : QUICK_VERBS.map((verb) => (
-                  <MailVerb
+                  <RowVerb
+                    plain
+                    nameFrom="list"
                     key={verb.action}
                     keys={verb.keys}
                     label={verb.action === "toggleStar" && row.starred ? "unstar" : verb.label}
@@ -241,39 +239,6 @@ export interface RowAction {
   /** Accessible name for one row, e.g. "Wake Budget review now". */
   describe: (row: MessageRowView) => string;
   run: (row: MessageRowView) => void;
-}
-
-/**
- * A verb on the lit row, drawn like `RowVerb` but not a button: rows are
- * listbox options, which can't contain controls. The keyboard runs it with
- * its key.
- */
-function MailVerb({
-  keys,
-  label,
-  title,
-  onClick,
-}: {
-  keys: string;
-  label: string;
-  title?: string;
-  onClick: () => void;
-}) {
-  return (
-    <span
-      aria-hidden
-      title={title ?? `${label} (${keys})`}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap px-1.5 hover:text-text-1"
-    >
-      <KeyChip className="h-4 px-1">{keys}</KeyChip>
-      {/* In a narrow list (a reader beside it) the keys alone say it, so the sender keeps its room. */}
-      <span className="hidden @xl/list:inline">{label}</span>
-    </span>
-  );
 }
 
 function displaySender(row: MessageRowView): string {

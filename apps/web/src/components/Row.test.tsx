@@ -1,7 +1,9 @@
 /* @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+import { LANDING_MS, useLanding } from "@/state/landingStore";
 
 import { Row, RowVerb } from "./Row";
 
@@ -130,5 +132,28 @@ describe("Row", () => {
   test("a leaving row stops taking clicks while it folds", () => {
     renderRow({ leaving: true });
     expect(screen.getByTestId("row")).toHaveClass("row-fold", "pointer-events-none");
+  });
+
+  describe("landing", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      act(() => useLanding.setState({ landed: new Set() }));
+    });
+
+    test("a change that lands on one of its ids underlines the row for 600ms", () => {
+      vi.useFakeTimers();
+      renderRow({ land: ["thread-1", "msg-1"] });
+      expect(screen.getByTestId("row")).not.toHaveClass("landed");
+      act(() => useLanding.getState().land(["msg-1"]));
+      expect(screen.getByTestId("row")).toHaveClass("landed");
+      act(() => vi.advanceTimersByTime(LANDING_MS));
+      expect(screen.getByTestId("row")).not.toHaveClass("landed");
+    });
+
+    test("a change to another row leaves this one alone", () => {
+      renderRow({ land: ["thread-1"] });
+      act(() => useLanding.getState().land(["thread-2"]));
+      expect(screen.getByTestId("row")).not.toHaveClass("landed");
+    });
   });
 });

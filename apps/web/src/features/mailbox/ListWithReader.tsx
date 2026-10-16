@@ -348,7 +348,11 @@ export function ListWithReader({
             {...pane.otherPanelProps}
             className="flex min-h-0 min-w-0"
           >
-            {threadOpen ? <Outlet /> : null}
+            {threadOpen ? (
+              <div className="reader-arrive flex min-h-0 min-w-0 flex-1">
+                <Outlet />
+              </div>
+            ) : null}
           </ResizablePanel>
         </ResizablePanelGroup>
       </FramePanesContext.Provider>

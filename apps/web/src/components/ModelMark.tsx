@@ -1,5 +1,13 @@
 import { cn } from "@/lib/utils";
 
+/** The tooltip: the model, and where it ran when that is known. */
+export function modelMarkTitle(model: string, leavesMachine?: boolean): string {
+  if (leavesMachine === undefined) return `Written by ${model}`;
+  return leavesMachine
+    ? `Written by ${model}, which runs off this machine`
+    : `Written by ${model}, which runs on this machine`;
+}
+
 /**
  * `model · local` or `model · cloud` beside any model-written text (D136),
  * with the model and where it ran in its tooltip. When where it ran isn't
@@ -15,12 +23,7 @@ export function ModelMark({
   className?: string;
 }) {
   const where = leavesMachine === undefined ? null : leavesMachine ? "cloud" : "local";
-  const title =
-    where === "cloud"
-      ? `Written by ${model}, which runs off this machine`
-      : where === "local"
-        ? `Written by ${model}, which runs on this machine`
-        : `Written by ${model}`;
+  const title = modelMarkTitle(model, leavesMachine);
   return (
     <span data-testid="model-mark" title={title} className={cn("type-meta text-text-3", className)}>
       {model}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { checkScript, checkStyles } from "./check-motion.mjs";
+import { checkKeyboardInstant, checkScript, checkStyles } from "./check-motion.mjs";
 
 const messages = (findings) => findings.map((finding) => finding.message);
 
@@ -55,5 +55,43 @@ describe("check-motion: each way to sneak in motion is caught", () => {
         ".a { animation: pulse var(--motion-duration-pulse) var(--motion-ease) infinite; }",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("check-motion: keyboard-driven rows stay instant (D101)", () => {
+  const withVia = (body) => `import type { LampVia } from "@/components/Row";\n${body}`;
+
+  test("a component with a via prop may not start motion for a key", () => {
+    const found = checkKeyboardInstant(
+      withVia('<span className={cn("transition-opacity", lit && "opacity-100")} />'),
+    );
+    expect(found.map((finding) => finding.message).join("\n")).toContain("transition-opacity");
+  });
+
+  test("a fold or an animation needs the same guard", () => {
+    expect(checkKeyboardInstant(withVia('<li className="row-fold" />'))).toHaveLength(1);
+    expect(checkKeyboardInstant(withVia('<li className="animate-in fade-in-0" />'))).toHaveLength(
+      1,
+    );
+  });
+
+  test("motion guarded by the pointer, or by a row already leaving, passes", () => {
+    expect(
+      checkKeyboardInstant(
+        withVia(
+          [
+            '<span className={cn(via === "pointer" && "transition-[opacity] duration-fast")} />',
+            '<li className={cn(leaving && "row-fold")} />',
+            "<span",
+            '  className={cn(via !== "key" && "transition-opacity",',
+            '    "absolute")} />',
+          ].join("\n"),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a component with no via prop is not this rule's business", () => {
+    expect(checkKeyboardInstant('<div className="transition-opacity" />')).toEqual([]);
   });
 });

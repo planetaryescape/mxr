@@ -167,6 +167,14 @@
   }
 
   /*
+   * A skeleton's bars hold still: the shape says "loading", and a pulse is
+   * motion nobody asked for.
+   */
+  :root[data-motion="reduced"] .animate-pulse {
+    animation: none !important;
+  }
+
+  /*
    * Press feedback for pointer users only. A button pressed from the
    * keyboard has keyboard focus (:focus-visible), so Space or Enter never
    * scales it, even with the pointer resting on it; a mouse press doesn't

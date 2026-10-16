@@ -177,7 +177,7 @@ Motion explains change and never decorates (D134). Durations are the existing to
 | The lamp on a key | Doesn't animate. | Keyboard repeat must feel instant (D101). |
 | The lamp on a click | 120ms fade of the lit surface. | Ties the click to the result. |
 | Reader arriving | Slides 16px in from the right with a fade, 180ms. | Says "this opened beside", not "the page changed". |
-| A row leaving | Height collapses and fades, 120ms; the next row lights in the same frame. | Shows where the item went and where you are now. |
+| A row leaving | Height collapses and fades, 120ms; the next row lights in the same frame. A key folds only the first press of a burst; repeats drop the row at once. | Shows where the item went and where you are now. |
 | A change landing | 2px cyan underline under the changed rows, fading over 600ms. | Shows a change made elsewhere (the assistant, another client, sync) without a toast per row. |
 | Overlays | Scrim fades 120ms, sheet rises 8px, 180ms. | Says "on top, Esc to leave". |
 | Assistant steps | The live line's text crossfades, 120ms; streamed replies fade in per word, 120ms, never replayed on reload. | The research's streaming rule. |

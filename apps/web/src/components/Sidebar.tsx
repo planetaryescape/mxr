@@ -20,7 +20,7 @@ import {
   type NavSection,
 } from "@/components/navMap";
 import { railNavEntries } from "@/components/sidebarRail";
-import { StatusDot } from "@/components/StatusDot";
+import { UnreadDot } from "@/components/UnreadDot";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -440,7 +440,7 @@ function SidebarLink({
         </span>
       ) : null}
       {collapsed && count && !entry.quietCount ? (
-        <StatusDot className="absolute right-1.5 top-1.5 size-1.5 bg-unread-marker" />
+        <UnreadDot className="absolute right-1.5 top-1.5" />
       ) : null}
     </Link>
   );

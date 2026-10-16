@@ -13,6 +13,11 @@
  *   rule below.
  * - CSS (outside tokens.css): no literal time in a transition or animation
  *   declaration, and transitions only name transform or opacity.
+ * - Keyboard instant (D101, docs/blueprint/27 "Motion"): a component that
+ *   receives a `via: "pointer" | "key"` prop (LampVia, LeaveVia) may start a
+ *   transition or animation only for a pointer, or for a row `leaving` (whose
+ *   fold the caller already decided with `foldsFor`). Repeated keys never
+ *   animate.
  *
  * Run directly, it checks src and exits 1 with file:line for each finding.
  * check-motion.test.mjs feeds it fixtures.
@@ -110,6 +115,35 @@ export function checkScript(text) {
   return findings;
 }
 
+/** A class that starts motion: a transition or an animation (tw-animate's `animate-in`, a fold). */
+const STARTS_MOTION = token(
+  "[\\w:-]*?(?:transition(?:-[\\w[\\],-]+)?|animate-[\\w-]+|row-fold|todo-fold)",
+);
+/** What makes it fine: the pointer did it, or the row is already leaving. */
+const POINTER_ONLY = /via\s*(?:===\s*["']pointer["']|!==\s*["']key["'])|\bleaving\b/;
+
+/**
+ * Findings in a component that takes a `via` prop: motion classes not guarded
+ * by the pointer, within the same or the two lines above.
+ */
+export function checkKeyboardInstant(text) {
+  const code = stripComments(text, true);
+  if (!/\b(?:LampVia|LeaveVia)\b/.test(code)) return [];
+  const lines = code.split("\n");
+  const findings = [];
+  lines.forEach((line, index) => {
+    for (const match of line.matchAll(STARTS_MOTION)) {
+      const near = lines.slice(Math.max(0, index - 2), index + 1).join("\n");
+      if (POINTER_ONLY.test(near)) continue;
+      findings.push({
+        line: index + 1,
+        message: `${match[1]}: this component takes a \`via\` prop, so motion must be guarded by via === "pointer" (keys never animate)`,
+      });
+    }
+  });
+  return findings;
+}
+
 /** Findings in a stylesheet: `{ line, message }`. */
 export function checkStyles(text) {
   const findings = [];
@@ -141,7 +175,7 @@ function main() {
     if (path.endsWith(join("src", "api", "generated.ts")) || path === tokens) continue;
     const text = readFileSync(path, "utf8");
     const found = /\.tsx?$/.test(path)
-      ? checkScript(text)
+      ? [...checkScript(text), ...checkKeyboardInstant(text)]
       : path.endsWith(".css")
         ? checkStyles(text)
         : [];

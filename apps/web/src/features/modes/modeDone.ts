@@ -19,6 +19,7 @@ import { playSound } from "@/features/sound/player";
 import { useUndo } from "@/state/undoStore";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
+import { foldsFor, type LeaveVia } from "@/lib/leaving";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import type { ModeKind } from "./membership";
@@ -43,12 +44,36 @@ export const NONE_HIDDEN: HiddenByMode = {
 
 interface ModeDoneState {
   hidden: HiddenByMode;
+  /**
+   * Hidden threads whose row folds away rather than vanishing (a pointer, or
+   * the first key of a burst). A row asks `folding`; it asks `settle` when
+   * its fold ends, and drops out.
+   */
+  folding: HiddenByMode;
   hide: (mode: DoneMode, threadIds: readonly string[]) => void;
   show: (mode: DoneMode, threadIds: readonly string[]) => void;
+  fold: (mode: DoneMode, threadIds: readonly string[]) => void;
+  settle: (mode: DoneMode, threadIds: readonly string[]) => void;
 }
 
 export const useModeDone = create<ModeDoneState>((set) => ({
   hidden: NONE_HIDDEN,
+  folding: NONE_HIDDEN,
+  fold: (mode, threadIds) =>
+    set((s) => ({
+      folding: { ...s.folding, [mode]: new Set([...s.folding[mode], ...threadIds]) },
+    })),
+  settle: (mode, threadIds) =>
+    set((s) =>
+      threadIds.some((id) => s.folding[mode].has(id))
+        ? {
+            folding: {
+              ...s.folding,
+              [mode]: new Set([...s.folding[mode]].filter((id) => !threadIds.includes(id))),
+            },
+          }
+        : s,
+    ),
   hide: (mode, threadIds) =>
     set((s) => ({
       hidden: { ...s.hidden, [mode]: new Set([...s.hidden[mode], ...threadIds]) },
@@ -128,6 +153,8 @@ export function doneToast(done: readonly ModeDoneOutcome[]): string {
 export interface ModeDoneOptions extends DoneScope {
   /** Runs after an undo of this done succeeded. */
   onUndone?: () => void;
+  /** How it was asked for: a pointer, or a key. Rows fold for a pointer and the first key of a burst. */
+  via?: LeaveVia;
   /** The toast, when the verb has its own words (letting go of a digest). */
   message?: (done: readonly ModeDoneOutcome[]) => string;
 }
@@ -153,6 +180,7 @@ export async function markModeDone(
     return false;
   }
   useModeDone.getState().hide(mode, unique);
+  if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
@@ -209,6 +237,7 @@ export async function markModeDone(
     return false;
   } finally {
     useModeDone.getState().show(mode, unique);
+    useModeDone.getState().settle(mode, unique);
   }
 }
 

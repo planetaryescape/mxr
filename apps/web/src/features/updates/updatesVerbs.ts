@@ -17,6 +17,7 @@ import { pinMessages } from "@/features/places/api";
 import { playSound } from "@/features/sound/player";
 import { makeTodo } from "@/features/todo/todoVerbs";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+import { foldsFor } from "@/lib/leaving";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import {
@@ -57,18 +58,11 @@ export const useUpdatesHidden = create<UpdatesHiddenState>((set) => ({
     ),
 }));
 
-function motionReduced(): boolean {
-  return document.documentElement.dataset.motion === "reduced";
-}
-
-/**
- * Fold lines up (the row hides itself when its fold ends); at once under
- * reduced motion.
- */
+/** Fold lines up (the row hides itself when its fold ends), or drop them at once. */
 function startLeaving(ids: readonly string[]): void {
   const store = useUpdatesHidden.getState();
-  if (motionReduced()) store.hide(ids);
-  else store.leave(ids);
+  if (foldsFor("pointer")) store.leave(ids);
+  else store.hide(ids);
 }
 
 /** Refetch Updates and everything a let go or a new to-do can change. */

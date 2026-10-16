@@ -643,7 +643,7 @@ describe("UpdateLineRow's gist", () => {
       "Subject: Your receipt from Perplexity",
     );
     expect(within(peek).getByTestId("update-gist-source")).toHaveTextContent(
-      "Local model gemma4 · from this email",
+      "gemma4 · local · from this email",
     );
     const preview = await within(peek).findByTestId("update-preview");
     expect(preview.textContent).toBe(
@@ -673,7 +673,7 @@ describe("UpdateLineRow's gist", () => {
     );
     const { row } = renderLine(receipt(), { focused: false, peeked: true });
     expect(within(row).getByTestId("update-gist-source")).toHaveTextContent(
-      "Cloud model claude-haiku-5-5 via Anthropic · from this email only",
+      "claude-haiku-5-5 via Anthropic · cloud · from this email only",
     );
   });
 

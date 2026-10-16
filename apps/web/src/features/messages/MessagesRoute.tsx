@@ -124,10 +124,12 @@ export function MessagesRoute({
 }
 
 function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: ModeGuide }) {
+  const waiting = search.turn === "theirs";
   return (
     <PageFrame
-      title={search.turn === "theirs" ? "Waiting on" : "Messages"}
-      purpose={guide?.header}
+      title={waiting ? "Waiting on" : "Messages"}
+      // Waiting on is its own page: Messages' header line describes the other turn.
+      purpose={waiting ? "People you're waiting to hear from." : guide?.header}
     />
   );
 }

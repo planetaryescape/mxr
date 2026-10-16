@@ -174,11 +174,16 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
     // Archive opens on its ledger, not the answer box: nothing takes the focus on arrival.
     if (key === "e") await expect(page.getByTestId("archive-ask")).not.toBeFocused();
   }
-  // The pages the modes replaced are under More.
-  const more = page.getByRole("navigation", { name: "More" });
-  await page.getByRole("button", { name: "More" }).click();
-  for (const name of ["Screener", "Reply queue", "Waiting on", "Snoozed", "Subscriptions"]) {
-    await expect(more.getByRole("link", { name: new RegExp(`^${name}`) })).toBeVisible();
+  // The pages the modes replaced sit in the rail's Mail and Views groups.
+  for (const [group, names] of [
+    ["Mail", ["Reply later", "Snoozed"]],
+    ["Views", ["Screener", "Waiting on", "Subscriptions"]],
+  ] as const) {
+    await page.getByRole("button", { name: group, exact: true }).click();
+    const section = page.getByRole("navigation", { name: group });
+    for (const name of names) {
+      await expect(section.getByRole("link", { name: new RegExp(`^${name}`) })).toBeVisible();
+    }
   }
 });
 
@@ -248,13 +253,8 @@ test.describe("on a phone", () => {
     await waitForNow(page);
     await openApp(page, "/now");
     const tabs = page.getByTestId("mobile-tabs");
-    await expect(tabs.getByRole("link")).toHaveText([
-      /Now/,
-      /Messages/,
-      /To do/,
-      /Reading/,
-      /Find/,
-    ]);
+    await expect(tabs.getByRole("link")).toHaveText([/Now/, /Messages/, /To do/, /Reading/]);
+    await expect(tabs.getByRole("button", { name: "More" })).toBeVisible();
     await expect(page.getByRole("complementary", { name: "Mailboxes" })).toBeHidden();
     await expect(page.getByTestId("now-row").first()).toBeVisible();
     await expect(page.locator(".app-shell-statusbar")).toBeHidden();
@@ -265,7 +265,6 @@ test.describe("on a phone", () => {
       ["Messages", /\/messages$/],
       ["To do", /\/todo$/],
       ["Reading", /\/reading$/],
-      ["Find", /\/find$/],
       ["Now", /\/now$/],
     ] as const) {
       await tabs.getByRole("link", { name: tab }).click();
@@ -275,16 +274,18 @@ test.describe("on a phone", () => {
     }
   });
 
-  test("Find holds Archive, search and the Inbox; Updates opens from Now's card", async ({
+  test("More lists Archive, Updates and the Inbox; Updates also opens from Now's card", async ({
     page,
   }) => {
     await waitForNow(page);
-    await openApp(page, "/find");
-    await expect(page.getByRole("searchbox").or(page.getByLabel("Search all mail"))).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Archive/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Updates/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Inbox/ })).toBeVisible();
-    await page.getByRole("link", { name: "Now" }).click();
+    await openApp(page, "/now");
+    await page.getByTestId("mobile-tabs").getByRole("button", { name: "More" }).click();
+    const sheet = page.getByTestId("more-sheet");
+    await expect(sheet.getByRole("link", { name: /^Archive/ })).toBeVisible();
+    await expect(sheet.getByRole("link", { name: /^Updates/ })).toBeVisible();
+    await expect(sheet.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
     const card = page.getByTestId("now-section-updates");
     await expect(card).toBeVisible();
     // The arrivals line pushes the card to the foot of a phone. Pressing a

@@ -6,14 +6,9 @@ import { toast } from "sonner";
 import { fetchSubscriptions, unsubscribeSubscription, type SubscriptionSummary } from "./api";
 import { Segmented, useDrillToSearch } from "./analyticsParts";
 import { PageSection } from "@/components/Page";
-import {
-  PageEmpty,
-  PageError,
-  PageNote,
-  PageSkeleton,
-  RuledList,
-  RuledRow,
-} from "@/components/PageParts";
+import { PageEmpty, PageError, PageNote, PageSkeleton } from "@/components/PageParts";
+import { Row, RowVerb } from "@/components/Row";
+import { useLitRow } from "@/components/useLitRow";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 import { formatWhen, plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -54,6 +48,7 @@ export function SubscriptionsDashboard() {
     onError: (error) => toast.error("Unsubscribe failed", { description: error.message }),
   });
   const rows = sortSubscriptions(subscriptions.data?.subscriptions ?? [], sort);
+  const { rowProps } = useLitRow(rows.map(rowId));
 
   return (
     <>
@@ -81,28 +76,39 @@ export function SubscriptionsDashboard() {
             body="Mailing-list senders appear here once they have been synced."
           />
         ) : (
-          <RuledList label="Subscriptions">
-            {rows.map((row) => (
-              <RuledRow
-                key={`${row.account_id ?? ""}:${row.sender_email}`}
-                title={row.sender_name || row.sender_email}
-                meta={`${plural(row.message_count, "message")} · ${openRateLabel(row)} opened · ${row.latest_subject ?? ""}`}
-                aside={formatWhen(row.latest_date)}
-                onOpen={() => drill(`from:${row.sender_email}`)}
-                openLabel={`Search mail from ${row.sender_email}`}
-                actions={
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    disabled={!row.latest_message_id}
-                    onClick={() => setConfirm(row)}
-                  >
-                    Unsubscribe
-                  </Button>
-                }
-              />
-            ))}
-          </RuledList>
+          <ul aria-label="Subscriptions">
+            {rows.map((row) => {
+              const id = rowId(row);
+              return (
+                <Row
+                  key={id}
+                  {...rowProps(id)}
+                  primary={row.sender_name || row.sender_email}
+                  secondary={`${plural(row.message_count, "message")} · ${openRateLabel(row)} opened · ${row.latest_subject ?? ""}`}
+                  trail={<span>{formatWhen(row.latest_date)}</span>}
+                  verbs={
+                    row.latest_message_id ? (
+                      <RowVerb
+                        label="Unsubscribe"
+                        ariaLabel={`Unsubscribe from ${row.sender_name || row.sender_email}`}
+                        onClick={() => setConfirm(row)}
+                      />
+                    ) : undefined
+                  }
+                  renderMain={(content, className) => (
+                    <button
+                      type="button"
+                      className={className}
+                      aria-label={`Search mail from ${row.sender_email}`}
+                      onClick={() => drill(`from:${row.sender_email}`)}
+                    >
+                      {content}
+                    </button>
+                  )}
+                />
+              );
+            })}
+          </ul>
         )}
       </PageSection>
       <AlertDialog open={Boolean(confirm)} onOpenChange={(open) => !open && setConfirm(null)}>
@@ -135,6 +141,8 @@ export function SubscriptionsDashboard() {
     </>
   );
 }
+
+const rowId = (row: SubscriptionSummary) => `${row.account_id ?? ""}:${row.sender_email}`;
 
 function openRate(row: SubscriptionSummary): number {
   if (!row.message_count) return 0;

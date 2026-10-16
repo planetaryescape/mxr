@@ -13,9 +13,9 @@ test("app shell renders against a real fake-provider daemon", async ({ page, req
   // The router redirects / to Now, the default home.
   await expect(page).toHaveURL(/\/now$/);
   // Sidebar and topbar are rendered with live bridge data; folders sit
-  // under "More".
+  // under the rail's Mail group.
   await expect(page.getByRole("button", { name: /compose/i })).toBeVisible();
-  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("button", { name: "Mail", exact: true }).click();
   await expect(page.getByRole("link", { name: "Drafts" })).toBeVisible();
   await expect(page.getByText(/Fake Account|Demo/i).first()).toBeVisible();
 });

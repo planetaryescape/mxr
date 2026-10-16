@@ -165,11 +165,18 @@ Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 Every page opens with the same header: a title, one line saying what the
 page is for, and at most one main button on the right. Anything else the page
 can do is in the **⋯** menu next to it, and a page with sections (Reading's
-Edition and Later, Settings on a phone, Screener's Queue and Decisions) shows
+Edition and Later, every Settings section on a wide screen, Screener's Queue
+and Decisions) shows
 them as tabs under the title. The header keeps the same height from page to
 page at a given width, so moving between pages never shifts what is under it.
 Filters and pickers, such as the Screener's account picker, sit at the top of
 the page's content instead.
+
+Settings is one page with one navigation. On a wide screen its sections
+(Appearance, Reader, Marginalia, Keyboard and the rest) are the tabs under the
+title, the current one underlined; the app's rail is the only left-hand menu.
+On a phone, **More > Settings** opens a list of sections, each of which opens
+on its own page with a **Settings** link back to the list.
 
 ## Now and the rail
 
@@ -189,16 +196,28 @@ standard contrast regardless of that preference, or **Increased** for stronger
 text and control borders. mxr remembers this choice in this browser,
 separately from your mail account.
 
-The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
-then Inbox, each with its `g` key. Reading is the [edition](/guides/reading/), with no count on
-the rail. Only Now carries a badge (people whose
-turn it is and things to act on); To do and Messages show a quiet count.
-Screener, Reply queue, Waiting on, Snoozed and Subscriptions, the folders
-(Starred, Sent, Drafts, All Mail, Spam, Trash) and the rarer lists (Owed
-replies, Invites, Deliveries) sit under **More**. **Labels**, **Saved
-searches** and **Tools** have their own sections; More, Labels and Tools
-start folded. Unread mail still shows as bold rows, but no list carries an
-unread badge.
+The sidebar is the rail, set dimmer than the page so the page stays the
+brightest thing on screen. It lists Now, Messages, To do, Updates, Reading,
+Archive, then Inbox, each with its `g` key. Reading is the
+[edition](/guides/reading/), with no count on the rail. Only Now carries a
+badge (people whose turn it is and things to act on); To do and Messages show
+a quiet count, and the Screener shows how many senders wait while any do.
+
+Below Inbox are four groups, each folded until you open it:
+
+- **Mail**: Starred, Sent, Drafts, Snoozed, Reply later, All Mail, Spam, Trash.
+- **Views**: Waiting on, Owed replies, Screener, Subscriptions, Invites,
+  Deliveries.
+- **Tools**: Search, Analytics, Rules, Accounts, Activity, Jobs, Diagnostics,
+  Settings.
+- **Labels**: your labels, each with a small square in its colour.
+
+Saved searches and categories follow when you have any. The rail keeps these
+items when the daemon is unreachable: they stay in place and the page shows
+the offline banner. Collapse the rail with the arrows at its foot and it shows
+only the modes and Inbox, each with its key in a tooltip; the **More places**
+button there opens the same list as the phone's More sheet. Unread mail still
+shows as bold rows, but no list carries an unread badge.
 
 Updates (`g u`) is the briefing: the latest digest in Needs a look,
 Changed and Routine, one line per source, with what arrived since the cut
@@ -239,8 +258,12 @@ press `1` to `4` (Messages, Updates, Reading, Block) to say where their mail
 belongs.
 
 On a phone the sidebar gives way to five tabs at the bottom: Now, Messages,
-To do, Reading and Find. Find holds search, Archive and the Inbox; Updates
-opens from the card on Now.
+To do, Reading and More. **More** opens a sheet with Updates, Archive, Inbox
+and the Mail, Views, Tools and Labels groups, so Settings, the Screener,
+Drafts, Snoozed and every label are a tap away. The lit tab always matches the
+page: Updates, Archive, the Inbox, a conversation in a label and every tool
+page light More. Escape or any tap on a link closes the sheet. Search is the
+field in the top bar; there is no second one.
 
 ## Archive
 
@@ -256,7 +279,7 @@ its documents and the emails it came from. `,` fixes a field, `v` marks the
 card checked, `X` says it isn't a record, `p` opens the issuer's page, `[` and
 `]` step through years and `E` exports a CSV after its preview. On any
 conversation, `T` files it in Archive after showing the card. On a phone,
-Archive is under **Find**, and a record's card opens full screen.
+Archive is in **More**, and a record's card opens full screen.
 See [Archive](/guides/archive/).
 
 ### Recover a mailbox Archive action
@@ -373,8 +396,8 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
-The reply queue (reply later adds to it) and the other queues the TUI shows as
-lenses live under **More**: owed replies (the desk's
+Reply later (the reply queue; reply later adds to it) and the other queues the TUI shows as
+lenses live in the rail's Views and Mail groups: owed replies (the desk's
 You owe lane in full: people you have written to waiting on you, most
 overdue first), invites and subscriptions. On the reply queue each row has a
 **Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)
@@ -500,8 +523,8 @@ to re-save.
 
 The **Screener** page has a **Queue** tab of first-time senders and a
 **Decisions** tab where you can **Clear** an earlier call. Each sender row has
-**Allow**, **Deny**, **Feed** and **Paper trail**, each with a key that
-decides for the highlighted sender
+**Allow**, **Deny**, **Feed** and **Paper trail**, shown on the lit row with
+`1` to `4` (the TUI's `a`, `d`, `f`, `p` work too) to decide for that sender
 ([screener keys](/reference/keybindings/#screener)). With more than one account, a
 picker above the list chooses which account's queue you are screening.
 
@@ -515,7 +538,7 @@ a thread.
 
 ## Deliveries page
 
-The **Deliveries** entry in the sidebar's Tools section opens `/deliveries`,
+The **Deliveries** entry in the sidebar's Views group opens `/deliveries`,
 the same tracked-packages list the [CLI and TUI](/guides/deliveries/) show.
 Each row has the merchant or carrier, status, expected or delivered date,
 items, order and tracking numbers, and:

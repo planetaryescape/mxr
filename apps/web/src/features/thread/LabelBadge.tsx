@@ -20,7 +20,15 @@ export function LabelBadge({ label }: { label: MessageLabelView }) {
 }
 
 function labelDisplayColor(label: MessageLabelView): string | null {
-  return normalizeHexColor(label.color) ?? fallbackLabelColor(label.name);
+  return labelColor(label.name, label.color);
+}
+
+/**
+ * The colour a label shows as: its own when it is a valid hex, else one
+ * derived from its name. Always a hex, so it is safe as a style value.
+ */
+export function labelColor(name: string, color?: string | null): string {
+  return normalizeHexColor(color) ?? fallbackLabelColor(name);
 }
 
 function labelBadgeStyle(color?: string | null): CSSProperties | undefined {

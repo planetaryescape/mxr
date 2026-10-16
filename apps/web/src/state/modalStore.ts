@@ -13,6 +13,9 @@ export interface ModalState {
   composeLauncherOpen: boolean;
   rightRail: { kind: string; payload?: unknown } | null;
   helpOpen: boolean;
+  /** The More sheet: Mail, Views, Tools and Labels, for the phone tab and the narrow rail. */
+  moreSheetOpen: boolean;
+  setMoreSheetOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   openCommandPaletteAt: (mode: "all" | "lens") => void;
   setSearchPaletteOpen: (open: boolean) => void;
@@ -29,6 +32,8 @@ export const useModals = create<ModalState>((set) => ({
   composeLauncherOpen: false,
   rightRail: null,
   helpOpen: false,
+  moreSheetOpen: false,
+  setMoreSheetOpen: (moreSheetOpen) => set({ moreSheetOpen }),
   setCommandPaletteOpen: (commandPaletteOpen) =>
     set(
       commandPaletteOpen

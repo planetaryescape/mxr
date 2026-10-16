@@ -613,6 +613,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Screener.
   {
     context: "screener",
+    keys: ["1", "2", "3", "4"],
+    bound: "web",
+    why: "The lit row shows 1 Allow, 2 Deny, 3 Feed, 4 Paper trail, like a new sender's choice; the TUI modal keeps a, d, f, p",
+  },
+  {
+    context: "screener",
     keys: ["Escape"],
     bound: "tui",
     why: "The TUI screener is a modal that Esc closes; the web screener is a page",

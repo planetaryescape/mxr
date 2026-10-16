@@ -21,7 +21,7 @@ const ROUTE_TITLES: Record<string, string> = {
   reading: "Reading",
   rules: "Rules",
   reply: "Reply",
-  "reply-queue": "Reply queue",
+  "reply-queue": "Reply later",
   screener: "Screener",
   search: "Search",
   settings: "Settings",

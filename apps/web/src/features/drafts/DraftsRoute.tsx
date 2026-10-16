@@ -9,6 +9,8 @@ import { OrphanedDrafts } from "./OrphanedDrafts";
 import { ScheduledSends } from "./ScheduledSends";
 import { Page, PageSection } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { Row } from "@/components/Row";
+import { useLitRow, type LitRowProps } from "@/components/useLitRow";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +39,7 @@ export function DraftsRoute() {
   });
 
   const rows = drafts.data?.drafts ?? [];
+  const { rowProps } = useLitRow(rows.map((draft) => draft.id));
   return (
     <Page
       title="Drafts"
@@ -76,6 +79,7 @@ export function DraftsRoute() {
                 draft={draft}
                 deleting={remove.isPending}
                 onDelete={() => remove.mutate(draft)}
+                rowProps={rowProps(draft.id)}
               />
             ))}
           </ul>
@@ -89,78 +93,83 @@ function DraftRow({
   draft,
   deleting,
   onDelete,
+  rowProps,
 }: {
   draft: DraftSummary;
   deleting: boolean;
   onDelete: () => void;
+  rowProps: LitRowProps;
 }) {
   const subject = draft.subject.trim() || "(no subject)";
   return (
-    <li className="flex items-center border-b border-border/60 pr-2 hover:bg-muted/40">
-      <Link
-        to="/compose/$draftId"
-        params={{ draftId: draft.id }}
-        onClick={(event: MouseEvent<HTMLAnchorElement>) => openDraftInPlace(event, draft.id)}
-        className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <FileText className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{subject}</div>
-          <div className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
-            {draft.recipients || "No recipients"}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-3 text-2xs text-muted-foreground">
+    <Row
+      {...rowProps}
+      lead={<FileText aria-hidden className="size-4 text-text-3" />}
+      primary={subject}
+      secondary={draft.recipients || "No recipients"}
+      renderMain={(content, className) => (
+        <Link
+          to="/compose/$draftId"
+          params={{ draftId: draft.id }}
+          onClick={(event: MouseEvent<HTMLAnchorElement>) => openDraftInPlace(event, draft.id)}
+          className={className}
+        >
+          {content}
+        </Link>
+      )}
+      trail={
+        <>
           {draft.send_at ? (
             <span
-              className="inline-flex items-center gap-1 text-primary"
+              className="inline-flex items-center gap-1 text-signal"
               title={formatLongDate(draft.send_at)}
             >
-              <Clock className="size-3" aria-hidden="true" />
+              <Clock className="size-3.5" aria-hidden="true" />
               scheduled
             </span>
           ) : null}
-          {draft.content_kind === "html" ? (
-            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono uppercase">HTML</span>
-          ) : null}
+          {draft.content_kind === "html" ? <span>HTML</span> : null}
           {draft.attachment_count > 0 ? (
             <span className="inline-flex items-center gap-1">
-              <Paperclip className="size-3" />
+              <Paperclip className="size-3.5" />
               {draft.attachment_count}
             </span>
           ) : null}
           <time dateTime={draft.updated_at} title={draft.updated_at_full}>
             {draft.updated_at_relative}
           </time>
-        </div>
-      </Link>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={deleting}
-            aria-label={`Delete draft ${subject}`}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              “{subject}” will be permanently removed from mxr’s local draft store.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={onDelete}>
-              Delete draft
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </li>
+        </>
+      }
+      verbs={
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button
+              type="button"
+              disabled={deleting}
+              aria-label={`Delete draft ${subject}`}
+              className="inline-flex h-7 items-center gap-1.5 px-1.5 text-danger hover:text-danger disabled:opacity-50"
+            >
+              <Trash2 aria-hidden className="size-3.5" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+              <AlertDialogDescription>
+                “{subject}” will be permanently removed from mxr’s local draft store.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={onDelete}>
+                Delete draft
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      }
+    />
   );
 }
 

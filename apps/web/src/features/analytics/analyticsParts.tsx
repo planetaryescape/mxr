@@ -6,7 +6,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Segmented as SharedSegmented } from "@/components/Segmented";
 import { cn } from "@/lib/utils";
 
 /** Open a search for `q`, the way the TUI's analytics drill-down does. */
@@ -135,7 +135,7 @@ export function formatDays(days: number): string {
   return `${rounded.toLocaleString()}d`;
 }
 
-/** A small single-choice segmented control for dashboard options. */
+/** A small single-choice segmented control for dashboard options: the app's one Segmented. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -148,19 +148,14 @@ export function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <ToggleGroup
-      type="single"
+    <SharedSegmented
+      label={label}
       value={value}
-      onValueChange={(next) => {
-        if (next) onChange(next as T);
+      options={options.map((option) => [option.id, option.label] as const)}
+      onChange={(next) => {
+        const match = options.find((option) => option.id === next);
+        if (match) onChange(match.id);
       }}
-      aria-label={label}
-    >
-      {options.map((option) => (
-        <ToggleGroupItem key={option.id} value={option.id} size="sm" className="px-2.5">
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+    />
   );
 }

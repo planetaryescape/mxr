@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, Navigate, useParams } from "@tanstack/react-router";
 import {
   Bell,
   BookOpen,
   BookOpenText,
   Bot,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   Info,
   KeyRound,
@@ -16,7 +18,7 @@ import {
   Volume2,
   Users,
 } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 
 import { AppearanceSection } from "./AppearanceSection";
 import { ComposeSettingsSection } from "./ComposeSettingsSection";
@@ -31,6 +33,7 @@ import { TokenSection } from "./TokenSection";
 import { VoiceSection } from "./VoiceSection";
 import { FactList, PageEmpty } from "@/components/PageParts";
 import { Page, pageTabClass } from "@/components/Page";
+import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -150,92 +153,138 @@ function findSection(id: string): SectionDef | undefined {
   return SECTIONS.find((section) => section.id === id || section.aliases?.includes(id));
 }
 
+/** The phone's index: the list that drills into a section. Wide screens never show it. */
+export const SETTINGS_INDEX = "all";
+
 export function SettingsRoute() {
   const { section: requested } = useParams({ from: "/settings/$section" });
-  const section = findSection(requested);
-  // md is where the side nav appears; below it the sections become tabs.
+  // md is where the sections become the page's tabs; below it they are a list
+  // that drills in. The app's rail is the only left navigation either way.
   const narrow = useMediaQuery("(max-width: 767px)");
+  const section = findSection(requested);
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <nav
-        aria-label="Settings sections"
-        className="hidden w-52 shrink-0 overflow-y-auto border-r border-border px-2 py-5 md:block"
-      >
-        <div className="mb-2 px-2 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground">
-          Settings
-        </div>
-        <ul className="space-y-0.5">
-          {SECTIONS.map(({ id, label, icon: Icon }) => {
-            const active = section?.id === id;
-            return (
-              <li key={id}>
-                <Link
-                  to="/settings/$section"
-                  params={{ section: id }}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    active
-                      ? "bg-primary-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-      {section ? (
-        <Page
-          eyebrow="Settings"
-          title={section.label}
-          description={section.description}
-          width="narrow"
-          tabs={narrow ? <NarrowSectionPicker current={section.id} /> : undefined}
-        >
-          {section.render()}
-        </Page>
-      ) : (
-        <Page eyebrow="Settings" title="Not found" width="narrow">
-          <PageEmpty
-            icon={<SearchX className="size-5" />}
-            title={`There is no "${requested}" settings page`}
-            body="It may have moved. Pick a section from the list."
-            action={
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/settings/$section" params={{ section: "theme" }}>
-                  Open appearance settings
-                </Link>
-              </Button>
-            }
-          />
-        </Page>
-      )}
-    </div>
+  if (requested === SETTINGS_INDEX) {
+    return narrow ? (
+      <SectionIndex />
+    ) : (
+      <Navigate to="/settings/$section" params={{ section: SECTIONS[0]!.id }} replace />
+    );
+  }
+
+  return section ? (
+    <Page
+      eyebrow={narrow ? <BackToIndex /> : "Settings"}
+      title={section.label}
+      description={section.description}
+      width="narrow"
+      tabs={narrow ? undefined : <SectionTabs current={section.id} />}
+    >
+      {section.render()}
+    </Page>
+  ) : (
+    <Page eyebrow="Settings" title="Not found" width="narrow">
+      <PageEmpty
+        icon={<SearchX className="size-5" />}
+        title={`There is no "${requested}" settings page`}
+        body="It may have moved. Pick a section from the list."
+        action={
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/settings/$section" params={{ section: "theme" }}>
+              Open appearance settings
+            </Link>
+          </Button>
+        }
+      />
+    </Page>
   );
 }
 
-/** Below md the side nav is hidden; the sections become the page's tabs. */
-function NarrowSectionPicker({ current }: { current: string }) {
+/**
+ * Wide screens: the sections are the page's tabs, the selected one with the
+ * underline. Thirteen tabs outrun the column at laptop widths, so the strip
+ * scrolls, keeps the current tab in view and fades the edge it runs off.
+ */
+function SectionTabs({ current }: { current: string }) {
+  const strip = useRef<HTMLUListElement>(null);
+  const [fade, setFade] = useState(false);
+  useEffect(() => {
+    const list = strip.current;
+    const scroller = list?.parentElement;
+    if (!list || !scroller) return;
+    list
+      .querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ inline: "center", block: "nearest" });
+    const measure = () =>
+      setFade(scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 4);
+    measure();
+    scroller.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      scroller.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [current]);
   return (
-    <ul aria-label="Settings sections" className="-mb-px flex h-8 gap-5">
-      {SECTIONS.map(({ id, label }) => (
-        <li key={id} className="shrink-0">
-          <Link
-            to="/settings/$section"
-            params={{ section: id }}
-            aria-current={id === current ? "page" : undefined}
-            className={pageTabClass(id === current)}
-          >
-            {label}
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <nav
+      aria-label="Settings sections"
+      className={cn(
+        "overflow-x-auto [scrollbar-width:none]",
+        fade && "[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]",
+      )}
+    >
+      <ul ref={strip} className="-mb-px flex h-8 gap-6">
+        {SECTIONS.map(({ id, label }) => (
+          <li key={id} className="shrink-0">
+            <Link
+              to="/settings/$section"
+              params={{ section: id }}
+              aria-current={id === current ? "page" : undefined}
+              className={pageTabClass(id === current)}
+            >
+              {label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+function BackToIndex() {
+  return (
+    <Link
+      to="/settings/$section"
+      params={{ section: SETTINGS_INDEX }}
+      className="inline-flex items-center gap-1 hover:text-text-1"
+    >
+      <ChevronLeft aria-hidden className="size-3" />
+      Settings
+    </Link>
+  );
+}
+
+/** Phones: one list of sections; each drills in and the eyebrow comes back. */
+function SectionIndex() {
+  return (
+    <Page title="Settings" description="Pick a section." width="narrow" className="px-0">
+      <ul aria-label="Settings sections">
+        {SECTIONS.map(({ id, label, description, icon: Icon }) => (
+          <Row
+            key={id}
+            lit={false}
+            lead={<Icon aria-hidden className="size-4 shrink-0 text-text-3" />}
+            primary={label}
+            secondary={description}
+            trail={<ChevronRight aria-hidden className="size-4" />}
+            renderMain={(content, className) => (
+              <Link to="/settings/$section" params={{ section: id }} className={className}>
+                {content}
+              </Link>
+            )}
+          />
+        ))}
+      </ul>
+    </Page>
   );
 }
 

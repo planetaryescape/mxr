@@ -65,7 +65,7 @@ export function ReplyQueueRoute() {
   return (
     <ListWithReader
       basePath="/reply-queue"
-      title="Reply queue"
+      title="Reply later"
       purpose="Conversations you marked to answer."
       meta={rows.length > 0 ? plural(rows.length, "message") : null}
       groups={groups}
@@ -80,7 +80,7 @@ export function ReplyQueueRoute() {
       }}
       empty={
         lowTide ? (
-          <SweptClear place="Reply queue" line="Low tide. Nobody's waiting on a reply.">
+          <SweptClear place="Reply later" line="Low tide. Nobody's waiting on a reply.">
             Press b on any conversation to add it here.
           </SweptClear>
         ) : (

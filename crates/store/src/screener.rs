@@ -194,11 +194,37 @@ impl super::Store {
         account_id: &AccountId,
         limit: u32,
     ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
+        self.screener_queue(account_id, limit, None).await
+    }
+
+    /// The queue narrowed to `senders` (lowercased) before the limit is
+    /// applied, so a page that must list exactly a known set (the desk's
+    /// Screener count) never loses one to newer senders outside it.
+    pub async fn list_screener_queue_for(
+        &self,
+        account_id: &AccountId,
+        senders: &[String],
+        limit: u32,
+    ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
+        if senders.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.screener_queue(account_id, limit, Some(senders)).await
+    }
+
+    async fn screener_queue(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+        only: Option<&[String]>,
+    ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
         let limit = limit.clamp(1, 500) as i64;
+        let only = only.map(|senders| serde_json::to_string(senders).unwrap_or_default());
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(SCREENER_QUEUE_SQL)
             .bind(account_id.as_str())
             .bind(limit)
+            .bind(only)
             .fetch_all(self.reader())
             .await?;
         trace_query("screener.list_queue", started_at, rows.len());
@@ -216,7 +242,8 @@ impl super::Store {
     }
 }
 
-/// Parameters: ?1 account, ?2 limit.
+/// Parameters: ?1 account, ?2 limit, ?3 a JSON array of lowercased
+/// senders to keep, or NULL for everyone.
 const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
         SELECT LOWER(email) AS email FROM accounts WHERE id = ?1
         UNION
@@ -261,6 +288,7 @@ const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
             MAX(m.date) AS latest_at
         FROM messages m
         WHERE m.account_id = ?1 AND m.direction = 'inbound'
+          AND (?3 IS NULL OR LOWER(m.from_email) IN (SELECT value FROM json_each(?3)))
         GROUP BY LOWER(m.from_email)
     )
     SELECT from_email, from_name, subject, message_count, latest_at

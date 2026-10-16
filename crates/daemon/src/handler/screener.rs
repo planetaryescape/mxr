@@ -8,7 +8,6 @@ use mxr_protocol::{
     ResponseData, ScreenerDecisionData, ScreenerDispositionData, ScreenerQueueEntryData,
 };
 use mxr_store::{ScreenerDecision, ScreenerDisposition};
-use std::collections::HashSet;
 
 fn disposition_from_proto(d: ScreenerDispositionData) -> ScreenerDisposition {
     match d {
@@ -30,9 +29,6 @@ fn disposition_to_proto(d: ScreenerDisposition) -> ScreenerDispositionData {
     }
 }
 
-/// The store lists at most this many queue entries per call.
-const STORE_QUEUE_MAX: u32 = 500;
-
 /// The Screener page. By default the set the desk's Screener count counts
 /// (inbox mail from senders first seen in the last 14 days, no decision),
 /// so the page and the badge always agree; `all_senders` lists every
@@ -48,21 +44,18 @@ pub(super) async fn list_queue(
         return Ok(queue_response(entries));
     }
     let desk = super::desk::compose_desk(state, Some(account_id), Utc::now()).await?;
-    let counted: HashSet<String> = desk
+    let mut counted: Vec<String> = desk
         .screener_senders
         .into_iter()
         .map(|(_, email)| email)
         .collect();
-    // Every counted sender has mail from the last 14 days, so they sit at
-    // the head of the store's newest-first order.
+    counted.sort_unstable();
+    // Narrowed in the query, before its limit, so no counted sender is
+    // pushed out by newer ones the badge does not count.
     let entries = state
         .store
-        .list_screener_queue(account_id, STORE_QUEUE_MAX)
-        .await?
-        .into_iter()
-        .filter(|entry| counted.contains(&entry.sender_email.to_ascii_lowercase()))
-        .take(limit as usize)
-        .collect();
+        .list_screener_queue_for(account_id, &counted, limit)
+        .await?;
     Ok(queue_response(entries))
 }
 

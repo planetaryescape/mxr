@@ -11,7 +11,7 @@
 //!   client shows the same words and the same "trimmed" marker.
 
 use super::conversation_shape::Shape;
-use super::desk::{self_matcher, Senders};
+use super::desk::{compose_desk, self_matcher, Senders};
 use super::desk_lanes::{
     apply_pace, clean_subject, current_messages, is_outbound, last_stored, thread_lanes,
     AccountInputs, DESK_WINDOW_DAYS,
@@ -33,8 +33,8 @@ use mxr_protocol::{
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
     MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewData,
     MessagesPreviewKindData, MessagesRowData, MessagesRowKindData, MessagesTopicData,
-    MessagesTurnData, PeopleSplitData, PersonMergeData, PersonPageData, PersonRefData,
-    ResponseData, TopicStateData, TrimmedData,
+    MessagesTurnData, PersonMergeData, PersonPageData, PersonRefData, ResponseData, TopicStateData,
+    TrimmedData,
 };
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
@@ -78,7 +78,11 @@ impl Gathered {
 
 /// Which threads to gather: the recent window, or a fixed set.
 enum Scope<'a> {
-    Window,
+    /// The recent window, plus every thread the composed desk says is
+    /// someone's turn (`turns`, this account's You owe and New from people
+    /// rows after the desk's precedence). Your turn is the desk's, so the
+    /// window decides only what else shows in Recent and Quiet.
+    Window(HashMap<ThreadId, DeskRowData>),
     Threads(&'a [ThreadId]),
 }
 
@@ -94,16 +98,18 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
-    let mut messages = match scope {
-        Scope::Window => {
+    let (mut messages, desk_turns) = match scope {
+        Scope::Window(turns) => {
             let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
             let mut messages = store
                 .desk_thread_messages(account_id, now - Duration::days(days))
                 .await?;
-            // A conversation a time you set brought back may be older.
+            // A conversation a time you set brought back, or one the desk
+            // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
             let mut back: Vec<ThreadId> = timers
                 .maybe_back(now)
+                .chain(turns.keys())
                 .filter(|thread| !loaded.contains(thread))
                 .cloned()
                 .collect::<HashSet<_>>()
@@ -111,9 +117,12 @@ async fn gather(
                 .collect();
             back.sort_by_key(ThreadId::as_str);
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
-            messages
+            (messages, Some(turns))
         }
-        Scope::Threads(threads) => store.desk_messages_in_threads(account_id, threads).await?,
+        Scope::Threads(threads) => (
+            store.desk_messages_in_threads(account_id, threads).await?,
+            None,
+        ),
     };
     messages.sort_by(|a, b| {
         a.thread_id
@@ -151,12 +160,18 @@ async fn gather(
             shape,
             now,
         };
-        let mut turns: HashMap<ThreadId, DeskRowData> = thread_lanes(&inputs)
-            .rows
-            .into_iter()
-            .filter(|draft| matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew))
-            .map(|draft| (draft.row.thread_id.clone(), draft.row))
-            .collect();
+        // A fixed set of threads (a person's page) has no composed desk
+        // to read, so its turns come from the lane rule on those threads.
+        let mut turns: HashMap<ThreadId, DeskRowData> = desk_turns.unwrap_or_else(|| {
+            thread_lanes(&inputs)
+                .rows
+                .into_iter()
+                .filter(|draft| {
+                    matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+                })
+                .map(|draft| (draft.row.thread_id.clone(), draft.row))
+                .collect()
+        });
         let mut topics = Vec::new();
         let mut threads = HashMap::new();
         let mut names: HashMap<String, (DateTime<Utc>, String)> = HashMap::new();
@@ -186,7 +201,11 @@ async fn gather(
                 }
             }
             let shape = inputs.shape(thread);
-            if !shape.in_messages() || thread.iter().all(|m| m.trashed) {
+            // Someone's turn is always a row, whatever the thread's shape
+            // (a reply-later thread you were only copied on).
+            if (!shape.in_messages() && !turns.contains_key(&thread_id))
+                || thread.iter().all(|m| m.trashed)
+            {
                 continue;
             }
             if let Some(topic) = place_topic(
@@ -309,9 +328,15 @@ fn place_topic(
             others.push(primary);
         }
     }
-    let key = match (shape, others.as_slice()) {
-        (_, [only]) => RowKey::Person(only.clone()),
-        (Shape::Group(_), _) => RowKey::Group(thread[0].thread_id.clone()),
+    let key = match (shape, others.len(), &turn) {
+        (_, 1, _) => RowKey::Person(others[0].clone()),
+        (Shape::Group(_), _, _) => RowKey::Group(thread[0].thread_id.clone()),
+        // The turn row names who it is with; `turn_units` counts it the same.
+        (_, 0, Some(row)) => {
+            let primary = people.primary(&row.counterparty_email);
+            others.push(primary.clone());
+            RowKey::Person(primary)
+        }
         _ => return None,
     };
     let you_last = is_outbound(latest, is_self);
@@ -360,13 +385,7 @@ fn place_topic(
 }
 
 /// Rows of one account, keyed and built, with each Your turn row's ratio.
-/// `write_with` collects the (account, id) of rows with a You owe conversation: the
-/// people you write with, as the desk's lane decides it.
-fn account_rows(
-    gathered: &Gathered,
-    now: DateTime<Utc>,
-    write_with: &mut HashSet<(AccountId, String)>,
-) -> Vec<(MessagesRowData, Option<f64>)> {
+fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData, Option<f64>)> {
     let mut grouped: HashMap<RowKey, Vec<Topic>> = HashMap::new();
     for topic in &gathered.topics {
         grouped
@@ -379,16 +398,7 @@ fn account_rows(
         .into_iter()
         .map(|(key, topics)| {
             let ratio = turn_ratio(&topics);
-            let owed = topics.iter().any(|t| {
-                t.turn
-                    .as_ref()
-                    .is_some_and(|r| r.lane == DeskLaneKind::Owed)
-            });
-            let row = build_row(key, topics, &ctx);
-            if owed {
-                write_with.insert((row.account_id.clone(), row.id.clone()));
-            }
-            (row, ratio)
+            (build_row(key, topics, &ctx), ratio)
         })
         .collect();
     // A pinned person with nothing in the window still has a face.
@@ -457,19 +467,35 @@ pub(super) async fn messages_at(
 ) -> Result<MessagesData, HandlerError> {
     let started = std::time::Instant::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
+    // Your turn is the composed desk's: the same accounts' rows after
+    // lane precedence, over the desk's own window, as Now and the rail
+    // count them (`turn_units`).
+    let desk = compose_desk(state, account_id, now).await?;
+    // From the same desk, so it holds when the Waiting on view clears
+    // Your turn below.
+    let your_turn_split = desk.turn_units().split;
+    let mut turns: HashMap<AccountId, HashMap<ThreadId, DeskRowData>> = HashMap::new();
+    for row in desk.rows {
+        if matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew) {
+            turns
+                .entry(row.account_id.clone())
+                .or_default()
+                .insert(row.thread_id.clone(), row);
+        }
+    }
     let mut gathered = Vec::new();
     for account in &accounts {
-        gathered.push(gather(state, account, Scope::Window, now).await?);
+        let own = turns.remove(account).unwrap_or_default();
+        gathered.push(gather(state, account, Scope::Window(own), now).await?);
     }
     let mut your_turn = Vec::new();
     let mut pinned = Vec::new();
     let mut recent = Vec::new();
     let mut quiet = Vec::new();
     let mut thread_count = 0u32;
-    let mut write_with_ids = HashSet::new();
     for g in &gathered {
         thread_count += u32::try_from(g.topics.len()).unwrap_or(u32::MAX);
-        for (row, ratio) in account_rows(g, now, &mut write_with_ids) {
+        for (row, ratio) in account_rows(g, now) {
             if row.pinned && row.band != MessagesBandData::Pinned {
                 let mut face = row.clone();
                 face.band = MessagesBandData::Pinned;
@@ -487,15 +513,6 @@ pub(super) async fn messages_at(
     }
     rank_your_turn(&mut your_turn);
     let mut your_turn: Vec<MessagesRowData> = your_turn.into_iter().map(|(row, _)| row).collect();
-    // Counted before the Waiting on view clears the band, and by row, the
-    // unit Now and the rail count (`turn_units`).
-    let writes_with =
-        |row: &MessagesRowData| write_with_ids.contains(&(row.account_id.clone(), row.id.clone()));
-    let write_with = your_turn.iter().filter(|row| writes_with(row)).count();
-    let your_turn_split = PeopleSplitData {
-        write_with: super::now::count(write_with),
-        others: super::now::count(your_turn.len() - write_with),
-    };
     rank_by_recency(&mut pinned);
     pinned.truncate(PINNED_CAP);
     rank_by_recency(&mut recent);

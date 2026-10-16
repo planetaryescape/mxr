@@ -75,7 +75,15 @@ pub(crate) enum AsyncResult {
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
-    OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
+    OwedReplies(
+        Result<
+            (
+                Vec<mxr_protocol::OwedReplyRowData>,
+                Option<mxr_protocol::PeopleSplitData>,
+            ),
+            MxrError,
+        >,
+    ),
     Desk(Result<crate::app::DeskPageState, MxrError>),
     /// Now and, when the daemon served it, its guide.
     /// Boxed: Now is large next to the other variants.

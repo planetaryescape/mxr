@@ -386,3 +386,180 @@ async fn done_here_moves_the_badge_the_page_and_the_headline_together() {
         "a thread put away is not owed"
     );
 }
+
+/// Now's total, Messages' Your turn rows and the rail's Messages badge on
+/// the same account at the same moment.
+async fn three_counts(fx: &Fixture) -> (u32, u32, Option<u32>) {
+    let now = now::now_at(&fx.state, None, Utc::now(), &utc())
+        .await
+        .unwrap();
+    (
+        now.people.total,
+        messages(fx, None).await.your_turn.len() as u32,
+        rail_count(fx, "messages").await,
+    )
+}
+
+#[tokio::test]
+async fn the_owed_page_says_how_many_others_wait_when_it_is_empty() {
+    let fx = Fixture::new().await;
+    wrote_to_you(&fx, "stranger@example.com", Duration::hours(2)).await;
+    let ResponseData::OwedReplies { rows, people } = request(
+        &fx,
+        Request::ListOwedReplies {
+            account_id: fx.account.clone(),
+            older_than_days: None,
+            within_days: None,
+            limit: 50,
+            all: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected owed replies");
+    };
+    assert!(rows.is_empty());
+    assert_eq!(
+        people,
+        Some(PeopleSplitData {
+            write_with: 0,
+            others: 1
+        })
+    );
+    assert_eq!(three_counts(&fx).await, (1, 1, Some(1)));
+}
+
+#[tokio::test]
+async fn a_watched_persons_waiting_row_outranks_a_new_senders_turn_in_every_count() {
+    let fx = Fixture::new().await;
+    // Alice, watched daily, wrote in a group thread two days ago; Bob, whom
+    // you never wrote to, wrote yesterday. The desk keeps the thread on
+    // Waiting on (it outranks New from people), so nobody's turn.
+    let thread = ThreadId::new();
+    let mut alice = fx
+        .message(&thread, "alice@example.com", ME, Duration::days(2), None)
+        .await;
+    alice.to = vec![
+        mxr_core::types::Address {
+            name: None,
+            email: ME.into(),
+        },
+        mxr_core::types::Address {
+            name: None,
+            email: "bob@example.com".into(),
+        },
+    ];
+    fx.store_envelope(&alice, MessageDirection::Inbound).await;
+    let mut bob = fx
+        .message(&thread, "bob@example.com", ME, Duration::days(1), None)
+        .await;
+    bob.cc = vec![mxr_core::types::Address {
+        name: None,
+        email: "alice@example.com".into(),
+    }];
+    fx.store_envelope(&bob, MessageDirection::Inbound).await;
+    fx.state
+        .store
+        .upsert_contact(&mxr_core::types::ContactRow {
+            account_id: fx.account.clone(),
+            email: "alice@example.com".into(),
+            display_name: Some("Alice".into()),
+            first_seen_at: Utc::now() - Duration::days(200),
+            last_seen_at: Utc::now() - Duration::days(2),
+            last_inbound_at: Some(Utc::now() - Duration::days(2)),
+            last_outbound_at: Some(Utc::now() - Duration::days(30)),
+            total_inbound: 5,
+            total_outbound: 5,
+            replied_count: 0,
+            cadence_days_p50: None,
+        })
+        .await
+        .unwrap();
+    fx.state
+        .store
+        .watch_cadence(
+            &mxr_store::RelationshipWatchEntry {
+                account_id: fx.account.clone(),
+                email: "alice@example.com".into(),
+                expected_days: Some(1.0),
+                note: None,
+                added_at: Utc::now(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+    let ResponseData::Desk { waiting, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(
+        waiting.total, 1,
+        "Alice's drift anchors to the group thread"
+    );
+    assert_eq!(three_counts(&fx).await, (0, 0, Some(0)));
+}
+
+#[tokio::test]
+async fn a_small_messages_window_does_not_hide_a_turn_the_desk_counts() {
+    let fx = Fixture::new().await;
+    let mut config = fx.state.config_snapshot();
+    config.messages.recent_days = 1;
+    fx.state.set_config_for_test(config).await;
+    wrote_to_you(&fx, "stranger@example.com", Duration::days(2)).await;
+    assert_eq!(three_counts(&fx).await, (1, 1, Some(1)));
+}
+
+#[tokio::test]
+async fn a_disabled_restored_account_adds_nothing_to_one_surface_only() {
+    let fx = Fixture::new().await;
+    wrote_to_you(&fx, "stranger@example.com", Duration::hours(2)).await;
+    fx.state
+        .store
+        .set_account_enabled(&fx.account, false)
+        .await
+        .unwrap();
+    assert_eq!(three_counts(&fx).await, (0, 0, Some(0)));
+}
+
+#[tokio::test]
+async fn the_screener_page_keeps_an_eligible_sender_behind_five_hundred_newer_ones() {
+    let fx = Fixture::new().await;
+    let eligible = wrote_to_you(&fx, "eligible@example.com", Duration::days(3)).await;
+    for index in 0..500 {
+        let thread = ThreadId::new();
+        let archived = fx
+            .message(
+                &thread,
+                &format!("archived{index}@example.com"),
+                ME,
+                Duration::hours(2),
+                None,
+            )
+            .await;
+        fx.state
+            .store
+            .set_message_labels(&archived.id, &[], mxr_core::types::EventSource::User)
+            .await
+            .unwrap();
+    }
+    fx.state.store.refresh_contacts().await.unwrap();
+    let ResponseData::Desk { elsewhere, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(elsewhere.screener, 1, "{eligible}: the one inbox sender");
+    let ResponseData::ScreenerQueue { entries } = request(
+        &fx,
+        Request::ListScreenerQueue {
+            account_id: fx.account.clone(),
+            limit: 100,
+            all_senders: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected the queue");
+    };
+    let page: Vec<&str> = entries.iter().map(|e| e.sender_email.as_str()).collect();
+    assert_eq!(page, ["eligible@example.com"]);
+}

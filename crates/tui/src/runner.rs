@@ -1981,7 +1981,7 @@ pub async fn run() -> anyhow::Result<()> {
             let account_id = app.default_account_id().cloned();
             let _ = submit_task(&queued, async move {
                 let Some(account_id) = account_id else {
-                    return AsyncResult::OwedReplies(Ok(Vec::new()));
+                    return AsyncResult::OwedReplies(Ok((Vec::new(), None)));
                 };
                 let resp = ipc_call(
                     &bg,
@@ -1996,8 +1996,8 @@ pub async fn run() -> anyhow::Result<()> {
                 .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::OwedReplies { rows, .. },
-                    }) => Ok(rows),
+                        data: ResponseData::OwedReplies { rows, people },
+                    }) => Ok((rows, people)),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc(
@@ -4336,12 +4336,13 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
-                        AsyncResult::OwedReplies(Ok(rows)) => {
+                        AsyncResult::OwedReplies(Ok((rows, people))) => {
                             if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {
                                 app.status_message =
                                     Some(crate::app::LOW_TIDE.to_string());
                             }
                             app.mailbox.owed_page.entries = rows;
+                            app.mailbox.owed_page.people = people;
                             app.mailbox.selected_index = app
                                 .mailbox
                                 .selected_index

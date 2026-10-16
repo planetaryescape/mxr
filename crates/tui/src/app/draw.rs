@@ -365,6 +365,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
+                                self.mailbox.owed_page.people,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
@@ -524,6 +525,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
+                                self.mailbox.owed_page.people,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {

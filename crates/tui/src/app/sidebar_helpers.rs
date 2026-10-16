@@ -144,7 +144,13 @@ impl App {
             archive_active: self.mailbox.mailbox_view == MailboxView::ArchiveMode,
             early_modes: self.early_modes(),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
-            owed_count: self.mailbox.owed_page.entries.len(),
+            owed_count: self
+                .mailbox
+                .owed_page
+                .people
+                .map_or(self.mailbox.owed_page.entries.len(), |people| {
+                    people.write_with as usize
+                }),
             calendar_invites_active: self.mailbox.mailbox_view == MailboxView::CalendarInvites,
             calendar_invites_count: self.mailbox.calendar_invites_page.entries.len(),
             accounts,

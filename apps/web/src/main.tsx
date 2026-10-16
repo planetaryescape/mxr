@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 
 import App from "@/App";
+import { listenForInstallPrompt } from "@/features/install/installPrompt";
 import { bootstrapFromHash } from "@/lib/tokenStorage";
 import {
   applyDensityAttribute,
@@ -35,6 +36,7 @@ useUiPrefs.subscribe((state, prev) => {
 });
 
 registerSW({ immediate: true });
+listenForInstallPrompt();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");

@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { KeyChip } from "@/components/KeyChip";
+import { InstallOffer } from "@/features/install/InstallOffer";
 import { useSyncHealthToasts } from "@/features/freshness/AccountSyncHealth";
 import { useFreshnessLive } from "@/features/freshness/api";
 import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
@@ -86,6 +87,7 @@ export function StatusBar() {
           </span>
         ) : null}
         <KeyStrip hints={hints} />
+        <InstallOffer />
         <button
           type="button"
           onClick={() => setHelpOpen(true)}

@@ -145,6 +145,7 @@ async fn run_local_foreground(args: Args) -> anyhow::Result<()> {
                     eprintln!("failed to open browser: {error}; visit {url} manually");
                 }
             });
+            print_install_tip(args.print_url, args.no_open);
         } else {
             println!("{bridge_url}");
         }
@@ -366,6 +367,23 @@ fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_o
     eprintln!("opening mxr web at {display_url}");
     if let Err(error) = open::that(bridge_url) {
         eprintln!("failed to open browser: {error}; visit {bridge_url} manually");
+    }
+    print_install_tip(print_url, no_open);
+}
+
+/// The one-line tip printed when a browser opens. Scripts read stdout, and
+/// `--print-url` or `--no-open` mean nobody is watching the browser, so
+/// the tip only goes out when a browser is actually opened.
+fn install_tip(print_url: bool, no_open: bool) -> Option<&'static str> {
+    if print_url || no_open {
+        return None;
+    }
+    Some("tip: install it as an app (browser menu → Install mxr) for its own window and keys")
+}
+
+fn print_install_tip(print_url: bool, no_open: bool) {
+    if let Some(tip) = install_tip(print_url, no_open) {
+        eprintln!("{tip}");
     }
 }
 
@@ -624,6 +642,14 @@ mod tests {
             assert_eq!(display_url, "http://mxr.localhost:42829");
             assert_eq!(launch_url, display_url);
         });
+    }
+
+    #[test]
+    fn install_tip_only_when_a_browser_opens() {
+        assert!(install_tip(false, false).is_some_and(|tip| tip.contains("install it as an app")));
+        assert_eq!(install_tip(true, false), None);
+        assert_eq!(install_tip(false, true), None);
+        assert_eq!(install_tip(true, true), None);
     }
 
     #[test]

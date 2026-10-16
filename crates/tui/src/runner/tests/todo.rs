@@ -435,7 +435,7 @@ fn the_runway_hint_shows_at_the_first_bar_after_a_key_and_esc_dismisses_it_once(
     assert!(app
         .status_bar_state()
         .status_message
-        .is_some_and(|line| line.contains("The bar fills from when this showed up")));
+        .is_some_and(|line| line.contains("Press e to tick this off")));
     press(&mut app, KeyCode::Esc);
     assert!(matches!(
         queued(&app).as_slice(),

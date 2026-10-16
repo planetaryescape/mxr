@@ -10,6 +10,7 @@ mod records_demo;
 mod subscriptions_demo;
 mod todo_demo;
 mod updates_demo;
+pub use updates_demo::DemoCuts;
 
 pub use reading_demo::{demo_article_html, DEMO_ARTICLE_WAL};
 
@@ -756,6 +757,9 @@ pub(crate) struct DemoFixtureStream {
     /// Pinned once so every page shares one "now" and message dates stay
     /// consistent across pages of the same sync.
     now: chrono::DateTime<Utc>,
+    /// The daemon's digest cuts, so the Updates mail sits around the cut
+    /// the digest will actually use.
+    cuts: DemoCuts,
     self_addr: Address,
     delivery_count: usize,
     /// The 50-message dataset is hand-written rather than generated, so
@@ -765,9 +769,19 @@ pub(crate) struct DemoFixtureStream {
 
 impl DemoFixtureStream {
     pub fn new(account_id: &AccountId, target_count: usize) -> Self {
+        Self::with_clock(account_id, target_count, Utc::now(), DemoCuts::default())
+    }
+
+    /// `now` and the digest cuts pinned by the caller instead of the
+    /// wall clock and the default cuts.
+    pub fn with_clock(
+        account_id: &AccountId,
+        target_count: usize,
+        now: chrono::DateTime<Utc>,
+        cuts: DemoCuts,
+    ) -> Self {
         let target_count = target_count.clamp(1, MAX_DEMO_MESSAGE_COUNT);
         let profile = demo_account_profile(account_id, target_count);
-        let now = Utc::now();
         let self_addr = Address {
             name: Some(profile.display_name.to_string()),
             email: profile.email.to_string(),
@@ -811,6 +825,7 @@ impl DemoFixtureStream {
             profile,
             labels,
             now,
+            cuts,
             self_addr,
             delivery_count,
             curated,
@@ -926,6 +941,7 @@ impl DemoFixtureStream {
             &self.account_id,
             &self.self_addr,
             self.now,
+            &self.cuts,
             messages.len() + 1,
         ));
         messages.extend(subscriptions_demo::subscriptions_demo_messages(

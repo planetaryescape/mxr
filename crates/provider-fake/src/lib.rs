@@ -224,6 +224,42 @@ impl FakeProvider {
         }
     }
 
+    /// `new`, with the digest cuts the daemon is configured with, so the
+    /// demo's Updates mail is dated around the cut the digest uses.
+    pub fn new_with_updates_cuts(account_id: AccountId, updates_cuts: &[String]) -> Self {
+        let cuts = fixtures::DemoCuts::parse(updates_cuts);
+        match crate::fixtures::demo_message_count_from_env() {
+            Some(count) => {
+                let stream = fixtures::DemoFixtureStream::with_clock(
+                    &account_id,
+                    count,
+                    chrono::Utc::now(),
+                    cuts,
+                );
+                let labels = stream.labels().to_vec();
+                Self::with_dataset(account_id, Dataset::Demo(stream), labels)
+            }
+            None => Self::new(account_id),
+        }
+    }
+
+    /// The demo dataset as of `now`, with `updates_cuts` as the digest cuts.
+    pub fn with_demo_dataset_at(
+        account_id: AccountId,
+        message_count: usize,
+        now: chrono::DateTime<chrono::Utc>,
+        updates_cuts: &[String],
+    ) -> Self {
+        let stream = fixtures::DemoFixtureStream::with_clock(
+            &account_id,
+            message_count,
+            now,
+            fixtures::DemoCuts::parse(updates_cuts),
+        );
+        let labels = stream.labels().to_vec();
+        Self::with_dataset(account_id, Dataset::Demo(stream), labels)
+    }
+
     /// Build a provider backed by the generated demo dataset, without
     /// reading `MXR_FAKE_DATASET` / `MXR_FAKE_MESSAGE_COUNT`.
     pub fn with_demo_dataset(account_id: AccountId, message_count: usize) -> Self {

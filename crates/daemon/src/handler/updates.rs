@@ -47,8 +47,12 @@ pub(super) struct Item {
 
 /// The configured cuts; a bad list falls back to 08:00 and 16:30.
 pub(super) fn cuts(state: &AppState) -> Cuts {
-    let configured = state.config_snapshot().updates.cuts;
-    Cuts::parse(&configured).unwrap_or_else(|error| {
+    cuts_from(&state.config_snapshot().updates.cuts)
+}
+
+/// `cuts` for a config's list, before any state exists.
+pub(crate) fn cuts_from(configured: &[String]) -> Cuts {
+    Cuts::parse(configured).unwrap_or_else(|error| {
         tracing::warn!(%error, "updates.cuts is invalid; using 08:00 and 16:30");
         Cuts::default()
     })

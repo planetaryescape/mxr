@@ -1,7 +1,7 @@
 //! A day of notifications for the demo's Updates briefing.
 //!
-//! Dated against the latest digest cut (08:00 or 16:30 local, the default
-//! `updates.cuts`), so the same mail lands in the digest and in "since"
+//! Dated against the latest digest cut (the daemon's `updates.cuts`, 08:00
+//! and 16:30 local by default), so the same mail lands in the digest and in "since"
 //! whatever time the demo starts:
 //!
 //! * Strava's weekly summary, 21.3 km after last week's 19.0 km: a delta
@@ -37,22 +37,57 @@ fn address(name: &str, email: &str) -> Address {
     }
 }
 
-/// The latest default cut at or before `now`, local time. Mirrors
-/// `updates.cuts`' default (08:00 and 16:30); provider-fake can't depend
-/// on the Updates crate, and the demo runs on the defaults.
-fn latest_cut(now: DateTime<Utc>) -> DateTime<Utc> {
-    let local = now.with_timezone(&Local);
-    let today = local.date_naive();
-    let at = |day: chrono::NaiveDate, h: u32, m: u32| {
-        NaiveTime::from_hms_opt(h, m, 0)
-            .and_then(|time| Local.from_local_datetime(&day.and_time(time)).earliest())
-            .map(|at| at.with_timezone(&Utc))
-    };
+/// The default `updates.cuts`, for a fake provider built without the
+/// daemon's config (tests, `MXR_FAKE_DATASET` alone).
+const DEFAULT_CUTS: [&str; 2] = ["08:00", "16:30"];
+
+/// Digest cuts as local times of day. provider-fake can't depend on the
+/// Updates crate, so the daemon hands over its validated `updates.cuts`
+/// and the fixture dates the mail against those, not a copy of them.
+#[derive(Clone, Debug)]
+pub struct DemoCuts(Vec<NaiveTime>);
+
+impl DemoCuts {
+    /// "HH:MM" strings; anything unparsable or empty means the defaults.
+    pub fn parse(values: &[String]) -> Self {
+        let parsed: Option<Vec<NaiveTime>> = values
+            .iter()
+            .map(|value| NaiveTime::parse_from_str(value.trim(), "%H:%M").ok())
+            .collect();
+        match parsed {
+            Some(times) if !times.is_empty() => Self(times),
+            _ => Self::default(),
+        }
+    }
+}
+
+impl Default for DemoCuts {
+    fn default() -> Self {
+        Self(
+            DEFAULT_CUTS
+                .iter()
+                .filter_map(|value| NaiveTime::parse_from_str(value, "%H:%M").ok())
+                .collect(),
+        )
+    }
+}
+
+/// The latest cut at or before `now`, local time.
+fn latest_cut(now: DateTime<Utc>, cuts: &DemoCuts) -> DateTime<Utc> {
+    let today = now.with_timezone(&Local).date_naive();
     let yesterday = today.pred_opt().unwrap_or(today);
-    [at(today, 16, 30), at(today, 8, 0), at(yesterday, 16, 30)]
+    [yesterday, today]
         .into_iter()
-        .flatten()
-        .find(|cut| *cut <= now)
+        .flat_map(|day| {
+            cuts.0.iter().filter_map(move |time| {
+                Local
+                    .from_local_datetime(&day.and_time(*time))
+                    .earliest()
+                    .map(|at| at.with_timezone(&Utc))
+            })
+        })
+        .filter(|cut| *cut <= now)
+        .max()
         .unwrap_or(now - Duration::hours(12))
 }
 
@@ -87,9 +122,10 @@ pub(super) fn updates_demo_messages(
     account_id: &AccountId,
     self_addr: &Address,
     now: DateTime<Utc>,
+    cuts: &DemoCuts,
     first_num: usize,
 ) -> Vec<(Envelope, MessageBody)> {
-    let cut = latest_cut(now);
+    let cut = latest_cut(now, cuts);
     let before = |hours: i64| cut - Duration::hours(hours);
     // After the cut but never in the future.
     let since = cut + (now - cut) / 2;

@@ -79,6 +79,12 @@ bind = "127.0.0.1"
 port = ${bridgePort}
 token_path = ${JSON.stringify(tokenPath)}
 
+# One daily cut a minute before the daemon starts: the fake provider dates
+# the Updates mail around it, and the ~25 minute run can't reach another cut
+# (the defaults, 08:00 and 16:30, change the digest mid-run).
+[updates]
+cuts = [${JSON.stringify(startupCut())}]
+
 [accounts.fake]
 name = "Fake Account"
 email = "alex@demo.mxr.local"
@@ -90,6 +96,12 @@ type = "fake"
 type = "fake"
 `,
   );
+}
+
+// "HH:MM" local time, a minute ago.
+function startupCut() {
+  const at = new Date(Date.now() - 60_000);
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }
 
 function startDaemon() {

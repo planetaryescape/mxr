@@ -1059,3 +1059,93 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
         .all(|line| line.source_key != "acme.com"));
     assert_eq!(after.needs_a_look.len(), 1, "Globex is untouched");
 }
+
+/// The demo dataset seeded at `seed` under `cuts`, synced into a fresh
+/// daemon whose `updates.cuts` is the same list.
+async fn demo_state(seed: DateTime<Utc>, cuts: &[String]) -> Arc<AppState> {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let mut config = state.config_snapshot();
+    config.updates.cuts = cuts.to_vec();
+    state.set_config_for_test(config).await;
+    let account_id = state.default_account_id();
+    let provider = Arc::new(
+        mxr_provider_fake::FakeProvider::with_demo_dataset_at(account_id.clone(), 302, seed, cuts)
+            .with_page_size(500),
+    );
+    state.add_sync_provider_for_test(provider.clone());
+    loop {
+        let outcome = state
+            .sync_engine
+            .sync_account_with_outcome(provider.as_ref())
+            .await
+            .unwrap();
+        if !outcome.has_more {
+            break;
+        }
+    }
+    state
+}
+
+/// Strava's weekly summary is the demo's computed delta; it only sits in
+/// Changed when the seeded mail is fresh in the digest the daemon builds.
+async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
+    let digest = updates::digest_at(state, None, None, false, false, now, &chrono::Local)
+        .await
+        .unwrap();
+    digest
+        .changed
+        .iter()
+        .find(|line| line.source_key == "strava.com")
+        .and_then(|line| line.delta.as_ref().map(|d| d.text.clone()))
+}
+
+/// The web e2e daemon runs about 25 minutes on one seed. A fixture dated
+/// against cuts the digest doesn't use (or a cut that falls mid-run) left
+/// the seeded mail outside the digest it was read in.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_whatever_cuts_the_daemon_uses() {
+    // Seeded a minute after a cut, a minute before one, and exactly on one.
+    let seed = Utc::now();
+    let local = |minutes: i64| {
+        (seed + Duration::minutes(minutes))
+            .with_timezone(&chrono::Local)
+            .format("%H:%M")
+            .to_string()
+    };
+    let cases: Vec<Vec<String>> = vec![
+        vec!["08:00".into(), "16:30".into()],
+        vec![local(-1)],
+        vec![local(1)],
+        vec![local(0)],
+        vec![local(-90), local(40), "03:17".into()],
+    ];
+    for cuts in cases {
+        let state = demo_state(seed, &cuts).await;
+        assert_eq!(
+            strava_delta(&state, seed).await.as_deref(),
+            Some("up 12% on last week"),
+            "seeded and read at the same moment, cuts {cuts:?}"
+        );
+    }
+}
+
+/// The e2e config pins one daily cut a minute before the seed, so a run
+/// of any length under a day never reaches another cut.
+#[tokio::test]
+async fn a_single_pinned_cut_keeps_the_seeded_digest_for_a_whole_e2e_run() {
+    let seed = Utc::now();
+    let pinned = vec![(seed - Duration::minutes(1))
+        .with_timezone(&chrono::Local)
+        .format("%H:%M")
+        .to_string()];
+    let state = demo_state(seed, &pinned).await;
+    for minutes in [0, 25, 90, 23 * 60 + 30] {
+        assert_eq!(
+            strava_delta(&state, seed + Duration::minutes(minutes))
+                .await
+                .as_deref(),
+            Some("up 12% on last week"),
+            "read {minutes} minutes after seeding"
+        );
+    }
+}

@@ -208,12 +208,17 @@ line's link and `o` the email. **Let go of all** sits in the page header at
 every width; on a phone the sections stack under it. See
 [Read Updates as a briefing](/guides/updates/).
 
-Rows stay quiet until you are on them. The reason a row is in its mode
-(Reading's "Here because", a to-do's "from a rule" source) and the row's
-keys show on the row you have selected or are pointing at. On Now, a row's
-buttons take the place of its date the same way. Fade dates, amounts and
-due dates always show. On a phone or a narrow window, where there is no
-hover, every row shows its reason and buttons.
+Rows stay quiet until you are on them. On Now and Messages one row is lit
+(a lighter surface and a thin cyan line on its leading edge): `j` and `k`
+move it at once, a click moves it with a short fade. The lit row's keys
+("r reply", "e done here") take the place of its time and marks on the same
+line, so no row changes height as the lamp moves, and pointing at a row shows
+its keys without lighting it. Why the lit row is there shows in the status
+bar: "4m ago · Here because: Maya wrote to you 22h ago". On a phone, which
+has no status bar, the reason is on the person's page. Unread rows have a thin
+bar in the margin and a heavier name, and the bar steps aside while the row
+is lit. A to-do's due date turns amber on the day it is due and after. Other
+pages keep their own rows until they move to the same pattern.
 
 The address bar keeps what you have selected: the row in To do, Updates,
 Reading and Now, Updates' open peek, Archive's filter, question, record and
@@ -224,8 +229,10 @@ cursor replaces the address rather than adding to the back button's history.
 A link to an email Messages doesn't hold opens it in All Mail.
 
 The reader names the other modes holding a conversation ("Also in To do:
-sign by Mon 5 Oct"), and a first-time person's row asks once where their
-mail belongs.
+sign by Mon 5 Oct"). A row on Now or Messages shows a glyph per other mode
+instead, and a first-time person's row carries a `new` mark: light it and
+press `1` to `4` (Messages, Updates, Reading, Block) to say where their mail
+belongs.
 
 On a phone the sidebar gives way to five tabs at the bottom: Now, Messages,
 To do, Reading and Find. Find holds search, Archive and the Inbox; Updates

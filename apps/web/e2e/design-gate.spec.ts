@@ -178,3 +178,102 @@ for (const theme of THEMES) {
     }
   });
 }
+
+/** Rows on Now and Messages: both draw one `Row` per item, with its own `data-lit`. */
+const ROW_PAGES = [
+  { name: "now", path: "/now", rows: '[data-testid="now-row"]' },
+  { name: "messages", path: "/messages", rows: 'li:has([data-testid="messages-row"])' },
+] as const;
+
+async function rowBoxes(page: Page, selector: string) {
+  return page.locator(selector).evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const box = node.getBoundingClientRect();
+      return { height: box.height, width: box.width };
+    }),
+  );
+}
+
+async function attach(
+  page: Page,
+  testInfo: {
+    attach: (name: string, options: { body: Buffer; contentType: string }) => Promise<void>;
+  },
+  label: string,
+) {
+  const body = await page.screenshot();
+  await testInfo.attach(label, { body, contentType: "image/png" });
+  const dir = process.env.MXR_DESIGN_GATE_DIR;
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${label}.png`), body);
+  }
+}
+
+for (const theme of THEMES) {
+  test.describe(`${theme} theme: the lamp`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript((chosen) => {
+        localStorage.setItem(
+          "mxr.uiPrefs",
+          JSON.stringify({ state: { theme: chosen }, version: 6 }),
+        );
+      }, theme);
+    });
+
+    for (const gate of ROW_PAGES) {
+      test(`${gate.name}: j lights exactly one row, and lighting changes no row's height`, async ({
+        page,
+      }, testInfo) => {
+        for (const width of WIDTHS) {
+          await test.step(`${width}px`, async () => {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await openApp(page, gate.path);
+            await expect(page.locator(gate.rows).first()).toBeVisible();
+            await page.evaluate(() => document.fonts.ready);
+            const before = await rowBoxes(page, gate.rows);
+            await page.keyboard.press("j");
+            await expect(page.locator("#main [data-lit='true']")).toHaveCount(1);
+            await page.waitForTimeout(250);
+            const after = await rowBoxes(page, gate.rows);
+            // Same rows, same size: the lit row keeps its height and nothing below it moves.
+            // A phone's Messages swaps the list for the person's page on the first key, which
+            // hides the list, so there is nothing to compare there.
+            const listShown = gate.name === "now" || width >= 768;
+            if (listShown) expect(after).toEqual(before);
+            await attach(page, testInfo, `${gate.name}-lit-${theme}-${width}`);
+          });
+        }
+      });
+    }
+
+    test("messages: a lit new sender's row offers 1 to 4 and the status bar spells them out", async ({
+      page,
+    }, testInfo) => {
+      for (const width of WIDTHS) {
+        await test.step(`${width}px`, async () => {
+          await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+          await openApp(page, "/messages");
+          const noor = page.locator('li:has([data-testid="messages-row"])').filter({
+            hasText: "Noor Haddad",
+          });
+          await expect(noor).toBeVisible();
+          const before = await noor.boundingBox();
+          await noor.getByTestId("messages-row").click();
+          // A phone opens the person's page; back to the list, the row stays lit.
+          if (width < 768) await page.keyboard.press("Escape");
+          await expect(noor).toHaveAttribute("data-lit", "true");
+          await expect(noor.getByTestId("new-sender-question").getByRole("button")).toHaveCount(4);
+          await page.waitForTimeout(250);
+          expect((await noor.boundingBox())?.height).toBe(before?.height);
+          if (width >= 640) {
+            await expect(page.getByTestId("status-reason")).toContainText(
+              "New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block",
+            );
+          }
+          await attach(page, testInfo, `messages-newsender-${theme}-${width}`);
+        });
+      }
+    });
+  });
+}

@@ -25,13 +25,13 @@ export function AnchoredHint({
       data-testid="hint"
       data-hint={hint.id}
       className={cn(
-        "relative mt-1.5 flex max-w-[60ch] items-start gap-2 rounded-md border border-primary/40 bg-primary-muted py-1.5 pl-3 pr-1.5 text-xs leading-5 text-foreground animate-in fade-in-0 slide-in-from-top-1 duration-fast",
+        "type-body relative mt-1.5 flex max-w-[60ch] items-start gap-2 rounded-md border border-rule bg-ink-overlay py-1.5 pl-3 pr-1.5 text-text-1 animate-in fade-in-0 slide-in-from-top-1 duration-fast",
         className,
       )}
     >
       <span
         aria-hidden
-        className="absolute -top-[5px] left-4 size-2 rotate-45 border-l border-t border-primary/40 bg-primary-muted"
+        className="absolute -top-[5px] left-4 size-2 rotate-45 border-l border-t border-rule bg-ink-overlay"
       />
       <p className="min-w-0 flex-1 text-pretty">{hint.text}</p>
       <button
@@ -42,7 +42,7 @@ export function AnchoredHint({
         }}
         aria-label="Dismiss hint (Esc)"
         title="Dismiss hint (Esc)"
-        className="-my-0.5 grid size-6 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="-my-0.5 grid size-6 shrink-0 place-items-center rounded-sm text-text-3 hover:text-text-1"
       >
         <X className="size-3.5" aria-hidden />
       </button>

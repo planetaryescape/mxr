@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { CircleHelp } from "lucide-react";
+import { ChevronRight, CircleHelp } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -26,21 +26,31 @@ export function ArrivalsView({
   nowWaiting: boolean;
 }) {
   const notSureCount = arrivals.not_sure?.length ?? 0;
+  // Zero counts say nothing: with nothing new the daemon's own line stands in,
+  // and otherwise only the buckets that received mail are named (D119).
+  const received = arrivals.counts.filter((count) => count.count > 0).map((count) => count.label);
   return (
-    <details data-testid="arrivals" className="shrink-0 border-b border-border px-5 py-2">
+    <details
+      data-testid="arrivals"
+      className="group/arrivals shrink-0 border-b border-rule-soft px-5 py-2"
+    >
       <summary
         data-testid="arrivals-summary"
-        className="cursor-pointer text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="type-meta flex cursor-pointer list-none items-start gap-1.5 text-text-3 outline-none marker:hidden focus-visible:ring-2 focus-visible:ring-signal [&::-webkit-details-marker]:hidden"
       >
-        <span>
-          Since {arrivals.since_label}: {arrivals.total} arrived
+        <ChevronRight
+          aria-hidden
+          className="mt-0.5 size-3 shrink-0 group-open/arrivals:rotate-90"
+          strokeWidth={1.75}
+        />
+        <span className="min-w-0">
+          {arrivals.total > 0
+            ? [`Since ${arrivals.since_label}: ${arrivals.total} arrived`, ...received].join(" · ")
+            : arrivals.line}
+          {notSureCount > 0
+            ? ` · ${notSureCount} ${notSureCount === 1 ? "email needs" : "emails need"} sorting`
+            : null}
         </span>
-        {notSureCount > 0 ? (
-          <span>
-            {" · "}
-            {notSureCount} {notSureCount === 1 ? "email needs" : "emails need"} sorting
-          </span>
-        ) : null}
       </summary>
       <div className="space-y-1 pb-1 pt-2">
         <ArrivalsLine arrivals={arrivals} nowWaiting={nowWaiting} />

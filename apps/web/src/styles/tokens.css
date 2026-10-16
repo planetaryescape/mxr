@@ -53,9 +53,9 @@
   --radius-xl: var(--radius-control);
   --radius-2xl: var(--radius-control);
 
-  --row-height-compact: 34px;
-  --row-height-regular: 56px;
-  --row-height-comfortable: 72px;
+  --row-height-compact: 44px;
+  --row-height-regular: 52px;
+  --row-height-comfortable: 60px;
 
   --shell-sidebar-w: 248px;
   --shell-sidebar-collapsed-w: 56px;

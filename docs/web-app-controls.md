@@ -17,7 +17,7 @@ gains or loses a control, so this page and the app can't drift apart.
 | Assistant | Top bar | Discoverability: the sidebar is closed until opened, and `⌘.` alone hides it from anyone who hasn't read the keys. Opens and closes the assistant. |
 | Compose | Top bar | Frequency, and the only way in for someone who doesn't know `c`. |
 | Sync now | Status bar | Discoverability: shows sync state and progress; the one manual sync. |
-| Latest mail (freshness) | Status bar; topbar on a phone | Frequency: the quick "is my mail current?" glance from any page. Opens the last arrivals and where each went. A failing or stale sync adds a warning link to the account's sync details. |
+| Latest mail (freshness) | Status bar; topbar on a phone | Frequency: the quick "is my mail current?" glance from any page. Opens the last arrivals and where each went. A failing or stale sync adds a warning link to the account's sync details. While a row on Now or Messages is lit, the sync words give way to "Here because: <reason>" (and a new sender's "1 Messages · 2 Updates · 3 Reading · 4 Block"); a failing sync keeps its warning. |
 | all keys (`?`) | Status bar | Discoverability: the way into every key. |
 | Key hint strip | Status bar | Discoverability: the current view's five most useful keys (not buttons). |
 

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { NONE_HIDDEN, type HiddenByMode } from "@/features/modes/modeDone";
 
 import type { Now } from "./api";
-import { itemTarget, nowItems } from "./nowItems";
+import { itemTarget, litIndex, nowItems } from "./nowItems";
 
 function person(thread: string, name: string) {
   return {
@@ -121,5 +121,22 @@ describe("Now's rows", () => {
 
   test("nothing loaded is nothing to show", () => {
     expect(nowItems(undefined, NONE_HIDDEN)).toEqual([]);
+  });
+});
+
+const rows = (...keys: string[]) => keys.map((key) => ({ key }));
+
+describe("litIndex", () => {
+  test("follows the row by id when a refetch reorders the list", () => {
+    expect(litIndex(rows("a", "b", "c"), "b")).toBe(1);
+    expect(litIndex(rows("c", "b", "a"), "b")).toBe(1);
+    expect(litIndex(rows("b", "c", "a"), "b")).toBe(0);
+    expect(litIndex(rows("c", "a", "b"), "b")).toBe(2);
+  });
+
+  test("always lights exactly one row: the first when the key is absent or unset", () => {
+    expect(litIndex(rows("a", "b"), null)).toBe(0);
+    expect(litIndex(rows("a", "b"), "gone")).toBe(0);
+    expect(litIndex([], "gone")).toBe(0);
   });
 });

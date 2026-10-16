@@ -19,6 +19,9 @@ import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
+import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
+import type { LampVia } from "@/components/Row";
+import { useLitReason } from "@/state/litReasonStore";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { moveCommands } from "@/features/arrivals/moveSubjects";
@@ -130,6 +133,11 @@ function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: Mod
 }
 
 /** The keys the Messages foot line shows, in the mode's own words. */
+/** The thread whose membership a row's marks and new-sender question read. */
+function firstThread(row: MessagesRow | undefined): string {
+  return row?.topics[0]?.thread_id ?? "";
+}
+
 const SHOWN_KEYS = new Set(["r", ".", "e", "t", "b", "c"]);
 
 function MessagesBody({
@@ -165,6 +173,9 @@ function MessagesBody({
     () => [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet],
     [data],
   );
+  // A set, not `allRows.some`: the removal check runs for every row on each lamp move,
+  // and a scan per row made one `j` quadratic on a long list (spike S4).
+  const allRowIds = useMemo(() => new Set(allRows.map((row) => row.id)), [allRows]);
   const selectedId = search.person ?? linked?.id ?? null;
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
@@ -193,6 +204,8 @@ function MessagesBody({
     setAsSent(null);
   }, [conversation?.thread_id]);
 
+  // Only a pointer fades the lamp (D101): j and k must feel instant.
+  const via = useRef<LampVia>("key");
   const select = useCallback(
     (id: string, options: { topic?: string; open?: boolean } = {}) => {
       void navigate({
@@ -259,7 +272,7 @@ function MessagesBody({
   useAdvanceOnRemoval({
     ids: rowIds,
     selectedId: search.person ?? null,
-    isPresent: (id) => allRows.some((row) => row.id === id),
+    isPresent: (id) => allRowIds.has(id),
     onAdvance: (id) => advanceTo(id),
     onEmpty: clearSelection,
   });
@@ -481,8 +494,13 @@ function MessagesBody({
   const move = (delta: number) => {
     const nextIndex = index < 0 ? (delta > 0 ? 0 : rows.length - 1) : index + delta;
     const next = rows[Math.min(rows.length - 1, Math.max(0, nextIndex))];
-    if (next) select(next.id);
+    if (!next) return;
+    via.current = "key";
+    select(next.id);
   };
+  // The lit row's reason goes to the status bar; a new sender adds the key choices.
+  const newSender = selectedId ? memberships?.get(firstThread(selected))?.new_sender : undefined;
+  useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null);
   useShortcutScope("messages", true);
   useScopeController("messages", {
     down: () => move(1),
@@ -519,6 +537,7 @@ function MessagesBody({
       else setPageOpen(false);
     },
     // X and K act on the newest email the other side sent.
+    ...newSenderCommands(newSender, selected?.title ?? ""),
     ...moveCommands(() => {
       const theirs = conversation?.messages.findLast((message) => !message.from_me);
       return theirs && conversation
@@ -530,6 +549,16 @@ function MessagesBody({
         : null;
     }),
   });
+
+  // Stable for the memoised rows: the handlers read the latest closure through a ref.
+  const latest = useRef({ select, openReply, done, replyAll });
+  latest.current = { select, openReply, done, replyAll };
+  const onSelectRow = useCallback((id: string) => {
+    via.current = "pointer";
+    latest.current.select(id, { open: true });
+  }, []);
+  const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
+  const onDoneRow = useCallback(() => latest.current.done(), []);
 
   const empty = data.your_turn.length === 0;
   return (
@@ -561,9 +590,12 @@ function MessagesBody({
             <MessagesList
               data={data}
               selectedId={selectedId}
+              via={via.current}
               quietOpen={quietOpen}
               onToggleQuiet={() => setQuietOpen((open) => !open)}
-              onSelect={(id) => select(id, { open: true })}
+              onSelect={onSelectRow}
+              onReply={onReplyRow}
+              onDone={onDoneRow}
               memberships={memberships}
               hidden={hiddenDone}
               arrival={arrival}

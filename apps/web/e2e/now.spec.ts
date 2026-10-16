@@ -45,8 +45,6 @@ test("each section shows at most three items and Now at most ten", async ({ page
     const rows = page.getByTestId(`now-section-${section}`).getByTestId("now-row");
     expect(await rows.count(), section).toBeLessThanOrEqual(3);
   }
-  await expect(page.getByTestId("now-section-people").getByTestId("now-why")).toHaveCount(0);
-  await expect(page.getByTestId("now-section-due").getByTestId("now-why")).toHaveCount(0);
   expect(await page.getByTestId("now-section-updates").count()).toBeLessThanOrEqual(1);
   expect(await page.getByTestId("now-row").count()).toBeLessThanOrEqual(10);
   // A section with more says where the rest are, in the daemon's words.
@@ -78,16 +76,28 @@ async function modesOf(page: Page, threadId: string) {
   ).threads[0]!;
 }
 
-test("a first-time person is asked one question on their row", async ({ page }) => {
+test("a first-time person carries a new mark; lit, their row offers keys 1 to 4", async ({
+  page,
+}) => {
   await waitForNow(page);
   await openApp(page, "/messages");
   const noor = page
     .getByTestId("messages-row")
     .filter({ hasText: "Noor Haddad" })
-    .locator("xpath=..");
+    .locator("xpath=ancestor::li[1]");
   await expect(noor).toBeVisible();
-  await expect(noor.getByTestId("new-sender-question")).toContainText(
-    "New sender. Keep in Messages?",
+  await expect(noor.getByTestId("new-mark")).toHaveText("new");
+  // Not lit: no question on the row, no extra line.
+  await expect(noor.getByTestId("new-sender-question")).toBeHidden();
+  await noor.getByTestId("messages-row").click();
+  const question = noor.getByTestId("new-sender-question");
+  await expect(question).toBeVisible();
+  await expect(question.getByRole("button").first()).toHaveAttribute("title", "Messages (1)");
+  await expect(question.getByRole("button")).toHaveCount(4);
+  // The status bar says why, and spells out the keys.
+  await expect(page.getByTestId("status-reason")).toContainText("Here because:");
+  await expect(page.getByTestId("status-reason")).toContainText(
+    "New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block",
   );
 });
 
@@ -103,8 +113,8 @@ test("e in Messages leaves the to-do open, says where it still is, and u undoes 
   await openApp(page, `/messages/${thread}`);
   const sam = page.getByTestId("person-page");
   await expect(sam.getByTestId("person-name")).toHaveText("Sam Okafor");
-  // Messages names the other mode holding the thread.
-  await expect(sam.getByTestId("also-in")).toContainText("Also in To do:");
+  // Messages names the other mode holding the thread, as a mark with its detail on hover.
+  await expect(sam.getByTestId("mode-mark").first()).toHaveAttribute("data-mode", "todo");
   await page.keyboard.press("e");
   // What was done, what opened next, then where the thread still is. Once
   // contacts refresh, Sam has a second thread in Messages (the demo's
@@ -127,10 +137,11 @@ test("Messages names the other modes holding a conversation", async ({ page }) =
   await waitForNow(page);
   const thread = await samThread(page);
   await openApp(page, `/messages/${thread}`);
-  const line = page.getByTestId("person-page").getByTestId("also-in");
-  await expect(line).toContainText("Also in To do:");
-  await expect(line).not.toContainText("Also in Messages");
-  await expect(line.getByRole("link")).toHaveAttribute("href", "/todo");
+  const marks = page.getByTestId("person-page").getByTestId("mode-mark");
+  await expect(marks.first()).toHaveAttribute("aria-label", /^To do: /);
+  await expect(marks.first()).toHaveAttribute("title", /\S/);
+  // Never a mark for the mode you are in.
+  await expect(page.getByTestId("person-page").locator('[data-mode="messages"]')).toHaveCount(0);
 });
 
 test("the rail lists Now, the modes, then Inbox, and their keys open them", async ({ page }) => {
@@ -283,3 +294,27 @@ test.describe("on a phone", () => {
     await expect(page).toHaveURL(/\/updates(\?row=[^&]+)?$/);
   });
 });
+
+for (const [density, height] of [
+  ["compact", 44],
+  ["regular", 52],
+  ["comfortable", 60],
+] as const) {
+  test(`rows are ${height}px at ${density} density, lit or not`, async ({ page }) => {
+    await waitForNow(page);
+    await page.addInitScript((chosen) => {
+      localStorage.setItem(
+        "mxr.uiPrefs",
+        JSON.stringify({ state: { density: chosen }, version: 6 }),
+      );
+    }, density);
+    await openApp(page, "/now");
+    const rows = page.getByTestId("now-row");
+    await expect(rows.first()).toBeVisible();
+    await page.keyboard.press("j");
+    const heights = await rows.evaluateAll((nodes) =>
+      nodes.map((node) => node.firstElementChild?.getBoundingClientRect().height),
+    );
+    expect(new Set(heights)).toEqual(new Set([height]));
+  });
+}

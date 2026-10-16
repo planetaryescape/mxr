@@ -1,17 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { Check, Reply } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bell, Newspaper } from "lucide-react";
+import { memo, type ReactNode } from "react";
 
-import { Chip } from "@/components/Chip";
-import { KeyChip } from "@/components/KeyChip";
-import { Button } from "@/components/ui/button";
-import { displaySourceName } from "@/features/updates/digestView";
+import { Avatar } from "@/components/Avatar";
+import { ModeMarks, NewMark } from "@/components/ModeMark";
+import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { rowAge, rowPerson } from "@/features/desk/deskCopy";
-import { AlsoInLine } from "@/features/modes/AlsoInLine";
-import type { ThreadModes } from "@/features/modes/membership";
-import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
-import { cn } from "@/lib/utils";
+import { rowParty } from "@/features/todo/todoRows";
+import { otherModes, type ThreadModes } from "@/features/modes/membership";
+import { NewSenderChips } from "@/features/modes/NewSenderChips";
+import { displaySourceName } from "@/features/updates/digestView";
 import { useClockLabel } from "@/lib/minuteClock";
+import { cn } from "@/lib/utils";
 
 import { itemTarget, sinceLabel, type NowItem } from "./nowItems";
 
@@ -20,115 +20,89 @@ type Due = Extract<NowItem, { kind: "todo" }>;
 type Card = Extract<NowItem, { kind: "updates" }>;
 type Pick = Extract<NowItem, { kind: "reading" }>;
 
+/** What every Now row is told; the page keeps these stable so a lamp move re-renders two rows. */
 interface RowState {
   index: number;
-  focused: boolean;
-  onSelect: (item: NowItem) => void;
-  onDone: (item: NowItem) => void;
+  lit: boolean;
+  via: LampVia;
+  /** The row is folding away after a pointer done. */
+  leaving: boolean;
+  onSelect: (item: NowItem, via: LampVia) => void;
+  onOpen: (item: NowItem) => void;
+  onDone: (item: NowItem, via: LampVia) => void;
   /** The hint anchored to this row, while it shows. */
   hint?: ReactNode;
 }
 
 /**
- * The row frame every Now item shares: the cursor bar, the row's main text
- * as a real link into the row's own mode (Tab reaches it, Enter follows
- * it, a screen reader names it), its own controls, and lines under it
- * that carry links or buttons of their own.
+ * The shared shell of Now's rows: the row's text is a real link into the
+ * row's own mode (Tab reaches it, Enter follows it, a screen reader names
+ * it); a click anywhere else on the row only lights it.
  */
-function RowFrame({
+function NowRow({
   item,
   state,
   label,
-  main,
-  meta,
-  actions,
-  extra,
+  lead,
+  leadControl,
+  primary,
+  secondary,
+  trail,
+  verbs,
+  unread,
 }: {
   item: NowItem;
   state: RowState;
   /** The link's accessible name: where it opens and what the row says. */
   label: string;
-  main: ReactNode;
-  /** The row's date or due line, just left of the action rail. */
-  meta?: ReactNode;
-  actions: ReactNode;
-  extra?: ReactNode;
+  lead?: ReactNode;
+  leadControl?: boolean;
+  primary: ReactNode;
+  secondary?: ReactNode;
+  trail?: ReactNode;
+  verbs?: ReactNode;
+  unread?: boolean;
 }) {
   return (
-    <li
+    <Row
       data-index={state.index}
       data-testid="now-row"
       data-kind={item.kind}
-      data-focused={state.focused ? "true" : undefined}
-      onMouseEnter={() => state.onSelect(item)}
-      className={cn(
-        "group/now relative mx-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-md px-3 py-2",
-        state.focused ? "bg-accent" : "hover:bg-accent/40",
-      )}
-    >
-      {state.focused ? (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] bg-primary" />
-      ) : null}
-      <Link
-        {...(itemTarget(item) as { to: string })}
-        data-testid="now-open"
-        aria-label={label}
-        onFocus={() => state.onSelect(item)}
-        onClick={() => state.onSelect(item)}
-        className="block min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {main}
-      </Link>
-      {/*
-        One trailing slot, as in Updates: the date at rest, and the row's own
-        verbs in its place once the row is focused or hovered. On a wide screen
-        with a fine pointer the verbs wait for that, so the slot takes no width
-        at rest; a narrow screen or a touch screen has no hover, so the verbs
-        always show there.
-      */}
-      <span className="row-span-2 flex items-start gap-1">
-        {meta ? (
-          <span className={state.focused ? "hidden" : "sm:pointer-fine:group-hover/now:hidden"}>
-            {meta}
-          </span>
-        ) : null}
-        <span
-          className={cn(
-            "items-start justify-end gap-1",
-            state.focused
-              ? "flex"
-              : "flex sm:pointer-fine:hidden sm:pointer-fine:group-hover/now:flex",
-          )}
+      data-focused={state.lit ? "true" : undefined}
+      lit={state.lit}
+      via={state.via}
+      leaving={state.leaving}
+      unread={unread}
+      hint={state.hint}
+      lead={lead}
+      leadControl={leadControl}
+      primary={primary}
+      secondary={secondary}
+      trail={trail}
+      verbs={verbs}
+      onClick={() => state.onSelect(item, "pointer")}
+      renderMain={(content, className) => (
+        <Link
+          // SAFETY: Now items only ever target static routes, which the router accepts as a `to` string.
+          {...(itemTarget(item) as { to: string })}
+          data-testid="now-open"
+          aria-label={label}
+          onFocus={() => state.onSelect(item, "key")}
+          onClick={() => state.onSelect(item, "pointer")}
+          className={cn(className, "focus-visible:ring-2 focus-visible:ring-signal")}
         >
-          {actions}
-        </span>
-      </span>
-      {extra ? <div className="min-w-0">{extra}</div> : null}
-      {state.hint ? <div className="col-span-2 min-w-0">{state.hint}</div> : null}
-    </li>
+          {content}
+        </Link>
+      )}
+    />
   );
 }
 
-/** The check that does `e`: done here, in the row's own mode. */
-function DoneButton({ item, state, title }: { item: NowItem; state: RowState; title: string }) {
-  return (
-    <button
-      type="button"
-      data-testid="now-done"
-      aria-label={title}
-      title={title}
-      onClick={(event) => {
-        event.stopPropagation();
-        state.onDone(item);
-      }}
-      className="-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-    >
-      <Check className="size-3.5" strokeWidth={2.25} />
-    </button>
-  );
+function marksOf(modes: ThreadModes | undefined, here: "messages" | "todo" | "reading") {
+  return otherModes(modes, here);
 }
 
-export function PersonRow({
+export const PersonRow = memo(function PersonRow({
   item,
   modes,
   onReply,
@@ -142,194 +116,189 @@ export function PersonRow({
   const who = rowPerson(row);
   const age = useClockLabel((now) => rowAge(row, now).label);
   const subject = row.subject.trim();
+  const newSender = item.person.new_sender;
   return (
-    <RowFrame
+    <NowRow
       item={item}
       state={state}
       label={`Open in Messages: ${who}, ${subject}. ${item.person.why}`}
-      main={
+      unread={row.unread}
+      lead={<Avatar name={who} size="lg" />}
+      primary={
         <>
-          <p className="flex min-w-0 items-baseline gap-2 text-sm">
-            <span
-              className={cn("shrink-0", row.unread ? "font-semibold" : "text-foreground/90")}
-              title={row.counterparty_email}
-            >
-              {who}
-            </span>
-            {subject ? (
-              <span className="min-w-0 truncate text-muted-foreground">{subject}</span>
-            ) : null}
-          </p>
+          <span className={cn(row.unread && "font-semibold")} title={row.counterparty_email}>
+            {who}
+          </span>
+          {newSender ? <NewMark className="ml-2" /> : null}
         </>
       }
-      extra={
+      secondary={subject || undefined}
+      trail={
         <>
-          {item.person.new_sender ? (
-            <NewSenderQuestion question={item.person.new_sender} label={who} />
-          ) : null}
-          <AlsoInLine modes={modes} here="messages" keys={false} />
+          <ModeMarks modes={marksOf(modes, "messages")} />
+          <time dateTime={row.since} className="whitespace-nowrap tabular-nums">
+            {age}
+          </time>
         </>
       }
-      meta={
-        <time
-          dateTime={row.since}
-          className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
-        >
-          {age}
-        </time>
-      }
-      actions={
-        <>
-          <button
-            type="button"
-            aria-label={`Reply to ${who}`}
-            title="Reply (r)"
-            onClick={(event) => {
-              event.stopPropagation();
-              onReply(item);
-            }}
-            className="-my-1 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Reply className="size-3.5" />
-          </button>
-          <DoneButton item={item} state={state} title="Done in Messages (e)" />
-        </>
+      verbs={
+        newSender ? (
+          <NewSenderChips question={newSender} label={who} />
+        ) : (
+          <>
+            <RowVerb
+              keys="r"
+              label="reply"
+              ariaLabel={`Reply to ${who}`}
+              testId="now-reply"
+              onClick={() => onReply(item)}
+            />
+            <RowVerb
+              keys="e"
+              label="done here"
+              ariaLabel="Done in Messages (e)"
+              testId="now-done"
+              onClick={() => state.onDone(item, "pointer")}
+            />
+          </>
+        )
       }
     />
   );
+});
+
+/** True when a to-do is due today or earlier: the one place the cue colour belongs on a date. */
+function dueByToday(due: Due["todo"]["todo"]): boolean {
+  if (due.overdue) return true;
+  const at = due.due_at ?? due.act_by_at;
+  if (!at) return false;
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
+  return new Date(at).getTime() < tomorrow.getTime();
 }
 
-export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes?: ThreadModes }) {
+export const TodoRow = memo(function TodoRow({
+  item,
+  modes,
+  ...state
+}: RowState & { item: Due; modes?: ThreadModes }) {
   const todo = item.todo.todo;
   return (
-    <RowFrame
+    <NowRow
       item={item}
       state={state}
       label={`Open in To do: ${todo.title}, ${todo.when_label}. ${item.todo.why}`}
-      main={
+      leadControl
+      lead={
+        <button
+          type="button"
+          data-testid="now-tick"
+          aria-label={`Tick off ${todo.title}`}
+          title="Tick off (e)"
+          onClick={(event) => {
+            event.stopPropagation();
+            state.onDone(item, "pointer");
+          }}
+          className="grid size-4 shrink-0 place-items-center rounded-sm border border-text-3 hover:border-text-1 focus-visible:border-signal"
+        />
+      }
+      primary={
         <>
-          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="min-w-0 font-medium text-foreground/90">{todo.title}</span>
-            {todo.amount ? (
-              <span className="font-mono text-xs tabular-nums text-foreground/80">
-                {todo.amount.display}
-              </span>
-            ) : null}
-            {todo.person_label ? (
-              <span className="text-xs text-muted-foreground">{todo.person_label}</span>
-            ) : null}
-          </p>
+          <span>{todo.title}</span>
+          {todo.amount ? (
+            <span className="type-meta ml-2 text-text-2">{todo.amount.display}</span>
+          ) : null}
         </>
       }
-      extra={<AlsoInLine modes={modes} here="todo" keys={false} chips />}
-      meta={
-        <span
-          className={cn(
-            "whitespace-nowrap text-xs",
-            todo.overdue ? "text-warning" : "text-muted-foreground",
-          )}
-        >
-          {todo.when_label}
-        </span>
+      secondary={rowParty(todo) || undefined}
+      trail={
+        <>
+          <ModeMarks modes={marksOf(modes, "todo")} />
+          <span
+            data-testid="now-due"
+            className={cn("whitespace-nowrap", dueByToday(todo) && "text-cue")}
+          >
+            {todo.when_label}
+          </span>
+        </>
       }
-      actions={<DoneButton item={item} state={state} title="Tick off (e)" />}
+      verbs={
+        <RowVerb
+          keys="e"
+          label="tick off"
+          ariaLabel="Tick off (e)"
+          testId="now-done"
+          onClick={() => state.onDone(item, "pointer")}
+        />
+      }
     />
   );
-}
+});
 
 /**
- * The latest Updates digest as one card: its headline, up to three lines
- * that need a look or changed, and how much routine waits behind them.
+ * The latest Updates digest as one row: its headline, and the lines that need
+ * a look or changed, run together on the one secondary line.
  */
-export function UpdatesCard({
+export const UpdatesRow = memo(function UpdatesRow({
   item,
   onLetGo,
   ...state
 }: RowState & { item: Card; onLetGo: () => void }) {
   const card = item.card;
+  const lines = card.lines ?? [];
   return (
-    <section aria-labelledby="now-updates" data-testid="now-section-updates" className="mt-4">
-      <div className="mx-5 mb-1 flex items-baseline gap-2">
-        <h2
-          id="now-updates"
-          className="font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground"
-        >
-          Updates
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {card.cut_label ? `${card.cut_label} digest` : sinceLabel(card.since)}
+    <NowRow
+      item={item}
+      state={state}
+      label={`Open Updates: ${card.headline || card.line}`}
+      lead={<Bell aria-hidden className="size-4 shrink-0 text-text-3" strokeWidth={1.75} />}
+      primary={<span data-testid="now-updates-line">{card.headline || card.line}</span>}
+      secondary={
+        lines.length > 0 ? (
+          <>
+            {lines.map((line, at) => (
+              <span key={line.id} data-testid="now-updates-item">
+                {at > 0 ? " · " : null}
+                <span className={cn(line.section === "needs_a_look" && "text-cue")}>
+                  {displaySourceName(line.source_name)}
+                </span>
+                : {line.fact}
+              </span>
+            ))}
+            {card.more_line ? ` · ${card.more_line}` : null}
+          </>
+        ) : (
+          card.more_line || undefined
+        )
+      }
+      trail={
+        <span className="whitespace-nowrap">
+          {card.cut_label ? card.cut_label : sinceLabel(card.since)}
         </span>
-      </div>
-      <ul className="grid grid-cols-[minmax(0,1fr)]">
-        <li
-          data-index={state.index}
-          data-testid="now-row"
-          data-kind={item.kind}
-          data-focused={state.focused ? "true" : undefined}
-          onMouseEnter={() => state.onSelect(item)}
-          className={cn(
-            "relative mx-2 rounded-md px-3 py-2",
-            state.focused ? "bg-accent" : "hover:bg-accent/40",
-          )}
-        >
-          {state.focused ? (
-            <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] bg-primary" />
-          ) : null}
-          <div className="min-w-0">
-            <p data-testid="now-updates-line" className="text-sm text-foreground/90">
-              {card.headline || card.line}
-            </p>
-            {card.lines && card.lines.length > 0 ? (
-              <ul className="mt-1 grid gap-0.5">
-                {card.lines.map((line) => (
-                  <li
-                    key={line.id}
-                    data-testid="now-updates-item"
-                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs"
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "w-2 shrink-0 font-semibold",
-                        line.section === "needs_a_look" ? "text-warning" : "text-muted-foreground",
-                      )}
-                    >
-                      {line.section === "needs_a_look" ? "!" : "·"}
-                    </span>
-                    <span className="shrink-0 font-medium text-foreground/90">
-                      {displaySourceName(line.source_name)}
-                    </span>
-                    <span className="min-w-0 break-words text-foreground/80">{line.fact}</span>
-                    {line.in_todo ? <Chip>{line.in_todo}</Chip> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {card.more_line ? (
-              <p className="mt-1 text-xs text-muted-foreground">{card.more_line}</p>
-            ) : null}
-            <p className="mt-1.5 flex flex-wrap items-center gap-2">
-              <Button asChild size="sm" variant="outline">
-                <Link
-                  {...(itemTarget(item) as { to: string })}
-                  onFocus={() => state.onSelect(item)}
-                >
-                  Open <KeyChip className="h-4 px-1">g u</KeyChip>
-                </Link>
-              </Button>
-              <Button size="sm" variant="ghost" onClick={onLetGo}>
-                Let go of this digest <KeyChip className="h-4 px-1">A</KeyChip>
-              </Button>
-            </p>
-            {state.hint}
-          </div>
-        </li>
-      </ul>
-    </section>
+      }
+      verbs={
+        <>
+          <RowVerb
+            keys="g u"
+            label="open"
+            ariaLabel="Open Updates (g u)"
+            testId="now-open-updates"
+            onClick={() => state.onOpen(item)}
+          />
+          <RowVerb
+            keys="A"
+            label="let go"
+            ariaLabel="Let go of this digest (A)"
+            testId="now-let-go"
+            onClick={onLetGo}
+          />
+        </>
+      }
+    />
   );
-}
+});
 
-export function ReadingRow({
+export const ReadingRow = memo(function ReadingRow({
   item,
   modes,
   ...state
@@ -337,23 +306,23 @@ export function ReadingRow({
   const pick = item.pick;
   const from = pick.sender_name?.trim() || pick.sender_email;
   return (
-    <RowFrame
+    <NowRow
       item={item}
       state={state}
       label={`Open in Reading: ${pick.subject}, from ${from}. ${pick.why}`}
-      main={
-        <>
-          <p className="flex min-w-0 items-baseline gap-2 text-sm">
-            <span className="min-w-0 truncate font-medium text-foreground/90">{pick.subject}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{from}</span>
-          </p>
-          <p data-testid="now-why" className="truncate text-xs text-fg-2">
-            {pick.why}
-          </p>
-        </>
+      lead={<Newspaper aria-hidden className="size-4 shrink-0 text-text-3" strokeWidth={1.75} />}
+      primary={pick.subject}
+      secondary={from}
+      trail={<ModeMarks modes={marksOf(modes, "reading")} />}
+      verbs={
+        <RowVerb
+          keys="e"
+          label="let go"
+          ariaLabel="Let go (e)"
+          testId="now-done"
+          onClick={() => state.onDone(item, "pointer")}
+        />
       }
-      extra={<AlsoInLine modes={modes} here="reading" keys={false} chips />}
-      actions={<DoneButton item={item} state={state} title="Let go (e)" />}
     />
   );
-}
+});

@@ -7,8 +7,9 @@ import { KeyChip } from "@/components/KeyChip";
 import { ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
 import { useComposeUi } from "@/features/compose/composeUiStore";
-import { AlsoInLine } from "@/features/modes/AlsoInLine";
-import { useThreadModes } from "@/features/modes/membership";
+import { ModeMarks } from "@/components/ModeMark";
+import { ReasonLine } from "@/components/ReasonLine";
+import { otherModes, useThreadModes } from "@/features/modes/membership";
 import { cn } from "@/lib/utils";
 
 import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } from "./api";
@@ -16,7 +17,6 @@ import { ConversationView } from "./Conversation";
 import { GotItBar } from "./GotItBar";
 import { topicLabel, topicStateLabel, type Arrival } from "./messagesView";
 import type { PendingAck } from "./useGotIt";
-import { StatusDot } from "@/components/StatusDot";
 
 export interface PersonPaneProps {
   page: PersonPage;
@@ -87,6 +87,8 @@ export function PersonPane(props: PersonPaneProps) {
         purpose={page.relationship_line}
         freshness={<span data-testid="person-header-line">{page.header_line}</span>}
       />
+      {/* A phone has no status bar, so the reason shows on the person's own page. */}
+      <ReasonLine reason={row.why} className="px-5 pt-2 sm:hidden" />
       {props.left > 0 || (page.merge_suggestions ?? []).length > 0 ? (
         <ModeFrame width="reader" className="px-5 pt-2">
           {props.left > 0 ? (
@@ -101,9 +103,7 @@ export function PersonPane(props: PersonPaneProps) {
       ) : null}
       <nav aria-label="Topics" className="shrink-0 border-b border-border">
         <ModeFrame width="reader" className="px-3 py-2">
-          <p className="px-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-            Topics
-          </p>
+          <p className="type-eyebrow px-2 pb-1 text-text-3">Topics</p>
           <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
             {page.topics.map((topic) => {
               const active = topic.thread_id === selected;
@@ -124,28 +124,31 @@ export function PersonPane(props: PersonPaneProps) {
                     aria-current={active ? "true" : undefined}
                     onClick={() => props.onTopic(topic.thread_id)}
                     className={cn(
-                      "relative flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-sm",
-                      active
-                        ? "bg-accent text-foreground"
-                        : "text-foreground/85 hover:bg-accent/60",
+                      "type-body relative flex w-full items-baseline gap-3 px-2 py-1 text-left",
+                      active ? "bg-ink-lamp text-text-1" : "text-text-2 hover:text-text-1",
                     )}
                   >
+                    {active ? (
+                      <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-signal" />
+                    ) : null}
                     {arrived ? <ArrivalGlow key={props.arrival?.key} /> : null}
                     <span className="min-w-0 flex-1 truncate">
                       {topic.state === "your_turn" ? (
-                        <StatusDot className="mr-1.5 size-1.5 bg-primary align-middle" />
+                        <span
+                          aria-hidden
+                          data-testid="topic-turn"
+                          className="mr-2 inline-block size-1.5 bg-cue align-middle"
+                        />
                       ) : null}
                       {topicLabel(topic)}
                     </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {topicStateLabel(topic)}
-                    </span>
+                    <span className="type-meta shrink-0 text-text-3">{topicStateLabel(topic)}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
-          <p className="hidden px-2 pt-1 text-2xs text-muted-foreground md:block">
+          <p className="type-meta hidden px-2 pt-1 text-text-3 md:block">
             <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
             through topics
           </p>
@@ -162,17 +165,19 @@ export function PersonPane(props: PersonPaneProps) {
         <ModeFrame width="reader">
           {conversation ? (
             <>
-              <h3
-                data-testid="conversation-subject"
-                className="relative mx-3 mt-3 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground"
-              >
-                {props.arrival &&
-                (props.arrival.thread ?? conversation.thread_id) === conversation.thread_id ? (
-                  <ArrivalGlow key={props.arrival.key} />
-                ) : null}
-                {conversation.subject}
-              </h3>
-              <AlsoInLine modes={modes} here="messages" className="px-5 pt-1" />
+              <div className="mx-3 mt-3 flex items-center justify-between gap-3 px-2 py-1">
+                <h3
+                  data-testid="conversation-subject"
+                  className="type-heading relative min-w-0 truncate text-text-1"
+                >
+                  {props.arrival &&
+                  (props.arrival.thread ?? conversation.thread_id) === conversation.thread_id ? (
+                    <ArrivalGlow key={props.arrival.key} />
+                  ) : null}
+                  {conversation.subject}
+                </h3>
+                <ModeMarks modes={otherModes(modes, "messages")} />
+              </div>
               <ConversationView
                 conversation={conversation}
                 asSent={props.asSent}
@@ -196,7 +201,7 @@ export function PersonPane(props: PersonPaneProps) {
                   type="button"
                   data-testid="composer"
                   onClick={props.onReply}
-                  className="flex w-full items-center gap-2 rounded-none border border-border bg-surface/60 px-4 py-2.5 text-left text-sm text-muted-foreground hover:border-border-strong"
+                  className="flex w-full items-center gap-2 rounded-none border border-rule bg-ink-lamp px-4 py-2.5 text-left text-sm text-text-2 hover:border-text-3"
                 >
                   <MessageSquareReply className="size-4 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>

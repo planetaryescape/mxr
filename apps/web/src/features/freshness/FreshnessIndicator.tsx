@@ -36,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatLongDate, formatTime, formatWhen, startOfDay } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
+import { reasonText } from "@/components/ReasonLine";
 import { StatusDot } from "@/components/StatusDot";
 
 const DOT_TONE = {
@@ -84,12 +85,32 @@ function absolute(value: string): string {
   return startOfDay(date) === startOfDay(new Date()) ? formatTime(date) : formatLongDate(date);
 }
 
-export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
+export function FreshnessIndicator({
+  compact = false,
+  reason,
+  note,
+}: {
+  compact?: boolean;
+  /**
+   * Why the lit row is here (the page's `useLitReason`). It takes the sync
+   * words' place beside a short freshness: "4m ago · Here because: ...".
+   * A failing sync keeps its warning; health outranks a reason.
+   */
+  reason?: string | null;
+  note?: string | null;
+}) {
   const { data } = useFreshnessQuery();
   const [open, setOpen] = useState(false);
   const newest = data?.newest_message_at ?? null;
+  const short = Boolean(reason) && !compact;
   const latest = useClockLabel((now) =>
-    compact ? (newest ? ago(newest, now) : "no mail") : latestMail(newest, now),
+    compact || short
+      ? newest
+        ? ago(newest, now)
+        : compact
+          ? "no mail"
+          : "no mail yet"
+      : latestMail(newest, now),
   );
   const sync = useSyncState(data);
   if (!data) return null;
@@ -147,7 +168,12 @@ export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
           <span aria-hidden className="text-faint">
             ·
           </span>
-          {calm ? (
+          {calm && reason ? (
+            <span data-testid="status-reason" className="truncate text-text-2">
+              {reasonText(reason)}
+              {note ? ` · ${note}` : ""}
+            </span>
+          ) : calm ? (
             <span className="truncate">{sync.line}</span>
           ) : (
             <Link

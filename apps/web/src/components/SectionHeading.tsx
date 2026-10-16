@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-const LABEL = "font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground";
+const LABEL = "type-eyebrow text-text-3";
 
 /**
  * A section or band label: mono caps, an optional count and an optional

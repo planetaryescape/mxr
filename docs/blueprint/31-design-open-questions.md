@@ -23,3 +23,18 @@ For each, record what was run, the result, the date and the conclusion here unde
 | Q4 | Does BK still want editor colour themes (catppuccin, gruvbox, nightfox, kanagawa, one), as he asked for the desktop app on 2026-04-22? The web app has Midnight, Eclipse, Paper and Light, and nobody revisited the request. | Open; blueprint assumes not now, and the generator (D139) makes them three values each if yes. |
 | Q5 | Should a proof let you drop single items before applying ("archive these 14, but not that one")? Today approval runs exactly the stored call (D122), so dropping items needs the daemon to accept a narrowed selection and record it as the user's edit. | Open; blueprint assumes whole-proof apply, or send back with a note. |
 | Q6 | Is square still BK's taste ("i'm not expecting to see rounded corners", 2026-03-22, for the desktop app)? D127 makes surfaces square and controls 3px. | Open; blueprint assumes yes. |
+
+### S4 result (2026-10-16)
+
+Run at W2 on `feat/web-w2-rows` (base `e690a20de`), against the e2e daemon's fake mailbox. The daemon caps Messages' Recent band, so no list in production has 5,000 `Row`s yet; the specs stand in for the long lists W3 moves onto `Row` by growing Recent to 5,000 people from a real row (`e2e/helpers/bulkPeople.ts`) and pressing `j` with the lamp.
+
+| Measure | Where | Result | Budget |
+|---|---|---|---|
+| Code executed per `j` (V8 block coverage over `/src/` and the virtualizer, 60 presses) | `e2e/large-list.spec.ts` "5000 people: each j moves the lamp inside the same code budget" | before the fix below: 12,554,585 per step; after: 31,848 per step | 60,000 |
+| Keydown to paint, p95, production build | `e2e/speed.spec.ts` "the lamp moves under budget on 5,000 people (spike S4)", 20 presses each way | `j` 26.8 ms, `k` 25.5 ms | 50 ms |
+
+Conclusion: moving the lamp is inside both budgets, so the lamp can be built on `Row` for long lists. Three findings:
+
+- The first run failed by a factor of 200. `MessagesRoute` passed `useAdvanceOnRemoval` an `isPresent` that scanned all rows, and the hook calls it once per row on every lamp move, so one `j` was quadratic. A `Set` of row ids fixed it. The same shape (a per-row scan inside a per-move effect) will fail the budget in any list W3 converts.
+- Rows are memoised (`Row`, and the Messages person row on primitives and stable callbacks), so a lamp move re-renders the two rows it touches. The list shell still maps all 5,000 elements per move (about 20,000 of the 31,848 blocks, linear in the list). Virtualise the long lists (Inbox already is) or move the lit id into a per-row store subscription if a list has to hold more than a few thousand rows unvirtualised.
+- Looking up a row's membership inside the row (not in the list's map) removed another 20,000 blocks per step. Keep per-row lookups inside the memoised row.

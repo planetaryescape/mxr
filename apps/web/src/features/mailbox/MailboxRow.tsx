@@ -12,6 +12,7 @@ import { parseAddress, plural } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
+import { useLanded } from "@/state/landingStore";
 import { ModeChip } from "@/features/arrivals/ModeChip";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
@@ -72,6 +73,8 @@ export const MailboxRow = memo(function MailboxRow({
   // This row's own line: when it lands, only this row re-renders.
   const gist = useRowGist(row.thread_id);
   const when = useWhen(row.date);
+  // The assistant changed this row: it wears the landing underline for 600ms.
+  const landed = useLanded(row.thread_id, row.id);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
   const stop = (handler: () => void) => (event: MouseEvent) => {
@@ -90,7 +93,11 @@ export const MailboxRow = memo(function MailboxRow({
       via={via}
       unread={row.unread}
       // A `li` outside a `ul` still draws its disc marker; the virtual list wraps rows in divs.
-      className={cn("cursor-default select-none list-none", selected && "bg-primary-muted/70")}
+      className={cn(
+        "cursor-default select-none list-none",
+        selected && "bg-primary-muted/70",
+        landed && "landed",
+      )}
       onClick={(event) => {
         if (!readOnly && (event.metaKey || event.ctrlKey)) {
           onToggleSelection(row, false);

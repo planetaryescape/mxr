@@ -69,7 +69,8 @@ function hookLinks(): void {
         return;
       }
       node.setAttribute("href", linkHref(link));
-      node.setAttribute(APP_LINK_ATTRIBUTE, "");
+      // The value says what it links, so the reply can draw a person and an email differently.
+      node.setAttribute(APP_LINK_ATTRIBUTE, link.kind);
       return;
     }
     node.setAttribute("target", "_blank");

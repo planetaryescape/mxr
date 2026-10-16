@@ -3,11 +3,13 @@
  * it from anywhere outside a text field.
  */
 
-import { BotMessageSquare, SquarePen } from "lucide-react";
+import { CircleDot, SquarePen } from "lucide-react";
 
 import { useAssistantUi } from "./assistantStore";
 import type { Action } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
+
+export const ASSISTANT_SHORTCUT = "Mod+.";
 
 export const assistantActions: Action[] = [
   {
@@ -16,8 +18,8 @@ export const assistantActions: Action[] = [
     shortLabel: "Assistant",
     description: "Talk to your mail: ask questions, or have it sort and tidy with your approval",
     group: "View",
-    icon: BotMessageSquare,
-    shortcut: "Mod+.",
+    icon: CircleDot,
+    shortcut: ASSISTANT_SHORTCUT,
     tuiNote: "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through",
     run: () => {
       useModals.getState().setCommandPaletteOpen(false);

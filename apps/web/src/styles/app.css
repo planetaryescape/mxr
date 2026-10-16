@@ -107,6 +107,63 @@
 }
 
 /*
+ * Change landing (docs/blueprint/27 "Feedback"): a 2px signal underline on
+ * a row the assistant just changed, fading over 600ms. Only opacity moves,
+ * so reduced motion keeps it. The row must be `relative`.
+ */
+@utility landed {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 2px;
+    background-color: var(--signal);
+    pointer-events: none;
+    animation: landed var(--motion-duration-land) var(--motion-ease) forwards;
+  }
+}
+
+@keyframes landed {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * A wire line's title crossfades when its step ends (running to done), and
+ * the live line's dot breathes while a turn runs. Both are opacity only.
+ */
+@utility wire-fade {
+  animation: wire-fade var(--motion-duration-fast) var(--motion-ease) both;
+}
+
+@keyframes wire-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@utility live-dot {
+  animation: live-dot var(--motion-duration-pulse) var(--motion-ease) infinite;
+}
+
+:root[data-motion="reduced"] .live-dot {
+  animation: none;
+}
+
+@keyframes live-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/*
  * "Now showing": after a done moves on, the row and header it opened glow
  * once and fade. Only opacity moves, so reduced motion keeps it.
  */
@@ -277,8 +334,8 @@
   width: min(420px, 100vw);
   z-index: 45;
   display: flex;
-  border-left: 1px solid var(--border);
-  background-color: var(--surface);
+  border-left: 1px solid var(--rule);
+  background-color: var(--ink-desk);
   box-shadow: -16px 0 40px -12px rgb(0 0 0 / 0.45);
 }
 
@@ -298,32 +355,33 @@
 .assistant-prose li + li {
   margin-top: 0.2em;
 }
-.assistant-prose a {
-  color: var(--primary);
+.assistant-prose a:not(.assistant-chip) {
+  color: var(--signal);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.assistant-chip {
+  text-decoration: none;
 }
 .assistant-prose code {
   font-family: var(--font-mono);
   font-size: 0.92em;
-  background-color: var(--muted);
-  border-radius: var(--radius-sm);
+  background-color: var(--ink-room);
   padding: 0 0.25em;
 }
 .assistant-prose pre {
   overflow-x: auto;
   padding: 0.5em;
-  background-color: var(--muted);
-  border-radius: var(--radius-sm);
+  background-color: var(--ink-room);
 }
 .assistant-prose pre code {
   background: none;
   padding: 0;
 }
 .assistant-prose blockquote {
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--rule);
   padding-left: 0.75em;
-  color: var(--muted-foreground);
+  color: var(--text-2);
 }
 .assistant-prose strong {
   font-weight: 600;
@@ -333,10 +391,9 @@
 .assistant-prose h3,
 .assistant-prose h4 {
   font-weight: 600;
-  font-size: var(--text-sm);
 }
 .assistant-prose table {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   border-collapse: collapse;
 }
 .assistant-prose th,

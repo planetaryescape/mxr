@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { mockAssistant } from "./helpers/assistant";
 import { mailRows, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
@@ -528,3 +529,157 @@ for (const theme of THEMES) {
     });
   });
 }
+||||||| parent of e1f64a802 (feat: the assistant panel as a copy desk (wire lines, proofs, chips, landing))
+
+/*
+ * The copy desk (docs/blueprint/29): the assistant panel open beside Now and
+ * Messages, in each state a conversation reaches, from a recorded
+ * conversation. Looked at against the chapter's anatomy.
+ */
+const ASSISTANT_GATE_STATES = [
+  "empty",
+  "running",
+  "finished",
+  "proof",
+  "question",
+  "failure",
+] as const;
+
+const ASSISTANT_PAGES = [
+  { name: "now", path: "/now" },
+  { name: "messages", path: "/messages" },
+] as const;
+
+/** Tool names and raw JSON must never show by default (D135, D136). */
+const PLUMBING = /mxr_[a-z_]+|[{]\s*"/;
+
+for (const theme of THEMES) {
+  test.describe(`${theme} theme: the copy desk`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript((chosen) => {
+        localStorage.setItem(
+          "mxr.uiPrefs",
+          JSON.stringify({ state: { theme: chosen }, version: 6 }),
+        );
+      }, theme);
+    });
+
+    for (const gate of ASSISTANT_PAGES) {
+      test(`the panel beside ${gate.name}, in every state`, async ({ page }, testInfo) => {
+        for (const state of ASSISTANT_GATE_STATES) {
+          for (const width of WIDTHS) {
+            await test.step(`${state} at ${width}px`, async () => {
+              await page.unrouteAll({ behavior: "ignoreErrors" });
+              await mockAssistant(page, state);
+              await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+              await openApp(page, gate.path);
+              const panel = page.getByRole("region", { name: "Assistant" });
+              await expect(panel).toBeVisible();
+              await expect(panel.getByLabel("Message the assistant")).toBeVisible();
+              await page.evaluate(() => document.fonts.ready);
+              if (state === "running") {
+                await expect(panel.getByRole("status")).toContainText("Reading your request");
+              }
+              if (state === "finished") {
+                await expect(panel.getByText("gemma4 · local")).toBeVisible();
+              }
+              await page.waitForTimeout(300);
+              await attach(page, testInfo, `assistant-${state}-${gate.name}-${theme}-${width}`);
+              if (state === "finished") {
+                await panel.getByRole("button", { name: /3 steps|2 steps/ }).click();
+                await panel.getByRole("button", { name: /Searched your mail/ }).click();
+                await page.waitForTimeout(200);
+                await attach(page, testInfo, `assistant-steps-${gate.name}-${theme}-${width}`);
+              }
+            });
+          }
+        }
+      });
+    }
+  });
+}
+
+test.describe("the copy desk's rules", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  test("a reply and its folded steps show no tool name or JSON; Details has them", async ({
+    page,
+  }) => {
+    await mockAssistant(page, "finished");
+    await openApp(page, "/now");
+    const panel = page.getByRole("region", { name: "Assistant" });
+    await expect(panel.getByText("gemma4 · local")).toBeVisible();
+    // The reply's rows and chips are there; the plumbing is not.
+    await expect(
+      panel.getByRole("list", { name: "The emails and people in this reply" }),
+    ).toBeVisible();
+    expect(await panel.innerText()).not.toMatch(PLUMBING);
+    await panel.getByRole("button", { name: /steps/ }).click();
+    await panel.getByRole("button", { name: /Searched your mail/ }).click();
+    expect(await panel.innerText()).not.toMatch(PLUMBING);
+    await panel
+      .getByRole("button", { name: /Details/ })
+      .first()
+      .click();
+    expect(await panel.innerText()).toMatch(/mxr_search/);
+  });
+
+  test("a proof has one primary button; y signs it; the card gives way to its wire line", async ({
+    page,
+  }) => {
+    let decided: unknown = null;
+    await mockAssistant(page, "proof", (body) => {
+      decided = body;
+    });
+    await openApp(page, "/now");
+    const panel = page.getByRole("region", { name: "Assistant" });
+    const proof = panel.getByRole("region", { name: "Archive 14 emails" });
+    await expect(proof).toBeVisible();
+    expect(await proof.innerText()).not.toMatch(PLUMBING);
+    await expect(proof.getByText("CI failed on main: build-linux")).toBeVisible();
+    // Exactly one filled (primary) button on the proof.
+    const filled = await proof
+      .getByRole("button")
+      .evaluateAll((nodes) => nodes.filter((node) => node.className.includes("bg-primary")).length);
+    expect(filled).toBe(1);
+
+    // Typing in the composer never answers the proof.
+    const composer = panel.getByLabel("Message the assistant");
+    await composer.click();
+    await page.keyboard.type("ynx");
+    expect(decided).toBeNull();
+    await expect(composer).toHaveValue("ynx");
+
+    // Esc hands the keyboard to the proof; y signs it.
+    await composer.fill("");
+    await page.keyboard.press("Escape");
+    await expect(proof).toBeFocused();
+    await page.keyboard.press("y");
+    await expect
+      .poll(() => decided)
+      .toEqual({
+        decisions: [{ call_id: "archive", decision: "approve" }],
+      });
+  });
+
+  test("a question takes the keys 1 to 6 and Enter", async ({ page }) => {
+    let decided: unknown = null;
+    await mockAssistant(page, "question", (body) => {
+      decided = body;
+    });
+    await openApp(page, "/now");
+    const card = page.getByRole("region", { name: "A question for you" });
+    await expect(card.getByText("recommended")).toBeVisible();
+    await card.focus();
+    await page.keyboard.press("1");
+    await expect(card.getByRole("radio", { name: /Work/ })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => decided)
+      .toEqual({
+        decisions: [{ call_id: "ask", decision: "answer", answers: [{ selected: ["Work"] }] }],
+      });
+  });
+});

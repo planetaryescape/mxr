@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BotMessageSquare, ChevronRight, CircleHelp, PenSquare, Search } from "lucide-react";
+import { ChevronRight, CircleDot, CircleHelp, PenSquare, Search } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -274,7 +274,7 @@ function AssistantToggle() {
       aria-label="Assistant"
       title={`Assistant (${formatChord("Mod+.")})`}
     >
-      <BotMessageSquare className="size-4" />
+      <CircleDot className="size-4" />
     </Button>
   );
 }

@@ -19,6 +19,7 @@
     "resolveJsonModule": true,
     "useDefineForClassFields": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

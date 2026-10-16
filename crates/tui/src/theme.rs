@@ -117,14 +117,18 @@ impl Theme {
     }
 
     /// A navy palette with cool blue accents for terminals that support RGB.
+    /// The text tiers are the web's `--text-1..3`, the hint bar is `--ink-room`
+    /// and modals are `--ink-overlay` (docs/blueprint/27). The cursor line
+    /// stays a blue tint, not `--ink-lamp`: the TUI does not paint a desk, and
+    /// the lamp is too close to a terminal's own black to show a cursor.
     /// `default` remains the terminal-native ANSI palette for compatibility.
     pub fn midnight() -> Self {
         Self {
             border_focused: Color::Rgb(84, 221, 255),
             border_unfocused: Color::Rgb(72, 88, 105),
             text_primary: Color::Rgb(226, 233, 240),
-            text_secondary: Color::Rgb(187, 197, 209),
-            text_muted: Color::Rgb(153, 166, 181),
+            text_secondary: Color::Rgb(166, 178, 192),
+            text_muted: Color::Rgb(128, 143, 160),
             accent: Color::Rgb(92, 213, 252),
             accent_dim: Color::Rgb(80, 151, 220),
             selection_bg: Color::Rgb(35, 58, 75),
@@ -136,7 +140,7 @@ impl Theme {
             contrast_light: Color::Rgb(238, 246, 252),
             unread_fg: Color::Rgb(238, 246, 252),
             label_bg: Color::Rgb(1, 57, 74),
-            modal_bg: Color::Rgb(23, 32, 42),
+            modal_bg: Color::Rgb(31, 42, 53),
             hint_bar_bg: Color::Rgb(8, 15, 23),
             quote_fg: Color::Rgb(153, 166, 181),
             signature_fg: Color::Rgb(153, 166, 181),

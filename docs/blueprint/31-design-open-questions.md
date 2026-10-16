@@ -26,6 +26,29 @@ For each, record what was run, the result, the date and the conclusion here unde
 
 ## Spike results
 
+### S3 result (2026-10-16)
+
+Run twice. First as a spike script (culori, on `origin/main` at `1e0bbc3c5`) that fitted generator rules to the committed `tokens.css`, then as the generator itself on `feat/web-w8a-themes` (W8a): `styles/themeGenerator.ts` generates every role from a base, an accent and a contrast level, and `styles/themes.test.ts` holds Midnight as committed before the generator as a frozen fixture and asserts every role is within ΔE OK 2 (Euclidean distance in OKLab, times 100).
+
+| Check | Result |
+|---|---|
+| The spec as first written (base is the desk, additive ΔL steps, text targets 14 / 8 / 5.2 on the desk), Midnight | Fails on text-1 only, at ΔE 2.30. Today's tiers sit at 14.89 / 8.47 / 5.52 on the desk, not 14 / 8 / 5.2. |
+| Targets 14.9 / 8.5 / 5.5, text-1 chroma at half the desk's | Passes. The chroma change takes text-1's ΔE2000 from 2.96 to 0.27. |
+| Generator, Midnight, all 71 declared roles (aliases included) | Max 1.33 (the primary's text), mean 0.22. |
+| Generator, Midnight, contrast-increased block | Max 0.92, mean 0.34. |
+| Light, same comparison | Max 1.99, mean 0.29. |
+| Eclipse | Max 6.50 on the text-on-fill colours, mean 1.21, and 19.1 on `chart-6`, which moves from violet to teal on purpose. |
+| Paper | Max 5.72 on `cue`, mean 1.74, and 32.4 on `unread-marker`, which moves from rust to `--text-1` on purpose (D139). |
+
+Findings that changed the spec:
+
+- The steps are additive ΔL. Midnight's room is 0.031 below the desk, its lamp 0.044 above and its overlay 0.084 above (the spec said 0.07).
+- Light and Paper's lamps are darker tints (ΔL about -0.025 and -0.035), not "2% lighter on light themes". The W1 comp already set Light's lamp to a tint; the spec was wrong.
+- Many tokens had no generator rule: status colours, rules and borders, input fills, the shadcn aliases, the charts, the text on status fills and the contrast-increased block. Each now has a rule fitted to Midnight or an explicit per-theme override. CSS `--accent` is a neutral hover surface; the generator's accent is `--signal`.
+- No single rule for the text on a status fill reaches ΔE 2 on Midnight (best uniform fit 2.33), because today's five values were tuned one by one. The generator carries a lightness and chroma per fill.
+
+Conclusion: the generator reproduces Midnight within ΔE OK 2 on every role, so Midnight does not become a different app. Light is within 2 as well. Eclipse and Paper move more because their hand-tuned values were less regular; the biggest moves are the text-on-fill colours (near-black either way), Paper's `cue` and Eclipse's chart palette. The checks run in `npm run test` and `npm run lint`.
+
 ### S4 result (2026-10-16)
 
 Run at W2 on `feat/web-w2-rows` (base `e690a20de`), against the e2e daemon's fake mailbox. The daemon caps Messages' Recent band, so no list in production has 5,000 `Row`s yet; the specs stand in for the long lists W3 moves onto `Row` by growing Recent to 5,000 people from a real row (`e2e/helpers/bulkPeople.ts`) and pressing `j` with the lamp.

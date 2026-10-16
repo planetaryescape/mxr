@@ -8,10 +8,10 @@ import { describe, expect, test } from "vitest";
 /*
  * docs/blueprint/27: "Faint is the floor for any text: every tier passes
  * 4.5:1 on room, desk and lamp." This reads the role values out of
- * tokens.css, so editing a theme without checking contrast fails here.
+ * themes.generated.css, so editing a theme without checking contrast fails here.
  */
 
-const css = readFileSync(fileURLToPath(new URL("./tokens.css", import.meta.url)), "utf8");
+const css = readFileSync(fileURLToPath(new URL("./themes.generated.css", import.meta.url)), "utf8");
 
 const THEMES = {
   midnight: ':root,\n[data-theme="dark"],\n[data-theme="midnight"] {',
@@ -24,7 +24,7 @@ type Theme = keyof typeof THEMES;
 
 function block(theme: Theme): string {
   const start = css.indexOf(THEMES[theme]);
-  if (start < 0) throw new Error(`no ${theme} block in tokens.css`);
+  if (start < 0) throw new Error(`no ${theme} block in themes.generated.css`);
   return css.slice(start, css.indexOf("\n}\n", start));
 }
 

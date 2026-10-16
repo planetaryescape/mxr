@@ -335,8 +335,11 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
 
 ## Design system
 
-- `styles/tokens.css` is the only place colours, type, radii and density live.
-  Colours are complete values; Tailwind maps them once. The default theme is
+- `styles/tokens.css` is the only place type, radii and density live. Colours
+  are generated per theme: `styles/themes.ts` holds each theme's inputs (a
+  base, an accent and a contrast level) and `npm run gen:themes` writes
+  `styles/themes.generated.css`, which `tokens.css` imports and lint checks is
+  current. Colours are complete values; Tailwind maps them once. The default theme is
   DESIGN.md's midnight (navy ink, cyan signal, yellow cue); light, eclipse and
   paper are alternates; `system` follows the OS live. `data-scheme` drives
   `dark:` utilities.
@@ -345,7 +348,9 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
   size such as `text-[13px]` fails `npm run lint` (`scripts/check-type-scale.mjs`,
   with `check-motion.mjs` beside it). A file that needs one goes on the
   script's `ALLOWLIST` with its reason; keep that list short.
-- Cyan (`--primary`) means focus, selection, the primary action and unread. It
+- Cyan (`--primary`) means focus, selection and the primary action; counts and
+  unread marks use `--unread-marker`, which is the accent except in Paper
+  (rust reads as error red there, so it is `--text-1`). It
   carries no other meaning, so a status, a progress bar or a decoration is
   never cyan. Amber (`--warning`) means attention, and green (`--success`)
   success.

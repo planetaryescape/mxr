@@ -23,7 +23,7 @@ Each theme defines the same roles. Values below are Midnight (the default) and L
 |---|---|---|---|---|
 | Room | `--ink-room` | `#080f17` | `#e8f0f5` | Rail, status bar, top bar. The darkest; it recedes. |
 | Desk | `--ink-desk` | `#0d161f` | `#f4f9fc` | The page: lists and the space around them. |
-| Lamp | `--ink-lamp` | `#17202a` | `#fbfdfe` | The lit item, and the reader page. |
+| Lamp | `--ink-lamp` | `#17202a` | `#e7f2f8` | The lit item, and the reader page. In Light it is a faint cyan tint, because a near-white lamp on the pale desk didn't show (W1 comp). |
 | Overlay | `--ink-overlay` | `#1f2a35` | `#fdfeff` (never pure white, DESIGN.md) | Compose, palette, sheets, menus, on a scrim. |
 | Scrim | `--scrim` | `rgb(4 9 14 / 0.55)` | `rgb(16 38 59 / 0.18)` | Behind overlays. |
 
@@ -49,7 +49,7 @@ Today's five tiers (`--foreground`, `--fg-2`, `--muted-foreground`, `--subtle-fo
 | Failure | `--danger` | `#fd8a8c` | `#b42330` | Failed states and destructive verbs only. |
 | Success | `--ok` | `#68d7a1` | `#1f7a4d` | Success states only ("healthy", "delivered"). Not for "done", which is the row leaving. |
 
-Unread is shown by weight (primary text, semibold) plus a full-height 2px bar in `--text-1` in the gutter just outside the row's leading edge (BK, 2026-05-11: "these little unread markers should be full height, notjust part of the height"), never by colouring the whole row. The bar is neutral so it never reads as the lamp's cyan hairline, which sits inside the row. In Paper, the accent is rust (`hsl(14 75% 38%)`); unread and badges use `--text-1` weight instead of the accent there, fixing the "reads as error red" finding.
+Unread is shown by weight (primary text, semibold) plus a full-height 2px bar in `--text-1` in the gutter just outside the row's leading edge (BK, 2026-05-11: "these little unread markers should be full height, notjust part of the height"), never by colouring the whole row. The bar is neutral so it never reads as the lamp's cyan hairline, which sits inside the row. It spans the row's text block (inset 8px top and bottom), so bars on adjacent unread rows don't join into one line, and it hides while the row is lit, where weight alone shows unread (W1 comp). In Paper, the accent is rust (`hsl(14 75% 38%)`); unread and badges use `--text-1` weight instead of the accent there, fixing the "reads as error red" finding.
 
 ### Generating themes
 
@@ -106,7 +106,7 @@ Tokens stay: `--duration-fast` 120ms, `--duration-base` 180ms, `--duration-slow`
 
 ## Iconography
 
-lucide only, stroke 1.75, 16px in rows and controls, 14px in meta and the status bar. Each mode has one glyph, used for its rail item, its mode mark and its toasts: Now `Sun`, Messages `MessagesSquare`, To do `ListChecks`, Updates `Bell`, Reading `Newspaper`, Archive `Archive`, Inbox `Inbox`. Look-alike icons in the rail's collapsed state (clock, stopwatch, hourglass; shield twice) are replaced: the collapsed rail shows only the modes and Inbox (D133). Icons never appear without a label except in the collapsed rail, the top bar's three buttons and the reader toolbar, and each has a tooltip with its key.
+lucide only, stroke 1.75, 16px in rows and controls, 14px in meta and the status bar, 20px in the phone tab bar (touch targets). Each mode has one glyph, used for its rail item, its mode mark and its toasts: Now `Sun`, Messages `MessagesSquare`, To do `ListChecks`, Updates `Bell`, Reading `Newspaper`, Archive `Archive`, Inbox `Inbox`. Look-alike icons in the rail's collapsed state (clock, stopwatch, hourglass; shield twice) are replaced: the collapsed rail shows only the modes and Inbox (D133). Icons never appear without a label except in the collapsed rail, the top bar's three buttons and the reader toolbar, and each has a tooltip with its key.
 
 ## The page frame
 
@@ -135,17 +135,17 @@ One anatomy, `Row` (D129), used by every list. A mode supplies the content of ea
 ┌─lead─┬─primary line ─────────────────────────────────┬─trail──────────────┐
 │ (A)  │ Pat Colleague                                  │ ◇ ▢   2h           │  ← mode marks, time
 │      │ RustConf 2026 invite · "can you confirm by Fri"│                    │  ← secondary (one line)
-│      │ Here because: you replied to Pat last week     │ r reply  e done ⋯  │  ← lit only: reason + actions
+│      │                                                │                    │  ← lit: trail becomes  r reply  e done ⋯
 └──────┴───────────────────────────────────────────────┴────────────────────┘
 ```
 
 - **Lead:** avatar (people), checkbox (To do), source mark (Updates, Reading) or amount (Archive). The unread bar sits in the gutter outside the lead.
 - **Primary line:** Body, `--text-1`; semibold when unread or your turn.
 - **Secondary line:** Body, `--text-2`, one line, truncated with an ellipsis (never clipped mid-word, an audit finding on phones).
-- **Reason line:** only on the lit row. Meta, `--text-2`, beginning "Here because:" and using the daemon's reason string (D111).
-- **Trail:** marks (an attachment clip, a star, and a 14px glyph per other mode the item is in, all `--text-3` with tooltips), the time in meta, and on the lit row the actions with keys. A conversation's message count follows the sender in meta (BK, 2026-05-11: "i need some indication that this is a conversation thread").
+- **Reason:** for the lit row, shown in the status bar's left side ("Here because: ...", meta, `--text-2`, the daemon's reason string, D111) and in the reader. Never a third line in the row: lighting a row must not change its height (D124's amendment).
+- **Trail:** marks (an attachment clip, a star, and a 14px glyph per other mode the item is in, all `--text-3` with tooltips) and the time in meta. On the lit row the trail is replaced by the actions with keys, on the same line. A conversation's message count follows the sender in meta (BK, 2026-05-11: "i need some indication that this is a conversation thread").
 - **Marks, not sentences:** "Also in To do: ..." becomes the To do mark; "New sender. Keep in Messages? ..." becomes a `new` mark (meta, `--cue`), and on the lit row a one-line choice with keys: `1` Messages `2` Updates `3` Reading `4` Block.
-- **Lit:** `--ink-lamp` background, 2px `--signal` hairline on the leading edge, actions shown. Hover on a pointer device shows the actions without lighting the row.
+- **Lit:** `--ink-lamp` background, 2px `--signal` hairline on the leading edge, actions in the trail. Same height as unlit. Hover on a pointer device shows the actions without lighting the row.
 - **Leaving:** height and opacity to 0 in 120ms (pointer) or at once (key), the next row lit in the same frame.
 - **Everywhere:** pickers and lists inside dialogs (labels, move to, snooze, the history list) use `Row` and the same keys: `j`/`k` move, `Space` toggles, `Enter` confirms, `Esc` leaves (BK, 2026-04-22: "I'm not able to navvigate with j and k ... and space to select/deselect and enter to confirm", and "why not a list like the oneon the messages list?").
 

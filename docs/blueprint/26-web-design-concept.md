@@ -101,8 +101,8 @@ A new feature reuses these; it doesn't invent its own. Specs in [27](27-web-desi
 
 | Job | The one way |
 |---|---|
-| Pick a thing | Move the lamp (`j`/`k`, click, tap). The lit item is the only one with visible actions. Lists inside dialogs work the same way (`j`/`k`, `Space`, `Enter`). |
-| Say why it's here | One reason line, "Here because ...", on the lit row and in the reader. |
+| Pick a thing | Move the lamp (`j`/`k`, click, tap). The lit item is the only one with visible actions; lighting never changes a row's height. Lists inside dialogs work the same way (`j`/`k`, `Space`, `Enter`). |
+| Say why it's here | One reason, "Here because ...", for the lit item in the status bar, and in the reader. |
 | Show it's also elsewhere | Mode marks in the row's trail; detail on the lit row. |
 | Act | The verb's key on the lit row, the status strip and `?`; the same verb names on every surface. The change shows at once and never pops back while it is retried (BK, 2026-03-22: "it breaks the blazing fast illussion"; 2026-05-19). |
 | Confirm | Only for what can't be undone or reaches another person: a proof sheet that lists exactly what will happen (the preview path, AGENTS.md), one apply with its key. |
@@ -148,7 +148,7 @@ Without asking, the person always knows three things, each in one place:
 | Moment | What the person should feel | The interaction that makes it land |
 |---|---|---|
 | Opening mxr | "It's current, and it's calm." | Now arrives with the freshness line already filled, nothing lit until a key is pressed, no message open (BK, 2026-10-09). |
-| Moving through a list | Fast, precise, under control. | The lamp jumps instantly on `j`/`k`; the lit row shows its actions and its reason; nothing else moves. |
+| Moving through a list | Fast, precise, under control. | The lamp jumps instantly on `j`/`k`; the lit row's trail turns into its actions and the status bar says why it's here; no row changes height. |
 | Opening an item | The thing itself, centre stage. | The reader page slides in beside the list (180ms) in the reading voice; the list stays, dimmed, with the row still lit. |
 | Done here / tick off / let go | Relief, and momentum. | The row folds away (120ms), the light lands on the next row in the same frame, a toast names what happened with Undo. |
 | A section put to bed | Finished, properly. | The last item folds, the section's end line appears ("Messages is clear. Next: 3 in To do."), the low-tide scene plays once (1800ms) where the list was. |

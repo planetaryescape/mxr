@@ -10,7 +10,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│ ▣ BK · bk@…  ▾    Messages › Pat Colleague          [ Search  / ]  [◎ ⌘.]  [✎ c]   │ room
+│ ▣ BK · bk@…  ▾    Messages › Pat Colleague          [ Search  / ]  [◎]  [✎]       │ room
 ├──────────────┬─────────────────────────────────────────────────────────────────────┤
 │ ☼ Now      4 │                                                                     │
 │ ▤ Messages 3 │                         the page (desk)                             │
@@ -27,7 +27,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 │              │                                                                     │
 │ ◐  «         │                                                                     │
 ├──────────────┴─────────────────────────────────────────────────────────────────────┤
-│ ● Latest mail 4m ago · synced 20s ago     r reply  e done here  j/k move    ? keys │ room
+│ ● 4m ago · Here because: your turn since Wed     r reply  e done here    ? keys │ room
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,8 +41,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
   Since you last looked: 23 arrived · 3 Messages · 12 Updates · 8 Reading
   ───────────────────────────────────────────────────────────────────────
   PEOPLE
-▌ (P) Pat Colleague          RustConf 2026 invite · "confirm by Fri"   ▢  2h
-      Here because: your turn since Wednesday        r reply  e done  ⋯
+▌ (P) Pat Colleague          RustConf 2026 invite · "confirm by Fri"   r reply  e done ⋯
   (W) Wendy Data             API design discussion                    ▢  1d
   DUE
   ☐  Pay invoice 2847 · $15,000                     due Fri  ▤      Mon
@@ -54,7 +53,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 
 **Intent.** The summary sentence is the page title: "Four things need you." in Display, so the first thing read is the answer. The freshness dot and the arrivals line are meta beneath it: present, not loud. The four sections (D110) are short lists with eyebrows, with no section boxes. The eye lands on the summary, then on the first person. Nothing is lit until a key is pressed or a row is clicked.
 
-**The lit row** shows the reason line, the verbs with keys and the mode marks' detail on hover.
+**The lit row** turns its trail into the verbs with keys; the status bar says why it's here.
 
 **From today (`01-now`):** the five underlined links per People row become a mode mark and, on the lit row, the reason. The new-sender question becomes a `new` mark. "Since 01:02: 0 arrived" with a native `▶` becomes the arrivals line, which drops zero counts (D119). "and 9 more in Messages" moves into the People eyebrow ("PEOPLE · 9 more in Messages"). Due rows use the same row as To do, not a bordered chip.
 
@@ -69,7 +68,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 │ YOUR TURN                                    │ replies in a day.                            │
 │▌(P) Pat Colleague                     6d  ●  │ ─────────────────────────────────────────── │
 │     "I asked my manager and they'll…"        │ TOPICS                                        │
-│ (D) Diana, Eve                        5d  ●  │ ▌● RustConf 2026 invite        your turn 6d  │
+│ (D) Diana, Eve                        5d  ●  │ ■ RustConf 2026 invite         your turn 6d  │
 │     Q1 report body text section 3…           │    Hotel for the conference    waiting  2w  │
 │ (U) Uma Designer                new   5d     │ ─────────────────────────────────────────── │
 │ PINNED                                       │  Pat · Mon 09:12                             │
@@ -86,7 +85,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 
 **Intent.** iMessage's shape (D112): people on the left, the conversation as a page on the right. The eye lands on the first Your-turn person, then on the open conversation's newest message in the reading voice. Nothing opens until asked (BK, 2026-10-09). The person's page has one Title (their name), one purpose line (the relationship in one sentence), the topics, then the conversation. The reply field sits where reading ends (D095).
 
-**The lit row** shows the reason, and for a new sender the one-line keep-or-move choice with keys.
+**The lit row** shows the verbs in its trail, and for a new sender the keep-or-move choice with keys (`1` to `4`) in place of the verbs; the status bar gives the reason.
 
 **From today (`02-messages`, `03-messages-person`):** the "New sender. Keep in Messages? Messages Updates Reading Block" line under almost every row becomes the `new` mark plus the lit-row choice, which halves row heights. Letters stop being filled boxes: each message is a ruled section in the reading voice, with the sender and time in meta, showing its new part with the quoted history folded to one line (the collapse BK likes, 2026-10-09: "if I'm not curious about the rest i don't even need to open the rest"). "new" alone at top right becomes the `new` mark. "Pat has written once since 2026." becomes a sentence the daemon writes that can't produce a year as a duration. The teal teaching callout becomes a hint anchored to the element it explains, in `--ink-overlay`, one at a time (D118). The lone `›` empty state becomes "Choose someone to read their conversation." in the content column.
 
@@ -96,8 +95,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
   TO DO
   Things email asked you to do, by when to act.                      ● 4m ago
   NOW · 3
-▌ ☐  Pay invoice 2847 · $15,000            Frank Billing · from Mon   due Fri
-      Here because: an invoice with a due date      Space done  o email  ⋯
+▌ ☐  Pay invoice 2847 · $15,000            Frank Billing · from Mon   Space done  o email ⋯
   ☐  Confirm RustConf ticket                Pat Colleague · from Fri   by Fri
   ☐  Send the sync agenda                   Quinn Dev · from you       today
   COMING UP · 2                                                          ›
@@ -117,8 +115,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
   Notifications, gathered twice a day. Read, then let go.            16:30 digest
   2 updates from 2 sources                                       A let go of all
   ───────────────────────────────────────────────────────────────────────
-▌ ◔ GitHub         Build #489 failed at integration             14:02   ▤
-      Here because: a service you use                  Space peek  e let go  o email
+▌ ◔ GitHub         Build #489 failed at integration        Space peek  e let go  ⋯
   ◔ Linear         3 issues assigned to you                     12:40
   ROUTINE · 2 sources                                                    ›
 ```
@@ -133,9 +130,8 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
   READING
   Newsletters you chose, as tonight's edition.                          8 issues
   ───────────────────────────────────────────────────────────────────────
-▌ ▥ The Changelog                                                     Mon
+▌ ▥ The Changelog                                   Enter read  b later  e let go ⋯
     The state of Rust in 2026, and why async finally feels finished
-    Here because: you subscribed                     Enter read  b later  e let go  M
   ▥ This Week in Rust                                                 Wed
     Issue 571: new compiler release, and a look at the trait solver
 ```

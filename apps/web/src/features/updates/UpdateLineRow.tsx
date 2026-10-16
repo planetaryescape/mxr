@@ -44,6 +44,9 @@ import { useUpdatesHidden } from "./updatesVerbs";
 /** A fact this long may not fit on the row's one line. */
 const LONG_FACT = 70;
 
+/** A phone taps the row to peek, and its width belongs to the source's name: these verbs wait for sm. */
+const PHONE_HIDDEN = "hidden sm:inline-flex";
+
 const NOT_ROW_BODY = "button, a, [role='menu'], [role='region'], [role='status']";
 
 /**
@@ -178,11 +181,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       }
       verbs={
         <>
-          {/* A phone taps the row to peek, and its width belongs to the source's name. */}
           <RowVerb
             keys="Space"
             label="peek"
-            className="hidden sm:inline-flex"
+            className={PHONE_HIDDEN}
             onClick={() => onTogglePeek(line)}
           />
           {canLetGoSource(line) ? (
@@ -192,7 +194,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             <RowVerb
               keys="t"
               label="to-do"
-              className="hidden sm:inline-flex"
+              className={PHONE_HIDDEN}
               ariaLabel={
                 line.todo_suggestion ? `Add to To do: ${line.todo_title}` : "This needs me: to-do"
               }
@@ -203,7 +205,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             <RowVerb
               keys="o"
               label="email"
-              className="hidden sm:inline-flex"
+              className={PHONE_HIDDEN}
               onClick={() => onOpenEmail(line)}
             />
           ) : null}

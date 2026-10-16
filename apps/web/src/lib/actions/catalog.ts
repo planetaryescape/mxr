@@ -28,6 +28,7 @@ import { todoActions } from "@/features/todo/actions";
 import { updatesActions } from "@/features/updates/actions";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
+import { installActions } from "./installActions";
 import { navigationActions } from "./navigationActions";
 import { listActions, readerActions, sidebarActions } from "./paneActions";
 import { getRegistry } from "./registry";
@@ -57,6 +58,7 @@ const featureActions: Action[] = [
   ...navigationActions,
   ...savedSearchJumps,
   ...settingsActions,
+  ...installActions,
   ...composeActions,
   ...mailVerbActions,
   ...mailboxActions,

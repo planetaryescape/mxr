@@ -33,6 +33,38 @@ Open **Settings > About** to check the connected daemon version. It says
 mail is stored on the computer running mxr. If no version is available,
 About shows **Unavailable**.
 
+## Install mxr as an app, and keep extensions out of its keys
+
+### Install it
+
+Chrome, Edge and Brave offer to install the web app when it is open. While
+the browser can install it, the status bar shows **install app** and the
+command palette has **Install as app**. Installed, mxr opens in its own
+window. Hide the offer with its **×**; it stays hidden after that. Firefox
+and Safari do not fire the install event, so the offer does not show there.
+
+### Stop extensions reading mxr's keys
+
+Extensions that run on every page can take mxr's single keys (`j`, `k`,
+`g`, `/`) before the app sees them. Give mxr's address its own rules.
+
+- **Chrome:** Open the extension's **Details** from **Manage extensions**.
+  Under **Permissions**, either set site access to **When you select the
+  extension**, or remove `mxr.localhost` from **Allowed sites** with
+  **More** → **Remove**. Chrome's own help uses these names.
+- **Firefox:** Open the extension from **Add-ons and themes** → **Extensions**
+  and turn off its access to data on websites. Mozilla's docs do not show
+  a per-site setting for this, so check your version's options for one.
+- **Safari:** Open **Safari Settings** → **Extensions**, choose the
+  extension, and set `mxr.localhost` to **Deny** under its websites.
+
+Keyboard-shortcut extensions such as [Vimium](https://github.com/philc/vimium)
+clash with single-key shortcuts. In Vimium, add an excluded URL rule with
+the pattern `*mxr.localhost*`. Vimium patterns are JavaScript regular
+expressions, and `*` matches any run of characters. Leave the excluded keys
+empty to turn Vimium off on that address. Vimium's options page and its
+toolbar popup both edit these rules.
+
 ## Demo mode in the web app
 
 `mxr web` works transparently while demo mode is active. After running

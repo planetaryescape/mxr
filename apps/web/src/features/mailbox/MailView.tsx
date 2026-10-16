@@ -122,21 +122,21 @@ function LensView({ lens }: { lens: MailLens }) {
 }
 
 /** What each list is for, in a line; a label or saved search says what it gathers. */
-const SYSTEM_PURPOSE: Readonly<Record<string, string>> = {
-  inbox: "Everything that arrived. Each row names the mode it went to.",
-  starred: "Messages you starred.",
-  sent: "Mail you sent.",
-  drafts: "Messages you started and haven't sent.",
-  archive: "Mail you're done with. Search finds it.",
-  spam: "Mail the provider marked as spam.",
-  trash: "Deleted mail, until the provider empties it.",
-};
+const SYSTEM_PURPOSE = new Map([
+  ["inbox", "Everything that arrived. Each row names the mode it went to."],
+  ["starred", "Messages you starred."],
+  ["sent", "Mail you sent."],
+  ["drafts", "Messages you started and haven't sent."],
+  ["archive", "Mail you're done with. Search finds it."],
+  ["spam", "Mail the provider marked as spam."],
+  ["trash", "Deleted mail, until the provider empties it."],
+]);
 
 function lensPurpose(lens: MailLens): string {
   if (lens.section === "labels") return `Mail labelled ${lens.label}.`;
   if (lens.section === "categories") return `Mail sorted into ${lens.label}.`;
   if (lens.section === "saved") return "A saved search, run again each time you open it.";
-  return SYSTEM_PURPOSE[lens.key] ?? "Mail in this place.";
+  return SYSTEM_PURPOSE.get(lens.key) ?? "Mail in this place.";
 }
 
 /**

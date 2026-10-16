@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
-import { partOfDay } from "@/features/desk/deskCopy";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Button } from "@/components/ui/button";
@@ -86,18 +85,18 @@ export function NowRoute() {
 
 /** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
-  // The day's headline is the title: the answer before the page's name.
   const headline = now && now.item_count > 0 ? now.headline : null;
-  const today = new Date();
-  const weekday = today.toLocaleDateString(undefined, { weekday: "long" });
   return (
-    <PageFrame
-      width="wide"
-      eyebrow={`Now · ${weekday} ${partOfDay(today)}`}
-      title={headline ?? "Now"}
-      titleTestId={headline ? "now-headline" : undefined}
-      purpose={guide?.header ?? now?.header}
-    />
+    <>
+      <PageFrame width="wide" title="Now" purpose={guide?.header ?? now?.header} />
+      {headline ? (
+        <ModeFrame width="wide">
+          <p data-testid="now-headline" className="type-heading mx-5 mt-3 text-balance text-text-1">
+            {headline}
+          </p>
+        </ModeFrame>
+      ) : null}
+    </>
   );
 }
 

@@ -69,7 +69,7 @@ function reply(page: Page) {
 }
 
 function heading(page: Page) {
-  return page.getByRole("region", { name: "Conversation" }).getByRole("heading", { level: 1 });
+  return page.getByRole("region", { name: "Conversation" }).getByRole("heading", { level: 2 });
 }
 
 /**

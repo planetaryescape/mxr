@@ -77,7 +77,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       <h3
         className={cn(
           "text-balance font-semibold leading-snug tracking-tight text-foreground",
-          lead ? "text-xl" : "text-md",
+          lead ? "text-lg" : "text-md",
         )}
       >
         <a

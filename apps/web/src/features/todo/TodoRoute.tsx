@@ -131,13 +131,21 @@ function Runway({
 /** The mode's name, its job in one line, and the day's headline. */
 function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide }) {
   return (
-    <PageFrame
-      eyebrow={runway?.headline ? <span data-testid="todo-headline">{runway.headline}</span> : null}
-      title="To do"
-      purpose={
-        guide?.header ?? runway?.header ?? "Things email asked you to do, ordered by when to act."
-      }
-    />
+    <>
+      <PageFrame
+        title="To do"
+        purpose={
+          guide?.header ?? runway?.header ?? "Things email asked you to do, ordered by when to act."
+        }
+      />
+      {runway?.headline ? (
+        <ModeFrame>
+          <p data-testid="todo-headline" className="type-heading mx-5 mt-3 text-balance text-text-1">
+            {runway.headline}
+          </p>
+        </ModeFrame>
+      ) : null}
+    </>
   );
 }
 

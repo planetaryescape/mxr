@@ -33,6 +33,13 @@
 | 23 | [Daemon portability](23-daemon-portability.md) | Durable drafts, recoverable actions, portable files, API contracts, client targeting and headless restore; ordered implementation slices for a future SwiftUI client or personal VPS |
 | 24 | [Remote hosting and clients](24-remote-hosting-and-clients.md) | Proposed `mxr serve` / `mxr connect`, authenticated Tailscale hosting, saved targets, registrations, presence, shutdown/reconnect and deregistration |
 | 25 | [The assistant](25-assistant.md) | The in-app chat agent: daemon loop over the MCP tools, approval enforced in code, ask_user questions, append-only history, web sidebar and `mxr assistant` |
+| 26 | [Web design concept](26-web-design-concept.md) | The night desk: what the web app is to the person, the mental model, map and journeys, principles, key moments, motion, hierarchy and the design gate (D123-D140) |
+| 27 | [Web design system](27-web-design-system.md) | Tokens (three ink depths, three text tiers, type roles, shape, motion) and the shared parts every screen uses: page frame, row, reason and model marks, keys, controls, overlays, states, and the lints that keep them shared |
+| 28 | [Web screens](28-web-screens.md) | Every main screen under the lamp, with mockups: what the eye lands on, what recedes, and what changes from today |
+| 29 | [The assistant as the copy desk](29-assistant-design.md) | The assistant's presentation in web and TUI: wire-line steps in the daemon's words, a live line, the app's own objects, proofs to sign |
+| 30 | [Design roadmap](30-design-roadmap.md) | Rungs W1-W8 from one page frame to finishing moments, each with its demo and design gate |
+| 31 | [Design open questions](31-design-open-questions.md) | Spikes S1-S4 and BK's product questions Q1-Q6 for the design work |
+| 26r | Web design research | [Audit of every screen, 2026-10-16](../research/web-design/audit-2026-10-16.md) and [agent panels and the best mail apps](../research/web-design/agents-and-mail-apps.md) |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 |  | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |
@@ -45,6 +52,8 @@ This blueprint is designed to be consumed by a coding agent. Every feature is sp
 Start with 00 (overview) and 14 (roadmap) for the big picture. Use 15 (decision log) as a reference when making implementation choices. Check 16 (addendum) for post-blueprint amendments that override or extend the main docs. Check 17 (release pipeline) for CI/CD and release automation. Consult the specific domain docs (02-13) for detailed specifications.
 
 For daemon portability, future native clients or running the daemon on another host, start with [23](23-daemon-portability.md). Select one ready slice and use its contract, entry points and acceptance checks.
+
+For anything a person sees in the web app, start with [26](26-web-design-concept.md) and [27](27-web-design-system.md): the design concept and the shared parts. Build screens from those parts, follow the rung order in [30](30-design-roadmap.md), and pass the design gate in 26 before calling a rung done. Behaving as specified is the floor, not the goal.
 
 For the next remote-access work after the completed portability preparation, use [24](24-remote-hosting-and-clients.md). Its proposed R01 stages cover hosting and client lifecycles; the SwiftUI app and production VPS migration remain separate work.
 

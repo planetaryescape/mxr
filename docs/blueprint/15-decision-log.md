@@ -910,3 +910,183 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Trade-offs accepted**: The full tool list is about 11k tokens per request; prompt caching and a byte-stable prefix keep that cheap on Claude, and local models pay it every time. No token streaming yet: the sidebar shows steps and a live status line instead of words. Every change needs a click, including obvious ones; there is no "approve all" mode. The TUI has no pane yet. Building it surfaced and fixed a bug older than the feature: `user_activity` only accepted four sources, so nothing an MCP or agent client did had ever reached the activity log (migration 89).
 
 **Amended 2026-10-15: a conversation can trust reversible changes.** BK asked for the follow-ups to be built, including an "approve all" mode. Notto deliberately has no per-request exemption because a model once used one to bypass its own supervision, so the switch is the user's alone: stored on the conversation, set only by `SetAssistantAutoApprove` (agent and MCP clients can't call it), read by the daemon each turn, and limited to changes mxr can put back (archive, read state, stars, moves, Later, categories, to-do state). Sending, deleting, trash, spam, rules and anything that reaches another service always ask. *Trade-off*: an injected instruction in a trusted conversation can now archive or move mail without a click; every such step is shown and logged with source `assistant`, and all of it can be moved back. In the same change replies stream as they are written and long conversations are summarised to fit the model's context window.
+
+## D123: The web app is designed as one product, the night desk, before any screen is changed
+
+**Chosen**: The web app gets a design concept of its own, written in [26-web-design-concept.md](26-web-design-concept.md): mxr is the night desk where you put tonight's mail to bed. One pool of light falls on the thing you are working on and everything else recedes into the navy; the five modes are the desk's sections, Now is the front page, the reader is the page under the lamp, and the assistant is the copy desk that marks proofs for your signature. Every screen, state and moment is judged against that concept, with the design system in [27](27-web-design-system.md), the screens in [28](28-web-screens.md), the assistant in [29](29-assistant-design.md) and the order of work in [30](30-design-roadmap.md). The metaphor lives in the design, not in the copy: the product's nouns stay Now, Messages, To do, Updates, Reading, Archive and Inbox (D107, D109).
+
+**Considered**: Fixing the audit's top problems one by one with no concept (the 2026-10-14 design-system pass did this and the app still read as one grey block); "the Edition" (Now as a newspaper front page, each mode a section), which fits the editorial brand but reads slow for triage; "the Logbook" (every surface a dense time-ordered log), which fits BK's March "terminal aesthetic" but loses warmth in Reading and Messages; "the Desk" (modes as trays), which risks skeuomorphism. The night desk keeps what each got right: the Edition's sections and front page, the Logbook's density and mono wire lines, the Desk's sense of putting things away.
+
+**Why**: BK, 2026-10-16: "focus on the design aspect. The functions but i don't think the design was considered", then "This is not just about the assistant but about the whole mxr web app". The anchor statement is from 2026-09-27: "it doesn't feel polished when i look at it and use it. It doesn't feel like there's any uniqueness to it or additional thought. I may as well be using gmail. This should feel like a thought out app that thought about every decision". The audit of 2026-10-16 (79 screenshots, [research](../research/web-design/audit-2026-10-16.md)) found three page frames, about six row designs, five empty states, keys shown four ways and about 880 of 945 sized text uses at 11 to 13px: screens built one at a time, each correct, none designed as part of a whole. BK's own taste statements point the same way from different years: "I'm a dark mode guy. I want the app to feel like vscode but to be snappy and blazing fast ... take inspiration from linear and superhuman" (2026-03-21), "this email reading screen is abou treading the email and so the email should really take center stage" (2026-05-11), "a human would know to focus on one thing each frame and know to guide the eye" (2026-09-26, about the showreel), and "more professional and more useful without being noisy" (2026-10-14). A lamp on a dark desk is all of those at once. The scene sentence in DESIGN.md is already "a developer at 11pm".
+
+**Trade-offs accepted**: BK never named this concept; it is the blueprint's proposal, filed as Q1 in [31](31-design-open-questions.md), and the work proceeds on it under BK's "decide for me" (D117) unless he redirects. A concept costs a first rung that changes little behaviour.
+
+## D124: One pool of light: the lit item is the only raised thing on a screen
+
+**Chosen**: Every screen has exactly one lit item: the row, topic, card or reader page the keys act on. It is drawn on the lamp surface (one step lighter than the page, a 1px cyan hairline on its leading edge, its actions and keys visible); everything else sits on the page surface with its actions hidden until it is lit or hovered. Selection has one look everywhere, replacing today's three (subtle fill with a cyan rule, saturated teal fill on Screener and the settings nav, filled pills on Archive and Analytics). Pressing `j`/`k` moves the light instantly, with no animation, because keyboard-repeated actions never animate (D101).
+
+**Considered**: Keeping per-screen selection styles; a full cyan fill for selection (loud, and it competes with the accent's other job, state); showing every row's actions all the time (today's Screener: about 48 identical buttons on one page).
+
+**Why**: BK on the showreel: "it's really hard to decide where my eyes should be looking in each frame, this is what makes you feel amatuer or makes yoou feel like an ai". Linear's 2026 refresh states the same rule for apps: "Don't compete for attention you haven't earned". Things 3 opens a to-do in place "while the rest of the list fades into the background". The audit's fourth-ranked problem is rows whose secondary lines all have equal weight.
+
+**Trade-offs accepted**: Actions hidden on unlit rows are one hover or one `j` away instead of zero; touch shows them on the lit row after a tap, and every action stays on a key and in the palette.
+
+## D125: Dense where you work, generous where you read
+
+**Chosen**: Lists where you triage (Now, Messages, To do, Updates, Inbox, Archive's ledger, tool pages) use the compact rhythm: 14px primary lines, 12px mono meta, one secondary line at most, rows of 44 to 56px. Places where you read or write (the reader, Reading's reader, a person's conversation, compose) use the reading voice: 16px body at line height 1.6, a 64 to 70ch measure, generous margins. The two rhythms never mix inside one pane.
+
+**Considered**: Compact everywhere (BK's March "i want more of a terminal aesthetic", "too much paddings"), which makes long email tiring; the current roomy editorial look everywhere, which BK called "noisy and cluttered" on Now and which wastes rows in triage; a density setting as the answer (one exists for the mailbox; a setting is not a design).
+
+**Why**: BK asked for both, in different contexts: "it's significantly better but ... i want it more compact than that, thaere's too much space" (2026-03-22, the mail list) and "the email should really take center stage", "the editor should take center stage, compose page is about writing the email" (2026-05-11). Superhuman (dense list, serif bodies) and Readwise Reader (65ch measure) split the same way.
+
+**Trade-offs accepted**: BK has not restated a density preference since March; Q2 in [31](31-design-open-questions.md) asks whether this split matches what he wants. The existing mailbox density setting stays and scales the work rhythm only.
+
+## D126: Recursive with all its axes, and a type scale that is actually used
+
+**Chosen**: The app loads Recursive's full variable font (`@fontsource-variable/recursive/full.css`, about 305 KB for Latin, served locally and cached by the PWA) instead of `mono.css` (about 73 KB, `wght` and `MONO` only), so the reading voice can use the `CASL` axis DESIGN.md describes. Six roles replace ad hoc sizes: display 28px (page titles on wide screens, the reader title), title 20px, heading 15px semibold, body 14px, reading 16px (`CASL` 0.3), meta 12px mono, and eyebrow 11px mono caps with one tracking value (0.08em). `scripts/check-type-scale.mjs` gains a check that pages use the role classes, not raw scale steps, for titles and headings. Details in [27](27-web-design-system.md#type).
+
+**Considered**: Keeping `mono.css` and adding `casl.css` (two font files and two faces for one family); switching families (DESIGN.md forbids Inter-class defaults and the brand is Recursive); leaving the scale and fixing pages one by one (the 2026-10-14 pass did this and hierarchy stayed flat).
+
+**Why**: The audit counted about 880 of 945 sized text uses at 11 to 13px and page titles at 17 to 20px sitting inline with their taglines, so "every screen reads as one grey-blue block". The 2026-10-14 pass already stopped literal sizes with a lint; what's missing is tiers in use. The font is local, so 230 KB more is a one-time cache fill, not a per-visit cost.
+
+**Trade-offs accepted**: A larger first load of the font on a fresh install. Spike S2 measures it and checks for layout shift.
+
+## D127: Square by default, round only for people and dots
+
+**Chosen**: Surfaces, panes, rows and the reader page have square corners. Controls (buttons, inputs, segmented controls, chips, menus) use a 3px radius. Only avatars, unread dots and count badges are round. Archive's round filter pills become the shared square segmented control.
+
+**Considered**: The current mix (`rounded-md` 134 uses, `rounded` 59, `rounded-full` 56, with no rule); fully square including controls (hard to read as pressable at 3px focus rings).
+
+**Why**: BK, 2026-03-22: "i asked for a terminal esk view and I asked you to use the lyra style from shadcnui so i'm not expecting to see rounded corners etc." The brand is "ruled lines, not cards". One rule makes shape a signal: round means a person or a count.
+
+**Trade-offs accepted**: shadcn defaults are overridden in `shadcn.css`; new components must take the rule from tokens, which the lint in [27](27-web-design-system.md#shape-and-depth) checks.
+
+## D128: One page frame for every page
+
+**Chosen**: `ModeFrame`, `Page` and the bespoke headers (Snoozed, Owed, Reply queue, mailbox lists, Focus, Search) merge into one `PageFrame` with fixed slots: eyebrow (optional), title, one-line purpose, one primary action, an overflow menu, optional tabs, and the freshness line where the page has data that can be stale. Every page header is the same height at the same width. Spec in [27](27-web-design-system.md#the-page-frame).
+
+**Considered**: Two frames, one for modes and one for tools (the current split, which makes "moving between modes and tools feel like moving between apps"); per-page headers designed for each job.
+
+**Why**: The audit measured header heights of about 92, 103, 125 and 147px across screens and ranked three page frames third of fifteen problems. The 2026-10-14 pass found "every page title shown twice".
+
+**Trade-offs accepted**: Some pages lose a bespoke flourish (Focus's large eyebrow, Search's oversized input).
+
+## D129: One row anatomy, one reason line, and mode marks instead of sentences
+
+**Chosen**: Every list row is built from one anatomy: lead (avatar, checkbox or source mark), primary line, one secondary line, one reason line ("Here because ...", shown on the lit row and in the reader, never on every row), and trail (time, counts, mode marks). Cross-mode presence ("Also in To do: ...") becomes a mode mark: a small glyph per other mode the item is in, with the detail on hover and on the lit row. The new-sender question ("New sender. Keep in Messages? Messages Updates Reading Block") becomes a single `new` mark on the row and a one-line choice on the lit row with its keys. Each mode keeps its own unit and verbs (D112); the anatomy fixes the slots, not the content.
+
+**Considered**: Keeping each mode's bespoke row (about six designs today); underlined inline links (the audit's "Wikipedia article" look, doubling row height on Now and Messages); dropping cross-mode presence (it is the five-modes model's main promise, D108).
+
+**Why**: BK: "The Now page is quite useful but it's pretty noisy and cluttered and a little overwhelming" (2026-10-09) and "Glancing at the todo should give me enough information to act if possible ... visible and glanceable clearly without being cluttered" (2026-10-09). The audit found five underlined links per People row on Now and "Here because" used in Reading, Updates and Archive but not in Now, Messages, To do or Inbox, "the screens where it matters most".
+
+**Trade-offs accepted**: The reason is one keypress or one hover away on unlit rows. D111's "every placement shows its reason" is kept by the lit row and the reader, not by every row at once.
+
+## D130: Keys are shown once, where you are
+
+**Chosen**: Key hints appear in three places only: on the lit row's actions, in the status bar's context strip (the current screen's three to five main verbs), and in the `?` sheet and command palette. In-page legends under lists, chips inside every button and hover chips on unlit rows are removed. Touch layouts show no key chips. The `?` sheet loses developer notes (TUI parity remarks) and states each mode's purpose once.
+
+**Considered**: Today's four formats on one screen; hiding keys entirely behind `?` (BK wants them visible: "I would lve for the keyboard shortcuts of teach of these actions to be visible", 2026-05-11).
+
+**Why**: BK's philosophy is "everythign is fully navigable by keyboaard. including anything you want to do" (2026-05-11), and the hints must teach without competing with content (audit problem 6). Superhuman's command menu teaches each shortcut beside its command.
+
+**Trade-offs accepted**: A less frequent action's key is visible only when its row is lit or in `?`.
+
+## D131: One empty state, one loading state, one error state, written for people
+
+**Chosen**: Each page frame has exactly one empty state (top-aligned in the content column, a one-line statement of what would be here and the one action that fills it), one loading state (a skeleton in the shape of that page's rows, never the generic mail skeleton), and one error state (what happened in plain words, what still works, and the one fix that can work; "Try again" only for errors a retry can fix). When the daemon is unreachable, cached content stays on screen under one banner that says so; the sidebar never changes its items. Copy for each lives with the daemon's copy where the daemon owns the words (CLI and TUI say the same).
+
+**Considered**: Today's five empty layouts, the mail skeleton for every page and "Try again" with raw errors such as `invalid thread id: not-a-real-thread-id`.
+
+**Why**: BK, 2026-04-22: "while it's loading there's no loader or anything showin that something is loading, it just looks like it's stuck". The audit found an Archive skeleton that never resolves, two stacked daemon-down banners (one blaming a protocol upgrade) and a sidebar that drops Starred, Sent, All Mail, Spam and Trash when offline.
+
+**Trade-offs accepted**: Errors that today show raw text need a mapping to plain words; unknown errors still show the raw text under "Details".
+
+## D132: The app never contradicts itself
+
+**Chosen**: Every count and every claim about the user's mail comes from one daemon definition and is worded the same on every surface. "Waiting on you" means Messages' Your turn everywhere it appears: Now's summary, Messages, Focus & reply, Owed replies and the thread's relationship line. People you have never written to are counted separately as "new" and never as owed. Badge counts equal the page's own count. Units are always named ("49 conversations", "2 of 35 conversations").
+
+**Considered**: Leaving each view its own definition and explaining the differences in copy.
+
+**Why**: The audit's second-ranked problem: Now says "12 people waiting on you" while Focus says "Nobody is waiting on a reply from you" and Owed says "You don't owe anyone a reply"; Screener says 28 senders while its badge says 17. BK's trust anxiety (D119) is about exactly this: a sorted view must make its scope legible, and two views that disagree make neither trustworthy.
+
+**Trade-offs accepted**: This is behaviour, not paint: it needs daemon work to share one query. Q3 in [31](31-design-open-questions.md) records the assumed definition.
+
+## D133: Navigation recedes, and every destination has a place on every width
+
+**Chosen**: The rail is dimmer than the page (Linear's rule: orientation recedes, the task stays in focus). It lists Now and the five modes, then Inbox, then three named groups replacing "More": Mail (Starred, Sent, Drafts, Snoozed, Reply later, All Mail, Spam, Trash), Views (Waiting on, Owed replies, Screener, Subscriptions, Invites, Deliveries) and Tools (Search, Analytics, Rules, Accounts, Activity, Jobs, Diagnostics, Settings), with Labels after. The collapsed rail shows the modes and Inbox only. On phones the tabs are Now, Messages, To do, Reading and More; More is a sheet listing Updates, Archive, Inbox and the three groups, and the active tab always matches the page (Updates and Archive light More, not Find). Settings has one navigation: the settings sections replace the page's content, not a second sidebar beside the app's.
+
+**Considered**: The current junk-drawer "More" with 14 mixed items; six phone tabs (too narrow at 390px); keeping Find as the phone hub (two search fields on one screen).
+
+**Why**: The audit: a 30-item rail whose More "mixes mail folders, views, tools and AI extracts", Settings, Screener, Snoozed, Drafts, Sent, Labels and Tools unreachable on a phone, and the Find tab lit on Updates, Archive, Inbox and threads. D109 already made the rail the modes; this finishes it.
+
+**Trade-offs accepted**: Some items move one level deeper; every one stays on a `g` key and in the palette.
+
+## D134: Motion explains change and the end of a section is the reward
+
+**Chosen**: Motion has four jobs only: arriving (the reader page slides in from the right, 180ms, ease-out), leaving (a done row folds away in 120ms and the light moves to the next row in the same frame), landing (a change made elsewhere, by the assistant or another client, shows on its rows with a brief cyan underline that fades over 600ms) and finishing (the last item of a section put away brings the low-tide scene, 1800ms, once per section per day). Nothing moves on keyboard repeat, nothing animates layout properties, and reduced motion keeps fades only. Sound stays off by default (D101).
+
+**Considered**: Celebrations on every completion (BK's 2026-09-27 example of "a little colorful animation with a satisfying ding"), which repeated triage would make noise; no motion at all.
+
+**Why**: BK asked for micro-interactions that make the app "feel good" (2026-09-27), and on video said "things were also changing too fast". D101 already settled "delight is rare, earned and optional". The audit found motion "barely visible": the tokens exist and nothing uses them for these moments.
+
+**Trade-offs accepted**: The finishing moment needs a definition of "section cleared" per mode, which [27](27-web-design-system.md#motion) gives.
+
+## D135: The assistant is the copy desk: wire lines, the app's own objects, and proofs to sign
+
+**Chosen**: The assistant panel is redesigned in [29](29-assistant-design.md). Each step is one wire line in mono: a verb that changes tense ("Searching your mail for invoices" then "Searched your mail: 14 found"), never a tool name or JSON; the daemon provides both tenses with the readout. While a turn runs, one live line rewrites itself with what it is doing now, replacing "Thinking". Emails and people in replies and readouts are drawn as the app's own rows and chips (avatar, name, subject), not underlined links. A change waiting for approval is a proof: what changes, in words, the items it touches as rows, and one apply with its key; a whole group is applied or sent back with a note. The TUI pane follows the same grammar.
+
+**Considered**: Keeping the chat-app look (right-aligned bubbles, underlined links, a "Thinking" spinner); Marginalia (an editor's margin notes) and a Proof tray as the whole panel, from the research; per-item drop inside an approval (it would edit the stored call, which D122 forbids: "Approving runs exactly the call stored in the transcript").
+
+**Why**: BK: "this is not a good ui" (the raw-JSON step), "you tools return json internally I kno but in the agent interface we can surely make it look nice" and "make the UI nice please . like the rest of the app" (2026-10-15). Linear's agent grammar (action, parameter, result, with present and past tense and ephemeral live steps) is the clearest published answer; Linear also draws links an agent writes as its own issue and person chips.
+
+**Trade-offs accepted**: Verb phrases per tool are new daemon copy (72 tools); a tool without phrases falls back to its readout words. Q5 in [31](31-design-open-questions.md) asks whether a proof should allow dropping single items, which needs a protocol change.
+
+## D136: Model text is always marked and never raw
+
+**Chosen**: Text a model wrote (gists, summaries, assistant replies, draft suggestions) is set in the reading voice with a `model` mark naming where it ran (local or cloud), and its provenance is one click away. No default view shows JSON, ids, tool names or raw errors; they live under "Details".
+
+**Considered**: Marking model text by colour alone (Granola's grey, which a critic called "gray on gray").
+
+**Why**: D100's standard ("model text shown to a user is either a verified quote from the message or labelled as a summary with its provenance") already holds for gists; the audit found machine phrasing in list snippets ("Preview of: ...", "The conversation history shows ...") with no mark.
+
+**Trade-offs accepted**: One more small mark on rows that show gists.
+
+## D137: The app has its own design source, separate from the site's DESIGN.md
+
+**Chosen**: Chapters 26 and 27 are the web app's design source. `apps/web/DESIGN.md` is a short pointer to them plus the token file, so tools that look for a DESIGN.md beside the code find the app's system, not the marketing site's. The root `DESIGN.md` stays the site's. `tokens.css`'s header stops saying it "follows DESIGN.md" and points at chapter 27.
+
+**Considered**: Amending the root DESIGN.md to cover both (the two have different jobs and audiences).
+
+**Why**: The audit and the 2026-10-14 pass both found the root DESIGN.md is "derived from `site/src/styles/custom.css`" and that little beyond palette and font reached the app.
+
+**Trade-offs accepted**: Two design sources to keep consistent; the palette and font stay shared through `tokens.css`.
+
+## D138: A rung that changes what people see passes a design gate, not only tests
+
+**Chosen**: Every rung in [30](30-design-roadmap.md) that touches a screen follows the gate in [26](26-web-design-concept.md#the-design-gate): an HTML comp or prototype of its screens and moments, published and reviewed against the concept before building; after building, screenshots of each touched screen in Midnight, Light, Paper and Eclipse at 390, 1024 and 1440px, read against the concept and the hierarchy table; the key moments used by hand; and the main journeys walked end to end. A review agent grades it against [26](26-web-design-concept.md) and records the result in the rung's PR.
+
+**Considered**: "Readable and not broken" screenshot checks, which the app has passed for months while BK called it unpolished.
+
+**Why**: BK's lesson from keyloom (2026-10-16): "it's like if you describe functionality and someone just makes a thing that does exactly what you asked behaviourally and no more".
+
+**Trade-offs accepted**: Each rung takes longer; the comps are throwaway.
+
+## D139: Four themes from one generator, Midnight first
+
+**Chosen**: Midnight stays the default, with Light, Paper and Eclipse. All four are generated from three inputs each (base, accent, contrast) in OKLCH, as Linear did, so a new theme is three values. Every theme is checked at the same widths in the design gate. Paper stops using its accent for unread and badges (they read as error red today). Editor themes (BK's April list: catppuccin, gruvbox, nightfox, kanagawa) wait for Q4.
+
+**Considered**: Hand-tuned variables per theme (510 lines in `tokens.css` today); adding editor themes now.
+
+**Why**: BK, 2026-10-07: "our dark mode is not great, I think there's lots of room for us to make it more delightful", then "what happened to the dark mode work I asked for?". A generator makes every theme get the same hierarchy for free.
+
+**Trade-offs accepted**: The generator must reproduce today's Midnight closely enough that it doesn't feel like a different app; S3 checks it.
+
+## D140: Toasts confirm and undo, one at a time, in one corner
+
+**Chosen**: Toasts stay bottom-right (top-right in Focus, where the composer sits at the bottom), one at a time; a new toast replaces the old one. They say what happened and offer Undo when the change can be undone, auto-dismiss after 5 seconds (8 with Undo) and never cover the lit row. Errors that need a decision are not toasts.
+
+**Considered**: Top-centre rich-colour toasts (BK's 2026-10-07 ask, reversed by BK on 2026-10-09: "The toasts are a bit jarring to be honest, and they appear on top of content and they don't go away. Maybe they should be top right or bottom right").
+
+**Why**: BK's 2026-10-09 words and commit `4b4b52452` already moved them; this writes the rule down so new features don't invent their own feedback.
+
+**Trade-offs accepted**: Bursts of changes show only the last toast; the activity log keeps them all.

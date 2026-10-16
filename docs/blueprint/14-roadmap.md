@@ -207,6 +207,19 @@ what shipped ([site-modes-inventory.md](../site-modes-inventory.md)).
 - [ ] **Phase 7: Fast-tier classification, measured**: the user's model for what rules can't tell, loopback by default, `mxr modes eval` on real mail (counts only)
 - [ ] **Docs match what ships** (rubric X11): every phase's Docs line done in its release
 
+## Web design: the night desk
+
+The web app's functions are built; its design as a whole is the next work. The concept, system, screens and the assistant's presentation are in [26](26-web-design-concept.md) to [29](29-assistant-design.md), and the ordered rungs W1 to W8 with their spikes are in [30](30-design-roadmap.md) and [31](31-design-open-questions.md).
+
+- [ ] W1 The same page everywhere, with a real title
+- [ ] W2 One lit row, and Now and Messages calm
+- [ ] W3 Every mode on the same parts, keys in one place
+- [ ] W4 mxr never contradicts itself and never looks stuck
+- [ ] W5 The rail recedes and every destination is reachable
+- [ ] W6 Reading and writing feel like reading and writing
+- [ ] W7 The copy desk (the assistant)
+- [ ] W8 Finishing feels good, and every theme looks designed
+
 ## Future (post-v1.0)
 
 These are explicitly NOT on the roadmap for v1. They may grow out of the core later:

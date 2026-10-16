@@ -114,7 +114,10 @@ not in the toolbar.
 
 One toolbar style (W6): the conversation reader and the Reading reader use the
 same quiet button (`ToolButton`, no border, secondary text, key in the tooltip).
-Reading's labels drop to icons on phones. The reading measure is 66ch in both.
+Reading's toolbar sits in the reading column, starting where the title does:
+Later, Let go and Highlight keep their words; Original, Marginalia and
+Unsubscribe are icons named in their tooltip, so the bar fits one row. On
+phones every label drops to an icon. The reading measure is 66ch in both.
 The gist, the AI overview and AI drafts carry the model mark (`gemma4 · local`).
 
 ## Compose and search

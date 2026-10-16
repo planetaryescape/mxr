@@ -270,7 +270,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
       <header className="shrink-0">
-        <ReaderToolbar wrap>
+        <ReaderToolbar wrap width="reading">
           <ToolButton
             icon={ArrowLeft}
             label="Reading"
@@ -295,6 +295,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             </span>
           )}
           <ReaderSettingsMenu />
+          {/* The reading keys keep their words; the rarer verbs are icons named
+              in their tooltip, so the bar fits the reading column. */}
           <span className="ml-auto flex flex-wrap items-center gap-1">
             <ToolButton
               label="Later"
@@ -322,6 +324,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <ToolButton
               label={original ? "Cleaned" : "Original"}
               keys="R"
+              iconOnly
               icon={FileText}
               hint={original ? "Back to the cleaned layout" : "Show the sender's layout"}
               onClick={toggleOriginal}
@@ -330,6 +333,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               testId="reader-marginalia"
               label={sentTo ? "In Marginalia" : "Marginalia"}
               keys="M"
+              iconOnly
               icon={BookOpenText}
               hint={
                 sentTo
@@ -342,6 +346,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               testId="reader-unsubscribe"
               label="Unsubscribe"
               keys="D"
+              iconOnly
               icon={MailX}
               onClick={() => setUnsubscribing(true)}
             />

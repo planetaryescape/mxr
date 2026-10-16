@@ -2,7 +2,7 @@
 
 The assistant is a chat agent you talk to about your mail. It answers questions, analyses, and carries out what you ask (archive, move, label, to-dos, drafts, sending) through mxr's own tools. Reading and searching run straight away; every change waits for your approval, and when it needs a choice from you it asks with a question card. It is most useful for analysis ("who am I waiting on?") and bulk work ("archive every shipping notice older than a month"), where doing it by hand means many clicks.
 
-Decision: [D122](15-decision-log.md#d122-the-assistant-is-a-daemon-agent-over-the-mcp-tools-with-approval-enforced-in-code).
+Decision: [D122](15-decision-log.md#d122-the-assistant-is-a-daemon-agent-over-the-mcp-tools-with-approval-enforced-in-code). How it should look and feel, in web and TUI, is in [29](29-assistant-design.md) (D135).
 
 ## The agent runs in the daemon and calls the MCP tools in-process
 

@@ -13,12 +13,25 @@ use serde_json::{Map, Value};
 const ROWS: usize = 5;
 const FACTS: usize = 5;
 const DETAIL_CHARS: usize = 90;
+/// Rows kept per step for a reply to draw from, so a reply that names more
+/// emails than a step's readout shows still finds them all.
+const REPLY_ROWS: usize = 50;
 /// How deep to look for lists. mxr's results nest one or two wrappers.
 const DEPTH: usize = 4;
 
 /// The readout of a whole result, or `None` when it is not JSON or holds
 /// nothing worth reading out.
 pub(crate) fn readout(content: &str) -> Option<AssistantReadoutData> {
+    readout_capped(content, ROWS)
+}
+
+/// Everything a result lists, up to [`REPLY_ROWS`], for drawing the rows a
+/// reply names.
+pub(crate) fn listed_rows(content: &str) -> Vec<AssistantReadoutRowData> {
+    readout_capped(content, REPLY_ROWS).map_or_else(Vec::new, |readout| readout.rows)
+}
+
+fn readout_capped(content: &str, row_cap: usize) -> Option<AssistantReadoutData> {
     let value: Value = serde_json::from_str(content).ok()?;
     let root = unwrap(&value)?;
 
@@ -35,7 +48,7 @@ pub(crate) fn readout(content: &str) -> Option<AssistantReadoutData> {
             .iter()
             .flat_map(|list| list.items.iter())
             .filter_map(|item| item.as_object())
-            .take(ROWS)
+            .take(row_cap)
             .map(row)
             .collect();
         return Some(AssistantReadoutData {

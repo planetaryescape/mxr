@@ -69,8 +69,13 @@ pub struct AssistantConversationData {
     pub status: AssistantStatusData,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_outcome: Option<AssistantOutcomeData>,
+    /// Why the last turn failed, in a sentence for the user with what to do
+    /// next. Older daemons send the raw error here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// The raw error behind `last_error`, when the daemon reworded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error_detail: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
     /// Reversible changes (archive, move, star, read, labels) run without
@@ -103,6 +108,12 @@ pub enum AssistantItemData {
         /// clients name them under the reply.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         failed_call_ids: Vec<String>,
+        /// When the reply links two or more emails or people that one step
+        /// listed, those rows, in the order the reply names them (at most
+        /// 8), for clients to draw as a list under the sentence that
+        /// introduces them. Empty otherwise.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        rows: Vec<AssistantReadoutRowData>,
         created_at: i64,
     },
     /// Earlier messages were summarised to fit the model's context window.
@@ -126,8 +137,25 @@ pub enum AssistantItemData {
         /// What the result found, in words, read from the whole result.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         readout: Option<AssistantReadoutData>,
+        /// The step in the daemon's words, for the wire line. Absent from
+        /// older daemons: clients then fall back to `reason`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<AssistantStepTitleData>,
         created_at: i64,
     },
+}
+
+/// A step in plain words, in the two tenses a client shows. Built by the
+/// daemon from the tool and its arguments, never from the model's reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantStepTitleData {
+    /// While it runs: "Searching your mail for "shipped"".
+    pub running: String,
+    /// Once it ended, whichever way it ended: "Searched your mail: 14
+    /// found", "Couldn't star 1 email: it needs your confirmation first",
+    /// "Waiting for you: archive 14 emails".
+    pub done: String,
 }
 
 /// A tool result for people: what it lists (the first few, with where to
@@ -213,6 +241,10 @@ pub enum AssistantPendingData {
         tool: String,
         arguments: serde_json::Value,
         reason: String,
+        /// The change in words, "Archive 14 emails". Absent from older
+        /// daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
         /// What the change will do, from the tool's own preview.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         preview: Option<serde_json::Value>,
@@ -292,6 +324,10 @@ pub enum AssistantProgressData {
     Calling {
         tool: String,
         reason: String,
+        /// The call in words while it runs, "Searching your mail for
+        /// "shipped"". Absent from older daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
     },
     /// The reply so far, while the model writes it. The whole text each
     /// time, so a missed event loses nothing.
@@ -324,4 +360,122 @@ pub struct AssistantAvailabilityData {
     /// Why it can't run, in words for the user.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+}
+
+impl AssistantProgressData {
+    /// The line a client shows above the composer while the turn runs, in
+    /// place of "Thinking". The static phrases live here rather than on
+    /// the wire; only a call's title varies, so it travels in `Calling`.
+    #[must_use]
+    pub fn live_line(&self) -> String {
+        match self {
+            Self::Thinking { step } if *step > 1 => "Deciding what to do next".to_string(),
+            Self::Thinking { .. } => "Reading your request".to_string(),
+            Self::Calling {
+                title: Some(title), ..
+            } if !title.is_empty() => title.clone(),
+            Self::Calling { tool, .. } => {
+                let words = tool.strip_prefix("mxr_").unwrap_or(tool).replace('_', " ");
+                format!("Using {words}")
+            }
+            Self::Writing { .. } => "Writing the answer".to_string(),
+            Self::Summarizing => "Making room: summarising earlier messages".to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "tests unwrap fixtures to keep failures direct"
+)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn old_json_without_the_title_fields_still_reads() {
+        let call: AssistantItemData = serde_json::from_value(json!({
+            "kind": "tool_call", "seq": 2, "call_id": "c1", "tool": "mxr_search",
+            "reason": "r", "arguments": {}, "state": "done", "created_at": 0,
+        }))
+        .unwrap();
+        assert!(matches!(
+            call,
+            AssistantItemData::ToolCall { title: None, .. }
+        ));
+
+        let reply: AssistantItemData = serde_json::from_value(json!({
+            "kind": "assistant", "seq": 3, "text": "hi", "created_at": 0,
+        }))
+        .unwrap();
+        assert!(matches!(&reply, AssistantItemData::Assistant { rows, .. } if rows.is_empty()));
+
+        let pending: AssistantPendingData = serde_json::from_value(json!({
+            "kind": "approval", "call_id": "c1", "tool": "mxr_mutate",
+            "arguments": {}, "reason": "r",
+        }))
+        .unwrap();
+        assert!(matches!(
+            pending,
+            AssistantPendingData::Approval { title: None, .. }
+        ));
+
+        let progress: AssistantProgressData = serde_json::from_value(json!({
+            "kind": "calling", "tool": "mxr_search", "reason": "r",
+        }))
+        .unwrap();
+        assert_eq!(progress.live_line(), "Using search");
+
+        let conversation: AssistantConversationData = serde_json::from_value(json!({
+            "id": "a", "title": "t", "status": "idle", "created_at": 0, "updated_at": 0,
+            "items": [], "pending": [],
+        }))
+        .unwrap();
+        assert_eq!(conversation.last_error_detail, None);
+    }
+
+    #[test]
+    fn new_fields_stay_off_the_wire_when_empty() {
+        let reply = AssistantItemData::Assistant {
+            seq: 1,
+            text: "hi".into(),
+            model: None,
+            failed_call_ids: Vec::new(),
+            rows: Vec::new(),
+            created_at: 0,
+        };
+        assert!(serde_json::to_value(reply).unwrap().get("rows").is_none());
+    }
+
+    #[test]
+    fn the_live_line_names_what_the_turn_is_doing() {
+        let line = |progress: AssistantProgressData| progress.live_line();
+        assert_eq!(
+            line(AssistantProgressData::Thinking { step: 1 }),
+            "Reading your request"
+        );
+        assert_eq!(
+            line(AssistantProgressData::Thinking { step: 2 }),
+            "Deciding what to do next"
+        );
+        assert_eq!(
+            line(AssistantProgressData::Calling {
+                tool: "mxr_search".into(),
+                reason: String::new(),
+                title: Some("Searching your mail for \"x\"".into()),
+            }),
+            "Searching your mail for \"x\""
+        );
+        assert_eq!(
+            line(AssistantProgressData::Writing {
+                text: String::new()
+            }),
+            "Writing the answer"
+        );
+        assert_eq!(
+            line(AssistantProgressData::Summarizing),
+            "Making room: summarising earlier messages"
+        );
+    }
 }

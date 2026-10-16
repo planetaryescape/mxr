@@ -46,6 +46,7 @@ fn conversation(
     pending: Vec<AssistantPendingData>,
 ) -> AssistantConversationData {
     AssistantConversationData {
+        last_error_detail: None,
         id: "c1".into(),
         title: "Receipts".into(),
         status,
@@ -65,6 +66,7 @@ fn conversation(
 
 fn approval() -> AssistantPendingData {
     AssistantPendingData::Approval {
+        title: None,
         call_id: "call1".into(),
         tool: "mxr_mutate".into(),
         arguments: json!({"action": "archive", "message_ids": ["m1", "m2"]}),
@@ -367,6 +369,7 @@ fn updates_refetch_the_open_conversation_one_at_a_time() {
     // The answer lands, and the events that came meanwhile ask once more.
     let mut done = conversation(AssistantStatusData::Idle, Vec::new());
     done.items.push(AssistantItemData::ToolCall {
+        title: None,
         seq: 2,
         call_id: "s1".into(),
         tool: "mxr_search".into(),
@@ -571,6 +574,7 @@ const LINKED_THREAD: &str = "019e6f2a-1234-7000-8000-abcdef000001";
 fn linked_reply() -> App {
     let mut conversation = conversation(AssistantStatusData::Idle, vec![]);
     conversation.items.push(AssistantItemData::Assistant {
+        rows: Vec::new(),
         seq: 2,
         text: format!(
             "Reply to [Q1 report](mxr:thread/{LINKED_THREAD}) from \
@@ -660,6 +664,7 @@ fn a_person_in_the_folded_quiet_band_opens_it_and_is_selected() {
             conversation: {
                 let mut conversation = app.assistant.conversation.clone().unwrap();
                 conversation.items.push(AssistantItemData::Assistant {
+                    rows: Vec::new(),
                     seq: 9,
                     text: "Ask [Leo Park](mxr:person/person:leo@example.com).".into(),
                     model: None,
@@ -698,6 +703,7 @@ fn a_later_reply_without_links_leaves_the_earlier_links_open() {
     let mut app = linked_reply();
     if let Some(conversation) = app.assistant.conversation.as_mut() {
         conversation.items.push(AssistantItemData::Assistant {
+            rows: Vec::new(),
             seq: 3,
             text: "Anything else?".into(),
             model: None,

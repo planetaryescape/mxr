@@ -81,8 +81,15 @@ pub struct MessageMeta {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Progress {
-    Thinking { step: u32 },
-    Calling { tool: String, reason: String },
+    Thinking {
+        step: u32,
+    },
+    Calling {
+        tool: String,
+        reason: String,
+        /// The call's arguments, so the sink can put it in words.
+        arguments: Value,
+    },
     Summarizing,
 }
 
@@ -467,6 +474,7 @@ impl Agent<'_> {
                     .progress(Progress::Calling {
                         tool: call.name.clone(),
                         reason,
+                        arguments: arguments.clone(),
                     })
                     .await;
                 let output = self.host.call(&call.name, arguments).await;
@@ -480,6 +488,7 @@ impl Agent<'_> {
                     .progress(Progress::Calling {
                         tool: call.name.clone(),
                         reason,
+                        arguments: arguments.clone(),
                     })
                     .await;
                 let output = self.host.call(&call.name, arguments).await;

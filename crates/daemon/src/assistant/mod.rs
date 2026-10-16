@@ -8,6 +8,7 @@
 mod host;
 mod links;
 mod readout;
+mod titles;
 mod view;
 
 pub(crate) use view::{conversation_view, summary_view};
@@ -367,7 +368,15 @@ impl TurnSink for StoreSink<'_> {
     async fn progress(&self, progress: Progress) {
         let progress = match progress {
             Progress::Thinking { step } => AssistantProgressData::Thinking { step },
-            Progress::Calling { tool, reason } => AssistantProgressData::Calling { tool, reason },
+            Progress::Calling {
+                tool,
+                reason,
+                arguments,
+            } => AssistantProgressData::Calling {
+                title: Some(titles::running_title(&tool, &arguments)),
+                tool,
+                reason,
+            },
             Progress::Summarizing => AssistantProgressData::Summarizing,
         };
         emit(

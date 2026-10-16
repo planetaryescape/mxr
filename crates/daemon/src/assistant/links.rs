@@ -9,6 +9,7 @@
 //!   one email or person a result gave it, unless results gave that same
 //!   text to more than one.
 
+use mxr_protocol::AssistantLinkData;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -28,6 +29,25 @@ static MXR_LINK: LazyLock<Regex> = LazyLock::new(|| {
 static LINK_OR_CODE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[[^\]\n]*\]\([^)\n]*\)|`[^`\n]*`").expect("valid markdown pattern")
 });
+
+/// The emails and people a reply links, in the order it names them, each
+/// once. Run on a reply after [`KnownLinks::apply`], so every id is one a
+/// tool returned.
+pub(crate) fn linked_objects(reply: &str) -> Vec<AssistantLinkData> {
+    let mut found: Vec<AssistantLinkData> = Vec::new();
+    for captures in MXR_LINK.captures_iter(reply) {
+        let id = captures[3].to_string();
+        let link = match &captures[2] {
+            "thread" => AssistantLinkData::Thread { thread_id: id },
+            "person" => AssistantLinkData::Person { person_id: id },
+            _ => continue,
+        };
+        if !found.contains(&link) {
+            found.push(link);
+        }
+    }
+    found
+}
 
 /// What this conversation's tool results let a reply link.
 #[derive(Default)]

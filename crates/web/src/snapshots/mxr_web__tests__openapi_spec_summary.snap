@@ -78,6 +78,7 @@ expression: summary
     "AssistantReadoutRowData",
     "AssistantSendBody",
     "AssistantStatusData",
+    "AssistantStepTitleData",
     "AssistantViewContextData",
     "AttachmentChunk",
     "AttachmentChunkRequest",

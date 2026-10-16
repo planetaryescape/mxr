@@ -4915,7 +4915,13 @@ export interface components {
             created_at: number;
             id: string;
             items: components["schemas"]["AssistantItemData"][];
+            /**
+             * @description Why the last turn failed, in a sentence for the user with what to do
+             *     next. Older daemons send the raw error here.
+             */
             last_error?: string | null;
+            /** @description The raw error behind `last_error`, when the daemon reworded it. */
+            last_error_detail?: string | null;
             last_outcome?: components["schemas"]["AssistantOutcomeData"] | null;
             pending: components["schemas"]["AssistantPendingData"][];
             status: components["schemas"]["AssistantStatusData"];
@@ -5001,6 +5007,13 @@ export interface components {
                   /** @enum {string} */
                   kind: "assistant";
                   model?: string | null;
+                  /**
+                   * @description When the reply links two or more emails or people that one step
+                   *     listed, those rows, in the order the reply names them (at most
+                   *     8), for clients to draw as a list under the sentence that
+                   *     introduces them. Empty otherwise.
+                   */
+                  rows?: components["schemas"]["AssistantReadoutRowData"][];
                   /** Format: int64 */
                   seq: number;
                   text: string;
@@ -5030,6 +5043,8 @@ export interface components {
                   /** Format: int64 */
                   seq: number;
                   state: components["schemas"]["AssistantCallStateData"];
+                  title?:
+                      components["schemas"]["AssistantStepTitleData"] | null;
                   tool: string;
               };
         /**
@@ -5064,6 +5079,11 @@ export interface components {
                   preview?: unknown;
                   preview_error?: string | null;
                   reason: string;
+                  /**
+                   * @description The change in words, "Archive 14 emails". Absent from older
+                   *     daemons.
+                   */
+                  title?: string | null;
                   tool: string;
               }
             | {
@@ -5085,6 +5105,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "calling";
                   reason: string;
+                  /**
+                   * @description The call in words while it runs, "Searching your mail for
+                   *     "shipped"". Absent from older daemons.
+                   */
+                  title?: string | null;
                   tool: string;
               }
             | {
@@ -5144,6 +5169,20 @@ export interface components {
          * @enum {string}
          */
         AssistantStatusData: "idle" | "running" | "awaiting_user";
+        /**
+         * @description A step in plain words, in the two tenses a client shows. Built by the
+         *     daemon from the tool and its arguments, never from the model's reason.
+         */
+        AssistantStepTitleData: {
+            /**
+             * @description Once it ended, whichever way it ended: "Searched your mail: 14
+             *     found", "Couldn't star 1 email: it needs your confirmation first",
+             *     "Waiting for you: archive 14 emails".
+             */
+            done: string;
+            /** @description While it runs: "Searching your mail for "shipped"". */
+            running: string;
+        };
         /**
          * @description What the user has open when they send a message, so "this" and
          *     "these" mean something.

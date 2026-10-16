@@ -9209,7 +9209,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Why the last turn failed, in a sentence for the user with what to do\nnext. Older daemons send the raw error here."
+          },
+          "last_error_detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The raw error behind `last_error`, when the daemon reworded it."
           },
           "last_outcome": {
             "oneOf": [
@@ -9483,6 +9491,13 @@
                   "null"
                 ]
               },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantReadoutRowData"
+                },
+                "description": "When the reply links two or more emails or people that one step\nlisted, those rows, in the order the reply names them (at most\n8), for clients to draw as a list under the sentence that\nintroduces them. Empty otherwise."
+              },
               "seq": {
                 "type": "integer",
                 "format": "int64"
@@ -9576,6 +9591,17 @@
               },
               "state": {
                 "$ref": "#/components/schemas/AssistantCallStateData"
+              },
+              "title": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AssistantStepTitleData",
+                    "description": "The step in the daemon's words, for the wire line. Absent from\nolder daemons: clients then fall back to `reason`."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "tool": {
                 "type": "string"
@@ -9674,6 +9700,13 @@
               "reason": {
                 "type": "string"
               },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The change in words, \"Archive 14 emails\". Absent from older\ndaemons."
+              },
               "tool": {
                 "type": "string"
               }
@@ -9749,6 +9782,13 @@
               },
               "reason": {
                 "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The call in words while it runs, \"Searching your mail for\n\"shipped\"\". Absent from older daemons."
               },
               "tool": {
                 "type": "string"
@@ -9940,6 +9980,24 @@
           "running",
           "awaiting_user"
         ]
+      },
+      "AssistantStepTitleData": {
+        "type": "object",
+        "description": "A step in plain words, in the two tenses a client shows. Built by the\ndaemon from the tool and its arguments, never from the model's reason.",
+        "required": [
+          "running",
+          "done"
+        ],
+        "properties": {
+          "done": {
+            "type": "string",
+            "description": "Once it ended, whichever way it ended: \"Searched your mail: 14\nfound\", \"Couldn't star 1 email: it needs your confirmation first\",\n\"Waiting for you: archive 14 emails\"."
+          },
+          "running": {
+            "type": "string",
+            "description": "While it runs: \"Searching your mail for \"shipped\"\"."
+          }
+        }
       },
       "AssistantViewContextData": {
         "type": "object",

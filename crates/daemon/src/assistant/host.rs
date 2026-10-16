@@ -130,4 +130,22 @@ mod tests {
         );
         assert!(tools.tools().len() > 50);
     }
+
+    /// A tool added to the MCP server must get its own plain-language
+    /// titles: until it does, its steps read "Using <tool name>", and this
+    /// fails.
+    #[tokio::test]
+    async fn every_mcp_tool_has_titles() {
+        let tools = InProcessTools::start(Arc::new(Unreachable)).await.unwrap();
+        let untitled: Vec<&str> = tools
+            .tools()
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .filter(|name| !crate::assistant::titles::has_titles(name))
+            .collect();
+        assert!(
+            untitled.is_empty(),
+            "add these to `phrases` in crates/daemon/src/assistant/titles.rs: {untitled:?}"
+        );
+    }
 }

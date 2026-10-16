@@ -24,7 +24,7 @@ type Theme = keyof typeof THEMES;
 
 function block(theme: Theme): string {
   const start = css.indexOf(THEMES[theme]);
-  expect(start, `${theme} block`).toBeGreaterThanOrEqual(0);
+  if (start < 0) throw new Error(`no ${theme} block in tokens.css`);
   return css.slice(start, css.indexOf("\n}\n", start));
 }
 
@@ -78,8 +78,8 @@ function luminance(value: string): number {
 }
 
 function contrast(foreground: string, background: string): number {
-  const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+  const [a, b] = [luminance(foreground), luminance(background)];
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
 describe("the contrast helper", () => {
@@ -105,7 +105,9 @@ describe.each(Object.keys(THEMES) as Theme[])("%s text tiers", (theme) => {
     (ink) => {
       for (const tier of ["text-1", "text-2", "text-3"]) {
         const ratio = contrast(role(theme, tier), role(theme, ink));
-        expect(ratio, `${theme} ${tier} on ${ink}`).toBeGreaterThanOrEqual(4.5);
+        if (ratio < 4.5)
+          throw new Error(`${theme} ${tier} on ${ink} is ${ratio.toFixed(2)}:1, under 4.5:1`);
+        expect(ratio).toBeGreaterThanOrEqual(4.5);
       }
     },
   );

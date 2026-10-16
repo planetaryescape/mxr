@@ -140,7 +140,10 @@ function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide 
       />
       {runway?.headline ? (
         <ModeFrame>
-          <p data-testid="todo-headline" className="type-heading mx-5 mt-3 text-balance text-text-1">
+          <p
+            data-testid="todo-headline"
+            className="type-heading mx-5 mt-3 text-balance text-text-1"
+          >
             {runway.headline}
           </p>
         </ModeFrame>

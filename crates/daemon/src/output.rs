@@ -82,6 +82,11 @@ const SINGLE_LINE_FIELDS: &[&str] = &[
     "overload_line",
     "not_now",
     "empty_state",
+    // Assistant steps, rows and approvals (`AssistantStepTitleData`,
+    // `AssistantReadoutRowData`).
+    "detail",
+    "running",
+    "done",
 ];
 
 /// Makes every one-line, mail-controlled field of a daemon response safe
@@ -263,5 +268,64 @@ mod tests {
     fn a_block_keeps_its_own_lines_but_no_field_can_add_one() {
         let block = format!("row one {}\nrow two", terminal_text("a\r\nb\u{2029}c"));
         assert_eq!(terminal_block(&block).lines().count(), 2);
+    }
+
+    #[test]
+    fn assistant_rows_and_titles_are_made_safe_for_the_terminal() {
+        use mxr_protocol::{
+            AssistantConversationData, AssistantItemData, AssistantReadoutRowData,
+            AssistantStatusData, AssistantStepTitleData, ResponseData,
+        };
+        let hostile = "\u{1b}[2J\u{1b}[Hforged\u{202e}x";
+        let conversation = AssistantConversationData {
+            id: "a".into(),
+            title: "t".into(),
+            status: AssistantStatusData::Idle,
+            last_outcome: None,
+            last_error: None,
+            last_error_detail: None,
+            created_at: 0,
+            updated_at: 0,
+            auto_approve: false,
+            items: vec![
+                AssistantItemData::Assistant {
+                    seq: 1,
+                    text: "hi".into(),
+                    model: None,
+                    failed_call_ids: Vec::new(),
+                    rows: vec![AssistantReadoutRowData {
+                        title: hostile.into(),
+                        detail: Some(hostile.into()),
+                        link: None,
+                    }],
+                    created_at: 0,
+                },
+                AssistantItemData::ToolCall {
+                    seq: 2,
+                    call_id: "c".into(),
+                    tool: "mxr_search".into(),
+                    reason: String::new(),
+                    arguments: serde_json::json!({}),
+                    state: mxr_protocol::AssistantCallStateData::Done,
+                    result: None,
+                    readout: None,
+                    title: Some(AssistantStepTitleData {
+                        running: hostile.into(),
+                        done: hostile.into(),
+                    }),
+                    created_at: 0,
+                },
+            ],
+            pending: Vec::new(),
+        };
+        let response = sanitize_response(Response::Ok {
+            data: ResponseData::AssistantConversation { conversation },
+        });
+        let json = serde_json::to_string(&response).unwrap_or_default();
+        assert!(
+            !json.contains("\\u001b") && !json.contains("\\u202e"),
+            "{json}"
+        );
+        assert!(json.contains("forged"));
     }
 }

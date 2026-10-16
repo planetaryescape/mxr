@@ -198,11 +198,13 @@ fn link(object: &Map<String, Value>) -> Option<AssistantLinkData> {
 
 fn text(value: Option<&Value>) -> Option<String> {
     let text = value?.as_str()?.trim();
-    (!text.is_empty()).then(|| one_line(text))
+    Some(one_line(text)).filter(|line| !line.is_empty())
 }
 
+/// Mail text on one line, with control characters, escape sequences and
+/// bidi overrides taken out: readout text reaches terminals.
 fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    super::titles::one_line(text)
 }
 
 fn clipped(text: &str, max: usize) -> String {
@@ -239,7 +241,7 @@ fn fact_value(value: &Value) -> Option<String> {
 
 /// `undo_available` reads "Undo available".
 fn words(key: &str) -> String {
-    let spaced = key.replace('_', " ");
+    let spaced = one_line(&key.replace('_', " "));
     let mut chars = spaced.chars();
     chars.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(chars).collect()
@@ -342,5 +344,21 @@ mod tests {
     fn text_and_empty_results_have_no_readout() {
         assert_eq!(readout("not json"), None);
         assert_eq!(readout("{}"), None);
+    }
+
+    #[test]
+    fn row_text_from_mail_carries_no_control_characters() {
+        let hostile = "\u{1b}[2J\u{1b}[Hforged\u{202e}x\u{9b}";
+        let out = read(json!({"results": [{
+            "subject": format!("{hostile}!"), "thread_id": "t1",
+            "from": {"name": hostile, "email": "a@x.com"},
+        }]}));
+        for text in [&out.rows[0].title, out.rows[0].detail.as_ref().unwrap()] {
+            assert!(
+                !text.chars().any(|c| c.is_control() || c == '\u{202e}'),
+                "{text:?}"
+            );
+            assert!(text.contains("forged"));
+        }
     }
 }

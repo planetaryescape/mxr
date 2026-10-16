@@ -635,9 +635,11 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 push_wrapped(
                     &mut lines,
                     "",
-                    &title
-                        .clone()
-                        .unwrap_or_else(|| describe_change(tool, arguments)),
+                    &one_line(
+                        &title
+                            .clone()
+                            .unwrap_or_else(|| describe_change(tool, arguments)),
+                    ),
                     width,
                     strong,
                     strong,
@@ -1497,6 +1499,53 @@ mod tests {
         let screen = render(&state);
         assert!(screen.contains("• Weekly sync  Quinn"), "{screen}");
         assert!(screen.contains("• Invoice"), "{screen}");
+    }
+
+    #[test]
+    fn daemon_text_with_escape_sequences_draws_as_plain_text() {
+        let hostile = "\u{1b}[2J\u{1b}[Hforged\u{202e}gnp\u{9b}";
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![
+                user(1, "who wrote"),
+                titled(2, AssistantCallStateData::Done, hostile, hostile),
+                AssistantItemData::Assistant {
+                    seq: 3,
+                    text: "Two wrote.".into(),
+                    model: None,
+                    failed_call_ids: Vec::new(),
+                    rows: vec![mxr_protocol::AssistantReadoutRowData {
+                        title: hostile.into(),
+                        detail: Some(hostile.into()),
+                        link: None,
+                    }],
+                    created_at: 0,
+                },
+            ],
+            vec![AssistantPendingData::Approval {
+                title: Some(hostile.into()),
+                call_id: "c".into(),
+                tool: "mxr_mutate".into(),
+                arguments: json!({}),
+                reason: hostile.into(),
+                preview: None,
+                preview_error: None,
+            }],
+        ));
+        state.progress = Some(AssistantProgressData::Calling {
+            tool: "mxr_search".into(),
+            reason: String::new(),
+            title: Some(hostile.into()),
+        });
+        let screen = render(&state);
+        assert!(screen.contains("forged"), "{screen}");
+        assert!(
+            !screen.chars().any(|c| c.is_control() && c != '\n') && !screen.contains('\u{202e}'),
+            "{screen:?}"
+        );
     }
 
     #[test]

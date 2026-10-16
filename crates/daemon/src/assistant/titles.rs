@@ -27,6 +27,9 @@ pub(crate) struct Context<'a> {
     pub readout: Option<&'a AssistantReadoutData>,
     /// The tool's own preview, for an approval.
     pub preview: Option<&'a Value>,
+    /// The stored result, for a tool whose result says whether the work is
+    /// finished or only started.
+    pub result: Option<&'a str>,
 }
 
 /// One tool call in three phrasings.
@@ -80,6 +83,7 @@ pub(crate) fn step_title(
     result: Option<&str>,
 ) -> AssistantStepTitleData {
     use AssistantCallStateData as State;
+    let context = Context { result, ..context };
     let phrases = phrases(tool, arguments, context).unwrap_or_else(|| generic(tool));
     let done = match state {
         State::Running | State::Done | State::Approved => finished(&phrases, context),
@@ -113,8 +117,8 @@ pub(crate) fn running_title(tool: &str, arguments: &Value) -> String {
 /// The title of a change waiting for approval: "Archive 14 emails".
 pub(crate) fn change_title(tool: &str, arguments: &Value, preview: Option<&Value>) -> String {
     let context = Context {
-        readout: None,
         preview,
+        ..Context::default()
     };
     let phrases = phrases(tool, arguments, context).unwrap_or_else(|| generic(tool));
     finish(&capitalised(&phrases.action))
@@ -130,6 +134,44 @@ fn finished(phrases: &Phrases, context: Context<'_>) -> String {
         Some(total) => format!("{}: {total} found", phrases.done),
         None => phrases.done.clone(),
     }
+}
+
+/// A non-committing call to a tool that changes things: what the change
+/// would do, never the change itself.
+fn preview_of(gerund: &str, what: &str) -> Phrases {
+    let rest = format!("what {} {what} would change", gerund.to_lowercase());
+    Phrases::verb("Checking", "Checked", "check", &rest)
+}
+
+/// Whether an archive operation's result says every message is archived.
+/// A result that is cut, unreadable or still running is not complete.
+fn archive_completed(result: &str) -> bool {
+    fn operation(value: &Value, depth: usize) -> Option<&Value> {
+        if value.get("items").is_some() && value.get("running").is_some() {
+            return Some(value);
+        }
+        if depth == 0 {
+            return None;
+        }
+        value
+            .as_object()?
+            .values()
+            .find_map(|child| operation(child, depth - 1))
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&readable_result(result, usize::MAX)) else {
+        return false;
+    };
+    let Some(operation) = operation(&value, 3) else {
+        return false;
+    };
+    let items = operation.get("items").and_then(Value::as_array);
+    operation.get("running").and_then(Value::as_bool) == Some(false)
+        && items.is_some_and(|items| {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| item.get("state").and_then(Value::as_str) == Some("completed"))
+        })
 }
 
 /// How many a result listed. A result that lists nothing has no `total`;
@@ -169,8 +211,13 @@ fn finish(title: &str) -> String {
     clip(&one_line(title), TITLE_CHARS)
 }
 
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// Controls, escape sequences and bidi overrides out (mail can carry them
+/// into a title through a query or a name), then one line.
+pub(super) fn one_line(text: &str) -> String {
+    crate::output::terminal_text(text)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn clip(text: &str, max: usize) -> String {
@@ -319,13 +366,33 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
         ),
         "mxr_thread_gists" => {
             let conversations = counted(arguments, "thread_ids", "conversation", "conversations");
-            v("Summarising", "Summarised", "summarise", &conversations)
+            if flag(arguments, "generate") {
+                // Queues the missing ones for the model and returns.
+                let rest = format!("summaries of {conversations}");
+                Phrases::new(
+                    format!("Asking for {rest}"),
+                    format!("Asked for {rest}"),
+                    format!("ask for {rest}"),
+                )
+            } else {
+                v(
+                    "Reading",
+                    "Read",
+                    "read",
+                    &format!("summaries of {conversations}"),
+                )
+            }
         }
         "mxr_attachment_metadata" => v("Looking at", "Looked at", "look at", "an attachment"),
         "mxr_attachment_chunk" => v("Reading", "Read", "read", "part of an attachment"),
         "mxr_status" => v("Checking", "Checked", "check", "mxr's status"),
         "mxr_workspace" => v("Checking", "Checked", "check", "your workspace"),
-        "mxr_sync" => v("Syncing", "Synced", "sync", "your mail"),
+        // Starts or joins a sync and returns; status shows its progress.
+        "mxr_sync" => Phrases::new(
+            "Starting a sync of your mail",
+            "Started syncing your mail",
+            "start syncing your mail",
+        ),
 
         // The five modes
         "mxr_messages" => {
@@ -480,7 +547,19 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
         }
         "mxr_archive_submit" => {
             if run {
-                v("Archiving", "Archived", "archive", "the reviewed emails")
+                // The runner works in the background: the result says
+                // whether it has finished, and until it does the step has
+                // only started.
+                let rest = "the reviewed emails";
+                if context.result.is_some_and(archive_completed) {
+                    v("Archiving", "Archived", "archive", rest)
+                } else {
+                    Phrases::new(
+                        format!("Starting to archive {rest}"),
+                        format!("Started archiving {rest}"),
+                        format!("archive {rest}"),
+                    )
+                }
             } else {
                 v("Checking", "Checked", "check", "the reviewed archive")
             }
@@ -494,7 +573,7 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
         }
         "mxr_mutate" => {
             let things = emails(arguments);
-            match arguments
+            let committing = match arguments
                 .get("action")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
@@ -523,6 +602,16 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 "star" => v("Starring", "Starred", "star", &things),
                 "unstar" => v("Unstarring", "Unstarred", "unstar", &things),
                 _ => v("Changing", "Changed", "change", &things),
+            };
+            // Without `confirm` mxr only blocks the call: it changed nothing.
+            if run {
+                committing
+            } else {
+                Phrases::new(
+                    format!("Trying to {}", committing.action),
+                    format!("Tried to {}", committing.action),
+                    committing.action,
+                )
             }
         }
 
@@ -539,11 +628,16 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
         "mxr_todo_get" => v("Opening", "Opened", "open", "a to-do"),
         "mxr_todo_set_state" => {
             let todos = counted(arguments, "todo_ids", "to-do", "to-dos");
-            match arguments.get("action").and_then(Value::as_str) {
-                Some("done") => v("Completing", "Completed", "complete", &todos),
-                Some("dismiss") => v("Dismissing", "Dismissed", "dismiss", &todos),
-                Some("undo") => v("Reopening", "Reopened", "reopen", &todos),
-                _ => v("Changing", "Changed", "change", &todos),
+            let (ing, ed, inf) = match arguments.get("action").and_then(Value::as_str) {
+                Some("done") => ("Completing", "Completed", "complete"),
+                Some("dismiss") => ("Dismissing", "Dismissed", "dismiss"),
+                Some("undo") => ("Reopening", "Reopened", "reopen"),
+                _ => ("Changing", "Changed", "change"),
+            };
+            if run {
+                v(ing, ed, inf, &todos)
+            } else {
+                preview_of(ing, &todos)
             }
         }
         "mxr_todo_resolve" => {
@@ -553,7 +647,11 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 Some("undo") => ("Undoing", "Undid", "undo"),
                 _ => ("Reviewing", "Reviewed", "review"),
             };
-            v(ing, ed, inf, "an update to a to-do")
+            if run {
+                v(ing, ed, inf, "an update to a to-do")
+            } else {
+                preview_of(ing, "an update to a to-do")
+            }
         }
 
         // Categories
@@ -735,12 +833,18 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
                 )
             }
         }
-        "mxr_recovery_prepare_draft" => v(
-            "Preparing",
-            "Prepared",
-            "prepare",
-            "a draft from the restored profile",
-        ),
+        "mxr_recovery_prepare_draft" => {
+            if run {
+                v(
+                    "Preparing",
+                    "Prepared",
+                    "prepare",
+                    "a draft from the restored profile",
+                )
+            } else {
+                preview_of("Preparing", "a draft from the restored profile")
+            }
+        }
         _ => return None,
     })
 }
@@ -799,7 +903,7 @@ mod tests {
             State::Done,
             Context {
                 readout: Some(&readout),
-                preview: None,
+                ..Context::default()
             },
             None,
         );
@@ -819,7 +923,7 @@ mod tests {
             State::Done,
             Context {
                 readout: Some(&none),
-                preview: None,
+                ..Context::default()
             },
             None,
         );
@@ -992,5 +1096,158 @@ mod tests {
             State::Done,
         );
         assert_eq!(real.running, "Moving an email to Updates");
+    }
+
+    const HOSTILE: &str = "\x1b[2J\x1b[Hforged\u{202e}gnp.exe\u{2066}\u{9b}31m\x07\r\nmore";
+
+    fn assert_clean(text: &str) {
+        assert!(
+            !text
+                .chars()
+                .any(|c| c.is_control() || matches!(c as u32, 0x202A..=0x202E | 0x2066..=0x2069)),
+            "{text:?}"
+        );
+    }
+
+    #[test]
+    fn escape_sequences_and_bidi_overrides_never_reach_a_title() {
+        let args = json!({
+            "query": HOSTILE, "issuer": HOSTILE, "name": HOSTILE, "mode": HOSTILE,
+            "person": HOSTILE, "message_ids": [HOSTILE],
+        });
+        for tool in [
+            "mxr_search",
+            "mxr_records",
+            "mxr_records_ask",
+            "mxr_category_create",
+            "mxr_category_rename",
+            "mxr_move",
+            "mxr_person",
+            "mxr_mutate",
+        ] {
+            let title = titles(tool, &args, State::Failed);
+            assert_clean(&title.running);
+            assert_clean(&title.done);
+            assert_clean(&change_title(tool, &args, None));
+        }
+        let draft = json!({"draft": {"to": [{"name": HOSTILE, "email": "a@x.com"}]}});
+        assert_clean(&change_title(
+            "mxr_send_draft",
+            &json!({"confirm": true}),
+            Some(&draft),
+        ));
+        assert!(running_title("mxr_search", &args).contains("forged"));
+        assert_clean(&running_title("mxr_search", &args));
+    }
+
+    /// Base arguments that make each tool's confirm / dry_run / token
+    /// matter, for the walk below.
+    fn base_arguments(tool: &str) -> Value {
+        match tool {
+            "mxr_mutate" | "mxr_mutation_preview" => {
+                json!({"action": "archive", "message_ids": ["a"]})
+            }
+            "mxr_todo_set_state" => json!({"action": "done", "todo_ids": ["t1"]}),
+            "mxr_todo_resolve" => json!({"action": "accept", "todo_id": "t1"}),
+            "mxr_reading_item" => json!({"fetch_article": true}),
+            "mxr_reading_marginalia" => json!({"action": "send"}),
+            "mxr_reading_highlight" => json!({"action": "remove"}),
+            "mxr_reading_later" => json!({"later": true, "item_keys": ["k"]}),
+            "mxr_move" => json!({"mode": "reading"}),
+            "mxr_category_create" | "mxr_category_rename" => json!({"name": "Work"}),
+            _ => json!({}),
+        }
+    }
+
+    #[test]
+    fn a_call_that_only_previews_never_reads_as_the_change() {
+        let mut walked = 0;
+        for tool in mxr_assistant::gate::rule_tools() {
+            let Some((preview, commit)) = mxr_assistant::gate::commit_forms(tool) else {
+                continue;
+            };
+            let with = |extra: &Value| {
+                let mut args = base_arguments(tool);
+                args.as_object_mut()
+                    .unwrap()
+                    .extend(extra.as_object().unwrap().clone());
+                args
+            };
+            let previewed = titles(tool, &with(&preview), State::Done).done;
+            let committed = titles(tool, &with(&commit), State::Done).done;
+            assert_ne!(
+                previewed, committed,
+                "{tool}: a call that changes nothing reads like the change: {previewed}"
+            );
+            walked += 1;
+        }
+        assert!(walked >= 20, "walked only {walked} tools");
+    }
+
+    #[test]
+    fn dry_runs_of_tasks_say_what_they_would_change() {
+        let args = json!({"todo_ids": ["t1"], "action": "done", "confirm": false});
+        assert_eq!(
+            titles("mxr_todo_set_state", &args, State::Done).done,
+            "Checked what completing 1 to-do would change"
+        );
+        let resolve = json!({"todo_id": "t1", "suggestion_id": "s", "action": "dismiss"});
+        assert_eq!(
+            titles("mxr_todo_resolve", &resolve, State::Done).done,
+            "Checked what dismissing an update to a to-do would change"
+        );
+        let blocked = json!({"action": "archive", "message_ids": ["a"]});
+        assert_eq!(
+            titles("mxr_mutate", &blocked, State::Done).done,
+            "Tried to archive 1 email"
+        );
+    }
+
+    #[test]
+    fn archive_submit_claims_completion_only_when_the_result_does() {
+        let args = json!({"operation_id": "op", "confirm": true});
+        let done_for = |result: &Value| {
+            step_title(
+                "mxr_archive_submit",
+                &args,
+                State::Approved,
+                Context::default(),
+                Some(&result.to_string()),
+            )
+            .done
+        };
+        let started = json!({"kind": "ArchiveOperation", "operation": {
+            "running": true, "accepted": true, "items": [{"state": "pending"}]}});
+        assert_eq!(done_for(&started), "Started archiving the reviewed emails");
+        let finished = json!({"kind": "ArchiveOperation", "operation": {
+            "running": false, "accepted": true,
+            "items": [{"state": "completed"}, {"state": "completed"}]}});
+        assert_eq!(done_for(&finished), "Archived the reviewed emails");
+        let partial = json!({"kind": "ArchiveOperation", "operation": {
+            "running": false, "accepted": true,
+            "items": [{"state": "completed"}, {"state": "not_executed"}]}});
+        assert_eq!(done_for(&partial), "Started archiving the reviewed emails");
+        // No result, or one that is cut off, is not a claim of completion.
+        let none = step_title(
+            "mxr_archive_submit",
+            &args,
+            State::Approved,
+            Context::default(),
+            None,
+        );
+        assert_eq!(none.done, "Started archiving the reviewed emails");
+        assert_eq!(
+            titles("mxr_sync", &json!({}), State::Done).done,
+            "Started syncing your mail"
+        );
+        assert_eq!(
+            titles(
+                "mxr_thread_gists",
+                &json!({"generate": true, "thread_ids": ["a"]}),
+                State::Done
+            )
+            .done,
+            "Asked for summaries of 1 conversation"
+        );
     }
 }

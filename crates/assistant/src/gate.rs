@@ -201,6 +201,33 @@ pub fn auto_approvable(tool: &str, arguments: &Value) -> bool {
     }
 }
 
+/// Every tool name with a gate rule.
+pub fn rule_tools() -> impl Iterator<Item = &'static str> {
+    RULES.iter().map(|(name, _)| *name)
+}
+
+/// How a tool's non-committing call differs from its committing call, as
+/// the argument changes that turn one into the other. `None` for tools that
+/// never change anything or always do.
+pub fn commit_forms(tool: &str) -> Option<(Value, Value)> {
+    let rule = RULES.iter().find(|(name, _)| *name == tool)?.1;
+    match rule {
+        Rule::Confirm | Rule::ConfirmPreviewedBy(..) => Some((
+            serde_json::json!({"confirm": false}),
+            serde_json::json!({"confirm": true}),
+        )),
+        Rule::DryRun => Some((
+            serde_json::json!({"dry_run": true}),
+            serde_json::json!({"dry_run": false}),
+        )),
+        Rule::PreviewToken => Some((
+            serde_json::json!({}),
+            serde_json::json!({"preview_token": "tok"}),
+        )),
+        Rule::Read | Rule::Always => None,
+    }
+}
+
 /// Whether `tool` has its own gate rule (unlisted tools always wait).
 pub fn is_classified(tool: &str) -> bool {
     RULES.iter().any(|(name, _)| *name == tool)

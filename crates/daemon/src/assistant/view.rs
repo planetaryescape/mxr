@@ -236,6 +236,7 @@ fn fill_titles(items: &mut [AssistantItemData], pending: &[PendingItem]) {
             Context {
                 readout: readout.as_ref(),
                 preview,
+                result: None,
             },
             result.as_deref(),
         ));
@@ -271,7 +272,7 @@ fn plain_error(raw: &str) -> String {
     } else if has("tools didn't start") {
         "The assistant's tools didn't start. Send your message again; if it keeps happening, restart mxr.".to_string()
     } else {
-        raw.to_string()
+        crate::output::terminal_text(raw).into_owned()
     }
 }
 
@@ -506,7 +507,7 @@ mod tests {
     #[test]
     fn a_reply_names_the_failed_steps_before_it_that_no_retry_redid() {
         use AssistantCallStateData::{AutoApproved, Done, Failed};
-        let star = json!({"action": "star", "message_ids": ["m1"]});
+        let star = json!({"action": "star", "message_ids": ["m1"], "confirm": true});
         let mut items = vec![
             user(1),
             step("bad-shape", json!({"action": {"is_starred": true}}), Failed),
@@ -656,7 +657,7 @@ mod tests {
         let mut items = vec![
             step(
                 "a",
-                json!({"action": "archive", "message_ids": ["m1", "m2"]}),
+                json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": true}),
                 AssistantCallStateData::Waiting,
             ),
             step(

@@ -81,6 +81,8 @@ export type FocusEvent =
   | { kind: "skip" }
   | { kind: "handled"; threadId: string }
   | { kind: "restore"; threadId: string }
+  /** Put a queued conversation on screen: a link that named it. */
+  | { kind: "front"; threadId: string }
   /** Bring the set-aside conversations back into the queue. */
   | { kind: "revisit" };
 
@@ -135,6 +137,14 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
         ...session,
         queue: session.queue.filter((id) => id !== event.threadId),
         handled: [...session.handled, event.threadId],
+      };
+    }
+    case "front": {
+      if (!session.queue.includes(event.threadId) || session.queue[0] === event.threadId)
+        return session;
+      return {
+        ...session,
+        queue: [event.threadId, ...session.queue.filter((id) => id !== event.threadId)],
       };
     }
     case "restore": {

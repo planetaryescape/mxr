@@ -17,6 +17,7 @@ import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { plural } from "@/lib/format";
@@ -62,6 +63,9 @@ export function useRunway() {
   return { runway, expiredOnOpen: expired[scope] ?? 0 };
 }
 
+/** The list's view, row cursor and open source, kept while an email opens. */
+const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
+
 /**
  * To do: things email asked you to do, as a runway of instructions
  * ordered by when to act. Not a list of emails: each row is an action titled
@@ -78,7 +82,7 @@ export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
       .filter((id): id is string => Boolean(id));
   }, [runway.data]);
   return (
-    <PlaceLayout basePath="/todo" label="To do" threadIds={threadIds}>
+    <PlaceLayout basePath="/todo" label="To do" threadIds={threadIds} keepSearch={TODO_LIST_SEARCH}>
       {view === "catchup" ? (
         <TodoCatchupView runway={runway.data} />
       ) : view === "expired" ? (
@@ -193,9 +197,22 @@ function Bands({
   const navigate = useNavigate();
   const hidden = useTodoHidden((s) => s.hidden);
   const [open, setOpen] = useState({ whenever: false, done: false });
-  const [cursorId, setCursorId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // In the URL, so a copied link lands on the same to-do.
+  const [cursorId, setCursorId] = useSearchParam("row");
+  const [expandedId, setExpandedId] = useSearchParam("source");
   const items = useMemo(() => runwayItems(runway, open, hidden), [runway, open, hidden]);
+  // A link to a to-do in a folded band opens that band, once: a row ticked
+  // off later moves to Done without opening it.
+  const linkedRow = useRef(cursorId);
+  useEffect(() => {
+    const linked = linkedRow.current;
+    linkedRow.current = null;
+    if (!linked || items.some((item) => item.todo.id === linked)) return;
+    const band = runwayItems(runway, { whenever: true, done: true }, hidden).find(
+      (item) => item.todo.id === linked,
+    )?.band;
+    if (band === "whenever" || band === "done") setOpen((was) => ({ ...was, [band]: true }));
+  }, [hidden, items, runway]);
   const index = Math.max(
     0,
     items.findIndex((item) => item.todo.id === cursorId),
@@ -238,7 +255,11 @@ function Bands({
       void navigate({
         to: "/todo/$threadId",
         params: { threadId },
-        search: { mid: messageId, title: todo.title },
+        search: (prev) => ({
+          ...pickSearch(prev, TODO_LIST_SEARCH),
+          mid: messageId,
+          title: todo.title,
+        }),
       });
     },
     [navigate, setActivePane],
@@ -260,12 +281,13 @@ function Bands({
         void navigate({
           to: "/todo/$threadId",
           params: { threadId: todo.thread_id },
-          search: {
+          search: (prev) => ({
+            ...pickSearch(prev, TODO_LIST_SEARCH),
             link: action.url,
             mid: action.messageId,
             title: todo.title,
             domain: action.domain,
-          },
+          }),
         });
         return;
       }
@@ -275,10 +297,10 @@ function Bands({
   );
   const done = useCallback((todo: Todo) => void tickOff(todo), []);
   const restore = useCallback((todo: Todo) => void restoreTodos([todo]), []);
-  const select = useCallback((todo: Todo) => setCursorId(todo.id), []);
+  const select = useCallback((todo: Todo) => setCursorId(todo.id), [setCursorId]);
   const toggleSource = useCallback(
-    (todo: Todo) => setExpandedId((id) => (id === todo.id ? null : todo.id)),
-    [],
+    (todo: Todo) => setExpandedId(expandedId === todo.id ? null : todo.id),
+    [expandedId, setExpandedId],
   );
 
   const move = (delta: number) => {

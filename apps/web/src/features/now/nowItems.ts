@@ -45,18 +45,41 @@ export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] 
   return items;
 }
 
-/** Where Enter takes an item: into its own mode. */
-export function itemPath(item: NowItem): string {
+export interface ItemTarget {
+  to: string;
+  search?: { row: string };
+}
+
+/**
+ * Where Enter takes an item: into its own mode, on that item, so the
+ * mode's cursor (and a copied link) is on it. `email` is `o`: the
+ * Reading pick's email rather than its reader.
+ */
+export function itemTarget(item: NowItem, { email = false } = {}): ItemTarget {
   switch (item.kind) {
     case "person":
-      return `/messages/${encodeURIComponent(item.threadId)}`;
-    case "todo":
-      return item.threadId ? `/todo/${encodeURIComponent(item.threadId)}` : "/todo";
-    case "updates":
-      return "/updates";
-    case "reading":
-      return `/reading/${encodeURIComponent(item.threadId)}`;
+      return { to: `/messages/${encodeURIComponent(item.threadId)}` };
+    case "todo": {
+      const row = { row: item.todo.todo.id };
+      return item.threadId
+        ? { to: `/todo/${encodeURIComponent(item.threadId)}`, search: row }
+        : { to: "/todo", search: row };
+    }
+    case "updates": {
+      const first = item.card.lines?.[0];
+      return first ? { to: "/updates", search: { row: first.id } } : { to: "/updates" };
+    }
+    case "reading": {
+      if (email) return { to: `/reading/${encodeURIComponent(item.threadId)}` };
+      const key = issueItemKey(item.pick.message_id);
+      return { to: `/reading/item/${encodeURIComponent(key)}`, search: { row: key } };
+    }
   }
+}
+
+/** The Reading item for a whole issue: the daemon keys items `<message id>:<index>`, the issue itself at 0. */
+function issueItemKey(messageId: string): string {
+  return `${messageId}:0`;
 }
 
 /** "since 4:30 PM", or "since Fri 8:00 AM" before today, as times read everywhere. */

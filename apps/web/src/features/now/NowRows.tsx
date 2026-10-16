@@ -13,7 +13,7 @@ import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import { cn } from "@/lib/utils";
 import { useClockLabel } from "@/lib/minuteClock";
 
-import { itemPath, sinceLabel, type NowItem } from "./nowItems";
+import { itemTarget, sinceLabel, type NowItem } from "./nowItems";
 
 type Person = Extract<NowItem, { kind: "person" }>;
 type Due = Extract<NowItem, { kind: "todo" }>;
@@ -70,7 +70,7 @@ function RowFrame({
         <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary" />
       ) : null}
       <Link
-        to={itemPath(item)}
+        {...(itemTarget(item) as { to: string })}
         data-testid="now-open"
         aria-label={label}
         onFocus={() => state.onSelect(item)}
@@ -313,7 +313,10 @@ export function UpdatesCard({
             ) : null}
             <p className="mt-1.5 flex flex-wrap items-center gap-2">
               <Button asChild size="sm" variant="outline">
-                <Link to="/updates" onFocus={() => state.onSelect(item)}>
+                <Link
+                  {...(itemTarget(item) as { to: string })}
+                  onFocus={() => state.onSelect(item)}
+                >
                   Open <KeyChip className="h-4 px-1">g u</KeyChip>
                 </Link>
               </Button>

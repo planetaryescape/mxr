@@ -9,6 +9,7 @@ import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import { MessageContent } from "@/features/thread/MessageCard";
 import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
+import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -32,6 +33,7 @@ import { readingRootProps, useAppTheme } from "./readerAppearance";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
+  READING_LIST_SEARCH,
   isOwnHighlight,
   marksForParagraph,
   marksForView,
@@ -98,9 +100,16 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const hasArticle = Boolean(item.url);
-  const [view, setView] = useState<"issue" | "article">(
-    item.kind === "link" && detail.article ? "article" : "issue",
-  );
+  // Issue or Article is in the URL, so a copied link opens the same one. A
+  // link never fetches the article by itself: that tells its site you came.
+  const [shown, setShown] = useSearchParam("as");
+  const view: "issue" | "article" =
+    shown === "issue" || (shown === "article" && hasArticle)
+      ? shown
+      : item.kind === "link" && detail.article
+        ? "article"
+        : "issue";
+  const setView = setShown;
   const [original, setOriginal] = useState(source.original_layout && view === "issue");
   const [fetching, setFetching] = useState(false);
   const [unsubscribing, setUnsubscribing] = useState(false);
@@ -127,7 +136,15 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const left = minutesLeft(words, progress, detail.pace_wpm);
   useEngagement(item.item_key, columnRef, setProgress);
 
-  const back = useCallback(() => void navigate({ to: "/reading" }), [navigate]);
+  // Back on the list, the cursor is on the item that was open.
+  const back = useCallback(
+    () =>
+      void navigate({
+        to: "/reading",
+        search: (prev) => ({ ...pickSearch(prev, READING_LIST_SEARCH), row: item.item_key }),
+      }),
+    [item.item_key, navigate],
+  );
   const refresh = useCallback(
     () => qc.invalidateQueries({ queryKey: [...READING_KEY, "item", item.item_key] }),
     [qc, item.item_key],
@@ -142,7 +159,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     await fetchLinked(item.item_key, item.domain, item.tracked);
     await refresh();
     setFetching(false);
-  }, [article, hasArticle, item.domain, item.item_key, item.tracked, refresh]);
+  }, [article, hasArticle, item.domain, item.item_key, item.tracked, refresh, setView]);
 
   const next = useCallback(() => {
     const edition = qc
@@ -154,7 +171,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     const at = entries.findIndex((entry) => entry.key === item.item_key);
     const following = entries[at + 1];
     if (following)
-      void navigate({ to: "/reading/item/$itemKey", params: { itemKey: following.key } });
+      void navigate({
+        to: "/reading/item/$itemKey",
+        params: { itemKey: following.key },
+        search: (prev) => ({ ...pickSearch(prev, READING_LIST_SEARCH), row: following.key }),
+      });
     else back();
   }, [back, item.item_key, navigate, qc]);
 
@@ -163,7 +184,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     setOriginal(value);
     if (value) setView("issue");
     void rememberLayout(source.account_id, source.sender_email, value);
-  }, [original, source.account_id, source.sender_email]);
+  }, [original, setView, source.account_id, source.sender_email]);
 
   const highlight = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";

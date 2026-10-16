@@ -204,6 +204,14 @@ buttons take the place of its date the same way. Fade dates, amounts and
 due dates always show. On a phone or a narrow window, where there is no
 hover, every row shows its reason and buttons.
 
+The address bar keeps what you have selected: the row in To do, Updates,
+Reading and Now, Updates' open peek, Archive's filter, question, record and
+subscription, the person and topic in Messages, the conversation on screen in
+Focus & reply, and Issue or Article in the Reading reader. Copy the URL to
+send someone straight to it, or reload without losing your place. Moving the
+cursor replaces the address rather than adding to the back button's history.
+A link to an email Messages doesn't hold opens it in All Mail.
+
 The reader names the other modes holding a conversation ("Also in To do:
 sign by Mon 5 Oct"), and a first-time person's row asks once where their
 mail belongs.

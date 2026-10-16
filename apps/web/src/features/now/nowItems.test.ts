@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { NONE_HIDDEN, type HiddenByMode } from "@/features/modes/modeDone";
 
 import type { Now } from "./api";
-import { itemPath, nowItems } from "./nowItems";
+import { itemTarget, nowItems } from "./nowItems";
 
 function person(thread: string, name: string) {
   return {
@@ -96,13 +96,27 @@ describe("Now's rows", () => {
     expect(nowItems(now, allLetGo).some((item) => item.kind === "updates")).toBe(false);
   });
 
-  test("open in their own mode", () => {
+  test("open in their own mode, on that item", () => {
     const [maya, , due, dueWithoutEmail, card, pick] = nowItems(now, NONE_HIDDEN);
-    expect(itemPath(maya!)).toBe("/messages/t1");
-    expect(itemPath(due!)).toBe("/todo/t3");
-    expect(itemPath(dueWithoutEmail!)).toBe("/todo");
-    expect(itemPath(card!)).toBe("/updates");
-    expect(itemPath(pick!)).toBe("/reading/r1");
+    expect(itemTarget(maya!)).toEqual({ to: "/messages/t1" });
+    expect(itemTarget(due!)).toEqual({ to: "/todo/t3", search: { row: "a" } });
+    expect(itemTarget(dueWithoutEmail!)).toEqual({ to: "/todo", search: { row: "b" } });
+    // A card without lines can only open Updates.
+    expect(itemTarget(card!)).toEqual({ to: "/updates" });
+    expect(itemTarget(pick!)).toEqual({
+      to: "/reading/item/r-m%3A0",
+      search: { row: "r-m:0" },
+    });
+    expect(itemTarget(pick!, { email: true })).toEqual({ to: "/reading/r1" });
+  });
+
+  test("the Updates card opens on its first line", () => {
+    const withLines = {
+      ...now,
+      updates: { ...now.updates, lines: [{ id: "line-1" }, { id: "line-2" }] },
+    } as unknown as Now;
+    const card = nowItems(withLines, NONE_HIDDEN).find((item) => item.kind === "updates");
+    expect(itemTarget(card!)).toEqual({ to: "/updates", search: { row: "line-1" } });
   });
 
   test("nothing loaded is nothing to show", () => {

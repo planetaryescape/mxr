@@ -70,7 +70,11 @@ function useOwedLane(scope: string | null) {
 
 const NO_ROWS: readonly DeskRow[] = [];
 
-export function useFocusSession(lane?: "owed") {
+/**
+ * `start`: the conversation a link named, put on screen once it is in the
+ * queue; when it isn't (replied to since), the queue starts as usual.
+ */
+export function useFocusSession(lane?: "owed", start?: string) {
   const account = useUiPrefs((s) => s.accountScope);
   const owed = useOwedLane(account);
   // The desk's You owe lane is owed replies only.
@@ -98,6 +102,18 @@ export function useFocusSession(lane?: "owed") {
       ),
     });
   }, [anySettled, owed.rows, replyLater.data, account, withReplyLater]);
+
+  const startWith = useRef(start);
+  useEffect(() => {
+    const wanted = startWith.current;
+    if (!wanted || !session.loaded) return;
+    if (session.queue.includes(wanted)) {
+      startWith.current = undefined;
+      dispatch({ kind: "front", threadId: wanted });
+    } else if (!gathering) {
+      startWith.current = undefined;
+    }
+  }, [gathering, session.loaded, session.queue]);
 
   const currentId = session.queue[0];
   const current = currentId ? session.items[currentId] : undefined;

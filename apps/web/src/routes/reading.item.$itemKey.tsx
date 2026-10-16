@@ -1,8 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ReadingReader } from "@/features/reading/ReadingReader";
+import { optionalEnum } from "@/lib/searchParams";
+
+export interface ReadingItemParams {
+  /** The issue as sent, or the linked article; omitted picks for the item. */
+  as?: "issue" | "article";
+}
 
 export const Route = createFileRoute("/reading/item/$itemKey")({
+  validateSearch: (search: Record<string, unknown>): ReadingItemParams => ({
+    as: optionalEnum(search.as, ["issue", "article"] as const),
+  }),
   component: OpenItem,
 });
 

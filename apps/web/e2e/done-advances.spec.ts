@@ -417,7 +417,8 @@ test.describe("To do: ticking off with the email open", () => {
     await expect(row).toHaveAttribute("aria-current", "true");
     await page.keyboard.press("o");
     await row.getByRole("button", { name: "Open the email" }).click();
-    await expect(page).toHaveURL(new RegExp(`/todo/${todo.thread_id}$`));
+    // The list keeps its cursor (and the source `o` unfolded) in the URL.
+    await expect(page).toHaveURL(new RegExp(`/todo/${todo.thread_id}\\?row=${todo.id}(&|$)`));
     await expect(reader(page)).toBeVisible();
     // Back to the list, with the email still open beside it.
     await page.keyboard.press("h");
@@ -429,14 +430,14 @@ test.describe("To do: ticking off with the email open", () => {
     await openApp(page, "/todo");
     await openEmailOf(page, first!);
     await page.keyboard.press("e");
-    await expect(page).toHaveURL(new RegExp(`/todo/${second!.thread_id}$`));
+    await expect(page).toHaveURL(new RegExp(`/todo/${second!.thread_id}\\?row=${second!.id}(&|$)`));
     await expect(page.locator(`[data-testid="todo-row"][data-id="${second!.id}"]`)).toHaveAttribute(
       "aria-current",
       "true",
     );
 
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(new RegExp(`/todo/${first!.thread_id}$`));
+    await expect(page).toHaveURL(new RegExp(`/todo/${first!.thread_id}\\?row=${first!.id}(&|$)`));
     await expect(page.locator(`[data-testid="todo-row"][data-id="${first!.id}"]`)).toBeVisible();
   });
 
@@ -447,7 +448,7 @@ test.describe("To do: ticking off with the email open", () => {
     await openApp(page, "/todo");
     await openEmailOf(page, last);
     await page.keyboard.press("e");
-    await expect(page).toHaveURL(new RegExp(`/todo/${before.thread_id}$`));
+    await expect(page).toHaveURL(new RegExp(`/todo/${before.thread_id}\\?row=${before.id}(&|$)`));
   });
 });
 

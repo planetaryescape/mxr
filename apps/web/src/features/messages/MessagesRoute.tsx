@@ -34,6 +34,7 @@ import {
   refreshMessages,
   setPinned,
   useMessagesQuery,
+  rememberTopicPage,
   usePersonQuery,
   type MessagesData,
   type MessagesRow,
@@ -201,6 +202,29 @@ function MessagesBody({
     [navigate, search.turn],
   );
 
+  // A conversation Messages doesn't hold (archived, a newsletter) opens
+  // where every email can: All Mail.
+  useEffect(() => {
+    if (threadId && !linked) {
+      void navigate({
+        to: "/m/$mailbox/$threadId",
+        params: { mailbox: "archive", threadId },
+        replace: true,
+      });
+    }
+  }, [linked, navigate, threadId]);
+
+  // A person opened without a topic shows their default one: name it in
+  // the URL, so a copied link opens that topic even after the default moves.
+  const autoTopic = useRef<string | null>(null);
+  const shownTopic = person.isPlaceholderData ? undefined : conversation?.thread_id;
+  useEffect(() => {
+    if (threadId || !search.person || search.topic || !shownTopic || !page) return;
+    autoTopic.current = shownTopic;
+    rememberTopicPage(search.person, shownTopic, page);
+    select(search.person, { topic: shownTopic });
+  }, [page, search.person, search.topic, select, shownTopic, threadId]);
+
   // A person who still has topics left stays in view, even when the
   // daemon moves their row into the folded Quiet band.
   useEffect(() => {
@@ -350,7 +374,9 @@ function MessagesBody({
           now.mounted &&
           useUiPrefs.getState().accountScope === account &&
           now.person === landed.person &&
-          now.topic === landed.topic;
+          // Landing on a person names their default topic in the URL.
+          (now.topic === landed.topic ||
+            (landed.topic === undefined && now.topic === autoTopic.current));
         if (stayed) {
           advanceTo(from, thread);
           return;

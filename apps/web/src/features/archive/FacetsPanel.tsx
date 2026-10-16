@@ -14,19 +14,7 @@ import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useLedger, type RecordFilter, type RecordKind, type RecordLedger } from "./api";
-
-/** The kinds the bridge accepts; a facet value outside them is skipped. */
-const KNOWN_KINDS: readonly RecordKind[] = [
-  "receipt",
-  "order",
-  "booking",
-  "invoice",
-  "statement",
-  "ticket",
-  "contract",
-  "warranty",
-  "account",
-];
+import { KNOWN_KINDS } from "./archiveSearch";
 
 /** "99.50" to minor units; empty or unreadable is no bound. */
 export function toMinor(text: string): number | undefined {

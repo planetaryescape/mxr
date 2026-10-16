@@ -6,8 +6,8 @@ import { openApp } from "./helpers/state";
 /*
  * W8b: finishing feels good. A row that is done folds away for a pointer and
  * for the first key of a burst, and drops at once for a key repeat (D101);
- * the scene plays once per mode per day; reduced motion keeps fades and no
- * scene; a toast is one at a time, short, and never over the lit row (D140).
+ * the scene plays once per mode per day; reduced motion keeps fades and the
+ * scene's still frame; a toast is one at a time, short, and never over the lit row (D140).
  * To do runs on a stub daemon so the specs can clear it and leave nothing
  * behind; the finishing scenes load the real data, then see it cleared.
  */
@@ -302,7 +302,7 @@ for (const entry of MODES) {
     await page.unrouteAll({ behavior: "ignoreErrors" });
   });
 
-  test(`${entry.mode}: reduced motion keeps the words and skips the scene`, async ({ page }) => {
+  test(`${entry.mode}: reduced motion shows the words and the still frame`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openApp(page, entry.path);
     await expect
@@ -310,7 +310,22 @@ for (const entry of MODES) {
       .toBe("work");
     await showCleared(page, entry);
     await expect(page.getByText(entry.heading)).toBeVisible();
-    await expect(page.getByTestId("low-tide-scene")).toHaveCount(0);
+    // A picture is not motion: the frame shows, and nothing in it runs (D134).
+    await expect(page.getByTestId("low-tide-scene")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === "running" &&
+                animation.effect instanceof KeyframeEffect &&
+                animation.effect.target instanceof Element &&
+                animation.effect.target.closest(".low-tide") !== null,
+            ).length,
+      ),
+    ).toBe(0);
     await page.unrouteAll({ behavior: "ignoreErrors" });
   });
 }

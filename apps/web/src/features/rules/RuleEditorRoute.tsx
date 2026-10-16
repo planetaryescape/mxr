@@ -44,6 +44,7 @@ import { fetchCategories, shellKey, undoMutation } from "@/features/mailbox/api"
 import { fetchAccounts } from "@/features/accounts/api";
 import { fetchSearch } from "@/features/search/api";
 import { formatRelative, plural } from "@/lib/format";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const emptyRule: RuleForm = {
   name: "",
@@ -88,8 +89,9 @@ export function RuleEditorRoute() {
     enabled: !isNew,
     retry: false,
   });
+  const formQueryHeld = useHeldPending(formQuery.isPending);
 
-  if (!isNew && formQuery.isPending)
+  if (!isNew && (formQuery.isPending || formQueryHeld))
     return (
       <Page title="Rule" eyebrow="Rules" width="default">
         <PageSkeleton label="Loading rule" />
@@ -165,6 +167,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
     queryFn: () => fetchRuleHistory(id),
     enabled: !isNew,
   });
+  const historyHeld = useHeldPending(history.isPending);
   const save = useMutation({
     mutationFn: (submitted: RuleForm) => upsertRuleForm(submitted, isNew ? null : id),
     onSuccess: async (_, submitted) => {
@@ -189,6 +192,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
   });
 
   const shownPreview = isSorting ? sortingPreview : preview;
+  const shownPreviewHeld = useHeldPending(shownPreview.isPending);
   const matches: PreviewMatch[] = isSorting
     ? (sortingPreview.data?.result.matches ?? [])
     : (preview.data ?? []);
@@ -510,7 +514,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 title="Nothing to preview"
                 body="Write a condition to see which messages this rule would change."
               />
-            ) : shownPreview.isPending ? (
+            ) : shownPreview.isPending || shownPreviewHeld ? (
               <PageSkeleton rows={5} label="Running dry run" />
             ) : shownPreview.isError ? (
               <PageError
@@ -539,7 +543,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
           </PageSection>
           {!isNew ? (
             <PageSection title="History" description="Recent runs of this rule.">
-              {history.isPending ? (
+              {history.isPending || historyHeld ? (
                 <PageSkeleton rows={3} label="Loading history" />
               ) : history.isError ? (
                 <PageError

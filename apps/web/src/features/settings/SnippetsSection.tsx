@@ -14,6 +14,7 @@ import { PageError, PageSkeleton, RuledList } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 interface Snippet {
   name: string;
@@ -28,6 +29,7 @@ export function SnippetsSection() {
     queryKey: ["snippets"],
     queryFn: () => apiFetch<{ snippets: Snippet[] }>("/api/v1/mail/snippets"),
   });
+  const snippetsHeld = useHeldPending(snippets.isPending);
   const [name, setName] = useState("");
   const [body, setBody] = useState("");
   const save = useMutation({
@@ -89,7 +91,7 @@ export function SnippetsSection() {
           </Button>
         </div>
       </form>
-      {snippets.isPending ? (
+      {snippets.isPending || snippetsHeld ? (
         <PageSkeleton rows={3} label="Loading snippets" />
       ) : snippets.isError ? (
         <PageError

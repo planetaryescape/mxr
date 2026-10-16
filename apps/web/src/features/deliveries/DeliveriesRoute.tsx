@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const FILTERS: { id: DeliveryFilter; label: string }[] = [
   { id: "active", label: "On the way" },
@@ -70,6 +71,7 @@ export function DeliveriesRoute() {
     queryKey: ["deliveries", filter, account ?? "all"],
     queryFn: () => fetchDeliveries(filter, account),
   });
+  const deliveriesHeld = useHeldPending(deliveries.isPending);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["deliveries"] });
 
   const resolve = useMutation({
@@ -123,7 +125,7 @@ export function DeliveriesRoute() {
       ]}
       tabs={<PageTabs label="Delivery filter" value={filter} onChange={setFilter} tabs={FILTERS} />}
     >
-      {deliveries.isPending ? (
+      {deliveries.isPending || deliveriesHeld ? (
         <PageSkeleton rows={4} label="Loading deliveries" />
       ) : deliveries.isError ? (
         <PageError

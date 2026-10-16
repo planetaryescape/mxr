@@ -1,7 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PENDING_DELAY_MS, PENDING_MINIMUM_MS, useDelayedPending } from "./useDelayedPending";
+import {
+  PENDING_DELAY_MS,
+  PENDING_MINIMUM_MS,
+  useDelayedPending,
+  useHeldPending,
+} from "./useDelayedPending";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -48,5 +53,27 @@ describe("useDelayedPending", () => {
   it("cached data never passes through a loading phase", () => {
     const { result } = setup(false);
     expect(result.current).toBe("ready");
+  });
+});
+
+describe("useHeldPending", () => {
+  it("stays true while loading and through the hold of a skeleton that appeared", () => {
+    const { result, rerender } = renderHook(({ loading }) => useHeldPending(loading), {
+      initialProps: { loading: true },
+    });
+    expect(result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(PENDING_DELAY_MS + 50));
+    rerender({ loading: false });
+    expect(result.current).toBe(true);
+    act(() => vi.advanceTimersByTime(PENDING_MINIMUM_MS));
+    expect(result.current).toBe(false);
+  });
+
+  it("is false at once when the data was there before a skeleton showed", () => {
+    const { result, rerender } = renderHook(({ loading }) => useHeldPending(loading), {
+      initialProps: { loading: true },
+    });
+    rerender({ loading: false });
+    expect(result.current).toBe(false);
   });
 });

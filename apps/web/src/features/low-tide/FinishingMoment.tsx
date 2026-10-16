@@ -1,12 +1,10 @@
 import { LowTideScene } from "@/features/low-tide/LowTide";
-import { resolveMotion, useUiPrefs } from "@/state/uiPrefsStore";
 
 /**
- * The scene for `PageEmpty`'s `moment` slot. Reduced motion skips it
- * (docs/blueprint/26 "Motion"): the words alone are the finish.
+ * The scene for `PageEmpty`'s `moment` slot. Reduced motion shows its still
+ * frame (docs/blueprint/26 "Motion", D134): a picture is not motion, and the
+ * finish is earned, so the CSS drops the animation and keeps the drawing.
  */
 export function FinishingMoment() {
-  const motion = useUiPrefs((s) => s.motion);
-  if (resolveMotion(motion) === "reduced") return null;
   return <LowTideScene size="small" sound />;
 }

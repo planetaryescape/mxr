@@ -703,24 +703,26 @@ svg.low-tide {
 }
 
 /*
- * Toasts: sonner's rich colours, mapped to the theme tokens. Its light
- * defaults fall below WCAG AA (warning text is 3.1:1), and its blue info
- * clashes with the cyan signal, so each type takes the theme's solid tone
- * and that tone's foreground (AA in every theme). Neutral changes with an
- * undo are info, so they take the accent. The Undo button inverts the
- * pair, so it keeps the same contrast.
+ * Toasts (D140): a confirmation sits on the overlay surface in the first text
+ * tier, with a small status-coloured icon and a quiet Undo; the page's loudest
+ * thing is never the thing you just did. Sonner's rich colours stay on for
+ * warning and error only, mapped to the theme's solid tone and that tone's
+ * foreground (AA in every theme; sonner's own light defaults are 3.1:1), and
+ * their Undo inverts the pair so it keeps the same contrast. Success and info
+ * take the normal pair, so no filled block. Neutral changes with an undo are
+ * info.
  */
 :root [data-sonner-toaster][data-sonner-theme] {
   --normal-bg: var(--popover);
   --normal-bg-hover: var(--surface-elevated);
   --normal-border: var(--border-strong);
   --normal-text: var(--popover-foreground);
-  --success-bg: var(--success);
-  --success-border: var(--success);
-  --success-text: var(--success-foreground);
-  --info-bg: var(--primary);
-  --info-border: var(--primary);
-  --info-text: var(--primary-foreground);
+  --success-bg: var(--normal-bg);
+  --success-border: var(--normal-border);
+  --success-text: var(--normal-text);
+  --info-bg: var(--normal-bg);
+  --info-border: var(--normal-border);
+  --info-text: var(--normal-text);
   --warning-bg: var(--warning);
   --warning-border: var(--warning);
   --warning-text: var(--warning-foreground);
@@ -736,13 +738,23 @@ svg.low-tide {
   transition-timing-function: var(--motion-ease);
 }
 
-:root [data-sonner-toast][data-rich-colors="true"][data-type="success"] [data-button] {
-  background: var(--success-text);
-  color: var(--success-bg);
+:root [data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--success);
 }
-:root [data-sonner-toast][data-rich-colors="true"][data-type="info"] [data-button] {
-  background: var(--info-text);
-  color: var(--info-bg);
+:root [data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--text-2);
+}
+
+/* Undo on a confirmation: a quiet outlined button, not a filled block. */
+:root [data-sonner-toast][data-type="success"] [data-button],
+:root [data-sonner-toast][data-type="info"] [data-button] {
+  background: transparent;
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+:root [data-sonner-toast][data-type="success"] [data-button]:hover,
+:root [data-sonner-toast][data-type="info"] [data-button]:hover {
+  background: var(--accent);
 }
 :root [data-sonner-toast][data-rich-colors="true"][data-type="warning"] [data-button] {
   background: var(--warning-text);

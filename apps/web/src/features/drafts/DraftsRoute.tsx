@@ -25,10 +25,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatLongDate } from "@/lib/format";
 import { draftIntent, newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function DraftsRoute() {
   const queryClient = useQueryClient();
   const drafts = useQuery({ queryKey: ["drafts"], queryFn: fetchDrafts });
+  const draftsHeld = useHeldPending(drafts.isPending);
   const remove = useMutation({
     mutationFn: deleteDraft,
     onSuccess: () => {
@@ -57,7 +59,7 @@ export function DraftsRoute() {
       <ScheduledSends />
       <OrphanedDrafts />
       <PageSection title="Drafts">
-        {drafts.isPending ? (
+        {drafts.isPending || draftsHeld ? (
           <PageSkeleton rows={5} label="Loading drafts" />
         ) : drafts.isError ? (
           <PageError

@@ -4,7 +4,7 @@
  * verbs live in features/mail-actions/verbActions.ts.
  */
 
-import { RefreshCw, Route as RouteIcon, Sparkles, UserSearch } from "lucide-react";
+import { PenLine, RefreshCw, Route as RouteIcon, UserSearch } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch, BridgeRequestError } from "@/api/client";
@@ -123,10 +123,10 @@ export const mailboxActions: Action[] = [
   {
     id: "mail.draft-assist",
     command: "draftAssist",
-    label: "Draft a reply with AI",
+    label: "Draft a reply",
     description: "Generate a reply body for this conversation",
     group: "Compose",
-    icon: Sparkles,
+    icon: PenLine,
     scopes: ["reader"],
     paletteOnly: true,
   },

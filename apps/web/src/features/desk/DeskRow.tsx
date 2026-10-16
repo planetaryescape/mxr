@@ -65,6 +65,8 @@ export const DeskRow = memo(function DeskRow({
       id={state.domId}
       role="option"
       aria-selected={state.selected}
+      aria-posinset={state.position}
+      aria-setsize={state.setSize}
       aria-label={[
         row.starred ? "Starred." : null,
         who,

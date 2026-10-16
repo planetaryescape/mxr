@@ -82,6 +82,10 @@ export interface RowRenderState {
   focused: boolean;
   open: boolean;
   selected: boolean;
+  /** 1-based place among the rows (group headers don't count), for aria-posinset. */
+  position: number;
+  /** All the rows, not the window's, for aria-setsize. */
+  setSize: number;
   onOpen: (row: MessageRowView) => void;
 }
 
@@ -648,6 +652,8 @@ export function MailboxList({
                         rowKey(focusedRow) === rowKey(item.row),
                       open: item.row.thread_id === activeThreadId,
                       selected: !readOnly && selectedIds.has(rowKey(item.row)),
+                      position: (rowIndexById.get(rowKey(item.row)) ?? 0) + 1,
+                      setSize: rows.length,
                       onOpen: handleOpen,
                     })
                   ) : (
@@ -655,6 +661,8 @@ export function MailboxList({
                       row={item.row}
                       domId={domId(item.row)}
                       selected={!readOnly && selectedIds.has(rowKey(item.row))}
+                      position={(rowIndexById.get(rowKey(item.row)) ?? 0) + 1}
+                      setSize={rows.length}
                       lit={
                         focusedRow !== undefined &&
                         activePane !== "sidebar" &&

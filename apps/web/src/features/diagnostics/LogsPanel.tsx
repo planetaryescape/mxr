@@ -7,6 +7,7 @@ import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const LEVELS = ["all", "trace", "debug", "info", "warn", "error"] as const;
 const LIMITS = [50, 200, 500, 1000];
@@ -81,6 +82,7 @@ export function LogsPanel() {
     refetchInterval: follow ? 3_000 : false,
     refetchOnWindowFocus: false,
   });
+  const logsHeld = useHeldPending(logs.isPending);
 
   const rows = useMemo(() => {
     const lines = logs.data?.lines ?? [];
@@ -145,7 +147,7 @@ export function LogsPanel() {
           </Button>
         </div>
       </div>
-      {logs.isPending && <PageSkeleton rows={8} label="Loading logs" />}
+      {(logs.isPending || logsHeld) && <PageSkeleton rows={8} label="Loading logs" />}
       {logs.isError && (
         <PageError
           title="Logs unavailable"

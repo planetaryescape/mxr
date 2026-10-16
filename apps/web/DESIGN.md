@@ -4,7 +4,7 @@ The web app's design source is [docs/blueprint/26-web-design-concept.md](../../d
 
 The colour roles per theme are generated: [src/styles/themes.ts](src/styles/themes.ts) holds each theme's inputs, [src/styles/themeGenerator.ts](src/styles/themeGenerator.ts) the rules, and `npm run gen:themes` writes [src/styles/themes.generated.css](src/styles/themes.generated.css), which [src/styles/tokens.css](src/styles/tokens.css) imports. [src/styles/type.css](src/styles/type.css) has the type roles. Every page renders [src/components/PageFrame.tsx](src/components/PageFrame.tsx).
 
-`npm run lint` holds the rules: `scripts/check-type-scale.mjs`, `check-motion.mjs`, `check-shape.mjs` and `check-frames.mjs`. `e2e/design-gate.spec.ts` screenshots the main pages in four themes at three widths.
+`npm run lint` holds the rules: `scripts/check-type-scale.mjs`, `check-motion.mjs`, `check-shape.mjs`, `check-frames.mjs` and `check-ai-marks.mjs`. `e2e/design-gate.spec.ts` screenshots the main pages in four themes at three widths.
 
 ## Adding a theme
 
@@ -36,6 +36,10 @@ Motion explains change and never decorates (D134). Durations are the `--motion-d
 - **Arriving.** A reader pane mounts inside `.reader-arrive`: 16px from the right with a fade over 180ms; reduced motion keeps the 120ms fade.
 - **Overlays.** `scrimMotion` fades a scrim in over 120ms and `sheetMotion` rises a sheet 8px over 180ms. Dialogs, alert dialogs, the More sheet and the compose sheet use them.
 - **Landing.** `Row` takes `land`, the message and thread ids it stands for; when the assistant or a sync changes one of them it wears a 2px signal underline that fades over 600ms (`landingStore`). The assistant's lists catch up after the mark, so a changed row is held for the 600ms; a sync's new row appears with the mark and nothing is held.
-- **Finishing.** The low tide plays in `PageEmpty`'s `moment` slot, once per mode per day (`features/low-tide/lowTideMemory.ts`): Messages when Your turn is clear, To do when nothing is due today or earlier, Updates when its digest is let go. Archive has none. Reduced motion shows the words and no scene.
+- **Finishing.** The low tide plays in `PageEmpty`'s `moment` slot, once per mode per day (`features/low-tide/lowTideMemory.ts`): Messages when Your turn is clear, To do when nothing is due today or earlier, Updates when its digest is let go. Archive has none. Reduced motion shows the words and the scene's still frame, with nothing animating (a picture is not motion; D134).
 - **Toasts.** One at a time, 5 seconds (8 with Undo), a single line, in the corner that leaves the lit row clear (`toastPlacement.ts`). See `docs/web-app-controls.md`.
 - **Skeletons.** `PageSkeleton` bars pulse only without reduced motion. A page that loads through `useDelayedPending` shows nothing for 150ms and holds a skeleton shown for at least 400ms.
+
+## Icons for model features
+
+No icon stands for AI (D141). A model feature is named for what it does and wears a task icon if the slot needs one: `PenLine` to draft, `TextQuote` to summarize. Not the sparkle, a wand or a robot, and not the accent colour. Who wrote the output is shown in words by `ModelMark` (D136). `check-ai-marks.mjs` fails the lint on those icons or a sparkle emoji.

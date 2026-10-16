@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const WINDOWS: { label: string; ms: number | null }[] = [
   { label: "1h", ms: 3_600_000 },
@@ -96,6 +97,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
     queryFn: () => fetchActivityList(filterParams),
     refetchOnWindowFocus: false,
   });
+  const listHeld = useHeldPending(list.isPending);
   const count = useQuery({
     queryKey: ["activity", "count", filterParams],
     queryFn: () => fetchActivityCount(filterParams),
@@ -256,7 +258,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
           ) : null}
         </div>
 
-        {list.isPending ? (
+        {list.isPending || listHeld ? (
           <PageSkeleton rows={8} label="Loading activity" />
         ) : list.isError ? (
           <PageError

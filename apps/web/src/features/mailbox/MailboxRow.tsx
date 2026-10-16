@@ -26,6 +26,9 @@ interface MailboxRowProps {
   row: MessageRowView;
   domId: string;
   selected: boolean;
+  /** 1-based place among the list's rows, and how many there are: the window shows only some. */
+  position: number;
+  setSize: number;
   /** The cursor is on this row: the one lit row. */
   lit: boolean;
   /** Only a pointer fades the lamp (D101). */
@@ -52,6 +55,8 @@ export const MailboxRow = memo(function MailboxRow({
   row,
   domId,
   selected,
+  position,
+  setSize,
   lit,
   via,
   selecting,
@@ -83,6 +88,8 @@ export const MailboxRow = memo(function MailboxRow({
       id={domId}
       role="option"
       aria-selected={selected}
+      aria-posinset={position}
+      aria-setsize={setSize}
       aria-label={rowLabel(row, who, count, gist, when)}
       data-focused={lit ? "true" : undefined}
       lit={lit}

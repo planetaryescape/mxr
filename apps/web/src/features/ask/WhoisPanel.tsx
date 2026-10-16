@@ -12,6 +12,7 @@ import { FactList, PageError, PageSkeleton } from "@/components/PageParts";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { formatWhen } from "@/lib/format";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export interface WhoisPayload {
   entity: string;
@@ -40,8 +41,9 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
     queryFn: () => fetchWhois(entity, accountId),
     retry: false,
   });
+  const whoisHeld = useHeldPending(whois.isPending);
 
-  if (whois.isPending) return <PageSkeleton rows={4} label={`Looking up ${entity}`} />;
+  if (whois.isPending || whoisHeld) return <PageSkeleton rows={4} label={`Looking up ${entity}`} />;
   if (whois.isError)
     return (
       <div className="space-y-3">

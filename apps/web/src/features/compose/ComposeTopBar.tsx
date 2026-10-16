@@ -132,7 +132,7 @@ function FromControl({
   if (accounts.length === 1 && !hasAliases) {
     return (
       <span
-        className="hidden max-w-[220px] truncate font-mono text-2xs text-muted-foreground sm:inline"
+        className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
         title={selected?.email}
       >
         {selected?.email}
@@ -141,10 +141,13 @@ function FromControl({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       {accounts.length > 1 ? (
         <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
-          <SelectTrigger className="h-8 w-[180px] bg-card text-xs" aria-label="Send from account">
+          <SelectTrigger
+            className="h-8 min-w-0 flex-1 bg-card text-xs sm:w-[180px] sm:flex-none"
+            aria-label="Send from account"
+          >
             <SelectValue placeholder="Account" />
           </SelectTrigger>
           <SelectContent>
@@ -161,7 +164,10 @@ function FromControl({
           value={addresses.includes(fromAddress) ? fromAddress : addresses[0]}
           onValueChange={onFromChange}
         >
-          <SelectTrigger className="h-8 w-[200px] bg-card text-xs" aria-label="Send as address">
+          <SelectTrigger
+            className="h-8 min-w-0 flex-1 bg-card text-xs sm:w-[200px] sm:flex-none"
+            aria-label="Send as address"
+          >
             <SelectValue placeholder="From" />
           </SelectTrigger>
           <SelectContent>

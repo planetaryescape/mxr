@@ -6,7 +6,7 @@
  * while the inline composer is open, since the composer is then right here.
  */
 
-import { Sparkles } from "lucide-react";
+import { PenLine } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { useComposeUi } from "@/features/compose/composeUiStore";
@@ -46,7 +46,7 @@ export function ReplyField({
             title="Draft in your voice"
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            <Sparkles className="size-3.5" aria-hidden />
+            <PenLine className="size-3.5" aria-hidden />
             {/* Icon only in a narrow reader, so the name of who you reply to fits. */}
             <span className="hidden @md:inline">Draft in your voice</span>
           </button>

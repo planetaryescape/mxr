@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatWhen, plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 type Sort = "low-open" | "volume" | "recent";
 
@@ -39,6 +40,7 @@ export function SubscriptionsDashboard() {
     queryKey: ["subscriptions", account ?? "all"],
     queryFn: () => fetchSubscriptions(100, account),
   });
+  const subscriptionsHeld = useHeldPending(subscriptions.isPending);
   const unsubscribe = useMutation({
     mutationFn: (messageId: string) => unsubscribeSubscription(messageId),
     onSuccess: () => {
@@ -61,7 +63,7 @@ export function SubscriptionsDashboard() {
           Bulk senders ranked by how rarely you open them. Unsubscribe uses the newest message's
           list-unsubscribe header.
         </PageNote>
-        {subscriptions.isPending ? (
+        {subscriptions.isPending || subscriptionsHeld ? (
           <PageSkeleton label="Loading subscriptions" />
         ) : subscriptions.isError ? (
           <PageError

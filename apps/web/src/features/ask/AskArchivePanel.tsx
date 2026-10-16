@@ -17,12 +17,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { formatWhen, plural } from "@/lib/format";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 export function AskArchivePanel() {
   const navigate = useNavigate();
   const llm = useLlmStatus();
   const [question, setQuestion] = useState("");
   const ask = useMutation({ mutationFn: (text: string) => askArchive(text) });
+  const askHeld = useHeldPending(ask.isPending);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Opened from the command palette, whose dialog hands focus back to its
@@ -72,7 +74,7 @@ export function AskArchivePanel() {
           answer.
         </LlmNotice>
       ) : null}
-      {ask.isPending ? (
+      {ask.isPending || askHeld ? (
         <PageSkeleton rows={3} label="Searching your archive" />
       ) : ask.isError ? (
         <PageError

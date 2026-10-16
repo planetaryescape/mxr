@@ -7,6 +7,7 @@ import { PageSection } from "@/components/Page";
 import { FactList, PageEmpty, PageError, PageNote, PageSkeleton } from "@/components/PageParts";
 import { plural } from "@/lib/format";
 import { SectionHeading } from "@/components/SectionHeading";
+import { useHeldPending } from "@/hooks/useDelayedPending";
 
 const DIRECTIONS: { id: ResponseDirection; label: string }[] = [
   { id: "they_replied", label: "Their replies" },
@@ -27,6 +28,7 @@ export function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
     queryKey: ["analytics", "response", range, direction],
     queryFn: () => fetchResponseTime(rangeDays(range), direction),
   });
+  const responseHeld = useHeldPending(response.isPending);
   const summary = response.data?.summary;
   const histogram = summary?.histogram ?? [];
 
@@ -48,7 +50,7 @@ export function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
           : "How long you take to answer mail you received."}{" "}
         Business-hours figures ignore nights and weekends.
       </PageNote>
-      {response.isPending ? (
+      {response.isPending || responseHeld ? (
         <PageSkeleton rows={4} label="Loading response time" />
       ) : response.isError ? (
         <PageError

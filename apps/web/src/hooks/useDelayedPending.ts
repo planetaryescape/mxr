@@ -35,3 +35,13 @@ export function useDelayedPending(
   if (shownAt !== null) return "skeleton";
   return pending ? "quiet" : "ready";
 }
+
+/**
+ * For a page that swaps its content for `PageSkeleton` while a query loads:
+ * true while pending, and while a skeleton that appeared is still held its 400
+ * ms. Use it in place of `query.isPending` so content never replaces a
+ * skeleton after a blink. (The skeleton's own 150 ms delay matches the hook's.)
+ */
+export function useHeldPending(pending: boolean): boolean {
+  return useDelayedPending(pending) !== "ready";
+}

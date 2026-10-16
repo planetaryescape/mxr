@@ -1072,7 +1072,12 @@ impl AppState {
                     key,
                 )?,
                 Some(mxr_config::SyncProviderConfig::Fake) => {
-                    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+                    // The fixture dates the demo's Updates mail around the
+                    // cut the digest will use, so both read the same config.
+                    let fake = Arc::new(mxr_provider_fake::FakeProvider::new_with_updates_cuts(
+                        account_id.clone(),
+                        &crate::handler::updates::cuts_from(&config.updates.cuts).labels(),
+                    ));
                     if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake)) {
                         let send_provider: Arc<dyn MailSendProvider> = fake.clone();
                         send_providers.insert(account_id.clone(), send_provider.clone());

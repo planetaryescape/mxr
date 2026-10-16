@@ -83,7 +83,7 @@ export function DeliveriesRoute() {
   const dismiss = useMutation({
     mutationFn: dismissDelivery,
     onSuccess: () => {
-      toast.success("Dismissed", { description: "It stays out of this list." });
+      toast.success("Dismissed");
       void invalidate();
     },
     onError: (e) => toast.error("Could not dismiss", { description: e.message }),
@@ -97,7 +97,7 @@ export function DeliveriesRoute() {
           : summary.updated > 0
             ? `Updated ${plural(summary.updated, "delivery", "deliveries")}`
             : "No new deliveries";
-      toast.success(headline, { description: `Checked ${plural(summary.scanned, "message")}.` });
+      toast.success(headline);
       void invalidate();
     },
     onError: (e) => toast.error("Scan failed", { description: e.message }),

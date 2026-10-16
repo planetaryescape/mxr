@@ -170,3 +170,20 @@ chips; Reading's card and its unsubscribe sentence. **Moved:** Archive's kind
 filter is a segmented control; the Reading reader's toolbar is quiet buttons
 with their keys in tooltips; Updates' more actions stay in a ⋯ menu on the lit
 row. Per-sender Sweep, Move sender and Unsubscribe show next to what they act on.
+
+## Toasts
+
+D140: a toast confirms what happened and offers Undo; it is not a place for
+decisions. Rules the app holds:
+
+- One at a time. A new toast replaces the one before; the activity log keeps
+  them all.
+- Bottom right, above the status bar or the phone's tab bar; top right in
+  Focus, where the composer sits at the bottom. When the lit row is under the
+  toast's corner it takes the other corner, so it never covers the lit row.
+- One line saying what happened ("Ticked off: Fix payment"), with an `Undo u`
+  button when the change can be undone. No "Press u to undo" second line.
+- Gone after 5 seconds, or 8 with Undo. Hovering or tabbing into it pauses the
+  timer. `u` still undoes after the toast is gone, for as long as the undo
+  lives.
+- An error that needs a decision is a message in the page, not a toast.

@@ -784,7 +784,7 @@ describe("ComposeHost send and remind", () => {
 
     await waitFor(() =>
       expect(toasts.success).toHaveBeenCalledWith(
-        expect.stringMatching(/^Reminder set for \w+ \d+ \w+, \d\d:\d\d$/),
+        expect.stringMatching(/^Reminder set for \w+ \d+ \w+, \d\d:\d\d if no reply$/),
         expect.anything(),
       ),
     );

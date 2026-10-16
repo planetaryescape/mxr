@@ -9,6 +9,7 @@
 import { toast } from "sonner";
 import { create } from "zustand";
 
+import { UNDO_TOAST_DURATION_MS } from "@/components/ui/sonner";
 import { resolveCommitment } from "@/features/mailbox/api";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { onSendEvent } from "@/features/compose/session/sendEvents";
@@ -131,8 +132,7 @@ async function keep(offer: PromiseOffer, messageId: string | undefined): Promise
   }
   refreshPromiseViews();
   toast.success(`Reminder set for ${label}`, {
-    description: `You promised: ${offer.what}.`,
-    duration: 10_000,
+    duration: UNDO_TOAST_DURATION_MS,
     action: {
       label: "Undo",
       onClick: () => {

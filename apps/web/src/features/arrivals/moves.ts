@@ -6,10 +6,11 @@
  * newest move like any other mail change.
  */
 
+import { createElement } from "react";
 import { toast } from "sonner";
 import { create } from "zustand";
 
-import { UNDO_TOAST_DURATION_MS } from "@/components/ui/sonner";
+import { UNDO_TOAST_DURATION_MS, UndoLabel } from "@/components/ui/sonner";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo } from "@/features/mail-actions/mailUndo";
@@ -144,8 +145,8 @@ export function announceMove(
   show(ask ? `${outcome.copy} ${ask}` : outcome.copy, {
     id,
     duration: ask ? 15_000 : UNDO_TOAST_DURATION_MS,
-    description: hint ?? "Press u to undo",
-    action: { label: "Undo", onClick: () => void undo() },
+    description: hint ?? undefined,
+    action: { label: createElement(UndoLabel), onClick: () => void undo() },
     cancel: ask
       ? { label: "Always for this sender", onClick: () => void alwaysForSender(outcome) }
       : undefined,

@@ -12,6 +12,7 @@ import type { useNavigate } from "@tanstack/react-router";
 import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
+import { UNDO_TOAST_DURATION_MS } from "@/components/ui/sonner";
 import { VERB_FEEDBACK } from "@/features/mail-actions/verbFeedback";
 import { archiveMessages } from "@/features/mailbox/api";
 import { detectComposePromises } from "@/features/promises/api";
@@ -607,9 +608,8 @@ async function setReminderAfterSend(
     toast.error("Sent, but the reminder failed", { description: errorMessage(error) });
     return;
   }
-  toast.success(`Reminder set for ${remind.label}`, {
-    description: "If nobody replies by then.",
-    duration: 10_000,
+  toast.success(`Reminder set for ${remind.label} if no reply`, {
+    duration: UNDO_TOAST_DURATION_MS,
     action: {
       label: "Cancel",
       onClick: () => {

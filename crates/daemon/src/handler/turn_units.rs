@@ -55,15 +55,18 @@ impl TurnKeys {
         self.0.extend(other.0);
     }
 
-    /// A conversation the shape rule gave no key (a reply-later thread
-    /// Messages has no row for) counts as its sender.
-    fn unit(&self, row: &DeskRowData) -> (AccountId, RowKey) {
-        let key = self
-            .0
+    /// The row Messages lists this turn under. Messages reads it from here
+    /// and never derives it again, so the two cannot differ. A conversation
+    /// the shape rule gave no key counts as its sender.
+    pub(super) fn key(&self, row: &DeskRowData) -> RowKey {
+        self.0
             .get(&(row.account_id.clone(), row.thread_id.clone()))
             .cloned()
-            .unwrap_or_else(|| RowKey::Person(row.counterparty_email.to_ascii_lowercase()));
-        (row.account_id.clone(), key)
+            .unwrap_or_else(|| RowKey::Person(row.counterparty_email.to_ascii_lowercase()))
+    }
+
+    fn unit(&self, row: &DeskRowData) -> (AccountId, RowKey) {
+        (row.account_id.clone(), self.key(row))
     }
 }
 

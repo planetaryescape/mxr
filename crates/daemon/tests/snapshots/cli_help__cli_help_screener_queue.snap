@@ -7,6 +7,6 @@ Show senders waiting for a decision (default if no subcommand): the ones the Scr
 Usage: mxr screener queue [OPTIONS]
 
 Options:
-      --limit <LIMIT>  [default: 100]
+      --limit <LIMIT>  Most senders listed with --all-senders; the default lists every sender the Screener count counts [default: 100]
       --all-senders    Every sender without a decision, in any folder, however old
   -h, --help           Print help

@@ -26664,7 +26664,7 @@
               },
               "all_senders": {
                 "type": "boolean",
-                "description": "Every sender ever without a decision, in any folder. The default\nis the set the desk's Screener count counts: inbox mail from\nsenders first seen in the last 14 days, so the count and the\nlist always agree."
+                "description": "Every sender ever without a decision, in any folder. The default\nis the set the desk's Screener count counts: inbox mail from\nsenders first seen in the last 14 days, so the count and the\nlist always agree (and `limit` only applies with `all_senders`)."
               },
               "cmd": {
                 "type": "string",

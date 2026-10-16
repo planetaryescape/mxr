@@ -42,7 +42,7 @@ queue is for strangers: anyone you have written to is never in it.
 
 ```bash
 mxr screener queue                 # the new senders the Screener count counts
-mxr screener queue --all-senders   # everyone without a decision, however old
+mxr screener queue --all-senders   # everyone without a decision, however old (--limit applies here)
 mxr screener allow alice@example.com
 mxr screener deny spammer@example.com
 mxr screener feed newsletter@example.com

@@ -1455,7 +1455,7 @@ pub enum Request {
         /// Every sender ever without a decision, in any folder. The default
         /// is the set the desk's Screener count counts: inbox mail from
         /// senders first seen in the last 14 days, so the count and the
-        /// list always agree.
+        /// list always agree (and `limit` only applies with `all_senders`).
         #[serde(default)]
         all_senders: bool,
     },

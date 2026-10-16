@@ -197,19 +197,23 @@ impl super::Store {
         self.screener_queue(account_id, limit, None).await
     }
 
-    /// The queue narrowed to `senders` (lowercased) before the limit is
-    /// applied, so a page that must list exactly a known set (the desk's
-    /// Screener count) never loses one to newer senders outside it.
+    /// Exactly `senders` (lowercased) from the queue, all of them: a page
+    /// that must list a known set (the desk's Screener count) loses none to
+    /// a limit or to newer senders outside it.
     pub async fn list_screener_queue_for(
         &self,
         account_id: &AccountId,
         senders: &[String],
-        limit: u32,
     ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
         if senders.is_empty() {
             return Ok(Vec::new());
         }
-        self.screener_queue(account_id, limit, Some(senders)).await
+        self.screener_queue(
+            account_id,
+            u32::try_from(senders.len()).unwrap_or(u32::MAX),
+            Some(senders),
+        )
+        .await
     }
 
     async fn screener_queue(
@@ -218,7 +222,12 @@ impl super::Store {
         limit: u32,
         only: Option<&[String]>,
     ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
-        let limit = limit.clamp(1, 500) as i64;
+        // A named set is never cut; the open queue is capped.
+        let limit = if only.is_some() {
+            i64::from(limit.max(1))
+        } else {
+            i64::from(limit.clamp(1, 500))
+        };
         let only = only.map(|senders| serde_json::to_string(senders).unwrap_or_default());
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(SCREENER_QUEUE_SQL)
@@ -287,7 +296,12 @@ const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
             COUNT(*) AS message_count,
             MAX(m.date) AS latest_at
         FROM messages m
-        WHERE m.account_id = ?1 AND m.direction = 'inbound'
+        -- Inbound by the desk's rule: stored as inbound, or of unknown
+        -- direction and not from one of the account's own addresses.
+        WHERE m.account_id = ?1
+          AND (m.direction = 'inbound'
+               OR (m.direction NOT IN ('inbound', 'outbound')
+                   AND LOWER(m.from_email) NOT IN (SELECT email FROM own)))
           AND (?3 IS NULL OR LOWER(m.from_email) IN (SELECT value FROM json_each(?3)))
         GROUP BY LOWER(m.from_email)
     )
@@ -592,7 +606,8 @@ mod tests {
             [&["carol@example.com"], &[], &[]],
         )
         .await;
-        // The same from a stranger is not your sent mail.
+        // The same from a stranger is not your sent mail, so it does not
+        // keep dave out; its own sender is inbound by the desk's rule.
         store_message(
             &store,
             &aid,
@@ -601,6 +616,9 @@ mod tests {
             [&["dave@example.com"], &[], &[]],
         )
         .await;
-        assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
+        assert_eq!(
+            queued(&store, &aid).await,
+            vec!["dave@example.com", "someone@else.example"]
+        );
     }
 }

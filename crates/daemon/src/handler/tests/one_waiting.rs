@@ -429,12 +429,10 @@ async fn the_owed_page_says_how_many_others_wait_when_it_is_empty() {
     assert_eq!(three_counts(&fx).await, (1, 1, Some(1)));
 }
 
-#[tokio::test]
-async fn a_watched_persons_waiting_row_outranks_a_new_senders_turn_in_every_count() {
-    let fx = Fixture::new().await;
-    // Alice, watched daily, wrote in a group thread two days ago; Bob, whom
-    // you never wrote to, wrote yesterday. The desk keeps the thread on
-    // Waiting on (it outranks New from people), so nobody's turn.
+/// Alice, watched daily, wrote in a group thread two days ago; Bob, whom
+/// you never wrote to, wrote yesterday. The desk keeps the thread on Waiting
+/// on (it outranks New from people), so nobody's turn.
+async fn watched_alice_group(fx: &Fixture) -> ThreadId {
     let thread = ThreadId::new();
     let mut alice = fx
         .message(&thread, "alice@example.com", ME, Duration::days(2), None)
@@ -489,7 +487,13 @@ async fn a_watched_persons_waiting_row_outranks_a_new_senders_turn_in_every_coun
         )
         .await
         .unwrap();
+    thread
+}
 
+#[tokio::test]
+async fn a_watched_persons_waiting_row_outranks_a_new_senders_turn_in_every_count() {
+    let fx = Fixture::new().await;
+    watched_alice_group(&fx).await;
     let ResponseData::Desk { waiting, .. } = fx.desk(25).await else {
         panic!("expected a desk");
     };
@@ -562,4 +566,121 @@ async fn the_screener_page_keeps_an_eligible_sender_behind_five_hundred_newer_on
     };
     let page: Vec<&str> = entries.iter().map(|e| e.sender_email.as_str()).collect();
     assert_eq!(page, ["eligible@example.com"]);
+}
+
+#[tokio::test]
+async fn a_thread_outranked_by_a_watched_waiting_row_is_not_owed() {
+    let fx = Fixture::new().await;
+    let thread = watched_alice_group(&fx).await;
+    assert!(
+        !thread_owes(&fx, &thread).await,
+        "Waiting on outranks New from people"
+    );
+}
+
+#[tokio::test]
+async fn messages_keys_a_turn_the_way_the_desk_counted_it() {
+    let fx = Fixture::new().await;
+    let mut config = fx.state.config_snapshot();
+    config.messages.recent_days = 1;
+    fx.state.set_config_for_test(config).await;
+    // A known list address, with its own archived thread three days old.
+    sqlx::query(
+        "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
+           last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
+           cadence_days_p50, is_list_sender, list_id, refreshed_at)
+         VALUES (?, 'crew@partners.example.com', NULL, 0, 0, NULL, NULL, 9, 0, 0, NULL, 1,
+           'lists.example.com', 0)",
+    )
+    .bind(fx.account.as_str())
+    .execute(fx.state.store.writer())
+    .await
+    .unwrap();
+    let archived = wrote_to_you(&fx, "crew@partners.example.com", Duration::days(3)).await;
+    let _ = archived;
+    // Two owed Alice threads, each written with the list copied.
+    for _ in 0..2 {
+        let thread = you_write_with(&fx, "alice@example.com").await;
+        for mut envelope in fx.state.store.get_thread_envelopes(&thread).await.unwrap() {
+            if envelope.from.email == ME {
+                envelope.cc = vec![mxr_core::types::Address {
+                    name: None,
+                    email: "crew@partners.example.com".into(),
+                }];
+                fx.store_envelope(&envelope, MessageDirection::Outbound)
+                    .await;
+            }
+        }
+    }
+    let (now, rows, rail) = three_counts(&fx).await;
+    assert_eq!(
+        (now, rows, rail),
+        (1, 1, Some(1)),
+        "Alice once, not two group rows"
+    );
+}
+
+#[tokio::test]
+async fn the_screener_page_lists_every_sender_the_badge_counts() {
+    let fx = Fixture::new().await;
+    for index in 0..101 {
+        wrote_to_you(
+            &fx,
+            &format!("sender{index}@example.com"),
+            Duration::hours(2),
+        )
+        .await;
+    }
+    fx.state.store.refresh_contacts().await.unwrap();
+    let ResponseData::Desk { elsewhere, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(elsewhere.screener, 101);
+    let ResponseData::ScreenerQueue { entries } = request(
+        &fx,
+        Request::ListScreenerQueue {
+            account_id: fx.account.clone(),
+            limit: 100,
+            all_senders: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected the queue");
+    };
+    assert_eq!(entries.len(), 101, "limit never shortens the badge's set");
+}
+
+#[tokio::test]
+async fn the_screener_page_counts_unknown_direction_mail_as_inbound_like_the_badge() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let envelope = fx
+        .message(&thread, "old@example.com", ME, Duration::hours(24), None)
+        .await;
+    // An older database before repair: the message is stored without a
+    // direction.
+    sqlx::query("UPDATE messages SET direction = 'unknown' WHERE id = ?")
+        .bind(envelope.id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    fx.state.store.refresh_contacts().await.unwrap();
+    let ResponseData::Desk { elsewhere, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(elsewhere.screener, 1);
+    let ResponseData::ScreenerQueue { entries } = request(
+        &fx,
+        Request::ListScreenerQueue {
+            account_id: fx.account.clone(),
+            limit: 100,
+            all_senders: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected the queue");
+    };
+    assert_eq!(entries.len(), 1);
 }

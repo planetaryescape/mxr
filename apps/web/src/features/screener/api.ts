@@ -18,7 +18,7 @@ export type ScreenerDisposition = "allow" | "deny" | "feed" | "paper_trail" | "u
 export function fetchScreenerQueue(accountId: string, allSenders = false) {
   const all = allSenders ? "&all_senders=true" : "";
   return apiFetch<{ entries: ScreenerEntry[] }>(
-    `/api/v1/mail/screener/queue?account_id=${accountId}&limit=100${all}`,
+    `/api/v1/mail/screener/queue?account_id=${accountId}&limit=500${all}`,
   );
 }
 

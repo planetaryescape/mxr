@@ -153,11 +153,14 @@ pub(super) fn desk_lane(rows: &[DeskRowData], kind: DeskLaneKind, limit: u32) ->
     }
 }
 
-/// The turn row (You owe or New from people) a thread has on the desk, or
-/// `None` when it is nobody's turn: not in the inbox, not from a person,
-/// copied only, decayed past its window, snoozed or put away. It runs the
-/// desk's own lane rule on this thread alone, so the thread's relationship
-/// line says "you owe" exactly when the thread is on the desk.
+/// The turn row (You owe or New from people) a thread has on the composed
+/// desk, or `None` when it is nobody's turn: not in the inbox, not from a
+/// person, copied only, decayed, snoozed, put away, or outranked by another
+/// lane (a watched person's Waiting on). The lane rule on this thread alone
+/// is a cheap first test, since most threads fail it; only a thread that
+/// passes is checked against the composed desk, which is what Now, Messages
+/// and the rail count, so the thread line says "you owe" exactly when they
+/// count it.
 pub(super) async fn thread_turn(
     state: &AppState,
     account_id: &AccountId,
@@ -190,7 +193,15 @@ pub(super) async fn thread_turn(
         shape: super::conversation_shape::shape_config(state),
         now,
     });
-    Ok(lanes.rows.into_iter().map(|draft| draft.row).find(|row| {
+    let in_turn = lanes.rows.iter().any(|draft| {
+        draft.row.thread_id == *thread_id
+            && matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+    });
+    if !in_turn {
+        return Ok(None);
+    }
+    let desk = compose_desk(state, Some(account_id), now).await?;
+    Ok(desk.rows.into_iter().find(|row| {
         row.thread_id == *thread_id
             && matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
     }))

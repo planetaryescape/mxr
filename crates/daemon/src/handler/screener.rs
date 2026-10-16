@@ -32,7 +32,9 @@ fn disposition_to_proto(d: ScreenerDisposition) -> ScreenerDispositionData {
 /// The Screener page. By default the set the desk's Screener count counts
 /// (inbox mail from senders first seen in the last 14 days, no decision),
 /// so the page and the badge always agree; `all_senders` lists every
-/// sender without a decision, in any folder, as before.
+/// sender without a decision, in any folder, as before. The default
+/// lists every counted sender whatever `limit` says, so the page never
+/// shows fewer than the badge; `limit` applies to `all_senders`.
 pub(super) async fn list_queue(
     state: &AppState,
     account_id: &AccountId,
@@ -50,11 +52,11 @@ pub(super) async fn list_queue(
         .map(|(_, email)| email)
         .collect();
     counted.sort_unstable();
-    // Narrowed in the query, before its limit, so no counted sender is
-    // pushed out by newer ones the badge does not count.
+    // Narrowed in the query, so no counted sender is pushed out by newer
+    // ones the badge does not count.
     let entries = state
         .store
-        .list_screener_queue_for(account_id, &counted, limit)
+        .list_screener_queue_for(account_id, &counted)
         .await?;
     Ok(queue_response(entries))
 }

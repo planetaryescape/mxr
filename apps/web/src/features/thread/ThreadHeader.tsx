@@ -98,7 +98,7 @@ export function ThreadHeader({
           />
           {position ? (
             <span className="ml-1 font-mono text-2xs text-muted-foreground tabular-nums">
-              {position.index + 1} of {position.total.toLocaleString()}
+              {position.index + 1} of {plural(position.total, "conversation")}
             </span>
           ) : null}
           <span className="mx-2 h-5 w-px bg-border" aria-hidden />

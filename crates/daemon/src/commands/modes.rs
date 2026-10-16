@@ -331,7 +331,7 @@ mod tests {
         let text = guide_text(&mxr_protocol::TODO_GUIDE.to_data(|_| None));
         assert!(text.starts_with("To do: Things email asked you to do, ordered by when to act."));
         assert!(text.contains("Enter do it · e tick off · Z schedule"));
-        assert!(text.contains("todo.runway (The first runway bar): The bar fills"));
+        assert!(text.contains("todo.runway (The first row): Press e to tick this off"));
         assert!(!text.contains("dismissed"));
     }
 }

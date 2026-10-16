@@ -22,6 +22,7 @@ import { useThreadModesMap } from "@/features/modes/membership";
 import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
 import type { LampVia } from "@/components/Row";
 import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { moveCommands } from "@/features/arrivals/moveSubjects";
@@ -58,7 +59,6 @@ import {
 } from "./messagesView";
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
-import { KeyLine } from "@/components/KeyLine";
 import { FramePanesContext, PageFrame } from "@/components/PageFrame";
 
 /** List and person page share the screen from Tailwind's md up. */
@@ -137,8 +137,6 @@ function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: Mod
 function firstThread(row: MessagesRow | undefined): string {
   return row?.topics[0]?.thread_id ?? "";
 }
-
-const SHOWN_KEYS = new Set(["r", ".", "e", "t", "b", "c"]);
 
 function MessagesBody({
   data,
@@ -501,6 +499,12 @@ function MessagesBody({
   // The lit row's reason goes to the status bar; a new sender adds the key choices.
   const newSender = selectedId ? memberships?.get(firstThread(selected))?.new_sender : undefined;
   useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null);
+  // A new sender's choice keys are spelled out in the status note, so the strip keeps the common verbs.
+  usePageKeys(
+    selectedId
+      ? ["messages.reply", "messages.got-it", "messages.done", "messages.to-do", "messages.pin"]
+      : ["messages.open"],
+  );
   useShortcutScope("messages", true);
   useScopeController("messages", {
     down: () => move(1),
@@ -600,14 +604,6 @@ function MessagesBody({
               hidden={hiddenDone}
               arrival={arrival}
             />
-            {guide ? (
-              <KeyLine
-                keys={[
-                  ...guide.keys.filter((key) => SHOWN_KEYS.has(key.key)),
-                  { key: "?", verb: "what is this" },
-                ]}
-              />
-            ) : null}
           </div>
         </ResizablePanel>
         {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}

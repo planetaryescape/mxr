@@ -18071,7 +18071,7 @@
           },
           "why": {
             "type": "string",
-            "description": "\"From Messages: Maya wrote to you 22h ago.\""
+            "description": "\"your turn since Wednesday\""
           }
         }
       },
@@ -18115,7 +18115,7 @@
           },
           "why": {
             "type": "string",
-            "description": "\"From Reading: you've opened 9 of the last 10 from Long Reads.\""
+            "description": "\"you've read 9 of the 10 from Long Reads in your inbox\""
           }
         }
       },
@@ -18132,7 +18132,7 @@
           },
           "why": {
             "type": "string",
-            "description": "\"From To do: act by Wed 7 Oct · due Fri 9 Oct.\""
+            "description": "\"act by Wed 7 Oct · due Fri 9 Oct\""
           }
         }
       },

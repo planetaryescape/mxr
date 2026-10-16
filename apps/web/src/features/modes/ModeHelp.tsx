@@ -1,8 +1,6 @@
-import { KeyChip } from "@/components/KeyChip";
 import type { ActionScope } from "@/lib/actions/types";
 
 import { useModeGuide, type ModeId } from "./api";
-import { keysForModeGuide } from "./guideKeys";
 
 /** The mode whose keys are live, from the scopes its views push. */
 export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
@@ -17,32 +15,22 @@ export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
 }
 
 /**
- * What `?` leads with in a mode: its job, what lands there, how it works
- * and its keys with their verbs. This is the full explanation on demand;
- * the page itself only teaches through hints at their elements.
+ * What `?` leads with in a mode: its purpose, once, and how it works. The
+ * keys follow in the sheet's own list, so they aren't repeated here.
  */
 export function ModeHelp({ mode }: { mode: ModeId }) {
   const guide = useModeGuide(mode).data;
   if (!guide) return null;
-  const keys = keysForModeGuide(guide);
   return (
     <section
       aria-label={`About ${guide.name}`}
       data-testid="mode-help"
       className="border-l-2 border-primary pl-3"
     >
-      <h2 className="text-base font-semibold">
-        {guide.name}: <span className="font-normal">{guide.header}</span>
+      <h2 className="type-heading">
+        {guide.name}: <span className="font-normal text-text-2">{guide.header}</span>
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{guide.lands_here}</p>
-      <p className="mt-1 max-w-[70ch] text-sm">{guide.about}</p>
-      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {keys.map((key) => (
-          <span key={key.key} className="inline-flex items-center gap-1">
-            <KeyChip>{key.key}</KeyChip> {key.verb}
-          </span>
-        ))}
-      </p>
+      <p className="mt-1 max-w-[70ch] text-sm text-text-2">{guide.about}</p>
     </section>
   );
 }

@@ -1,20 +1,10 @@
-import {
-  Archive,
-  Check,
-  ClipboardList,
-  Clock,
-  Link2,
-  Mail,
-  MailOpen,
-  Paperclip,
-  Star,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
-import { memo, type MouseEvent, type ReactNode } from "react";
+import { Check, ClipboardList, Link2, Paperclip, Star, type LucideIcon } from "lucide-react";
+import { memo, type MouseEvent } from "react";
 
 import type { MessageRowView } from "./types";
 import { Chip } from "@/components/Chip";
+import { KeyChip } from "@/components/KeyChip";
+import { Row, type LampVia } from "@/components/Row";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
@@ -23,45 +13,54 @@ import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
 import { ModeChip } from "@/features/arrivals/ModeChip";
-import { UnreadDot } from "@/components/UnreadDot";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
+
+/** The verbs a lit row offers, with their keys; the rest are one `?` away. */
+const QUICK_VERBS: readonly { action: RowQuickAction; keys: string; label: string }[] = [
+  { action: "archive", keys: "e", label: "archive" },
+  { action: "snooze", keys: "Z", label: "snooze" },
+  { action: "toggleStar", keys: "s", label: "star" },
+];
 
 interface MailboxRowProps {
   row: MessageRowView;
   domId: string;
   selected: boolean;
-  focused: boolean;
-  /** The conversation open in the reader. */
-  open: boolean;
+  /** The cursor is on this row: the one lit row. */
+  lit: boolean;
+  /** Only a pointer fades the lamp (D101). */
+  via: LampVia;
   /** Any row selected: every lead shows its checkbox. */
   selecting: boolean;
   readOnly?: boolean;
   onOpen: (row: MessageRowView) => void;
   onToggleSelection: (row: MessageRowView, shift: boolean) => void;
   onQuickAction: (row: MessageRowView, action: RowQuickAction) => void;
-  trailingAction?: ReactNode;
+  /** The list's own verb for a row, shown first among the lit row's verbs. */
+  rowAction?: RowAction;
 }
 
 /**
- * One conversation or message. Layout follows the list's width (a
- * container query), not the window's: a full-width list reads as one line
- * per row; the narrow list beside the reader stacks sender, subject and
- * snippet. Inner buttons are mouse affordances only; the listbox owns
- * keyboard focus and every action has a key.
+ * One conversation or message, on the shared `Row` (D129): avatar, sender
+ * with the message count in meta, subject and snippet on the second line,
+ * mode marks and the time in the trail. The lit row's trail becomes its
+ * verbs. Inner verbs are mouse affordances only (rows are listbox options,
+ * which can't hold controls); the listbox owns keyboard focus and every
+ * action has a key.
  */
 export const MailboxRow = memo(function MailboxRow({
   row,
   domId,
   selected,
-  focused,
-  open,
+  lit,
+  via,
   selecting,
   readOnly = false,
   onOpen,
   onToggleSelection,
   onQuickAction,
-  trailingAction,
+  rowAction,
 }: MailboxRowProps) {
   const count =
     typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
@@ -81,11 +80,17 @@ export const MailboxRow = memo(function MailboxRow({
   };
 
   return (
-    <div
+    <Row
       id={domId}
       role="option"
       aria-selected={selected}
       aria-label={rowLabel(row, who, count, gist, when)}
+      data-focused={lit ? "true" : undefined}
+      lit={lit}
+      via={via}
+      unread={row.unread}
+      // A `li` outside a `ul` still draws its disc marker; the virtual list wraps rows in divs.
+      className={cn("cursor-default select-none list-none", selected && "bg-primary-muted/70")}
       onClick={(event) => {
         if (!readOnly && (event.metaKey || event.ctrlKey)) {
           onToggleSelection(row, false);
@@ -97,49 +102,24 @@ export const MailboxRow = memo(function MailboxRow({
         }
         onOpen(row);
       }}
-      data-unread={row.unread ? "true" : undefined}
-      data-focused={focused ? "true" : undefined}
-      className={cn(
-        "mail-row group relative grid cursor-default select-none items-center border-b border-border/60",
-        "grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 pl-7 pr-4 py-2.5",
-        "@2xl:grid-cols-[28px_minmax(120px,190px)_minmax(0,1fr)_auto]",
-        "[[data-density=compact]_&]:py-1.5 [[data-density=comfortable]_&]:py-3.5",
-        // No transition: j/k moves the highlight on every keypress, and
-        // repeated keyboard actions must not animate.
-        selected ? "bg-primary-muted/70" : open ? "bg-accent" : "hover:bg-accent/60",
-        focused && "bg-accent",
-      )}
-    >
-      {focused || open ? (
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-0 left-0 w-[3px]",
-            focused ? "bg-primary" : "bg-primary/45",
-          )}
-        />
-      ) : null}
-      {row.unread ? <UnreadDot className="absolute left-3 top-1/2 -translate-y-1/2" /> : null}
-
-      {/* Lead: avatar that becomes a checkbox. */}
-      <div className="row-span-2 self-start pt-0.5 @2xl:row-span-1 @2xl:self-center @2xl:pt-0">
-        {readOnly ? (
-          <Avatar name={who} />
+      lead={
+        readOnly ? (
+          <Avatar name={who} size="lg" />
         ) : (
           // Mouse-only: rows are listbox options, which can't hold controls;
           // x selects from the keyboard.
           <span
             aria-hidden
             onClick={stop(() => onToggleSelection(row, false))}
-            className="relative grid size-7 cursor-pointer place-items-center"
+            className="relative grid size-8 shrink-0 cursor-pointer place-items-center"
           >
             <span
               className={cn(
                 "transition-opacity",
-                selected || selecting ? "opacity-0" : "group-hover:opacity-0",
+                selected || selecting ? "opacity-0" : "group-hover/row:opacity-0",
               )}
             >
-              <Avatar name={who} />
+              <Avatar name={who} size="lg" />
             </span>
             <span
               className={cn(
@@ -148,138 +128,103 @@ export const MailboxRow = memo(function MailboxRow({
                   ? "border-primary bg-primary text-primary-foreground opacity-100"
                   : cn(
                       "border-border-strong bg-background",
-                      selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                      selecting ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
                     ),
               )}
             >
               {selected ? <Check className="size-3.5" strokeWidth={3} /> : null}
             </span>
           </span>
-        )}
-      </div>
-
-      {/* Sender. Narrow: first line with the date. Wide: its own column. */}
-      <div className="flex min-w-0 items-baseline gap-1.5 @2xl:col-start-2">
-        <span
-          className={cn(
-            "min-w-0 truncate text-[length:var(--mail-row-subject-size)]",
-            row.unread ? "font-semibold text-foreground" : "text-muted-foreground",
-          )}
-          title={row.sender_detail ?? row.sender}
-        >
-          {who}
-        </span>
-        {count ? (
-          <span className="shrink-0 font-mono text-2xs text-muted-foreground" aria-hidden>
-            {count}
-          </span>
-        ) : null}
-      </div>
-
-      {/* Subject and snippet. */}
-      <div
-        className={cn(
-          "col-start-2 col-end-4 min-w-0 @2xl:col-start-3 @2xl:col-end-4 @2xl:row-start-1",
-          "flex flex-col gap-0.5 @2xl:flex-row @2xl:items-baseline @2xl:gap-2",
-        )}
-      >
-        <span className="flex min-w-0 items-center gap-1.5 @2xl:shrink-0 @2xl:max-w-[60%]">
+        )
+      }
+      primary={
+        <>
           <span
-            className={cn(
-              "truncate text-[length:var(--mail-row-subject-size)]",
-              row.unread ? "font-semibold text-foreground" : "text-foreground/90",
-            )}
+            className={cn(row.unread && "font-semibold")}
+            title={row.sender_detail ?? row.sender}
           >
-            {row.subject || "(no subject)"}
+            {who}
           </span>
+          {count ? (
+            <span className="type-meta ml-1.5 text-text-3" aria-hidden>
+              {count}
+            </span>
+          ) : null}
+        </>
+      }
+      secondary={
+        <>
+          {row.triage_verdict ? (
+            <span className="mr-1.5">
+              <TriageChip
+                verdict={row.triage_verdict}
+                reason={row.triage_reason ?? row.triage_line}
+              />
+            </span>
+          ) : null}
+          <span className={cn(row.unread && "text-text-1")}>{row.subject || "(no subject)"}</span>
           {userLabels.map((label) => (
             <LabelChip key={label.id} name={label.name} />
           ))}
-          {row.triage_verdict ? (
-            <TriageChip
-              verdict={row.triage_verdict}
-              reason={row.triage_reason ?? row.triage_line}
-            />
-          ) : null}
-        </span>
-        <span className="truncate text-[length:var(--mail-row-meta-size)] text-fg-2 [[data-density=compact]_&]:hidden @2xl:[[data-density=compact]_&]:inline">
-          <span className="hidden @2xl:inline" aria-hidden>
-            ·{" "}
+          <span className="[[data-density=compact]_&]:hidden">
+            <span aria-hidden> · </span>
+            {gist ? <RowGistLine gist={gist} /> : row.snippet}
           </span>
-          {gist ? <RowGistLine gist={gist} /> : row.snippet}
-        </span>
-      </div>
-
-      {/* Meta: icons and date; quick actions replace them on hover. */}
-      <div className="col-start-3 row-start-1 flex items-center justify-end gap-1.5 self-start pt-px @2xl:col-start-4 @2xl:self-center @2xl:pt-0">
-        {/* The hover toolbar covers only this, never a trailing action. */}
-        <span className="relative flex items-center">
-          <span className={cn("flex items-center gap-1.5", !readOnly && "group-hover:invisible")}>
-            {commitments ? (
-              <span
-                title={`${plural(commitments, "open commitment")}`}
-                className="flex items-center gap-0.5 font-mono text-2xs text-warning"
-              >
-                <ClipboardList className="size-3" aria-hidden />
-                {commitments}
-              </span>
-            ) : null}
-            {row.link_density === "heavy" ? (
-              <Link2 className="size-3.5 text-muted-foreground" aria-hidden />
-            ) : null}
-            {row.has_attachments ? (
-              <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
-            ) : null}
-            {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
-            {/* Where it went (Inbox only; elsewhere no chip scope is mounted). */}
-            <ModeChip messageId={row.id} />
-            <time
-              dateTime={row.date}
-              title={row.date_full}
-              className={cn(
-                "whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] tabular-nums",
-                row.unread ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {when || row.date_label}
-            </time>
-          </span>
-          {readOnly ? null : (
+        </>
+      }
+      trail={
+        <>
+          {commitments ? (
             <span
-              aria-hidden
-              className="invisible absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm group-hover:visible"
+              title={plural(commitments, "open commitment")}
+              className="flex items-center gap-0.5 text-cue"
             >
-              <QuickButton label="Archive (e)" onClick={stop(() => onQuickAction(row, "archive"))}>
-                <Archive className="size-3.5" />
-              </QuickButton>
-              <QuickButton label="Trash (#)" onClick={stop(() => onQuickAction(row, "trash"))}>
-                <Trash2 className="size-3.5" />
-              </QuickButton>
-              <QuickButton
-                label={row.unread ? "Mark read (I)" : "Mark unread (U)"}
-                onClick={stop(() => onQuickAction(row, "toggleRead"))}
-              >
-                {row.unread ? <MailOpen className="size-3.5" /> : <Mail className="size-3.5" />}
-              </QuickButton>
-              <QuickButton label="Snooze (Z)" onClick={stop(() => onQuickAction(row, "snooze"))}>
-                <Clock className="size-3.5" />
-              </QuickButton>
-              <QuickButton
-                label={row.starred ? "Unstar (s)" : "Star (s)"}
-                onClick={stop(() => onQuickAction(row, "toggleStar"))}
-              >
-                <Star className={cn("size-3.5", row.starred && "fill-star text-star")} />
-              </QuickButton>
+              <ClipboardList className="size-3.5" aria-hidden />
+              {commitments}
             </span>
-          )}
-        </span>
-        {trailingAction ? (
-          <span onClick={(event) => event.stopPropagation()} className="ml-1">
-            {trailingAction}
-          </span>
-        ) : null}
-      </div>
-    </div>
+          ) : null}
+          {row.link_density === "heavy" ? <Link2 className="size-3.5" aria-hidden /> : null}
+          {row.has_attachments ? <Paperclip className="size-3.5" aria-hidden /> : null}
+          {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
+          {/* Where it went (Inbox only; elsewhere no chip scope is mounted). */}
+          <ModeChip messageId={row.id} />
+          <time
+            dateTime={row.date}
+            title={row.date_full}
+            className="whitespace-nowrap tabular-nums"
+          >
+            {when || row.date_label}
+          </time>
+        </>
+      }
+      verbs={
+        rowAction || !readOnly ? (
+          <>
+            {rowAction ? (
+              <MailVerb
+                keys="w"
+                label={rowAction.label}
+                title={`${rowAction.describe(row)} (w)`}
+                onClick={() => {
+                  rowAction.run(row);
+                  notePointerUse("list.row-action", rowAction.label);
+                }}
+              />
+            ) : null}
+            {readOnly
+              ? null
+              : QUICK_VERBS.map((verb) => (
+                  <MailVerb
+                    key={verb.action}
+                    keys={verb.keys}
+                    label={verb.action === "toggleStar" && row.starred ? "unstar" : verb.label}
+                    onClick={() => onQuickAction(row, verb.action)}
+                  />
+                ))}
+          </>
+        ) : undefined
+      }
+    />
   );
 });
 
@@ -292,22 +237,34 @@ export interface RowAction {
 }
 
 /**
- * A row's own verb, drawn as a button but not one: rows are listbox
- * options, which can't contain controls. The keyboard runs it with `w`.
+ * A verb on the lit row, drawn like `RowVerb` but not a button: rows are
+ * listbox options, which can't contain controls. The keyboard runs it with
+ * its key.
  */
-export function RowActionChip({ action, row }: { action: RowAction; row: MessageRowView }) {
-  const Icon = action.icon;
+function MailVerb({
+  keys,
+  label,
+  title,
+  onClick,
+}: {
+  keys: string;
+  label: string;
+  title?: string;
+  onClick: () => void;
+}) {
   return (
     <span
       aria-hidden
-      title={`${action.describe(row)} (w)`}
-      onClick={() => {
-        action.run(row);
-        notePointerUse("list.row-action", action.label);
+      title={title ?? `${label} (${keys})`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
       }}
-      className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="inline-flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap px-1.5 hover:text-text-1"
     >
-      <Icon className="size-3" /> {action.label}
+      <KeyChip className="h-4 px-1">{keys}</KeyChip>
+      {/* In a narrow list (a reader beside it) the keys alone say it, so the sender keeps its room. */}
+      <span className="hidden @xl/list:inline">{label}</span>
     </span>
   );
 }
@@ -350,7 +307,7 @@ function rowLabel(
 }
 
 function LabelChip({ name }: { name: string }) {
-  return <Chip className="hidden @3xl:inline">{name}</Chip>;
+  return <Chip className="ml-1.5 hidden @3xl:inline">{name}</Chip>;
 }
 
 function TriageChip({ verdict, reason }: { verdict: string; reason?: string | null }) {
@@ -373,26 +330,6 @@ function TriageChip({ verdict, reason }: { verdict: string; reason?: string | nu
       )}
     >
       {normalized}
-    </span>
-  );
-}
-
-function QuickButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: (event: MouseEvent) => void;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      title={label}
-      onClick={onClick}
-      className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-    >
-      {children}
     </span>
   );
 }

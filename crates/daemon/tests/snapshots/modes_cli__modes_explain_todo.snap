@@ -4,21 +4,21 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
   {
-    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; the bar fills from when it showed up to when it's due, and Enter does what the button says.",
+    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; Space ticks it off and o opens the email it came from.",
     "add_one": "Press `t` on any email to add one yourself.",
     "clear_for_now": "Nothing needs you.",
     "first_run_line": "What email asked you to do",
     "header": "Things email asked you to do, ordered by when to act.",
     "hints": [
       {
-        "anchor": "The first runway bar",
+        "anchor": "The first row",
         "id": "todo.runway",
         "key": {
-          "key": "Enter",
-          "verb": "do it"
+          "key": "e",
+          "verb": "tick off"
         },
         "seen": false,
-        "text": "The bar fills from when this showed up to when it's due; Enter does what the button says."
+        "text": "Press e to tick this off, or o to open the email it came from."
       },
       {
         "anchor": "The first catch-up line",

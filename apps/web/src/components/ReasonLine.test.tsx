@@ -10,8 +10,8 @@ describe("ReasonLine", () => {
     expect(reasonText("Here because: Samir asked you a question.")).toBe(
       "Here because: Samir asked you a question.",
     );
-    expect(reasonText("From Messages: new from Quinn, 25h.")).toBe(
-      "Here because: From Messages: new from Quinn, 25h.",
+    expect(reasonText("a new sender, not placed yet")).toBe(
+      "Here because: a new sender, not placed yet",
     );
   });
 

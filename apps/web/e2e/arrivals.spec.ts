@@ -88,10 +88,12 @@ test("X moves an email, every client sees it, and u puts it back", async ({ page
   await openList(page, "/m/inbox");
   await mailList(page).focus();
   const rowId = await cursorTo(page, () => true);
+  // The lit row shows its verbs in place of its marks; the mark stays in the row, and the
+  // status bar carries where it went.
   const chip = rowById(page, rowId).getByTestId("mode-chip");
-  await expect(chip).toBeVisible();
-  const before = (await chip.textContent()) ?? "";
-  const [key, after] = before === "Reading" ? ["u", "Updates"] : ["r", "Reading"];
+  await expect(chip).toBeAttached();
+  const before = (await chip.getAttribute("data-bucket")) ?? "";
+  const [key, after] = before === "reading" ? ["u", "updates"] : ["r", "reading"];
 
   await page.keyboard.press("X");
   const picker = page.getByTestId("move-to-mode-dialog");
@@ -99,13 +101,19 @@ test("X moves an email, every client sees it, and u puts it back", async ({ page
   await page.keyboard.press(key);
   await expect(picker).toHaveCount(0);
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: /^Moved to / })).toBeVisible();
-  await expect(chip).toHaveText(after);
+  await expect(chip).toHaveAttribute("data-bucket", after);
   await expect(chip).toHaveAttribute("title", /you moved this email/);
-  await expect(rowById(other, rowId).getByTestId("mode-chip")).toHaveText(after);
+  await expect(rowById(other, rowId).getByTestId("mode-chip")).toHaveAttribute(
+    "data-bucket",
+    after,
+  );
 
   await page.keyboard.press("u");
-  await expect(chip).toHaveText(before);
-  await expect(rowById(other, rowId).getByTestId("mode-chip")).toHaveText(before);
+  await expect(chip).toHaveAttribute("data-bucket", before);
+  await expect(rowById(other, rowId).getByTestId("mode-chip")).toHaveAttribute(
+    "data-bucket",
+    before,
+  );
   await other.close();
 });
 

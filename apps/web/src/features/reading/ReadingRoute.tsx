@@ -2,9 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { moveCommands, readingMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Bookmark, Newspaper, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
@@ -19,6 +18,10 @@ import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
+import { useThreadModesMap } from "@/features/modes/membership";
+import type { LampVia } from "@/components/Row";
 
 import {
   fetchEdition,
@@ -30,10 +33,11 @@ import {
   type ReadingSource,
 } from "./api";
 import { LetGoAllDialog, ReadingUnsubscribeDialog } from "./ReadingDialogs";
-import { ReadingItemCard, type CardHandlers } from "./ReadingItemCard";
+import { ReadingIssueRow, ReadingLinkRow, type RowHandlers } from "./ReadingRows";
 import {
   editionEntries,
   letGoAllPlan,
+  shownLinks,
   READING_LIST_SEARCH,
   visibleBands,
   type EditionEntry,
@@ -46,7 +50,6 @@ import {
   putOnLater,
   rememberLayout,
 } from "./readingVerbs";
-import { KeyLine } from "@/components/KeyLine";
 import { ModeFrame } from "@/components/ModeFrame";
 import { pageTabClass } from "@/components/Page";
 import { PageFrame } from "@/components/PageFrame";
@@ -210,8 +213,8 @@ function EditionHeader({
       }
       primary={
         view !== "later" && anything ? (
-          <Button size="sm" onClick={onLetGoAll}>
-            Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
+          <Button size="sm" title="Let go of all (A)" aria-keyshortcuts="A" onClick={onLetGoAll}>
+            Let go of all
           </Button>
         ) : null
       }
@@ -240,6 +243,8 @@ function Bands({
   // In the URL, so a copied link (and coming back from the reader) lands
   // on the same entry.
   const [cursorKey, setCursorKey] = useSearchParam("row");
+  // Only a pointer fades the lamp (D101): a key must feel instant.
+  const via = useRef<LampVia>("key");
 
   const bands = useMemo(
     () =>
@@ -333,9 +338,16 @@ function Bands({
     },
     [edition, setDialog],
   );
-  const handlers = useMemo<CardHandlers>(
+  const handlers = useMemo<RowHandlers>(
     () => ({
-      onFocus: setCursorKey,
+      onPoint: (key) => {
+        via.current = "pointer";
+        setCursorKey(key);
+      },
+      onFocus: (key) => {
+        via.current = "key";
+        setCursorKey(key);
+      },
       onRead: read,
       onLater: later,
       onLetGo: letGoItem,
@@ -374,8 +386,36 @@ function Bands({
 
   const move = (delta: number) => {
     const next = entries[Math.min(entries.length - 1, Math.max(0, index + delta))];
-    if (next) setCursorKey(next.key);
+    if (!next) return;
+    via.current = "key";
+    setCursorKey(next.key);
   };
+  // The lit entry's reason goes to the status bar; the row itself never grows a line.
+  useLitReason(itemOf(current)?.why);
+  const litItem = itemOf(current);
+  usePageKeys(
+    // The email's reader owns the keys while it has focus, as it owns the scope.
+    entries.length === 0 || (params.threadId && activePane === "reader")
+      ? []
+      : [
+          "reading.read",
+          "reading.later",
+          "reading.let-go",
+          ...(litItem?.unsubscribe_offer && view !== "later" ? ["reading.unsubscribe"] : []),
+          "reading.later-shelf",
+        ],
+  );
+  // The marks for "also in" modes, from the daemon's membership.
+  const memberThreads = useMemo(
+    () =>
+      [
+        ...new Set(
+          entries.flatMap((entry) => (entry.kind === "item" ? [entry.item.thread_id] : [])),
+        ),
+      ].slice(0, 100),
+    [entries],
+  );
+  const memberships = useThreadModesMap(memberThreads).data;
   useShortcutScope("reading", !params.threadId || activePane !== "reader");
   useScopeController("reading", {
     down: () => move(1),
@@ -523,61 +563,77 @@ function Bands({
                 className="mx-5 mb-2"
               />
             ) : null}
-            {band.items.map((item) => (
-              <div key={item.item_key}>
-                <ReadingItemCard
-                  item={item}
-                  index={position.get(item.item_key) ?? 0}
-                  linkIndex={position}
-                  focusedKey={current?.key ?? null}
-                  expanded={expanded.has(item.item_key)}
-                  fading={band.band === "fading"}
-                  shelf={view === "later"}
-                  handlers={handlers}
-                  linkHint={
-                    linkHint.hint && current?.kind === "link" && current.parent === item
-                      ? {
-                          key: current.key,
-                          node: <AnchoredHint hint={linkHint.hint} onDismiss={linkHint.dismiss} />,
+            <ul className="grid grid-cols-[minmax(0,1fr)]">
+              {band.items.map((item) => {
+                const { shown, more } = shownLinks(item.links ?? [], expanded.has(item.item_key));
+                return (
+                  <Fragment key={item.item_key}>
+                    <ReadingIssueRow
+                      item={item}
+                      index={position.get(item.item_key) ?? 0}
+                      lit={current?.key === item.item_key}
+                      via={via.current}
+                      fading={band.band === "fading"}
+                      shelf={view === "later"}
+                      modes={memberships?.get(item.thread_id)}
+                      handlers={handlers}
+                    />
+                    {shown.map((link) => (
+                      <ReadingLinkRow
+                        key={link.item_key}
+                        link={link}
+                        index={position.get(link.item_key) ?? -1}
+                        lit={current?.key === link.item_key}
+                        via={via.current}
+                        handlers={handlers}
+                        hint={
+                          linkHint.hint &&
+                          current?.kind === "link" &&
+                          current.key === link.item_key ? (
+                            <AnchoredHint hint={linkHint.hint} onDismiss={linkHint.dismiss} />
+                          ) : undefined
                         }
-                      : undefined
-                  }
-                />
-                {view === "later" && item.still_want_it ? (
-                  <p
-                    data-testid="still-want-it"
-                    className="mx-9 -mt-1 mb-2 flex items-center gap-3 text-xs text-muted-foreground"
-                  >
-                    Saved over a month ago. Still want it?
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => void answerLater(item.item_key, true)}
-                    >
-                      Keep
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => void answerLater(item.item_key, false)}
-                    >
-                      Let go
-                    </Button>
-                  </p>
-                ) : null}
-              </div>
-            ))}
+                      />
+                    ))}
+                    {more > 0 ? (
+                      <li className="ml-6 mx-2">
+                        <button
+                          type="button"
+                          onClick={() => handlers.onToggleLinks(item.item_key)}
+                          className="type-meta h-8 px-3 text-text-3 hover:text-text-1"
+                        >
+                          + {more} more
+                        </button>
+                      </li>
+                    ) : null}
+                    {view === "later" && item.still_want_it ? (
+                      <li
+                        data-testid="still-want-it"
+                        className="type-body mx-2 flex items-center gap-3 px-3 pb-2 text-text-2"
+                      >
+                        Saved over a month ago. Still want it?
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => void answerLater(item.item_key, true)}
+                        >
+                          Keep
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => void answerLater(item.item_key, false)}
+                        >
+                          Let go
+                        </Button>
+                      </li>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </ul>
           </section>
         ))}
-        {guide && view !== "later" ? (
-          <KeyLine
-            keys={[
-              ...guide.keys.filter((key) => !["?", "u", "h", "o"].includes(key.key)),
-              { key: "B", verb: "the Later shelf" },
-            ]}
-            className="mt-8"
-          />
-        ) : null}
       </ModeFrame>
     </div>
   );

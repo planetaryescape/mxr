@@ -9,6 +9,7 @@ import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRem
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { pickSearch } from "@/hooks/useSearchParam";
 import { useSplitPane } from "@/hooks/useSplitPane";
+import { ownsKeyboard } from "@/lib/keys/dispatcher";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -73,6 +74,24 @@ export function PlaceLayout({
       search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
     } as never);
   }, [basePath, keepSearch, navigate, setActivePane]);
+
+  // Esc steps back from an open conversation. The reader's own scope handles
+  // it while the reader has focus; opened from a link (or with the list
+  // focused) only the list's scope is live and it has no Esc, so catch the
+  // key the dispatcher left alone. The light is still on the row, which
+  // `keepSearch` holds in the URL.
+  useEffect(() => {
+    if (!threadOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (ownsKeyboard(event.target) || document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [close, threadOpen]);
 
   // The open conversation left the place (done from the list, sync): open
   // its neighbour, keeping the keys where they were.

@@ -18,8 +18,8 @@ gains or loses a control, so this page and the app can't drift apart.
 | Compose | Top bar | Frequency, and the only way in for someone who doesn't know `c`. |
 | Sync now | Status bar | Discoverability: shows sync state and progress; the one manual sync. |
 | Latest mail (freshness) | Status bar; topbar on a phone | Frequency: the quick "is my mail current?" glance from any page. Opens the last arrivals and where each went. A failing or stale sync adds a warning link to the account's sync details. While a row on Now or Messages is lit, the sync words give way to "Here because: <reason>" (and a new sender's "1 Messages · 2 Updates · 3 Reading · 4 Block"); a failing sync keeps its warning. |
-| all keys (`?`) | Status bar | Discoverability: the way into every key. |
-| Key hint strip | Status bar | Discoverability: the current view's five most useful keys (not buttons). |
+| keys (`?`) | Status bar | Discoverability: the way into every key. |
+| Key strip | Status bar | Discoverability: the page's three to five main verbs (`usePageKeys`), or the registry's live keys on a page that names none. Not buttons. Whole verbs drop from the end when space is short, and the reason shortens first. Hidden under `(pointer: coarse)`. |
 
 The sidebar holds the rail (Now, Messages, To do, Updates, Reading, Archive,
 Inbox) with folded More, Labels and Tools groups. Screener, Reply queue,
@@ -82,13 +82,22 @@ not in the toolbar.
 | Leave | Shows Esc; the way out of a mode. |
 | Send and next, Skip, Done (no reply needed), Snooze, Send and remind, Draft in your voice | Discoverability: focus mode is a mode with its own keys, each shown on its button. |
 
-## Reading and Updates
+## To do, Updates, Reading, Archive
 
 | Control | Where | Reason |
 |---|---|---|
-| Let go of all | Page header of Reading, and of Updates while it has a digest | Frequency: letting go of the lot is what the page is for. Previews first. Shows A. |
+| Let go of all | Page header of Reading, and of Updates while it has a digest | Frequency: letting go of the lot is what the page is for. Previews first. Its key (A) is in the tooltip, not on the button. |
+| Row checkbox (16px) | Start of every To do row | Frequency, and the only pointer way to tick off. `Space` does the same on the lit row. |
+| Lit row's verbs | The trail of the lit row, and under a pointer hover | Discoverability: the keys that work on this row, as "key verb". They replace the time and marks on the same line, so no row changes height. To do: Space done, o email, v details. Updates: Space peek, e let go, t to-do, o email, a ⋯ menu. Reading: Enter read, b later, e let go, D unsubscribe when offered. Archive: o email, Enter document. |
 
-Updates rows hold no persistent buttons. A row's keys and More menu replace
-its trailing value while the row is focused or hovered (always on touch), and
-the Space peek holds the rest. Per-sender Sweep, Move sender and Unsubscribe
-show next to what they act on.
+**Removed in W3:** the key legends under To do, Updates, Reading, Archive and the
+Inbox; every chip inside a button (To do's catch-up and expired lists, Reading's
+Let go of all, Updates' Let go of all); the hover key hints on unlit Updates
+and Reading rows; To do's bordered "Open email" button, its runway bar and its
+provenance chip (the lit row's `o email`, the window in words and one
+"unchecked" word replace them); Updates' headline and cut line (one count,
+"31 updates from 12 sources"); Archive's round kind pills and its `[` `]` year
+chips; Reading's card and its unsubscribe sentence. **Moved:** Archive's kind
+filter is a segmented control; the Reading reader's toolbar is quiet buttons
+with their keys in tooltips; Updates' more actions stay in a ⋯ menu on the lit
+row. Per-sender Sweep, Move sender and Unsubscribe show next to what they act on.

@@ -25,6 +25,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import type { LampVia } from "@/components/Row";
 import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { rowPerson } from "@/features/desk/deskCopy";
 
 import { useNowQuery, type Now } from "./api";
@@ -41,7 +42,6 @@ import {
 } from "./nowItems";
 import { PersonRow, ReadingRow, TodoRow, UpdatesRow } from "./NowRows";
 import { SectionHeading } from "@/components/SectionHeading";
-import { KeyLine } from "@/components/KeyLine";
 
 /**
  * Now: the front page. At most ten things in four fixed sections (People,
@@ -67,6 +67,21 @@ function reasonOf(item: NowItem | undefined): string | null {
       return item.pick.why;
     default:
       return null;
+  }
+}
+
+/** The verbs the status strip shows for the lit item (action ids from features/now/actions.ts). */
+function keysOf(item: NowItem | undefined): readonly string[] {
+  switch (item?.kind) {
+    case "person":
+      return ["now.open", "now.reply", "now.done", "now.open-email"];
+    case "updates":
+      return ["now.open", "now.let-go-digest"];
+    case "todo":
+    case "reading":
+      return ["now.open", "now.done", "now.open-email"];
+    default:
+      return [];
   }
 }
 
@@ -99,7 +114,7 @@ export function NowRoute() {
           }
         />
       ) : now.data ? (
-        <NowBody now={now.data} guide={guide.data} />
+        <NowBody now={now.data} />
       ) : null}
     </section>
   );
@@ -122,7 +137,7 @@ function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
   );
 }
 
-function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
+function NowBody({ now }: { now: Now }) {
   const navigate = useNavigate();
   const hidden = useModeDone((s) => s.hidden);
   const items = useMemo(() => nowItems(now, hidden), [hidden, now]);
@@ -244,6 +259,8 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   const litSender = litPerson?.person.new_sender;
   // The status bar says why the lit row is here; the row itself never grows a line.
   useLitReason(reasonOf(current), litSender ? NEW_SENDER_NOTE : null);
+  // The status strip names the verbs of whatever is lit.
+  usePageKeys(keysOf(current));
   useShortcutScope("now", true);
   useScopeController("now", {
     down: () => move(1),
@@ -391,12 +408,6 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
               {now.not_now}
             </Link>
           </p>
-        ) : null}
-        {guide ? (
-          <KeyLine
-            keys={guide.keys.filter((key) => key.key !== "?" && key.key !== "u" && key.key !== "t")}
-            className="lg:hidden"
-          />
         ) : null}
       </ModeFrame>
       {now.updates ? (

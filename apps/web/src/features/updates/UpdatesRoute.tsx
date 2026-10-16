@@ -2,7 +2,7 @@ import { useParams } from "@tanstack/react-router";
 import { Bell, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
+import type { LampVia } from "@/components/Row";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
@@ -21,11 +21,14 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { useDigest, type UpdateLine, type UpdateSection, type UpdatesDigest } from "./api";
 import { displaySourceName } from "./digestView";
 import {
+  cutLabel,
   cutLine,
   digestRows,
   openableLink,
@@ -52,6 +55,15 @@ import {
 
 /** The line under the cursor and the open peek, kept while an email opens. */
 const UPDATES_LIST_SEARCH = ["row", "peek"] as const;
+
+/** The action ids the status strip names for a lit line, in the order they drop from the end. */
+const UPDATES_KEYS = [
+  "updates.peek",
+  "updates.let-go-source",
+  "updates.needs-me",
+  "updates.open-email",
+  "updates.let-go-all",
+];
 
 /**
  * Updates: notifications as a briefing by source, gathered at fixed cuts
@@ -133,6 +145,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   // Space opens the peek under one line at a time; Escape closes it.
   const [peekId, setPeekId] = useSearchParam("peek");
   const [letGoOpen, setLetGoOpen] = useState(false);
+  // Only a pointer fades the lamp (D101): a key never animates.
+  const via = useRef<LampVia>("key");
   // `e`: the line whose source the open preview is for.
   const [letGoLineOf, setLetGoLineOf] = useState<UpdateLine | null>(null);
   const [tuning, setTuning] = useState<UpdateLine | null>(null);
@@ -209,7 +223,13 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const { dismiss: dismissSourceHint } = sourceHint;
   const { dismiss: dismissLetGoHint } = letGoHint;
 
-  const select = useCallback((line: UpdateLine) => setCursorId(line.id), [setCursorId]);
+  const select = useCallback(
+    (line: UpdateLine) => {
+      via.current = "pointer";
+      setCursorId(line.id);
+    },
+    [setCursorId],
+  );
   const openEmail = useCallback(
     (line: UpdateLine) => {
       if (line.latest_thread_id) nav?.open(line.latest_thread_id);
@@ -270,14 +290,23 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     );
   };
 
+  // The peek's open id is read through a ref so the memoised rows keep one callback.
+  const peekRef = useRef(peekId);
+  peekRef.current = peekId;
   const togglePeek = useCallback(
-    (line: UpdateLine) => setPeekId(peekId === line.id ? null : line.id),
-    [peekId, setPeekId],
+    (line: UpdateLine) => setPeekId(peekRef.current === line.id ? null : line.id),
+    [setPeekId],
   );
   const move = (delta: number) => {
     const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))];
-    if (next) setCursorId(next.line.id);
+    if (!next) return;
+    via.current = "key";
+    setCursorId(next.line.id);
   };
+  // The status bar says why the lit line is here and which keys work on it.
+  useLitReason(current?.why);
+  // While the open email has focus these keys aren't live, so the strip doesn't offer them.
+  usePageKeys(current && (!params.threadId || activePane !== "reader") ? UPDATES_KEYS : []);
   useShortcutScope("updates", !params.threadId || activePane !== "reader");
   useScopeController("updates", {
     down: () => move(1),
@@ -322,10 +351,10 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
             data-testid="updates-routine-toggle"
             aria-expanded={false}
             onClick={() => setRoutineOpen(true)}
-            className="mx-5 mb-1 mt-4 flex items-center gap-2 font-mono text-2xs uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
+            className="type-eyebrow mx-5 mb-1 mt-4 flex items-center gap-2 text-text-3 hover:text-text-1 focus-visible:text-text-1"
           >
             {routineLine(routine)}
-            <ChevronRight aria-hidden className="size-3" />
+            <ChevronRight aria-hidden className="size-3.5" />
           </button>
         );
       }
@@ -352,7 +381,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
               key={row.line.id}
               line={row.line}
               index={row.index}
-              focused={row.index === index}
+              lit={row.index === index}
+              via={via.current}
               peeked={peekId === row.line.id}
               onSelect={select}
               onLetGo={letGoLine}
@@ -376,36 +406,31 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
       <PageFrame
         title="Updates"
         purpose={subtitle}
+        freshness={cutLabel(digest)}
         primary={
           digest.let_go_line ? (
             <Button
               size="sm"
               data-testid="updates-let-go-all"
+              title="Let go of all (A)"
               onClick={() => {
                 dismissLetGoHint();
                 setLetGoLineOf(null);
                 setLetGoOpen(true);
               }}
             >
-              Let go of all <KeyChip className="h-4 px-1">A</KeyChip>
+              Let go of all
             </Button>
           ) : null
         }
       />
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
         <ModeFrame>
-          <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p data-testid="updates-cut" className="min-w-0 text-sm text-foreground/90">
-              {cutLine(digest)}
-            </p>
-          </div>
+          <p data-testid="updates-cut" className="type-meta mx-5 mt-3 text-text-2">
+            {cutLine(digest)}
+          </p>
           {letGoHint.hint ? (
             <AnchoredHint className="mx-5" hint={letGoHint.hint} onDismiss={dismissLetGoHint} />
-          ) : null}
-          {digest.headline ? (
-            <p data-testid="updates-headline" className="mx-5 mt-1 text-balance text-md">
-              {digest.headline}
-            </p>
           ) : null}
 
           {!hasLines ? (

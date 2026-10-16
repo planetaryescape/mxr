@@ -12,10 +12,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
-import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
+import { MailboxRow, type RowAction, type RowQuickAction } from "./MailboxRow";
 import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
-import { ModeChipScope } from "@/features/arrivals/ModeChip";
+import { ModeChipReason, ModeChipScope } from "@/features/arrivals/ModeChip";
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
@@ -29,9 +29,10 @@ import { notePointerUse } from "@/lib/actions/keyHints";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
-import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import type { LampVia } from "@/components/Row";
+import { usePageKeys } from "@/state/pageKeysStore";
 
 export interface MailboxListProps {
   groups: MessageGroupView[];
@@ -112,7 +113,8 @@ function domId(row: MessageRowView): string {
   return `mail-row-${rowKey(row)}`;
 }
 
-const ROW_ESTIMATE = { compact: 38, regular: 64, comfortable: 80 } as const;
+// The row-height tokens (--row-height-*): a lit row never changes height.
+const ROW_ESTIMATE = { compact: 44, regular: 52, comfortable: 60 } as const;
 
 /** Rows past the bottom of the screen whose gists are asked for too. */
 const GIST_LOOKAHEAD = 10;
@@ -174,6 +176,8 @@ export function MailboxList({
   const setSelectionScope = useSelection((s) => s.setScope);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const lastIndexRef = useRef(0);
+  // Only a pointer fades the lamp (D101): j and k must feel instant.
+  const viaRef = useRef<LampVia>("key");
   const [visualAnchor, setVisualAnchor] = useState<string | null>(null);
 
   const flat = useMemo(() => flatten(groups), [groups]);
@@ -376,6 +380,7 @@ export function MailboxList({
       if (rows.length === 0) return;
       const next = rows[Math.max(0, Math.min(rows.length - 1, index))];
       if (!next) return;
+      viaRef.current = "key";
       setFocusedId(rowKey(next));
       scrollToRow(next, align);
       if (visualAnchor) {
@@ -432,6 +437,15 @@ export function MailboxList({
     afterLeave: () => setVisualAnchor(null),
     intercept: interceptVerb,
   });
+
+  // The status strip: motion, open and the verbs the lit row shows.
+  usePageKeys(
+    readOnly
+      ? rowAction
+        ? ["list.down", "list.open", "list.row-action"]
+        : ["list.down", "list.open"]
+      : ["list.down", "list.open", "mail.archive", "mail.reply", "mail.snooze"],
+  );
 
   useScopeController("list", {
     ...(readOnly ? {} : verbs),
@@ -577,6 +591,7 @@ export function MailboxList({
 
   const handleOpen = useCallback(
     (row: MessageRowView) => {
+      viaRef.current = "pointer";
       setFocusedId(rowKey(row));
       setActivePane("mailbox");
       onOpenRow(row, { focusReader: false });
@@ -597,7 +612,7 @@ export function MailboxList({
         aria-multiselectable={!readOnly}
         aria-activedescendant={focusedRow ? domId(focusedRow) : undefined}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto outline-none [touch-action:pan-y_pinch-zoom]"
+        className="@container/list min-h-0 flex-1 overflow-y-auto outline-none [touch-action:pan-y_pinch-zoom]"
         data-active-pane={listFocused ? "true" : undefined}
         data-testid="mailbox-list"
         onFocus={() => setActivePane("mailbox")}
@@ -605,6 +620,7 @@ export function MailboxList({
       >
         <SwipeLayer ref={swipeLayerRef} />
         <ModeChipScope enabled={modeChips} messageIds={chipIds}>
+          {modeChips ? <ModeChipReason messageId={focusedRow?.id} /> : null}
           {/* Rows stop at the page frame on a wide screen; the scrollbar stays at the edge. */}
           <div
             className="@container mode-frame"
@@ -639,20 +655,18 @@ export function MailboxList({
                       row={item.row}
                       domId={domId(item.row)}
                       selected={!readOnly && selectedIds.has(rowKey(item.row))}
-                      focused={
-                        listFocused &&
+                      lit={
                         focusedRow !== undefined &&
+                        activePane !== "sidebar" &&
                         rowKey(focusedRow) === rowKey(item.row)
                       }
-                      open={item.row.thread_id === activeThreadId}
+                      via={viaRef.current}
                       selecting={selecting}
                       readOnly={readOnly}
                       onOpen={handleOpen}
                       onToggleSelection={onToggleSelection}
                       onQuickAction={onQuickAction}
-                      trailingAction={
-                        rowAction ? <RowActionChip action={rowAction} row={item.row} /> : undefined
-                      }
+                      rowAction={rowAction}
                     />
                   )}
                 </div>
@@ -702,10 +716,6 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
           className="ml-auto inline-flex min-w-0 cursor-pointer items-center gap-1.5 normal-case tracking-normal text-primary hover:underline"
         >
           <span className="truncate">{action.label}</span>
-          {/* The header has one line: in a narrow list the key gives way first. */}
-          {action.keys ? (
-            <KeyChip className="hidden h-4 shrink-0 px-1 @sm:inline-flex">{action.keys}</KeyChip>
-          ) : null}
         </span>
       ) : null}
       {more ? (

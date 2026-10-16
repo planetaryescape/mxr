@@ -32,7 +32,8 @@ export function ReaderSettingsMenu() {
           type="button"
           data-testid="reader-settings"
           aria-label="Reader settings"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
+          title="Reader settings"
+          className="type-body inline-flex h-7 items-center gap-1.5 px-2 text-text-2 hover:bg-ink-lamp hover:text-text-1"
         >
           <Type aria-hidden className="size-3.5" /> Aa
         </button>

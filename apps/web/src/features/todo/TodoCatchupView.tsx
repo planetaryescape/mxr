@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
 import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
@@ -37,10 +37,18 @@ function useScrollIntoView(index: number) {
   return ref;
 }
 
+const CATCHUP_KEYS = [
+  "todo.catchup-keep",
+  "todo.catchup-let-go",
+  "todo.catchup-let-go-all",
+  "todo.catchup-back",
+];
+const EXPIRED_KEYS = ["todo.restore", "todo.expired-back"];
+
 function BackLink() {
   return (
     <Link to="/todo" className="text-xs text-muted-foreground hover:text-foreground">
-      Back to To do <KeyChip className="ml-1 h-4 px-1">Esc</KeyChip>
+      Back to To do
     </Link>
   );
 }
@@ -110,6 +118,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
   const listRef = useScrollIntoView(index);
 
   useShortcutScope("catchup");
+  usePageKeys(CATCHUP_KEYS);
   useScopeController("catchup", {
     down: () => move(1),
     up: () => move(-1),
@@ -159,7 +168,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
               size="xs"
               onClick={() => openMailDialog({ kind: "todo-let-go-all", account })}
             >
-              Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
+              Let go of all
             </Button>
           ) : null}
           <BackLink />
@@ -186,7 +195,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
                   void decideCatchup(account, [todo], "keep");
                 }}
               >
-                Keep {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
+                Keep
               </Button>
               <Button
                 size="xs"
@@ -196,7 +205,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
                   void decideCatchup(account, [todo], "let_go");
                 }}
               >
-                Let go {position === index ? <KeyChip className="ml-1 h-4 px-1">e</KeyChip> : null}
+                Let go
               </Button>
             </PlainRow>
           ))}
@@ -224,6 +233,7 @@ export function TodoExpiredView() {
   const listRef = useScrollIntoView(index);
 
   useShortcutScope("expired");
+  usePageKeys(EXPIRED_KEYS);
   useScopeController("expired", {
     down: () => move(1),
     up: () => move(-1),
@@ -264,7 +274,7 @@ export function TodoExpiredView() {
                   void restoreTodos([todo]);
                 }}
               >
-                Restore {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
+                Restore
               </Button>
             </PlainRow>
           ))}

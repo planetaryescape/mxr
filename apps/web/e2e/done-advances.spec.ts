@@ -416,8 +416,7 @@ test.describe("To do: ticking off with the email open", () => {
     await row.click();
     await expect(row).toHaveAttribute("aria-current", "true");
     await page.keyboard.press("o");
-    await row.getByRole("button", { name: "Open the email" }).click();
-    // The list keeps its cursor (and the source `o` unfolded) in the URL.
+    // The list keeps its cursor in the URL.
     await expect(page).toHaveURL(new RegExp(`/todo/${todo.thread_id}\\?row=${todo.id}(&|$)`));
     await expect(reader(page)).toBeVisible();
     // Back to the list, with the email still open beside it.

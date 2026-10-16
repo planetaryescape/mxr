@@ -57,11 +57,7 @@ async function waitForRows(page: Page) {
 
 const hints = (page: Page) => page.getByTestId("hint");
 /** The first To do row with a runway bar: where the runway hint anchors. */
-const firstBarRow = (page: Page) =>
-  page
-    .getByTestId("todo-row")
-    .filter({ has: page.getByTestId("runway-bar") })
-    .first();
+const firstBarRow = (page: Page) => page.getByTestId("todo-row").first();
 
 test("no page-top card, and no hint on arrival before the user does anything", async ({ page }) => {
   await waitForRows(page);
@@ -87,8 +83,7 @@ test("the runway hint shows at the first bar at first need; Esc dismisses it for
   await page.keyboard.press("j");
   const hint = firstBarRow(page).getByTestId("hint");
   await expect(hint).toBeVisible();
-  await expect(hint).toContainText("The bar fills from when this showed up to when it's due");
-  await expect(hint).toContainText("Enter");
+  await expect(hint).toContainText("Press e to tick this off, or o to open the email");
   await expect(hints(page)).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(hints(page)).toHaveCount(0);
@@ -111,7 +106,7 @@ test("doing what the hint names dismisses it", async ({ page }) => {
   await expect(firstBarRow(page).getByTestId("hint")).toBeVisible();
   await firstBarRow(page).getByTestId("todo-title").click();
   await expect(firstBarRow(page)).toHaveAttribute("aria-current", "true");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("o");
   await expect.poll(() => hintSeen(page, "todo.runway")).toBe(true);
   await openApp(page, "/todo");
   await expect(page.getByTestId("todo-row").first()).toBeVisible();
@@ -186,8 +181,9 @@ test("? leads with the mode's job, then the keys", async ({ page }) => {
   await expect(help).toBeVisible();
   const modeHelp = help.getByTestId("mode-help");
   await expect(modeHelp).toContainText("To do: Things email asked you to do");
-  await expect(modeHelp).toContainText("promises you made");
-  await expect(modeHelp).toContainText("Z schedule");
+  // The purpose is said once; the keys are the sheet's own list.
+  await expect(modeHelp).toContainText("Each row is one thing to do");
+  await expect(help.getByText(/^Schedule/).first()).toBeVisible();
 });
 
 /** The runway itself, not the catch-up or any other To do route. */
@@ -334,7 +330,7 @@ test("? in Messages leads with the mode", async ({ page }) => {
   await page.keyboard.press("?");
   const modeHelp = page.getByRole("dialog").getByTestId("mode-help");
   await expect(modeHelp).toContainText("Messages: People you talk with");
-  await expect(modeHelp).toContainText(". got it");
+  await expect(modeHelp).toContainText("Each row is a person");
 });
 
 const PEOPLE_ROUTE = /\/api\/v1\/mail\/people(\?.*)?$/;

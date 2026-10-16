@@ -13,7 +13,12 @@ mxr todo --format json
 ```
 
 In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
-`Coming up`, `Later`, `Whenever` and `Done this week`. The act-by date is the
+`Coming up`, `Later`, `Whenever` and `Done this week`. A web row is a
+checkbox, the task, who it is from ("Frank Billing · from Mon", or "from you"
+for a promise you made) and its window in words ("act by Fri"). The window
+turns amber on the day and after. The lit row's keys, `Space` done and `o`
+email, take the window's place on the same line, and the same keys show in
+the status bar with the reason the task is here. The act-by date is the
 last date to act and still meet the due date; mxr can surface the task earlier
 to give you time. For a bank-transfer bill, act-by is three working days before
 the due date. Use a row's ID from the JSON output for the CLI commands below.
@@ -25,8 +30,11 @@ mxr todo why TODO_ID --format json
 ```
 
 Inspect where the title, amount and dates came from. In the web app, press
-`o` for the source email or `Enter` for the selected row's primary action.
-Check extracted details against that source before relying on them. Use the
+`o` to open the source email beside the list, `v` for why the row is here and
+where each field came from (a field mxr wasn't sure of reads "unchecked"),
+or `Enter` for the selected row's primary action (the email with its link
+marked, or a reply to a promise). Check extracted details against that source
+before relying on them. Use the
 row's edit control, or `,` on the web, to correct what mxr read.
 
 Bills, failed payments, sign or verification requests, promises and annual
@@ -41,8 +49,9 @@ mxr todo done TODO_ID --dry-run
 mxr todo done TODO_ID
 ```
 
-On the web, use the visible checkbox on the left, or select the row and press
-`Space` or `e`. In the TUI, `e` ticks it off. App shortcuts do not interpret
+On the web, use the checkbox on the left, or light the row and press
+`Space` (`e` works too, as in the TUI). The row folds away and the next one
+lights. In the TUI, `e` ticks it off. App shortcuts do not interpret
 ordinary typing in a text input or composer as task actions.
 
 To reopen a task you completed by mistake:

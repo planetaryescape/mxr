@@ -36,7 +36,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
       .map((section) => ({
         ...section,
         hints: section.hints.filter((hint) =>
-          `${section.title} ${hint.keys.join(" ")} ${hint.label} ${hint.note ?? ""}`
+          `${section.title} ${hint.keys.join(" ")} ${hint.label}`
             .toLowerCase()
             .includes(normalized),
         ),
@@ -72,9 +72,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
       >
         <DialogHeader>
           <DialogTitle>Help and keyboard shortcuts</DialogTitle>
-          <DialogDescription>
-            Keys follow the mxr TUI. Type to filter; Esc closes.
-          </DialogDescription>
+          <DialogDescription>Type to filter; Esc closes.</DialogDescription>
         </DialogHeader>
         {mode ? <ModeHelp mode={mode} /> : null}
         <Input
@@ -125,8 +123,8 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
 
 function HelpRow({ hint }: { hint: ShortcutHint }) {
   return (
-    <li className="flex items-start gap-3 py-1">
-      <span className="flex w-28 shrink-0 flex-wrap gap-1">
+    <li className="flex items-baseline gap-2 py-1">
+      <span className="flex shrink-0 gap-1">
         {hint.keys.slice(0, 2).map((key) => (
           <KeyChip key={key}>{key}</KeyChip>
         ))}
@@ -137,9 +135,6 @@ function HelpRow({ hint }: { hint: ShortcutHint }) {
         <span className={hint.live ? "text-foreground" : "text-muted-foreground"}>
           {hint.label}
         </span>
-        {hint.note ? (
-          <span className="block text-2xs leading-4 text-muted-foreground">{hint.note}</span>
-        ) : null}
       </span>
     </li>
   );

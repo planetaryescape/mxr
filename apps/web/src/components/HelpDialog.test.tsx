@@ -74,7 +74,7 @@ describe("HelpDialog", () => {
     expect(headings()[0]).toBe("Reader (this view)");
   });
 
-  test("filters by label, key or TUI note, dropping empty sections", () => {
+  test("filters by label or key, dropping empty sections", () => {
     render(<HelpDialog open onOpenChange={() => undefined} />);
 
     filter("read and archive");
@@ -85,8 +85,15 @@ describe("HelpDialog", () => {
     filter("g i");
     expect(screen.getByText("Go to Inbox")).toBeVisible();
 
+    // TUI-parity remarks live in the docs, not in the sheet.
     filter("gmail muscle memory");
-    expect(screen.getByText("Undo last action")).toBeVisible();
+    expect(screen.getByText("No matching shortcuts.")).toBeVisible();
+  });
+
+  test("states no TUI-parity remarks", () => {
+    render(<HelpDialog open onOpenChange={() => undefined} />);
+    expect(screen.queryByText(/Keys follow the mxr TUI/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/muscle memory/)).not.toBeInTheDocument();
   });
 
   test("says so when nothing matches", () => {

@@ -298,18 +298,20 @@ const modeMove: Journey = async (page) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
   const rowId = await cursorTo(page, () => true);
+  // The lit row shows its verbs in place of its marks; the mark stays in the row, and the
+  // status bar carries where it went.
   const chip = rowById(page, rowId).getByTestId("mode-chip");
-  await expect(chip).toBeVisible();
-  const before = (await chip.textContent()) ?? "";
-  const target = before === "Reading" ? "u" : "r";
+  await expect(chip).toBeAttached();
+  const before = (await chip.getAttribute("data-bucket")) ?? "";
+  const target = before === "reading" ? "u" : "r";
   await page.keyboard.press("X");
   await expect(page.getByTestId("move-to-mode-dialog")).toBeVisible();
   await page.keyboard.press(target);
   await expectToast(page, "mode-move");
-  await expect(chip).toHaveText(target === "r" ? "Reading" : "Updates");
+  await expect(chip).toHaveAttribute("data-bucket", target === "r" ? "reading" : "updates");
   await page.keyboard.press("u");
   await expect(toast(page, /^Moved back to /)).toBeVisible();
-  await expect(chip).toHaveText(before);
+  await expect(chip).toHaveAttribute("data-bucket", before);
 };
 
 interface UpdateLineAnswer {
@@ -777,7 +779,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await openApp(page, "/reading");
     const item = page
       .getByTestId("reading-item")
-      .filter({ hasNot: page.getByText("On Later") })
+      .filter({ hasNot: page.getByLabel("On Later") })
       .first();
     const key = await item.getAttribute("data-key");
     if (!key) throw new Error("the demo edition has no item off Later");
@@ -785,10 +787,11 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await saved.click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("b");
     await expectToast(page, "reading-later");
-    await expect(saved.getByText("On Later")).toBeVisible();
+    // The lit row's verbs stand in for its marks, so the bookmark is in the DOM, not on screen.
+    await expect(saved.getByLabel("On Later")).toHaveCount(1);
     await page.keyboard.press("u");
     await expectUndone(page);
-    await expect(saved.getByText("On Later")).toHaveCount(0);
+    await expect(saved.getByLabel("On Later")).toHaveCount(0);
   },
 
   "move-sender": async (page) => {

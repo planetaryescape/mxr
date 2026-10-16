@@ -40,10 +40,10 @@ export const updatesActions: Action[] = [
     tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
   key("updates.let-go-source", "letGoSource", "Let go of this source", "e", {
-    shortLabel: "Let go of source",
+    shortLabel: "Let go",
   }),
   key("updates.needs-me", "needsMe", "This needs me: make it a to-do", "t", {
-    shortLabel: "Needs me",
+    shortLabel: "To-do",
     icon: ListPlus,
   }),
   key("updates.tune", "tune", "Tune this source…", "K", {
@@ -55,8 +55,8 @@ export const updatesActions: Action[] = [
     shortLabel: "Email",
     icon: Mail,
   }),
-  key("updates.peek", "peek", "Show details under this line", "Space", {
-    shortLabel: "Details",
+  key("updates.peek", "peek", "Peek at this update under its line", "Space", {
+    shortLabel: "Peek",
   }),
   key("updates.pin", "pin", "Pin or unpin this source's latest email", "p", {
     shortLabel: "Pin",

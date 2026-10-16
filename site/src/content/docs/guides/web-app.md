@@ -208,17 +208,21 @@ line's link and `o` the email. **Let go of all** sits in the page header at
 every width; on a phone the sections stack under it. See
 [Read Updates as a briefing](/guides/updates/).
 
-Rows stay quiet until you are on them. On Now and Messages one row is lit
-(a lighter surface and a thin cyan line on its leading edge): `j` and `k`
-move it at once, a click moves it with a short fade. The lit row's keys
-("r reply", "e done here") take the place of its time and marks on the same
-line, so no row changes height as the lamp moves, and pointing at a row shows
-its keys without lighting it. Why the lit row is there shows in the status
+Rows stay quiet until you are on them. On every list (Now, Messages, To do,
+Updates, Reading, Archive and the Inbox) one row is lit, a lighter surface
+with a thin cyan line on its leading edge. The first row is lit when a page
+opens, and a lit row opens nothing. `j` and `k` move it at once, a click moves
+it with a short fade. The lit row's keys ("r reply", "Space done") take the
+place of its time and marks on the same line, so no row changes height as the
+lamp moves, and pointing at a row shows its keys without lighting it. The
+status bar names the page's three to five main verbs with their keys, and the
+whole key list is one `?` away; whatever doesn't fit drops off the end a whole
+verb at a time, and the reason shortens with an ellipsis first (hover it for
+the full text). Touch layouts show no key chips. Why the lit row is there shows in the status
 bar: "4m ago · Here because: Maya wrote to you 22h ago". On a phone, which
 has no status bar, the reason is on the person's page. Unread rows have a thin
 bar in the margin and a heavier name, and the bar steps aside while the row
-is lit. A to-do's due date turns amber on the day it is due and after. Other
-pages keep their own rows until they move to the same pattern.
+is lit. A to-do's due date turns amber on the day it is due and after.
 
 The address bar keeps what you have selected: the row in To do, Updates,
 Reading and Now, Updates' open peek, Archive's filter, question, record and
@@ -245,9 +249,9 @@ type what you remember, like "lisbon booking ref", and the answer card shows the
 from and whether it is checked, with `y` to copy it, `Enter` for the PDF and
 `o` for the email. When no record matches, the card says so and shows what
 `mxr ask` found in all your mail. Below are the "Coming up" strip, kind
-chips (Receipts, Orders, Trips, Bills, Documents), filters (`g f`) and the
+segmented control (Receipts, Orders, Trips, Bills, Documents), filters (`g f`) and the
 ledger by month with totals. Select a record for its card on the right: every
-field with its source on hover, an open dot on unchecked amounts and dates,
+field with its source on hover, the word "unchecked" beside a field mxr isn't sure of,
 its documents and the emails it came from. `,` fixes a field, `v` marks the
 card checked, `X` says it isn't a record, `p` opens the issuer's page, `[` and
 `]` step through years and `E` exports a CSV after its preview. On any

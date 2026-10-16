@@ -62,7 +62,34 @@ test("the bill waits in Coming up with its act-by date, and rows are instruction
   const titles = await page.getByTestId("todo-title").allTextContents();
   expect(titles).not.toContain("We can't process your payment");
   expect(titles).not.toContain("Your council tax bill");
-  await expect(now.getByTestId("todo-action")).toHaveText(/^Open email to/);
+  // No bordered button and no progress bar: the lit row's verbs and the window in words.
+  await expect(page.getByTestId("todo-action")).toHaveCount(0);
+  await expect(page.getByTestId("runway-bar")).toHaveCount(0);
+  await expect(now.getByRole("checkbox")).toBeVisible();
+});
+
+test("the lit row names Space done and o email, and the status strip says the same", async ({
+  page,
+}) => {
+  await waitForRunway(page);
+  await openApp(page, "/todo");
+  const spotify = row(page, "Fix payment for Spotify");
+  await expect(spotify).toHaveAttribute("data-lit", "true");
+  await expect(spotify.getByRole("button", { name: /^Tick off / })).toBeVisible();
+  await expect(spotify.getByRole("button", { name: "email" })).toBeVisible();
+  const strip = page.getByTestId("status-keys");
+  await expect(strip).toContainText("done");
+  await expect(strip).toContainText("email");
+  // The reason is in the status bar, not a line in the row.
+  await expect(page.getByTestId("status-reason")).toContainText("Here because:");
+});
+
+test("o opens the email beside the list", async ({ page }) => {
+  await waitForRunway(page);
+  await openApp(page, "/todo");
+  await expect(row(page, "Fix payment for Spotify")).toHaveAttribute("data-lit", "true");
+  await page.keyboard.press("o");
+  await expect(page).toHaveURL(/\/todo\/[^/?]+/);
 });
 
 test("Enter opens the email in mxr with the link marked, and never opens the link", async ({
@@ -81,12 +108,34 @@ test("Enter opens the email in mxr with the link marked, and never opens the lin
   expect(popups).toEqual([]);
 });
 
-test("e ticks off, and u brings it back", async ({ page }) => {
+test("Escape closes an open email even when it was opened from a link", async ({ page }) => {
+  const runway = await waitForRunway(page);
+  const thread = await bridge<{ todos: { thread_id?: string | null; id: string }[] }>(
+    page,
+    "/api/v1/mail/todos/in/now",
+  )
+    .then((answer) => answer.todos.find((todo) => todo.thread_id))
+    .catch(() => undefined);
+  const target = thread ?? runway.now.concat(...runway.coming_up.map((week) => week.todos))[0];
+  // SAFETY: every runway row is a TodoAnswer; the fixture only reads its id and thread_id.
+  const todo = target as { thread_id?: string | null; id: string };
+  expect(todo.thread_id).toBeTruthy();
+  await openApp(page, `/todo/${encodeURIComponent(todo.thread_id!)}?row=${todo.id}`);
+  await expect(page).toHaveURL(/\/todo\/[^/?]+/);
+  // The app has rendered the open email (the reader's resize handle is always mounted).
+  await expect(page.getByRole("separator", { name: "Resize To do list" })).toBeAttached();
+  await page.keyboard.press("Escape");
+  await expect(page).not.toHaveURL(/\/todo\/[^/?]+/);
+  // The light stays on the row it was on.
+  expect(new URL(page.url()).searchParams.get("row")).toBe(todo.id);
+});
+
+test("Space ticks off, the light moves on, and u brings it back", async ({ page }) => {
   await waitForRunway(page);
   await openApp(page, "/todo");
   const spotify = row(page, "Fix payment for Spotify");
   await expect(spotify).toHaveAttribute("aria-current", "true");
-  await page.keyboard.press("e");
+  await page.keyboard.press("Space");
   // Done in To do, so the toast says where the email still is, or that it
   // was archived; a failed payment fixed files its record in Archive first.
   await expect(
@@ -95,6 +144,8 @@ test("e ticks off, and u brings it back", async ({ page }) => {
       .filter({ hasText: /^Ticked off\. (Filed in Archive\. )?(Still in|Archived)/ }),
   ).toBeVisible();
   await expect(spotify).toHaveCount(0);
+  // Exactly one row is lit, and it is another one.
+  await expect(page.locator('[data-testid="todo-row"][data-lit="true"]')).toHaveCount(1);
   await expect(page.getByTestId("done-toggle")).toContainText("Done this week");
   await page.keyboard.press("u");
   await expect(page.getByText("Undone")).toBeVisible();
@@ -190,9 +241,8 @@ test.describe("on a phone", () => {
       expect(overflow, path).toBe(0);
     }
     await openApp(page, "/todo");
-    // The button spans the card, so the thumb hits the action, not the row.
-    const button = row(page, "Fix payment for Spotify").getByTestId("todo-action");
-    const box = await button.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThan(250);
+    // The checkbox is the thumb's target and the row never wraps.
+    const box = await row(page, "Fix payment for Spotify").getByRole("checkbox").boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(16);
   });
 });

@@ -147,7 +147,7 @@ Without asking, the person always knows three things, each in one place:
 
 | Moment | What the person should feel | The interaction that makes it land |
 |---|---|---|
-| Opening mxr | "It's current, and it's calm." | Now arrives with the freshness line already filled, nothing lit until a key is pressed, no message open (BK, 2026-10-09). |
+| Opening mxr | "It's current, and it's calm." | Now arrives with the freshness line already filled and the first row lit (a lit row opens nothing), no message open (BK, 2026-10-09). |
 | Moving through a list | Fast, precise, under control. | The lamp jumps instantly on `j`/`k`; the lit row's trail turns into its actions and the status bar says why it's here; no row changes height. |
 | Opening an item | The thing itself, centre stage. | The reader page slides in beside the list (180ms) in the reading voice; the list stays, dimmed, with the row still lit. |
 | Done here / tick off / let go | Relief, and momentum. | The row folds away (120ms), the light lands on the next row in the same frame, a toast names what happened with Undo. |

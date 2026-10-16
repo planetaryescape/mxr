@@ -290,6 +290,12 @@ makes no unsubscribe offers.
 | `M` | Open in Marginalia, sending it the first time |
 | `?` | Help, starting with Reading |
 
-On a phone, swipe a card right to put it on Later and left to let it go.
+On the web, issues are rows: the title, the dek under it, the source and
+reading time on the right. The lit row shows `Enter` read, `b` later and
+`e` let go (and `D` unsubscribe when mxr has an offer), and the status bar
+says why the issue is here. The reader's toolbar is quiet buttons with their
+keys in tooltips.
+
+On a phone, swipe a row right to put it on Later and left to let it go.
 
 The old grouping by sender is still there: `mxr reading senders`.

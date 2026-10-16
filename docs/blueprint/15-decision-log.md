@@ -933,6 +933,8 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Amended 2026-10-16 after the W1 comp.** Lighting a row must not change its height: in the comp, a third line on the lit row moved every row below it on each `j`/`k`, breaking "nothing else moves". The lit row keeps its two lines; its verbs replace the trail (marks and time) on the same line, and its reason shows in the status bar's left side, beside freshness, and in the reader. In Light themes the lamp is a faint cyan tint (`#e7f2f8`), because `#fbfdfe` on the `#f4f9fc` desk was invisible in the comp.
 
+**Amended 2026-10-16 (W2).** The first row of a list is lit when the page opens. A lit row opens nothing, so one lit thing per screen still holds and no message opens by itself (BK, 2026-10-09); the earlier "nothing lit until a key is pressed" is withdrawn.
+
 ## D125: Dense where you work, generous where you read
 
 **Chosen**: Lists where you triage (Now, Messages, To do, Updates, Inbox, Archive's ledger, tool pages) use the compact rhythm: 14px primary lines, 12px mono meta, one secondary line at most, rows of 44 to 56px. Places where you read or write (the reader, Reading's reader, a person's conversation, compose) use the reading voice: 16px body at line height 1.6, a 64 to 70ch measure, generous margins. The two rhythms never mix inside one pane.

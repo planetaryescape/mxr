@@ -1,9 +1,20 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, BookOpenText, ExternalLink, Loader2, MailX, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  Bookmark,
+  BookOpenText,
+  Check,
+  ExternalLink,
+  FileText,
+  Highlighter,
+  Loader2,
+  MailX,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
+import { Segmented } from "@/components/Segmented";
 import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
@@ -14,7 +25,7 @@ import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
-import { cn } from "@/lib/utils";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import {
@@ -31,6 +42,7 @@ import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
 import { PARAGRAPH_ATTRIBUTE, selectionParagraph } from "./paragraphAnchor";
 import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
 import { readingRootProps, useAppTheme } from "./readerAppearance";
+import { ReaderToolButton } from "./ReaderToolButton";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
 import {
   editionEntries,
@@ -244,6 +256,13 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     back,
   });
 
+  usePageKeys([
+    "reading.reader-next",
+    "reading.reader-later",
+    "reading.reader-let-go",
+    "reading.reader-highlight",
+    "reading.reader-back",
+  ]);
   const highlights = detail.highlights;
   const shownView = showingArticle ? "article" : "issue";
   const marks = useMemo(() => marksForView(highlights, shownView), [highlights, shownView]);
@@ -261,30 +280,15 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <ArrowLeft className="size-3.5" /> Reading
           </button>
           {hasArticle ? (
-            <div
-              role="radiogroup"
-              aria-label="What to read"
-              className="inline-flex rounded-sm border border-border"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={view === "issue"}
-                onClick={() => setView("issue")}
-                className={cn("px-2 py-0.5", view === "issue" && "bg-accent text-foreground")}
-              >
-                Issue
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={view === "article"}
-                onClick={() => void openArticle()}
-                className={cn("px-2 py-0.5", view === "article" && "bg-accent text-foreground")}
-              >
-                Article
-              </button>
-            </div>
+            <Segmented
+              label="What to read"
+              value={view}
+              options={[
+                ["issue", "Issue"],
+                ["article", "Article"],
+              ]}
+              onChange={(choice) => (choice === "issue" ? setView("issue") : void openArticle())}
+            />
           ) : null}
           {view === "article" && !article ? null : (
             <span data-testid="minutes-left" className="tabular-nums">
@@ -292,41 +296,56 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             </span>
           )}
           <ReaderSettingsMenu />
-          <button
-            type="button"
-            data-testid="reader-unsubscribe"
-            onClick={() => setUnsubscribing(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
-          >
-            <MailX aria-hidden className="size-3.5" /> Unsubscribe <KeyChip>D</KeyChip>
-          </button>
-          <button
-            type="button"
-            data-testid="reader-marginalia"
-            onClick={openMarginalia}
-            title={
-              sentTo
-                ? "Open it in Marginalia"
-                : "Send it to Marginalia and open it there: its text goes to Marginalia"
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
-          >
-            <BookOpenText aria-hidden className="size-3.5" />
-            {sentTo ? "In Marginalia" : "Open in Marginalia"} <KeyChip>M</KeyChip>
-          </button>
-          <span className="ml-auto hidden items-center gap-3 sm:inline-flex">
-            <span className="inline-flex items-center gap-1">
-              <KeyChip>b</KeyChip> later
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <KeyChip>e</KeyChip> let go
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <KeyChip>R</KeyChip> {original ? "cleaned" : "original"}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <KeyChip>h</KeyChip> highlight
-            </span>
+          <span className="ml-auto flex flex-wrap items-center gap-1">
+            <ReaderToolButton
+              label="Later"
+              keys="b"
+              icon={Bookmark}
+              onClick={() =>
+                void putOnLater(
+                  item.item_key,
+                  item.url
+                    ? { domain: item.domain, tracked: item.tracked, cached: Boolean(article) }
+                    : undefined,
+                )
+              }
+            />
+            <ReaderToolButton
+              label="Let go"
+              keys="e"
+              icon={Check}
+              onClick={() => {
+                void letGo([item.thread_id]);
+                next();
+              }}
+            />
+            <ReaderToolButton label="Highlight" keys="h" icon={Highlighter} onClick={highlight} />
+            <ReaderToolButton
+              label={original ? "Cleaned" : "Original"}
+              keys="R"
+              icon={FileText}
+              hint={original ? "Back to the cleaned layout" : "Show the sender's layout"}
+              onClick={toggleOriginal}
+            />
+            <ReaderToolButton
+              testId="reader-marginalia"
+              label={sentTo ? "In Marginalia" : "Marginalia"}
+              keys="M"
+              icon={BookOpenText}
+              hint={
+                sentTo
+                  ? "Open it in Marginalia"
+                  : "Send it to Marginalia and open it there: its text goes to Marginalia"
+              }
+              onClick={openMarginalia}
+            />
+            <ReaderToolButton
+              testId="reader-unsubscribe"
+              label="Unsubscribe"
+              keys="D"
+              icon={MailX}
+              onClick={() => setUnsubscribing(true)}
+            />
           </span>
         </div>
         <PageFrame
@@ -434,38 +453,26 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               className="mt-12 border-t border-border pt-4 text-sm text-muted-foreground"
             >
               <p>From this source: {source.evidence}.</p>
-              <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <button
-                  type="button"
-                  onClick={next}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <KeyChip>n</KeyChip> next
-                </button>
-                <button
-                  type="button"
+              <p className="-ml-2 mt-2 flex flex-wrap items-center gap-1">
+                <ReaderToolButton label="Next" keys="n" onClick={next} />
+                <ReaderToolButton
+                  label="Later"
+                  keys="b"
                   onClick={() => void putOnLater(item.item_key)}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <KeyChip>b</KeyChip> later
-                </button>
-                <button
-                  type="button"
+                />
+                <ReaderToolButton
+                  label="Let go"
+                  keys="e"
                   onClick={() => {
                     void letGo([item.thread_id]);
                     next();
                   }}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <KeyChip>e</KeyChip> let go
-                </button>
-                <button
-                  type="button"
+                />
+                <ReaderToolButton
+                  label="Unsubscribe"
+                  keys="D"
                   onClick={() => setUnsubscribing(true)}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <KeyChip>D</KeyChip> unsubscribe
-                </button>
+                />
               </p>
             </footer>
           </article>
@@ -532,8 +539,15 @@ function ArticleStatus({
         The article is on {site}. Fetching it tells that site you clicked, so mxr only does it when
         you ask.
       </p>
-      <Button size="sm" variant="outline" className="mt-3" onClick={onFetch}>
-        Fetch from {site} <KeyChip className="ml-1 h-4 px-1">L</KeyChip>
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-3"
+        title="Fetch (L)"
+        aria-keyshortcuts="L"
+        onClick={onFetch}
+      >
+        Fetch from {site}
       </Button>
     </div>
   );

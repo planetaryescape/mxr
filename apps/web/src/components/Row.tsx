@@ -1,4 +1,4 @@
-import { memo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 export type LampVia = "key" | "pointer";
 
 export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children"> {
+  /** The row's `<li>`, for a page that returns focus to it (React 19 passes `ref` as a prop). */
+  ref?: Ref<HTMLLIElement>;
   /** The one lit row: the lamp surface and the leading hairline. */
   lit: boolean;
   via?: LampVia;
@@ -62,6 +64,7 @@ export const Row = memo(function Row({
   renderMain,
   hint,
   className,
+  ref,
   ...rest
 }: RowProps) {
   const text = (
@@ -78,6 +81,7 @@ export const Row = memo(function Row({
   return (
     <li
       {...rest}
+      ref={ref}
       data-lit={lit ? "true" : undefined}
       data-unread={unread ? "true" : undefined}
       data-leaving={leaving ? "true" : undefined}

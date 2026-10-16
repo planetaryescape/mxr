@@ -28,7 +28,7 @@ lines, in three sections that never change order:
 |---|---|
 | **Needs a look** | A new sign-in, a failed payment, a failing build, a parcel with a delivery problem, or words like "failed", "declined" or "suspended" in the subject. One line per kind of message: two failed-payment emails from one source ("Payment failed" and "Payment failed again") are one line that shows the latest and counts both. |
 | **Changed** | A source that is new, a kind of message it hasn't sent before, a number that moved, a build that went green again, an incident that was resolved, a parcel that moved. |
-| **Routine** | Everything else, one line per source with a count. In the web app, Routine is one line, "Routine · 31 updates from 16 sources", until you press `Enter` to open it. |
+| **Routine** | Everything else, one line per source with a count. In the web app, Routine is one line, "Routine · 16 sources", with a chevron, until you press `Enter` or click it to open it. |
 
 Each line is a fact, not the subject as written. The rules clean the
 subject (they drop "Re:", "[acme/api]" tags and the sender's brand), and
@@ -72,8 +72,12 @@ show where the parcel is on its way under the fact, such as "Shipped ·
 next: out for delivery". Their available item names, tracking or order
 references, and delivery estimates sit in the details.
 
-In the web app, press `Space` on a line to open its details under it: the
-first few lines of the latest email, why the update is here, the numbers
+In the web app, the page says its count once ("31 updates from 12 sources")
+and names the cut in its header ("16:30 digest"). A line is the source and
+its fact on one row. The lit line shows its keys, `Space` peek, `e` let go,
+`t` to-do and `o` email, with a **⋯** menu for the rest, and the same keys
+show in the status bar. Press `Space` on a line to open its details under it:
+the first few lines of the latest email, why the update is here, the numbers
 the mail quoted, a parcel's items and references, and the link and the
 email. When a gist replaced the subject, the details also show the subject,
 what the email asks of you if it does, and which model wrote the line. The

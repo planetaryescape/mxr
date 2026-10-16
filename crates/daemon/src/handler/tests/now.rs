@@ -114,16 +114,18 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
         data.people.more_line.as_deref(),
         Some("and 2 more in Messages")
     );
-    assert!(data.people.rows[0]
-        .why
-        .starts_with("From Messages: your turn with "));
+    // Mail from five hours ago in an old thread: the reason is plain, with no mode prefix.
+    assert!(data.people.rows[0].why.starts_with("your turn since "));
     assert_eq!(data.due_soon.todos.len(), 3);
     assert_eq!(data.due_soon.total, 4);
     assert_eq!(
         data.due_soon.more_line.as_deref(),
         Some("and 1 more in To do")
     );
-    assert!(data.due_soon.todos[0].why.starts_with("From To do: "));
+    assert_eq!(
+        data.due_soon.todos[0].why, data.due_soon.todos[0].todo.when_label,
+        "a to-do's reason is its window in words, with no mode prefix"
+    );
     let card = data.updates.as_ref().expect("one Updates card");
     assert_eq!(card.message_count, 4);
     assert_eq!(card.source_count, 4);
@@ -210,7 +212,7 @@ async fn the_reading_pick_shows_only_in_the_evening() {
     assert_eq!(pick.sender_email, "digest@longreads.example");
     assert_eq!(
         pick.why,
-        "From Reading: you've read 1 of the 2 from digest@longreads.example in your inbox."
+        "you've read 1 of the 2 from digest@longreads.example in your inbox"
     );
     assert!(evening.not_now.is_none());
 }

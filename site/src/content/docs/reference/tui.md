@@ -273,7 +273,7 @@ Two cross-view interactions:
 ## Discovery model
 
 - Hints: the first time the cursor reaches an element a mode explains
-  (Now's first why line, To do's first runway bar, Messages' Got it, an
+  (Now's first why line, To do's first row, Messages' Got it, an
   Archive answer), one sentence naming its key shows in the status line.
   `Esc` or using that key dismisses it in every client; `mxr modes hint ID
   --show` brings one back. There is no tour.

@@ -63,18 +63,19 @@ export function digestRows(
   };
 }
 
-/** "Routine · 31 updates from 16 sources", the one line Routine collapses to. */
+/** "Routine · 16 sources", the one line Routine collapses to. The page says its count once, in `cutLine`. */
 export function routineLine(routine: DigestRows["routine"]): string {
-  return `${SECTION_TITLE.routine} · ${plural(routine.messages, "update")} from ${plural(routine.sources, "source")}`;
+  return `${SECTION_TITLE.routine} · ${plural(routine.sources, "source")}`;
 }
 
-/** "This morning's digest · 08:00 · 31 updates from 12 sources". */
+/** "31 updates from 12 sources": the digest's one count. Its cut time sits in the page frame. */
 export function cutLine(digest: UpdatesDigest): string {
-  return [
-    digest.cut.title,
-    digest.cut.label,
-    `${plural(digest.message_count, "update")} from ${plural(digest.source_count, "source")}`,
-  ].join(" · ");
+  return `${plural(digest.message_count, "update")} from ${plural(digest.source_count, "source")}`;
+}
+
+/** "08:00 digest": which cut this is, for the page frame. */
+export function cutLabel(digest: UpdatesDigest): string {
+  return `${digest.cut.label} digest`;
 }
 
 /** A parcel tracker stands for a delivery, not mail: it leaves on its own. */

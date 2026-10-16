@@ -45,11 +45,11 @@ Saturday morning. 14 people waiting on you, 1 thing to act on.
 PEOPLE  (and 11 more in Messages)
   14 people waiting on you: 7 you've written to, 7 new. Start with the three below.
   Samir Patel             Contract renewal details
-    From Messages: your turn with Samir Patel, 16h.
+    your turn since Friday
   Leo Park                Research notes: terminal workflows
-    From Messages: your turn with Leo Park, 25h.
+    your turn since Friday
   Ari Stone               Flight options for the Portland demo day
-    From Messages: your turn with Ari Stone, 18h.
+    your turn since yesterday
 
 DUE SOON
   Fix payment for Spotify  £11.99  act now

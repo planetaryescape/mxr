@@ -146,15 +146,16 @@ async function flingThroughTheList(page: Page, gists: boolean) {
     let scriptBlocks = 0;
     for (const fn of script.functions) for (const range of fn.ranges) scriptBlocks += range.count;
     blocks += scriptBlocks;
-    if (/\/MailboxList\.tsx/.test(script.url)) mailboxListBlocks += scriptBlocks;
+    if (/\/Mailbox(List|Row)\.tsx/.test(script.url)) mailboxListBlocks += scriptBlocks;
   }
   // The budget is only an upper bound, so a build whose script URLs stop
   // matching (bundled assets, a renamed file) would pass on zero. The list
   // module must have been counted, doing real work on each step (about 5k).
   expect(listScripts, "list-owned scripts seen by coverage").toBeGreaterThan(0);
-  expect(mailboxListBlocks / STEPS, "MailboxList code executed per scroll step").toBeGreaterThan(
-    1_000,
-  );
+  expect(
+    mailboxListBlocks / STEPS,
+    "MailboxList and MailboxRow code executed per scroll step",
+  ).toBeGreaterThan(1_000);
   frames.sort((a, b) => a - b);
   const p95 = frames[Math.floor(frames.length * 0.95)]!;
   // Frame timing is kept as context for a failure, not as the gate.

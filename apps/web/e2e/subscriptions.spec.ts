@@ -37,8 +37,11 @@ async function waitForSubscriptions(page: Page): Promise<void> {
 
 async function openSubscriptions(page: Page): Promise<void> {
   await openApp(page, "/archive");
-  await page.getByTestId("subscriptions-chip").click();
-  await expect(page.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("radio", { name: "Subscriptions" }).click();
+  await expect(page.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await expect(page.getByTestId("subscription-row").first()).toBeVisible();
 }
 
@@ -92,11 +95,17 @@ test("keys move through subscriptions, p opens the issuer, Esc goes back to the 
   await expect(row(page, "Headspace")).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("p");
   await expect(page.getByTestId("issuer-page")).toContainText("Headspace");
-  await expect(page.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "false");
-  await page.getByTestId("subscriptions-chip").click();
+  await expect(page.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await page.getByRole("radio", { name: "Subscriptions" }).click();
   await expect(first).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
   await expect(page.getByTestId("record-row").first()).toBeVisible();
 });
 
@@ -105,7 +114,10 @@ test("a price change in the coming-up strip opens its subscription", async ({ pa
   await openApp(page, "/archive");
   const signal = page.getByTestId("coming-up").getByRole("button", { name: /Netflix went up/ });
   await signal.click();
-  await expect(page.getByTestId("subscriptions-chip")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await expect(row(page, "Netflix")).toHaveAttribute("aria-current", "true");
 });
 

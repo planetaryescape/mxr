@@ -1,12 +1,11 @@
 import { Copy, FileText, Mail, X } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
+import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 import type { RecordAnswer, RecordAnswerList, RecordData, RecordField } from "./api";
-import { amountUnchecked, longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
+import { longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
 import { SectionHeading } from "@/components/SectionHeading";
 import { StatusDot } from "@/components/StatusDot";
 
@@ -33,75 +32,94 @@ export function Provenance({ field }: { field: RecordField }) {
       title={evidence ? `Read from: "${evidence}"` : undefined}
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
     >
-      {field.checked ? null : <OpenDot />}
       {provenanceLine(field.source_label, field.checked)}
     </span>
   );
 }
 
-/** One ledger line: the fields you came for, not sender and subject. */
+/**
+ * One ledger line on `Row` (D129): the amount leads, as the fields you came
+ * for are the amount and who it was with; the date and a PDF mark sit in the
+ * trail. Whether the amount is unchecked is said in the card, per field.
+ */
 export const LedgerRow = memo(function LedgerRow({
   record,
   index,
-  focused,
+  lit,
+  via,
   best = false,
   onSelect,
   onOpen,
+  onDocument,
 }: {
   record: RecordData;
   index: number;
-  focused: boolean;
+  lit: boolean;
+  via: LampVia;
   /** The best match of a listed query. */
   best?: boolean;
   onSelect: (record: RecordData) => void;
   onOpen: (record: RecordData) => void;
+  onDocument: (record: RecordData) => void;
 }) {
   const what = record.title ?? record.kind_label;
+  const secondary = [what, record.stage_line, record.detail_line].filter(Boolean).join(" · ");
   return (
-    <li
-      data-index={index}
+    <Row
       data-testid="record-row"
+      data-index={index}
       data-id={record.id}
       data-best={best ? "true" : undefined}
-      aria-current={focused ? "true" : undefined}
-      className={cn(
-        "group mx-2 cursor-default rounded-md border-l-2 px-3 py-2 text-sm",
-        best ? "border-primary" : "border-transparent",
-        focused ? "bg-accent" : "hover:bg-accent/60",
-      )}
+      aria-current={lit ? "true" : undefined}
+      lit={lit}
+      via={via}
       onClick={() => onSelect(record)}
       onDoubleClick={() => onOpen(record)}
-    >
-      <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 @2xl:grid-cols-[3.25rem_minmax(0,9rem)_minmax(0,1fr)_7.5rem_6.5rem_2.5rem]">
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {shortDate(record.date)}
-        </span>
-        <span className="min-w-0 truncate font-medium text-foreground @2xl:order-none">
-          {best ? <span className="sr-only">Best match: </span> : null}
-          {record.issuer ?? record.kind_label}
-          <span className="font-normal text-muted-foreground @2xl:hidden"> · {what}</span>
-        </span>
-        <span className="hidden min-w-0 truncate text-foreground/90 @2xl:block">{what}</span>
+      lead={
         <span
           data-testid="record-amount"
-          className="inline-flex items-center justify-end gap-1.5 font-mono tabular-nums text-foreground"
+          className="type-meta w-24 shrink-0 text-right tabular-nums text-text-1 sm:w-28"
         >
-          {record.amount && amountUnchecked(record) ? <OpenDot label="amount unchecked" /> : null}
           {record.amount?.display ?? ""}
         </span>
-        <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground @2xl:block">
-          {record.reference ?? ""}
-        </span>
-        <span className="hidden text-right font-mono text-2xs text-muted-foreground @2xl:block">
-          {record.pdf ? "PDF" : "-"}
-        </span>
-      </div>
-      {record.stage_line || record.detail_line ? (
-        <p className="ml-[4rem] mt-0.5 truncate text-xs text-muted-foreground">
-          {[record.stage_line, record.detail_line].filter(Boolean).join(" · ")}
-        </p>
-      ) : null}
-    </li>
+      }
+      primary={
+        <>
+          {best ? <span className="sr-only">Best match: </span> : null}
+          {record.issuer ?? record.kind_label}
+        </>
+      }
+      secondary={secondary || undefined}
+      trail={
+        <>
+          {record.reference ? (
+            <span className="hidden max-w-[10rem] truncate @2xl:inline">{record.reference}</span>
+          ) : null}
+          {record.pdf ? <span>PDF</span> : null}
+          <span className="tabular-nums">{shortDate(record.date)}</span>
+        </>
+      }
+      verbs={
+        <>
+          {record.thread_id ? (
+            <RowVerb
+              keys="o"
+              label="email"
+              testId="record-open-email"
+              onClick={() => onOpen(record)}
+            />
+          ) : null}
+          {record.pdf ? (
+            <RowVerb
+              keys="Enter"
+              label="document"
+              testId="record-open-document"
+              onClick={() => onDocument(record)}
+            />
+          ) : null}
+        </>
+      }
+    />
   );
 });
 
@@ -149,12 +167,14 @@ export function RecordCard({
   onOpenDocument,
   onOpenEmail,
   onIssuer,
+  emailButton = false,
 }: {
   record: RecordData;
   onCopy: (field: RecordField) => void;
   onOpenDocument: () => void;
   onOpenEmail: () => void;
   onIssuer: () => void;
+  emailButton?: boolean;
 }) {
   const fields = cardFields(record);
   return (
@@ -179,10 +199,10 @@ export function RecordCard({
                   type="button"
                   onClick={() => onCopy(field)}
                   aria-label={`Copy ${field.label.toLowerCase()} (${field.field === "amount" ? "Y" : "y"})`}
-                  className="inline-flex items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  title={`Copy (${field.field === "amount" ? "Y" : "y"})`}
+                  className="inline-flex h-6 items-center rounded-sm px-1 text-text-3 hover:bg-ink-lamp hover:text-text-1"
                 >
-                  <Copy aria-hidden className="size-3" />
-                  <KeyChip className="h-4 px-1">{field.field === "amount" ? "Y" : "y"}</KeyChip>
+                  <Copy aria-hidden className="size-3.5" />
                 </button>
               ) : null}
               <Provenance field={field} />
@@ -204,22 +224,25 @@ export function RecordCard({
             type="button"
             onClick={onOpenDocument}
             data-testid="record-pdf"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent"
+            title="Open the document (Enter)"
+            className="type-body inline-flex min-h-8 items-center gap-2 border border-rule px-3 text-text-1 hover:bg-ink-lamp"
           >
             <FileText aria-hidden className="size-4" />
             {record.pdf.filename}
-            <KeyChip className="h-4 px-1">↵</KeyChip>
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={onOpenEmail}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm hover:bg-accent"
-        >
-          <Mail aria-hidden className="size-4" />
-          The email
-          <KeyChip className="h-4 px-1">o</KeyChip>
-        </button>
+        {/* The lit row carries `o email`; the card's own button is for the phone, where no row is lit. */}
+        {emailButton ? (
+          <button
+            type="button"
+            onClick={onOpenEmail}
+            title="Open the email (o)"
+            className="type-body inline-flex min-h-8 items-center gap-2 px-2 text-text-2 hover:bg-ink-lamp hover:text-text-1"
+          >
+            <Mail aria-hidden className="size-4" />
+            Open email
+          </button>
+        ) : null}
       </div>
       {record.documents && record.documents.length > 1 ? (
         <ul aria-label="Documents" className="grid gap-0.5 text-xs text-muted-foreground">
@@ -253,10 +276,10 @@ export function RecordCard({
         <button
           type="button"
           onClick={onIssuer}
+          title="This issuer's records (p)"
           className="w-fit text-left text-xs text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
         >
-          Also from {record.issuer}: {record.issuer_records} more{" "}
-          <KeyChip className="h-4 px-1">p</KeyChip>
+          Also from {record.issuer}: {record.issuer_records} more
         </button>
       ) : null}
       <p data-testid="record-why" className="text-xs text-fg-2">
@@ -293,9 +316,7 @@ export function AnswerCard({
       <section aria-label="Answer" data-testid="answer-fallback" className="mx-5 mt-3 grid gap-2">
         <p className="text-sm text-foreground/90">{fallback.note}</p>
         {!fallback.answer && !fallback.error ? (
-          <p className="text-xs text-muted-foreground">
-            Press <KeyChip>Enter</KeyChip> to search all mail.
-          </p>
+          <p className="text-xs text-muted-foreground">Press Enter to search all mail.</p>
         ) : null}
         {fallback.answer ? (
           <div className="border-l-2 border-border pl-3">
@@ -337,9 +358,10 @@ export function AnswerCard({
           <button
             type="button"
             onClick={() => onCopy(card.copy)}
-            className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Copy (y)"
+            className="inline-flex h-6 items-center gap-1 px-1.5 text-xs text-text-2 hover:bg-ink-lamp hover:text-text-1"
           >
-            <Copy aria-hidden className="size-3" /> copy <KeyChip className="h-4 px-1">y</KeyChip>
+            <Copy aria-hidden className="size-3.5" /> copy
           </button>
         ) : null}
       </div>
@@ -359,17 +381,19 @@ export function AnswerCard({
           <button
             type="button"
             onClick={() => onOpenDocument(record)}
+            title="Open the document (Enter)"
             className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
           >
-            <KeyChip className="h-4 px-1">↵</KeyChip> {record.pdf.filename}
+            <FileText aria-hidden className="size-3.5" /> {record.pdf.filename}
           </button>
         ) : null}
         <button
           type="button"
           onClick={() => onOpenEmail(record)}
+          title="Open the email (o)"
           className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
         >
-          <KeyChip className="h-4 px-1">o</KeyChip> email
+          <Mail aria-hidden className="size-3.5" /> email
         </button>
       </div>
       {(answer.matching ?? 0) > 1 ? (
@@ -408,7 +432,13 @@ export function MatchesHeader({
         <h2 data-testid="answer-list-header" className="text-md font-semibold">
           {list.header}
         </h2>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={onClear}>
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Clear search (Esc)"
+          className="ml-auto text-text-2"
+          onClick={onClear}
+        >
           <X aria-hidden className="size-3.5" /> Clear search
         </Button>
       </div>

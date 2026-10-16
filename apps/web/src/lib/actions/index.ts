@@ -9,6 +9,7 @@ export { buildActionContext, snapshotActionContext, useActionContext } from "./c
 export { ensureCatalogRegistered, resetCatalogRegistration } from "./catalog";
 export {
   formatChord,
+  pageKeyHints,
   shortcutSections,
   useActionPrimaryHints,
   useActionsByGroup,

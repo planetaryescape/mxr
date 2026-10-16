@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   canLetGoSource,
+  cutLabel,
   cutLine,
   digestRows,
   displaySourceName,
@@ -57,8 +58,8 @@ describe("the digest's layout", () => {
   });
 
   test("the collapsed Routine line counts updates and sources in the daemon's words", () => {
-    expect(routineLine({ sources: 16, messages: 31 })).toBe("Routine · 31 updates from 16 sources");
-    expect(routineLine({ sources: 1, messages: 1 })).toBe("Routine · 1 update from 1 source");
+    expect(routineLine({ sources: 16, messages: 31 })).toBe("Routine · 16 sources");
+    expect(routineLine({ sources: 1, messages: 1 })).toBe("Routine · 1 source");
   });
 
   test("hidden lines leave the Routine totals too", () => {
@@ -80,13 +81,12 @@ describe("the digest's layout", () => {
     expect(rows.rows[1]?.section).toBe("routine");
   });
 
-  test("the cut line names the digest, its time and its counts", () => {
-    expect(cutLine(digestFixture())).toBe(
-      "This morning's digest · 08:00 · 23 updates from 8 sources",
-    );
+  test("the page says its count once, and the frame names the cut", () => {
+    expect(cutLine(digestFixture())).toBe("23 updates from 8 sources");
     expect(cutLine(digestFixture({ message_count: 1, source_count: 1 }))).toBe(
-      "This morning's digest · 08:00 · 1 update from 1 source",
+      "1 update from 1 source",
     );
+    expect(cutLabel(digestFixture())).toBe("08:00 digest");
   });
 });
 

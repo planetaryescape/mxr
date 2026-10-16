@@ -179,11 +179,19 @@ for (const theme of THEMES) {
   });
 }
 
-/** Rows on Now and Messages: both draw one `Row` per item, with its own `data-lit`. */
+/** Rows on every list page: each draws one `Row` per item, with its own `data-lit`. */
 const ROW_PAGES = [
   { name: "now", path: "/now", rows: '[data-testid="now-row"]' },
   { name: "messages", path: "/messages", rows: 'li:has([data-testid="messages-row"])' },
+  { name: "todo", path: "/todo", rows: '[data-testid="todo-row"]' },
+  { name: "updates", path: "/updates", rows: '[data-testid="update-line"]' },
+  { name: "reading", path: "/reading", rows: '[data-testid="reading-item"]' },
+  { name: "archive", path: "/archive", rows: '[data-testid="record-row"]' },
+  { name: "inbox", path: "/m/inbox", rows: '[data-testid="mailbox-list"] [data-lit]' },
 ] as const;
+
+/** The list pages whose rows carry the page's keys in the status strip. */
+const KEY_PAGES = ROW_PAGES.filter((gate) => gate.name !== "now" && gate.name !== "messages");
 
 async function rowBoxes(page: Page, selector: string) {
   return page.locator(selector).evaluateAll((nodes) =>
@@ -239,7 +247,7 @@ for (const theme of THEMES) {
             // Same rows, same size: the lit row keeps its height and nothing below it moves.
             // A phone's Messages swaps the list for the person's page on the first key, which
             // hides the list, so there is nothing to compare there.
-            const listShown = gate.name === "now" || width >= 768;
+            const listShown = gate.name !== "messages" || width >= 768;
             if (listShown) expect(after).toEqual(before);
             await attach(page, testInfo, `${gate.name}-lit-${theme}-${width}`);
           });
@@ -272,6 +280,114 @@ for (const theme of THEMES) {
             );
           }
           await attach(page, testInfo, `messages-newsender-${theme}-${width}`);
+        });
+      }
+    });
+  });
+}
+
+/** Touch emulation makes `(pointer: coarse)` true; Chrome ignores a media-feature override for it. */
+test.describe("under a coarse pointer", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 1440, height: 900 } });
+
+  for (const gate of KEY_PAGES) {
+    test(`${gate.name}: no key chip shows`, async ({ page }) => {
+      await openApp(page, gate.path);
+      await expect(page.locator(gate.rows).first()).toBeVisible();
+      await page.keyboard.press("j");
+      await expect(page.locator("#main [data-lit='true']")).toHaveCount(1);
+      await expect(page.locator("kbd:visible")).toHaveCount(0);
+    });
+  }
+});
+
+test.describe("the status strip and the keys", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  for (const gate of KEY_PAGES) {
+    test(`${gate.name}: the status strip never cuts a word at 1024 with the assistant open`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await openApp(page, gate.path);
+      await expect(page.locator(gate.rows).first()).toBeVisible();
+      await page.getByRole("button", { name: "Assistant" }).click();
+      await expect(page.getByRole("region", { name: "Assistant" })).toBeVisible();
+      await page.keyboard.press("j");
+      await expect(page.locator("#main [data-lit='true']")).toHaveCount(1);
+      const strip = page.getByTestId("status-keys");
+      await expect(strip.locator("li").first()).toBeAttached();
+      // A strip with no room for even its first verb steps aside whole.
+      const hidden = await strip.evaluate((node) => getComputedStyle(node).visibility === "hidden");
+      if (hidden) return;
+      // Each verb is wholly inside the strip or wholly dropped to the line it hides: never half cut.
+      const cut = await strip.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        return [...node.querySelectorAll("li")]
+          .filter((item) => {
+            const rect = item.getBoundingClientRect();
+            const dropped = rect.top >= box.bottom - 0.5;
+            const whole = rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5;
+            return !dropped && !whole;
+          })
+          .map((item) => item.textContent);
+      });
+      expect(cut).toEqual([]);
+      // The "?" is never dropped, and the reason shortens before any key does.
+      await expect(page.getByRole("button", { name: /keys/ })).toBeVisible();
+    });
+  }
+
+  test("the status strip changes per page", async ({ page }) => {
+    const seen: string[] = [];
+    for (const gate of KEY_PAGES) {
+      await openApp(page, gate.path);
+      await expect(page.locator(gate.rows).first()).toBeVisible();
+      await page.keyboard.press("j");
+      await expect(page.getByTestId("status-keys").locator("li").first()).toBeAttached();
+      seen.push((await page.getByTestId("status-keys").textContent()) ?? "");
+    }
+    expect(new Set(seen).size).toBeGreaterThan(2);
+  });
+});
+
+/** The states the W3 contact sheets need beyond a page's first look: a peek open, a reader open. */
+for (const theme of THEMES) {
+  test.describe(`${theme} theme: W3 states`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript((chosen) => {
+        localStorage.setItem(
+          "mxr.uiPrefs",
+          JSON.stringify({ state: { theme: chosen }, version: 6 }),
+        );
+      }, theme);
+    });
+
+    test("updates with a peek open, reading with its reader, a record's card", async ({
+      page,
+    }, testInfo) => {
+      for (const width of WIDTHS) {
+        await test.step(`${width}px`, async () => {
+          await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+          await openApp(page, "/updates");
+          await expect(page.locator('[data-testid="update-line"]').first()).toBeVisible();
+          await page.keyboard.press("Space");
+          await expect(page.getByTestId("update-peek")).toBeVisible();
+          await page.waitForTimeout(250);
+          await attach(page, testInfo, `updates-peek-${theme}-${width}`);
+
+          await openApp(page, "/reading");
+          await expect(page.locator('[data-testid="reading-item"]').first()).toBeVisible();
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(600);
+          await attach(page, testInfo, `reading-reader-${theme}-${width}`);
+
+          await openApp(page, "/m/inbox");
+          await expect(mailRows(page).first()).toBeVisible();
+          await page.keyboard.press("Enter");
+          await expect(reader(page)).toBeVisible();
+          await page.waitForTimeout(400);
+          await attach(page, testInfo, `inbox-reader-${theme}-${width}`);
         });
       }
     });

@@ -7,8 +7,7 @@
 
 use super::desk::{compose_desk, desk_lane};
 use super::mode_rules::{
-    age_label, day_part, more_line, now_headline, overload_line, reading_fade, updates_line,
-    EVENING_HOUR,
+    day_part, more_line, now_headline, overload_line, reading_fade, updates_line, EVENING_HOUR,
 };
 use super::modes::{inbox_modes, place_threads, InboxModes};
 use super::places::{scoped_cached_accounts, Placed};
@@ -148,7 +147,7 @@ where
     let snapshot = snapshot(state, account_id, &accounts, now, tz).await?;
     let asks = sender_questions(state, &snapshot, now).await?;
 
-    let people = people_section(&snapshot, &asks, now);
+    let people = people_section(&snapshot, &asks, now, tz);
     let due_soon = due_section(&snapshot);
     let updates = updates_card(&snapshot.digest);
     let evening = now.with_timezone(tz).hour() >= EVENING_HOUR;
@@ -244,11 +243,15 @@ async fn sender_questions(
     Ok(asks)
 }
 
-fn people_section(
+fn people_section<Tz: TimeZone>(
     snapshot: &NowSnapshot,
     asks: &HashMap<ThreadId, ScreenerQuestionData>,
     now: DateTime<Utc>,
-) -> NowPeopleData {
+    tz: &Tz,
+) -> NowPeopleData
+where
+    Tz::Offset: std::fmt::Display,
+{
     let total = snapshot.your_turn_total();
     let rows: Vec<NowPersonData> = snapshot
         .person_rows()
@@ -256,11 +259,7 @@ fn people_section(
         .map(|row| {
             let new_sender = asks.get(&row.thread_id).cloned();
             NowPersonData {
-                why: format!(
-                    "From Messages: {}, {}.",
-                    super::mode_rules::messages_summary(row),
-                    age_label(row.since, now)
-                ),
+                why: person_reason(row, new_sender.is_some(), now, tz),
                 row: row.clone(),
                 new_sender,
             }
@@ -274,6 +273,52 @@ fn people_section(
     }
 }
 
+/// Why a person is on Now, worded to read after "Here because:" (the row's
+/// mode mark already says Messages): "your turn since Wednesday".
+fn person_reason<Tz: TimeZone>(
+    row: &DeskRowData,
+    new_sender: bool,
+    now: DateTime<Utc>,
+    tz: &Tz,
+) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let who = row
+        .counterparty_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(&row.counterparty_email);
+    lane_reason(row.lane, who, new_sender, &since_label(row.since, now, tz))
+}
+
+fn lane_reason(lane: DeskLaneKind, who: &str, new_sender: bool, since: &str) -> String {
+    if new_sender {
+        return "a new sender, not placed yet".to_string();
+    }
+    match lane {
+        DeskLaneKind::Owed | DeskLaneKind::Due => format!("your turn since {since}"),
+        DeskLaneKind::Waiting => format!("waiting on {who} since {since}"),
+        DeskLaneKind::PeopleNew => format!("new from {who} since {since}"),
+    }
+}
+
+/// "earlier today", "yesterday", a weekday within the week, else "12 Oct",
+/// in the viewer's time zone.
+fn since_label<Tz: TimeZone>(since: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let then = since.with_timezone(tz);
+    let days = (now.with_timezone(tz).date_naive() - then.date_naive()).num_days();
+    match days {
+        ..=0 => "earlier today".to_string(),
+        1 => "yesterday".to_string(),
+        2..=6 => then.format("%A").to_string(),
+        _ => then.format("%-d %b").to_string(),
+    }
+}
+
 fn due_section(snapshot: &NowSnapshot) -> NowDueData {
     let total = count(snapshot.due_now.len());
     let todos: Vec<NowTodoData> = snapshot
@@ -281,7 +326,7 @@ fn due_section(snapshot: &NowSnapshot) -> NowDueData {
         .iter()
         .take(NOW_SECTION_CAP)
         .map(|todo| NowTodoData {
-            why: format!("From To do: {}.", todo.when_label),
+            why: todo.when_label.clone(),
             todo: todo.clone(),
         })
         .collect();
@@ -424,10 +469,10 @@ fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPick
         .filter(|name| !name.trim().is_empty());
     let label = name.clone().unwrap_or_else(|| message.from_email.clone());
     let why = if source.read == 0 {
-        format!("From Reading: the newest from {label}.")
+        format!("the newest from {label}")
     } else {
         format!(
-            "From Reading: you've read {} of the {} from {label} in your inbox.",
+            "you've read {} of the {} from {label} in your inbox",
             source.read, source.total
         )
     };
@@ -441,4 +486,53 @@ fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPick
         date: message.date,
         why,
     })
+}
+
+#[cfg(test)]
+mod reason_tests {
+    use super::*;
+    use chrono::FixedOffset;
+
+    fn at(day: u32, hour: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 10, day, hour, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn since_is_today_yesterday_a_weekday_then_a_date() {
+        let utc = FixedOffset::east_opt(0).unwrap();
+        let now = at(16, 12); // Friday
+        assert_eq!(since_label(at(16, 1), now, &utc), "earlier today");
+        assert_eq!(since_label(at(15, 23), now, &utc), "yesterday");
+        assert_eq!(since_label(at(14, 9), now, &utc), "Wednesday");
+        assert_eq!(since_label(at(10, 9), now, &utc), "Saturday");
+        assert_eq!(since_label(at(9, 9), now, &utc), "9 Oct");
+    }
+
+    #[test]
+    fn since_follows_the_viewers_time_zone_not_the_machines() {
+        // 23:30 UTC on the 15th is already the 16th at UTC+2.
+        let plus_two = FixedOffset::east_opt(2 * 3600).unwrap();
+        let now = at(16, 12);
+        assert_eq!(since_label(at(15, 23), now, &plus_two), "earlier today");
+    }
+
+    #[test]
+    fn each_lane_reads_after_here_because() {
+        assert_eq!(
+            lane_reason(DeskLaneKind::Owed, "Maya", false, "Wednesday"),
+            "your turn since Wednesday"
+        );
+        assert_eq!(
+            lane_reason(DeskLaneKind::Waiting, "Sam", false, "yesterday"),
+            "waiting on Sam since yesterday"
+        );
+        assert_eq!(
+            lane_reason(DeskLaneKind::PeopleNew, "Iris", false, "9 Oct"),
+            "new from Iris since 9 Oct"
+        );
+        assert_eq!(
+            lane_reason(DeskLaneKind::PeopleNew, "Quinn", true, "9 Oct"),
+            "a new sender, not placed yet"
+        );
+    }
 }

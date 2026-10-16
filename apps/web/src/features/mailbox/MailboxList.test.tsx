@@ -158,6 +158,15 @@ describe("MailboxList keyboard", () => {
     expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
+  test("exactly one row is lit, and the lamp follows j", () => {
+    renderList();
+
+    const lit = () => screen.getAllByRole("option").filter((el) => el.dataset.lit === "true");
+    expect(lit().map((el) => el.id)).toEqual(["mail-row-thread-thread-1"]);
+    type({ key: "j" });
+    expect(lit().map((el) => el.id)).toEqual(["mail-row-thread-thread-2"]);
+  });
+
   test("j and k move the cursor, clamped at the ends", () => {
     renderList();
 

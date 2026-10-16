@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ChevronRight, ListTodo, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -12,7 +11,6 @@ import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
-import { keysForModeGuide } from "@/features/modes/guideKeys";
 import { ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
@@ -24,14 +22,17 @@ import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useLitReason } from "@/state/litReasonStore";
+import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
-import { openCount, primaryAction, runwayFill, runwayItems, type RunwayItem } from "./todoRows";
+import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
 import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
-import { KeyLine } from "@/components/KeyLine";
+import type { LampVia } from "@/components/Row";
+import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
 
 /**
@@ -66,6 +67,16 @@ export function useRunway() {
 
 /** The list's view, row cursor and open source, kept while an email opens. */
 const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
+
+/** The action ids the status strip names for a lit to-do, in the order they drop from the end. */
+const TODO_KEYS_LIT = [
+  "todo.done",
+  "todo.open-email",
+  "todo.schedule",
+  "todo.dismiss",
+  "todo.edit",
+];
+const TODO_KEYS_DONE = ["todo.primary"];
 
 /**
  * To do: things email asked you to do, as a runway of instructions
@@ -203,6 +214,9 @@ function Bands({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const navigate = useNavigate();
   const hidden = useTodoHidden((s) => s.hidden);
+  const leaving = useTodoHidden((s) => s.leaving);
+  // Only a pointer fades the lamp (D101): a key never animates.
+  const via = useRef<LampVia>("key");
   const [open, setOpen] = useState({ whenever: false, done: false });
   // In the URL, so a copied link lands on the same to-do.
   const [cursorId, setCursorId] = useSearchParam("row");
@@ -220,13 +234,16 @@ function Bands({
     )?.band;
     if (band === "whenever" || band === "done") setOpen((was) => ({ ...was, [band]: true }));
   }, [hidden, items, runway]);
+  // A row folding away after a pointer done is still drawn but no longer counts: the lamp is
+  // already on its neighbour while it folds. Found by id, never by position.
+  const live = useMemo(() => items.filter((item) => !leaving.has(item.todo.id)), [items, leaving]);
   const index = Math.max(
     0,
-    items.findIndex((item) => item.todo.id === cursorId),
+    live.findIndex((item) => item.todo.id === cursorId),
   );
-  const current: RunwayItem | undefined = items[index];
+  const current: RunwayItem | undefined = live[index];
   // A row ticked off or dismissed leaves: the cursor takes the next one.
-  const itemIds = useMemo(() => items.map((item) => item.todo.id), [items]);
+  const itemIds = useMemo(() => live.map((item) => item.todo.id), [live]);
   useAdvanceOnRemoval({
     ids: itemIds,
     selectedId: cursorId,
@@ -234,16 +251,23 @@ function Bands({
     onEmpty: () => setCursorId(null),
   });
   const listRef = useRef<HTMLDivElement>(null);
+  const currentId = current?.todo.id;
   useEffect(() => {
-    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [index]);
+    listRef.current?.querySelector(`[data-focused="true"]`)?.scrollIntoView({ block: "nearest" });
+  }, [currentId]);
+  // The mode marks on each row, from the daemon's membership.
+  const markedThreads = useMemo(
+    () => items.flatMap((item) => (item.todo.thread_id ? [item.todo.thread_id] : [])),
+    [items],
+  );
+  const memberships = useThreadModesMap(markedThreads).data;
 
   const hasItems = openCount(runway) > 0;
   // The runway hint sits under the first bar; the catch-up hint under the
   // catch-up line. Only one shows at a time (features/hints).
-  const firstBar = items.find((item) => item.band !== "done" && runwayFill(item.todo) !== null);
+  const firstRow = items.find((item) => item.band !== "done");
   const runwayHint = useHint("todo", "todo.runway", {
-    ready: firstBar !== undefined,
+    ready: firstRow !== undefined,
     alone: items.length === 1 && runway.catchup_count === 0,
   });
   const catchupHint = useHint("todo", "todo.catchup", { ready: runway.catchup_count > 0 });
@@ -252,9 +276,11 @@ function Bands({
 
   const openEmail = useCallback(
     (todo: Todo) => {
+      // The hint names `e` and `o`; doing either is what it asked for.
+      dismissRunwayHint();
       if (todo.thread_id) nav?.open(todo.thread_id);
     },
-    [nav],
+    [dismissRunwayHint, nav],
   );
   const openResolutionEmail = useCallback(
     (todo: Todo, threadId: string, messageId: string) => {
@@ -302,17 +328,35 @@ function Bands({
     },
     [dismissRunwayHint, navigate, openEmail, setActivePane],
   );
-  const done = useCallback((todo: Todo) => void tickOff(todo), []);
+  const done = useCallback(
+    (todo: Todo, how: LampVia) => {
+      dismissRunwayHint();
+      via.current = how;
+      void tickOff(todo, how);
+    },
+    [dismissRunwayHint],
+  );
   const restore = useCallback((todo: Todo) => void restoreTodos([todo]), []);
-  const select = useCallback((todo: Todo) => setCursorId(todo.id), [setCursorId]);
-  const toggleSource = useCallback(
-    (todo: Todo) => setExpandedId(expandedId === todo.id ? null : todo.id),
-    [expandedId, setExpandedId],
+  const select = useCallback(
+    (todo: Todo) => {
+      via.current = "pointer";
+      setCursorId(todo.id);
+    },
+    [setCursorId],
+  );
+  // The details panel reads the latest open id through a ref so the memoised rows keep one callback.
+  const expandedRef = useRef(expandedId);
+  expandedRef.current = expandedId;
+  const toggleDetails = useCallback(
+    (todo: Todo) => setExpandedId(expandedRef.current === todo.id ? null : todo.id),
+    [setExpandedId],
   );
 
   const move = (delta: number) => {
-    const next = items[Math.min(items.length - 1, Math.max(0, index + delta))];
-    if (next) setCursorId(next.todo.id);
+    const next = live[Math.min(live.length - 1, Math.max(0, index + delta))];
+    if (!next) return;
+    via.current = "key";
+    setCursorId(next.todo.id);
   };
   const actionable = current && current.band !== "done" ? current.todo : undefined;
   const openView = (view: "catchup" | "expired") => {
@@ -330,15 +374,24 @@ function Bands({
       if (current.band === "done") restore(current.todo);
       else runPrimary(current.todo);
     },
-    done: () => actionable && done(actionable),
-    dismiss: () => actionable && void markNotTodo([actionable]),
+    done: () => actionable && done(actionable, "key"),
+    dismiss: () => actionable && void markNotTodo([actionable], "key"),
     schedule: () => actionable && openMailDialog({ kind: "todo-schedule", todo: actionable }),
     edit: () => actionable && openMailDialog({ kind: "todo-edit", todo: actionable }),
-    source: () => current && toggleSource(current.todo),
+    openEmail: () => current?.todo.thread_id && openEmail(current.todo),
+    details: () => current && toggleDetails(current.todo),
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
     closeHint,
   });
+
+  // The status bar says why the lit row is here and which keys work on it.
+  useLitReason(current?.todo.why);
+  // While the open email has focus these keys aren't live, so the strip doesn't offer them.
+  const listLive = !params.threadId || activePane !== "reader";
+  usePageKeys(
+    current && listLive ? (current.band === "done" ? TODO_KEYS_DONE : TODO_KEYS_LIT) : [],
+  );
 
   const { byBand, position } = useMemo(() => {
     const grouped: Record<RunwayItem["band"], RunwayItem[]> = {
@@ -365,17 +418,18 @@ function Bands({
         todo={item.todo}
         band={item.band}
         index={at}
-        focused={at === index}
-        expanded={expandedId === item.todo.id}
+        lit={item.todo.id === current?.todo.id}
+        via={via.current}
+        details={expandedId === item.todo.id}
+        modes={item.todo.thread_id ? memberships?.get(item.todo.thread_id) : undefined}
         onSelect={select}
-        onPrimary={runPrimary}
         onDone={done}
         onRestore={restore}
-        onToggleSource={toggleSource}
         onOpenEmail={openEmail}
+        onToggleDetails={toggleDetails}
         onOpenResolution={openResolutionEmail}
         hint={
-          item === firstBar && runwayHint.hint ? (
+          item === firstRow && runwayHint.hint ? (
             <AnchoredHint hint={runwayHint.hint} onDismiss={runwayHint.dismiss} />
           ) : undefined
         }
@@ -419,8 +473,7 @@ function Bands({
                 className="underline decoration-border-strong underline-offset-4 hover:decoration-primary"
               >
                 Keep or let go
-              </Link>{" "}
-              <KeyChip className="h-4 px-1">C</KeyChip>
+              </Link>
             </p>
             {catchupHint.hint ? (
               <AnchoredHint hint={catchupHint.hint} onDismiss={catchupHint.dismiss} />
@@ -492,17 +545,8 @@ function Bands({
                 className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
               >
                 See them
-              </Link>{" "}
-              <KeyChip className="h-4 px-1">E</KeyChip>
+              </Link>
             </p>
-          ) : null}
-
-          {guide ? (
-            <KeyLine
-              keys={keysForModeGuide(guide).filter(
-                (key) => key.key !== "t" && key.key !== "?" && key.key !== "u",
-              )}
-            />
           ) : null}
         </div>
       </ModeFrame>

@@ -47,6 +47,8 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   "reading-reader": "Reading: the reader",
 };
 
+const PANE_ORDER: readonly string[] = ["reader", "list", "sidebar", "screener", "focus"];
+
 const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {
   Navigate: "Go to",
   Triage: "Go to",
@@ -92,9 +94,10 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
   }
 
   const sections: ShortcutSection[] = [];
-  const paneScopes = (["reader", "list", "sidebar", "screener", "focus"] as const).filter((scope) =>
-    byScope.has(scope),
-  );
+  // The panes first, then the modes' own scopes (To do, Updates, ...): `?` lists a page's own keys.
+  const paneScopes = (Object.keys(SCOPE_TITLE) as (keyof typeof SCOPE_TITLE)[])
+    .toSorted((a, b) => PANE_ORDER.indexOf(a) - PANE_ORDER.indexOf(b))
+    .filter((scope) => byScope.has(scope));
   const activePanes = paneScopes.filter((scope) => ctx.scopes.includes(scope));
   const otherPanes = paneScopes.filter((scope) => !ctx.scopes.includes(scope));
 
@@ -148,6 +151,19 @@ export function useActionPrimaryHints(ctx: ActionContext, limit = 5): ShortcutHi
         .slice(0, limit),
     [sections, limit],
   );
+}
+
+/**
+ * The status bar's strip for a page that named its verbs (`usePageKeys`):
+ * each id's first key and short label, in the page's order. An id the
+ * registry doesn't know is skipped, so a renamed action never blanks the bar.
+ */
+export function pageKeyHints(ids: readonly string[], ctx: ActionContext): ShortcutHint[] {
+  const registry = getRegistry();
+  return ids.flatMap((id) => {
+    const action = registry.get(id);
+    return action && chordsOf(action).length > 0 ? [hint(action, ctx)] : [];
+  });
 }
 
 export function useVisibleActions(ctx: ActionContext): Action[] {

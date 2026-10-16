@@ -13,7 +13,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 const INVENTORY = {
   topbar: ["Search mail", "Assistant", "Compose new email"],
   // "Latest mail 5m ago": the age changes, the control does not.
-  statusBar: ["Sync now", "Latest mail", "all keys"],
+  statusBar: ["Sync now", "Latest mail", "keys"],
   // The page frame's ⋯ menu, which holds the conversations / single messages switch.
   listHeader: ["More actions"],
   readerHeader: [
@@ -74,7 +74,7 @@ test("the shell, the list and the reader keep exactly their inventoried controls
   expect(await names(page.getByRole("banner").first())).toEqual(INVENTORY.topbar);
   expect(
     (await names(page.getByRole("contentinfo"))).map((name) =>
-      name.startsWith("Latest mail") ? "Latest mail" : name,
+      name.startsWith("Latest mail") || /^\d+\w* ago$|^just now$/.test(name) ? "Latest mail" : name,
     ),
   ).toEqual(INVENTORY.statusBar);
   const list = page.getByRole("region", { name: "Inbox" });

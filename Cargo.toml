@@ -492,7 +492,7 @@ temp-env = "0.3"
 tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite = "0.28"
 wiremock = { workspace = true }
-zip = "2.4"
+zip = "9.0"
 
 [[bench]]
 name = "search_query"

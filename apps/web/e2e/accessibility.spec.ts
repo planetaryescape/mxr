@@ -1,13 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-import { mailRows, openList, pressSequence, reader } from "./helpers/mail";
+import { animationsSettled, mailRows, openList, pressSequence, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 /** Serious and critical axe violations, one line per node. */
 async function blockingViolations(page: Page): Promise<string[]> {
+  // A dialog still fading in blends its colours with the page behind it, and axe
+  // reads that as low contrast (WebKit on CI: ".bg-primary" in the Labels dialog).
+  await animationsSettled(page);
   // Message bodies render in sandboxed srcdoc iframes that forbid scripts, so
   // axe cannot run inside them; they hold untrusted email, not app UI.
   const results = await new AxeBuilder({ page })

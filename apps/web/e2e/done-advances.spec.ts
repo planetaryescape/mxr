@@ -577,6 +577,9 @@ test.describe("Inbox: the reader after archive", () => {
     const openedUrl = page.url();
     await reader(page).getByTestId("thread-scroll").focus();
     await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+    // The list loads after the reader when the URL opens a conversation. Archiving
+    // before it has rows leaves nothing to advance to, and WebKit loses that race.
+    await expect(mailList(page).getByRole("option").first()).toBeVisible();
 
     const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");

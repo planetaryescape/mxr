@@ -431,6 +431,22 @@ validators (`lib/searchParams.ts`) instead of zod. Budget: 70 kB gzipped.
   cache shapes; they mock modules with `vi.mock` (no MSW).
 - Playwright (`npm run e2e`) runs journeys against a real daemon with the
   FakeProvider demo dataset (`scripts/e2e-server.mjs`). CI runs the whole suite.
+- WebKit: the desktop shell renders with Safari's engine (WKWebView), so the
+  suite also runs on Playwright's WebKit. The project is opt-in:
+  `npm run e2e:webkit` runs the whole suite and `npm run e2e:webkit:engine`
+  the cross-engine subset (navigation, keys, compose, reader, Reading, motion,
+  one theme of the design gate, accessibility, Messages, To do, search,
+  onboarding and offline banner). `npm run e2e` stays Chromium-only. Install
+  the browser with `npx playwright install webkit`. Five tests skip on WebKit
+  because they drive the Chrome DevTools Protocol: the three `large-list`
+  budgets count V8 block coverage, and the two `delight` touch-swipe tests send
+  touches through `Input.dispatchTouchEvent`. WebKit has no clipboard
+  permissions, so `helpers/clipboard.ts` records `writeText` calls there
+  instead of reading the clipboard back, and `openApp` retries a `goto` that
+  WebKit rejects when the router redirects during load. CI runs the subset on
+  non-draft pull requests in the "Web E2E (WebKit)" job and the whole suite on
+  main and manual runs; it is a separate job because Web E2E already uses
+  most of its 60 minutes.
 - Rust: `cargo test -p mxr-web`.
 
 ## Maintaining

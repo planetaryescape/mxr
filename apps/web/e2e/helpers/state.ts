@@ -27,9 +27,26 @@ export async function bridge<T>(page: Page, path: string, body?: unknown): Promi
   return (await response.json()) as T;
 }
 
-export async function openApp(page: { goto: (url: string) => Promise<unknown> }, path = "/") {
+export async function openApp(page: Pick<Page, "goto" | "waitForLoadState">, path = "/") {
   const state = readE2EState();
-  await page.goto(`${path}#token=${encodeURIComponent(state.token)}`);
+  const url = `${path}#token=${encodeURIComponent(state.token)}`;
+  // WebKit rejects goto when the router navigates again before the load event:
+  // the app's own redirect (/rules to /onboarding), or the previous page's late
+  // navigation (/todo to /todo/<id>), which can swallow this goto. Chromium
+  // resolves both. Retry once after the page settles; a redirect that interrupts
+  // again is the app landing where it meant to, and the specs assert where.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await page.goto(url);
+      return;
+    } catch (error) {
+      const interrupted =
+        error instanceof Error &&
+        /interrupted by another navigation|Frame load interrupted/.test(error.message);
+      if (!interrupted) throw error;
+      await page.waitForLoadState("load");
+    }
+  }
 }
 
 export async function stopDaemon() {

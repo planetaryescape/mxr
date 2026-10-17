@@ -345,6 +345,53 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run e2e:perf -- --workers=1
 
+  web-e2e-webkit:
+    name: Web E2E (WebKit)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    # Safari's engine is what Tauri's WKWebView renders with on macOS. Same
+    # draft-skip as Web E2E: drafts wait for ready_for_review.
+    if: (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    # A separate job, not extra steps in Web E2E: that job already uses about
+    # 36 of its 60 minutes. Pull requests run the cross-engine subset
+    # (e2e:webkit:engine, about a third of the suite); main and manual runs
+    # run all of it.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit
+      - name: Build mxr for the Playwright daemon
+        working-directory: ${{ github.workspace }}
+        run: |
+          cargo build -p mxr
+          echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+      - name: Run the WebKit suite
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            npm run e2e:webkit:engine -- --workers=1
+          else
+            npm run e2e:webkit -- --workers=1
+          fi
+      - name: Upload Playwright results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results-webkit
+          path: apps/web/test-results
+          retention-days: 3
+
   coverage:
     name: Coverage
     runs-on: blacksmith-4vcpu-ubuntu-2404

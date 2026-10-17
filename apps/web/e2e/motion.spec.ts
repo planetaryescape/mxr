@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mailRows, openList, reader } from "./helpers/mail";
+import { animationsSettled, mailRows, openList, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 /*
@@ -109,6 +109,33 @@ async function running(page: Page): Promise<string[]> {
   );
 }
 
+/**
+ * Remembers which To do rows were seen folding. The fold lasts 120 ms, and
+ * `keyboard.press` returns later on WebKit than on Chromium, so a check made
+ * after the press can find the row already gone; this sees the class land.
+ */
+async function recordFolds(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const folded = new Set<string>();
+    (window as unknown as { __folded: Set<string> }).__folded = folded;
+    new MutationObserver(() => {
+      for (const row of document.querySelectorAll('[data-testid="todo-row"].row-fold')) {
+        folded.add(row.textContent ?? "");
+      }
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+}
+
+async function sawFold(page: Page, title: string): Promise<boolean> {
+  return page.evaluate(
+    (text) =>
+      [...(window as unknown as { __folded: Set<string> }).__folded].some((seen) =>
+        seen.includes(text),
+      ),
+    title,
+  );
+}
+
 test("a pointer done folds the row and the light moves to the next row in the same frame", async ({
   page,
 }) => {
@@ -130,9 +157,10 @@ test("a key repeat stays instant: only the first key of a burst folds", async ({
   await openApp(page, "/todo");
   await expect(todoRow(page, "Alpha task")).toHaveAttribute("data-lit", "true");
 
+  await recordFolds(page);
   // One press folds its row.
   await page.keyboard.press("Space");
-  await expect(todoRow(page, "Alpha task")).toHaveClass(/row-fold/);
+  await expect.poll(() => sawFold(page, "Alpha task")).toBe(true);
   // The next press, inside the burst, drops its row at once: it never animates.
   await page.keyboard.press("Space");
   await expect(todoRow(page, "Bravo task")).toHaveCount(0);
@@ -143,7 +171,7 @@ test("a key repeat stays instant: only the first key of a burst folds", async ({
   // After a pause the next single press folds again.
   await page.waitForTimeout(800);
   await page.keyboard.press("Space");
-  await expect(todoRow(page, "Charlie task")).toHaveClass(/row-fold/);
+  await expect.poll(() => sawFold(page, "Charlie task")).toBe(true);
 });
 
 test("reduced motion drops a done row at once, with no fold", async ({ page }) => {
@@ -399,7 +427,10 @@ test("the compose sheet traps focus, Esc leaves, and focus goes back", async ({ 
   }
 
   // Esc from the recipient field leaves, and the draft is saved first.
-  await page.getByLabel("To").first().focus();
+  // Exact: the substring "To" also matches the rail's "Tools", which can't take focus.
+  // Without this, focus stayed wherever the Tab loop stopped, and Esc inside the
+  // editor belongs to vim, so WebKit's different Tab stops made the test flaky.
+  await page.getByLabel("To", { exact: true }).first().focus();
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId("mailbox-list")).toBeFocused();
@@ -413,6 +444,7 @@ test("on a phone the compose sheet covers the tab bar and its actions stay on on
   await page.getByRole("button", { name: /Compose/ }).click();
   const sheet = page.getByRole("dialog", { name: "New message" });
   await expect(sheet).toBeVisible();
+  await animationsSettled(page);
   const box = await sheet.boundingBox();
   expect(box!.y).toBeLessThanOrEqual(1);
   expect(box!.y + box!.height).toBeGreaterThanOrEqual(843);

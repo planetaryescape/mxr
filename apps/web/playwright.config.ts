@@ -10,9 +10,7 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: process.env.CI
-    ? [["github"], ["./e2e/helpers/people-trace-reporter.ts"]]
-    : "list",
+  reporter: process.env.CI ? [["github"], ["./e2e/helpers/people-trace-reporter.ts"]] : "list",
   use: {
     baseURL: appUrl,
     // The theme follows the OS until one is picked; the suite was written
@@ -20,11 +18,24 @@ export default defineConfig({
     // MXR_E2E_SCHEME=light runs the whole suite in the light theme.
     colorScheme: process.env.MXR_E2E_SCHEME === "light" ? "light" : "dark",
     trace: "on-first-retry",
-    // Local escape hatch when the pinned Playwright browser isn't downloaded.
-    launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Local escape hatch when the pinned Playwright browser isn't downloaded.
+        // Chromium-only: a Chrome binary can't launch the WebKit project.
+        launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},
+      },
+    },
+    // Safari's engine, which Tauri's WKWebView on macOS renders with. Opt-in:
+    // Playwright runs every listed project when --project is absent, so the
+    // project only exists when `npm run e2e:webkit` sets the variable and
+    // `npm run e2e` stays Chromium-only.
+    ...(process.env.MXR_E2E_WEBKIT === "1"
+      ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }]
+      : []),
   ],
   webServer: {
     command: "node ./scripts/e2e-server.mjs",

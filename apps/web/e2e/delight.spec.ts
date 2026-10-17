@@ -230,6 +230,13 @@ test("three pointer archives earn one key hint, and it never comes back", async 
 test.describe("touch", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
+  test.beforeEach(({ browserName }) => {
+    test.skip(
+      browserName === "webkit",
+      "drives touches through CDP Input.dispatchTouchEvent; Playwright's WebKit has no CDP and no other way to send a multi-step touch drag",
+    );
+  });
+
   /** A real touch drag through the browser's input pipeline. */
   async function swipe(page: Page, x: number, y: number, dx: number, pause = false) {
     const cdp = await page.context().newCDPSession(page);

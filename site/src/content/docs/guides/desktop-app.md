@@ -21,8 +21,9 @@ stay in `mxr`. The desktop app bundles none of that.
 
 The app has no installer yet. Build it from a checkout with
 `cd apps/desktop && npm ci --ignore-scripts && npx tauri build --bundles app`;
-the bundle lands in `target/release/bundle/macos/mxr.app` inside
-`apps/desktop/src-tauri` (or in `$CARGO_TARGET_DIR`). The build is unsigned.
+the bundle lands in
+`apps/desktop/src-tauri/target/release/bundle/macos/mxr.app`. The build is
+unsigned.
 Signing, notarisation and a Homebrew cask come with the first release.
 
 ## What it does

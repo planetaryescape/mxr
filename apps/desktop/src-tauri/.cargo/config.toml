@@ -1,0 +1,4 @@
+# The root .cargo/config.toml sends cargo to a shared target-cli/ at the repo
+# root. This crate keeps its own target dir so the two builds never share one.
+[build]
+target-dir = "target"

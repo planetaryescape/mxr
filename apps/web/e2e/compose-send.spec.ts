@@ -95,7 +95,7 @@ test("the desktop shortcut event opens a composer over the current page without 
   await openList(page, "/m/inbox");
   await page.goto("/now");
   await expect(page).toHaveURL(/\/now$/);
-  await page.waitForFunction(() => window.__mxrNewMessageReady === true);
+  await page.waitForFunction(() => window.mxrNewMessageReady === true);
   await page.evaluate(() => {
     (window as unknown as { __kept: boolean }).__kept = true;
     window.dispatchEvent(new Event("mxr:new-message"));

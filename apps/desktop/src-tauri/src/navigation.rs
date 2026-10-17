@@ -56,7 +56,7 @@ pub fn may_open_externally(url: &Url) -> bool {
 }
 
 /// Script that opens a new message over the current page. The web app listens
-/// for `mxr:new-message` and sets `__mxrNewMessageReady` once mounted
+/// for `mxr:new-message` and sets `mxrNewMessageReady` once mounted
 /// (apps/web/src/features/compose/useNewMessageEvent.ts). Until then, or when
 /// the window shows the down page or another origin, it navigates to
 /// `/compose/new`, which opens the same composer after a full load.
@@ -67,7 +67,7 @@ pub fn new_message_script(bridge: &Url) -> Option<String> {
     let origin = serde_json::to_string(&origin).ok()?;
     let fallback = serde_json::to_string(fallback.as_str()).ok()?;
     Some(format!(
-        "(function(o,t){{if(location.origin===o&&window.__mxrNewMessageReady===true)\
+        "(function(o,t){{if(location.origin===o&&window.mxrNewMessageReady===true)\
          {{window.dispatchEvent(new Event('mxr:new-message'));}}else{{location.assign(t);}}}})({origin},{fallback});"
     ))
 }
@@ -173,7 +173,7 @@ mod tests {
         let script = new_message_script(&bridge()).unwrap();
         assert!(script.contains("\"http://mxr.localhost:42829\""));
         assert!(script.contains("\"http://mxr.localhost:42829/compose/new\""));
-        assert!(script.contains("__mxrNewMessageReady===true"));
+        assert!(script.contains("mxrNewMessageReady===true"));
         assert!(script.contains("mxr:new-message"));
         // The token fragment is not carried into the fallback URL.
         let with_fragment =

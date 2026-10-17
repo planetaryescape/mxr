@@ -47,4 +47,4 @@ unpdf = { version = "0.7", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-zip = "8.6"
+zip = "9.0"

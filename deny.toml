@@ -12,6 +12,12 @@ ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
     { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
+    # zip 8.6 remains only through calamine 0.36.1 (the latest release), which reads
+    # workbook entries with ZipArchive and never calls the affected extract APIs.
+    # Our own zip use is on 9.x. Drop these when calamine moves to zip >= 9.
+    { id = "RUSTSEC-2026-0367", reason = "zip 8.6 via calamine only; calamine never calls ZipArchive::extract or ZipStreamReader::extract" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 8.6 via calamine only; calamine never calls ZipArchive::extract or ZipStreamReader::extract" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 8.6 via calamine only; calamine never calls ZipArchive::extract or ZipStreamReader::extract" },
 ]
 
 [licenses]

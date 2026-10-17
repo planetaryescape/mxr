@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.6.106](https://github.com/planetaryescape/mxr/compare/v0.6.105...v0.6.106) (2026-10-17)
+
+
+### Features
+
+* a quiet rail, a phone More sheet and one settings page (W5) ([#497](https://github.com/planetaryescape/mxr/issues/497)) ([fb23ab5](https://github.com/planetaryescape/mxr/commit/fb23ab5aa61231a8241f98b869154af4f16e20e6))
+* every mode on the same rows, keys in one place (W3) ([#496](https://github.com/planetaryescape/mxr/issues/496)) ([5d9bd73](https://github.com/planetaryescape/mxr/commit/5d9bd7397f64ccb36a5cbf611fc62b3900d332af))
+* finishing feels good (W8b) ([#507](https://github.com/planetaryescape/mxr/issues/507)) ([77d63c6](https://github.com/planetaryescape/mxr/commit/77d63c649a07fa18f8c271f3e188c43a48ac5e3c))
+* generate web themes from base, accent and contrast ([#503](https://github.com/planetaryescape/mxr/issues/503)) ([0940a39](https://github.com/planetaryescape/mxr/commit/0940a397649f0170d8bc5c36b01f5596eb083ed0))
+* offer the web app as an installable window, document extensions, guard reserved keys ([#505](https://github.com/planetaryescape/mxr/issues/505)) ([6796ccc](https://github.com/planetaryescape/mxr/commit/6796ccc8c4de72642d1cdc68e1a1762716c889a5))
+* one empty, loading and error state for every page (W4b) ([#504](https://github.com/planetaryescape/mxr/issues/504)) ([0e112cb](https://github.com/planetaryescape/mxr/commit/0e112cb728ead7f59f104a2f9466f4d39dcbda22))
+* one lit row and mode marks on Now and Messages (W2) ([#495](https://github.com/planetaryescape/mxr/issues/495)) ([f8d919e](https://github.com/planetaryescape/mxr/commit/f8d919ef4d502955d2e9e02b44861a9bc5b04a7c))
+* one page frame for every page, role tokens and the square shape rule ([#493](https://github.com/planetaryescape/mxr/issues/493)) ([e690a20](https://github.com/planetaryescape/mxr/commit/e690a20dec4a84d657159848fee8ff5f5209feb3))
+* signed desktop dmg on release, Homebrew cask, in-place new-message shortcut ([#515](https://github.com/planetaryescape/mxr/issues/515)) ([03ff2ab](https://github.com/planetaryescape/mxr/commit/03ff2ab18addcdd8610b7ce3cae679634262c227))
+* the assistant as a copy desk (W7b) ([#500](https://github.com/planetaryescape/mxr/issues/500)) ([2b767ed](https://github.com/planetaryescape/mxr/commit/2b767edf86b17750e864bd1c4ad28dd95cb9012c))
+* the daemon words assistant steps, changes and failures in plain language ([#494](https://github.com/planetaryescape/mxr/issues/494)) ([d6b9b31](https://github.com/planetaryescape/mxr/commit/d6b9b31aa6a0512c5314a6d4ab01ab38320e5b78))
+* the email is the page when I read and the editor is the page when I write (W6) ([#498](https://github.com/planetaryescape/mxr/issues/498)) ([3b324c0](https://github.com/planetaryescape/mxr/commit/3b324c0127c68dce1a8de3a262a3c81d106bf7a5))
+* thin Tauri desktop app for macOS (D1, unsigned) ([#511](https://github.com/planetaryescape/mxr/issues/511)) ([9a8d910](https://github.com/planetaryescape/mxr/commit/9a8d91021e237c9acd9b6f64d3dc53dbb8dc65ce))
+* W8c design gate, graded, with the fixes it found ([#509](https://github.com/planetaryescape/mxr/issues/509)) ([2411a31](https://github.com/planetaryescape/mxr/commit/2411a315b6fd10b3f90ad30355ac632898fef8a8))
+
+
+### Bug Fixes
+
+* date the demo's Updates mail against the daemon's digest cuts ([#499](https://github.com/planetaryescape/mxr/issues/499)) ([af7481b](https://github.com/planetaryescape/mxr/commit/af7481b4f3107c2f8a77a848b51c7fb99353cbac))
+* keep each web page's selection in its URL ([#489](https://github.com/planetaryescape/mxr/issues/489)) ([f209d84](https://github.com/planetaryescape/mxr/commit/f209d84ef55a2c2e582b48b92c1066f7d8335796))
+* let mxr web use the daemon's bridge when it wins the port race ([#487](https://github.com/planetaryescape/mxr/issues/487)) ([ad4b1f8](https://github.com/planetaryescape/mxr/commit/ad4b1f80cc2b0f0133b70e70c763577cc686533b))
+* move zip to 9 for the RUSTSEC-2026-0367/0368/0369 extraction advisories ([#513](https://github.com/planetaryescape/mxr/issues/513)) ([64b1e21](https://github.com/planetaryescape/mxr/commit/64b1e215c459352037d91ec50c4a0ca31ae97bb6))
+* one definition of who is waiting on you ([#501](https://github.com/planetaryescape/mxr/issues/501)) ([1e0bbc3](https://github.com/planetaryescape/mxr/commit/1e0bbc3c576da987319a7ccb6bfb05b4abea0a65))
+* open the assistant's links in the TUI and name failed steps under replies ([#490](https://github.com/planetaryescape/mxr/issues/490)) ([a669d2f](https://github.com/planetaryescape/mxr/commit/a669d2f3aef6b65e0243a2fcfb7664aaeafc7670))
+* start Reading's toolbar where its title starts, on one row ([#502](https://github.com/planetaryescape/mxr/issues/502)) ([505db90](https://github.com/planetaryescape/mxr/commit/505db90ecc6fc7496b257dc199792d4b0ebb2b4c))
+* window the Messages list so a lamp move costs the rows that change ([#508](https://github.com/planetaryescape/mxr/issues/508)) ([f3260a6](https://github.com/planetaryescape/mxr/commit/f3260a6ed76842c60896a2b2665cdda68cc795a4))
+
+
+### Documentation
+
+* design the web app as one product, the night desk ([#491](https://github.com/planetaryescape/mxr/issues/491)) ([7899447](https://github.com/planetaryescape/mxr/commit/78994472e98eb734e5ef0139315718bdffbfd9cf))
+* keep lit rows the same height and make the Light lamp visible ([#492](https://github.com/planetaryescape/mxr/issues/492)) ([831d8d2](https://github.com/planetaryescape/mxr/commit/831d8d29d5aecad412b22958fbbb525f20ef4944))
+
 ## [0.6.105](https://github.com/planetaryescape/mxr/compare/v0.6.104...v0.6.105) (2026-10-15)
 
 

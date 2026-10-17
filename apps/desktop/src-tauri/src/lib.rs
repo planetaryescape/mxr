@@ -9,6 +9,7 @@
 //! nor the bridge origin can call Rust. "Try again" is a navigation that
 //! `on_navigation` intercepts.
 
+mod downloads;
 mod mxr_cli;
 mod navigation;
 
@@ -18,10 +19,10 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{
-    AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    webview::DownloadEvent, AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use tauri_plugin_opener::OpenerExt;
 
 const MAIN: &str = "main";
 /// Midnight desk, so the window never flashes white before the page paints.
@@ -70,17 +71,15 @@ fn show_main(app: &AppHandle) -> Option<WebviewWindow> {
 fn open_new_message(app: &AppHandle) {
     let Some(window) = show_main(app) else { return };
     let shell = app.state::<Arc<Shell>>();
-    // Only when the web app is showing; on the down page there is nothing to compose in.
+    // Only when the web app is showing; on the down page there is nothing to
+    // compose in. The window can't leave the bridge origin (on_navigation), so
+    // having a bridge URL means the web app is what is on screen. Reading
+    // `window.url()` instead panics inside wry while a page is still loading.
     if let Some(target) = shell
         .bridge()
         .and_then(|bridge| bridge.join("compose/new").ok())
     {
-        if window
-            .url()
-            .is_ok_and(|current| current.origin() == target.origin())
-        {
-            let _ = window.navigate(target);
-        }
+        let _ = window.navigate(target);
     }
 }
 
@@ -120,15 +119,19 @@ fn start_web(app: &AppHandle) {
     });
 }
 
-fn open_externally(app: &AppHandle, url: &Url) {
+/// Opens a link in the default browser. The opener plugin itself is not
+/// registered: it injects a script that turns every `target=_blank` click into
+/// an IPC call and cancels the click, which this shell denies on purpose, so
+/// links would silently do nothing. Its `open_url` function needs no plugin.
+fn open_externally(url: &Url) {
     if may_open_externally(url) {
-        let _ = app.opener().open_url(url.as_str(), None::<&str>);
+        let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
     }
 }
 
 fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
     let nav_app = app.clone();
-    let popup_app = app.clone();
+    let dl_app = app.clone();
     WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("down.html".into()))
         .title("mxr")
         .inner_size(1280.0, 840.0)
@@ -143,7 +146,7 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
                     false
                 }
                 Nav::External => {
-                    open_externally(&nav_app, url);
+                    open_externally(url);
                     false
                 }
                 Nav::Deny => false,
@@ -151,8 +154,25 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         })
         // `target=_blank` and `window.open` never get a second window.
         .on_new_window(move |url, _features| {
-            open_externally(&popup_app, &url);
+            open_externally(&url);
             tauri::webview::NewWindowResponse::Deny
+        })
+        .on_download(move |_webview, event| {
+            let shell = dl_app.state::<Arc<Shell>>();
+            match event {
+                DownloadEvent::Requested { url, destination } => {
+                    if !downloads::is_from_bridge(&url, shell.bridge().as_ref()) {
+                        return false;
+                    }
+                    let Ok(dir) = dl_app.path().download_dir() else {
+                        return false;
+                    };
+                    *destination =
+                        downloads::destination(&dir, destination.file_name(), |p| p.exists());
+                    true
+                }
+                _ => true,
+            }
         })
         .build()?;
     Ok(())
@@ -167,7 +187,6 @@ pub fn run() {
             show_main(app);
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, pressed, event| {

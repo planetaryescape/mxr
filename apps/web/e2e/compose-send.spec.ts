@@ -71,3 +71,17 @@ test("/compose/new with a #token fragment opens the composer", async ({ page }) 
   await expect(composer(page)).toBeVisible();
   await expect(page).toHaveURL(/127\.0\.0\.1/);
 });
+
+// The desktop shell's global shortcut navigates its window to exactly this URL
+// (apps/desktop/src-tauri/src/lib.rs `open_new_message`).
+test("a bare /compose/new opens an empty composer and steps off the URL", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await page.goto("/compose/new");
+
+  await expect(composer(page)).toBeVisible();
+  await expect(composer(page).getByRole("textbox", { name: "Subject" })).toHaveValue("");
+  await expect(page).not.toHaveURL(/\/compose\//);
+
+  await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
+  await expect(composer(page)).toHaveCount(0);
+});

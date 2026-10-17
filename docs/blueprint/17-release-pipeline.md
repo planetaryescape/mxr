@@ -38,13 +38,35 @@ Legal pages are built as part of the site. There is no separate checked-in
 `policy-sync` job today, so policy text changes must update both the root policy
 file and the corresponding `site/src/pages/` page in the same PR.
 
-## Desktop (D2, not yet)
+## Desktop app
 
-The macOS desktop app in `apps/desktop/` is built unsigned by
-`.github/workflows/desktop.yml` and is not part of any release. D2 adds Apple
-signing and notarisation, attaches the `.app` to the release-please release,
-and adds a Homebrew cask. Until then `release.yml` and the formula know nothing
-about it.
+The macOS app in `apps/desktop/` ships with every release that ships CLI
+artifacts (`has_artifacts`; `apps/desktop/**` counts as an artifact change in
+`scripts/release_change_scope.sh`).
+
+`.github/workflows/desktop-signed.yml` is a reusable workflow. It imports the
+Developer ID certificate into a temporary keychain, runs
+`tauri build --bundles dmg` with the version from the tag, verifies the
+signature (`codesign --verify --deep --strict`, the hardened-runtime flag,
+`spctl`), and uploads `mxr-desktop-<version>-aarch64.dmg` plus its `.sha256`
+as the `desktop-dmg` artifact. `release.yml` calls it as the `desktop` job
+after `plan`; `github-release` needs it, so the dmg is uploaded with the CLI
+archives and the release stays a draft until it is attached. `desktop.yml`
+calls it on manual dispatch, which publishes nothing, to test changes.
+
+Secrets are optional and the job summary records which level was reached:
+
+| Secrets present | Result |
+| --- | --- |
+| None of the certificate set | Unsigned dmg |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `KEYCHAIN_PASSWORD` | Signed (Tauri's names, v2.tauri.app/distribute/sign/macos) |
+| The above plus `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_PRIVATE_KEY` (the `.p8` contents) | Signed, notarised and stapled. Tauri notarises the app during the build; the workflow notarises and staples the dmg. |
+
+The `homebrew` job renders `Casks/mxr-desktop.rb` from
+`packaging/homebrew/mxr-desktop.rb` with `scripts/render_homebrew_cask.sh` and
+commits it to the tap in the same commit as the formula, so the two never race
+for the tap's `main`. A failed `desktop` job leaves a draft like a failed
+`build-binaries` leg; re-run the failed job.
 
 ---
 

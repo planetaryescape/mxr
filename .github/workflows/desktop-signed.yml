@@ -181,8 +181,15 @@ jobs:
       - name: Verify the signature
         id: verify
         run: |
-          APP=apps/desktop/src-tauri/target/release/bundle/macos/mxr.app
           DMG="out/$DMG_NAME"
+          # Tauri empties bundle/macos once the dmg exists, so check the app as
+          # users get it: from inside the dmg.
+          MOUNT="$RUNNER_TEMP/desktop-dmg"
+          mkdir -p "$MOUNT"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" > /dev/null
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          APP="$MOUNT/mxr.app"
+          test -d "$APP"
           {
             echo "### codesign (app)"
             echo '```'

@@ -14,7 +14,7 @@ mod mxr_cli;
 mod navigation;
 
 use mxr_cli::LaunchError;
-use navigation::{classify, may_open_externally, Nav, DOWN_PAGE};
+use navigation::{classify, may_open_externally, new_message_script, Nav, DOWN_PAGE};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -75,11 +75,13 @@ fn open_new_message(app: &AppHandle) {
     // compose in. The window can't leave the bridge origin (on_navigation), so
     // having a bridge URL means the web app is what is on screen. Reading
     // `window.url()` instead panics inside wry while a page is still loading.
-    if let Some(target) = shell
+    // The script keeps the user's place when the app is mounted and falls back
+    // to a full navigation to /compose/new when it is not.
+    if let Some(script) = shell
         .bridge()
-        .and_then(|bridge| bridge.join("compose/new").ok())
+        .and_then(|bridge| new_message_script(&bridge))
     {
-        let _ = window.navigate(target);
+        let _ = window.eval(script);
     }
 }
 

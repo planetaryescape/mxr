@@ -1,7 +1,10 @@
 name: Desktop
 
-# Unsigned macOS build of the Tauri shell in apps/desktop. No secrets: signing,
-# notarisation and release attachment are D2. Kept out of ci.yml on purpose.
+# macOS build of the Tauri shell in apps/desktop. Pull requests build unsigned
+# with no secrets. A manual dispatch also runs the signed build
+# (desktop-signed.yml) and uploads the dmg as an artifact without publishing
+# anything. Releases attach the dmg from release.yml. Kept out of ci.yml on
+# purpose.
 on:
   pull_request:
     paths:
@@ -62,3 +65,11 @@ jobs:
           name: mxr-desktop-macos-unsigned
           path: apps/desktop/mxr-desktop-unsigned.zip
           if-no-files-found: error
+
+  # Dry path for the release job: same workflow, nothing published.
+  signed:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/desktop-signed.yml
+    with:
+      version: 0.0.0-dev
+    secrets: inherit

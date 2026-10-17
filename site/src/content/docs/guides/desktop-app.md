@@ -19,12 +19,22 @@ stay in `mxr`. The desktop app bundles none of that.
   `~/.cargo/bin` and `~/.local/bin`, because apps opened from Finder don't
   get your shell's `PATH`.
 
-The app has no installer yet. Build it from a checkout with
-`cd apps/desktop && npm ci --ignore-scripts && npx tauri build --bundles app`;
-the bundle lands in
-`apps/desktop/src-tauri/target/release/bundle/macos/mxr.app`. The build is
-unsigned.
-Signing, notarisation and a Homebrew cask come with the first release.
+Install the app with Homebrew:
+
+```bash
+brew install --cask planetaryescape/mxr/mxr-desktop
+```
+
+The cask installs `mxr` too if you don't have it. Each release also attaches
+`mxr-desktop-<version>-aarch64.dmg` to its GitHub release. To build it
+yourself, run `cd apps/desktop && npm ci --ignore-scripts && npx tauri build
+--bundles app`; the bundle lands in
+`apps/desktop/src-tauri/target/release/bundle/macos/mxr.app`, unsigned.
+
+The release build is signed with a Developer ID certificate. Notarisation
+runs when the release has App Store Connect API credentials. A build without
+them is signed but not notarised, and macOS then asks you to confirm the
+first launch. The release's job summary says which of the two happened.
 
 ## What it does
 
@@ -41,7 +51,8 @@ so copy, paste and the other text shortcuts work.
 ## New message from anywhere
 
 Press Control+Option+Command+M in any app. mxr comes forward and opens a new
-message. The shortcut is deliberately not Command+Shift+M, which Mail and
+message over whatever you were looking at, so closing it with Esc puts you
+back where you were. The shortcut is deliberately not Command+Shift+M, which Mail and
 Chrome already use.
 
 To pick another key, set `MXR_DESKTOP_SHORTCUT` before launching, for
@@ -76,5 +87,7 @@ installable as a PWA if you prefer that to the desktop app.
 
 ## What it isn't
 
-There is no menu-bar item, no notifications and no updater yet. Updates come
-with the `mxr` you install, because the web app is embedded in the binary.
+There is no menu-bar item, no notifications and no built-in updater. The web
+app inside the window comes from the `mxr` you have installed, so
+`brew upgrade mxr` updates it. `brew upgrade --cask mxr-desktop` updates the
+window around it.

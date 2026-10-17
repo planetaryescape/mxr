@@ -55,6 +55,23 @@ pub fn may_open_externally(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https" | "mailto")
 }
 
+/// Script that opens a new message over the current page. The web app listens
+/// for `mxr:new-message` and sets `__mxrNewMessageReady` once mounted
+/// (apps/web/src/features/compose/useNewMessageEvent.ts). Until then, or when
+/// the window shows the down page or another origin, it navigates to
+/// `/compose/new`, which opens the same composer after a full load.
+pub fn new_message_script(bridge: &Url) -> Option<String> {
+    let fallback = bridge.join("compose/new").ok()?;
+    let origin = bridge.origin().ascii_serialization();
+    // JSON strings are valid JS string literals, so neither value can break out.
+    let origin = serde_json::to_string(&origin).ok()?;
+    let fallback = serde_json::to_string(fallback.as_str()).ok()?;
+    Some(format!(
+        "(function(o,t){{if(location.origin===o&&window.__mxrNewMessageReady===true)\
+         {{window.dispatchEvent(new Event('mxr:new-message'));}}else{{location.assign(t);}}}})({origin},{fallback});"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +166,18 @@ mod tests {
         assert!(may_open_externally(&u("mailto:a@b.c")));
         assert!(!may_open_externally(&u("file:///Applications")));
         assert!(!may_open_externally(&u("javascript:1")));
+    }
+
+    #[test]
+    fn the_new_message_script_prefers_the_in_page_event() {
+        let script = new_message_script(&bridge()).unwrap();
+        assert!(script.contains("\"http://mxr.localhost:42829\""));
+        assert!(script.contains("\"http://mxr.localhost:42829/compose/new\""));
+        assert!(script.contains("__mxrNewMessageReady===true"));
+        assert!(script.contains("mxr:new-message"));
+        // The token fragment is not carried into the fallback URL.
+        let with_fragment =
+            new_message_script(&u("http://mxr.localhost:42829/#token=s3cret")).unwrap();
+        assert!(!with_fragment.contains("s3cret"));
     }
 }

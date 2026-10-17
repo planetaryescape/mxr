@@ -24,6 +24,7 @@ import { SIDEBAR_ID, SIDEBAR_SIZE, useResizableSidebar } from "@/hooks/useResiza
 import { setRuntimeNavigate } from "@/lib/actions";
 import { installKeyHints } from "@/lib/actions/keyHints";
 import { useComposeUi } from "@/features/compose/composeUiStore";
+import { useNewMessageEvent } from "@/features/compose/useNewMessageEvent";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { usePromiseOffers } from "@/features/promises/promiseOffers";
 import { useModals } from "@/state/modalStore";
@@ -160,6 +161,7 @@ export function AppShell() {
   const mountPalette = useOnceTrue(paletteOpen);
   const mountSearch = useOnceTrue(searchOpen);
   const mountLauncher = useOnceTrue(launcherOpen);
+  useNewMessageEvent();
   const mountCompose = useOnceTrue(composing);
   const mountDialogs = useOnceTrue(mailDialog);
   const mountHelp = useOnceTrue(helpOpen);

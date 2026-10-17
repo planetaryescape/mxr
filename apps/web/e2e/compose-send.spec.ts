@@ -85,3 +85,27 @@ test("a bare /compose/new opens an empty composer and steps off the URL", async 
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
   await expect(composer(page)).toHaveCount(0);
 });
+
+// The desktop shell's global shortcut dispatches this event on the page
+// (apps/desktop/src-tauri/src/lib.rs `open_new_message`), so a new message
+// opens over the current view instead of reloading the app.
+test("the desktop shortcut event opens a composer over the current page without a reload", async ({
+  page,
+}) => {
+  await openList(page, "/m/inbox");
+  await page.goto("/now");
+  await expect(page).toHaveURL(/\/now$/);
+  await page.waitForFunction(() => window.__mxrNewMessageReady === true);
+  await page.evaluate(() => {
+    (window as unknown as { __kept: boolean }).__kept = true;
+    window.dispatchEvent(new Event("mxr:new-message"));
+  });
+
+  await expect(composer(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/now$/);
+  expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(composer(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/now$/);
+});

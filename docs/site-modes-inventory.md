@@ -73,7 +73,7 @@ in every phase that adds a command.
 | `guides/for-agents.md` | P1 | Worked examples gain `mxr todo`; "What stays local" also needs the background model work (see "Already wrong") |
 | `guides/forgotten-work.md` | P1 | Promises become To do rows (`kind = promise`); P3: owed replies become Messages' Your turn |
 | `guides/mailbox.md` | P2 | The TUI sidebar becomes the modes rail; Owed moves into Messages |
-| `guides/no-native-desktop-app.md` | P2 | Says the web app opens on the desk |
+| `guides/desktop-app.md` | P2 | Says the web app opens on the desk |
 | `guides/recipes.md` | P2 | Owed and Paper trail recipes; P1 adds To do recipes |
 | `guides/rules.md` | P7 | Explain how deterministic rules relate to mode placement and corrections |
 | `guides/search.md` | P2 | Search gains a mode filter; P6: Archive's answer box |

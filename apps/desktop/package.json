@@ -1,0 +1,15 @@
+{
+  "name": "mxr-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Thin Tauri window around the local mxr web app. The Rust side lives in src-tauri/.",
+  "license": "MIT OR Apache-2.0",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build --bundles app",
+    "icons": "tauri icon ../web/public/pwa-maskable-512.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  }
+}

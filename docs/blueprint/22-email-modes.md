@@ -1712,7 +1712,7 @@ mode filter on search.
   `guides/mailbox.md`, `guides/search.md` (mode filter),
   `guides/semantic-search.md` (baseline at sync, stale-only reindex),
   `guides/sound-hints-and-touch.md`, `guides/web-app.md`,
-  `guides/architecture.md`, `guides/no-native-desktop-app.md`,
+  `guides/architecture.md`, `guides/desktop-app.md`,
   `guides/recipes.md`, `examples.md`, `getting-started/quick-start.md`,
   `getting-started/first-sync.md`, `getting-started/gmail-setup.md`,
   `index.mdx`, `reference/keybindings.md` (`g` keys, `K`, `X`, `T`, `e`),

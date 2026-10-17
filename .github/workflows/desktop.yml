@@ -1,0 +1,64 @@
+name: Desktop
+
+# Unsigned macOS build of the Tauri shell in apps/desktop. No secrets: signing,
+# notarisation and release attachment are D2. Kept out of ci.yml on purpose.
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # Same runner image release.yml uses for its macOS aarch64 build.
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install the Tauri CLI
+        run: npm ci --ignore-scripts
+      - name: Format
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+      - name: Clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Test
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked
+      - name: Build unsigned app
+        run: npx tauri build --bundles app -- --locked
+      - name: Zip the app
+        run: ditto -c -k --keepParent src-tauri/target/release/bundle/macos/mxr.app mxr-desktop-unsigned.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mxr-desktop-macos-unsigned
+          path: apps/desktop/mxr-desktop-unsigned.zip
+          if-no-files-found: error

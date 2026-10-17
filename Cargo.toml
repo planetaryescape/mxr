@@ -162,6 +162,7 @@ default-members = ["."]
 exclude = [
     "examples/adapter-skeleton",
     "examples/transport-skeleton",
+    "apps/desktop/src-tauri",
     "fuzz",
     "vendor/hnsw_rs",
 ]

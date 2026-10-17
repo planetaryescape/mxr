@@ -665,6 +665,6 @@ is incomplete by mxr's product rules; see the [why-mxr guide](/guides/why-mxr/).
 - [Keybindings reference](/reference/keybindings/#web-app): every web key, generated from the app's action registry.
 - [`mxr web` CLI reference](/reference/cli/web/): every flag and what it does.
 - [Config reference](/reference/config/#bridge): `[bridge]` keys including `auto_local_token` and `port`.
-- [No native desktop app](/guides/no-native-desktop-app/): why the web app is installable without an Electron shell.
+- [Desktop app](/guides/desktop-app/): the macOS window around this app, with a global new-message shortcut.
 - [Sound, key hints and touch](/guides/sound-hints-and-touch/): low tide, the optional sounds, key hints and swiping rows.
 - [Desk and places reference](/reference/desk-and-places/): lanes, Done, placement rules and JSON output.

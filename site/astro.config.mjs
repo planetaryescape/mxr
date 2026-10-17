@@ -6,6 +6,7 @@ export default defineConfig({
   // Pages a later page replaced; old links still land.
   redirects: {
     '/guides/desk/': '/guides/now/',
+    '/guides/no-native-desktop-app/': '/guides/desktop-app/',
   },
   integrations: [
     starlight({
@@ -104,7 +105,7 @@ export default defineConfig({
             { label: 'Snippets', slug: 'guides/snippets' },
             { label: 'Web App', slug: 'guides/web-app' },
             { label: 'Sound, Key Hints and Touch', slug: 'guides/sound-hints-and-touch' },
-            { label: 'No Native Desktop App', slug: 'guides/no-native-desktop-app' },
+            { label: 'Desktop App', slug: 'guides/desktop-app' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
           ],
         },

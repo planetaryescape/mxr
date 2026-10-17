@@ -1,0 +1,31 @@
+# Standalone: not a member of the root workspace, so workspace CI (clippy,
+# deny, nextest, MSRV) never builds tauri or wry. Own Cargo.lock and target dir.
+[workspace]
+
+[package]
+name = "mxr-desktop"
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Thin Tauri window around the local mxr web app"
+
+[lib]
+name = "mxr_desktop_lib"
+path = "src/lib.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

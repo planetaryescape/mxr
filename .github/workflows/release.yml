@@ -302,6 +302,17 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
 
+  # The signed desktop dmg joins the CLI archives in the same draft release.
+  # It is required: the release stays a draft until it is built and attached.
+  desktop:
+    name: Desktop app
+    needs: [plan]
+    if: needs.plan.outputs.has_artifacts == 'true'
+    uses: ./.github/workflows/desktop-signed.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
   github-release:
     name: GitHub Release
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -311,13 +322,15 @@ jobs:
     concurrency:
       group: release-publish-${{ github.ref }}
       cancel-in-progress: false
-    needs: [plan, release-smoke, build-binaries]
+    needs: [plan, release-smoke, build-binaries, desktop]
     if: >-
       always()
       && needs.plan.result == 'success'
       && needs.release-smoke.result == 'success'
       && (needs.build-binaries.result == 'success'
         || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
+      && (needs.desktop.result == 'success'
+        || (needs.plan.outputs.has_artifacts != 'true' && needs.desktop.result == 'skipped'))
     steps:
       - uses: actions/checkout@v7
         with:
@@ -360,7 +373,7 @@ jobs:
   # Docs auto-deploy to Vercel on push (mxr-mail.vercel.app)
 
   homebrew:
-    name: Homebrew Formula
+    name: Homebrew Formula and Cask
     runs-on: macos-15
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
@@ -374,7 +387,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           bash ./scripts/render_homebrew_formula.sh "$VERSION" artifacts Formula/mxr.rb
-      - name: Update tap formula
+      - name: Render cask
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          bash ./scripts/render_homebrew_cask.sh "$VERSION" artifacts Casks/mxr-desktop.rb
+      - name: Update tap formula and cask
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
@@ -384,14 +401,16 @@ jobs:
           fi
           VERSION="${GITHUB_REF#refs/tags/v}"
           git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
+          mkdir -p tap/Formula tap/Casks
           cp Formula/mxr.rb tap/Formula/mxr.rb
-          if git -C tap diff --quiet -- Formula/mxr.rb; then
-            echo "No Homebrew formula changes"
+          cp Casks/mxr-desktop.rb tap/Casks/mxr-desktop.rb
+          git -C tap add Formula/mxr.rb Casks/mxr-desktop.rb
+          if git -C tap diff --cached --quiet; then
+            echo "No Homebrew formula or cask changes"
             exit 0
           fi
           git -C tap config user.name "github-actions[bot]"
           git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C tap add Formula/mxr.rb
           git -C tap commit -m "mxr ${VERSION}"
           git -C tap push origin HEAD:main
       - name: Verify Homebrew install
@@ -399,3 +418,10 @@ jobs:
           brew update
           brew install planetaryescape/mxr/mxr
           mxr version
+      - name: Verify Homebrew cask install
+        run: |
+          brew install --cask planetaryescape/mxr/mxr-desktop
+          test -d /Applications/mxr.app
+          # Recorded, not asserted: shows whether Gatekeeper accepts the app.
+          spctl --assess --type execute -vv /Applications/mxr.app || true
+          brew uninstall --cask mxr-desktop

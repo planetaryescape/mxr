@@ -1,0 +1,249 @@
+name: Desktop (signed build)
+
+# Reusable: builds the Tauri shell in apps/desktop into a signed .dmg and
+# uploads it as the `desktop-dmg` artifact. Called by desktop.yml (manual
+# dispatch, nothing published) and by release.yml (attached to the draft
+# release before it is published).
+#
+# Secrets are optional so a missing one never fails a release:
+#   certificate secrets absent                  -> unsigned dmg
+#   certificate present, notarisation absent    -> signed, not notarised
+#   certificate + App Store Connect API present -> signed, notarised, stapled
+# The job summary says which of the three happened.
+#
+# Tauri's names and flow: https://v2.tauri.app/distribute/sign/macos/ and
+# https://v2.tauri.app/distribute/dmg/
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version, with or without a leading v. Becomes the app and dmg version."
+        type: string
+        required: true
+    outputs:
+      signed:
+        description: "true when the dmg was signed with the Developer ID certificate"
+        value: ${{ jobs.build.outputs.signed }}
+      notarized:
+        description: "true when the app and dmg were notarised and stapled"
+        value: ${{ jobs.build.outputs.notarized }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build signed dmg
+    # Same runner image release.yml uses for its macOS aarch64 build.
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      signed: ${{ steps.result.outputs.signed }}
+      notarized: ${{ steps.result.outputs.notarized }}
+    env:
+      VERSION_INPUT: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve the version
+        run: |
+          VERSION="${VERSION_INPUT#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error ::Desktop version must look like 1.2.3; got '$VERSION_INPUT'."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DMG_NAME=mxr-desktop-${VERSION}-aarch64.dmg" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install the Tauri CLI
+        working-directory: apps/desktop
+        run: npm ci --ignore-scripts
+
+      # A temporary keychain, as in Tauri's example, so the private key never
+      # touches the runner's login keychain. Tauri finds the identity by name.
+      - name: Import the Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ] \
+            || [ -z "$APPLE_SIGNING_IDENTITY" ] || [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "::warning ::Apple signing secrets are not all set; the desktop dmg will be unsigned."
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/desktop-codesign.keychain-db"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/desktop-cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/desktop-cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/desktop-cert.p12"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -qF "$APPLE_SIGNING_IDENTITY"; then
+            echo "::error ::The imported certificate does not provide the identity in APPLE_SIGNING_IDENTITY."
+            exit 1
+          fi
+          echo "SIGNED=true" >> "$GITHUB_ENV"
+          # Tauri reads these two; nothing else is exported to the build.
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
+      # App Store Connect API route from Tauri's notarisation docs. Tauri
+      # notarises and staples the .app during the build when all three
+      # variables are set; the dmg is notarised below.
+      - name: Prepare notarisation credentials
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ "$SIGNED" != "true" ]; then
+            echo "NOTARIZED=false" >> "$GITHUB_ENV"
+            echo "NOTARIZE_NOTE=Not notarised: the app is unsigned." >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "$APPLE_API_ISSUER" ] || [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_PRIVATE_KEY" ]; then
+            echo "::warning ::APPLE_API_ISSUER, APPLE_API_KEY and APPLE_API_PRIVATE_KEY are not all set; the dmg is signed but not notarised."
+            echo "NOTARIZED=false" >> "$GITHUB_ENV"
+            echo "NOTARIZE_NOTE=Signed, not notarised: the App Store Connect API secrets are not all set." >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "::add-mask::$APPLE_API_ISSUER"
+          echo "::add-mask::$APPLE_API_KEY"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          {
+            echo "NOTARIZED=true"
+            echo "NOTARIZE_KEY_PATH=$KEY_PATH"
+            echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            echo "APPLE_API_KEY=$APPLE_API_KEY"
+            echo "APPLE_API_KEY_PATH=$KEY_PATH"
+          } >> "$GITHUB_ENV"
+
+      # The version comes from the release tag, not the committed 0.0.0, so the
+      # app, its Info.plist and the dmg name agree with the release.
+      - name: Build the dmg
+        working-directory: apps/desktop
+        run: |
+          npx tauri build --bundles dmg \
+            --config "{\"version\":\"${VERSION}\"}" -- --locked
+          BUNDLE=src-tauri/target/release/bundle
+          ls -la "$BUNDLE/macos" "$BUNDLE/dmg"
+          DMG="$(find "$BUNDLE/dmg" -name '*.dmg' -maxdepth 1 | head -n1)"
+          test -n "$DMG"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp "$DMG" "$GITHUB_WORKSPACE/out/$DMG_NAME"
+
+      - name: Sign the dmg if the build left it unsigned
+        if: env.SIGNED == 'true'
+        run: |
+          DMG="out/$DMG_NAME"
+          if ! codesign --verify --verbose=2 "$DMG" 2>/dev/null; then
+            codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$DMG"
+          fi
+          codesign --verify --verbose=2 "$DMG"
+
+      - name: Notarise and staple the dmg
+        if: env.NOTARIZED == 'true'
+        run: |
+          DMG="out/$DMG_NAME"
+          xcrun notarytool submit "$DMG" \
+            --key "$NOTARIZE_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+      # Recorded, not asserted for spctl: without notarisation it says
+      # "rejected", which is expected and worth reading in the summary.
+      - name: Verify the signature
+        id: verify
+        run: |
+          APP=apps/desktop/src-tauri/target/release/bundle/macos/mxr.app
+          DMG="out/$DMG_NAME"
+          {
+            echo "### codesign (app)"
+            echo '```'
+            codesign -dv --verbose=4 "$APP" 2>&1 || true
+            echo '```'
+            echo "### codesign --verify --deep --strict (app)"
+            echo '```'
+            if codesign --verify --deep --strict --verbose=2 "$APP" 2>&1; then echo "valid"; else echo "FAILED"; fi
+            echo '```'
+            echo "### spctl --assess --type execute (app)"
+            echo '```'
+            spctl --assess --type execute -vv "$APP" 2>&1 || true
+            echo '```'
+            echo "### spctl --assess --type open (dmg)"
+            echo '```'
+            spctl --assess --type open --context context:primary-signature -vv "$DMG" 2>&1 || true
+            echo '```'
+          } > "$RUNNER_TEMP/verify.md"
+          cat "$RUNNER_TEMP/verify.md"
+          if [ "$SIGNED" = "true" ]; then
+            codesign --verify --deep --strict "$APP"
+            # Notarisation requires the hardened runtime.
+            codesign -dv --verbose=4 "$APP" 2>&1 | grep -E 'flags=.*runtime' > /dev/null \
+              || { echo "::error ::The app is signed without the hardened runtime."; exit 1; }
+          fi
+
+      - name: Checksum
+        run: |
+          cd out
+          shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256"
+          cat "$DMG_NAME.sha256"
+
+      - id: result
+        run: |
+          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+          echo "notarized=$NOTARIZED" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Desktop dmg ${VERSION}"
+            if [ "$SIGNED" != "true" ]; then
+              echo "Unsigned: the Apple certificate secrets are not all set."
+            elif [ "$NOTARIZED" = "true" ]; then
+              echo "Signed with the Developer ID certificate, notarised and stapled."
+            else
+              echo "${NOTARIZE_NOTE}"
+            fi
+            echo
+            echo "sha256: \`$(cut -d' ' -f1 "out/$DMG_NAME.sha256")\`"
+            echo
+            cat "$RUNNER_TEMP/verify.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-dmg
+          path: |
+            out/${{ env.DMG_NAME }}
+            out/${{ env.DMG_NAME }}.sha256
+          if-no-files-found: error
+
+      - name: Remove the keychain and the API key
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then security delete-keychain "$KEYCHAIN_PATH" || true; fi
+          if [ -n "${NOTARIZE_KEY_PATH:-}" ]; then rm -f "$NOTARIZE_KEY_PATH"; fi

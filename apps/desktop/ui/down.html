@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mxr</title>
+<style>
+  /* Night-desk tokens from apps/web/src/styles/themes.generated.css (Midnight). */
+  :root {
+    color-scheme: dark;
+    --ink-desk: #0d161f;
+    --ink-lamp: #161f29;
+    --text-1: #e3e9f0;
+    --text-2: #a6b2bf;
+    --text-3: #7f8f9f;
+    --signal: #5cd5fc;
+    --rule: #2b3743;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--ink-desk);
+    color: var(--text-1);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  main { width: min(30rem, 100%); }
+  h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }
+  p { color: var(--text-2); margin: 0 0 1rem; }
+  code {
+    display: block;
+    background: var(--ink-lamp);
+    border: 1px solid var(--rule);
+    padding: 0.5rem 0.75rem;
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--text-1);
+    user-select: all;
+    margin: 0 0 1.25rem;
+  }
+  a.retry {
+    display: inline-block;
+    background: var(--signal);
+    color: var(--ink-desk);
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+  }
+  a.retry:focus-visible { outline: 2px solid var(--text-1); outline-offset: 2px; }
+  a.retry[aria-disabled="true"] { opacity: 0.6; pointer-events: none; }
+  .hint { color: var(--text-3); font-size: 13px; margin: 1.25rem 0 0; }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <section id="starting" hidden>
+    <h1>Opening mxr</h1>
+    <p>Starting the local web app.</p>
+  </section>
+  <section id="down" hidden>
+    <h1>mxr isn't running</h1>
+    <p id="why"></p>
+    <code>mxr daemon</code>
+    <a class="retry" id="retry" href="down.html?action=retry">Try again</a>
+    <p class="hint">Run the command in a terminal, then try again. <code style="display:inline;padding:0 .3rem;margin:0">mxr web</code> still works in a browser.</p>
+  </section>
+</main>
+<script>
+  // No Tauri IPC here: "Try again" is a navigation the shell intercepts.
+  var reason = new URLSearchParams(location.search).get("reason") || "starting";
+  var why = {
+    missing: "The mxr command wasn't found. Install it with Homebrew, then start the daemon.",
+    failed: "The local web app didn't start. Start the daemon, then try again.",
+    timeout: "The local web app didn't answer in time. Start the daemon, then try again.",
+  };
+  if (reason === "starting") {
+    document.getElementById("starting").hidden = false;
+  } else {
+    document.getElementById("down").hidden = false;
+    document.getElementById("why").textContent = why[reason] || why.failed;
+  }
+  document.getElementById("retry").addEventListener("click", function () {
+    this.textContent = "Trying…";
+    this.setAttribute("aria-disabled", "true");
+  });
+</script>
+</body>
+</html>

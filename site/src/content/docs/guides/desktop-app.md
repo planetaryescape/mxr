@@ -60,12 +60,13 @@ mxr daemon
 Run it in a terminal and press **Try again**. Once the web app is open, its
 own offline banner covers a daemon that goes away later.
 
-## Links and safety
+## Links, attachments and safety
 
 The window only shows the web app it got from `mxr web` and its own down
-page. Links to other sites open in your default browser. The app grants no
-Tauri commands to any page, so the web app and the mail it renders can't call
-into the shell.
+page. Links to other sites open in your default browser. Attachments you
+download save to your Downloads folder, and an existing file is never
+overwritten. The app grants no Tauri commands to any page, so the web app and
+the mail it renders can't call into the shell.
 
 ## Still works in a browser
 

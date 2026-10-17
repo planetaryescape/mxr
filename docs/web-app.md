@@ -100,7 +100,17 @@ target dir) so workspace CI never builds tauri.
   Tauri IPC. `on_navigation` allows only the bridge origin it was given and
   the down page; other `http(s)` and `mailto:` links open in the default
   browser through the opener plugin, and `target=_blank` never opens a window.
-  Try again is a navigation the shell intercepts, not a command.
+  Try again is a navigation the shell intercepts, not a command. The opener
+  plugin is not registered, only its `open_url` function is used: the plugin
+  injects a script that turns `target=_blank` clicks into IPC calls, which the
+  shell denies, so links would do nothing.
+- Attachments: the page saves them with a blob and `<a download>`, which
+  WKWebView only follows with a download handler. `on_download` accepts
+  downloads that came from the bridge origin and writes them to `~/Downloads`
+  without overwriting.
+- Plain http: the bridge is `http://mxr.localhost`, and App Transport Security
+  blocks that in a bundled app. `src-tauri/Info.plist` excepts `localhost`
+  and its subdomains and `127.0.0.1`, nothing else.
 - Build: `cd apps/desktop && npm ci --ignore-scripts && npx tauri build --bundles app`
   (unsigned). CI is `.github/workflows/desktop.yml`.
 

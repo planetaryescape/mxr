@@ -60,8 +60,8 @@ URL.
 
 mxr is not a hosted connector layer, managed auth service, remote
 workflow platform, or backend email API for a server product. It is also
-not a native desktop app; the GUI surface is the web app opened with
-`mxr web`.
+not a standalone desktop app; the GUI surface is the web app, opened with
+`mxr web` or in the thin [desktop window](/guides/desktop-app/) around it.
 
 Use something else when:
 
@@ -119,5 +119,5 @@ touching your real profile.
 - [Automation contract](/guides/automation-contract/)
 - [For agents](/guides/for-agents/)
 - [MCP server](/reference/mcp/)
-- [No native desktop app](/guides/no-native-desktop-app/)
+- [Desktop app](/guides/desktop-app/)
 - [Architecture](/guides/architecture/)

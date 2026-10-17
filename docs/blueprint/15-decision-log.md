@@ -1106,3 +1106,13 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Why**: BK, 2026-10-16: "the sparkly emoji/icon is really overdone for AI, it screams vibe coded". D136 already marks provenance in words, so an icon adds nothing a reader can use, and a shared symbol makes every product look the same.
 
 **Trade-offs accepted**: A model feature is no longer recognisable at a glance from its icon, so its label and `ModelMark` have to carry it.
+
+## D142: A thin Tauri desktop app for macOS ships, and the daemon stays the system
+
+**Chosen**: `apps/desktop/` is a Tauri 2 shell that runs `mxr web --print-url --no-open`, loads the URL it prints in one window and registers a global new-message shortcut (Control+Option+Command+M). It bundles no frontend and no daemon, has no updater (Homebrew updates `mxr`) and shows a bundled down page when `mxr` is missing or `mxr web` fails. No page gets Tauri IPC; the window may only show the bridge origin and the down page, and other links open in the browser. macOS first; the unsigned build is D1 and signing, notarisation, the release and a Homebrew cask are D2.
+
+**Considered**: Staying with the browser and the PWA (the 2026-05-12 decision, which has no D number: commits `261e5f599` and `da61537ae`, which removed the Electron app and wrote the "no native desktop app" guide). An Electron shell again.
+
+**Why**: BK, 2026-10-16: "I don't think there's a huge cost to a tauri app, the backend is separate and is already there and working, the actual web app that we'd put in the web view is already there and working and mxr web can still work if you wan to open in the browser since it's the same app." The Electron app's cost came from bundling `mxr`, managing the daemon (`bridge-manager.ts`, 675 lines) and its own updater. The shell does none of the three, so what is left is a window, a shortcut and a down page.
+
+**Trade-offs accepted**: A second artifact to build and, from D2, to sign and release. The shell depends on the `/compose/new` deep link, so that route is now a contract. Closing the window hides it rather than quitting, so the shortcut keeps working.

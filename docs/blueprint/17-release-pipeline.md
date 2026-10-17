@@ -38,6 +38,14 @@ Legal pages are built as part of the site. There is no separate checked-in
 `policy-sync` job today, so policy text changes must update both the root policy
 file and the corresponding `site/src/pages/` page in the same PR.
 
+## Desktop (D2, not yet)
+
+The macOS desktop app in `apps/desktop/` is built unsigned by
+`.github/workflows/desktop.yml` and is not part of any release. D2 adds Apple
+signing and notarisation, attaches the `.app` to the release-please release,
+and adds a Homebrew cask. Until then `release.yml` and the formula know nothing
+about it.
+
 ---
 
 ## Release strategy

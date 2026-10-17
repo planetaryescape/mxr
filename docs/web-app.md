@@ -39,9 +39,10 @@ Browser (apps/web SPA)  ──HTTP+WS──>  bridge (crates/web)  ──Unix so
 | Responsive floor | 900 px for the desktop shell; under 640 px, five tabs (`components/MobileTabs.tsx`) | Blueprint 22 puts Now and the modes on a phone, inside the five-tab limit |
 | UI prefs | One global set in `state/uiPrefsStore.ts` | No per-account prefs |
 
-Rejected, do not propose: provider calls from the SPA, per-account UI prefs, a
-native desktop wrapper, redirect-based OAuth in the SPA (device code is
-canonical). The phone layout was rejected until blueprint 22 asked for Now and
+Rejected, do not propose: provider calls from the SPA, per-account UI prefs,
+redirect-based OAuth in the SPA (device code is canonical). A desktop wrapper
+was rejected on 2026-05-12 and reversed on 2026-10-16 (D142): the only
+wrapper is the thin shell in `apps/desktop/`, below. The phone layout was rejected until blueprint 22 asked for Now and
 the modes on a phone; it is five tabs over the same routes, not a separate
 build.
 
@@ -75,6 +76,33 @@ build.
 The WebSocket authenticates with `Sec-WebSocket-Protocol: bearer, <token>`.
 The socket starts before the handshake finishes on a first visit, so
 `tokenStorage.onTokenChange` tells it to connect when the token lands.
+
+## Desktop shell
+
+`apps/desktop/` is a Tauri 2 shell for macOS. It is a window around this app,
+not a second app: it bundles no frontend and no daemon, and it has no updater.
+It is outside the root Cargo workspace (own `[workspace]`, `Cargo.lock` and
+target dir) so workspace CI never builds tauri.
+
+- Launch: runs `mxr web --print-url --no-open`, finds `mxr` on `PATH` plus
+  `/opt/homebrew/bin`, `/usr/local/bin`, `~/.cargo/bin` and `~/.local/bin`,
+  and loads the one URL it prints (never logged). No `mxr`, a failure or 15s
+  without a URL shows `ui/down.html`, a single inline-CSS page with the
+  command to start the daemon and a Try again link.
+- Shortcut: Control+Option+Command+M (override with `MXR_DESKTOP_SHORTCUT`)
+  focuses the window and navigates it to `/compose/new`, the deep link above,
+  so it opens the same composer as `c`. Do not rename or break that route; the
+  shell depends on it (`e2e/compose-send.spec.ts`).
+- One instance (`tauri-plugin-single-instance`), window size and position
+  restored (`tauri-plugin-window-state`). Closing hides the window; Command+Q
+  quits.
+- Trust boundary: no capabilities and no `invoke` handler, so no page gets
+  Tauri IPC. `on_navigation` allows only the bridge origin it was given and
+  the down page; other `http(s)` and `mailto:` links open in the default
+  browser through the opener plugin, and `target=_blank` never opens a window.
+  Try again is a navigation the shell intercepts, not a command.
+- Build: `cd apps/desktop && npm ci --ignore-scripts && npx tauri build --bundles app`
+  (unsigned). CI is `.github/workflows/desktop.yml`.
 
 ## Serving and deep links
 

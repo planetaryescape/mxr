@@ -616,13 +616,16 @@ describe("ComposeHost send confirmation", () => {
     expect(api.sendComposeSession.mock.calls[0]?.[2]).toBe("tok-1");
   });
 
-  test("Ctrl+O overrides a block and sends, like the TUI", async () => {
+  test("O overrides a block and sends; Ctrl+O is left to the browser", async () => {
     api.checkComposeSafety.mockResolvedValue({ report: blockedReport });
     renderHost();
     openNewMessage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
-    fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "o", ctrlKey: true });
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.keyDown(dialog, { key: "o", ctrlKey: true });
+    expect(api.sendComposeSession).not.toHaveBeenCalled();
+    fireEvent.keyDown(dialog, { key: "o" });
 
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
     expect(api.sendComposeSession.mock.calls[0]?.[2]).toBe("tok-1");

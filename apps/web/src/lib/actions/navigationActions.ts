@@ -65,8 +65,9 @@ export const navigationActions: Action[] = [
     description: "Run any action by name",
     group: "Navigate",
     shortcut: "Mod+k",
-    aliases: [":", "Ctrl+p"],
-    tuiNote: "Ctrl+P works on macOS; elsewhere it stays the browser's Print",
+    aliases: [":"],
+    macAliases: ["Ctrl+p"],
+    tuiNote: "Ctrl+P works on macOS only, where it is not the browser's Print",
     hideInPalette: true,
     run: () => {
       holdTypeAhead();

@@ -57,10 +57,10 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   const registry = {
     resolve: (chord: string, scopes: ActionScope[]) =>
       spellings(chord)
-        .map((spelling) => options.registry.resolve(spelling, scopes))
+        .map((spelling) => options.registry.resolve(spelling, scopes, mac))
         .find(Boolean),
     hasContinuation: (chord: string, scopes: ActionScope[]) =>
-      spellings(chord).some((spelling) => options.registry.hasContinuation(spelling, scopes)),
+      spellings(chord).some((spelling) => options.registry.hasContinuation(spelling, scopes, mac)),
   };
   let buffer: KeyToken[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;

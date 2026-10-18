@@ -6,7 +6,7 @@
 
 import { useMemo } from "react";
 
-import { formatChord } from "@/lib/keys/chord";
+import { formatChord, isMacPlatform } from "@/lib/keys/chord";
 
 import "./catalog";
 import { chordsOf, getRegistry, isAvailable, scopesOf } from "./registry";
@@ -65,7 +65,7 @@ const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {
 function hint(action: Action, ctx: ActionContext): ShortcutHint {
   return {
     id: action.id,
-    keys: chordsOf(action).map((chord) => formatChord(chord)),
+    keys: chordsOf(action, isMacPlatform()).map((chord) => formatChord(chord)),
     label: action.label,
     shortLabel: action.shortLabel ?? action.label.replace(/…$/, ""),
     note: action.tuiNote,

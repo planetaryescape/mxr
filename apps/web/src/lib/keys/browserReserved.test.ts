@@ -14,31 +14,8 @@ import { parseChord } from "./chord";
 const LITERAL_BINDINGS: { chord: string; source: string }[] = [
   { chord: "Mod+Enter", source: "features/compose/codemirror/CodeMirrorComposeEditor.tsx:200" },
   { chord: "Mod+Shift+f", source: "features/compose/ComposeHost.tsx:144" },
-  { chord: "Ctrl+o", source: "features/compose/SendConfirmDialog.tsx:95" },
   { chord: "Ctrl+j", source: "features/search/SearchPalette.tsx:90" },
   { chord: "Ctrl+k", source: "features/search/SearchPalette.tsx:94" },
-];
-
-/**
- * Known conflicts, kept visible until BK decides how to fix each. Remove
- * an entry when its binding changes. Keyed by chord and where it lives.
- */
-const KNOWN_CONFLICTS: { where: string; chord: string; why: string }[] = [
-  {
-    where: "Ctrl+o",
-    chord: "Ctrl+o",
-    why: "SendConfirmDialog.tsx:95 override key; the browser's Open File takes it off macOS before the page sees it",
-  },
-  {
-    where: "shell.command-palette",
-    chord: "Ctrl+p",
-    why: "navigationActions.ts:68 alias; off macOS it is the browser's Print, as its tuiNote already says",
-  },
-  {
-    where: "list.filter",
-    chord: "Ctrl+f",
-    why: "paneActions.ts:109 alias; off macOS it is the browser's Find, and g f is the path that always works",
-  },
 ];
 
 const ORDER = ["Cmd", "Ctrl", "Win", "Alt", "Shift"];
@@ -77,10 +54,9 @@ function reservedCombos(): { combo: string; platform: Platform; chord: string; r
   );
 }
 
-function conflictsWith(chord: string, where: string) {
-  const known = KNOWN_CONFLICTS.some((entry) => entry.where === where && entry.chord === chord);
+function conflictsWith(chord: string, macOnly = false) {
   const hits: { platform: Platform; reserved: string; reason: string }[] = [];
-  for (const platform of ["mac", "other"] as const) {
+  for (const platform of macOnly ? (["mac"] as const) : (["mac", "other"] as const)) {
     const combo = physicalCombo(chord, platform);
     for (const reserved of reservedCombos()) {
       if (reserved.platform === platform && reserved.combo === combo) {
@@ -88,15 +64,15 @@ function conflictsWith(chord: string, where: string) {
       }
     }
   }
-  return { hits, known };
+  return hits;
 }
 
 describe("browser-reserved shortcuts", () => {
   test("no registry binding uses a combo the browser keeps", () => {
     const problems: string[] = [];
     for (const binding of getRegistry().bindings()) {
-      const { hits, known } = conflictsWith(binding.chord, binding.action.id);
-      if (hits.length > 0 && !known) {
+      const hits = conflictsWith(binding.chord, binding.macOnly);
+      if (hits.length > 0) {
         problems.push(
           `${binding.action.id} "${binding.chord}" (${binding.scope}) is ${hits[0]?.reserved} on ${hits[0]?.platform}: ${hits[0]?.reason}`,
         );
@@ -108,17 +84,27 @@ describe("browser-reserved shortcuts", () => {
   test("no literal binding in compose or dialogs uses a reserved combo", () => {
     const problems: string[] = [];
     for (const literal of LITERAL_BINDINGS) {
-      const { hits, known } = conflictsWith(literal.chord, literal.chord);
-      if (hits.length > 0 && !known) {
+      const hits = conflictsWith(literal.chord);
+      if (hits.length > 0) {
         problems.push(`${literal.source} "${literal.chord}" is ${hits[0]?.reserved}`);
       }
     }
     expect(problems).toEqual([]);
   });
 
-  // Named per entry, so a stale exception fails with its own name.
-  test.each(KNOWN_CONFLICTS)('$where "$chord" still conflicts', ({ where, chord }) => {
-    expect(conflictsWith(chord, where).hits.length).toBeGreaterThan(0);
+  test("macOS-only aliases are inert off macOS", () => {
+    const macOnly = getRegistry()
+      .bindings()
+      .filter((binding) => binding.macOnly);
+    expect(macOnly.map((binding) => binding.chord).toSorted()).toEqual(["Ctrl+f", "Ctrl+p"]);
+    for (const binding of macOnly) {
+      expect(getRegistry().resolve(binding.chord, [binding.scope], false)).toBeUndefined();
+    }
+    // list.filter needs a mounted list controller, so only the palette's
+    // alias can be resolved here.
+    expect(getRegistry().resolve("Ctrl+p", ["global"], true)?.action.id).toBe(
+      "shell.command-palette",
+    );
   });
 
   test("the chord normaliser agrees with the browser on the combos that matter", () => {

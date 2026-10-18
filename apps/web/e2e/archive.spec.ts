@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { allowClipboard, readClipboard } from "./helpers/clipboard";
-import { mailList, openList } from "./helpers/mail";
+import { animationsSettled, mailList, openList } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -31,6 +31,9 @@ async function waitForRecords(page: Page): Promise<number> {
 }
 
 async function blockingViolations(page: Page): Promise<string[]> {
+  // A dialog still fading in blends with the page behind it, and axe reads that
+  // as low contrast (WebKit on CI: the Archive export preview).
+  await animationsSettled(page);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .exclude("iframe")

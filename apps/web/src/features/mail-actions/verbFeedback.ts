@@ -74,6 +74,13 @@ interface VerbParts {
   optimistic: string;
   /** Past tense for the result toast: "Archived 3 messages". */
   pastTense: string;
+  /**
+   * How a failure names the verb, with `{}` where the object goes:
+   * "archive {}" reads "Couldn't archive 3 messages"; "Archived {}" reads
+   * "Archived 2 of 3 messages" when only part of it worked. Set for every
+   * `MailAction`; the object can sit mid-phrase ("move {} to Trash").
+   */
+  failure?: { base: string; partial: string };
   sound: SoundEvent | null;
   /** The toast's colour: done is success, a change with undo is info. */
   tone: ToastTone;
@@ -98,6 +105,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, reader toolbar, ${SWIPE} (short right)`,
     optimistic: "The rows leave the list at once; the reader moves to the next conversation.",
     pastTense: "Archived",
+    failure: { base: "archive {}", partial: "Archived {}" },
     tone: "info",
     sound: "archived",
     undo: "daemon-mutation",
@@ -108,6 +116,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "bulk bar",
     optimistic: "The rows leave the list at once.",
     pastTense: "Read and archived",
+    failure: { base: "mark {} read and archive them", partial: "Read and archived {}" },
     tone: "info",
     sound: "archived",
     undo: "daemon-mutation",
@@ -118,6 +127,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, ${SWIPE} (long right)`,
     optimistic: "The rows leave the list at once.",
     pastTense: "Moved to Trash",
+    failure: { base: "move {} to Trash", partial: "Moved {} to Trash" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -128,6 +138,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "bulk bar",
     optimistic: "The rows leave the list at once.",
     pastTense: "Marked as spam",
+    failure: { base: "mark {} as spam", partial: "Marked {} as spam" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -138,6 +149,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, reader header",
     optimistic: "The star fills at once.",
     pastTense: "Starred",
+    failure: { base: "star {}", partial: "Starred {}" },
     tone: "info",
     sound: null,
     // The daemon restores each message's own prior star, so starring a
@@ -151,6 +163,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     // the list doesn't show, so the row and the action agree.
     optimistic: "The star empties at once.",
     pastTense: "Unstarred",
+    failure: { base: "unstar {}", partial: "Unstarred {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -160,6 +173,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, bulk bar",
     optimistic: "The row loses its unread mark at once.",
     pastTense: "Marked read",
+    failure: { base: "mark {} read", partial: "Marked {} read" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -169,6 +183,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, bulk bar",
     optimistic: "The row gains its unread mark at once.",
     pastTense: "Marked unread",
+    failure: { base: "mark {} unread", partial: "Marked {} unread" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -178,6 +193,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the move dialog",
     optimistic: "The rows leave a list they no longer belong to.",
     pastTense: "Moved",
+    failure: { base: "move {}", partial: "Moved {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -187,6 +203,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the move dialog from a queue",
     optimistic: "The rows leave the queue at once.",
     pastTense: "Routed",
+    failure: { base: "route {}", partial: "Routed {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -196,6 +213,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the labels dialog",
     optimistic: "The label chip shows at once.",
     pastTense: "Labelled",
+    failure: { base: "label {}", partial: "Labelled {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -206,6 +224,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The chip goes; the rows leave that label's list.",
     // With the label: "Removed Hiring from 3 messages".
     pastTense: "Removed",
+    failure: { base: "remove the label from {}", partial: "Removed the label from {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -224,6 +243,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the labels dialog",
     optimistic: "Chips change at once.",
     pastTense: "Updated labels on",
+    failure: { base: "update labels on {}", partial: "Updated labels on {}" },
     tone: "info",
     sound: null,
     undo: "daemon-mutation",
@@ -233,6 +253,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, reader toolbar, ${SWIPE} (left)`,
     optimistic: "The rows leave the list once a time is chosen.",
     pastTense: "Snoozed",
+    failure: { base: "snooze {}", partial: "Snoozed {}" },
     tone: "info",
     sound: "snoozed",
     undo: "wake",

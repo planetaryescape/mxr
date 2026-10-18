@@ -462,22 +462,9 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 className="mt-12 border-t border-border pt-4 text-sm text-muted-foreground"
               >
                 <p>From this source: {source.evidence}.</p>
+                {/* Later, Let go and Unsubscribe live in the toolbar above, once. */}
                 <p className="-ml-2 mt-2 flex flex-wrap items-center gap-1">
                   <ToolButton label="Next" keys="n" onClick={next} />
-                  <ToolButton
-                    label="Later"
-                    keys="b"
-                    onClick={() => void putOnLater(item.item_key)}
-                  />
-                  <ToolButton
-                    label="Let go"
-                    keys="e"
-                    onClick={() => {
-                      void letGo([item.thread_id]);
-                      next();
-                    }}
-                  />
-                  <ToolButton label="Unsubscribe" keys="D" onClick={() => setUnsubscribing(true)} />
                 </p>
               </footer>
             </div>

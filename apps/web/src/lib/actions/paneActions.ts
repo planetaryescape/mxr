@@ -106,9 +106,9 @@ export const listActions: Action[] = [
     shortLabel: "Clear",
   }),
   key("list", "list.filter", "filter", "Filter this list", "g f", "Search", {
-    aliases: ["Ctrl+f"],
+    macAliases: ["Ctrl+f"],
     hideInPalette: false,
-    tuiNote: "TUI Ctrl-f; Ctrl+F stays the browser's Find off macOS, so g f works everywhere",
+    tuiNote: "TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find",
   }),
   {
     id: "list.toggle-threads",

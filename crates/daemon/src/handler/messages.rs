@@ -17,7 +17,7 @@ use super::desk_lanes::{
     AccountInputs, DESK_WINDOW_DAYS,
 };
 use super::desk_timers::DeskTimers;
-use super::messages_text::{cached_ask, new_texts, wrapped_lines, TextRequest};
+use super::messages_text::{cached_ask, new_texts, wrapped_lines, MessageText, TextRequest};
 use super::messages_view::{
     band, build_row, closeness, day_label, preview_text, rank_by_recency, rank_your_turn,
     turn_ratio, People, RowContext, RowKey, Topic, PINNED_CAP,
@@ -47,6 +47,8 @@ const PERSON_TOPICS_MAX: u32 = 40;
 const CONVERSATION_MAX: usize = 20;
 /// A message of this many wrapped lines or fewer reads like chat.
 const COMPACT_MAX_LINES: usize = 3;
+/// Earlier messages a preview looks back through when the latest is only a quote.
+const PREVIEW_LOOKBACK: usize = 8;
 /// Up to this many lapsed people follow the clear line.
 const LAPSED_MAX: usize = 3;
 
@@ -662,7 +664,7 @@ async fn fill_previews(
                 None => continue,
             }
         };
-        let texts = new_texts(
+        let mut texts = new_texts(
             state,
             thread,
             &TextRequest {
@@ -671,8 +673,20 @@ async fn fill_previews(
             },
         )
         .await?;
-        let Some(text) = texts.get(&target) else {
+        let Some(text) = texts.remove(&target) else {
             continue;
+        };
+        // A message that is only a quote says nothing of its own, and the
+        // placeholder is not a preview: read the latest earlier message
+        // that does, or show none and let the client fall back to the
+        // subject.
+        let (target, text) = if text.only_quoted {
+            match earlier_with_text(state, thread, g, &target).await? {
+                Some(found) => found,
+                None => continue,
+            }
+        } else {
+            (target, text)
         };
         let (kind, text) = if g.outbound.contains(&target) {
             (
@@ -690,6 +704,39 @@ async fn fill_previews(
         });
     }
     Ok(())
+}
+
+/// The latest message before `target` whose new text is its own, for a
+/// preview when `target` is only quoted.
+async fn earlier_with_text(
+    state: &AppState,
+    thread: &[DeskMessage],
+    g: &Gathered,
+    target: &MessageId,
+) -> Result<Option<(MessageId, MessageText)>, HandlerError> {
+    let shown: Vec<&DeskMessage> = thread.iter().filter(|m| !m.trashed).collect();
+    let Some(at) = shown.iter().position(|m| &m.id == target) else {
+        return Ok(None);
+    };
+    let candidates: Vec<MessageId> = shown[..at]
+        .iter()
+        .rev()
+        .take(PREVIEW_LOOKBACK)
+        .map(|m| m.id.clone())
+        .collect();
+    let mut texts = new_texts(
+        state,
+        thread,
+        &TextRequest {
+            wanted: &candidates,
+            outbound: &g.outbound,
+        },
+    )
+    .await?;
+    Ok(candidates.into_iter().find_map(|id| {
+        let text = texts.remove(&id)?;
+        (!text.only_quoted && !text.text.trim().is_empty()).then_some((id, text))
+    }))
 }
 
 /// People whose usual pace lapsed, as facts: "Ari usually writes every

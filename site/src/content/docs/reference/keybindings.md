@@ -547,7 +547,7 @@ Work on every page except while typing in a field or compose.
 
 | Key | Action | Note |
 |-----|--------|------|
-| `⌘K / Ctrl+K`, `:`, `Ctrl+P` | Command palette | Ctrl+P works on macOS; elsewhere it stays the browser's Print |
+| `⌘K / Ctrl+K`, `:`, `Ctrl+P` | Command palette | Ctrl+P works on macOS only, where it is not the browser's Print |
 | `/` | Search mail |  |
 | `?` | Keyboard help |  |
 | `c` | Compose |  |
@@ -654,7 +654,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `* u` | Select unread | Web only |
 | `* s` | Select starred | Web only |
 | `Esc` | Clear selection, then close |  |
-| `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F stays the browser's Find off macOS, so g f works everywhere |
+| `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find |
 
 ### Reader
 

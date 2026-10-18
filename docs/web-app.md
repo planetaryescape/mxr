@@ -229,6 +229,12 @@ its keystrokes to the dispatcher.
 - Chords use `KeyboardEvent.key` tokens (`?`, `G`, `#`, `g i`, `Mod+k`), so `?`
   and `/` never collide. Off macOS a `Ctrl+` chord also matches `Mod+`, except
   browser essentials (Find, Print, Save, tabs).
+  A `macAliases` chord (`Ctrl+P` for the palette, `Ctrl+F` for the list filter)
+  is bound and shown on macOS only, because off macOS those are the browser's
+  Print and Find. `browserReserved.test.ts` has no exceptions: no binding takes
+  a browser shortcut on any platform. The send dialog's override is a plain
+  `O` (the TUI's `Ctrl-O` is the browser's Open File); the dialog holds no
+  text field.
 - Keys are ignored in fields, dialogs and menus, except global modifier chords
   like `⌘K`. A dialog animating closed no longer owns keys. While a palette,
   help, a mail dialog or an overlay composer is open the dispatcher stands down.

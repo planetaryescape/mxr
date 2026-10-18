@@ -81,7 +81,7 @@ export async function performMailAction(
     if (action === "archive") await invalidateMailQueries().catch(() => undefined);
     const undo = claim && response ? keepPartialUndo(response, claim.run) : null;
     claim?.settle(undo);
-    announceFailure(action, error, options.payload, undo);
+    announceFailure(action, error, options.payload, undo, ids.length);
     if (action !== "archive") void invalidateMailQueries().catch(() => undefined);
     return { ok: false, error, response: response ?? undefined };
   } finally {

@@ -2,7 +2,8 @@
  * Pre-send confirmation, opened when the daemon's safety check found issues
  * (or could not run). States exactly who receives the message and from
  * which address, shows the verdict and each issue, and never sends a
- * blocked draft without an explicit override (TUI parity: Ctrl-O).
+ * blocked draft without an explicit override (the TUI uses Ctrl-O; the
+ * browser keeps that key, so the web uses a plain O).
  */
 
 import { AlertTriangle, Loader2, Send, ShieldAlert, ShieldCheck, UserPlus } from "lucide-react";
@@ -92,7 +93,15 @@ export function SendConfirmDialog({
             if (canSend) confirm(overridden);
             return;
           }
-          if (overridable && event.ctrlKey && event.key.toLowerCase() === "o") {
+          // The dialog traps focus and holds no text field, so a bare letter
+          // is safe, and Ctrl+O is the browser's Open File.
+          if (
+            overridable &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            event.key.toLowerCase() === "o"
+          ) {
             event.preventDefault();
             setOverridden(true);
             confirm(true);
@@ -182,9 +191,10 @@ export function SendConfirmDialog({
                 checked={overridden}
                 onCheckedChange={(value) => setOverridden(value === true)}
                 className="mt-0.5"
+                aria-keyshortcuts="O"
               />
               <Label htmlFor={overrideId} className="text-xs leading-snug text-destructive">
-                Override the block and send this once anyway (Ctrl+O)
+                Override the block and send this once anyway (O)
               </Label>
             </div>
           ) : (

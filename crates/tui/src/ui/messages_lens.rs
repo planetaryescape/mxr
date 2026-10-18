@@ -177,10 +177,13 @@ fn preview_line(
     width: usize,
     theme: &crate::theme::Theme,
 ) -> Option<Line<'static>> {
-    let preview = row.preview.as_ref()?;
-    let text = match preview.kind {
-        MessagesPreviewKindData::Ask => format!("\u{201c}{}\u{201d}", one_line(&preview.text)),
-        _ => one_line(&preview.text),
+    // No preview (a thread of nothing but quotes has none): the subject.
+    let text = match row.preview.as_ref() {
+        Some(preview) if preview.kind == MessagesPreviewKindData::Ask => {
+            format!("\u{201c}{}\u{201d}", one_line(&preview.text))
+        }
+        Some(preview) => one_line(&preview.text),
+        None => one_line(&row.topics.first()?.subject),
     };
     Some(Line::from(Span::styled(
         format!("   {}", truncate(&text, width.saturating_sub(4))),

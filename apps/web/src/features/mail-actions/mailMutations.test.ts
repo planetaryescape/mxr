@@ -210,7 +210,7 @@ describe("performMailAction", () => {
     await expect(first).resolves.toMatchObject({ ok: false });
 
     expect(toast.error).toHaveBeenCalledWith(
-      "Archived failed",
+      "Couldn't archive 2 messages",
       expect.objectContaining({ description: "daemon offline" }),
     );
     expect(usePendingMailOps.getState().ops.map((item) => item.action)).toEqual(["star"]);

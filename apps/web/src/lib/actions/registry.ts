@@ -16,6 +16,8 @@ export interface Binding {
   action: Action;
   /** Bound from `retiredAliases`: works, but is not advertised. */
   retired: boolean;
+  /** Bound from `macAliases`: live on macOS only. */
+  macOnly: boolean;
 }
 
 export class ActionRegistry {
@@ -30,6 +32,7 @@ export class ActionRegistry {
     }
     if (!action.paletteOnly) {
       const retired = new Set(action.retiredAliases ?? []);
+      const macOnly = new Set(action.macAliases ?? []);
       for (const scope of scopesOf(action)) {
         for (const chord of [...chordsOf(action), ...retired]) {
           const key = `${scope}|${normalize(chord)}`;
@@ -45,6 +48,7 @@ export class ActionRegistry {
             scope,
             action,
             retired: retired.has(chord),
+            macOnly: macOnly.has(chord),
           });
         }
       }
@@ -74,20 +78,22 @@ export class ActionRegistry {
    * Scoped bindings only count when their controller implements the
    * command, so an unmounted view can't swallow a key.
    */
-  resolve(chord: ShortcutChord, scopes: ActionScope[]): Binding | undefined {
+  resolve(chord: ShortcutChord, scopes: ActionScope[], mac = true): Binding | undefined {
     const normalized = normalize(chord);
     for (const scope of scopes) {
       const binding = this.#bindings.get(`${scope}|${normalized}`);
-      if (binding && isRunnableIn(binding.action, scope)) return binding;
+      if (binding && (mac || !binding.macOnly) && isRunnableIn(binding.action, scope)) {
+        return binding;
+      }
     }
     return undefined;
   }
 
   /** True when some live binding continues the typed sequence. */
-  hasContinuation(prefix: ShortcutChord, scopes: ActionScope[]): boolean {
+  hasContinuation(prefix: ShortcutChord, scopes: ActionScope[], mac = true): boolean {
     const start = `${normalize(prefix)} `;
     for (const binding of this.#bindings.values()) {
-      if (!scopes.includes(binding.scope)) continue;
+      if (!scopes.includes(binding.scope) || (!mac && binding.macOnly)) continue;
       if (binding.chord.startsWith(start) && isRunnableIn(binding.action, binding.scope)) {
         return true;
       }
@@ -119,10 +125,12 @@ export function scopesOf(action: Action): ActionScope[] {
   return action.scopes && action.scopes.length > 0 ? action.scopes : ["global"];
 }
 
-export function chordsOf(action: Action): ShortcutChord[] {
-  return [action.shortcut, ...(action.aliases ?? [])].filter(
-    (chord): chord is ShortcutChord => typeof chord === "string" && chord.length > 0,
-  );
+export function chordsOf(action: Action, mac = true): ShortcutChord[] {
+  return [
+    action.shortcut,
+    ...(action.aliases ?? []),
+    ...(mac ? (action.macAliases ?? []) : []),
+  ].filter((chord): chord is ShortcutChord => typeof chord === "string" && chord.length > 0);
 }
 
 function normalize(chord: ShortcutChord): string {

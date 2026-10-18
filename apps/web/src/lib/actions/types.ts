@@ -84,6 +84,12 @@ interface ActionBase {
   /** More chords bound to the same action in the same scopes. */
   aliases?: ShortcutChord[];
   /**
+   * Chords bound on macOS only, where Ctrl is not the browser's modifier.
+   * Elsewhere the same keys are Find or Print, so they are neither bound
+   * nor shown.
+   */
+  macAliases?: ShortcutChord[];
+  /**
    * Retired chords that still work for a release so muscle memory has
    * time to move. Bound, but never shown in help, hints or the docs.
    */

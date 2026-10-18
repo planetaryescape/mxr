@@ -41,7 +41,7 @@ fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
         }, mxr_core::MessageDirection::Inbound).await.unwrap();
         store.set_message_labels(&id, &[inbox], mxr_core::EventSource::User).await.unwrap();
         store.insert_body(&mxr_core::MessageBody {
-            message_id: id.clone(), text_plain: Some("Invoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nThank you for your purchase. Your billing document is attached.".into()),
+            message_id: id.clone(), text_plain: Some("Invoice Number:AB12345\nDate of Issue:14.10.2026\n\nDear User,\nThank you for your recent purchase from Vendor.\nWeb order number: W12345678\nPlease find attached your billing document AB12345.".into()),
             text_html: None, attachments: vec![], fetched_at: chrono::Utc::now(), metadata: Default::default(),
         }).await.unwrap();
         (id.to_string(), thread.to_string())

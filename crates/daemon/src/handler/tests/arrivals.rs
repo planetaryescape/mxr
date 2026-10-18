@@ -146,6 +146,136 @@ async fn current_arrival_projection_crosses_page_boundaries_without_rewriting_le
 }
 
 #[tokio::test]
+async fn unreferenced_quote_context_and_informational_placement_ignore_import_order() {
+    let old_text = "User, could you confirm the launch date by Monday and send the signed copy?\nUser, could you also share the final reference with everyone before the Friday review meeting?";
+    for reversed in [false, true] {
+        let fx = Fixture::new().await;
+        let template = inbound(&fx, "sam@team.example", false).await;
+        let mut previous = template.clone();
+        previous.id = MessageId::new();
+        previous.provider_id = format!("previous-{}", previous.id);
+        previous.message_id_header = Some(format!("<{}@team.example>", previous.id));
+        previous.thread_id = ThreadId::new();
+        previous.in_reply_to = None;
+        previous.references.clear();
+        previous.date = Utc::now() - Duration::minutes(30);
+        // The source was copied context, not an unresolved ask to this owner.
+        previous.to = vec![Address {
+            name: None,
+            email: "other@team.example".into(),
+        }];
+        previous.cc = vec![Address {
+            name: None,
+            email: ME.into(),
+        }];
+        let mut current = previous.clone();
+        current.id = MessageId::new();
+        current.provider_id = format!("current-{}", current.id);
+        current.message_id_header = Some(format!("<{}@team.example>", current.id));
+        current.date = previous.date + Duration::minutes(20);
+        current.subject = "Weekly project report".into();
+        current.to = vec![Address {
+            name: Some("User".into()),
+            email: ME.into(),
+        }];
+        current.to.extend((0..8).map(|i| Address {
+            name: None,
+            email: format!("colleague{i}@team.example"),
+        }));
+        current.cc.clear();
+        let order = if reversed {
+            [&current, &previous]
+        } else {
+            [&previous, &current]
+        };
+        for message in order {
+            fx.store_envelope(message, MessageDirection::Inbound).await;
+        }
+        cached_content(&fx, &previous, "", Some(old_text)).await;
+        cached_content(
+            &fx,
+            &current,
+            "",
+            Some(&format!(
+                "FYI: this was handled. The report is attached.\n\n{old_text}"
+            )),
+        )
+        .await;
+        let desk = fx
+            .state
+            .store
+            .desk_messages_in_threads(&fx.account, std::slice::from_ref(&current.thread_id))
+            .await
+            .unwrap();
+        let observed = desk.iter().find(|m| m.id == current.id).unwrap();
+        let place = fx
+            .state
+            .store
+            .place_message(&current.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!observed.evidence.is_reply && !observed.evidence.thread_correspondence);
+        assert_eq!(observed.evidence.previous_text.as_deref(), Some(old_text));
+        assert_eq!(observed.evidence, place.evidence);
+        assert!(!crate::handler::mail_kind::needs_reply(
+            observed,
+            &|email| email == ME
+        ));
+        let ResponseData::MessageKind { mail_kind, .. } = request(
+            &fx,
+            Request::GetMessageKind {
+                message_id: current.id.clone(),
+            },
+        )
+        .await
+        else {
+            panic!("why");
+        };
+        assert_eq!(mail_kind.kind, mxr_protocol::SenderKindData::PaperTrail);
+        assert!(mail_kind.reason.contains("informational update"));
+        let line = line(&fx).await;
+        assert!(list(&fx, &line, ArrivalBucketData::Updates)
+            .await
+            .contains(&current.id));
+        assert_eq!(chip(&fx, &current.id).await.0, ArrivalBucketData::Updates);
+        assert_eq!(
+            modes(&membership(&fx, &current.thread_id).await),
+            [ModeKindData::Updates]
+        );
+        let ResponseData::Desk {
+            owed, people_new, ..
+        } = fx.desk(100).await
+        else {
+            panic!("desk");
+        };
+        assert!(!owed
+            .rows
+            .iter()
+            .chain(&people_new.rows)
+            .any(|r| r.thread_id == current.thread_id));
+        let ResponseData::Freshness { freshness } = request(
+            &fx,
+            Request::GetFreshness {
+                account_id: None,
+                limit: Some(20),
+            },
+        )
+        .await
+        else {
+            panic!("freshness");
+        };
+        let arrival = freshness
+            .arrivals
+            .iter()
+            .find(|a| a.message_id == current.id)
+            .unwrap();
+        assert_eq!(arrival.modes[0].mode, ModeKindData::Updates);
+        assert!(arrival.modes[0].reason.contains("informational update"));
+    }
+}
+
+#[tokio::test]
 async fn message_purpose_and_attention_agree_without_rewriting_history() {
     let fx = Fixture::new().await;
     wrote_to(&fx, "support@studio.example").await;
@@ -176,13 +306,13 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
         &fx,
         &discussion,
         "In-Reply-To: <question@example.org>\r\nX-SES-Outgoing: delivery\r\n",
-        Some("Could you confirm the invoice reference?"),
+        Some("Could you confirm the invoice reference?\nInvoice Number:AB12345\nDate of Issue:14.10.2026\n\nDear User,\nThank you for your recent purchase from Vendor.\nWeb order number: W12345678\nPlease find attached your billing document AB12345."),
     )
     .await;
     let mut invoice = inbound(&fx, "emea_invoicing@email.vendor.example", false).await;
     invoice.subject = "Your invoice Number AB12345".into();
     fx.store_envelope(&invoice, MessageDirection::Inbound).await;
-    cached_content(&fx, &invoice, "", Some("Invoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nThank you for your purchase. Your billing document is attached.")).await;
+    cached_content(&fx, &invoice, "", Some("Invoice Number:AB12345\nDate of Issue:14.10.2026\n\nDear User,\nThank you for your recent purchase from Vendor.\nWeb order number: W12345678\nPlease find attached your billing document AB12345.")).await;
     let mut report = inbound(&fx, "maya@team.example", false).await;
     report.subject = "Weekly project report".into();
     report.to.extend((0..8).map(|i| Address {

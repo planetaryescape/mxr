@@ -528,7 +528,12 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
         messages.your_turn.is_empty(),
         "an answer without a new ask is not reply debt"
     );
-    let preview = messages.quiet[0].preview.as_ref().unwrap();
+    assert_eq!(
+        messages.recent.len(),
+        1,
+        "a fresh answer stays accessible in Recent"
+    );
+    let preview = messages.recent[0].preview.as_ref().unwrap();
     assert_eq!(preview.text, "Yes, keep it at 5%.");
 }
 

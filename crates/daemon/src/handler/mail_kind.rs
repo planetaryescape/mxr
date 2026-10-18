@@ -396,7 +396,8 @@ pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
         ..*signals
     });
     let purpose = purpose_evidence(signals);
-    (automatic.kind == SenderKind::Person && purpose.has_authored_text)
+    let correspondence = signals.evidence.is_reply || signals.evidence.thread_correspondence;
+    (automatic.kind == SenderKind::Person && (purpose.has_authored_text || correspondence))
         || (purpose.purpose == MessagePurpose::Informational && purpose.human_reply)
 }
 
@@ -428,10 +429,102 @@ struct PurposeEvidence {
     has_authored_text: bool,
 }
 
+#[derive(Clone, Copy)]
+enum DocumentField {
+    Reference,
+    IssueDate,
+    Order,
+    Amount,
+}
+
+/// Labels are a small field grammar: order and qualifiers vary, but the
+/// independent reference/date/order/amount families must still be present.
+fn document_field(label: &str) -> Option<DocumentField> {
+    let words: Vec<_> = label
+        .split(|c: char| !c.is_alphabetic())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |word: &str| words.contains(&word);
+    let only = |allowed: &[&str]| words.iter().all(|word| allowed.contains(word));
+    let reference = has("number")
+        || has("no")
+        || has("reference")
+        || has("ref")
+        || has("id")
+        || label.trim_end().ends_with('#');
+    if (has("invoice") || has("document"))
+        && reference
+        && only(&[
+            "invoice",
+            "document",
+            "number",
+            "no",
+            "reference",
+            "ref",
+            "id",
+        ])
+    {
+        Some(DocumentField::Reference)
+    } else if has("date")
+        && only(&[
+            "date", "of", "issue", "issued", "invoice", "document", "billing",
+        ])
+    {
+        Some(DocumentField::IssueDate)
+    } else if has("order")
+        && reference
+        && only(&[
+            "web",
+            "purchase",
+            "sales",
+            "order",
+            "number",
+            "no",
+            "reference",
+            "ref",
+            "id",
+        ])
+    {
+        Some(DocumentField::Order)
+    } else if (has("total") || has("amount"))
+        && only(&["total", "amount", "due", "invoice", "billing", "balance"])
+    {
+        Some(DocumentField::Amount)
+    } else {
+        None
+    }
+}
+
+fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentField, &'a str)> {
+    if let Some((label, value)) = line.split_once(':') {
+        return Some((
+            document_field(label)?,
+            if value.trim().is_empty() {
+                next?
+            } else {
+                value.trim()
+            },
+        ));
+    }
+    if let Some(field) = document_field(line) {
+        return Some((field, next?));
+    }
+    line.char_indices()
+        .rev()
+        .filter(|(_, c)| c.is_whitespace())
+        .find_map(|(index, _)| Some((document_field(&line[..index])?, line[index..].trim())))
+}
+
 /// Recognize a document's field/value grammar, not an invoice subject word
 /// or a sender identity. Independent reference/date/order/amount families
 /// plus document-delivery framing are required.
 fn billing_document(text: &str, asks_owner: bool) -> bool {
+    // A record can also carry a current conversational ask. Its fields and
+    // purchase framing do not erase that ask; explicit machine/list evidence
+    // is handled separately by the classifier.
+    if asks_owner {
+        return false;
+    }
     let mut reference = false;
     let mut date = false;
     let mut order = false;
@@ -443,59 +536,45 @@ fn billing_document(text: &str, asks_owner: bool) -> bool {
         .collect();
     for (index, line) in lines.iter().enumerate() {
         let line = line.trim_matches('*');
-        let field = |labels: &[&str]| {
-            labels
-                .iter()
-                .find_map(|label| {
-                    let rest = line.strip_prefix(*label)?;
-                    if !rest.is_empty()
-                        && !label.ends_with([':', '#'])
-                        && !rest.starts_with([' ', ':', '#', '-', '.'])
-                    {
-                        return None;
-                    }
-                    let value = rest.trim_start_matches([' ', ':', '#', '-', '.', '*']);
-                    if value.is_empty() {
-                        lines.get(index + 1).copied()
-                    } else {
-                        Some(value)
-                    }
-                })
-                .filter(|value| {
-                    !value.is_empty()
-                        && value.len() <= 80
-                        && value.chars().any(|c| c.is_ascii_digit())
-                })
+        let Some((field, value)) = document_value(line, lines.get(index + 1).copied()) else {
+            continue;
         };
-        reference |= field(&[
-            "invoice number",
-            "invoice no",
-            "invoice #",
-            "document number",
-        ])
-        .is_some();
-        order |= field(&["order number", "order no", "order #", "purchase order"]).is_some();
-        date |=
-            field(&["invoice date", "issue date", "billing date", "date:"]).is_some_and(|value| {
-                [
-                    "%Y-%m-%d",
-                    "%d/%m/%Y",
-                    "%m/%d/%Y",
-                    "%d.%m.%Y",
-                    "%d %B %Y",
-                    "%d %b %Y",
-                    "%B %d, %Y",
-                    "%d-%b-%Y",
-                ]
-                .iter()
-                .any(|format| chrono::NaiveDate::parse_from_str(value, format).is_ok())
-            });
-        amount |= field(&["total due", "amount due", "invoice total", "total:"])
-            .is_some_and(|value| DOCUMENT_AMOUNT.is_match(value) || AMOUNT.is_match(value));
+        let value = value.trim_start_matches(['#', '*', ' ']);
+        if value.is_empty() || value.len() > 80 || !value.chars().any(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        match field {
+            DocumentField::Reference => reference = true,
+            DocumentField::Order => order = true,
+            DocumentField::IssueDate => {
+                date |= {
+                    [
+                        "%Y-%m-%d",
+                        "%d/%m/%Y",
+                        "%m/%d/%Y",
+                        "%d.%m.%Y",
+                        "%d %B %Y",
+                        "%d %b %Y",
+                        "%B %d, %Y",
+                        "%d-%b-%Y",
+                    ]
+                    .iter()
+                    .any(|format| chrono::NaiveDate::parse_from_str(value, format).is_ok())
+                }
+            }
+            DocumentField::Amount => {
+                amount |= DOCUMENT_AMOUNT.is_match(value) || AMOUNT.is_match(value)
+            }
+        }
     }
-    let purchase_delivery = ["thank you for your purchase", "thank you for your order"]
-        .iter()
-        .any(|phrase| text.contains(phrase));
+    let purchase_delivery = lines.iter().any(|line| {
+        line.strip_prefix("thank you for your ")
+            .is_some_and(|rest| {
+                rest.split(|c: char| !c.is_alphabetic())
+                    .take(3)
+                    .any(|word| matches!(word, "purchase" | "order"))
+            })
+    });
     let document_delivery = [
         "billing document",
         "invoice is attached",
@@ -504,10 +583,7 @@ fn billing_document(text: &str, asks_owner: bool) -> bool {
     ]
     .iter()
     .any(|phrase| text.contains(phrase));
-    reference
-        && date
-        && (order || amount)
-        && (purchase_delivery || (document_delivery && !asks_owner))
+    reference && date && (order || amount) && (purchase_delivery || document_delivery)
 }
 
 fn authored_content(evidence: &mxr_core::mail_evidence::MailEvidence) -> String {
@@ -1049,7 +1125,7 @@ mod tests {
             SenderKind::Automated
         );
         let personal = mxr_core::mail_evidence::MailEvidence { is_reply: true, text: Some(
-            "Hi User,\nCould you confirm the amended invoice?\nInvoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nAmount due: USD 12.00".into()), ..Default::default() };
+            "Hi User,\nCould you confirm the amended invoice?\nInvoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nAmount due: USD 12.00\nThank you for your purchase. Your billing document is attached.".into()), ..Default::default() };
         let discussion = KindSignals {
             evidence: &personal,
             reply_request: true,
@@ -1057,6 +1133,25 @@ mod tests {
         };
         assert_eq!(classify(&discussion).kind, SenderKind::Person);
         assert!(human_response(&discussion));
+        assert!(requires_reply(&discussion));
+        for (generated, list, email) in [
+            (true, false, "alex@vendor.example"),
+            (false, true, "alex@vendor.example"),
+            (false, false, "no-reply@vendor.example"),
+        ] {
+            let evidence = mxr_core::mail_evidence::MailEvidence {
+                auto_generated: generated,
+                ..personal.clone()
+            };
+            let automatic = KindSignals {
+                evidence: &evidence,
+                has_list_id: list,
+                email,
+                ..discussion
+            };
+            assert_ne!(classify(&automatic).kind, SenderKind::Person);
+            assert!(!human_response(&automatic) && !requires_reply(&automatic));
+        }
         let incomplete = mxr_core::mail_evidence::MailEvidence {
             text: Some("Invoice number: AB12345\nCan we discuss this invoice?".into()),
             ..Default::default()
@@ -1069,6 +1164,49 @@ mod tests {
             .kind,
             SenderKind::Person
         );
+    }
+
+    #[test]
+    fn document_field_labels_vary_without_changing_the_independent_evidence_grammar() {
+        for (reference, date, order) in [
+            (
+                "Invoice Number:AB12345",
+                "Date of Issue:14.10.2026",
+                "Web order number: W12345678",
+            ),
+            (
+                "Document Ref.: AB12345",
+                "Issue Date: 2026-10-14",
+                "Purchase Order Reference: W12345678",
+            ),
+            (
+                "Invoice # AB12345",
+                "Billing Date\n14/10/2026",
+                "Order No. W12345678",
+            ),
+        ] {
+            let text = format!("{reference}\n{date}\n\nDear User,\nThank you for your recent purchase from Vendor.\n{order}\nPlease find attached your billing document AB12345.");
+            let evidence = mxr_core::mail_evidence::MailEvidence {
+                text: Some(text),
+                ..Default::default()
+            };
+            let document = KindSignals {
+                evidence: &evidence,
+                ..signals("ordinary@vendor.example")
+            };
+            assert_eq!(classify(&document).kind, SenderKind::Automated);
+            assert!(describe(&document)
+                .reason
+                .contains("structured billing document"));
+        }
+        for text in [
+            "Invoice Number: AB12345\nDate of Issue: not-a-date\nWeb Order Number: W12345678\nYour billing document is attached.",
+            "Invoice Number: AB12345\nDate of Issue:14.10.2026\nYour billing document is attached.",
+            "The invoice amount is interesting; could we discuss it?",
+        ] {
+            let evidence = mxr_core::mail_evidence::MailEvidence { text: Some(text.into()), ..Default::default() };
+            assert_eq!(classify(&KindSignals { evidence: &evidence, ..signals("ordinary@vendor.example") }).kind, SenderKind::Person);
+        }
     }
 
     #[test]

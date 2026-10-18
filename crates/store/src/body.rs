@@ -256,8 +256,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn desk_and_place_share_thread_context_even_when_the_reference_is_imported_later() {
-        for reversed in [false, true] {
+    async fn desk_and_place_share_context_in_both_import_orders_with_or_without_a_reference() {
+        for (reversed, referenced) in [(false, false), (true, false), (false, true), (true, true)] {
             let store = Store::in_memory().await.unwrap();
             let account = test_account();
             store.insert_account(&account).await.unwrap();
@@ -267,13 +267,15 @@ mod tests {
             sent.provider_id = "sent".into();
             sent.from.email.clone_from(&account.email);
             sent.message_id_header = Some("<earlier@example.org>".into());
+            sent.date = chrono::Utc::now() - chrono::Duration::hours(2);
             let mut reply = TestEnvelopeBuilder::new()
                 .account_id(account.id.clone())
                 .build();
             reply.provider_id = "reply".into();
             reply.thread_id = sent.thread_id.clone();
             reply.message_id_header = Some("<reply@example.org>".into());
-            reply.in_reply_to.clone_from(&sent.message_id_header);
+            reply.date = sent.date + chrono::Duration::hours(1);
+            reply.in_reply_to = referenced.then(|| sent.message_id_header.clone()).flatten();
             let order = if reversed {
                 [
                     (&reply, mxr_core::MessageDirection::Inbound),

@@ -56,6 +56,11 @@ purchase or document-delivery framing. An invoice subject alone is not enough.
 Team FYIs and report deliveries without a directed request go to Updates;
 a supported request naming you can stay in Messages. Human billing and support
 answers can settle Waiting on without creating another reply obligation.
+An owned directed request can remain conversational alongside document fields
+and purchase framing; an actual list, no-reply or auto-generated declaration
+still takes precedence. A referenced human answer can settle a wait even when
+its body is uncached or HTML-only. Missing plain text cannot create automatic
+reply debt, but it does not erase your explicit Reply later choice.
 
 Possible personal mail stays accessible in Recent or Quiet without claiming
 someone is waiting for you. Automatic Your turn requires a directed request:
@@ -69,6 +74,8 @@ network request is needed for this sorting.
 
 Request detection shares the reader's Outlook/header, quote, signature and
 footer rules, with one bounded earlier cached message for unmarked history.
+An explicit reference selects that context first; otherwise message date and
+stable ID select an earlier message, regardless of import order.
 Unrecognized quote formats and history beyond that context remain limitations.
 Use `mxr why MESSAGE_ID` and `mxr modes why MESSAGE_ID` to inspect the evidence
 and destination when a result looks wrong.

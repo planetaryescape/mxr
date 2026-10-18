@@ -8,11 +8,13 @@ fn task_transmission_requires_send_permission_but_previews_are_read_only() {
     for dry_run in [true, false] {
         for request in [
             Request::SendTodoToMicrosoft {
+                account_id: None,
                 todo_id: "todo_1".into(),
                 dry_run,
                 fingerprint: None,
             },
             Request::SyncMicrosoftTodos {
+                account_id: None,
                 todo_id: Some("todo_1".into()),
                 dry_run,
             },
@@ -28,6 +30,7 @@ fn microsoft_todo_activity_contains_only_the_target_id_and_omits_previews() {
     use crate::activity::mapper::map_request;
     use mxr_protocol::{ClientKind, Request};
     let request = Request::SendTodoToMicrosoft {
+        account_id: None,
         todo_id: "todo_1".into(),
         dry_run: false,
         fingerprint: Some("not-an-activity-field".into()),
@@ -37,6 +40,7 @@ fn microsoft_todo_activity_contains_only_the_target_id_and_omits_previews() {
     assert_eq!(entry.target_id.as_deref(), Some("todo_1"));
     assert!(entry.context.is_none());
     let preview = Request::SendTodoToMicrosoft {
+        account_id: None,
         todo_id: "todo_1".into(),
         dry_run: true,
         fingerprint: None,
@@ -52,6 +56,49 @@ async fn fixture() -> (AppState, FakeCli, String) {
         .bind(&id).bind(state.default_account_id().as_str()).bind(&id)
         .execute(state.store.writer()).await.unwrap();
     (state, fake, id)
+}
+
+#[tokio::test]
+async fn microsoft_selection_and_sync_never_cross_explicit_account_boundaries() {
+    let (state, fake, own_id) = fixture().await;
+    let own = state.default_account_id().clone();
+    let other = mxr_core::AccountId::new();
+    state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(other.clone()))
+        .await
+        .unwrap();
+    let other_id = uuid::Uuid::now_v7().to_string();
+    sqlx::query("INSERT INTO todos (id,account_id,kind,verb,title,origin,reason,rules_version,dedup_key,created_at,updated_at) SELECT ?,?,kind,verb,title,origin,reason,rules_version,?,created_at,updated_at FROM todos WHERE id=?")
+        .bind(&other_id).bind(other.as_str()).bind(&other_id).bind(&own_id).execute(state.store.writer()).await.unwrap();
+    linked(&state, &fake, &own_id).await;
+    linked(&state, &fake, &other_id).await;
+    for (account, id, foreign) in [(&own, &own_id, &other_id), (&other, &other_id, &own_id)] {
+        let accounts = std::slice::from_ref(account);
+        let links = select_links(&state, None, Some(accounts)).await.unwrap();
+        assert_eq!(
+            links
+                .iter()
+                .map(|link| link.todo_id.as_str())
+                .collect::<Vec<_>>(),
+            [id.as_str()]
+        );
+        let response = sync_links(&state, &fake.cli(), links, true).await.unwrap();
+        assert!(
+            matches!(response, ResponseData::MicrosoftTodoSync { sync } if sync.results.len() == 1 && sync.results[0].todo_id == *id)
+        );
+        assert!(select_links(&state, Some(foreign), Some(accounts))
+            .await
+            .is_err());
+        assert!(link(&state, foreign, Some(account), true, None)
+            .await
+            .is_err());
+    }
+    assert!(select_links(&state, None, Some(&[]))
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(fake.calls(), ["add", "add", "show", "show"]);
 }
 
 async fn preview(state: &AppState, fake: &FakeCli, id: &str) -> MicrosoftTodoSendData {

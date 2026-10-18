@@ -77,9 +77,23 @@ fn reply(id: &str, payload: Payload, dry_run: bool) -> Result<MicrosoftTodoSendD
 pub(super) async fn link(
     state: &AppState,
     raw_id: &str,
+    account_id: Option<&mxr_core::AccountId>,
     dry_run: bool,
     expected: Option<&str>,
 ) -> HandlerResult {
+    if let Some(account_id) = account_id {
+        let id = super::todos::resolve_todo_id(state, raw_id).await?;
+        let todo = state
+            .store
+            .get_todo(&id)
+            .await?
+            .ok_or_else(|| HandlerError::InvalidRequest("No such to-do.".into()))?;
+        if todo.account_id != *account_id {
+            return Err(HandlerError::InvalidRequest(
+                "This to-do does not belong to the selected account.".into(),
+            ));
+        }
+    }
     let cli = MicrosoftTodoCli::discover();
     link_with_cli(state, raw_id, dry_run, expected, cli.as_ref()).await
 }
@@ -185,14 +199,46 @@ async fn link_with_cli(
     Ok(ResponseData::MicrosoftTodoSend { result })
 }
 
-pub(super) async fn sync(state: &AppState, raw_id: Option<&str>, dry_run: bool) -> HandlerResult {
+pub(super) async fn sync(
+    state: &AppState,
+    raw_id: Option<&str>,
+    accounts: Option<&[mxr_core::AccountId]>,
+    dry_run: bool,
+) -> HandlerResult {
     let _guard = gate().lock().await;
+    let links = select_links(state, raw_id, accounts).await?;
+    if links.is_empty() {
+        return Ok(ResponseData::MicrosoftTodoSync {
+            sync: MicrosoftTodoSyncData {
+                dry_run,
+                results: Vec::new(),
+            },
+        });
+    }
     let cli = MicrosoftTodoCli::discover()
         .ok_or_else(|| HandlerError::InvalidRequest(INSTALL_HINT.into()))?;
-    let links = match raw_id {
+    sync_links(state, &cli, links, dry_run).await
+}
+
+async fn select_links(
+    state: &AppState,
+    raw_id: Option<&str>,
+    accounts: Option<&[mxr_core::AccountId]>,
+) -> Result<Vec<TodoMicrosoftExport>, HandlerError> {
+    match raw_id {
         Some(raw_id) => {
             let id = super::todos::resolve_todo_id(state, raw_id).await?;
-            vec![state
+            let todo = state
+                .store
+                .get_todo(&id)
+                .await?
+                .ok_or_else(|| HandlerError::InvalidRequest("No such to-do.".into()))?;
+            if accounts.is_some_and(|accounts| !accounts.contains(&todo.account_id)) {
+                return Err(HandlerError::InvalidRequest(
+                    "This to-do does not belong to the selected accounts.".into(),
+                ));
+            }
+            Ok(vec![state
                 .store
                 .todo_microsoft_export(&id)
                 .await?
@@ -200,10 +246,21 @@ pub(super) async fn sync(state: &AppState, raw_id: Option<&str>, dry_run: bool) 
                     HandlerError::InvalidRequest(
                         "This to-do is not linked to Microsoft To Do.".into(),
                     )
-                })?]
+                })?])
         }
-        None => state.store.list_todo_microsoft_exports(false).await?,
-    };
+        None => Ok(state
+            .store
+            .list_todo_microsoft_exports(false, accounts)
+            .await?),
+    }
+}
+
+async fn sync_links(
+    state: &AppState,
+    cli: &MicrosoftTodoCli,
+    links: Vec<TodoMicrosoftExport>,
+    dry_run: bool,
+) -> HandlerResult {
     if !dry_run {
         state.ensure_effects_allowed()?;
         cli.refresh()
@@ -212,7 +269,7 @@ pub(super) async fn sync(state: &AppState, raw_id: Option<&str>, dry_run: bool) 
     }
     let mut results = Vec::new();
     for link in links {
-        match sync_one(state, &cli, &link, dry_run).await {
+        match sync_one(state, cli, &link, dry_run).await {
             Ok(result) => results.push(result),
             Err(error) => {
                 let result = MicrosoftTodoSyncItemData {
@@ -244,7 +301,7 @@ pub(crate) async fn background(state: &AppState) {
     if state.ensure_effects_allowed().is_err() {
         return;
     }
-    let links = match state.store.list_todo_microsoft_exports(true).await {
+    let links = match state.store.list_todo_microsoft_exports(true, None).await {
         Ok(links) if !links.is_empty() => links,
         _ => return,
     };

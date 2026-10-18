@@ -2522,6 +2522,9 @@ pub enum TodoMicrosoftAction {
     /// Create a Microsoft task and link title, due date, schedule and status both ways.
     Link {
         todo_id: String,
+        /// The fingerprint from the exact --dry-run preview you reviewed.
+        #[arg(long, required_unless_present = "dry_run", conflicts_with = "dry_run")]
+        fingerprint: Option<String>,
         /// Show the exact link and shared fields without running ms-todo.
         #[arg(long)]
         dry_run: bool,

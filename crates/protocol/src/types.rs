@@ -1944,14 +1944,19 @@ pub enum Request {
     SendTodoToMicrosoft {
         todo_id: String,
         #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default)]
         dry_run: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fingerprint: Option<String>,
     },
-    /// Reconcile explicitly linked tasks. With no id, every linked task.
+    /// Reconcile explicitly linked tasks within the selected account. With
+    /// no account, external profiles select only their allowed enabled accounts.
     /// A preview reads ms-todo's cache but changes neither application's tasks.
     SyncMicrosoftTodos {
         todo_id: Option<String>,
+        #[serde(default)]
+        account_id: Option<AccountId>,
         #[serde(default)]
         dry_run: bool,
     },

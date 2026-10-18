@@ -10,7 +10,8 @@ Arguments:
   <TODO_ID>
 
 Options:
-      --dry-run            Show the exact link and shared fields without running ms-todo
-      --account <ACCOUNT>  Limit to one account; the default covers every account
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --fingerprint <FINGERPRINT>  The fingerprint from the exact --dry-run preview you reviewed
+      --dry-run                    Show the exact link and shared fields without running ms-todo
+      --account <ACCOUNT>          Limit to one account; the default covers every account
+      --format <FORMAT>            [possible values: table, json, jsonl, csv, ids]
+  -h, --help                       Print help

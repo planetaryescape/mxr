@@ -26,7 +26,7 @@ export function MicrosoftTodoAction({ todo }: { todo: Todo }) {
   const inFlight = useRef(false);
   const link = useQuery({
     queryKey: ["microsoft-todo", "link", todo.id],
-    queryFn: () => linkMicrosoftTodo(todo.id),
+    queryFn: () => linkMicrosoftTodo(todo.id, undefined, todo.account_id),
     enabled: status.data?.installed === true && expanded,
     retry: false,
     staleTime: 0,
@@ -39,11 +39,11 @@ export function MicrosoftTodoAction({ todo }: { todo: Todo }) {
     setError(null);
     try {
       if (link.data.state === "preview") {
-        const result = await linkMicrosoftTodo(todo.id, link.data.fingerprint);
+        const result = await linkMicrosoftTodo(todo.id, link.data.fingerprint, todo.account_id);
         client.setQueryData(["microsoft-todo", "link", todo.id], result);
         setMessage(result.summary);
       } else {
-        const result = await syncMicrosoftTodo(todo.id, previewSync);
+        const result = await syncMicrosoftTodo(todo.id, previewSync, todo.account_id);
         setSyncPreview(previewSync ? (result.results[0] ?? null) : null);
         setMessage(result.results.map((item) => item.summary).join(" "));
         if (!previewSync)

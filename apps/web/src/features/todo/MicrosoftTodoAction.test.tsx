@@ -112,7 +112,9 @@ test("linking requires a visible exact preview and sends its fingerprint once", 
   fireEvent.click(confirm);
   fireEvent.click(confirm);
   await waitFor(() =>
-    expect(commits).toEqual([{ dry_run: false, fingerprint: "preview-fingerprint" }]),
+    expect(commits).toEqual([
+      { account_id: todoFixture().account_id, dry_run: false, fingerprint: "preview-fingerprint" },
+    ]),
   );
   expect(await screen.findByRole("button", { name: "Sync now" })).toBeVisible();
 });

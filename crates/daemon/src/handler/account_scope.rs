@@ -432,10 +432,18 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
         // ----- Named by another entity -----
-        Request::SyncMicrosoftTodos { todo_id: Some(todo_id), .. } => Targets(vec![T::Todo(todo_id)]),
-        Request::SyncMicrosoftTodos { todo_id: None, .. } => AllAccounts,
+        Request::SyncMicrosoftTodos { todo_id, account_id, .. } => {
+            let mut targets = Vec::new();
+            if let Some(account_id) = account_id { targets.push(T::Account(account_id)); }
+            if let Some(todo_id) = todo_id { targets.push(T::Todo(todo_id)); }
+            if targets.is_empty() { AllAllowedSyncAccounts } else { Targets(targets) }
+        },
+        Request::SendTodoToMicrosoft { todo_id, account_id, .. } => {
+            let mut targets = vec![T::Todo(todo_id)];
+            if let Some(account_id) = account_id { targets.push(T::Account(account_id)); }
+            Targets(targets)
+        },
         Request::GetTodo { todo_id }
-        | Request::SendTodoToMicrosoft { todo_id, .. }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. }
         | Request::ResolveTodoSuggestion { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),

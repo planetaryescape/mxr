@@ -47,19 +47,23 @@ export function useMicrosoftTodoStatus() {
 
 export async function linkMicrosoftTodo(
   id: string,
-  fingerprint?: string,
+  fingerprint: string | undefined,
+  accountId: string,
 ): Promise<MicrosoftTodoLink> {
   const answer = await apiFetch<Extract<Schemas["ResponseData"], { kind: "MicrosoftTodoSend" }>>(
     `/api/v1/mail/todos/${encodeURIComponent(id)}/microsoft`,
-    { method: "POST", body: { dry_run: fingerprint === undefined, fingerprint } },
+    {
+      method: "POST",
+      body: { account_id: accountId, dry_run: fingerprint === undefined, fingerprint },
+    },
   );
   return answer.result;
 }
 
-export async function syncMicrosoftTodo(id: string, dryRun: boolean) {
+export async function syncMicrosoftTodo(id: string, dryRun: boolean, accountId: string) {
   const answer = await apiFetch<Extract<Schemas["ResponseData"], { kind: "MicrosoftTodoSync" }>>(
     "/api/v1/mail/todos/microsoft/sync",
-    { method: "POST", body: { todo_id: id, dry_run: dryRun } },
+    { method: "POST", body: { todo_id: id, account_id: accountId, dry_run: dryRun } },
   );
   return answer.sync;
 }

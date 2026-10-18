@@ -146,6 +146,9 @@ Pass the reviewed revision, operation ID and original owner to `mxr_send_draft` 
 `todo_id` previews the outgoing task; pass its `fingerprint` with `confirm: true`
 to enable two-way shared-field sync. `action: "sync"` previews one link, or every
 link when `todo_id` is omitted; `confirm: true` reconciles them. A preview reads
+only links within the profile's allowed enabled accounts when no account is
+named. Optional `account_id` restricts link or sync to that account; a supplied
+task ID must belong to it. A preview reads
 the peer's cache; a real sync refreshes first. Never retry an unknown handoff or
 write. Inspect ms-todo's outbox and ask the user to resolve it. Confirmed link and
 sync requests require send permission because they can transmit task context.

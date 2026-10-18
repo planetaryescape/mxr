@@ -45,7 +45,9 @@ pub async fn run(
         limit: 200,
     });
     match action {
-        TodoAction::Microsoft { action } => microsoft(&mut client, action, format).await,
+        TodoAction::Microsoft { action } => {
+            microsoft(&mut client, action, account_id, format).await
+        }
         TodoAction::List {
             expired,
             state,
@@ -216,6 +218,7 @@ fn state_data(state: TodoStateArg) -> TodoStateData {
 async fn microsoft(
     client: &mut IpcClient,
     action: TodoMicrosoftAction,
+    account_id: Option<AccountId>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
     match action {
@@ -233,54 +236,24 @@ async fn microsoft(
                 println!("{}\n{}", status.hint, status.install_url);
             }
         }
-        TodoMicrosoftAction::Link { todo_id, dry_run } => {
-            let preview = expect_data!(
+        action @ TodoMicrosoftAction::Link { .. } => {
+            let result = expect_data!(
                 client
-                    .request(Request::SendTodoToMicrosoft {
-                        todo_id: todo_id.clone(),
-                        dry_run: true,
-                        fingerprint: None
-                    })
+                    .request(microsoft_request(action, account_id)?)
                     .await?,
                 MicrosoftTodoSend,
                 result
             );
-            let result = if dry_run || preview.state != "preview" {
-                preview
-            } else {
-                expect_data!(
-                    client
-                        .request(Request::SendTodoToMicrosoft {
-                            todo_id,
-                            dry_run: false,
-                            fingerprint: Some(preview.fingerprint)
-                        })
-                        .await?,
-                    MicrosoftTodoSend,
-                    result
-                )
-            };
             if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
                 print_json(&result, format)?;
             } else {
-                println!(
-                    "{}\nTitle: {}\nDue: {}\nSchedule: {}\n{}",
-                    result.summary,
-                    result.title,
-                    result
-                        .due
-                        .map_or_else(|| "none".into(), |day| day.to_string()),
-                    result
-                        .scheduled
-                        .map_or_else(|| "none".into(), |day| day.to_string()),
-                    result.notes
-                );
+                print!("{}", microsoft_link_text(&result));
             }
         }
-        TodoMicrosoftAction::Sync { todo_id, dry_run } => {
+        action @ TodoMicrosoftAction::Sync { .. } => {
             let sync = expect_data!(
                 client
-                    .request(Request::SyncMicrosoftTodos { todo_id, dry_run })
+                    .request(microsoft_request(action, account_id)?)
                     .await?,
                 MicrosoftTodoSync,
                 sync
@@ -295,6 +268,52 @@ async fn microsoft(
         }
     }
     Ok(())
+}
+
+fn microsoft_request(
+    action: TodoMicrosoftAction,
+    account_id: Option<AccountId>,
+) -> anyhow::Result<Request> {
+    Ok(match action {
+        TodoMicrosoftAction::Status => Request::GetMicrosoftTodoStatus,
+        TodoMicrosoftAction::Link {
+            todo_id,
+            dry_run,
+            fingerprint,
+        } => {
+            anyhow::ensure!(
+                dry_run || fingerprint.as_ref().is_some_and(|value| !value.is_empty()),
+                "Review --dry-run first, then supply its --fingerprint to link that exact preview."
+            );
+            Request::SendTodoToMicrosoft {
+                todo_id,
+                account_id,
+                dry_run,
+                fingerprint,
+            }
+        }
+        TodoMicrosoftAction::Sync { todo_id, dry_run } => Request::SyncMicrosoftTodos {
+            todo_id,
+            account_id,
+            dry_run,
+        },
+    })
+}
+
+fn microsoft_link_text(result: &mxr_protocol::MicrosoftTodoSendData) -> String {
+    terminal_block(&format!(
+        "{}\nTitle: {}\nDue: {}\nSchedule: {}\n{}\nFingerprint: {}\n",
+        result.summary,
+        result.title,
+        result
+            .due
+            .map_or_else(|| "none".into(), |day| day.to_string()),
+        result
+            .scheduled
+            .map_or_else(|| "none".into(), |day| day.to_string()),
+        result.notes,
+        result.fingerprint
+    ))
 }
 
 fn parse_edit(edit: &str) -> anyhow::Result<TodoEditData> {
@@ -743,6 +762,96 @@ fn field_label(field: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn microsoft_cli_requires_the_reviewed_fingerprint_and_keeps_account_selection() {
+        use crate::cli::{Cli, Command};
+        assert!(Cli::try_parse_from(["mxr", "todo", "microsoft", "link", "todo_1"]).is_err());
+        for account_id in [AccountId::new(), AccountId::new()] {
+            for fingerprint in ["reviewed-payload", "stale-reviewed-payload"] {
+                let cli = Cli::try_parse_from([
+                    "mxr",
+                    "todo",
+                    "microsoft",
+                    "link",
+                    "todo_1",
+                    "--account",
+                    account_id.as_str().as_str(),
+                    "--fingerprint",
+                    fingerprint,
+                ])
+                .unwrap();
+                let Some(Command::Todo {
+                    action: Some(TodoAction::Microsoft { action }),
+                    account,
+                    ..
+                }) = cli.command
+                else {
+                    panic!("expected Microsoft command")
+                };
+                assert_eq!(account, Some(account_id.as_str()));
+                assert!(
+                    matches!(microsoft_request(action, Some(account_id.clone())).unwrap(), Request::SendTodoToMicrosoft { account_id: Some(selected), fingerprint: Some(actual), dry_run: false, .. } if selected == account_id && actual == fingerprint)
+                );
+            }
+            let cli = Cli::try_parse_from([
+                "mxr",
+                "todo",
+                "microsoft",
+                "sync",
+                "--account",
+                account_id.as_str().as_str(),
+                "--dry-run",
+            ])
+            .unwrap();
+            let Some(Command::Todo {
+                action: Some(TodoAction::Microsoft { action }),
+                account,
+                ..
+            }) = cli.command
+            else {
+                panic!("expected Microsoft command")
+            };
+            assert_eq!(account, Some(account_id.as_str()));
+            assert!(
+                matches!(microsoft_request(action, Some(account_id.clone())).unwrap(), Request::SyncMicrosoftTodos { account_id: Some(selected), todo_id: None, dry_run: true } if selected == account_id)
+            );
+        }
+        assert!(microsoft_request(
+            TodoMicrosoftAction::Link {
+                todo_id: "todo_1".into(),
+                dry_run: false,
+                fingerprint: None
+            },
+            None
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn microsoft_cli_notes_are_terminal_safe_but_json_preserves_exact_context() {
+        let notes = "First line\nSecond\u{1b}[2J\u{7}\u{202e} line";
+        let result = mxr_protocol::MicrosoftTodoSendData {
+            dry_run: true,
+            todo_id: "todo_1".into(),
+            fingerprint: "reviewed".into(),
+            title: "Pay bill".into(),
+            due: None,
+            scheduled: None,
+            notes: notes.into(),
+            state: "preview".into(),
+            task_id: None,
+            summary: "Review".into(),
+        };
+        let text = microsoft_link_text(&result);
+        assert!(text.contains("First line\nSecond"));
+        assert!(!text.chars().any(
+            |c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F | 0x202A..=0x202E)
+        ));
+        assert_eq!(serde_json::to_value(&result).unwrap()["notes"], notes);
+        assert!(text.contains("Fingerprint: reviewed"));
+    }
 
     #[test]
     fn edits_split_on_the_first_equals() {

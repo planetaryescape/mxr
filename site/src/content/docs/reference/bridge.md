@@ -274,8 +274,8 @@ preview before repeating with `dry_run: false`.
 | `POST` | `/mail/todos/catchup` | Apply a catch-up decision with a preview |
 | `POST` | `/mail/todos/{todo_id}/resolution` | Preview or apply `{suggestion_id, action, dry_run}` |
 | `GET` | `/mail/todos/microsoft` | Optional CLI status: `installed`, installation URL and hint |
-| `POST` | `/mail/todos/{todo_id}/microsoft` | Preview with `{dry_run:true}`; link with `{dry_run:false,fingerprint}` using that preview's fingerprint |
-| `POST` | `/mail/todos/microsoft/sync` | Reconcile `{todo_id?,dry_run}`; omitted ID selects every linked task |
+| `POST` | `/mail/todos/{todo_id}/microsoft` | Preview with `{dry_run:true,account_id?}`; link with `{dry_run:false,fingerprint,account_id?}` using that preview's fingerprint |
+| `POST` | `/mail/todos/microsoft/sync` | Reconcile `{todo_id?,account_id?,dry_run}`; omitted ID selects links within the selected/allowed accounts |
 
 Microsoft linking returns `MicrosoftTodoSend` with `result.state` of `preview`,
 `linked`, `attention` or `unknown`. A changed preview fingerprint is refused.

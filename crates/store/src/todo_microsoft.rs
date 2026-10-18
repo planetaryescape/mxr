@@ -169,8 +169,11 @@ impl crate::Store {
     pub async fn list_todo_microsoft_exports(
         &self,
         due_only: bool,
+        accounts: Option<&[mxr_core::AccountId]>,
     ) -> Result<Vec<TodoMicrosoftExport>, sqlx::Error> {
-        let rows = sqlx::query("SELECT * FROM todo_microsoft_exports WHERE state = 'accepted' AND (? = 0 OR last_attempt_at IS NULL OR last_attempt_at <= ?) ORDER BY COALESCE(last_attempt_at, 0), todo_id LIMIT ?")
+        let rows = sqlx::query("SELECT exports.* FROM todo_microsoft_exports exports JOIN todos ON todos.id = exports.todo_id WHERE exports.state = 'accepted' AND (? IS NULL OR todos.account_id IN (SELECT value FROM json_each(?))) AND (? = 0 OR last_attempt_at IS NULL OR last_attempt_at <= ?) ORDER BY COALESCE(last_attempt_at, 0), todo_id LIMIT ?")
+            .bind(accounts.map(sqlx::types::Json))
+            .bind(accounts.map(sqlx::types::Json))
             .bind(due_only)
             .bind(chrono::Utc::now().timestamp() - 30)
             .bind(if due_only { 100_i64 } else { -1_i64 })

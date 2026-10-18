@@ -7556,6 +7556,7 @@ export interface components {
             title: string;
         };
         MicrosoftTodoLinkBody: {
+            account_id?: components["schemas"]["AccountId"] | null;
             dry_run?: boolean;
             fingerprint?: string | null;
         };
@@ -7587,6 +7588,7 @@ export interface components {
             installed: boolean;
         };
         MicrosoftTodoSyncBody: {
+            account_id?: components["schemas"]["AccountId"] | null;
             dry_run?: boolean;
             todo_id?: string | null;
         };
@@ -11118,6 +11120,7 @@ export interface components {
                   cmd: "GetMicrosoftTodoStatus";
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "SendTodoToMicrosoft";
                   dry_run?: boolean;
@@ -11125,6 +11128,7 @@ export interface components {
                   todo_id: string;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "SyncMicrosoftTodos";
                   dry_run?: boolean;

@@ -78,7 +78,7 @@ mxr calculated, then repeat without `--dry-run` to apply it.
 ```bash
 mxr todo microsoft status --format json
 mxr todo microsoft link TODO_ID --dry-run --format json
-mxr todo microsoft link TODO_ID --format json
+mxr todo microsoft link TODO_ID --fingerprint REVIEWED_FINGERPRINT --format json
 ```
 
 Install the optional [ms-todo CLI](https://github.com/planetaryescape/ms-todo#installation)
@@ -94,6 +94,14 @@ In the TUI, select a task and press `M` to preview the link, then `M` again to
 confirm it (`Esc` cancels). These controls only appear when the CLI is installed.
 Only tasks you explicitly link participate; Mixer does not import your other
 Microsoft tasks.
+
+For the CLI, review the dry run and copy its `fingerprint` into `--fingerprint`.
+Linking without that value is refused. If the task changed, review a new dry run;
+the link command never silently substitutes a newer preview. `--account ACCOUNT`
+restricts both linking and bulk sync, and a task ID must belong to that account.
+In the TUI, the link review takes over the runway: `j`/`k` or Page Up/Down scroll
+long context without changing the selected task. An unusably small terminal
+cannot confirm the link; enlarge it or press `Esc` to cancel.
 
 After linking, the daemon checks for changes every 30 seconds, in bounded
 batches. Title, due date, completion and reopening sync in either direction.
@@ -113,8 +121,11 @@ mxr todo microsoft sync TODO_ID --dry-run --format json
 mxr todo microsoft sync TODO_ID --format json
 ```
 
-Omit `TODO_ID` to check every linked task. A sync preview reads ms-todo's cache;
-a real sync asks ms-todo to refresh first. In the web details, use **Preview sync**
+Omit `TODO_ID` to check every linked task; with `--account`, only that account
+participates. External MCP/agent profiles
+with no explicit account check only their allowed enabled accounts.
+A sync preview reads ms-todo's cache; a real sync asks ms-todo to refresh first.
+In the web details, use **Preview sync**
 or **Sync now**. In the TUI, `S` previews the selected link and a second `S` syncs it.
 
 If both apps changed the same field differently, sync pauses and reports the

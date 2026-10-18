@@ -881,6 +881,7 @@ pub fn map_request(
         Request::SyncMicrosoftTodos {
             todo_id,
             dry_run: false,
+            ..
         } => ("todo.microsoft_sync", Some("todo"), todo_id.clone(), None),
         Request::GetTodoRunway { .. }
         | Request::GetMicrosoftTodoStatus

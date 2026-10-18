@@ -1582,11 +1582,35 @@ async fn dispatch(
         Request::GetMicrosoftTodoStatus => Ok(microsoft_todo::status()),
         Request::SendTodoToMicrosoft {
             todo_id,
+            account_id,
             dry_run,
             fingerprint,
-        } => microsoft_todo::link(state, todo_id, *dry_run, fingerprint.as_deref()).await,
-        Request::SyncMicrosoftTodos { todo_id, dry_run } => {
-            microsoft_todo::sync(state, todo_id.as_deref(), *dry_run).await
+        } => {
+            microsoft_todo::link(
+                state,
+                todo_id,
+                account_id.as_ref(),
+                *dry_run,
+                fingerprint.as_deref(),
+            )
+            .await
+        }
+        Request::SyncMicrosoftTodos {
+            todo_id,
+            account_id,
+            dry_run,
+        } => {
+            let allowed = match (account_id, scoped_profile) {
+                (Some(account_id), _) => Some(vec![account_id.clone()]),
+                (None, Some(profile)) => {
+                    match account_scope::allowed_accounts(state, profile).await {
+                        Ok(accounts) => Some(accounts),
+                        Err(error) => return Response::error(error),
+                    }
+                }
+                (None, None) => None,
+            };
+            microsoft_todo::sync(state, todo_id.as_deref(), allowed.as_deref(), *dry_run).await
         }
         Request::GetTodoRunway {
             account_id,

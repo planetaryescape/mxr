@@ -334,6 +334,7 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct MicrosoftTodoLinkBody {
+    account_id: Option<AccountId>,
     #[serde(default)]
     dry_run: bool,
     fingerprint: Option<String>,
@@ -341,6 +342,7 @@ pub(crate) struct MicrosoftTodoLinkBody {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct MicrosoftTodoSyncBody {
+    account_id: Option<AccountId>,
     todo_id: Option<String>,
     #[serde(default)]
     dry_run: bool,
@@ -375,6 +377,7 @@ async fn microsoft_link(
             None,
             Request::SendTodoToMicrosoft {
                 todo_id,
+                account_id: body.account_id,
                 dry_run: body.dry_run,
                 fingerprint: body.fingerprint,
             },
@@ -395,6 +398,7 @@ async fn microsoft_sync(
             None,
             Request::SyncMicrosoftTodos {
                 todo_id: body.todo_id,
+                account_id: body.account_id,
                 dry_run: body.dry_run,
             },
         )

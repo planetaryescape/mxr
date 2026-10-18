@@ -62,6 +62,8 @@ pub struct TodoGetInput {
 pub struct MicrosoftTodoInput {
     /// status | link | sync
     pub action: String,
+    /// Restrict linking or synchronization to this account ID.
+    pub account_id: Option<String>,
     pub todo_id: Option<String>,
     /// Required to commit a link; use the exact value returned by preview.
     pub fingerprint: Option<String>,
@@ -119,11 +121,13 @@ mod tests {
     async fn microsoft_tool_previews_by_default_and_preserves_link_fingerprint() {
         let requester = Arc::new(Requester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
+        let account = mxr_core::AccountId::new();
         for action in ["link", "sync"] {
             for confirm in [None, Some(true)] {
                 server
                     .todo_microsoft(Parameters(MicrosoftTodoInput {
                         action: action.into(),
+                        account_id: Some(account.as_str()),
                         todo_id: Some("todo_1".into()),
                         fingerprint: Some("reviewed".into()),
                         confirm,
@@ -134,16 +138,16 @@ mod tests {
         }
         let requests = requester.0.lock().unwrap();
         assert!(
-            matches!(&requests[0], Request::SendTodoToMicrosoft { dry_run: true, fingerprint: Some(value), .. } if value == "reviewed")
+            matches!(&requests[0], Request::SendTodoToMicrosoft { dry_run: true, fingerprint: Some(value), account_id: Some(selected), .. } if value == "reviewed" && selected == &account)
         );
         assert!(
             matches!(&requests[1], Request::SendTodoToMicrosoft { dry_run: false, fingerprint: Some(value), .. } if value == "reviewed")
         );
         assert!(
-            matches!(&requests[2], Request::SyncMicrosoftTodos { dry_run: true, todo_id: Some(id) } if id == "todo_1")
+            matches!(&requests[2], Request::SyncMicrosoftTodos { dry_run: true, todo_id: Some(id), .. } if id == "todo_1")
         );
         assert!(
-            matches!(&requests[3], Request::SyncMicrosoftTodos { dry_run: false, todo_id: Some(id) } if id == "todo_1")
+            matches!(&requests[3], Request::SyncMicrosoftTodos { dry_run: false, todo_id: Some(id), account_id: Some(selected) } if id == "todo_1" && selected == &account)
         );
     }
 

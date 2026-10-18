@@ -11,7 +11,7 @@ import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import type { AccountMutationResult, MutationResponse } from "@/features/mailbox/types";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { plural } from "@/lib/format";
-import { verb } from "./actionPastTense";
+import { failureTitle, partialFailureTitle } from "./actionPastTense";
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
 
 class MutationFailureError extends Error {
@@ -74,15 +74,20 @@ export function announceFailure(
   error: Error,
   payload?: MailActionPayload,
   undo?: (() => Promise<boolean>) | null,
+  requested?: number,
 ): void {
   const account = reauthableAccount(error);
   const result = failedResponse(error)?.result;
-  const done = verb(action, payload);
-  // "Archived 2 of 3 messages; the rest failed", or "Archived failed".
+  // "Archived 2 of 3 messages; the rest failed", or "Couldn't archive 3 messages".
   const partial = Boolean(result && result.succeeded > 0);
+  const total = result?.requested || requested;
   const title = partial
-    ? `${done} ${result!.succeeded} of ${plural(result!.requested, "message")}; the rest failed`
-    : `${done} failed`;
+    ? partialFailureTitle(
+        action,
+        payload,
+        `${result!.succeeded} of ${plural(result!.requested, "message")}`,
+      )
+    : failureTitle(action, payload, total ? plural(total, "message") : "the messages");
   // Part done is a warning (amber); nothing done is an error (red).
   toast[partial ? "warning" : "error"](title, {
     description: undo

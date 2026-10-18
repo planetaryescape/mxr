@@ -101,7 +101,7 @@ test.describe("at 1440px", () => {
     const archive = await style(reader(page).getByRole("button", { name: "Archive" }));
     const key = await firstReadingKey(page);
     await openApp(page, `/reading/item/${encodeURIComponent(key)}`);
-    const later = await style(page.getByRole("button", { name: "Later", exact: true }).first());
+    const later = await style(page.getByRole("button", { name: "Later", exact: true }));
     expect(later).toEqual(archive);
   });
 

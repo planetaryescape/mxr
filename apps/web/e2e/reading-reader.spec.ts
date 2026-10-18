@@ -57,6 +57,17 @@ test("an item with HTML reads as an article, and the reader settings stay after 
   await expect(page.getByTestId("reader-column")).toHaveAttribute("data-reader-theme", "sepia");
 });
 
+test("Later, Let go and Unsubscribe each appear once in the reader", async ({ page }) => {
+  const { item_key } = await firstItem(page);
+  await openApp(page, `/reading/item/${encodeURIComponent(item_key)}`);
+  await expect(page.getByTestId("reader-text")).toBeVisible();
+  for (const name of ["Later", "Let go", "Unsubscribe"]) {
+    await expect(page.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveCount(1);
+  }
+  // The end of the article keeps what the toolbar doesn't have.
+  await expect(page.getByTestId("end-of-issue").getByRole("button")).toHaveText(/^Next/);
+});
+
 test("hostile article HTML renders inert and holds remote images back", async ({ page }) => {
   const { item_key } = await firstItem(page);
   await page.route("**/api/v1/mail/reading/items/**", async (route) => {

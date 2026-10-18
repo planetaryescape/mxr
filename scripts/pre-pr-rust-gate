@@ -49,15 +49,22 @@ done
 
 # Map changed paths to workspace package names. Root-crate sources map to
 # `mxr`; so do workspace manifest/lock changes, because the shipped binary is
-# what a dependency bump must still build. examples/ are separate workspaces
-# with their own CI jobs, and everything else (docs, apps/web, scripts) has
-# no Rust package.
+# what a dependency bump must still build. The root crate's sources live in
+# crates/daemon, which has no manifest of its own (the root Cargo.toml points
+# its [lib], [[bin]] and test paths there), so a crates/<dir> without a
+# Cargo.toml that the root manifest points into maps to the root crate too.
+# examples/ are separate workspaces with their own CI jobs, and everything
+# else (docs, apps/web, scripts) has no Rust package.
 packages_for_paths() {
     awk -F/ '
         $1 == "crates" && NF > 2 { print "crates/" $2; next }
         $1 == "src" || $1 == "tests" || $1 == "benches" || $1 == "build.rs" { print "."; next }
         NF == 1 && ($1 == "Cargo.toml" || $1 == "Cargo.lock") { print "."; next }
     ' | sort -u | while IFS= read -r dir; do
+        if [[ ! -f "$dir/Cargo.toml" && "$dir" == crates/* ]] \
+            && grep -q "path = \"$dir/" Cargo.toml; then
+            dir="."
+        fi
         [[ -f "$dir/Cargo.toml" ]] || continue
         awk -F'"' '/^\[package\]/ { p = 1 } p && /^name *=/ { print $2; exit }' "$dir/Cargo.toml"
     done | sort -u

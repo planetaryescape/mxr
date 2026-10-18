@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import { animationsSettled } from "./helpers/mail";
 import { expect, test, type Page } from "@playwright/test";
 
 import { bridge, openApp } from "./helpers/state";
@@ -49,6 +50,9 @@ async function openEdition(page: Page) {
 
 /** Serious and critical axe violations; message frames are untrusted mail, not app UI. */
 async function blockingViolations(page: Page): Promise<string[]> {
+  // A dialog still fading in blends with the page behind it, and axe reads that
+  // as low contrast (WebKit on CI: the Archive export preview).
+  await animationsSettled(page);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .exclude("iframe")

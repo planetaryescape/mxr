@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import { animationsSettled } from "./helpers/mail";
 import { expect, test, type Page } from "@playwright/test";
 
 import { deliver, failSyncs, restoreSyncs } from "./helpers/spool";
@@ -43,6 +44,9 @@ function trigger(page: Page) {
 }
 
 async function blockingViolations(page: Page): Promise<string[]> {
+  // A dialog still fading in blends with the page behind it, and axe reads that
+  // as low contrast (WebKit on CI: the Archive export preview).
+  await animationsSettled(page);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .exclude("iframe")

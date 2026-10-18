@@ -18,6 +18,7 @@ impl FakeCli {
 cd '{}'
 printf '%s\000' "$@" >> args
 shift 5
+if [ -f verbose-stderr ]; then dd if=/dev/zero bs=65536 count=32 >&2 2>/dev/null || exit 1; fi
 if [ "$1" = schema ]; then
   if [ -f fail-schema ]; then exit "$(cat fail-schema)"; fi
   if [ -f schema.json ]; then cat schema.json; else printf '{{"schema_version":2,"output":{{"required":["defer_until"]}}}}'; fi

@@ -776,10 +776,11 @@ impl App {
             .as_ref()
             .filter(|preview| preview.todo_id == todo.id);
         page.pending_microsoft = Some(if sync {
-            let confirmed = page
-                .microsoft_sync_preview
-                .take()
-                .is_some_and(|preview| preview.results.iter().any(|item| item.todo_id == todo.id));
+            let confirmed =
+                page.microsoft_sync_preview.take().is_some_and(|preview| {
+                    preview.results.iter().any(|item| item.todo_id == todo.id)
+                }) && page.microsoft_sync_review_visible.replace(false)
+                    && page.panel == TodoPanel::Runway;
             mxr_protocol::Request::SyncMicrosoftTodos {
                 account_id: Some(todo.account_id.clone()),
                 todo_id: Some(todo.id),
@@ -816,6 +817,10 @@ impl App {
                 self.mailbox.todo_page.microsoft_preview = Some(result);
             }
             mxr_protocol::ResponseData::MicrosoftTodoSync { sync } => {
+                self.mailbox
+                    .todo_page
+                    .microsoft_sync_review_visible
+                    .set(false);
                 self.status_message = sync.results.first().map(|item| item.summary.clone());
                 self.mailbox.todo_page.microsoft_preview = None;
                 if sync.dry_run {

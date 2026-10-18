@@ -426,6 +426,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
 
         // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
         Request::DownloadAttachment { .. }
+        | Request::SendTodoToMicrosoft { dry_run: false, .. }
+        | Request::SyncMicrosoftTodos { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
         | Request::PreviewDraftAttachment { .. }

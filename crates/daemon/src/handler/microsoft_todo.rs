@@ -163,13 +163,19 @@ async fn link_with_cli(
     let key = format!("mxr:todo:{}:{id}", record.account_id);
     match cli.add(&outbound.fields, &outbound.notes, &key).await {
         Ok((operation_id, task)) => {
-            if task
-                .fields()
-                .map_err(|e| HandlerError::Message(e.to_string()))?
-                != outbound.fields
-            {
+            if task.fields().ok().as_ref() != Some(&outbound.fields) {
                 result.state = "unknown".into();
                 result.summary = "ms-todo returned a different task shape. Check its outbox before linking again.".into();
+                state
+                    .store
+                    .mark_todo_microsoft_export_unknown(
+                        &id,
+                        &task.id,
+                        &operation_id,
+                        &result.summary,
+                    )
+                    .await?;
+                result.task_id = Some(task.id);
             } else {
                 state
                     .store

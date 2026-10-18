@@ -25,6 +25,21 @@ mod tests {
     use test_support::FakeCli;
 
     #[tokio::test]
+    async fn verbose_stderr_is_drained_to_eof_without_losing_a_valid_response() {
+        let fake = FakeCli::new();
+        std::fs::write(fake.path().join("verbose-stderr"), "").unwrap();
+        let task = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            fake.cli().show("remote-task"),
+        )
+        .await
+        .expect("stderr must not stall until the transport timeout")
+        .unwrap();
+        assert_eq!(task.fields().unwrap(), fake.fields());
+        assert_eq!(fake.calls(), ["show"]);
+    }
+
+    #[tokio::test]
     async fn task_text_is_literal_and_context_only_goes_to_stdin() {
         let fake = FakeCli::new();
         let fields = LinkedTodoFields {
@@ -262,7 +277,7 @@ impl MicrosoftTodoCli {
             .kill_on_drop(true);
         let mut child = command.spawn().map_err(|_| CliError::Missing)?;
         let stdout = child.stdout.take().ok_or(CliError::Unknown)?;
-        let stderr = child.stderr.take().ok_or(CliError::Unknown)?;
+        let mut stderr = child.stderr.take().ok_or(CliError::Unknown)?;
         let stdin = child.stdin.take();
         let operation = async {
             let write = async {
@@ -289,7 +304,9 @@ impl MicrosoftTodoCli {
                 Ok(bytes)
             };
             let drain = async {
-                tokio::io::copy(&mut stderr.take(65_536), &mut tokio::io::sink())
+                // Discard every byte with bounded memory. A capped reader can
+                // close the pipe early or strand a verbose child on stderr.
+                tokio::io::copy(&mut stderr, &mut tokio::io::sink())
                     .await
                     .map_err(|_| CliError::Unknown)?;
                 Ok(())

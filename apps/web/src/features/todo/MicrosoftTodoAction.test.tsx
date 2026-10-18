@@ -28,7 +28,7 @@ const preview: MicrosoftTodoLink = {
   summary: "Title, due date, schedule and completion will sync both ways.",
 };
 
-function setup(installed: boolean, unknown = false, statusFails = false) {
+function setup(installed: boolean, unknown = false, statusFails = false, linkFails = false) {
   const commits: unknown[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const path = String(input);
@@ -55,6 +55,10 @@ function setup(installed: boolean, unknown = false, statusFails = false) {
       });
     }
     const body: unknown = JSON.parse(String(init?.body));
+    if (linkFails) {
+      linkFails = false;
+      return Response.json({ error: "Link preview temporarily unavailable" }, { status: 400 });
+    }
     if (typeof body === "object" && body !== null && "dry_run" in body && body.dry_run === false) {
       commits.push(body);
       return Response.json({
@@ -137,4 +141,26 @@ test("status errors stay visible and offer a safe read-only retry", async () => 
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   expect(commits).toHaveLength(0);
   expect(fetch.mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
+});
+
+test("a failed link preview offers a read-only retry without closing the details", async () => {
+  const { fetch, commits } = setup(true, false, false, true);
+  fireEvent.click(await screen.findByRole("button", { name: "Microsoft To Do" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Link preview temporarily unavailable",
+  );
+  expect(screen.queryByRole("button", { name: "Link and sync both ways" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh link status" }));
+  expect(await screen.findByRole("button", { name: "Link and sync both ways" })).toBeVisible();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(commits).toHaveLength(0);
+  const linkRequests = fetch.mock.calls.filter(
+    ([input]) =>
+      String(input).endsWith("/microsoft") && !String(input).endsWith("/todos/microsoft"),
+  );
+  expect(linkRequests).toHaveLength(2);
+  expect(linkRequests.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+    { account_id: todoFixture().account_id, dry_run: true },
+    { account_id: todoFixture().account_id, dry_run: true },
+  ]);
 });

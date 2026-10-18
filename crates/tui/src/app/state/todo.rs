@@ -100,6 +100,7 @@ pub struct TodoPageState {
     pub microsoft_busy: bool,
     /// Geometry feedback only: confirmation is disabled until the review was drawn.
     pub microsoft_review_visible: std::cell::Cell<bool>,
+    pub microsoft_sync_review_visible: std::cell::Cell<bool>,
     pub microsoft_scroll_max: std::cell::Cell<u16>,
     pub microsoft_scroll: u16,
 }

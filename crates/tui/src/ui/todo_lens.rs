@@ -286,6 +286,7 @@ fn row_line(
 struct Body {
     lines: Vec<Line<'static>>,
     selected_line: usize,
+    sync_preview_end: Option<usize>,
 }
 
 impl Body {
@@ -293,6 +294,7 @@ impl Body {
         Self {
             lines: Vec::new(),
             selected_line: 0,
+            sync_preview_end: None,
         }
     }
 
@@ -359,6 +361,7 @@ impl Body {
                         "S sync now · Esc cancel",
                         Style::default().fg(theme.text_muted),
                     );
+                    self.sync_preview_end = Some(self.lines.len());
                 }
                 if let Some(preview) = view
                     .page
@@ -576,6 +579,7 @@ fn catchup_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) 
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::theme::Theme) {
     view.page.microsoft_review_visible.set(false);
+    view.page.microsoft_sync_review_visible.set(false);
     if let Some(preview) = view
         .page
         .microsoft_preview
@@ -608,9 +612,21 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
 
     let footer_height = 2u16;
     let body_height = inner.height.saturating_sub(footer_height) as usize;
-    let scroll = body
-        .selected_line
-        .saturating_sub(body_height.saturating_sub(2));
+    let scroll = body.sync_preview_end.map_or_else(
+        || {
+            body.selected_line
+                .saturating_sub(body_height.saturating_sub(2))
+        },
+        |end| end.saturating_sub(body_height),
+    );
+    view.page.microsoft_sync_review_visible.set(
+        view.page.panel == TodoPanel::Runway
+            && width >= 30
+            && body.selected_line >= scroll
+            && body
+                .sync_preview_end
+                .is_some_and(|end| end <= scroll + body_height),
+    );
     let body_area = Rect {
         height: inner.height.saturating_sub(footer_height),
         ..inner

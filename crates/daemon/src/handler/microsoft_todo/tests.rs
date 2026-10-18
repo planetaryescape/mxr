@@ -131,6 +131,75 @@ async fn linked(state: &AppState, fake: &FakeCli, id: &str) -> TodoMicrosoftExpo
 }
 
 #[tokio::test]
+async fn mismatched_or_invalid_successful_create_retains_ids_without_accepting_or_retrying() {
+    for invalid_status in [false, true] {
+        let (state, fake, id) = fixture().await;
+        let reviewed = preview(&state, &fake, &id).await;
+        if invalid_status {
+            fake.set_remote_json(&serde_json::json!({
+                "schema_version": 2, "id": "known-remote", "title": reviewed.title,
+                "status": "future-status", "sync_state": "synced", "defer_until": null,
+            }));
+        } else {
+            let mut changed = fake.fields();
+            changed.title = "Unexpected remote title".into();
+            fake.set_remote(&changed);
+        }
+        let answer = link_with_cli(
+            &state,
+            &id,
+            false,
+            Some(&reviewed.fingerprint),
+            Some(&fake.cli()),
+        )
+        .await
+        .unwrap();
+        let ResponseData::MicrosoftTodoSend { result } = answer else {
+            panic!("link reply")
+        };
+        assert_eq!(result.state, "unknown");
+        let receipt = state
+            .store
+            .todo_microsoft_export(&id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.state, "unknown");
+        assert_eq!(
+            receipt.task_id.as_deref(),
+            Some(if invalid_status {
+                "known-remote"
+            } else {
+                "remote-task"
+            })
+        );
+        assert_eq!(receipt.operation_id.as_deref(), Some("fake-operation"));
+        assert_eq!(result.task_id, receipt.task_id);
+        assert!(receipt.baseline_json.is_none());
+        assert!(state
+            .store
+            .list_todo_microsoft_exports(false, None)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            state.store.get_todo(&id).await.unwrap().unwrap().title,
+            "Pay council tax"
+        );
+        link_with_cli(
+            &state,
+            &id,
+            false,
+            Some(&reviewed.fingerprint),
+            Some(&fake.cli()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fake.calls(), ["add"]);
+    }
+}
+
+#[tokio::test]
 async fn preview_does_not_spawn_or_claim_and_stale_confirmation_is_refused() {
     let (state, fake, id) = fixture().await;
     let preview = preview(&state, &fake, &id).await;

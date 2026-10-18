@@ -186,17 +186,21 @@ export function MicrosoftTodoAction({ todo }: { todo: Todo }) {
                     Preview sync
                   </Button>
                 ) : null}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy || link.isFetching}
-                  onClick={() => void link.refetch()}
-                >
-                  Refresh link status
-                </Button>
               </div>
             </>
+          ) : null}
+          {link.data || link.isError ? (
+            <div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={busy || link.isFetching}
+                onClick={() => void link.refetch()}
+              >
+                Refresh link status
+              </Button>
+            </div>
           ) : null}
           {message ? <p role="status">{message}</p> : null}
           {error || link.error ? <p role="alert">{error ?? link.error?.message}</p> : null}

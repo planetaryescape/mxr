@@ -149,6 +149,21 @@ impl crate::Store {
         Ok(claimed)
     }
 
+    /// Keep a returned identity without accepting an uncertain task shape.
+    /// Unknown receipts are never eligible for background sync or recreation.
+    pub async fn mark_todo_microsoft_export_unknown(
+        &self,
+        todo_id: &str,
+        task_id: &str,
+        operation_id: &str,
+        error: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE todo_microsoft_exports SET state = 'unknown', task_id = ?, operation_id = ?, last_error = ? WHERE todo_id = ? AND state = 'sending'")
+            .bind(task_id).bind(operation_id).bind(error).bind(todo_id)
+            .execute(self.writer()).await?;
+        Ok(())
+    }
+
     pub async fn accept_todo_microsoft_export(
         &self,
         todo_id: &str,

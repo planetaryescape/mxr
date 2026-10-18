@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn request_lane_keeps_microsoft_subprocesses_off_the_hot_lane() {
+    for dry_run in [false, true] {
+        assert_eq!(
+            request_lane(&Request::SyncMicrosoftTodos {
+                todo_id: None,
+                account_id: None,
+                dry_run
+            }),
+            IpcLane::Bulk
+        );
+        assert_eq!(
+            request_lane(&Request::SendTodoToMicrosoft {
+                todo_id: "todo_1".into(),
+                account_id: None,
+                dry_run,
+                fingerprint: None
+            }),
+            if dry_run { IpcLane::Hot } else { IpcLane::Bulk }
+        );
+    }
+    assert_eq!(request_lane(&Request::GetMicrosoftTodoStatus), IpcLane::Hot);
+}
+
+#[test]
 fn request_lane_routes_llm_and_network_requests_to_bulk() {
     // Sample of the slow lane: at least one LLM call, one network
     // round-trip, and one heavy rebuild. Locks the classifier so a

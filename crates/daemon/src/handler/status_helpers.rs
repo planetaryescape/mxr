@@ -536,7 +536,20 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
             ],
         };
     }
-    let (category, remediation) = if lower.contains("oauth")
+    // The provider's Auth/OAuth wrappers do not mean the grant was rejected:
+    // token-endpoint transport failures are retryable network failures too.
+    let (category, remediation) = if crate::loops::classify_sync_error(err) == "network" {
+        (
+            DoctorFindingCategory::Network,
+            vec![
+                format!(
+                    "mxr sync --account {} --wait --wait-timeout-secs 120",
+                    shell_words::quote(account)
+                ),
+                "mxr doctor".into(),
+            ],
+        )
+    } else if lower.contains("oauth")
         || lower.contains("invalid_grant")
         || lower.contains("token")
         || lower.contains("unauthorized")
@@ -546,18 +559,6 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
             vec![format!(
                 "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
             )],
-        )
-    } else if lower.contains("connection refused")
-        || lower.contains("dns")
-        || lower.contains("timed out")
-        || lower.contains("timeout")
-    {
-        (
-            DoctorFindingCategory::Network,
-            vec![
-                format!("mxr sync --account {account} --wait --wait-timeout-secs 120"),
-                "mxr doctor".into(),
-            ],
         )
     } else if lower.contains("rate") && lower.contains("limit") {
         (
@@ -585,6 +586,16 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
 fn classify_log_line(line: &str) -> Option<mxr_protocol::DoctorFinding> {
     use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
     let lower = line.to_lowercase();
+    if crate::loops::classify_sync_error(line) == "network"
+        && (lower.contains("oauth") || lower.contains("token refresh"))
+    {
+        return Some(DoctorFinding {
+            category: DoctorFindingCategory::Network,
+            severity: DoctorFindingSeverity::Warning,
+            message: "Connection issue in recent logs".into(),
+            remediation: vec!["mxr sync".into(), "mxr doctor".into()],
+        });
+    }
     if lower.contains("invalid_grant") || lower.contains("token expired") || lower.contains("oauth")
     {
         return Some(DoctorFinding {
@@ -859,6 +870,28 @@ mod tests {
     }
 
     #[test]
+    fn oauth_transport_failures_offer_retry_not_reauthorization() {
+        let error = "Provider error: Auth error: OAuth2 error: token refresh timed out after 60s";
+        let finding = classify_sync_error("Work Account", error);
+        assert_eq!(finding.category, DoctorFindingCategory::Network);
+        assert!(finding
+            .remediation
+            .iter()
+            .any(|step| step.starts_with("mxr sync")));
+        assert_eq!(
+            shell_words::split(&finding.remediation[0]).unwrap()[3],
+            "Work Account"
+        );
+
+        let logged = classify_log_line(error).unwrap();
+        assert_eq!(logged.category, DoctorFindingCategory::Network);
+        assert!(!logged
+            .remediation
+            .iter()
+            .any(|step| step.contains("accounts add")));
+    }
+
+    #[test]
     fn classify_sync_error_maps_network_failures_without_guessing_a_fix() {
         let finding = classify_sync_error("imap", "DNS lookup timed out");
 
@@ -971,5 +1004,6 @@ mod tests {
     #[test]
     fn classify_log_line_ignores_unclassified_lines() {
         assert!(classify_log_line("sync completed successfully").is_none());
+        assert!(classify_log_line("unrelated subsystem connection failed").is_none());
     }
 }

@@ -8,6 +8,7 @@
 )]
 
 pub mod auth;
+mod auth_refresh;
 mod auth_storage;
 pub mod client;
 mod cursor;

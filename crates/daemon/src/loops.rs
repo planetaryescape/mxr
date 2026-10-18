@@ -1291,16 +1291,17 @@ pub(crate) fn classify_sync_error(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
     if lower.contains("rate limit") || lower.contains("retry after") {
         "rate_limit"
-    } else if lower.contains("auth") || lower.contains("oauth") || lower.contains("login") {
-        "auth"
     } else if lower.contains("timeout")
         || lower.contains("timed out")
         || lower.contains("dns")
         || lower.contains("connection")
         || lower.contains("network")
         || lower.contains("tls")
+        || lower.contains("temporarily unavailable")
     {
         "network"
+    } else if lower.contains("auth") || lower.contains("oauth") || lower.contains("login") {
+        "auth"
     } else if lower.contains("lockbusy")
         || lower.contains("tantivy")
         || lower.contains("sqlite")
@@ -1317,6 +1318,30 @@ pub(crate) fn classify_sync_error(error: &str) -> &'static str {
 #[cfg(test)]
 mod classify_sync_error_tests {
     use super::classify_sync_error;
+
+    #[test]
+    fn token_refresh_timeout_is_retryable_not_signed_out() {
+        assert_eq!(
+            classify_sync_error(
+                "Provider error: Auth error: OAuth2 error: token refresh timed out after 60s"
+            ),
+            "network"
+        );
+    }
+
+    #[test]
+    fn token_endpoint_transport_and_server_errors_are_not_sign_outs() {
+        for message in [
+            "Provider error: Auth error: OAuth2 error: Connection failure: Request timed out",
+            "Provider error: Auth error: Token refresh temporarily unavailable: HTTP 503",
+        ] {
+            assert_eq!(classify_sync_error(message), "network", "{message}");
+        }
+        assert_eq!(
+            classify_sync_error("Provider error: Auth error: OAuth2 error: invalid_grant"),
+            "auth"
+        );
+    }
 
     #[test]
     fn backoff_follows_a_rate_limit_and_doubles_otherwise_within_bounds() {

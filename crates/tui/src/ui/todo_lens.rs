@@ -113,7 +113,16 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
                 .and_then(|todo| todo.resolution.as_ref())
                 .filter(|resolution| resolution.status == "pending")
                 .map_or_else(String::new, |_| "  v review resolution".into());
-            format!("\u{21b5} {enter}  {rest}{review}  ? keys")
+            let microsoft = if page
+                .microsoft_status
+                .as_ref()
+                .is_some_and(|status| status.installed)
+            {
+                "  M Microsoft To Do  S sync linked task"
+            } else {
+                ""
+            };
+            format!("\u{21b5} {enter}  {rest}{review}{microsoft}  ? keys")
         }
         TodoPanel::Expired => "\u{21b5} restore  o email  Esc back to the runway".to_string(),
         TodoPanel::Catchup => {
@@ -313,6 +322,77 @@ impl Body {
                 self.selected_line = self.lines.len();
             }
             self.push(row_line(todo, selected, dim, width, theme));
+            if selected {
+                if let Some(preview) = view
+                    .page
+                    .microsoft_sync_preview
+                    .as_ref()
+                    .and_then(|preview| preview.results.iter().find(|item| item.todo_id == todo.id))
+                {
+                    self.text(
+                        one_line(&preview.summary),
+                        Style::default().fg(theme.text_secondary),
+                    );
+                    for (label, fields) in [
+                        ("Mixer", &preview.mixer),
+                        ("Microsoft", &preview.microsoft),
+                        ("After sync", &preview.merged),
+                    ] {
+                        if let Some(fields) = fields {
+                            self.text(
+                                format!(
+                                    "{label}: {} · due {} · scheduled {} · {}",
+                                    one_line(&fields.title),
+                                    fields
+                                        .due
+                                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                                    fields
+                                        .scheduled
+                                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                                    if fields.completed { "done" } else { "open" }
+                                ),
+                                Style::default().fg(theme.text_secondary),
+                            );
+                        }
+                    }
+                    self.text(
+                        "S sync now · Esc cancel",
+                        Style::default().fg(theme.text_muted),
+                    );
+                }
+                if let Some(preview) = view
+                    .page
+                    .microsoft_preview
+                    .as_ref()
+                    .filter(|preview| preview.todo_id == todo.id)
+                {
+                    for line in wrap(&one_line(&preview.summary), width.saturating_sub(4)) {
+                        self.text(line, Style::default().fg(theme.text_secondary));
+                    }
+                    if preview.state == "preview" {
+                        self.text(
+                            format!(
+                                "Title: {} · due: {} · schedule: {}",
+                                one_line(&preview.title),
+                                preview
+                                    .due
+                                    .map_or_else(|| "none".into(), |day| day.to_string()),
+                                preview
+                                    .scheduled
+                                    .map_or_else(|| "none".into(), |day| day.to_string())
+                            ),
+                            Style::default().fg(theme.text_secondary),
+                        );
+                        for line in preview.notes.lines() {
+                            self.text(one_line(line), Style::default().fg(theme.text_muted));
+                        }
+                        self.text(
+                            "M confirm link · Esc cancel",
+                            Style::default().fg(theme.text_muted),
+                        );
+                    }
+                }
+            }
             if let Some(resolution) = &todo.resolution {
                 let status = match (resolution.status.as_str(), resolution.action.as_str()) {
                     ("pending", "revise_date") => "New date proposed",
@@ -353,6 +433,15 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
     let page = view.page;
     let muted = Style::default().fg(theme.text_muted);
     let secondary = Style::default().fg(theme.text_secondary);
+    if let Some(status) = page
+        .microsoft_status
+        .as_ref()
+        .filter(|status| !status.installed)
+    {
+        for line in wrap(&status.hint, width.saturating_sub(4)) {
+            body.text(line, muted);
+        }
+    }
     let Some(runway) = &page.runway else {
         body.text("Loading To do…", muted);
         return body;

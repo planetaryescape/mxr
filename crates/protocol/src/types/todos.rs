@@ -389,3 +389,60 @@ pub struct TodoChangeData {
     /// One line saying what happened: "Ticked off 2.", "Would let go of 12."
     pub summary: String,
 }
+
+/// Optional local handoff to Microsoft To Do through the `ms-todo` CLI.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MicrosoftTodoStatusData {
+    /// Available on the daemon's PATH, not the browser's computer.
+    pub installed: bool,
+    pub install_url: String,
+    pub hint: String,
+}
+
+/// Preview of an explicit task link, or its durable link status. Linking
+/// authorizes two-way synchronization of shared fields, never full email bodies.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MicrosoftTodoSendData {
+    pub dry_run: bool,
+    pub todo_id: String,
+    pub title: String,
+    pub due: Option<chrono::NaiveDate>,
+    pub scheduled: Option<chrono::NaiveDate>,
+    pub notes: String,
+    /// Returned by preview; a commit must name this unchanged payload.
+    pub fingerprint: String,
+    /// preview | linked | unknown | attention
+    pub state: String,
+    pub task_id: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MicrosoftTodoSyncData {
+    pub dry_run: bool,
+    pub results: Vec<MicrosoftTodoSyncItemData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MicrosoftTodoSyncItemData {
+    pub todo_id: String,
+    /// synced | changes | conflict | paused
+    pub state: String,
+    pub summary: String,
+    pub mixer: Option<MicrosoftTodoFieldsData>,
+    pub microsoft: Option<MicrosoftTodoFieldsData>,
+    pub merged: Option<MicrosoftTodoFieldsData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MicrosoftTodoFieldsData {
+    pub title: String,
+    pub due: Option<chrono::NaiveDate>,
+    pub scheduled: Option<chrono::NaiveDate>,
+    pub completed: bool,
+}

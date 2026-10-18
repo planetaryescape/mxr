@@ -139,6 +139,17 @@ Use the attachment begin/chunk/finalize tools to upload bytes, then attach the f
 
 Pass the reviewed revision, operation ID and original owner to `mxr_send_draft` with `managed_attachments_reviewed=true` and `confirm=true`. After interruption, call `mxr_send_outcome` with the same owner and operation ID. Accepted and unknown operations must never become fresh sends automatically. Remote input and stored drafts with filesystem paths or inline path-backed assets are refused; actual mail prose is preserved.
 
+## Link tasks with Microsoft To Do
+
+`mxr_todo_microsoft` exposes the optional Microsoft To Do integration. Use
+`action: "status"` to check the daemon's CLI installation. `action: "link"` with
+`todo_id` previews the outgoing task; pass its `fingerprint` with `confirm: true`
+to enable two-way shared-field sync. `action: "sync"` previews one link, or every
+link when `todo_id` is omitted; `confirm: true` reconciles them. A preview reads
+the peer's cache; a real sync refreshes first. Never retry an unknown handoff or
+write. Inspect ms-todo's outbox and ask the user to resolve it. Confirmed link and
+sync requests require send permission because they can transmit task context.
+
 ## Todo resolution
 
 `mxr_todo_resolve` takes `todo_id`, `suggestion_id`, and an `action` of `accept`, `dismiss`, or `undo`. Without `confirm=true`, the daemon validates and previews that same action without changing the task. With confirmation, it applies the named action. The returned source quote and message ID identify the evidence to review.

@@ -93,6 +93,11 @@ pub struct TodoPageState {
     pub pending_resolution: Option<(String, String, TodoResolutionActionData)>,
     /// The exact previewed suggestion, held until explicit accept/dismiss.
     pub resolution_preview: Option<(String, String, TodoChangeData)>,
+    pub microsoft_status: Option<mxr_protocol::MicrosoftTodoStatusData>,
+    pub microsoft_preview: Option<mxr_protocol::MicrosoftTodoSendData>,
+    pub microsoft_sync_preview: Option<mxr_protocol::MicrosoftTodoSyncData>,
+    pub pending_microsoft: Option<mxr_protocol::Request>,
+    pub microsoft_busy: bool,
 }
 
 impl TodoPageState {

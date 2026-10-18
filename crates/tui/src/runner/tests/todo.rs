@@ -5,7 +5,7 @@
 use super::*;
 use crate::app::{TodoPanel, TodoPromptKind};
 use crate::ui::todo_lens::tests::{council_tax, page, runway, todo};
-use mxr_protocol::{TodoCatchupDecisionData, TodoChangeData, TodoStateActionData};
+use mxr_protocol::{ResponseData, TodoCatchupDecisionData, TodoChangeData, TodoStateActionData};
 
 fn press(app: &mut App, code: KeyCode) {
     if let Some(action) = app.handle_key(KeyEvent::new(code, KeyModifiers::NONE)) {
@@ -60,6 +60,61 @@ fn attach_resolution(app: &mut App, status: &str) {
         status: status.into(),
     });
     app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
+}
+
+#[test]
+fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
+    let mut app = todo_app(true);
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::GetMicrosoftTodoStatus)
+    ));
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoStatus {
+        status: mxr_protocol::MicrosoftTodoStatusData {
+            installed: false,
+            install_url: "https://example.test/install".into(),
+            hint: "Install ms-todo".into(),
+        },
+    });
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    app.mailbox
+        .todo_page
+        .microsoft_status
+        .as_mut()
+        .unwrap()
+        .installed = true;
+    press_shifted(&mut app, 'M');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SendTodoToMicrosoft {
+            dry_run: true,
+            fingerprint: None,
+            ..
+        })
+    ));
+    // No second request may escape while the preview is still loading.
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    let id = app.selected_todo().unwrap().id.clone();
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoSend {
+        result: mxr_protocol::MicrosoftTodoSendData {
+            dry_run: true,
+            todo_id: id.clone(),
+            title: "Pay council tax".into(),
+            due: None,
+            scheduled: None,
+            notes: "Exact context".into(),
+            fingerprint: "exact-preview".into(),
+            state: "preview".into(),
+            task_id: None,
+            summary: "Shared fields sync both ways".into(),
+        },
+    });
+    press_shifted(&mut app, 'M');
+    assert!(
+        matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SendTodoToMicrosoft { todo_id, dry_run: false, fingerprint: Some(fingerprint) }) if todo_id == id && fingerprint == "exact-preview")
+    );
 }
 
 #[test]

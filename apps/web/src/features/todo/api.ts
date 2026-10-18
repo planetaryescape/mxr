@@ -29,6 +29,41 @@ type Change = Extract<Schemas["ResponseData"], { kind: "TodoChange" }>;
 /** Every To do query starts with this, so one invalidation refreshes them. */
 export const TODO_KEY = ["todos"] as const;
 
+export type MicrosoftTodoLink = Schemas["MicrosoftTodoSendData"];
+
+export function useMicrosoftTodoStatus() {
+  return useQuery({
+    queryKey: ["microsoft-todo", "status"],
+    queryFn: async () => {
+      const answer = await apiFetch<
+        Extract<Schemas["ResponseData"], { kind: "MicrosoftTodoStatus" }>
+      >("/api/v1/mail/todos/microsoft");
+      return answer.status;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export async function linkMicrosoftTodo(
+  id: string,
+  fingerprint?: string,
+): Promise<MicrosoftTodoLink> {
+  const answer = await apiFetch<Extract<Schemas["ResponseData"], { kind: "MicrosoftTodoSend" }>>(
+    `/api/v1/mail/todos/${encodeURIComponent(id)}/microsoft`,
+    { method: "POST", body: { dry_run: fingerprint === undefined, fingerprint } },
+  );
+  return answer.result;
+}
+
+export async function syncMicrosoftTodo(id: string, dryRun: boolean) {
+  const answer = await apiFetch<Extract<Schemas["ResponseData"], { kind: "MicrosoftTodoSync" }>>(
+    "/api/v1/mail/todos/microsoft/sync",
+    { method: "POST", body: { todo_id: id, dry_run: dryRun } },
+  );
+  return answer.sync;
+}
+
 function accountQuery(account: string | null, extra: Record<string, string> = {}): string {
   const query = new URLSearchParams(extra);
   if (account) query.set("account", account);

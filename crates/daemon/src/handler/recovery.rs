@@ -215,6 +215,9 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | GetArrivalModes { .. }
             | ListTodos { .. }
             | GetTodoRunway { .. }
+            | GetMicrosoftTodoStatus
+            | SyncMicrosoftTodos { dry_run: true, .. }
+            | SendTodoToMicrosoft { dry_run: true, .. }
             | ListRecords { .. }
             | GetRecord { .. }
             | GetReadingEdition { .. }

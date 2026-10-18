@@ -2393,6 +2393,12 @@ With no subcommand, prints the runway: Now, Coming up by week, Later, Whenever a
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TodoAction {
+    /// Link tasks with the optional ms-todo CLI and keep shared fields in sync.
+    #[command(alias = "ms-todo")]
+    Microsoft {
+        #[command(subcommand)]
+        action: TodoMicrosoftAction,
+    },
     /// The runway (the default), or every row in one state.
     List {
         /// The Expired list: rows past their window or let go. Undo restores one.
@@ -2507,6 +2513,26 @@ pub enum TodoResolutionActionArg {
     Accept,
     Dismiss,
     Undo,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TodoMicrosoftAction {
+    /// Whether ms-todo is installed on the machine running the daemon.
+    Status,
+    /// Create a Microsoft task and link title, due date, schedule and status both ways.
+    Link {
+        todo_id: String,
+        /// Show the exact link and shared fields without running ms-todo.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Reconcile one linked task, or all links. Conflicting edits are preserved for review.
+    Sync {
+        todo_id: Option<String>,
+        /// Read the cached Microsoft task and show changes without applying them.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.

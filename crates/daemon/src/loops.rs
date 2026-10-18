@@ -2277,6 +2277,29 @@ pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
     }
 }
 
+/// Optional linked-task reconciliation has its own budget and shutdown handle:
+/// an unavailable Microsoft CLI must never block email or To do detection.
+pub async fn microsoft_todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut ticker = interval(Duration::from_secs(30));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        if *shutdown_rx.borrow() {
+            break;
+        }
+        tokio::select! {
+            _ = ticker.tick() => {},
+            _ = shutdown_rx.changed() => break,
+        }
+        if state.is_restore_pending() {
+            continue;
+        }
+        tokio::select! {
+            _ = tokio::time::timeout(Duration::from_secs(60), crate::handler::microsoft_todo::background(&state)) => {},
+            _ = shutdown_rx.changed() => break,
+        }
+    }
+}
+
 /// To do's background work: the first run in steps, the promise mirror,
 /// expiry and the surfacing claim. Comes back every 30 seconds while a
 /// first run is going, every 5 minutes after.

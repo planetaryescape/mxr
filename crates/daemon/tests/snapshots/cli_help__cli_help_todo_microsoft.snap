@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Link tasks with the optional ms-todo CLI and keep shared fields in sync
+
+Usage: mxr todo microsoft [OPTIONS] <COMMAND>
+
+Commands:
+  status  Whether ms-todo is installed on the machine running the daemon
+  link    Create a Microsoft task and link title, due date, schedule and status both ways
+  sync    Reconcile one linked task, or all links. Conflicting edits are preserved for review
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

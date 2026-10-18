@@ -269,6 +269,8 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | `o` | Open the source email |
 | `E` (web) | Open Expired |
 | `C` (web) | Open Catch-up |
+| `M` (TUI, ms-todo installed) | Preview the selected Microsoft task link; press again to confirm |
+| `S` (TUI, ms-todo installed) | Preview sync for the selected link; press again to sync |
 
 For `Looks resolved`, use **Review** on the web or `v` in the TUI.
 [Review later evidence](/guides/todo-resolution/) lists the preview's own keys

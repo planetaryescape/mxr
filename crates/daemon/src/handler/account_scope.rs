@@ -432,7 +432,10 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
         // ----- Named by another entity -----
+        Request::SyncMicrosoftTodos { todo_id: Some(todo_id), .. } => Targets(vec![T::Todo(todo_id)]),
+        Request::SyncMicrosoftTodos { todo_id: None, .. } => AllAccounts,
         Request::GetTodo { todo_id }
+        | Request::SendTodoToMicrosoft { todo_id, .. }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. }
         | Request::ResolveTodoSuggestion { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),
@@ -454,7 +457,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetDecision { id } => Targets(vec![T::Decision(id)]),
         Request::UndoMove { correction_id } => Targets(vec![T::MoveCorrection(*correction_id)]),
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
-        Request::GetArchiveWorkspace => Unscoped,
+        Request::GetArchiveWorkspace | Request::GetMicrosoftTodoStatus => Unscoped,
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 

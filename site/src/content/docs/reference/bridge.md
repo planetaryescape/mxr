@@ -273,6 +273,17 @@ preview before repeating with `dry_run: false`.
 | `GET` | `/mail/todos/catchup` | Older candidates awaiting a decision |
 | `POST` | `/mail/todos/catchup` | Apply a catch-up decision with a preview |
 | `POST` | `/mail/todos/{todo_id}/resolution` | Preview or apply `{suggestion_id, action, dry_run}` |
+| `GET` | `/mail/todos/microsoft` | Optional CLI status: `installed`, installation URL and hint |
+| `POST` | `/mail/todos/{todo_id}/microsoft` | Preview with `{dry_run:true}`; link with `{dry_run:false,fingerprint}` using that preview's fingerprint |
+| `POST` | `/mail/todos/microsoft/sync` | Reconcile `{todo_id?,dry_run}`; omitted ID selects every linked task |
+
+Microsoft linking returns `MicrosoftTodoSend` with `result.state` of `preview`,
+`linked`, `attention` or `unknown`. A changed preview fingerprint is refused.
+Sync returns `MicrosoftTodoSync`; each result has a state of `synced`, `changes`,
+`conflict` or `paused`, a summary and, when available, `mixer`, `microsoft` and
+`merged` shared-field snapshots. A dry run reads the peer's cache without changing
+tasks or link receipts. Linking authorizes ongoing two-way sync only for that
+task. See [Link a task with Microsoft To Do](/guides/todo/#link-a-task-with-microsoft-to-do).
 
 For resolution offers, `action` is `preview`, `accept`, `dismiss` or `undo`.
 The task ID and suggestion ID must identify the same current offer. Acceptance

@@ -9,6 +9,7 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoEditData, TodoResolutionActionData, TodoStateActionData,
     TodoStateData,
 };
+use serde_json::Value;
 
 // Mirrors the protocol's serde default so an omitted limit behaves the same
 // over HTTP as over IPC.
@@ -318,6 +319,9 @@ async fn set_catchup(
 
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
+        .route("/todos/microsoft", get(microsoft_status))
+        .route("/todos/microsoft/sync", post(microsoft_sync))
+        .route("/todos/{todo_id}/microsoft", post(microsoft_link))
         .route("/todos", get(runway).post(create))
         .route("/todos/catchup", get(get_catchup).post(set_catchup))
         .route("/todos/state", post(set_state))
@@ -326,4 +330,74 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/todos/{todo_id}", get(get_todo))
         .route("/todos/{todo_id}/schedule", post(schedule))
         .route("/todos/{todo_id}/edit", post(edit))
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct MicrosoftTodoLinkBody {
+    #[serde(default)]
+    dry_run: bool,
+    fingerprint: Option<String>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct MicrosoftTodoSyncBody {
+    todo_id: Option<String>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn microsoft_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RunwayQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            query.token.as_deref(),
+            Request::GetMicrosoftTodoStatus,
+        )
+        .await?,
+    )
+}
+
+async fn microsoft_link(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(todo_id): AxumPath<String>,
+    Json(body): Json<MicrosoftTodoLinkBody>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            None,
+            Request::SendTodoToMicrosoft {
+                todo_id,
+                dry_run: body.dry_run,
+                fingerprint: body.fingerprint,
+            },
+        )
+        .await?,
+    )
+}
+
+async fn microsoft_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<MicrosoftTodoSyncBody>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            None,
+            Request::SyncMicrosoftTodos {
+                todo_id: body.todo_id,
+                dry_run: body.dry_run,
+            },
+        )
+        .await?,
+    )
 }

@@ -3,7 +3,9 @@
 //! The daemon builds the runway, the labels and the why lines; this prints
 //! them as a table, or passes the JSON through for scripts and agents.
 
-use crate::cli::{OutputFormat, TodoAction, TodoResolutionActionArg, TodoStateArg};
+use crate::cli::{
+    OutputFormat, TodoAction, TodoMicrosoftAction, TodoResolutionActionArg, TodoStateArg,
+};
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -43,6 +45,7 @@ pub async fn run(
         limit: 200,
     });
     match action {
+        TodoAction::Microsoft { action } => microsoft(&mut client, action, format).await,
         TodoAction::List {
             expired,
             state,
@@ -208,6 +211,90 @@ fn state_data(state: TodoStateArg) -> TodoStateData {
         TodoStateArg::Dismissed => TodoStateData::Dismissed,
         TodoStateArg::Expired => TodoStateData::Expired,
     }
+}
+
+async fn microsoft(
+    client: &mut IpcClient,
+    action: TodoMicrosoftAction,
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    match action {
+        TodoMicrosoftAction::Status => {
+            let status = expect_data!(
+                client.request(Request::GetMicrosoftTodoStatus).await?,
+                MicrosoftTodoStatus,
+                status
+            );
+            if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
+                print_json(&status, format)?;
+            } else if status.installed {
+                println!("ms-todo is installed. Link a task with `mxr todo microsoft link TODO_ID --dry-run`.");
+            } else {
+                println!("{}\n{}", status.hint, status.install_url);
+            }
+        }
+        TodoMicrosoftAction::Link { todo_id, dry_run } => {
+            let preview = expect_data!(
+                client
+                    .request(Request::SendTodoToMicrosoft {
+                        todo_id: todo_id.clone(),
+                        dry_run: true,
+                        fingerprint: None
+                    })
+                    .await?,
+                MicrosoftTodoSend,
+                result
+            );
+            let result = if dry_run || preview.state != "preview" {
+                preview
+            } else {
+                expect_data!(
+                    client
+                        .request(Request::SendTodoToMicrosoft {
+                            todo_id,
+                            dry_run: false,
+                            fingerprint: Some(preview.fingerprint)
+                        })
+                        .await?,
+                    MicrosoftTodoSend,
+                    result
+                )
+            };
+            if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
+                print_json(&result, format)?;
+            } else {
+                println!(
+                    "{}\nTitle: {}\nDue: {}\nSchedule: {}\n{}",
+                    result.summary,
+                    result.title,
+                    result
+                        .due
+                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                    result
+                        .scheduled
+                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                    result.notes
+                );
+            }
+        }
+        TodoMicrosoftAction::Sync { todo_id, dry_run } => {
+            let sync = expect_data!(
+                client
+                    .request(Request::SyncMicrosoftTodos { todo_id, dry_run })
+                    .await?,
+                MicrosoftTodoSync,
+                sync
+            );
+            if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
+                print_json(&sync, format)?;
+            } else {
+                for row in sync.results {
+                    println!("{}: {}", row.todo_id, row.summary);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_edit(edit: &str) -> anyhow::Result<TodoEditData> {

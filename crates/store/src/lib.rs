@@ -98,6 +98,7 @@ mod thread;
 mod thread_context;
 mod thread_summary;
 mod todo_first_run;
+mod todo_microsoft;
 mod todo_resolution;
 mod todo_resolution_queue;
 mod todos;
@@ -172,6 +173,7 @@ pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
 pub use todo_first_run::{PromiseForTodo, TodoRun, TodoScanRow};
+pub use todo_microsoft::TodoMicrosoftExport;
 pub use todo_resolution::{
     todo_resolution_fingerprint, NewTodoResolutionSuggestion, TodoResolutionAction,
     TodoResolutionDates, TodoResolutionSnapshot, TodoResolutionStatus, TodoResolutionSuggestion,

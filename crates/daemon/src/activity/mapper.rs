@@ -868,7 +868,24 @@ pub fn map_request(
                 "Archive requests are not in the activity catalog yet"
             );
         }
+        Request::SendTodoToMicrosoft {
+            todo_id,
+            dry_run: false,
+            ..
+        } => (
+            "todo.microsoft_link",
+            Some("todo"),
+            Some(todo_id.clone()),
+            None,
+        ),
+        Request::SyncMicrosoftTodos {
+            todo_id,
+            dry_run: false,
+        } => ("todo.microsoft_sync", Some("todo"), todo_id.clone(), None),
         Request::GetTodoRunway { .. }
+        | Request::GetMicrosoftTodoStatus
+        | Request::SendTodoToMicrosoft { dry_run: true, .. }
+        | Request::SyncMicrosoftTodos { dry_run: true, .. }
         | Request::ListTodos { .. }
         | Request::GetTodo { .. }
         | Request::SetTodoState { .. }

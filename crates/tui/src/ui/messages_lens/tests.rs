@@ -286,6 +286,16 @@ fn people_are_rows_in_bands_beside_the_person_page() {
 }
 
 #[test]
+fn a_row_without_a_preview_reads_its_subject_not_a_placeholder() {
+    let mut data = populated();
+    let subject = data.your_turn[0].topics[0].subject.clone();
+    data.your_turn[0].preview = None;
+    let rendered = render_at(&page(data, true), 120, 0);
+    assert!(rendered.contains(&subject), "{rendered}");
+    assert!(!rendered.contains("only quoted"), "{rendered}");
+}
+
+#[test]
 fn an_expanded_letter_shows_every_paragraph_and_highlights_the_ask() {
     let mut state = page(populated(), true);
     let letter = state

@@ -949,6 +949,118 @@ async fn a_quote_only_reply_shows_a_placeholder_not_the_quoted_words() {
     assert_eq!(last.trimmed_label.as_deref(), Some("trimmed: quote"));
 }
 
+/// Samir's latest message is only a quote of Alex's question.
+async fn quote_only_thread(fx: &Fixture, earlier_words: Option<&str>) {
+    let thread = ThreadId::new();
+    let opener = mail(
+        fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Rollout",
+        Duration::days(2),
+    )
+    .await;
+    if let Some(words) = earlier_words {
+        body(fx, &opener.id, Some(words), None).await;
+    }
+    let asked = mail(
+        fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Re: Rollout",
+        Duration::days(1),
+    )
+    .await;
+    body(
+        fx,
+        &asked.id,
+        Some("Should we keep the canary at 5% until the dashboard is quiet?"),
+        None,
+    )
+    .await;
+    let forward = mail(
+        fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Rollout",
+        Duration::hours(3),
+    )
+    .await;
+    body(
+        fx,
+        &forward.id,
+        Some(
+            "On Mon, Alex wrote:\n> Should we keep the canary at 5% until the dashboard is quiet?",
+        ),
+        None,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_quote_only_latest_message_previews_the_latest_earlier_one_with_words() {
+    let fx = Fixture::new().await;
+    quote_only_thread(&fx, Some("Rollout starts Monday, watching the dashboard.")).await;
+    let messages = list(&fx).await;
+    let previews: Vec<String> = rows(&messages)
+        .iter()
+        .filter_map(|row| row.preview.as_ref().map(|p| p.text.clone()))
+        .collect();
+    assert_eq!(previews.len(), 1, "{previews:?}");
+    assert!(
+        !previews[0].contains(mxr_reader::ONLY_QUOTED_TEXT),
+        "{previews:?}"
+    );
+    // Alex's own question is the latest message with words of its own.
+    assert_eq!(
+        previews[0],
+        "You: Should we keep the canary at 5% until the dashboard is quiet?"
+    );
+}
+
+#[tokio::test]
+async fn a_thread_of_only_quotes_has_no_preview_rather_than_the_placeholder() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let only = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "FYI",
+        Duration::hours(3),
+    )
+    .await;
+    body(
+        &fx,
+        &only.id,
+        Some(
+            "On Mon, Alex wrote:\n> Should we keep the canary at 5% until the dashboard is quiet?",
+        ),
+        None,
+    )
+    .await;
+    let messages = list(&fx).await;
+    let found = rows(&messages);
+    assert!(!found.is_empty());
+    for row in found {
+        assert!(
+            row.preview
+                .as_ref()
+                .is_none_or(|p| !p.text.contains(mxr_reader::ONLY_QUOTED_TEXT)),
+            "{:?}",
+            row.preview
+        );
+    }
+}
+
 async fn updates(fx: &Fixture) -> Vec<mxr_protocol::PlaceBundleData> {
     match request(
         fx,

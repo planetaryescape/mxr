@@ -338,7 +338,7 @@ const PersonRow = memo(function PersonRow({
     () => row.topics.flatMap((topic) => [topic.thread_id, ...topic.message_ids.slice(-20)]),
     [row.topics],
   );
-  const subject = row.kind === "group" ? row.topics[0]?.subject : undefined;
+  const subject = row.topics[0]?.subject;
   const newSender = modes?.new_sender;
   const secondary = preview
     ? preview.kind === "ask"

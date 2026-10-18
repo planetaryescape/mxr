@@ -14,6 +14,7 @@ interface Row {
   band: string;
   kind: string;
   topics: { thread_id: string; subject: string; state: string }[];
+  preview?: { text: string } | null;
 }
 
 interface MessagesAnswer {
@@ -110,6 +111,17 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   await expect(topics.filter({ hasText: /Launch checklist(?! for)/ })).toHaveCount(1);
   await expect(topics.filter({ hasText: "with Ruth: Pricing copy" })).toHaveCount(1);
   await expect(pageView.getByTestId("composer")).toContainText("Reply to Samir · ");
+});
+
+test("no row's preview is the quoted-only placeholder", async ({ page }) => {
+  await waitForPeople(page);
+  const data = all(await messages(page));
+  for (const candidate of data) {
+    expect(candidate.preview?.text ?? "", candidate.title).not.toContain("only quoted");
+  }
+  await openApp(page, "/messages");
+  await expect(row(page, SAMIR)).toHaveCount(1);
+  await expect(page.getByTestId("messages-row").filter({ hasText: "only quoted" })).toHaveCount(0);
 });
 
 test("[ and ] step through a person's topics", async ({ page }) => {

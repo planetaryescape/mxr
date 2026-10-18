@@ -306,6 +306,43 @@ async fn a_reply_cancels_the_wait() {
 }
 
 #[tokio::test]
+async fn a_human_acknowledgement_cancels_the_wait_without_creating_reply_debt() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    let until = Utc::now() + Duration::days(3);
+    defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    let acknowledgement = fx
+        .message(
+            &thread,
+            "jon@example.com",
+            ME,
+            Duration::minutes(5),
+            mine.message_id_header.as_deref(),
+        )
+        .await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: acknowledgement.id,
+            text_plain: Some("Thanks, received. Reference REF-1234.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+    let [owed, _, waiting, new] = lanes_at(&fx, Utc::now()).await;
+    assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, until + Duration::minutes(1)).await,
+        Ok(0)
+    );
+    let [owed, _, waiting, new] = lanes_at(&fx, until + Duration::minutes(1)).await;
+    assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+}
+
+#[tokio::test]
 async fn done_cancels_a_pending_wait_and_undo_puts_it_back() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;

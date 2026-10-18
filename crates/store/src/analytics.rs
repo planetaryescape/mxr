@@ -51,22 +51,52 @@ impl super::Store {
         Ok(updated)
     }
 
-    /// Promote `bodies.metadata_json -> $.list_id` into `messages.list_id`
-    /// for rows where the column is still null. Touches only rows whose
-    /// body has been cached. Idempotent.
+    /// Normalize cached List-Id and its index together. Bounded, retry-safe
+    /// metadata-only writes preserve unknown metadata fields and all caches.
     pub async fn backfill_message_list_ids(&self) -> Result<u32, sqlx::Error> {
         let started_at = Instant::now();
-        let result = sqlx::query(
-            r#"UPDATE messages
-               SET list_id = json_extract(bodies.metadata_json, '$.list_id')
-               FROM bodies
-               WHERE messages.id = bodies.message_id
-                 AND messages.list_id IS NULL
-                 AND json_extract(bodies.metadata_json, '$.list_id') IS NOT NULL"#,
-        )
-        .execute(self.writer())
-        .await?;
-        let n = result.rows_affected() as u32;
+        let mut cursor = String::new();
+        let mut n = 0u32;
+        loop {
+            // Take the writer transaction before reading: sync cannot replace
+            // the cached body between observation and the two related writes.
+            let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+            let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+                "SELECT b.message_id, json_object('list_id', json_extract(b.metadata_json, '$.list_id'),
+                    'raw_headers', substr(json_extract(b.metadata_json, '$.raw_headers'), 1, 131072)),
+                    m.list_id FROM bodies b
+                 JOIN messages m ON m.id = b.message_id WHERE b.message_id > ?
+                 ORDER BY b.message_id LIMIT 400",
+            )
+            .bind(&cursor)
+            .fetch_all(&mut *tx)
+            .await?;
+            if rows.is_empty() {
+                tx.commit().await?;
+                break;
+            }
+            for (id, json, indexed) in rows {
+                cursor.clone_from(&id);
+                let metadata: MessageMetadata = crate::decode_json(&json)?;
+                let evidence = mxr_core::mail_evidence::MailEvidence::cached(&metadata, None);
+                let Some(list_id) = evidence.list_id else {
+                    continue;
+                };
+                if metadata.list_id.as_ref() == Some(&list_id) && indexed.as_ref() == Some(&list_id)
+                {
+                    continue;
+                }
+                sqlx::query("UPDATE bodies SET metadata_json = json_set(metadata_json, '$.list_id', ?) WHERE message_id = ?")
+                    .bind(&list_id).bind(&id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
+                    .bind(&list_id)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                n = n.saturating_add(1);
+            }
+            tx.commit().await?;
+        }
         trace_query("analytics.backfill_list_ids", started_at, n as usize);
         Ok(n)
     }

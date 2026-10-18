@@ -21,17 +21,17 @@ commitments and cadence watches. No language model decides what goes where.
 
 | Lane | JSON key | A conversation is here when | Order within the lane |
 |---|---|---|---|
-| You owe | `owed` | Someone you are in conversation with wrote last and you have not replied. | Furthest past your usual reply time first. |
+| You owe | `owed` | Someone you are in conversation with sent an unanswered directed request to you, or your reply-later timer returned. | Furthest past your usual reply time first. |
 | Due | `due` | A promise you made is due within 7 days, or overdue by up to 30 days. | By due date. |
 | Waiting on | `waiting` | You wrote last, at least 12 hours ago, and they have not answered. A watched contact who has gone quiet longer than their [cadence](/guides/timing-and-cadence/) joins too. A time set with [`mxr desk later`](#later) that passed with no reply brings it back, however old. | Furthest past their usual reply time first. |
-| New from people | `people_new` | A person you have not written to before wrote in the last 7 days, or in the last 30 days if you allowed them in the screener. | Newest first. |
+| New from people | `people_new` | A possible person you have not written to sent a directed request in the last 7 days, or 30 days if you allowed them. | Newest first. |
 
 - "In conversation with" means you have written to them: you sent mail to
   them before (To, Cc or Bcc), or replied in that conversation. Allowing a
   sender in the [screener](/guides/triage-flow/) makes their mail count as
   from a person, but not as a conversation. An allowed sender you have never
-  written to lands in New from people until you reply, for as long as the
-  desk looks back (30 days).
+  written to enters New from people only with a directed request. Other
+  possible personal mail remains accessible in Messages without reply debt.
 - [`mxr owed`](/reference/cli/owed/) and the web app's Owed page list the
   whole You owe lane for one account, in the same order. `mxr owed --all`
   lists every conversation whose latest inbound message has no later reply
@@ -181,17 +181,24 @@ Paper trail. The first rule that matches wins:
 | 4 | A newsletter local part: `newsletter@`, `digest@` and similar. | Reading | `newsletter_address` |
 | 5 | A notifying subdomain, such as `alerts.example.com`. | Paper trail | `automated_domain` |
 | 6 | A newsletter subdomain, such as `news.`, `updates.` or `marketing.`. | Reading | `newsletter_domain` |
-| 7 | A `List-Id` header, then a `List-Unsubscribe` header. | Reading | `list_id`, `list_unsubscribe` |
-| 8 | A bank or card alert: the subject names an amount (`R437.77`, `£12.50`) with what happened to it (reserved, paid, debited) or a masked card or account number (`card..6131`). Replies never count. | Paper trail | `transaction_alert` |
+| 7 | A `List-Id` header, then a `List-Unsubscribe` header. Opt-out-only delivery can remain personal when reply headers and a directed request support an ATS/support conversation; actual List-Id still wins. | Reading unless supported personal reply | `list_id`, `list_unsubscribe` |
+| 8 | A bank or card alert: the subject combines an amount (`R437.77`, `£12.50`) with a masked card or account number (`card..6131`). Replies never count; money words and amounts alone do not prove automation. | Paper trail | `transaction_alert` |
 | 9 | A `no-reply@` address with no list headers. | Paper trail | `no_reply_address` |
-| 10 | A sender known to write to lists. | Reading | `list_sender` |
-| 11 | A sender you have never written to whose address is a role (`forex@`, `hello@`, `support@`, `team@` and similar), whose latest message came through a bulk-mail service (SendGrid, Mailgun, Amazon SES and the like), or whose latest subjects are the same few templates (five or more, at most half of them different once numbers are set aside). | Paper trail | `role_address`, `bulk_sender`, `templated_sender` |
-| 12 | Anything else. | A person: the desk | `person` |
+| 10 | This message declares `Auto-Submitted: auto-generated` or `auto-replied`. | Paper trail | `bulk_sender` (legacy wire name) |
+| 11 | A role address you have never written to, unless this message has reply headers; or repeated subject templates combined with this message's bulk precedence. | Paper trail | `role_address`, `templated_sender` |
+| 12 | Anything else. | Possible personal mail: Messages, not necessarily Your turn | `person` |
 
-Person mail is mail from someone you have written to, or from someone who
-writes like a person: their own address, no list or bulk-mail headers, and
-subjects that vary. Writing to a sender once makes rule 11 stop applying to
-them; Move sender always wins.
+Correspondence history supports a personal interpretation but never erases
+this email's list, no-reply or auto-generated evidence. Delivery infrastructure
+alone does not prove automation. A human invoice discussion remains personal;
+the word "invoice" alone is not a filter. Per-email moves (unless superseded by
+a newer sender choice), sender choices, then custom sorting rules take precedence
+over these automatic rules. See [Messages](/guides/messages/#which-threads-land-here)
+for conservative attention detection and its limitations.
+
+Reply headers plus a directed request can outweigh an address/domain hint
+(for example, a human reply from a billing desk). They do not outweigh an
+actual List-Id, no-reply address or auto-generated declaration.
 
 Subdomain rules look at subdomain labels only, so `news.com` itself does not
 match rule 6. A notifying address that also carries `List-Unsubscribe`

@@ -137,6 +137,7 @@ mod tests {
 
     fn message(thread: &ThreadId, from: &str, hours_ago: i64) -> DeskMessage {
         DeskMessage {
+            evidence: Default::default(),
             id: MessageId::new(),
             seq: now().timestamp() - hours_ago * 3600,
             thread_id: thread.clone(),

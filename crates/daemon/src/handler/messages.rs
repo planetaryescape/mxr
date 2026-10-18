@@ -160,6 +160,7 @@ async fn gather(
             account_id,
             messages: &messages,
             contacts: &senders.contacts,
+            written_to: &senders.written_to,
             screener: &senders.screener,
             dismissed: &dismissed,
             timers: &timers,

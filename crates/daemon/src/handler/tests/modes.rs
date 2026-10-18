@@ -1001,7 +1001,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
         } else {
             "Foreign Payment"
         };
-        mail(
+        let envelope = mail(
             &fx,
             &latest,
             "desk.officer@bank.example",
@@ -1009,6 +1009,21 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
             Duration::days(i64::from(8 - n) * 20) - Duration::hours(1),
         )
         .await;
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: envelope.id,
+                text_plain: Some("Payment confirmation".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::MessageMetadata {
+                    raw_headers: Some("Precedence: bulk\r\n".into()),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
     }
     let shop = ThreadId::new();
     mail(
@@ -1025,7 +1040,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     assert_eq!(modes(&bank), [ModeKindData::Updates]);
     assert_eq!(
         bank.modes[0].reason,
-        "Here because: the same few subjects every time, and you have never written to them (rule)."
+        "Here because: repeated subject templates with bulk precedence, and no correspondence history (rule)."
     );
     assert!(bank.in_inbox, "the inbox keeps it");
     assert!(bank.new_sender.is_none());
@@ -1089,7 +1104,7 @@ async fn a_templated_sender_you_have_written_to_stays_in_messages() {
 /// A welcome from a club's founders, sent through a bulk-mail service: the
 /// first message from a sender you never wrote to, and not a person.
 #[tokio::test]
-async fn a_welcome_sent_through_a_bulk_service_is_not_a_new_person() {
+async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let welcome = mail(
@@ -1121,15 +1136,8 @@ async fn a_welcome_sent_through_a_bulk_service_is_not_a_new_person() {
     fx.state.store.refresh_contacts().await.unwrap();
 
     let placed = membership(&fx, &thread).await;
-    assert_eq!(modes(&placed), [ModeKindData::Updates]);
-    assert!(
-        placed.new_sender.is_none(),
-        "a machine is never asked about"
-    );
-    assert_eq!(
-        placed.modes[0].reason,
-        "Here because: sent through a bulk-mail service, and you have never written to them (rule)."
-    );
+    assert_eq!(modes(&placed), [ModeKindData::Messages]);
+    assert!(placed.new_sender.is_some());
 
     // The same welcome from a founders@ address needs no headers to tell.
     let other = ThreadId::new();

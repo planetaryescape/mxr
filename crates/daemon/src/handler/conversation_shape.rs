@@ -141,7 +141,15 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
         .iter()
         .any(|m| !m.trashed && !is_outbound(m, is_self) && (inputs.kept_in_messages)(m));
     let crowd = most_recipients > inputs.config.large_thread_recipients;
-    if !kept && ((!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs))) {
+    let directed = thread.iter().any(|m| {
+        !is_outbound(m, is_self)
+            && (inputs.person_sender)(m)
+            && super::mail_kind::needs_reply(m, is_self)
+    });
+    if !kept
+        && !directed
+        && ((!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs)))
+    {
         return Shape::Copied;
     }
     match people.len() {
@@ -190,6 +198,7 @@ mod tests {
     fn message(thread: &ThreadId, from: &str, to: &[&str], cc: &[&str], seq: i64) -> DeskMessage {
         let outbound = from == ME;
         DeskMessage {
+            evidence: Default::default(),
             id: MessageId::new(),
             seq,
             thread_id: thread.clone(),

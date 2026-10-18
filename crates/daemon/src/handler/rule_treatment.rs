@@ -116,11 +116,6 @@ async fn selection(
     let is_self = desk::self_matcher(state, account).await?;
     let shape = super::conversation_shape::shape_config(state);
     let labels = state.store.list_labels_by_account(account).await?;
-    let from: Vec<_> = messages
-        .iter()
-        .map(|m| m.from.email.to_ascii_lowercase())
-        .collect();
-    let written_to = state.store.addresses_written_to(account, &from).await?;
     let mut matches = Vec::new();
     let mut placements = Vec::new();
     let mut unavailable = 0;
@@ -160,7 +155,6 @@ async fn selection(
             message,
             &thread,
             &senders,
-            &written_to,
             &is_self,
             shape,
             envelope.flags.contains(mxr_core::MessageFlags::SPAM),
@@ -177,7 +171,6 @@ async fn selection(
             message,
             &thread,
             &senders,
-            &written_to,
             &is_self,
             shape,
             envelope.flags.contains(mxr_core::MessageFlags::SPAM),

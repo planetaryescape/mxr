@@ -103,8 +103,14 @@ mxr arrivals
 mxr arrivals list --mode reading
 ```
 
-People you've written to always reach Messages when the mail is addressed to
-you, whatever list it came through. Press `?` on the line to see that rule.
+Your sorting choices win. Otherwise this email's list and automation evidence
+decides its destination, even from someone you've written to. Uncertain personal
+mail stays accessible without automatically becoming Your turn. Press `?` on the
+line for the sorting policy, or read [Messages](/guides/messages/#which-threads-land-here).
+
+Existing arrivals use current cached evidence when read. Their original arrival
+destination and first-seen time remain unchanged; no correction, task or provider
+mutation is created by this recalculation.
 
 ## Move an email to where it belongs
 
@@ -268,10 +274,10 @@ Messages is now its own mode: people as rows with their topics inside. See
 [Messages](/guides/messages/). The desk still exists (`mxr desk`, `/desk`)
 and shares Messages' rule for whose turn it is:
 
-- **You owe**: someone you have written to wrote last.
+- **You owe**: an unanswered directed request from someone you have written to, or an explicit reply-later reminder that returned.
 - **Due**: a promise you made is coming due.
 - **Waiting on**: you wrote last and they have not answered.
-- **New from people**: a person you have not written to before.
+- **New from people**: a directed request from a possible person you have not written to before.
 
 A thread you were only copied on, or one sent to more than 10 people, that
 you never wrote in is nobody's turn: it is in Updates. A turn nobody took

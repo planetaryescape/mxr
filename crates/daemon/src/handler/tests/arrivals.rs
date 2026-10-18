@@ -60,6 +60,275 @@ async fn inbound(fx: &Fixture, from: &str, list: bool) -> Envelope {
     .await
 }
 
+async fn cached_content(fx: &Fixture, mail: &Envelope, headers: &str, text: Option<&str>) {
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: mail.id.clone(),
+            text_plain: text.map(str::to_string),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: mxr_core::MessageMetadata {
+                raw_headers: Some(headers.into()),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn explicit_reply_later_preserves_copied_purpose_and_adds_messages_attention() {
+    let fx = Fixture::new().await;
+    let copied = mail(
+        &fx,
+        &ThreadId::new(),
+        "sam@studio.example",
+        &["ruth@studio.example"],
+        &[ME],
+        false,
+        Duration::minutes(5),
+    )
+    .await;
+    cached_content(&fx, &copied, "", Some("FYI: the report is ready.")).await;
+    fx.state
+        .store
+        .defer_reply_later(
+            &copied.id,
+            Utc::now() - Duration::hours(2),
+            Utc::now() - Duration::hours(1),
+        )
+        .await
+        .unwrap();
+    let held = membership(&fx, &copied.thread_id).await;
+    assert_eq!(
+        modes(&held),
+        vec![ModeKindData::Messages, ModeKindData::Updates]
+    );
+    let ResponseData::Desk { owed, .. } = fx.desk(100).await else {
+        panic!("desk");
+    };
+    assert_eq!(owed.rows.len(), 1);
+    assert_eq!(owed.rows[0].thread_id, copied.thread_id);
+    assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Updates);
+}
+
+#[tokio::test]
+async fn current_arrival_projection_crosses_page_boundaries_without_rewriting_legacy_rows() {
+    let fx = Fixture::new().await;
+    for _ in 0..401 {
+        fx.message(
+            &ThreadId::new(),
+            "no-reply@batch.example",
+            ME,
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    }
+    sqlx::query("UPDATE arrivals SET mode='messages', rule='person', reason='legacy'")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    let arrivals = line(&fx).await;
+    assert_eq!(arrivals.total, 401);
+    assert_eq!(count(&arrivals, ArrivalBucketData::Updates), 401);
+    let ids = list(&fx, &arrivals, ArrivalBucketData::Updates).await;
+    assert_eq!(ids.len(), 401);
+    assert_eq!(
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        401
+    );
+    let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM arrivals WHERE mode='messages' AND reason='legacy' AND moved_at IS NULL")
+        .fetch_one(fx.state.store.reader()).await.unwrap();
+    assert_eq!(stored, 401);
+}
+
+#[tokio::test]
+async fn message_purpose_and_attention_agree_without_rewriting_history() {
+    let fx = Fixture::new().await;
+    wrote_to(&fx, "support@studio.example").await;
+    wrote_to(&fx, "editor@weekly.example").await;
+    let newsletter = inbound(&fx, "editor@weekly.example", false).await;
+    // Simulate an already-placed row from the old policy before headers arrive.
+    line(&fx).await;
+    let original = fx
+        .state
+        .store
+        .arrivals_by_ids(std::slice::from_ref(&newsletter.id))
+        .await
+        .unwrap()
+        .remove(0);
+    cached_content(&fx, &newsletter, "LiSt-Id: Weekly\r\n <weekly.example.org>\r\nList-Unsubscribe: <https://weekly.example.org/unsub>\r\n", Some("This week's essays")).await;
+    let receipt = inbound(&fx, "support@studio.example", false).await;
+    cached_content(
+        &fx,
+        &receipt,
+        "Auto-Submitted: auto-generated\r\n",
+        Some("Invoice INV-2048 is available."),
+    )
+    .await;
+    let discussion = inbound(&fx, "support@studio.example", false).await;
+    cached_content(
+        &fx,
+        &discussion,
+        "In-Reply-To: <question@example.org>\r\nX-SES-Outgoing: delivery\r\n",
+        Some("Could you confirm the invoice reference?"),
+    )
+    .await;
+    let report = inbound(&fx, "maya@team.example", false).await;
+    let recruiter = inbound(&fx, "recruiter@ats.example", false).await;
+    cached_content(&fx, &recruiter,
+        "In-Reply-To: <interview@example.org>\r\nList-Unsubscribe: <https://ats.example/optout>\r\nX-SES-Outgoing: delivery\r\n",
+        Some("Could you confirm the interview time?")).await;
+    cached_content(
+        &fx,
+        &report,
+        "",
+        Some("FYI: the weekly team report is attached."),
+    )
+    .await;
+    let acknowledgement = inbound(&fx, "sam@team.example", false).await;
+    cached_content(
+        &fx,
+        &acknowledgement,
+        "",
+        Some("Thanks, received. Reference INV-2048.\n\n> Could you reply?"),
+    )
+    .await;
+    let unknown = mail(
+        &fx,
+        &ThreadId::new(),
+        "new@studio.example",
+        &["unknown-alias@example.com"],
+        &[],
+        false,
+        Duration::minutes(2),
+    )
+    .await;
+    cached_content(&fx, &unknown, "", Some("Could you confirm the meeting?")).await;
+    let negative = inbound(&fx, "ruth@team.example", false).await;
+    cached_content(
+        &fx,
+        &negative,
+        "",
+        Some("Please do not reply; no need to confirm."),
+    )
+    .await;
+
+    for _ in 0..2 {
+        let now = line(&fx).await;
+        for (mail, bucket) in [
+            (&newsletter, ArrivalBucketData::Reading),
+            (&receipt, ArrivalBucketData::Updates),
+            (&discussion, ArrivalBucketData::Messages),
+            (&recruiter, ArrivalBucketData::Messages),
+            (&report, ArrivalBucketData::Messages),
+            (&acknowledgement, ArrivalBucketData::Messages),
+            (&unknown, ArrivalBucketData::Messages),
+            (&negative, ArrivalBucketData::Messages),
+        ] {
+            assert_eq!(chip(&fx, &mail.id).await.0, bucket);
+            assert!(list(&fx, &now, bucket).await.contains(&mail.id));
+            let held = membership(&fx, &mail.thread_id).await;
+            assert!(modes(&held).contains(&bucket.mode().unwrap()), "{held:?}");
+        }
+        let ResponseData::Desk {
+            owed, people_new, ..
+        } = fx.desk(100).await
+        else {
+            panic!("desk");
+        };
+        let turns: Vec<_> = owed
+            .rows
+            .iter()
+            .chain(&people_new.rows)
+            .map(|r| &r.thread_id)
+            .collect();
+        assert!(turns.contains(&&discussion.thread_id));
+        assert!(turns.contains(&&recruiter.thread_id));
+        for quiet in [
+            &newsletter,
+            &receipt,
+            &report,
+            &acknowledgement,
+            &unknown,
+            &negative,
+        ] {
+            assert!(
+                !turns.contains(&&quiet.thread_id),
+                "false debt for {}",
+                quiet.from.email
+            );
+        }
+    }
+    let stored = fx
+        .state
+        .store
+        .arrivals_by_ids(std::slice::from_ref(&newsletter.id))
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        (stored.first_seen_at, stored.mode, stored.moved_at),
+        (original.first_seen_at, original.mode, original.moved_at)
+    );
+    let corrections: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mode_corrections")
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(corrections, 0);
+    fx.state
+        .store
+        .set_message_labels(&newsletter.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    let ResponseData::Messages { messages } = request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: None,
+            limit: 100,
+        },
+    )
+    .await
+    else {
+        panic!("messages");
+    };
+    assert_eq!(messages.your_turn_split.total(), 2);
+    let now = crate::handler::now::now_at(&fx.state, None, Utc::now(), &Utc)
+        .await
+        .unwrap();
+    assert_eq!(now.people.total, 2);
+    let ResponseData::Freshness { freshness } = request(
+        &fx,
+        Request::GetFreshness {
+            account_id: None,
+            limit: Some(20),
+        },
+    )
+    .await
+    else {
+        panic!("freshness");
+    };
+    for (id, mode) in [
+        (&newsletter.id, ModeKindData::Reading),
+        (&receipt.id, ModeKindData::Updates),
+    ] {
+        let arrival = freshness
+            .arrivals
+            .iter()
+            .find(|arrival| &arrival.message_id == id)
+            .expect("known arrival in Freshness");
+        assert_eq!(arrival.modes[0].mode, mode);
+        if id == &newsletter.id {
+            assert!(!arrival.in_inbox);
+        }
+    }
+    assert!(fx.fake.sent_drafts().is_empty());
+}
+
 /// You once wrote to `email`, so the contacts table knows it.
 async fn wrote_to(fx: &Fixture, email: &str) {
     mail(
@@ -373,7 +642,7 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
 }
 
 #[tokio::test]
-async fn list_mail_addressed_to_you_from_someone_you_wrote_to_reaches_messages() {
+async fn list_mail_keeps_its_purpose_even_from_someone_you_wrote_to() {
     let fx = Fixture::new().await;
     wrote_to(&fx, "maya@orbit.example").await;
     let known = inbound(&fx, "maya@orbit.example", true).await;
@@ -394,24 +663,21 @@ async fn list_mail_addressed_to_you_from_someone_you_wrote_to_reaches_messages()
     let line = line(&fx).await;
     assert_eq!(
         list(&fx, &line, ArrivalBucketData::Messages).await,
-        vec![known.id.clone()]
+        Vec::<MessageId>::new()
     );
     let reading = list(&fx, &line, ArrivalBucketData::Reading).await;
-    assert_eq!(reading, vec![stranger.id.clone()]);
+    assert!(reading.contains(&known.id) && reading.contains(&stranger.id));
     assert_eq!(
         list(&fx, &line, ArrivalBucketData::Updates).await,
         vec![copied.id.clone()]
     );
     let (_, known_chip) = chip(&fx, &known.id).await;
-    assert_eq!(
-        known_chip,
-        "→ Messages · addressed to you by someone you've written to"
-    );
+    assert_eq!(known_chip, "→ Reading · has List-Unsubscribe");
 
     // Live membership agrees: the known sender's list mail is in Messages.
     let held = membership(&fx, &known.thread_id).await;
-    assert!(modes(&held).contains(&ModeKindData::Messages), "{held:?}");
-    assert!(!modes(&held).contains(&ModeKindData::Reading), "{held:?}");
+    assert!(!modes(&held).contains(&ModeKindData::Messages), "{held:?}");
+    assert!(modes(&held).contains(&ModeKindData::Reading), "{held:?}");
 
     assert_eq!(line.not_sure.len(), 1);
     assert_eq!(line.not_sure[0].message_id, copied.id);
@@ -430,7 +696,7 @@ async fn list_mail_addressed_to_you_from_someone_you_wrote_to_reaches_messages()
         .await
         .unwrap();
     assert_eq!(
-        serde_json::to_value(KindRuleData::WrittenTo).unwrap(),
+        serde_json::to_value(KindRuleData::ListUnsubscribe).unwrap(),
         serde_json::Value::String(rule)
     );
 }
@@ -1020,7 +1286,7 @@ async fn moving_to_to_do_twice_makes_one_task() {
 }
 
 #[tokio::test]
-async fn someone_you_wrote_to_is_never_buried_by_copy_newsletter_address_or_crowd() {
+async fn known_senders_list_purpose_survives_copy_newsletter_address_and_crowd() {
     let fx = Fixture::new().await;
     wrote_to(&fx, "maya@orbit.example").await;
     wrote_to(&fx, "newsletter@orbit.example").await;
@@ -1053,20 +1319,16 @@ async fn someone_you_wrote_to_is_never_buried_by_copy_newsletter_address_or_crow
     .await;
     let line = line(&fx).await;
     let messages = list(&fx, &line, ArrivalBucketData::Messages).await;
-    assert!(messages.contains(&by_address.id), "newsletter address");
-    assert!(messages.contains(&crowded.id), "crowd");
-    assert!(
-        list(&fx, &line, ArrivalBucketData::Reading)
-            .await
-            .is_empty(),
-        "nothing from someone you wrote to lands in Reading"
-    );
-    assert_eq!(
-        list(&fx, &line, ArrivalBucketData::Updates).await,
-        vec![cc_only.id.clone()]
-    );
-    assert_eq!(line.not_sure.len(), 1);
-    assert_eq!(line.not_sure[0].message_id, cc_only.id);
+    assert!(messages.is_empty());
+    let reading = list(&fx, &line, ArrivalBucketData::Reading).await;
+    assert_eq!(reading.len(), 3);
+    for message in [by_address, crowded, cc_only] {
+        assert!(reading.contains(&message.id));
+    }
+    assert!(list(&fx, &line, ArrivalBucketData::Updates)
+        .await
+        .is_empty());
+    assert!(line.not_sure.is_empty());
 }
 
 #[tokio::test]

@@ -15,7 +15,7 @@ pub mod arrivals_copy {
     /// Asked once after a move, beside undo.
     pub const ALWAYS_FOR_SENDER: &str = "Always for this sender?";
     /// Shown under the line's `?`: only the rules that are live in code.
-    pub const NEVER_BURY: &str = "People you've written to always reach Messages when the mail is addressed to you, whatever list it came through.";
+    pub const NEVER_BURY: &str = "Your sorting choices win. List and automation evidence applies to this email, even from someone you've written to. Uncertain personal mail stays accessible; only a directed request or your reply-later timer creates your turn.";
     pub const TRACK_RECORD_HELP: &str =
         "Counts the emails you moved. Mail you never opened isn't checked.";
     /// The most "Not sure" questions Now asks in one day.

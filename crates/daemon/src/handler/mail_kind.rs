@@ -154,15 +154,15 @@ impl SenderKind {
     }
 }
 
-/// The email stays in Messages whatever the copied and crowd rules say: the
-/// user moved it there, set its sender to Messages, or it is mail addressed
-/// to you from someone you've written to that a list rule would have buried.
+/// Explicit Messages visibility survives the copied/crowd rules. Visibility
+/// alone never proves a human response or an obligation to reply.
 pub(super) fn kept_in_messages(signals: &KindSignals<'_>) -> bool {
-    classify(signals).rule == KindRuleData::CustomRule
-        && classify(signals).kind == SenderKind::Person
-        || signals.moved == Some(SenderKind::Person)
-        || signals.decision == Some(ScreenerDisposition::Allow)
-        || (signals.addressed && classify(signals).rule == KindRuleData::WrittenTo)
+    let classification = classify(signals);
+    classification.kind == SenderKind::Person
+        && matches!(
+            classification.rule,
+            KindRuleData::CustomRule | KindRuleData::Moved | KindRuleData::Decision
+        )
 }
 
 /// The kind a move of one email to `mode` gives it. To do and Archive add
@@ -243,14 +243,6 @@ static AMOUNT: Lazy<Regex> = Lazy::new(|| {
     .expect("valid regex")
 });
 
-/// What a bank or card says happened to the money.
-static TRANSACTION_WORDS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)\b(?:reserved|purchases?|purchased|paid|payments?|debit(?:ed)?|credit(?:ed)?|withdrawal|withdrawn|transactions?|transfer(?:red)?|deposit(?:ed)?|spent|charged|refund(?:ed)?|declined|authori[sz]ed)\b",
-    )
-    .expect("valid regex")
-});
-
 /// A masked card or account number: "card..6131", "a/c ..748989",
 /// "**** 1234", "ending in 1234".
 static MASKED_NUMBER: Lazy<Regex> = Lazy::new(|| {
@@ -258,8 +250,8 @@ static MASKED_NUMBER: Lazy<Regex> = Lazy::new(|| {
         .expect("valid regex")
 });
 
-/// A bank or card alert's subject: an amount with what happened to it, or
-/// with a masked card or account number. A person's reply ("Re: paid
+/// A bank or card alert's subject: an amount with a masked card or account
+/// number. Money words alone are personal correspondence too. A reply ("Re: paid
 /// £40.00?") is never one: alerts are not replies.
 fn transaction_alert(subject: &str) -> bool {
     let subject = subject.trim_start();
@@ -270,8 +262,7 @@ fn transaction_alert(subject: &str) -> bool {
     {
         return false;
     }
-    AMOUNT.is_match(subject)
-        && (TRANSACTION_WORDS.is_match(subject) || MASKED_NUMBER.is_match(subject))
+    AMOUNT.is_match(subject) && MASKED_NUMBER.is_match(subject)
 }
 
 fn role_address(email: &str) -> bool {
@@ -321,8 +312,6 @@ fn subject_template(subject: &str) -> String {
 pub(super) struct SenderFacts {
     /// You have written to them.
     pub wrote_to: bool,
-    /// Their latest message came through bulk-mail infrastructure.
-    pub bulk_headers: bool,
     /// Their latest subjects are a few templates repeated ("Payment
     /// Confirmation", "Foreign Payment", over and over).
     pub templated: bool,
@@ -342,7 +331,6 @@ impl SenderFacts {
             .collect();
         Self {
             wrote_to: contact.total_outbound > 0,
-            bulk_headers: contact.history.bulk_headers,
             templated: subjects.len() >= TEMPLATED_MIN_SUBJECTS
                 && templates.len() * 2 <= subjects.len(),
         }
@@ -358,21 +346,21 @@ pub(super) fn looks_automated(email: &str) -> bool {
 /// Everything about one message and its sender that decides its kind.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct KindSignals<'a> {
+    pub evidence: &'a mxr_core::mail_evidence::MailEvidence,
+    pub reply_request: bool,
     pub email: &'a str,
     pub subject: &'a str,
     pub has_list_id: bool,
     pub has_unsubscribe: bool,
     pub is_delivery: bool,
     pub is_invite: bool,
-    /// The contacts table knows this sender writes to lists.
-    pub list_sender: bool,
     /// What the sender's history says.
     pub sender: SenderFacts,
     /// The user's choice for this sender, if any.
     pub decision: Option<ScreenerDisposition>,
     /// You have written to this sender, anywhere in the account.
     pub written_to: bool,
-    /// You are in To or Bcc, not only copied.
+    /// One of the account's owned addresses is positively matched in To.
     pub addressed: bool,
     /// The user moved this one email (`X`) and no later sender decision
     /// overrode it.
@@ -385,6 +373,158 @@ pub(super) struct KindSignals<'a> {
 pub(super) struct Classification {
     pub kind: SenderKind,
     pub rule: KindRuleData,
+}
+
+/// A visibility correction cannot turn an automated message into a human
+/// response (and thereby clear a waiting timer).
+pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
+    classify(&KindSignals {
+        moved: None,
+        decision: None,
+        treatment: None,
+        ..*signals
+    })
+    .kind
+        == SenderKind::Person
+}
+
+fn directed_request(text: &str) -> bool {
+    let Some(request) = [
+        "can you ",
+        "could you ",
+        "would you ",
+        "will you ",
+        "please ",
+    ]
+    .iter()
+    .find_map(|prefix| text.strip_prefix(*prefix)) else {
+        return false;
+    };
+    // Positive conversational speech acts, not arbitrary ACTION items such
+    // as "please pay" or informational "please find attached".
+    [
+        "reply",
+        "respond",
+        "confirm",
+        "review",
+        "send",
+        "share",
+        "decide",
+        "choose",
+        "approve",
+        "check",
+        "tell me",
+        "provide",
+        "let me know",
+    ]
+    .iter()
+    .any(|verb| {
+        request
+            .strip_prefix(*verb)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '?', '.', '!']))
+    })
+}
+
+fn authored_lines(text: &str) -> impl Iterator<Item = &str> {
+    text.lines().take_while(|line| {
+        let line = line.trim();
+        let lower = line.to_ascii_lowercase();
+        !line.starts_with('>')
+            && line != "--"
+            && !(lower.starts_with("on ") && lower.ends_with("wrote:"))
+            && !lower.starts_with("-----original message")
+            && !lower.starts_with("---------- forwarded message")
+            && !lower.starts_with("begin forwarded message:")
+    })
+}
+
+fn without_greeting(text: &str) -> &str {
+    ["hi ", "hello ", "dear "]
+        .iter()
+        .find_map(|prefix| text.strip_prefix(*prefix))
+        .unwrap_or(text)
+        .trim_start_matches('@')
+}
+
+/// Conservative positive evidence of a directed request, not a general language
+/// classifier. Quoted history, infrastructure and past correspondence cannot
+/// create debt. Unsupported languages/phrasing remain visible without a turn.
+pub(super) fn needs_reply(
+    message: &mxr_store::DeskMessage,
+    is_self: &dyn Fn(&str) -> bool,
+) -> bool {
+    directed_to_owner(&message.to, &message.evidence, is_self)
+}
+
+pub(super) fn directed_to_owner(
+    to: &[mxr_core::Address],
+    evidence: &mxr_core::mail_evidence::MailEvidence,
+    is_self: &dyn Fn(&str) -> bool,
+) -> bool {
+    let owned: Vec<_> = to.iter().filter(|a| is_self(&a.email)).collect();
+    if owned.is_empty() || evidence.auto_generated || evidence.list_id.is_some() {
+        return false;
+    }
+    let Some(text) = evidence.text.as_deref() else {
+        return false;
+    };
+    let authored = authored_lines(text).collect::<Vec<_>>().join("\n");
+    let lower = authored.to_lowercase();
+    let names: Vec<_> = owned
+        .iter()
+        .flat_map(|address| {
+            let local = address.email.split('@').next().unwrap_or_default();
+            let name = address.name.as_deref().unwrap_or(local);
+            [name, name.split_whitespace().next().unwrap_or(name), local]
+        })
+        .filter(|name| name.len() >= 2)
+        .map(str::to_lowercase)
+        .collect();
+    let names_owner = |line: &str| {
+        names.iter().any(|name| {
+            let line = without_greeting(line);
+            line.strip_prefix(name.as_str()).is_some_and(|rest| {
+                rest.trim().is_empty()
+                    || rest.starts_with([',', ':'])
+                    || directed_request(rest.trim_start())
+            })
+        })
+    };
+    let opening = lower
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default()
+        .trim();
+    let owner_greeting = names_owner(opening);
+    let other_greeting = !owner_greeting
+        && (opening.ends_with(',')
+            || opening.ends_with(':')
+            || opening.starts_with("hi ")
+            || opening.starts_with("hello ")
+            || opening.starts_with("dear "));
+    // Require a request addressed to "you"; a question about an invoice,
+    // an FYI or "Alice, can you ..." is not evidence of the owner's debt.
+    lower.lines().any(|line| {
+        let line = line.trim().trim_start_matches([',', ' ']);
+        let request =
+            (owner_greeting || (to.len() == 1 && !other_greeting)) && directed_request(line);
+        let named_request = names.iter().any(|name| {
+            let line = without_greeting(line);
+            line.strip_prefix(name.as_str())
+                .is_some_and(|tail| directed_request(tail.trim_start_matches([',', ':', ' '])))
+        });
+        (request || named_request)
+            && ![
+                "no need to",
+                "don't ",
+                "do not ",
+                "not asking",
+                "you don't need",
+                "you not ",
+            ]
+            .iter()
+            .any(|negation| line.contains(negation))
+    })
 }
 
 pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
@@ -425,53 +565,39 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     if signals.is_invite {
         return automated(KindRuleData::Invite);
     }
-    // Never sorted away (D119, N1): mail from someone you've written to is
-    // a person's over any list, newsletter-address or no-reply rule, copied
-    // or not (a copy-only message is then asked about, not buried). The
-    // rule is named only where it overrode one, so a plain person's mail
-    // keeps its own reason.
-    let unless_never_bury = |classification: Classification| {
-        if signals.written_to {
-            Classification {
-                kind: SenderKind::Person,
-                rule: KindRuleData::WrittenTo,
-            }
-        } else {
-            classification
-        }
-    };
+    let personal_reply =
+        signals.evidence.is_reply && signals.reply_request && !signals.evidence.auto_generated;
     let hint = address_hint(signals.email);
     match hint {
-        Some(AddressHint::Notifying(rule)) => return automated(rule),
-        Some(AddressHint::Newsletter(rule)) => return unless_never_bury(list(rule)),
-        Some(AddressHint::NoReply) | None => {}
+        Some(AddressHint::Notifying(rule)) if !personal_reply => return automated(rule),
+        Some(AddressHint::Newsletter(rule)) if !personal_reply => return list(rule),
+        _ => {}
     }
-    if signals.has_list_id {
-        return unless_never_bury(list(KindRuleData::ListId));
+    if signals.has_list_id || signals.evidence.list_id.is_some() {
+        return list(KindRuleData::ListId);
     }
-    if signals.has_unsubscribe {
-        return unless_never_bury(list(KindRuleData::ListUnsubscribe));
+    // An ATS/support reply can carry an opt-out header. That delivery
+    // mechanism alone loses to positive message-level response evidence,
+    // unlike an actual List-Id or an auto-generated declaration.
+    if (signals.has_unsubscribe || signals.evidence.unsubscribe) && !personal_reply {
+        return list(KindRuleData::ListUnsubscribe);
     }
-    if transaction_alert(signals.subject) {
+    if !personal_reply && transaction_alert(signals.subject) {
         return automated(KindRuleData::TransactionAlert);
     }
     if hint == Some(AddressHint::NoReply) {
-        return unless_never_bury(automated(KindRuleData::NoReplyAddress));
+        return automated(KindRuleData::NoReplyAddress);
     }
-    if signals.list_sender {
-        return unless_never_bury(list(KindRuleData::ListSender));
+    if signals.evidence.auto_generated {
+        return automated(KindRuleData::BulkSender);
     }
-    // Person mail is mail from someone you write to, or from someone who
-    // writes like a person: their own address, no bulk-mail service, and
-    // subjects that vary. A sender you never answered fails on any one.
-    if !signals.sender.wrote_to {
+    // History can support a personal interpretation of a role address or
+    // templated bulk mail, but cannot erase the per-message evidence above.
+    if !signals.sender.wrote_to && !signals.written_to && !signals.evidence.is_reply {
         if role_address(signals.email) {
             return automated(KindRuleData::RoleAddress);
         }
-        if signals.sender.bulk_headers {
-            return automated(KindRuleData::BulkSender);
-        }
-        if signals.sender.templated {
+        if signals.sender.templated && signals.evidence.bulk {
             return automated(KindRuleData::TemplatedSender);
         }
     }
@@ -506,14 +632,16 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::AutomatedDomain => format!("automated sending domain{list_headers}"),
         KindRuleData::NewsletterAddress => format!("newsletter address{list_headers}"),
         KindRuleData::NewsletterDomain => format!("newsletter sending domain{list_headers}"),
+        KindRuleData::NoReplyAddress if signals.has_unsubscribe || signals.evidence.unsubscribe => {
+            "no-reply sender, has List-Unsubscribe".to_string()
+        }
         KindRuleData::NoReplyAddress => "no-reply sender, no list headers".to_string(),
         KindRuleData::TransactionAlert => "bank or card transaction alert".to_string(),
         KindRuleData::RoleAddress => "a role address you have never written to".to_string(),
-        KindRuleData::BulkSender => {
-            "sent through a bulk-mail service, and you have never written to them".to_string()
-        }
+        KindRuleData::BulkSender => "message declares itself automatically generated".to_string(),
         KindRuleData::TemplatedSender => {
-            "the same few subjects every time, and you have never written to them".to_string()
+            "repeated subject templates with bulk precedence, and no correspondence history"
+                .to_string()
         }
         KindRuleData::ListId if signals.has_unsubscribe => {
             "mailing list, has List-Unsubscribe".to_string()
@@ -521,7 +649,16 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::ListId => "mailing list".to_string(),
         KindRuleData::ListUnsubscribe => "has List-Unsubscribe".to_string(),
         KindRuleData::ListSender => "sends to mailing lists".to_string(),
-        KindRuleData::Person => "from a person".to_string(),
+        KindRuleData::Person
+            if signals.evidence.is_reply
+                && (signals.has_unsubscribe || signals.evidence.unsubscribe) =>
+        {
+            "reply with a directed request; opt-out delivery header is not a mailing list"
+                .to_string()
+        }
+        KindRuleData::Person => {
+            "possible personal mail; no decisive list or automation evidence".to_string()
+        }
         KindRuleData::Copied => COPIED_REASON.to_string(),
         KindRuleData::WrittenTo => WRITTEN_TO_REASON.to_string(),
         KindRuleData::Moved => "you moved this email".to_string(),
@@ -544,9 +681,9 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
         KindRuleData::NoReplyAddress => "no-reply",
         KindRuleData::TransactionAlert => "bank alert",
         KindRuleData::RoleAddress => "role address",
-        KindRuleData::BulkSender => "bulk sender",
+        KindRuleData::BulkSender => "auto-generated",
         KindRuleData::TemplatedSender => "templated",
-        KindRuleData::Person => "person",
+        KindRuleData::Person => "possible personal",
         KindRuleData::Copied => "copied",
         KindRuleData::WrittenTo => "written to",
         KindRuleData::Moved => "moved",
@@ -580,6 +717,8 @@ mod tests {
 
     fn signals(email: &str) -> KindSignals<'_> {
         KindSignals {
+            evidence: Lazy::force(&EMPTY_EVIDENCE),
+            reply_request: false,
             email,
             subject: "",
             sender: SenderFacts::default(),
@@ -587,13 +726,71 @@ mod tests {
             has_unsubscribe: false,
             is_delivery: false,
             is_invite: false,
-            list_sender: false,
             decision: None,
             written_to: false,
             addressed: true,
             moved: None,
             treatment: None,
         }
+    }
+
+    static EMPTY_EVIDENCE: Lazy<mxr_core::mail_evidence::MailEvidence> =
+        Lazy::new(Default::default);
+
+    #[test]
+    fn messages_visibility_is_not_a_human_response() {
+        let chosen = KindSignals {
+            moved: Some(SenderKind::Person),
+            ..signals("no-reply@studio.example")
+        };
+        assert_eq!(classify(&chosen).kind, SenderKind::Person);
+        assert!(!human_response(&chosen));
+        let acknowledgement = KindSignals {
+            written_to: true,
+            ..signals("sam@studio.example")
+        };
+        assert!(human_response(&acknowledgement));
+        assert!(!kept_in_messages(&KindSignals {
+            moved: Some(SenderKind::List),
+            decision: Some(ScreenerDisposition::Allow),
+            ..signals("sam@studio.example")
+        }));
+    }
+
+    #[test]
+    fn positive_human_invoice_reply_beats_address_hints_not_message_automation() {
+        let evidence = mxr_core::mail_evidence::MailEvidence {
+            is_reply: true,
+            text: Some("Could you confirm the invoice reference?".into()),
+            ..Default::default()
+        };
+        let reply = KindSignals {
+            evidence: &evidence,
+            reply_request: true,
+            subject: "Invoice INV-123 for USD 12.00",
+            ..signals("billing@studio.example")
+        };
+        assert_eq!(classify(&reply).kind, SenderKind::Person);
+        assert_eq!(
+            classify(&KindSignals {
+                has_list_id: true,
+                ..reply
+            })
+            .kind,
+            SenderKind::List
+        );
+        let generated = mxr_core::mail_evidence::MailEvidence {
+            auto_generated: true,
+            ..evidence.clone()
+        };
+        assert_eq!(
+            classify(&KindSignals {
+                evidence: &generated,
+                ..reply
+            })
+            .kind,
+            SenderKind::Automated
+        );
     }
 
     #[test]
@@ -666,12 +863,6 @@ mod tests {
         });
         assert_eq!(unsubscribe_only.rule, KindRuleData::ListUnsubscribe);
         assert_eq!(unsubscribe_only.reason, "has List-Unsubscribe");
-
-        let known = describe(&KindSignals {
-            list_sender: true,
-            ..signals("editor@weekly.example")
-        });
-        assert_eq!(known.rule, KindRuleData::ListSender);
     }
 
     #[test]
@@ -754,8 +945,6 @@ mod tests {
         // that looks like anyone's.
         for subject in [
             "Bank:-) R437.77 reserved for purchase @ Example Store from a/c..123456 using card..6131",
-            "You spent £12.50 at Corner Shop",
-            "$1,204.00 debited from your account",
             "Card ending in 4321: USD 9.99",
         ] {
             let described = describe(&KindSignals {
@@ -772,6 +961,8 @@ mod tests {
             "Dinner on Friday?",
             "Invoice 2026-114",
             "Can you send £40 for the tickets",
+            "I paid £40.00 for the tickets",
+            "Invoice 2026-114 for USD 12.00",
         ] {
             let described = describe(&KindSignals {
                 subject,
@@ -825,8 +1016,8 @@ mod tests {
             sender: SenderFacts::of(Some(&bulk)),
             ..signals("dan@broker.example")
         });
-        assert_eq!(described.kind, SenderKindData::PaperTrail);
-        assert_eq!(described.rule, KindRuleData::BulkSender);
+        assert_eq!(described.kind, SenderKindData::People);
+        assert_eq!(described.rule, KindRuleData::Person);
         // Forty of the same two templates, numbers aside.
         let templated: Vec<String> = (0..40)
             .map(|n| {
@@ -841,13 +1032,17 @@ mod tests {
         let robot = contact(0, &templated, false);
         let described = describe(&KindSignals {
             sender: SenderFacts::of(Some(&robot)),
+            evidence: &mxr_core::mail_evidence::MailEvidence {
+                bulk: true,
+                ..Default::default()
+            },
             ..signals("desk.officer@bank.example")
         });
         assert_eq!(described.kind, SenderKindData::PaperTrail);
         assert_eq!(described.rule, KindRuleData::TemplatedSender);
         assert_eq!(
             described.reason,
-            "the same few subjects every time, and you have never written to them"
+            "repeated subject templates with bulk precedence, and no correspondence history"
         );
     }
 
@@ -915,7 +1110,7 @@ mod tests {
     }
 
     #[test]
-    fn mail_addressed_to_you_from_someone_you_wrote_to_is_never_sorted_away() {
+    fn correspondence_history_does_not_erase_message_list_evidence() {
         // A list, a no-reply sender and a list sender all give way.
         for list in [
             KindSignals {
@@ -927,18 +1122,13 @@ mod tests {
                 has_unsubscribe: true,
                 ..signals("no-reply@orbit.example")
             },
-            KindSignals {
-                list_sender: true,
-                ..signals("maya@orbit.example")
-            },
         ] {
             let known = describe(&KindSignals {
                 written_to: true,
                 ..list
             });
-            assert_eq!(known.kind, SenderKindData::People);
-            assert_eq!(known.rule, KindRuleData::WrittenTo);
-            assert_eq!(known.reason, WRITTEN_TO_REASON);
+            assert_eq!(known.kind, SenderKindData::Reading);
+            assert_ne!(known.rule, KindRuleData::WrittenTo);
             // Only copied: still theirs, not Reading. Placement then asks
             // about it (the thread is copied), and `kept_in_messages` holds
             // only what is addressed to you.
@@ -947,9 +1137,9 @@ mod tests {
                 addressed: false,
                 ..list
             };
-            assert_eq!(describe(&copied_signals).kind, SenderKindData::People);
+            assert_eq!(describe(&copied_signals).kind, SenderKindData::Reading);
             assert!(!kept_in_messages(&copied_signals));
-            assert!(kept_in_messages(&KindSignals {
+            assert!(!kept_in_messages(&KindSignals {
                 written_to: true,
                 ..list
             }));
@@ -961,8 +1151,8 @@ mod tests {
             written_to: true,
             ..signals("newsletter@orbit.example")
         });
-        assert_eq!(by_address.kind, SenderKindData::People);
-        assert_eq!(by_address.rule, KindRuleData::WrittenTo);
+        assert_eq!(by_address.kind, SenderKindData::Reading);
+        assert_eq!(by_address.rule, KindRuleData::NewsletterAddress);
         assert_eq!(
             describe(&signals("newsletter@orbit.example")).kind,
             SenderKindData::Reading

@@ -58,7 +58,7 @@ mxr send DRAFT_ID --check --no-llm --format json \
 
 ## Owed-reply lens: threads where you're the bottleneck
 
-`mxr owed` lists the [desk's](/guides/now/) **You owe** lane in full, for one account: conversations in your inbox where someone you have written to wrote last and you have not replied. Newsletters, notifications, strangers and archived mail are not on it. A sender you allowed in the screener but never wrote to is in the desk's New from people instead. The exact rules are in the [desk reference](/reference/desk-and-places/#lanes).
+`mxr owed` lists the [desk's](/guides/now/) **You owe** lane in full, for one account: unanswered directed requests from people you have written to, plus reply-later reminders you explicitly set. Informational mail does not create reply debt. New senders' directed requests appear in Messages' New from people instead. The exact rules are in the [desk reference](/reference/desk-and-places/#lanes). `mxr owed --all` retains the raw unanswered-inbound scope, including automated and archived mail.
 
 Rows come most overdue first. `overdue_score` is `waiting_days / expected_days`, where `expected_days` is how long you usually take to reply to that person (`usual_seconds`, the median of your past replies, with at least two of them), or one day when there is no history.
 

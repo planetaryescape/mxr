@@ -368,6 +368,12 @@ had 461: 26 in Spam, 54 Messages, 236 Updates (21 of them deliveries),
 
 ### Four kinds of mail are never sorted away
 
+**Historical proposal:** N1 below was superseded by the 2026-10-18 amendment
+to [D119](15-decision-log.md#d119-sorting-shows-its-work-freshness-an-arrivals-line-that-sums-and-mail-that-is-never-sorted-away).
+Shipped sorting follows message evidence, not permanent correspondence identity.
+Current behavior and conservative reply-attention coverage are in the
+[Messages guide](../../site/src/content/docs/guides/messages.md).
+
 The rules are shown under the arrivals line's `?` and in `mxr modes
 explain`, in these words:
 

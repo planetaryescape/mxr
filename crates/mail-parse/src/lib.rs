@@ -476,8 +476,9 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
 
     let list_id = message
         .list_id()
-        .as_text()
-        .map(std::string::ToString::to_string);
+        .as_address()
+        .and_then(extract_first_addr)
+        .and_then(|address| mxr_core::mail_evidence::normalize_list_id(&address.email));
     let text_plain_format = message.content_type().and_then(parse_text_plain_format);
 
     let reply_to = message.reply_to().map(extract_addrs).unwrap_or_default();
@@ -685,6 +686,21 @@ mod tests {
         reason = "tests unwrap fixture setup for direct failures"
     )]
 
+    #[test]
+    fn structured_list_id_normalizes_in_full_messages_and_header_pairs() {
+        let headers = vec![(
+            "List-Id".to_string(),
+            "Weekly News <Weekly.Example.org>".to_string(),
+        )];
+        let parsed = super::parse_headers_from_pairs(&headers, Some(chrono::Utc::now())).unwrap();
+        assert_eq!(
+            parsed.metadata.list_id.as_deref(),
+            Some("weekly.example.org")
+        );
+        let raw = b"From: editor@example.org\r\nList-Id: Weekly News\r\n\t<Weekly.Example.org>\r\nContent-Type: text/html\r\n\r\n<p>News</p>";
+        let metadata = super::parse_message_metadata_from_raw(raw).unwrap();
+        assert_eq!(metadata.list_id, parsed.metadata.list_id);
+    }
     use super::*;
 
     /// Exhaustive over line-ending forms so a fourth variant can't reopen the

@@ -274,6 +274,6 @@ async fn arrivals_name_the_mode_the_sender_rule_chose() {
     );
     assert_eq!(
         went(&person.id),
-        Some((ModeKindData::Messages, Some("person".into())))
+        Some((ModeKindData::Messages, Some("possible personal".into())))
     );
 }

@@ -52,9 +52,9 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Snooze**: hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<time>'` (see [time phrases](/reference/time-phrases/)) or the `Z` key in the TUI.
 
-**Screener**: Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Anyone you have written to is never in the queue. Allow makes a sender a person, not someone you owe: they land in New from people until you write to them. Feed sends their mail to Reading and Paper Trail to Paper trail, the same as a [sender kind](#the-desk-and-places). Local-only consent metadata; never round-trips to the provider. CLI: `mxr screener`.
+**Screener**: Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Anyone you have written to is never in the queue. Allow gives the sender Messages visibility, not automatic reply debt. A directed request can enter New from people until you write to them. Feed sends their mail to Reading and Paper Trail to Paper trail, the same as a [sender kind](#the-desk-and-places). Local-only consent metadata; never round-trips to the provider. CLI: `mxr screener`.
 
-**Owed reply**: a conversation in your inbox where someone you have written to wrote last and you have not replied: the desk's You owe lane. mxr ranks them by `waiting_days / expected_days`, where `expected_days` is your usual reply time to that person. Reachable via `mxr owed`, the desk, or the TUI sidebar (Owed). The raw set (every thread whose latest message is inbound with no later reply, automated and archived mail included) is `mxr owed --all` or `mxr search 'is:owed-reply'`. See the [search guide](/guides/search/#common-patterns).
+**Owed reply**: an unanswered directed request from someone you have written to, or an explicit reply-later reminder that has returned: the desk's You owe lane. Informational mail and acknowledgements do not create a reply obligation. mxr ranks requests by `waiting_days / expected_days`, where `expected_days` is your usual reply time. Reachable via `mxr owed`, the desk, or the TUI sidebar (Owed). The raw set (every thread whose latest message is inbound with no later reply, automated and archived mail included) is `mxr owed --all` or `mxr search 'is:owed-reply'`. See the [search guide](/guides/search/#common-patterns).
 
 **Commitment**: a promise mxr extracted from your sent mail (e.g. "I'll send the deck Friday"). Persisted to `contact_commitments` after every successful `mxr send`. Browse with `mxr commitments --status open`. See [Forgotten work](/guides/forgotten-work/). You can also keep one yourself with `mxr commitments add`, or from the offer the web app shows after a send. Open ones due within a week show under **Due** on the desk.
 
@@ -62,7 +62,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Desk**: the web app's home and a TUI lens: what needs you, not what arrived. Four lanes, each row with its reason and age. CLI: `mxr desk`. See [Clear the desk](/guides/now/).
 
-**Lane**: one section of the desk. **You owe** (someone you are in conversation with wrote last), **Due** (a promise you made is coming due), **Waiting on** (you wrote last and they have not answered), **New from people** (a person you have not written to before). The rules are in the [desk reference](/reference/desk-and-places/#lanes).
+**Lane**: one section of the desk. **You owe** (a directed request or returned reply-later timer), **Due** (a promise you made is coming due), **Waiting on** (you wrote last and they have not answered), **New from people** (a directed request from someone you have not written to). The rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
 **Done**: puts a desk row away. You owe and New from people are archived and marked read; Waiting on is marked read and set aside; a Due promise is marked kept. The row stays away until someone writes in the conversation again. CLI: `mxr desk done`, previewed with `--dry-run`, reversed with `mxr undo`.
 

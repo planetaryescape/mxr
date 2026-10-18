@@ -3,6 +3,23 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use sqlx::Row;
 
+pub(crate) fn evidence_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<mxr_core::mail_evidence::MailEvidence, sqlx::Error> {
+    let metadata: MessageMetadata = row
+        .try_get::<Option<String>, _>("evidence_metadata")?
+        .as_deref()
+        .map(decode_json)
+        .transpose()?
+        .unwrap_or_default();
+    let mut evidence =
+        mxr_core::mail_evidence::MailEvidence::cached(&metadata, row.try_get("evidence_text")?);
+    evidence.is_reply |= row
+        .try_get::<Option<String>, _>("evidence_reply")?
+        .is_some_and(|id| mxr_core::mail_evidence::has_reply_reference(&id));
+    Ok(evidence)
+}
+
 impl super::Store {
     /// Update only the downloaded attachment row so a stale message body
     /// cannot replace sibling attachments or calendar metadata.
@@ -109,7 +126,9 @@ pub(crate) async fn insert_body_tx(
 ) -> Result<(), sqlx::Error> {
     let fetched_at = body.fetched_at.timestamp();
     let mid = body.message_id.as_str();
-    let metadata_json = encode_json(&body.metadata)?;
+    let mut metadata = body.metadata.clone();
+    metadata.list_id = mxr_core::mail_evidence::MailEvidence::cached(&metadata, None).list_id;
+    let metadata_json = encode_json(&metadata)?;
 
     sqlx::query(
         "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",
@@ -125,7 +144,7 @@ pub(crate) async fn insert_body_tx(
     // Promote List-Id from body metadata to the indexed `messages.list_id`
     // column. Cheap upsert; runs once per body and is overwritten if the
     // sender's headers change. Powers `mxr unsub --rank` grouping.
-    if let Some(list_id) = body.metadata.list_id.as_ref() {
+    if let Some(list_id) = metadata.list_id.as_ref() {
         sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
             .bind(list_id)
             .bind(&mid)
@@ -232,6 +251,39 @@ mod tests {
             fetched_at: chrono::Utc::now(),
             metadata: MessageMetadata::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn cached_list_id_repair_preserves_body_attachments_and_unknown_metadata() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+        let cached = body(
+            envelope.id.clone(),
+            vec![attachment(envelope.id.clone(), "kept")],
+        );
+        store.insert_body(&cached).await.unwrap();
+        // Emulate an old cache, including a field this binary does not own.
+        sqlx::query("UPDATE bodies SET metadata_json = ? WHERE message_id = ?")
+            .bind(r#"{"list_id":null,"raw_headers":"List-Id: Weekly <WEEKLY.EXAMPLE.ORG>\r\n","future_field":{"keep":true}}"#)
+            .bind(envelope.id.as_str()).execute(store.writer()).await.unwrap();
+        assert_eq!(store.backfill_message_list_ids().await.unwrap(), 1);
+        assert_eq!(store.backfill_message_list_ids().await.unwrap(), 0);
+        let restored = store.get_body(&envelope.id).await.unwrap().unwrap();
+        assert_eq!(restored.text_plain, cached.text_plain);
+        assert_eq!(restored.attachments, cached.attachments);
+        assert_eq!(
+            restored.metadata.list_id.as_deref(),
+            Some("weekly.example.org")
+        );
+        let (json, indexed): (String, String) = sqlx::query_as("SELECT b.metadata_json, m.list_id FROM bodies b JOIN messages m ON m.id=b.message_id WHERE m.id=?")
+            .bind(envelope.id.as_str()).fetch_one(store.reader()).await.unwrap();
+        assert!(json.contains("future_field"));
+        assert_eq!(indexed, "weekly.example.org");
     }
 
     #[tokio::test]

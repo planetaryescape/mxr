@@ -61,13 +61,12 @@ fn rule_id(rule: KindRuleData) -> String {
 }
 
 /// Where one arrival goes now, by the rules live membership uses.
-/// `written_to` reads sent mail directly: on a first sync the contacts
-/// table may not have counted it yet.
+/// The shared sender loader reads sent mail directly, so first-sync
+/// placement does not depend on the contacts refresher having run.
 pub(super) fn place_message(
     message: &DeskMessage,
     thread: &[DeskMessage],
     senders: &Senders,
-    written_to: &HashSet<String>,
     is_self: &dyn Fn(&str) -> bool,
     shape: super::conversation_shape::ShapeConfig,
     spam: bool,
@@ -83,8 +82,7 @@ pub(super) fn place_message(
     if spam {
         return placed("spam", "spam".into(), "in Spam".into(), None);
     }
-    let mut signals = senders.signals(message, is_self);
-    signals.written_to |= written_to.contains(&message.from.email.to_ascii_lowercase());
+    let signals = senders.signals(message, is_self);
     let described = mail_kind::describe(&signals);
     let rule = rule_id(described.rule);
     match mail_kind::classify(&signals).kind {
@@ -92,13 +90,11 @@ pub(super) fn place_message(
         SenderKind::List => placed("reading", rule, described.reason, None),
         SenderKind::Automated => placed("updates", rule, described.reason, None),
         SenderKind::Person => {
-            let person_sender = |m: &DeskMessage| senders.answers(m, is_self);
-            let human = |email: &str| human_address(email, &senders.contacts, &senders.screener);
-            let kept = |m: &DeskMessage| {
-                let mut signals = senders.signals(m, is_self);
-                signals.written_to |= written_to.contains(&m.from.email.to_ascii_lowercase());
-                mail_kind::kept_in_messages(&signals)
+            let person_sender = |m: &DeskMessage| {
+                mail_kind::classify(&senders.signals(m, is_self)).kind == SenderKind::Person
             };
+            let human = |email: &str| human_address(email, &senders.contacts, &senders.screener);
+            let kept = |m: &DeskMessage| senders.kept_in_messages(m, is_self);
             let shape = conversation_shape(
                 thread,
                 &ShapeInputs {
@@ -112,8 +108,10 @@ pub(super) fn place_message(
             if shape == Shape::Copied {
                 // Someone you've written to only copied you: the rules
                 // disagree, so Now asks (U1).
-                let not_sure = (signals.written_to && !signals.addressed)
-                    .then(|| NOT_SURE_COPIED_KNOWN.to_string());
+                let not_sure = (signals.written_to
+                    && !signals.addressed
+                    && message.cc.iter().any(|address| is_self(&address.email)))
+                .then(|| NOT_SURE_COPIED_KNOWN.to_string());
                 placed(
                     "updates",
                     rule_id(KindRuleData::Copied),
@@ -161,16 +159,6 @@ async fn place_all(
     let senders = Senders::load(state, account_id, &messages).await?;
     let is_self = self_matcher(state, account_id).await?;
     let shape = super::conversation_shape::shape_config(state);
-    let wanted_ids: HashSet<&MessageId> = wanted.iter().map(|(id, _, _)| id).collect();
-    let mut from: Vec<String> = messages
-        .iter()
-        .filter(|m| wanted_ids.contains(&m.id))
-        .map(|m| m.from.email.to_ascii_lowercase())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    from.sort_unstable();
-    let written_to = state.store.addresses_written_to(account_id, &from).await?;
     let by_thread: HashMap<&ThreadId, &[DeskMessage]> = messages
         .chunk_by(|a, b| a.thread_id == b.thread_id)
         .map(|thread| (&thread[0].thread_id, thread))
@@ -192,16 +180,107 @@ async fn place_all(
             continue;
         }
         sorted.placements.push(place_message(
-            message,
-            thread,
-            &senders,
-            &written_to,
-            &is_self,
-            shape,
-            *spam,
+            message, thread, &senders, &is_self, shape, *spam,
         ));
     }
     Ok(sorted)
+}
+
+/// Re-evaluate only the requested cached mail. This is a read projection,
+/// not a repair mutation: first placement, first-seen, moves, tasks, marks,
+/// reminders and provider state are untouched, including across retries.
+pub(super) async fn effective_rows(
+    state: &AppState,
+    mut rows: Vec<ArrivalRow>,
+) -> Result<Vec<ArrivalRow>, HandlerError> {
+    let mut accounts: HashMap<AccountId, Vec<(MessageId, ThreadId, bool)>> = HashMap::new();
+    for row in &rows {
+        accounts.entry(row.account_id.clone()).or_default().push((
+            row.message_id.clone(),
+            row.thread_id.clone(),
+            row.effective == "spam",
+        ));
+    }
+    let mut placements = HashMap::new();
+    for (account, wanted) in accounts {
+        for batch in wanted.chunks(PLACE_BATCH as usize) {
+            for placement in place_all(state, &account, batch).await?.placements {
+                placements.insert(placement.message_id.clone(), placement);
+            }
+        }
+    }
+    for row in &mut rows {
+        if let Some(placement) = placements.remove(&row.message_id) {
+            row.effective = placement.mode;
+            row.reason = Some(placement.reason);
+            row.rule = Some(placement.rule);
+            row.not_sure = placement.not_sure;
+        }
+    }
+    Ok(rows)
+}
+
+/// Count and select from the same current-policy projection, in bounded pages.
+/// Only the requested output page is retained; there is no mailbox-wide cache
+/// or versioned stale classification to repair on upgrade.
+async fn effective_window(
+    state: &AppState,
+    accounts: &[AccountId],
+    since: DateTime<Utc>,
+    until: DateTime<Utc>,
+    bucket: Option<ArrivalBucketData>,
+    limit: usize,
+) -> Result<(Vec<ArrivalRow>, u32, mxr_store::ArrivalCounts), HandlerError> {
+    let _sorting = state.rule_mutation_gate.lock().await;
+    let mut cursor: Option<(i64, String)> = None;
+    let mut counts = mxr_store::ArrivalCounts::default();
+    let mut selected = Vec::new();
+    let mut total = 0u32;
+    loop {
+        let rows = state
+            .store
+            .arrival_window_page(
+                accounts,
+                since,
+                until,
+                cursor.as_ref().map(|(at, id)| (*at, id.as_str())),
+            )
+            .await?;
+        let Some(last) = rows.last() else {
+            break;
+        };
+        cursor = Some((
+            last.first_seen_at.timestamp(),
+            last.message_id.as_str().to_string(),
+        ));
+        for row in effective_rows(state, rows).await? {
+            counts.total += 1;
+            *counts.by_mode.entry(row.effective.clone()).or_default() += 1;
+            counts.also_todo += u32::from(row.also_todo);
+            counts.also_archive += u32::from(row.also_archive);
+            let matches = match bucket {
+                None => true,
+                Some(ArrivalBucketData::Todo) => row.also_todo,
+                Some(ArrivalBucketData::Archive) => row.also_archive,
+                Some(bucket) => row.effective == bucket.id(),
+            };
+            if matches {
+                total += 1;
+                if limit > 0 {
+                    selected.push(row);
+                }
+            }
+        }
+        selected.sort_by(|a, b| {
+            (b.first_seen_at, b.date, b.message_id.as_str()).cmp(&(
+                a.first_seen_at,
+                a.date,
+                a.message_id.as_str(),
+            ))
+        });
+        selected.truncate(limit);
+    }
+    Ok((selected, total, counts))
 }
 
 /// Place every arrival of `account_id` the daemon has not placed yet.
@@ -452,7 +531,7 @@ where
     };
     let until = until_of(now);
     let label = since_label(since, now, tz);
-    let counts = state.store.arrival_counts(&accounts, since, until).await?;
+    let (_, _, counts) = effective_window(state, &accounts, since, until, None, 0).await?;
 
     let line_counts: Vec<ArrivalCountData> = ArrivalBucketData::ALL
         .into_iter()
@@ -570,10 +649,11 @@ async fn not_sure_today<Tz: TimeZone>(
         .store
         .not_sure_arrivals(accounts, start_of_day(now, tz), until_of(now))
         .await?;
+    let rows = effective_rows(state, rows).await?;
     Ok(rows
         .into_iter()
         .take(arrivals_copy::NOT_SURE_DAILY_CAP)
-        .filter(|row| !row.answered && Some(row.effective.as_str()) == row.mode.as_deref())
+        .filter(|row| !row.answered && row.not_sure.is_some())
         .filter_map(|row| {
             let mode = ModeKindData::parse(&row.effective)?;
             let name = row
@@ -660,14 +740,12 @@ fn item(row: ArrivalRow) -> ArrivalItemData {
         .mode
         .as_deref()
         .map_or(ArrivalBucketData::Sorting, bucket_of);
-    // The arrival's reason describes where it arrived; after a sender move
-    // it would explain the wrong mode.
-    let reason = if bucket == arrived_in {
-        row.reason.clone()
-    } else if row.moved {
+    // The read projection supplies the current reason while `arrived_in`
+    // retains history. Never label an automatic policy change a user move.
+    let reason = if row.moved {
         Some("you moved this email".to_string())
     } else {
-        Some("you set this sender's mode".to_string())
+        row.reason.clone()
     };
     ArrivalItemData {
         chip: chip(bucket, reason.as_deref(), row.moved),
@@ -710,16 +788,15 @@ pub(super) async fn list_arrivals(
             "until must be after since".into(),
         ));
     }
-    let (rows, total) = state
-        .store
-        .list_arrivals(
-            &accounts,
-            since,
-            until,
-            bucket.map(ArrivalBucketData::id),
-            limit.clamp(1, 1000),
-        )
-        .await?;
+    let (rows, total, _) = effective_window(
+        state,
+        &accounts,
+        since,
+        until,
+        bucket,
+        limit.clamp(1, 1000) as usize,
+    )
+    .await?;
     Ok(ResponseData::ArrivalList {
         list: ArrivalListData {
             since,
@@ -740,13 +817,13 @@ pub(super) async fn get_arrival_modes(
             "at most {ARRIVAL_MODES_MAX} emails at once"
         )));
     }
-    let mut by_id: HashMap<MessageId, ArrivalRow> = state
-        .store
-        .arrivals_by_ids(message_ids)
-        .await?
-        .into_iter()
-        .map(|row| (row.message_id.clone(), row))
-        .collect();
+    let _sorting = state.rule_mutation_gate.lock().await;
+    let mut by_id: HashMap<MessageId, ArrivalRow> =
+        effective_rows(state, state.store.arrivals_by_ids(message_ids).await?)
+            .await?
+            .into_iter()
+            .map(|row| (row.message_id.clone(), row))
+            .collect();
     Ok(ResponseData::ArrivalModes {
         items: message_ids
             .iter()
@@ -786,11 +863,15 @@ async fn current_bucket(
     message_id: &MessageId,
     thread_id: &ThreadId,
 ) -> Result<(ArrivalBucketData, Option<ArrivalRow>), HandlerError> {
-    let row = state
-        .store
-        .arrivals_by_ids(std::slice::from_ref(message_id))
-        .await?
-        .pop();
+    let row = effective_rows(
+        state,
+        state
+            .store
+            .arrivals_by_ids(std::slice::from_ref(message_id))
+            .await?,
+    )
+    .await?
+    .pop();
     if let Some(row) = row.as_ref().filter(|row| row.mode.is_some()) {
         return Ok((bucket_of(&row.effective), Some(row.clone())));
     }

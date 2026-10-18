@@ -738,15 +738,15 @@ fn mail_todos_in_state() {}
 #[allow(dead_code)]
 fn mail_todo_get() {}
 
-#[utoipa::path(get, path = "/api/v1/mail/todos/microsoft", summary = "Whether the optional ms-todo CLI is installed on the daemon", responses((status = 200, body = ResponseData)))]
+#[utoipa::path(get, path = "/api/v1/mail/todos/microsoft", summary = "Whether the optional ms-todo CLI is installed on the daemon", responses((status = 200, description = "The `MicrosoftTodoStatus` variant", body = ResponseData)))]
 #[allow(dead_code)]
 fn mail_microsoft_todo_status() {}
 
-#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/microsoft", summary = "Preview or create a two-way Microsoft To Do task link", params(("todo_id" = String, Path)), request_body = crate::todo_routes::MicrosoftTodoLinkBody, responses((status = 200, body = ResponseData), (status = 400, description = "Preview is stale or ms-todo is unavailable")))]
+#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/microsoft", summary = "Preview or create a two-way Microsoft To Do task link", params(("todo_id" = String, Path)), request_body = crate::todo_routes::MicrosoftTodoLinkBody, responses((status = 200, description = "The `MicrosoftTodoSend` variant", body = ResponseData), (status = 400, description = "Preview is stale or ms-todo is unavailable")))]
 #[allow(dead_code)]
 fn mail_microsoft_todo_link() {}
 
-#[utoipa::path(post, path = "/api/v1/mail/todos/microsoft/sync", summary = "Reconcile linked tasks without discarding conflicting edits", request_body = crate::todo_routes::MicrosoftTodoSyncBody, responses((status = 200, body = ResponseData)))]
+#[utoipa::path(post, path = "/api/v1/mail/todos/microsoft/sync", summary = "Reconcile linked tasks without discarding conflicting edits", request_body = crate::todo_routes::MicrosoftTodoSyncBody, responses((status = 200, description = "The `MicrosoftTodoSync` variant", body = ResponseData)))]
 #[allow(dead_code)]
 fn mail_microsoft_todo_sync() {}
 

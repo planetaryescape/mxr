@@ -1285,6 +1285,48 @@ async fn openapi_spec_snapshot() {
     insta::assert_json_snapshot!("openapi_spec_summary", summary);
 }
 
+#[test]
+fn openapi_response_objects_have_the_required_description() {
+    use utoipa::OpenApi;
+    let spec = serde_json::to_value(crate::ApiDoc::openapi()).expect("OpenAPI document");
+    let mut checked = 0;
+    for (path, item) in spec["paths"].as_object().expect("OpenAPI paths") {
+        for (method, operation) in item.as_object().expect("OpenAPI path item") {
+            let Some(responses) = operation
+                .get("responses")
+                .and_then(serde_json::Value::as_object)
+            else {
+                continue;
+            };
+            for (status, response) in responses {
+                let response = openapi_schema(&spec, response);
+                assert!(
+                    response
+                        .get("description")
+                        .is_some_and(serde_json::Value::is_string),
+                    "{method} {path} response {status} requires a description: {response}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    if let Some(responses) = spec
+        .pointer("/components/responses")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (name, response) in responses {
+            let response = openapi_schema(&spec, response);
+            assert!(
+                response
+                    .get("description")
+                    .is_some_and(serde_json::Value::is_string),
+                "component response {name} requires a description: {response}"
+            );
+        }
+    }
+    assert!(checked > 100, "walked only {checked} operation responses");
+}
+
 fn openapi_schema<'a>(
     spec: &'a serde_json::Value,
     schema: &'a serde_json::Value,

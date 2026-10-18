@@ -21437,6 +21437,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The `MicrosoftTodoStatus` variant */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -21460,6 +21461,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The `MicrosoftTodoSync` variant */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -21580,6 +21582,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The `MicrosoftTodoSend` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

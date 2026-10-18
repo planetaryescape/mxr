@@ -122,6 +122,8 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_thread_gists", Rule::Read),
     ("mxr_todo_get", Rule::Read),
     ("mxr_todo_list", Rule::Read),
+    // Confirmed links and syncs can write to an external service.
+    ("mxr_todo_microsoft", Rule::Confirm),
     ("mxr_todo_resolve", Rule::Confirm),
     ("mxr_todo_set_state", Rule::Confirm),
     // Replaces the user's draft content.
@@ -266,6 +268,47 @@ mod tests {
     }
 
     #[test]
+    fn microsoft_tasks_require_approval_for_confirmation_and_never_auto_approve() {
+        for action in ["status", "link", "sync"] {
+            let arguments = json!({
+                "action": action, "todo_id": "todo_1", "account_id": "work",
+                "fingerprint": "reviewed-payload",
+            });
+            for preview in [
+                arguments.clone(),
+                with(&arguments, "confirm", json!(false)),
+                with(&arguments, "confirm", Value::Null),
+            ] {
+                assert_eq!(classify("mxr_todo_microsoft", &preview), Gate::Run);
+                assert!(!auto_approvable("mxr_todo_microsoft", &preview));
+            }
+            for confirm in [
+                json!(true),
+                json!("true"),
+                json!("false"),
+                json!(0),
+                json!([]),
+                json!({}),
+            ] {
+                let committing = with(&arguments, "confirm", confirm);
+                assert_eq!(
+                    classify("mxr_todo_microsoft", &committing),
+                    Gate::Approve {
+                        preview: Some((
+                            "mxr_todo_microsoft".into(),
+                            json!({
+                                "action": action, "todo_id": "todo_1", "account_id": "work",
+                                "fingerprint": "reviewed-payload", "confirm": false,
+                            })
+                        )),
+                    }
+                );
+                assert!(!auto_approvable("mxr_todo_microsoft", &committing));
+            }
+        }
+    }
+
+    #[test]
     fn confirm_tools_preview_unless_confirm_is_anything_but_false() {
         assert_eq!(classify("mxr_move", &json!({"message_id": "a"})), Gate::Run);
         assert_eq!(classify("mxr_move", &json!({"confirm": false})), Gate::Run);
@@ -356,6 +399,7 @@ mod tests {
             "mxr_got_it",
             "mxr_sorting_rule",
             "mxr_reading_marginalia",
+            "mxr_todo_microsoft",
             "mxr_unknown",
         ] {
             assert!(!auto_approvable(tool, &json!({"confirm": true})), "{tool}");

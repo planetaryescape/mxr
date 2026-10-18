@@ -882,7 +882,12 @@ local read projections; original placement, first-seen and corrections are not
 rewritten. No provider/model work, new purpose cache or maintenance mutation is
 needed. This supersedes the N1 wording in the original decision below and the
 history-only attention rule in D104/D132. Coverage and limitations are documented
-in the Messages guide.
+in the Messages guide. Headerless document recognition combines structured
+reference/date/order-or-amount fields with delivery framing; informational
+placement combines FYI/report delivery with recipient and request context.
+Human answers use reply headers or local thread correspondence, independently
+of new requests. Attention uses the reader's authored-text extraction, including
+Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Chosen**: Three trust signals, in order. First, freshness: the status bar's "Latest mail 5m ago · synced 30s ago" with sync warnings and the last five arrivals (`GetFreshness`, `feat/freshness-indicator`). Second, one quiet line on Now that accounts for every inbound email first seen since the user last opened Now: the counts per primary mode, plus Spam and screened out, sum to the total; To do and Archive are shown as "also" and never added; each count opens those emails in arrival order. Sync stores one arrivals row per inbound message (mode, rule, first-seen time, mode after a correction), because computed membership drops mail once it leaves the inbox. Third, four never-bury rules shown in the app: mail addressed to you from someone you've written to reaches Messages over any list or no-reply rule; security alerts and failed payments reach Now and dated deadlines reach To do, within their relevancy windows. Inbox rows name the mode each email went to. "Not sure" covers only rule conflicts (someone you've written to who only copied you; later, the fast-tier model disagreeing with the rules), at most three a day on Now. The weekly track record waits until per-email corrections are stored. "Clear" means accounted for, never "seen". Rubric v3 X14 grades it. The design and copy are "Sorting shows its work, so nothing feels hidden" in [22-email-modes.md](22-email-modes.md).
 

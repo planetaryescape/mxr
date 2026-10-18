@@ -574,10 +574,17 @@ fn desk_messages_sql(active_threads: &str) -> String {
                 m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.bcc_addrs, m.subject,
                 m.list_id, m.unsubscribe_method,
                 m.in_reply_to AS evidence_reply,
+                EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
+                    AND sent.thread_id = m.thread_id AND sent.direction = 'outbound'
+                    AND sent.id != m.id) AS evidence_thread_correspondence,
                 (SELECT json_object('list_id', json_extract(metadata_json, '$.list_id'),
                     'raw_headers', substr(json_extract(metadata_json, '$.raw_headers'), 1, 131072))
                     FROM bodies WHERE message_id = m.id) AS evidence_metadata,
                 (SELECT substr(text_plain, 1, 8192) FROM bodies WHERE message_id = m.id) AS evidence_text,
+                (SELECT substr(pb.text_plain, 1, 8192) FROM messages previous JOIN bodies pb ON pb.message_id = previous.id
+                    WHERE previous.account_id = m.account_id AND previous.thread_id = m.thread_id
+                    AND previous.id != m.id AND (previous.rowid < m.rowid OR previous.message_id_header = m.in_reply_to)
+                    ORDER BY (previous.message_id_header = m.in_reply_to) DESC, previous.rowid DESC LIMIT 1) AS evidence_previous_text,
                 EXISTS (
                     SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
                     WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'

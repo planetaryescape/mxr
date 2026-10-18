@@ -306,6 +306,84 @@ async fn a_reply_cancels_the_wait() {
 }
 
 #[tokio::test]
+async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_differently() {
+    for (generated, referenced) in [(false, false), (false, true), (true, false), (true, true)] {
+        let fx = Fixture::new().await;
+        let thread = ThreadId::new();
+        let mine = fx
+            .message(
+                &thread,
+                ME,
+                "billing@vendor.example",
+                Duration::days(2),
+                None,
+            )
+            .await;
+        let until = Utc::now() + Duration::days(3);
+        defer(&fx, std::slice::from_ref(&thread), until, false).await;
+        let acknowledgement = fx
+            .message(
+                &thread,
+                "billing@vendor.example",
+                ME,
+                Duration::minutes(5),
+                if referenced {
+                    mine.message_id_header.as_deref()
+                } else {
+                    None
+                },
+            )
+            .await;
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: acknowledgement.id.clone(),
+                text_plain: Some("I've corrected the account name. No action is required.\n\nFrom: Alex <alex@example.org>\nSent: Monday\nTo: Me <user@example.com>\nSubject: Old request\n\nCould you confirm the details?".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: Utc::now(),
+                metadata: mxr_core::MessageMetadata {
+                    raw_headers: generated.then(|| "Auto-Submitted: auto-replied\r\n".into()),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let [owed, _, waiting, new] = lanes_at(&fx, Utc::now()).await;
+        assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+        let ResponseData::ModeMembership { threads } = request(
+            &fx,
+            Request::GetModeMembership {
+                message_id: Some(acknowledgement.id),
+                thread_id: None,
+                thread_ids: vec![],
+            },
+        )
+        .await
+        else {
+            panic!("membership");
+        };
+        let expected = if generated {
+            mxr_protocol::ModeKindData::Updates
+        } else {
+            mxr_protocol::ModeKindData::Messages
+        };
+        assert!(
+            threads[0].modes.iter().any(|mode| mode.mode == expected),
+            "{threads:?}"
+        );
+        let after = until + Duration::minutes(1);
+        assert_eq!(
+            crate::loops::process_due_timers(&fx.state, after).await,
+            Ok(u32::from(generated))
+        );
+        let [owed, _, waiting, new] = lanes_at(&fx, after).await;
+        assert!(owed.is_empty() && new.is_empty());
+        assert_eq!(waiting.len(), usize::from(generated));
+    }
+}
+
+#[tokio::test]
 async fn a_human_acknowledgement_cancels_the_wait_without_creating_reply_debt() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;

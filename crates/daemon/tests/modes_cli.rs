@@ -10,6 +10,113 @@ use mxr_test_support::daemon::{daemon_lock, run_json, spawn_fake_daemon};
 use tempfile::TempDir;
 
 #[test]
+fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("isolated classification profile");
+    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "classification-json");
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (message_id, thread_id) = runtime.block_on(async {
+        let store = mxr_store::Store::new(&data_dir.join("mxr.db")).await.unwrap();
+        let account = store.list_accounts().await.unwrap().into_iter()
+            .find(|account| account.email == "fake@example.com").unwrap();
+        let inbox = mxr_core::LabelId::from_scoped_provider_id(&account.id, "fake", "INBOX");
+        store.upsert_label(&mxr_core::Label {
+            id: inbox.clone(), account_id: account.id.clone(), name: "Inbox".into(),
+            kind: mxr_core::LabelKind::System, color: None, provider_id: "INBOX".into(),
+            unread_count: 0, total_count: 0, role: None,
+        }).await.unwrap();
+        let id = mxr_core::MessageId::new();
+        let thread = mxr_core::ThreadId::new();
+        store.upsert_envelope_with_direction(&mxr_core::Envelope {
+            id: id.clone(), account_id: account.id, provider_id: format!("classification-{id}"),
+            thread_id: thread.clone(), message_id_header: Some(format!("<{id}@example.org>")),
+            in_reply_to: None, references: vec![],
+            from: mxr_core::Address { name: Some("Vendor Accounts".into()), email: "emea_invoicing@email.vendor.example".into() },
+            to: vec![mxr_core::Address { name: Some("Test User".into()), email: "fake@example.com".into() }],
+            cc: vec![], bcc: vec![], subject: "Your invoice Number AB12345".into(),
+            date: chrono::Utc::now() - chrono::Duration::minutes(1), flags: mxr_core::MessageFlags::empty(),
+            snippet: "A billing document is available.".into(), has_attachments: false, size_bytes: 256,
+            unsubscribe: mxr_core::UnsubscribeMethod::None, link_count: 0, body_word_count: 30,
+            label_provider_ids: vec![], keywords: Default::default(),
+        }, mxr_core::MessageDirection::Inbound).await.unwrap();
+        store.set_message_labels(&id, &[inbox], mxr_core::EventSource::User).await.unwrap();
+        store.insert_body(&mxr_core::MessageBody {
+            message_id: id.clone(), text_plain: Some("Invoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nThank you for your purchase. Your billing document is attached.".into()),
+            text_html: None, attachments: vec![], fetched_at: chrono::Utc::now(), metadata: Default::default(),
+        }).await.unwrap();
+        (id.to_string(), thread.to_string())
+    });
+    let why = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["why", &message_id, "--format", "json"],
+    );
+    assert_eq!(why["mail_kind"]["kind"], "paper_trail", "{why}");
+    assert!(why["mail_kind"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("structured billing document"));
+    let modes = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "why", &message_id, "--format", "json"],
+    );
+    assert!(modes[0]["modes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|mode| mode["mode"] == "updates"));
+    let arrivals = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "arrivals", "list", "--mode", "updates", "--limit", "1000", "--format", "json",
+        ],
+    );
+    let arrived = arrivals["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["message_id"] == message_id)
+        .expect("the document is listed in Updates arrivals");
+    assert_eq!(arrived["bucket"], "updates");
+    assert!(arrived["reason"]
+        .as_str()
+        .unwrap()
+        .contains("structured billing document"));
+    let messages = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "--format", "json"],
+    );
+    for band in ["your_turn", "pinned", "recent", "quiet"] {
+        assert!(
+            !messages[band]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|row| row["topics"].as_array().unwrap())
+                .any(|topic| topic["thread_id"] == thread_id),
+            "the document must not merely move to Quiet"
+        );
+    }
+    let now = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["now", "--format", "json"],
+    );
+    assert!(now["people"]["rows"].is_array());
+    assert!(!serde_json::to_string(&now["people"])
+        .unwrap()
+        .contains(&thread_id));
+}
+
+#[test]
 fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {
     let _guard = daemon_lock();
     let temp = TempDir::new().expect("temp dir");

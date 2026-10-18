@@ -150,6 +150,8 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
     let fx = Fixture::new().await;
     wrote_to(&fx, "support@studio.example").await;
     wrote_to(&fx, "editor@weekly.example").await;
+    wrote_to(&fx, "emea_invoicing@email.vendor.example").await;
+    wrote_to(&fx, "maya@team.example").await;
     let newsletter = inbound(&fx, "editor@weekly.example", false).await;
     // Simulate an already-placed row from the old policy before headers arrive.
     line(&fx).await;
@@ -177,7 +179,29 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
         Some("Could you confirm the invoice reference?"),
     )
     .await;
-    let report = inbound(&fx, "maya@team.example", false).await;
+    let mut invoice = inbound(&fx, "emea_invoicing@email.vendor.example", false).await;
+    invoice.subject = "Your invoice Number AB12345".into();
+    fx.store_envelope(&invoice, MessageDirection::Inbound).await;
+    cached_content(&fx, &invoice, "", Some("Invoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nThank you for your purchase. Your billing document is attached.")).await;
+    let mut report = inbound(&fx, "maya@team.example", false).await;
+    report.subject = "Weekly project report".into();
+    report.to.extend((0..8).map(|i| Address {
+        name: None,
+        email: format!("colleague{i}@team.example"),
+    }));
+    fx.store_envelope(&report, MessageDirection::Inbound).await;
+    let mut decision = inbound(&fx, "maya@team.example", false).await;
+    decision.subject = "Weekly project report".into();
+    decision.to = report.to.clone();
+    fx.store_envelope(&decision, MessageDirection::Inbound)
+        .await;
+    cached_content(
+        &fx,
+        &decision,
+        "",
+        Some("User, could you confirm the next step? The report is attached."),
+    )
+    .await;
     let recruiter = inbound(&fx, "recruiter@ats.example", false).await;
     cached_content(&fx, &recruiter,
         "In-Reply-To: <interview@example.org>\r\nList-Unsubscribe: <https://ats.example/optout>\r\nX-SES-Outgoing: delivery\r\n",
@@ -223,8 +247,10 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
             (&newsletter, ArrivalBucketData::Reading),
             (&receipt, ArrivalBucketData::Updates),
             (&discussion, ArrivalBucketData::Messages),
+            (&decision, ArrivalBucketData::Messages),
             (&recruiter, ArrivalBucketData::Messages),
-            (&report, ArrivalBucketData::Messages),
+            (&invoice, ArrivalBucketData::Updates),
+            (&report, ArrivalBucketData::Updates),
             (&acknowledgement, ArrivalBucketData::Messages),
             (&unknown, ArrivalBucketData::Messages),
             (&negative, ArrivalBucketData::Messages),
@@ -247,11 +273,13 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
             .map(|r| &r.thread_id)
             .collect();
         assert!(turns.contains(&&discussion.thread_id));
+        assert!(turns.contains(&&decision.thread_id));
         assert!(turns.contains(&&recruiter.thread_id));
         for quiet in [
             &newsletter,
             &receipt,
             &report,
+            &invoice,
             &acknowledgement,
             &unknown,
             &negative,
@@ -296,11 +324,51 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
     else {
         panic!("messages");
     };
-    assert_eq!(messages.your_turn_split.total(), 2);
+    assert_eq!(messages.your_turn_split.total(), 3);
+    let topics: Vec<_> = messages
+        .your_turn
+        .iter()
+        .chain(&messages.pinned)
+        .chain(&messages.recent)
+        .chain(&messages.quiet)
+        .flat_map(|row| &row.topics)
+        .map(|topic| &topic.thread_id)
+        .collect();
+    assert!(
+        !topics.contains(&&invoice.thread_id),
+        "a document does not linger as Quiet in Messages"
+    );
+    assert!(
+        !topics.contains(&&report.thread_id),
+        "a team FYI does not linger as Quiet in Messages"
+    );
+    for (message, reason) in [
+        (&invoice, "structured billing document"),
+        (&report, "informational update"),
+    ] {
+        let ResponseData::MessageKind { mail_kind, .. } = request(
+            &fx,
+            Request::GetMessageKind {
+                message_id: message.id.clone(),
+            },
+        )
+        .await
+        else {
+            panic!("message why");
+        };
+        assert_eq!(mail_kind.kind, mxr_protocol::SenderKindData::PaperTrail);
+        assert!(mail_kind.reason.contains(reason), "{}", mail_kind.reason);
+        assert!(chip(&fx, &message.id).await.1.contains(reason));
+        let held = membership(&fx, &message.thread_id).await;
+        assert!(held
+            .modes
+            .iter()
+            .any(|mode| mode.mode == ModeKindData::Updates && mode.reason.contains(reason)));
+    }
     let now = crate::handler::now::now_at(&fx.state, None, Utc::now(), &Utc)
         .await
         .unwrap();
-    assert_eq!(now.people.total, 2);
+    assert_eq!(now.people.total, 3);
     let ResponseData::Freshness { freshness } = request(
         &fx,
         Request::GetFreshness {

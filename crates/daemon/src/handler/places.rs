@@ -122,6 +122,7 @@ impl AccountKinds {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
             evidence: &message.evidence,
+            recipients: message.to.len() + message.cc.len(),
             reply_request: mail_kind::directed_to_owner(&message.to, &message.evidence, &|email| {
                 self.is_self(email)
             }),
@@ -279,9 +280,7 @@ async fn copied_threads(
     let person_sender = |m: &mxr_store::DeskMessage| {
         mail_kind::classify(&senders.signals(m, &is_self)).kind == mail_kind::SenderKind::Person
     };
-    let human = |email: &str| {
-        super::conversation_shape::human_address(email, &senders.contacts, &senders.screener)
-    };
+    let human = |email: &str| super::conversation_shape::human_address(email, &senders.screener);
     let kept = |m: &mxr_store::DeskMessage| senders.kept_in_messages(m, &is_self);
     let inputs = super::conversation_shape::ShapeInputs {
         is_self: &is_self,

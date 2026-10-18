@@ -1,15 +1,36 @@
 //! Local, provider-neutral observations, not a sender identity or reply obligation.
 
 /// Cached evidence shared by every automatic mail view. Missing content is unknown.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct MailEvidence {
     pub list_id: Option<String>,
     pub unsubscribe: bool,
     pub auto_generated: bool,
     pub bulk: bool,
     pub is_reply: bool,
+    /// Another outbound message establishes local thread correspondence;
+    /// this observation is independent of initial import order.
+    pub thread_correspondence: bool,
+    /// Bounded cached text of the referenced or preceding thread message,
+    /// for the shared reader's unmarked-history comparison.
+    pub previous_text: Option<String>,
     /// Only the authored plain text is used for conservative attention detection.
     pub text: Option<String>,
+}
+
+impl std::fmt::Debug for MailEvidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MailEvidence")
+            .field("has_list_id", &self.list_id.is_some())
+            .field("unsubscribe", &self.unsubscribe)
+            .field("auto_generated", &self.auto_generated)
+            .field("bulk", &self.bulk)
+            .field("is_reply", &self.is_reply)
+            .field("thread_correspondence", &self.thread_correspondence)
+            .field("text_cached", &self.text.is_some())
+            .field("previous_text_cached", &self.previous_text.is_some())
+            .finish()
+    }
 }
 
 /// Unfold cached RFC headers. Header names are case insensitive; body text is never read.
@@ -105,6 +126,18 @@ impl MailEvidence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_evidence_never_contains_cached_mail_text() {
+        let evidence = MailEvidence {
+            text: Some("private current content".into()),
+            previous_text: Some("private earlier content".into()),
+            ..Default::default()
+        };
+        let debug = format!("{evidence:?}");
+        assert!(!debug.contains("private current") && !debug.contains("private earlier"));
+        assert!(debug.contains("text_cached: true"));
+    }
 
     #[test]
     fn cached_headers_are_folded_case_insensitive_and_bounded_by_header_end() {

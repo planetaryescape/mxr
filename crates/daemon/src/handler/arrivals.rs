@@ -93,7 +93,7 @@ pub(super) fn place_message(
             let person_sender = |m: &DeskMessage| {
                 mail_kind::classify(&senders.signals(m, is_self)).kind == SenderKind::Person
             };
-            let human = |email: &str| human_address(email, &senders.contacts, &senders.screener);
+            let human = |email: &str| human_address(email, &senders.screener);
             let kept = |m: &DeskMessage| senders.kept_in_messages(m, is_self);
             let shape = conversation_shape(
                 thread,

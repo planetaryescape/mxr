@@ -17,6 +17,8 @@ pub(crate) fn evidence_from_row(
     evidence.is_reply |= row
         .try_get::<Option<String>, _>("evidence_reply")?
         .is_some_and(|id| mxr_core::mail_evidence::has_reply_reference(&id));
+    evidence.thread_correspondence = row.try_get("evidence_thread_correspondence")?;
+    evidence.previous_text = row.try_get("evidence_previous_text")?;
     Ok(evidence)
 }
 
@@ -254,6 +256,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn desk_and_place_share_thread_context_even_when_the_reference_is_imported_later() {
+        for reversed in [false, true] {
+            let store = Store::in_memory().await.unwrap();
+            let account = test_account();
+            store.insert_account(&account).await.unwrap();
+            let mut sent = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            sent.provider_id = "sent".into();
+            sent.from.email.clone_from(&account.email);
+            sent.message_id_header = Some("<earlier@example.org>".into());
+            let mut reply = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            reply.provider_id = "reply".into();
+            reply.thread_id = sent.thread_id.clone();
+            reply.message_id_header = Some("<reply@example.org>".into());
+            reply.in_reply_to.clone_from(&sent.message_id_header);
+            let order = if reversed {
+                [
+                    (&reply, mxr_core::MessageDirection::Inbound),
+                    (&sent, mxr_core::MessageDirection::Outbound),
+                ]
+            } else {
+                [
+                    (&sent, mxr_core::MessageDirection::Outbound),
+                    (&reply, mxr_core::MessageDirection::Inbound),
+                ]
+            };
+            for (envelope, direction) in order {
+                store
+                    .upsert_envelope_with_direction(envelope, direction)
+                    .await
+                    .unwrap();
+            }
+            let previous = body(sent.id.clone(), vec![]);
+            store.insert_body(&previous).await.unwrap();
+            store
+                .insert_body(&body(reply.id.clone(), vec![]))
+                .await
+                .unwrap();
+            let messages = store
+                .desk_messages_in_threads(&account.id, &[sent.thread_id])
+                .await
+                .unwrap();
+            let desk = messages
+                .iter()
+                .find(|message| message.id == reply.id)
+                .unwrap();
+            let place = store.place_message(&reply.id).await.unwrap().unwrap();
+            assert!(desk.evidence.thread_correspondence);
+            assert_eq!(desk.evidence.previous_text, previous.text_plain);
+            assert_eq!(desk.evidence, place.evidence);
+        }
+    }
+
+    #[tokio::test]
     async fn cached_list_id_repair_preserves_body_attachments_and_unknown_metadata() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
@@ -275,7 +334,10 @@ mod tests {
         assert_eq!(store.backfill_message_list_ids().await.unwrap(), 0);
         let restored = store.get_body(&envelope.id).await.unwrap().unwrap();
         assert_eq!(restored.text_plain, cached.text_plain);
-        assert_eq!(restored.attachments, cached.attachments);
+        assert_eq!(
+            serde_json::to_value(&restored.attachments).unwrap(),
+            serde_json::to_value(&cached.attachments).unwrap()
+        );
         assert_eq!(
             restored.metadata.list_id.as_deref(),
             Some("weekly.example.org")

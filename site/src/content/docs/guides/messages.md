@@ -50,6 +50,13 @@ List headers and no-reply or automatically generated messages keep their
 Reading or Updates destination even after you have written to the sender.
 Your per-email move, sender choice or custom sorting rule still wins.
 
+Cached document fields can also place an email in Updates without list
+headers: a document reference and date, an order reference or amount, plus
+purchase or document-delivery framing. An invoice subject alone is not enough.
+Team FYIs and report deliveries without a directed request go to Updates;
+a supported request naming you can stay in Messages. Human billing and support
+answers can settle Waiting on without creating another reply obligation.
+
 Possible personal mail stays accessible in Recent or Quiet without claiming
 someone is waiting for you. Automatic Your turn requires a directed request:
 currently English requests such as "Could you confirm ..." in cached plain
@@ -59,6 +66,12 @@ acknowledgements, quoted requests and unknown aliases do not create a turn.
 Missing text, other languages, indirect questions and HTML-only requests remain
 uncertain. Set Reply later when you want an explicit reminder; no model or
 network request is needed for this sorting.
+
+Request detection shares the reader's Outlook/header, quote, signature and
+footer rules, with one bounded earlier cached message for unmarked history.
+Unrecognized quote formats and history beyond that context remain limitations.
+Use `mxr why MESSAGE_ID` and `mxr modes why MESSAGE_ID` to inspect the evidence
+and destination when a result looks wrong.
 
 mxr judges each thread's shape from who took part:
 

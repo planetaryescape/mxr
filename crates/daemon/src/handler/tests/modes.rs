@@ -740,6 +740,21 @@ async fn done_in_updates_takes_the_thread_out_of_its_early_view_while_to_do_keep
         Duration::hours(2),
     )
     .await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: failed.id.clone(),
+            text_plain: Some("The scheduled payment failed. Update your payment method.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::MessageMetadata {
+                raw_headers: Some("Auto-Submitted: auto-generated\r\n".into()),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
     add_todo(&fx, &failed.id, "tomorrow").await;
     let in_place = |fx: &Fixture| {
         let fx_state = fx.state.clone();
@@ -1026,7 +1041,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
             .unwrap();
     }
     let shop = ThreadId::new();
-    mail(
+    let catalogue = mail(
         &fx,
         &shop,
         "hello@toys.example",
@@ -1034,6 +1049,18 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
         Duration::hours(2),
     )
     .await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: catalogue.id,
+            text_plain: Some("Our latest catalogue is attached.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
     fx.state.store.refresh_contacts().await.unwrap();
 
     let bank = membership(&fx, &latest).await;
@@ -1139,7 +1166,7 @@ async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
     assert_eq!(modes(&placed), [ModeKindData::Messages]);
     assert!(placed.new_sender.is_some());
 
-    // The same welcome from a founders@ address needs no headers to tell.
+    // A role address alone cannot discard an authored directed request.
     let other = ThreadId::new();
     mail(
         &fx,
@@ -1152,6 +1179,6 @@ async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
     fx.state.store.refresh_contacts().await.unwrap();
     assert_eq!(
         modes(&membership(&fx, &other).await),
-        [ModeKindData::Updates]
+        [ModeKindData::Messages]
     );
 }

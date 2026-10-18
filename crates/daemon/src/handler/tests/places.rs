@@ -306,7 +306,7 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         other => panic!("expected SenderKindSet, got {other:?}"),
     }
     assert!(fx.place(MailPlaceData::Reading, None).await.0.is_empty());
-    // It is a person now: on the desk.
+    // A sorting correction gives visibility, not evidence of a reply debt.
     match fx
         .send(Request::GetDesk {
             account_id: None,
@@ -322,10 +322,34 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
                 .iter()
                 .chain(&owed.rows)
                 .any(|row| row.message_id == issue.id);
-            assert!(on_desk, "people_new={people_new:?} owed={owed:?}");
+            assert!(
+                !on_desk,
+                "a Messages choice alone must not manufacture debt"
+            );
         }
         other => panic!("expected Desk, got {other:?}"),
     }
+    let ResponseData::Messages { messages } = fx
+        .send(Request::ListMessages {
+            account_id: None,
+            turn: None,
+            limit: 50,
+        })
+        .await
+    else {
+        panic!("messages");
+    };
+    assert!(
+        messages
+            .quiet
+            .iter()
+            .chain(&messages.recent)
+            .chain(&messages.pinned)
+            .chain(&messages.your_turn)
+            .flat_map(|row| &row.topics)
+            .any(|topic| topic.message_ids.contains(&issue.id)),
+        "the explicit Messages placement remains visible"
+    );
 
     // Moving it to Paper trail says so, and the sender's next issue follows.
     match fx

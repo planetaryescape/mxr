@@ -230,7 +230,7 @@ impl AccountInputs<'_> {
 
     /// An address you wrote to that could be a person.
     pub(super) fn human_address(&self, email: &str) -> bool {
-        super::conversation_shape::human_address(email, self.contacts, self.screener)
+        super::conversation_shape::human_address(email, self.screener)
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -252,6 +252,7 @@ pub(super) fn desk_signals<'a>(
     KindSignals {
         evidence: &message.evidence,
         reply_request: mail_kind::needs_reply(message, is_self),
+        recipients: message.to.len() + message.cc.len(),
         email: &message.from.email,
         subject: &message.subject,
         has_list_id: message
@@ -479,7 +480,7 @@ fn thread_row(
     }
     // Human response occurrence is not a new obligation. Unknown semantics
     // stays in Messages' Recent/Quiet views, never the attention rail.
-    if !inputs.answers(inbound) || !mail_kind::needs_reply(inbound, inputs.is_self) {
+    if !mail_kind::requires_reply(&inputs.signals(inbound)) {
         return None;
     }
     let email = inbound.from.email.as_str();
@@ -593,12 +594,6 @@ fn waiting_row(
     let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
-    if looks_automated(email)
-        || contact.is_some_and(|c| c.is_list_sender)
-        || inputs.decision(email) == Some(ScreenerDisposition::Deny)
-    {
-        return None;
-    }
     // Nobody replied by the time you set: back, however old or archived.
     if let Some(Timer::Back(back_at)) = timer {
         return Some(back_row(
@@ -610,6 +605,14 @@ fn waiting_row(
             "no reply by the time you set",
             back_at,
         ));
+    }
+    // Automatic waiting remains conservative; an explicit timer above is
+    // authoritative even for a role/list destination.
+    if looks_automated(email)
+        || contact.is_some_and(|c| c.is_list_sender)
+        || inputs.decision(email) == Some(ScreenerDisposition::Deny)
+    {
+        return None;
     }
     if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
         || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
@@ -903,6 +906,32 @@ mod tests {
             email: ME.into(),
         });
         assert!(!mail_kind::needs_reply(&mail, &own), "only copied");
+    }
+
+    #[test]
+    fn reader_authored_scope_not_old_outlook_or_forwarded_requests_decides_attention() {
+        let old = "From: Alex <alex@example.org>\nSent: Monday\nTo: Me <me@example.com>\nSubject: Old request\n\nCould you confirm the details?";
+        let mut mail = message(&ThreadId::new(), "sam@example.org", ME, 1);
+        let own = |email: &str| email == ME;
+        for text in [
+            old.to_string(),
+            format!("FYI, this was handled.\n\n{old}"),
+            format!("FYI, this was handled.\n\n---------- Forwarded message ---------\n{old}"),
+        ] {
+            mail.evidence.text = Some(text);
+            assert!(!mail_kind::needs_reply(&mail, &own));
+        }
+        mail.evidence.text = Some(format!("Could you confirm the new date?\n\n{old}"));
+        assert!(mail_kind::needs_reply(&mail, &own));
+        let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
+        mail.evidence.previous_text = Some(prior.into());
+        mail.evidence.text = Some(format!("FYI, this was handled.\n\n{prior}"));
+        assert!(
+            !mail_kind::needs_reply(&mail, &own),
+            "unmarked history is compared with the bounded local cache"
+        );
+        mail.evidence.text = Some(format!("Could you confirm the new date?\n\n{prior}"));
+        assert!(mail_kind::needs_reply(&mail, &own));
     }
 
     fn lanes_with_screener(

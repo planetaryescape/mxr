@@ -30,8 +30,6 @@ const NOTIFYING_LOCAL_PARTS: &[&str] = &[
     "bounce",
     "receipts",
     "receipt",
-    "billing",
-    "invoice",
     "shipment",
     "tracking",
     "verify",
@@ -65,6 +63,8 @@ const NO_REPLY_LOCAL_PARTS: &[&str] = &[
 /// sender you have never written to: a support desk you correspond with is
 /// someone you talk to.
 const ROLE_LOCAL_PARTS: &[&str] = &[
+    "billing",
+    "invoice",
     "forex",
     "fx",
     "team",
@@ -234,13 +234,23 @@ fn address_hint(email: &str) -> Option<AddressHint> {
     }
 }
 
+pub(super) fn no_reply_address(email: &str) -> bool {
+    let lower = email.to_ascii_lowercase();
+    let local = lower.split('@').next().unwrap_or_default();
+    NO_REPLY_LOCAL_PARTS.iter().any(|part| local.contains(part))
+}
+
 /// A money amount with two decimals and its currency: "R437.77",
 /// "£1,204.50", "USD 12.00".
 static AMOUNT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?:\b(?:R|ZAR|USD|GBP|EUR|KES|NGN|ZWL|US\$)\s?|[$£€¥₹])\d{1,3}(?:[,\s]?\d{3})*\.\d{2}\b",
+        r"(?i)(?:\b(?:R|ZAR|USD|GBP|EUR|KES|NGN|ZWL|US\$)\s?|[$£€¥₹])\d{1,3}(?:[,\s]?\d{3})*\.\d{2}\b",
     )
     .expect("valid regex")
+});
+
+static DOCUMENT_AMOUNT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^\d+(?:[, ]\d{3})*\.\d{2}(?:\s+[a-z]{3})?$").expect("valid document amount")
 });
 
 /// A masked card or account number: "card..6131", "a/c ..748989",
@@ -348,6 +358,7 @@ pub(super) fn looks_automated(email: &str) -> bool {
 pub(super) struct KindSignals<'a> {
     pub evidence: &'a mxr_core::mail_evidence::MailEvidence,
     pub reply_request: bool,
+    pub recipients: usize,
     pub email: &'a str,
     pub subject: &'a str,
     pub has_list_id: bool,
@@ -378,14 +389,194 @@ pub(super) struct Classification {
 /// A visibility correction cannot turn an automated message into a human
 /// response (and thereby clear a waiting timer).
 pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
-    classify(&KindSignals {
+    let automatic = classify(&KindSignals {
         moved: None,
         decision: None,
         treatment: None,
         ..*signals
-    })
-    .kind
-        == SenderKind::Person
+    });
+    let purpose = purpose_evidence(signals);
+    (automatic.kind == SenderKind::Person && purpose.has_authored_text)
+        || (purpose.purpose == MessagePurpose::Informational && purpose.human_reply)
+}
+
+/// Visibility, purpose, occurrence of a response and a new owner obligation
+/// are independent. A user placement cannot turn an automatic CTA into debt.
+pub(super) fn requires_reply(signals: &KindSignals<'_>) -> bool {
+    signals.reply_request
+        && classify(&KindSignals {
+            moved: None,
+            decision: None,
+            treatment: None,
+            ..*signals
+        })
+        .kind
+            == SenderKind::Person
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MessagePurpose {
+    Correspondence,
+    Informational,
+    BillingDocument,
+    Unknown,
+}
+
+struct PurposeEvidence {
+    purpose: MessagePurpose,
+    human_reply: bool,
+    has_authored_text: bool,
+}
+
+/// Recognize a document's field/value grammar, not an invoice subject word
+/// or a sender identity. Independent reference/date/order/amount families
+/// plus document-delivery framing are required.
+fn billing_document(text: &str, asks_owner: bool) -> bool {
+    let mut reference = false;
+    let mut date = false;
+    let mut order = false;
+    let mut amount = false;
+    let lines: Vec<_> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    for (index, line) in lines.iter().enumerate() {
+        let line = line.trim_matches('*');
+        let field = |labels: &[&str]| {
+            labels
+                .iter()
+                .find_map(|label| {
+                    let rest = line.strip_prefix(*label)?;
+                    if !rest.is_empty()
+                        && !label.ends_with([':', '#'])
+                        && !rest.starts_with([' ', ':', '#', '-', '.'])
+                    {
+                        return None;
+                    }
+                    let value = rest.trim_start_matches([' ', ':', '#', '-', '.', '*']);
+                    if value.is_empty() {
+                        lines.get(index + 1).copied()
+                    } else {
+                        Some(value)
+                    }
+                })
+                .filter(|value| {
+                    !value.is_empty()
+                        && value.len() <= 80
+                        && value.chars().any(|c| c.is_ascii_digit())
+                })
+        };
+        reference |= field(&[
+            "invoice number",
+            "invoice no",
+            "invoice #",
+            "document number",
+        ])
+        .is_some();
+        order |= field(&["order number", "order no", "order #", "purchase order"]).is_some();
+        date |=
+            field(&["invoice date", "issue date", "billing date", "date:"]).is_some_and(|value| {
+                [
+                    "%Y-%m-%d",
+                    "%d/%m/%Y",
+                    "%m/%d/%Y",
+                    "%d.%m.%Y",
+                    "%d %B %Y",
+                    "%d %b %Y",
+                    "%B %d, %Y",
+                    "%d-%b-%Y",
+                ]
+                .iter()
+                .any(|format| chrono::NaiveDate::parse_from_str(value, format).is_ok())
+            });
+        amount |= field(&["total due", "amount due", "invoice total", "total:"])
+            .is_some_and(|value| DOCUMENT_AMOUNT.is_match(value) || AMOUNT.is_match(value));
+    }
+    let purchase_delivery = ["thank you for your purchase", "thank you for your order"]
+        .iter()
+        .any(|phrase| text.contains(phrase));
+    let document_delivery = [
+        "billing document",
+        "invoice is attached",
+        "invoice is available",
+        "please find attached",
+    ]
+    .iter()
+    .any(|phrase| text.contains(phrase));
+    reference
+        && date
+        && (order || amount)
+        && (purchase_delivery || (document_delivery && !asks_owner))
+}
+
+fn authored_content(evidence: &mxr_core::mail_evidence::MailEvidence) -> String {
+    let Some(text) = evidence.text.as_deref() else {
+        return String::new();
+    };
+    let earlier: Vec<_> = evidence
+        .previous_text
+        .as_deref()
+        .map(|text| mxr_reader::EarlierMessage {
+            text,
+            same_author: false,
+        })
+        .into_iter()
+        .collect();
+    mxr_reader::authored_text(text, &earlier)
+}
+
+fn purpose_evidence(signals: &KindSignals<'_>) -> PurposeEvidence {
+    let authored = authored_content(signals.evidence);
+    let text = authored.to_lowercase();
+    let has_authored_text = !text.trim().is_empty();
+    let document = billing_document(&text, signals.reply_request);
+    let frames = [
+        "fyi",
+        "for your information",
+        "for visibility",
+        "for your records",
+    ];
+    let framed_information = text.lines().take(4).any(|line| {
+        frames.iter().any(|frame| {
+            line.trim_start()
+                .strip_prefix(*frame)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', ':', ',', '.', '\n']))
+        })
+    });
+    let report_delivery = signals
+        .subject
+        .to_lowercase()
+        .split(|c: char| !c.is_alphabetic())
+        .any(|word| word == "report")
+        && (text.contains("attached")
+            || text.contains("report below")
+            || text.contains("report is available"));
+    let information = !signals.reply_request
+        && ((framed_information && (signals.recipients > 1 || !signals.evidence.is_reply))
+            || (signals.recipients > 1 && report_delivery));
+    let human_reply = (signals.evidence.is_reply || signals.evidence.thread_correspondence)
+        && has_authored_text
+        && !document
+        && !signals.evidence.auto_generated
+        && !signals.has_list_id
+        && signals.evidence.list_id.is_none()
+        && !no_reply_address(signals.email)
+        && !matches!(address_hint(signals.email), Some(AddressHint::Notifying(_)));
+    let purpose = if document {
+        MessagePurpose::BillingDocument
+    } else if information {
+        MessagePurpose::Informational
+    } else if human_reply || signals.reply_request {
+        MessagePurpose::Correspondence
+    } else {
+        MessagePurpose::Unknown
+    };
+    PurposeEvidence {
+        purpose,
+        human_reply,
+        has_authored_text,
+    }
 }
 
 fn directed_request(text: &str) -> bool {
@@ -425,19 +616,6 @@ fn directed_request(text: &str) -> bool {
     })
 }
 
-fn authored_lines(text: &str) -> impl Iterator<Item = &str> {
-    text.lines().take_while(|line| {
-        let line = line.trim();
-        let lower = line.to_ascii_lowercase();
-        !line.starts_with('>')
-            && line != "--"
-            && !(lower.starts_with("on ") && lower.ends_with("wrote:"))
-            && !lower.starts_with("-----original message")
-            && !lower.starts_with("---------- forwarded message")
-            && !lower.starts_with("begin forwarded message:")
-    })
-}
-
 fn without_greeting(text: &str) -> &str {
     ["hi ", "hello ", "dear "]
         .iter()
@@ -465,10 +643,10 @@ pub(super) fn directed_to_owner(
     if owned.is_empty() || evidence.auto_generated || evidence.list_id.is_some() {
         return false;
     }
-    let Some(text) = evidence.text.as_deref() else {
+    if evidence.text.is_none() {
         return false;
-    };
-    let authored = authored_lines(text).collect::<Vec<_>>().join("\n");
+    }
+    let authored = authored_content(evidence);
     let lower = authored.to_lowercase();
     let names: Vec<_> = owned
         .iter()
@@ -565,11 +743,11 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     if signals.is_invite {
         return automated(KindRuleData::Invite);
     }
-    let personal_reply =
-        signals.evidence.is_reply && signals.reply_request && !signals.evidence.auto_generated;
+    let purpose = purpose_evidence(signals);
+    let personal_reply = purpose.human_reply;
     let hint = address_hint(signals.email);
     match hint {
-        Some(AddressHint::Notifying(rule)) if !personal_reply => return automated(rule),
+        Some(AddressHint::Notifying(rule)) => return automated(rule),
         Some(AddressHint::Newsletter(rule)) if !personal_reply => return list(rule),
         _ => {}
     }
@@ -579,21 +757,34 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     // An ATS/support reply can carry an opt-out header. That delivery
     // mechanism alone loses to positive message-level response evidence,
     // unlike an actual List-Id or an auto-generated declaration.
-    if (signals.has_unsubscribe || signals.evidence.unsubscribe) && !personal_reply {
+    if (signals.has_unsubscribe || signals.evidence.unsubscribe)
+        && !personal_reply
+        && purpose.purpose != MessagePurpose::BillingDocument
+    {
         return list(KindRuleData::ListUnsubscribe);
     }
     if !personal_reply && transaction_alert(signals.subject) {
         return automated(KindRuleData::TransactionAlert);
     }
-    if hint == Some(AddressHint::NoReply) {
+    if no_reply_address(signals.email) {
         return automated(KindRuleData::NoReplyAddress);
     }
     if signals.evidence.auto_generated {
         return automated(KindRuleData::BulkSender);
     }
+    if matches!(
+        purpose.purpose,
+        MessagePurpose::BillingDocument | MessagePurpose::Informational
+    ) {
+        return automated(KindRuleData::BulkSender);
+    }
     // History can support a personal interpretation of a role address or
     // templated bulk mail, but cannot erase the per-message evidence above.
-    if !signals.sender.wrote_to && !signals.written_to && !signals.evidence.is_reply {
+    if !signals.sender.wrote_to
+        && !signals.written_to
+        && !signals.evidence.is_reply
+        && !signals.reply_request
+    {
         if role_address(signals.email) {
             return automated(KindRuleData::RoleAddress);
         }
@@ -638,7 +829,12 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::NoReplyAddress => "no-reply sender, no list headers".to_string(),
         KindRuleData::TransactionAlert => "bank or card transaction alert".to_string(),
         KindRuleData::RoleAddress => "a role address you have never written to".to_string(),
-        KindRuleData::BulkSender => "message declares itself automatically generated".to_string(),
+        KindRuleData::BulkSender if signals.evidence.auto_generated => "message declares itself automatically generated".to_string(),
+        KindRuleData::BulkSender => match purpose_evidence(signals).purpose {
+            MessagePurpose::BillingDocument => "structured billing document: document reference, date, order or amount, and delivery framing".to_string(),
+            MessagePurpose::Informational => "informational update: FYI or report delivery, recipient context, and no directed request".to_string(),
+            _ => "automatic message-purpose evidence".to_string(),
+        },
         KindRuleData::TemplatedSender => {
             "repeated subject templates with bulk precedence, and no correspondence history"
                 .to_string()
@@ -649,13 +845,9 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::ListId => "mailing list".to_string(),
         KindRuleData::ListUnsubscribe => "has List-Unsubscribe".to_string(),
         KindRuleData::ListSender => "sends to mailing lists".to_string(),
-        KindRuleData::Person
-            if signals.evidence.is_reply
-                && (signals.has_unsubscribe || signals.evidence.unsubscribe) =>
-        {
-            "reply with a directed request; opt-out delivery header is not a mailing list"
-                .to_string()
-        }
+        KindRuleData::Person if purpose_evidence(signals).human_reply && signals.reply_request => "authored reply with a request directed to an owned recipient".to_string(),
+        KindRuleData::Person if purpose_evidence(signals).human_reply => "authored reply in existing correspondence; no new directed request detected".to_string(),
+        KindRuleData::Person if signals.reply_request => "authored request directed to an owned recipient".to_string(),
         KindRuleData::Person => {
             "possible personal mail; no decisive list or automation evidence".to_string()
         }
@@ -681,7 +873,7 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
         KindRuleData::NoReplyAddress => "no-reply",
         KindRuleData::TransactionAlert => "bank alert",
         KindRuleData::RoleAddress => "role address",
-        KindRuleData::BulkSender => "auto-generated",
+        KindRuleData::BulkSender => "message purpose",
         KindRuleData::TemplatedSender => "templated",
         KindRuleData::Person => "possible personal",
         KindRuleData::Copied => "copied",
@@ -719,6 +911,7 @@ mod tests {
         KindSignals {
             evidence: Lazy::force(&EMPTY_EVIDENCE),
             reply_request: false,
+            recipients: 1,
             email,
             subject: "",
             sender: SenderFacts::default(),
@@ -747,6 +940,10 @@ mod tests {
         assert!(!human_response(&chosen));
         let acknowledgement = KindSignals {
             written_to: true,
+            evidence: &mxr_core::mail_evidence::MailEvidence {
+                text: Some("Thanks, received.".into()),
+                ..Default::default()
+            },
             ..signals("sam@studio.example")
         };
         assert!(human_response(&acknowledgement));
@@ -790,6 +987,87 @@ mod tests {
             })
             .kind,
             SenderKind::Automated
+        );
+    }
+
+    #[test]
+    fn a_reply_can_answer_without_requesting_another_reply() {
+        let evidence = mxr_core::mail_evidence::MailEvidence {
+            is_reply: true,
+            text: Some("I've corrected the account name. No action is required.".into()),
+            ..Default::default()
+        };
+        let reply = KindSignals {
+            evidence: &evidence,
+            written_to: true,
+            ..signals("billing@vendor.example")
+        };
+        assert_eq!(classify(&reply).kind, SenderKind::Person);
+        assert!(human_response(&reply));
+        assert!(!requires_reply(&reply));
+        let generated = mxr_core::mail_evidence::MailEvidence {
+            auto_generated: true,
+            ..evidence.clone()
+        };
+        let automatic = KindSignals {
+            evidence: &generated,
+            ..reply
+        };
+        assert_eq!(classify(&automatic).kind, SenderKind::Automated);
+        assert!(!human_response(&automatic));
+    }
+
+    #[test]
+    fn headerless_document_purpose_needs_independent_fields_and_delivery_context() {
+        let evidence = mxr_core::mail_evidence::MailEvidence { text: Some(
+            "Invoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nThank you for your purchase. Your billing document is attached.".into()), ..Default::default() };
+        let document = KindSignals {
+            evidence: &evidence,
+            written_to: true,
+            ..signals("alex@vendor.example")
+        };
+        assert_eq!(classify(&document).kind, SenderKind::Automated);
+        assert!(describe(&document)
+            .reason
+            .contains("structured billing document"));
+        assert_eq!(
+            classify(&KindSignals {
+                has_unsubscribe: true,
+                ..document
+            })
+            .kind,
+            SenderKind::Automated,
+            "a delivery opt-out does not turn a structured billing document into a newsletter"
+        );
+        let paired_fields = mxr_core::mail_evidence::MailEvidence { text: Some("Document number\nXY7788\nBilling date\n18/10/2026\nAmount due\n12.00 USD\nYour billing document is available.".into()), ..Default::default() };
+        assert_eq!(
+            classify(&KindSignals {
+                evidence: &paired_fields,
+                ..document
+            })
+            .kind,
+            SenderKind::Automated
+        );
+        let personal = mxr_core::mail_evidence::MailEvidence { is_reply: true, text: Some(
+            "Hi User,\nCould you confirm the amended invoice?\nInvoice number: AB12345\nInvoice date: 2026-10-18\nOrder number: PO23456\nAmount due: USD 12.00".into()), ..Default::default() };
+        let discussion = KindSignals {
+            evidence: &personal,
+            reply_request: true,
+            ..document
+        };
+        assert_eq!(classify(&discussion).kind, SenderKind::Person);
+        assert!(human_response(&discussion));
+        let incomplete = mxr_core::mail_evidence::MailEvidence {
+            text: Some("Invoice number: AB12345\nCan we discuss this invoice?".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            classify(&KindSignals {
+                evidence: &incomplete,
+                ..document
+            })
+            .kind,
+            SenderKind::Person
         );
     }
 

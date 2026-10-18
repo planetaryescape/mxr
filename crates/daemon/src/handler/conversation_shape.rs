@@ -70,17 +70,14 @@ impl Shape {
     }
 }
 
-/// An address you wrote to that could be a person: not automated, not a
-/// list, not screened out. `contacts` and `screener` are keyed by
-/// lowercased address.
+/// Someone the owner wrote to can be a human billing/support desk. A
+/// sender's list history is not the identity of every correspondence.
 pub(crate) fn human_address(
     email: &str,
-    contacts: &std::collections::HashMap<String, mxr_store::DeskContact>,
     screener: &std::collections::HashMap<String, mxr_store::ScreenerDisposition>,
 ) -> bool {
     let key = email.to_ascii_lowercase();
-    !super::mail_kind::looks_automated(email)
-        && !contacts.get(&key).is_some_and(|c| c.is_list_sender)
+    !super::mail_kind::no_reply_address(email)
         && screener.get(&key) != Some(&mxr_store::ScreenerDisposition::Deny)
 }
 

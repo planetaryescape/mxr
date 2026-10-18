@@ -1,5 +1,55 @@
 use super::*;
 
+#[test]
+fn authored_decision_text_excludes_outlook_and_forwarded_asks_but_keeps_current_requests() {
+    let outlook = "From: Alex <alex@example.org>\nSent: Monday\nTo: Me <me@example.org>\nSubject: Old request\n\nCould you confirm the details?";
+    assert_eq!(
+        authored_text(&format!("FYI, this was handled.\n\n{outlook}"), &[]),
+        "FYI, this was handled."
+    );
+    assert_eq!(
+        authored_text(
+            &format!("Could you confirm the new date?\n\n{outlook}"),
+            &[]
+        ),
+        "Could you confirm the new date?"
+    );
+    assert_eq!(
+        authored_text(
+            &format!("---------- Forwarded message ---------\n{outlook}"),
+            &[]
+        ),
+        ""
+    );
+    assert_eq!(
+        authored_text(
+            "> Could you confirm the old date?\n\nThanks, this is handled.",
+            &[]
+        ),
+        "Thanks, this is handled."
+    );
+}
+
+#[test]
+fn authored_decision_text_uses_cached_context_for_unmarked_old_requests() {
+    let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
+    let context = [EarlierMessage {
+        text: prior,
+        same_author: false,
+    }];
+    assert_eq!(
+        authored_text(&format!("FYI, this was handled.\n\n{prior}"), &context),
+        "FYI, this was handled."
+    );
+    assert_eq!(
+        authored_text(
+            &format!("Could you confirm the new date?\n\n{prior}"),
+            &context
+        ),
+        "Could you confirm the new date?"
+    );
+}
+
 fn fixture(name: &str) -> String {
     let path = format!(
         "{}/tests/fixtures/quotes/{name}",

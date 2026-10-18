@@ -765,7 +765,8 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn microsoft_cli_requires_the_reviewed_fingerprint_and_keeps_account_selection() {
+    fn microsoft_cli_requires_the_reviewed_fingerprint_and_keeps_account_selection(
+    ) -> anyhow::Result<()> {
         use crate::cli::{Cli, Command};
         assert!(Cli::try_parse_from(["mxr", "todo", "microsoft", "link", "todo_1"]).is_err());
         for account_id in [AccountId::new(), AccountId::new()] {
@@ -788,7 +789,7 @@ mod tests {
                     ..
                 }) = cli.command
                 else {
-                    panic!("expected Microsoft command")
+                    anyhow::bail!("expected Microsoft command")
                 };
                 assert_eq!(account, Some(account_id.as_str()));
                 assert!(
@@ -811,7 +812,7 @@ mod tests {
                 ..
             }) = cli.command
             else {
-                panic!("expected Microsoft command")
+                anyhow::bail!("expected Microsoft command")
             };
             assert_eq!(account, Some(account_id.as_str()));
             assert!(
@@ -827,6 +828,7 @@ mod tests {
             None
         )
         .is_err());
+        Ok(())
     }
 
     #[test]

@@ -173,7 +173,7 @@ pub(super) enum CliError {
     #[error("Couldn't read ms-todo's response. Update the CLI; task changes have been paused.")]
     InvalidResponse,
     #[error("No task write was started: {0}")]
-    BeforeWrite(Box<CliError>),
+    BeforeWrite(Box<Self>),
 }
 
 impl CliError {

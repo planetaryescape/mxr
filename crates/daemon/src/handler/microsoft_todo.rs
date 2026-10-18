@@ -362,8 +362,7 @@ async fn sync_one(
         Ok(remote) => remote,
         Err(error) => {
             result.summary = format!(
-                "{}. The Mixer task is unchanged; no replacement task will be created.",
-                error
+                "{error}. The Mixer task is unchanged; no replacement task will be created."
             );
             return finish(state, result, dry_run, None).await;
         }

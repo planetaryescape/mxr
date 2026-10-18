@@ -1043,7 +1043,7 @@ pub(crate) mod tests {
                     active_pane: &ActivePane::MailList,
                 },
                 &crate::theme::Theme::default(),
-            )
+            );
         });
         assert!(!page.microsoft_review_visible.get());
         assert!(!tiny.contains("M confirm"));

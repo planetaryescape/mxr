@@ -133,10 +133,10 @@ mod tests {
                         confirm,
                     }))
                     .await
-                    .unwrap();
+                    .expect("Microsoft tool request");
             }
         }
-        let requests = requester.0.lock().unwrap();
+        let requests = requester.0.lock().expect("recorded requests");
         assert!(
             matches!(&requests[0], Request::SendTodoToMicrosoft { dry_run: true, fingerprint: Some(value), account_id: Some(selected), .. } if value == "reviewed" && selected == &account)
         );

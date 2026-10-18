@@ -624,16 +624,16 @@ impl App {
                     page.microsoft_scroll = page
                         .microsoft_scroll
                         .saturating_add(1)
-                        .min(page.microsoft_scroll_max.get())
+                        .min(page.microsoft_scroll_max.get());
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    page.microsoft_scroll = page.microsoft_scroll.saturating_sub(1)
+                    page.microsoft_scroll = page.microsoft_scroll.saturating_sub(1);
                 }
                 KeyCode::PageDown => {
                     page.microsoft_scroll = page
                         .microsoft_scroll
                         .saturating_add(10)
-                        .min(page.microsoft_scroll_max.get())
+                        .min(page.microsoft_scroll_max.get());
                 }
                 KeyCode::PageUp => page.microsoft_scroll = page.microsoft_scroll.saturating_sub(10),
                 KeyCode::Home => page.microsoft_scroll = 0,
@@ -641,7 +641,7 @@ impl App {
                 KeyCode::Char('M')
                     if plain_or_shift(key.modifiers) && page.microsoft_review_visible.get() =>
                 {
-                    self.microsoft_todo_request(false)
+                    self.microsoft_todo_request(false);
                 }
                 _ => {}
             }
@@ -808,7 +808,7 @@ impl App {
         self.mailbox.todo_page.microsoft_busy = false;
         match answer {
             mxr_protocol::ResponseData::MicrosoftTodoStatus { status } => {
-                self.mailbox.todo_page.microsoft_status = Some(status)
+                self.mailbox.todo_page.microsoft_status = Some(status);
             }
             mxr_protocol::ResponseData::MicrosoftTodoSend { result } => {
                 self.mailbox.todo_page.microsoft_scroll = 0;

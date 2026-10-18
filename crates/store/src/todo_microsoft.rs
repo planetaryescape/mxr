@@ -132,7 +132,7 @@ impl crate::Store {
             .bind(expected.state.as_str())
             .bind(&expected.reason)
             .bind(&expected.counterparty)
-            .bind(expected.source_message_id.as_ref().map(|id| id.as_str()))
+            .bind(expected.source_message_id.as_ref().map(mxr_core::MessageId::as_str))
             .bind(&expected.action_url)
             .execute(&mut *tx)
             .await?

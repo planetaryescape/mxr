@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.108](https://github.com/planetaryescape/mxr/compare/v0.6.107...v0.6.108) (2026-10-19)
+
+
+### Bug Fixes
+
+* keep Gmail background refresh noninteractive ([#522](https://github.com/planetaryescape/mxr/issues/522)) ([214e69f](https://github.com/planetaryescape/mxr/commit/214e69f9ba43f0b8667b6b2d2c94efdfa2e7825a))
+
 ## [0.6.107](https://github.com/planetaryescape/mxr/compare/v0.6.106...v0.6.107) (2026-10-19)
 
 

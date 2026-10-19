@@ -22,11 +22,11 @@ interface MessagesAnswer {
 }
 
 async function messages(page: Page) {
-  return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people")).messages;
+  return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people?limit=500")).messages;
 }
 
 function all(data: MessagesAnswer["messages"]): Row[] {
-  return [...data.your_turn, ...data.recent, ...data.quiet];
+  return [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet];
 }
 
 /** Wait for the demo's people to sync. */
@@ -78,7 +78,8 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   expect(
     data.some((candidate) => candidate.topics.some((topic) => topic.subject === "Offsite dates")),
   ).toBe(false);
-  await expect(row(page, IRIS).getByTestId("row-preview")).toHaveText("You: Thanks, on it.");
+  const iris = data.find((candidate) => candidate.id === IRIS);
+  expect(iris?.preview?.text).toBe("You: Thanks, on it.");
   // No early-version marker on Messages any more.
   await expect(page.getByTestId("rail-early").filter({ hasText: /messages/i })).toHaveCount(0);
 

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { allowClipboard, readClipboard } from "./helpers/clipboard";
 import { mailList, mailRows, modKey, openList, reader } from "./helpers/mail";
+import { bridge } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -95,7 +96,12 @@ test("L lists the conversation's links; Enter opens one and y copies it", async 
   context,
 }) => {
   await allowClipboard(context);
-  await openList(page, "/m/inbox");
+  const result = await bridge<{ groups: { rows: { thread_id: string }[] }[] }>(
+    page,
+    `/api/v1/mail/search?q=${encodeURIComponent("https://")}`,
+  );
+  const threadId = result.groups?.flatMap((g) => g.rows)[0]?.thread_id;
+  await openList(page, threadId ? `/m/inbox/${threadId}` : "/m/inbox");
   // A conversation whose body carries links (most demo mail does).
   for (let step = 0; step < 12; step += 1) {
     await page.keyboard.press("Enter");

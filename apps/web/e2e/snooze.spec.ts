@@ -8,6 +8,7 @@ import {
   rowById,
   stableRowName,
 } from "./helpers/mail";
+import { bridge } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -102,10 +103,18 @@ test("Wake now is clickable with the mouse", async ({ page }) => {
 
 // /snoozed lists a conversation once, and waking it wakes every message.
 test("waking a snoozed conversation wakes all of its messages", async ({ page }) => {
-  await openList(page, "/m/inbox");
+  const result = await bridge<{ groups: { rows: { thread_id: string; subject: string }[] }[] }>(
+    page,
+    `/api/v1/mail/search?q=${encodeURIComponent('subject:"Security review follow-up"')}`,
+  );
+  const threadId = result.groups
+    ?.flatMap((g) => g.rows)
+    .find((r) => /Security review follow-up/.test(r.subject))?.thread_id;
+  await openList(page, threadId ? `/m/inbox/${threadId}` : "/m/inbox");
   const row = mailList(page)
     .getByRole("option", { name: /5 messages in conversation/ })
     .first();
+  await expect(row).toBeVisible();
   // The inbox shows the latest subject ("Re: …"); /snoozed may show another.
   const subject = stableRowName((await row.getAttribute("aria-label"))!)
     .split(", ")

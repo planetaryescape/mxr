@@ -13,7 +13,7 @@ from:
   email: jose@example.com
   name: José Example
 in_reply_to: "<parent@example.com>"
-list_id: ~
+list_id: updates.example.com
 message_id: "<folded-flowed@example.com>"
 plain_excerpt: "Hello team, \nthis paragraph is flowed and "
 references:

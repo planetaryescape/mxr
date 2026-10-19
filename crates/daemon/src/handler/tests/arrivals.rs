@@ -146,6 +146,50 @@ async fn current_arrival_projection_crosses_page_boundaries_without_rewriting_le
 }
 
 #[tokio::test]
+async fn bare_greeting_attention_agrees_across_shared_surfaces_without_guessing_names() {
+    for (text, recipient, expected) in [
+        ("Hi,\n\nCould you send the deck by Friday?", "owned", true),
+        ("Hi, could you confirm the meeting time?", "owned", true),
+        ("Hello,\nCould you review the plan?", "owned", true),
+        ("Hey, could you reply today?", "owned", true),
+        ("Good morning,\nCould you confirm?", "owned", true),
+        ("Hope you're well,\nCould you send the deck?", "owned", true),
+        ("Alice,\nCould you send the deck?", "owned", false),
+        ("Hi Alice, could you confirm?", "owned", false),
+        ("Hi Brian,\nCould you confirm?", "owned", false),
+        ("Hi, could you confirm? No need to reply.", "owned", false),
+        ("Hi,\nCould you confirm?", "copied", false),
+        ("Hi, could you confirm?", "group", false),
+        ("Hi, could you confirm?", "alias", false),
+        ("Hi,\nUser, could you confirm?", "group", true),
+        ("Hi,\nFYI, this was handled.\n\nFrom: Alice <alice@example.com>\nSent: Monday\nTo: User <user@example.com>\nSubject: Old ask\n\nCould you confirm?", "owned", false),
+    ] {
+        let fx = Fixture::new().await;
+        let mut message = inbound(&fx, "maya@team.example", false).await;
+        match recipient {
+            "copied" => { message.cc = message.to.clone(); message.to = vec![Address { name: None, email: "alice@team.example".into() }]; },
+            "group" => message.to.push(Address { name: None, email: "alice@team.example".into() }),
+            "alias" => message.to = vec![Address { name: None, email: "unknown-alias@example.com".into() }],
+            _ => {},
+        }
+        fx.store_envelope(&message, MessageDirection::Inbound).await;
+        cached_content(&fx, &message, "", Some(text)).await;
+        let ResponseData::Desk { owed, people_new, .. } = fx.desk(100).await else { panic!("desk"); };
+        assert_eq!(owed.rows.iter().chain(&people_new.rows).any(|row| row.thread_id == message.thread_id), expected, "{recipient}: {text}");
+        let ResponseData::Messages { messages } = request(&fx, Request::ListMessages { account_id: None, turn: None, limit: 100 }).await else { panic!("Messages"); };
+        assert_eq!(messages.your_turn.iter().flat_map(|row| &row.topics).any(|topic| topic.thread_id == message.thread_id), expected, "{recipient}: {text}");
+        let now = crate::handler::now::now_at(&fx.state, None, Utc::now(), &Utc).await.unwrap();
+        assert_eq!(now.people.total, u32::from(expected), "{recipient}: {text}");
+        let arrivals = line(&fx).await;
+        if expected {
+            assert!(list(&fx, &arrivals, ArrivalBucketData::Messages).await.contains(&message.id));
+            assert_eq!(chip(&fx, &message.id).await.0, ArrivalBucketData::Messages);
+            assert!(modes(&membership(&fx, &message.thread_id).await).contains(&ModeKindData::Messages));
+        }
+    }
+}
+
+#[tokio::test]
 async fn unreferenced_quote_context_and_informational_placement_ignore_import_order() {
     let old_text = "User, could you confirm the launch date by Monday and send the signed copy?\nUser, could you also share the final reference with everyone before the Friday review meeting?";
     for reversed in [false, true] {

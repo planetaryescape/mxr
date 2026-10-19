@@ -62,6 +62,10 @@ still takes precedence. Reply headers or positive local thread correspondence
 can establish that a human answered, even when its body is uncached or HTML-only.
 Missing plain text cannot create automatic
 reply debt, but it does not erase your explicit Reply later choice.
+Bare greetings such as "Hi," and "Good morning," do not name another
+recipient, including inline "Hi, could you confirm ...". A greeting naming
+someone mxr cannot match to an owned recipient remains uncertain: it does
+not silently register that name as yours.
 
 Possible personal mail stays accessible in Recent or Quiet without claiming
 someone is waiting for you. Automatic Your turn requires a directed request:

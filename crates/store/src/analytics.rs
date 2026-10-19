@@ -53,6 +53,8 @@ impl super::Store {
 
     /// Normalize cached List-Id and its index together. Bounded, retry-safe
     /// metadata-only writes preserve unknown metadata fields and all caches.
+    /// Historical startup/explicit doctor repair, not an incremental sync step:
+    /// current body ingestion canonicalizes new data in `insert_body_tx`.
     pub async fn backfill_message_list_ids(&self) -> Result<u32, sqlx::Error> {
         let started_at = Instant::now();
         let mut cursor = String::new();

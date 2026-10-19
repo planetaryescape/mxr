@@ -693,11 +693,65 @@ fn directed_request(text: &str) -> bool {
 }
 
 fn without_greeting(text: &str) -> &str {
-    ["hi ", "hello ", "dear "]
-        .iter()
-        .find_map(|prefix| text.strip_prefix(*prefix))
-        .unwrap_or(text)
-        .trim_start_matches('@')
+    [
+        "good morning ",
+        "good afternoon ",
+        "good evening ",
+        "hi ",
+        "hello ",
+        "hey ",
+        "dear ",
+    ]
+    .iter()
+    .find_map(|prefix| text.strip_prefix(*prefix))
+    .unwrap_or(text)
+    .trim_start_matches('@')
+}
+
+/// A nameless salutation/pleasantry is not evidence of another addressee.
+/// Only strip it at a boundary, leaving "Hi Alice" to named-address handling.
+fn without_bare_greeting(text: &str) -> &str {
+    for greeting in [
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "hope you're well",
+        "hope you are well",
+        "hope all is well",
+        "i hope you're well",
+        "i hope you are well",
+        "thank you",
+        "thanks again",
+        "thanks",
+        "hello",
+        "hey",
+        "hi",
+        "dear",
+    ] {
+        if let Some(rest) = text.strip_prefix(greeting) {
+            if rest.is_empty() || rest.starts_with([',', ':', '!', '.']) {
+                return rest.trim_start_matches([',', ':', '!', '.', ' ']);
+            }
+            if directed_request(rest.trim_start()) {
+                return rest.trim_start();
+            }
+        }
+    }
+    text
+}
+
+fn has_named_addressee(text: &str) -> bool {
+    let named = without_greeting(text);
+    let candidate = named.split_once([',', ':', '!']).map_or_else(
+        || if named != text { named.trim() } else { "" },
+        |(name, _)| name.trim(),
+    );
+    !candidate.is_empty()
+        && candidate.split_whitespace().count() <= 3
+        && candidate
+            .chars()
+            .all(|c| c.is_alphabetic() || c.is_whitespace() || matches!(c, '@' | '.' | '-' | '\''))
+        && !directed_request(candidate)
 }
 
 /// Conservative positive evidence of a directed request, not a general language
@@ -739,7 +793,7 @@ pub(super) fn directed_to_owner(
             let line = without_greeting(line);
             line.strip_prefix(name.as_str()).is_some_and(|rest| {
                 rest.trim().is_empty()
-                    || rest.starts_with([',', ':'])
+                    || rest.starts_with([',', ':', '!'])
                     || directed_request(rest.trim_start())
             })
         })
@@ -749,17 +803,13 @@ pub(super) fn directed_to_owner(
         .find(|line| !line.trim().is_empty())
         .unwrap_or_default()
         .trim();
+    let opening = without_bare_greeting(opening);
     let owner_greeting = names_owner(opening);
-    let other_greeting = !owner_greeting
-        && (opening.ends_with(',')
-            || opening.ends_with(':')
-            || opening.starts_with("hi ")
-            || opening.starts_with("hello ")
-            || opening.starts_with("dear "));
+    let other_greeting = !owner_greeting && has_named_addressee(opening);
     // Require a request addressed to "you"; a question about an invoice,
     // an FYI or "Alice, can you ..." is not evidence of the owner's debt.
     lower.lines().any(|line| {
-        let line = line.trim().trim_start_matches([',', ' ']);
+        let line = without_bare_greeting(line.trim().trim_start_matches([',', ' ']));
         let request =
             (owner_greeting || (to.len() == 1 && !other_greeting)) && directed_request(line);
         let named_request = names.iter().any(|name| {
@@ -1064,6 +1114,47 @@ mod tests {
             .kind,
             SenderKind::Automated
         );
+    }
+
+    #[test]
+    fn bare_greetings_do_not_invent_another_addressee_or_an_owned_alias() {
+        let owner = [mxr_core::Address {
+            name: None,
+            email: "bk@example.com".into(),
+        }];
+        let own = |email: &str| email == "bk@example.com";
+        for text in [
+            "Hi,\nCould you send the deck by Friday?",
+            "Hi, could you confirm the meeting time?",
+            "Hello,\nCould you review the plan?",
+            "Hey, could you reply today?",
+            "Good morning,\nCould you confirm?",
+            "Hope you're well,\nCould you send the deck?",
+            "Thanks,\nCould you confirm?",
+        ] {
+            let evidence = mxr_core::mail_evidence::MailEvidence {
+                text: Some(text.into()),
+                ..Default::default()
+            };
+            assert!(directed_to_owner(&owner, &evidence, &own), "{text}");
+        }
+        for text in ["Alice,\nCould you send the deck?", "Alice: could you confirm?", "Hi Alice,\nCould you send the deck?", "Hi Brian,\nCould you confirm?", "Hi, could you confirm? No need to reply.", "Hi,\n\nFrom: Alice <alice@example.com>\nSent: Monday\nTo: BK <bk@example.com>\nSubject: Old ask\n\nCould you confirm?"] {
+            let evidence = mxr_core::mail_evidence::MailEvidence { text: Some(text.into()), ..Default::default() };
+            assert!(!directed_to_owner(&owner, &evidence, &own), "{text}");
+        }
+        let group = [
+            owner[0].clone(),
+            mxr_core::Address {
+                name: None,
+                email: "alice@example.com".into(),
+            },
+        ];
+        let evidence = mxr_core::mail_evidence::MailEvidence {
+            text: Some("Hi, could you confirm?".into()),
+            ..Default::default()
+        };
+        assert!(!directed_to_owner(&group, &evidence, &own));
+        assert!(!directed_to_owner(&group[1..], &evidence, &own));
     }
 
     #[test]

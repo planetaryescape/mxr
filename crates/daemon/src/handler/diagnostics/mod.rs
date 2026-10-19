@@ -1592,8 +1592,8 @@ pub(crate) struct AnalyticsBackfillReport {
     pub list_ids_backfilled: u32,
     pub reply_pairs_resolved: u32,
     pub business_hours_backfilled: u32,
-    /// Whether the heavier "scan all messages for new reply_pairs"
-    /// step ran — only on the first sync after daemon restart.
+    /// Whether historical List-Id/reply-pair repair was attempted — only
+    /// on the first sync after daemon restart.
     pub startup_repair_ran: bool,
 }
 
@@ -1607,11 +1607,11 @@ impl AnalyticsBackfillReport {
 }
 
 /// Run the cheap incremental analytics backfill steps. Each store
-/// method is `WHERE column IS NULL / = 'unknown'` filtered, so calls
+/// delta method is `WHERE column IS NULL / = 'unknown'` filtered, so calls
 /// are near-free when there's nothing to do — making the function
 /// itself the cheapest possible probe ("just run it"). On the first
 /// invocation per daemon process, additionally runs the heavier
-/// reply_pairs-from-messages scan to catch cases where a release
+/// historical List-Id and reply_pairs-from-messages scans to catch cases where a release
 /// added a derived column that needs backfilling — the AtomicBool
 /// guard means subsequent syncs skip it.
 ///
@@ -1624,7 +1624,7 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
 
     let mut report = AnalyticsBackfillReport::default();
 
-    // The 4 cheap delta steps. Each filters by NULL / 'unknown' so
+    // The 3 cheap delta steps. Each filters by NULL / 'unknown' so
     // is a no-op on healthy data. Refresh address cache once for the
     // direction reclassifier.
     state.refresh_account_addresses().await;
@@ -1640,13 +1640,8 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
         Err(e) => tracing::warn!("post-sync reclassify_unknown_directions: {e}"),
     }
     tokio::task::yield_now().await;
-    match state.store.backfill_message_list_ids().await {
-        Ok(n) => report.list_ids_backfilled = n,
-        Err(e) => tracing::warn!("post-sync backfill_message_list_ids: {e}"),
-    }
-    tokio::task::yield_now().await;
-
-    // One-shot heavy step: scan messages for reply_pairs we haven't
+    // One-shot historical repair: canonicalize cached List-Id and scan
+    // messages for reply_pairs we haven't
     // captured yet (covers release upgrades adding the table). The
     // AtomicBool flips on first attempt regardless of outcome — a
     // failed attempt shouldn't loop forever; the user can `mxr
@@ -1655,10 +1650,15 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
         .analytics_startup_repair_done
         .swap(true, Ordering::SeqCst)
     {
+        report.startup_repair_ran = true;
+        match state.store.backfill_message_list_ids().await {
+            Ok(n) => report.list_ids_backfilled = n,
+            Err(e) => tracing::warn!("startup backfill_message_list_ids: {e}"),
+        }
+        tokio::task::yield_now().await;
         match state.store.backfill_reply_pairs_from_messages().await {
             Ok(n) => {
                 report.reply_pairs_resolved += n;
-                report.startup_repair_ran = true;
             }
             Err(e) => tracing::warn!("startup backfill_reply_pairs_from_messages: {e}"),
         }
@@ -2016,6 +2016,161 @@ mod tests_no_semantic {
     use super::*;
     use crate::state::AppState;
     use std::sync::Arc;
+
+    async fn cached_list_message(state: &AppState, list_id: &str) -> MessageId {
+        let account = state.store.list_accounts().await.unwrap().remove(0);
+        let id = MessageId::new();
+        let envelope = mxr_core::Envelope {
+            id: id.clone(),
+            account_id: account.id,
+            provider_id: format!("list-repair-{id}"),
+            thread_id: ThreadId::new(),
+            message_id_header: Some(format!("<{id}@example.org>")),
+            in_reply_to: None,
+            references: vec![],
+            from: mxr_core::Address {
+                name: None,
+                email: "editor@example.org".into(),
+            },
+            to: vec![mxr_core::Address {
+                name: None,
+                email: account.email,
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Weekly essays".into(),
+            date: chrono::Utc::now(),
+            flags: mxr_core::MessageFlags::empty(),
+            snippet: String::new(),
+            has_attachments: false,
+            size_bytes: 100,
+            unsubscribe: mxr_core::UnsubscribeMethod::None,
+            link_count: 0,
+            body_word_count: 10,
+            label_provider_ids: vec![],
+            keywords: Default::default(),
+        };
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, mxr_core::MessageDirection::Inbound)
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: id.clone(),
+                text_plain: Some("This week's essays".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: mxr_core::MessageMetadata {
+                    raw_headers: Some(format!("List-Id: Weekly <{list_id}>\r\n")),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        id
+    }
+
+    async fn make_list_cache_legacy(state: &AppState, id: &MessageId) {
+        sqlx::query("UPDATE bodies SET metadata_json = json_set(metadata_json, '$.list_id', NULL, '$.future_field', 'kept') WHERE message_id = ?")
+            .bind(id.as_str()).execute(state.store.writer()).await.unwrap();
+        sqlx::query("UPDATE messages SET list_id = NULL WHERE id = ?")
+            .bind(id.as_str())
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn historical_list_canonicalization_is_startup_only_doctor_retries_and_new_bodies_normalize(
+    ) {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let id = cached_list_message(&state, "weekly.example.org").await;
+        make_list_cache_legacy(&state, &id).await;
+        let first = incremental_analytics_backfill(&state).await;
+        assert!(first.startup_repair_ran);
+        assert_eq!(first.list_ids_backfilled, 1);
+        let repaired = state.store.get_body(&id).await.unwrap().unwrap();
+        assert_eq!(
+            repaired.metadata.list_id.as_deref(),
+            Some("weekly.example.org")
+        );
+        let indexed: Option<String> =
+            sqlx::query_scalar("SELECT list_id FROM messages WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_one(state.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(indexed.as_deref(), Some("weekly.example.org"));
+
+        // If the whole-body scan ran again it would repair this sentinel.
+        // Checking only an unchanged healthy row's returned count misses that cost.
+        make_list_cache_legacy(&state, &id).await;
+        let second = incremental_analytics_backfill(&state).await;
+        assert!(!second.startup_repair_ran);
+        assert_eq!(second.list_ids_backfilled, 0);
+        assert!(state
+            .store
+            .get_body(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .metadata
+            .list_id
+            .is_none());
+
+        let ResponseData::AnalyticsRebuildSummary {
+            list_ids_backfilled,
+            ..
+        } = rebuild_analytics(&state).await.unwrap()
+        else {
+            panic!("doctor summary");
+        };
+        assert_eq!(
+            list_ids_backfilled, 1,
+            "explicit doctor repair is not disabled by the startup guard"
+        );
+        let restored = state.store.get_body(&id).await.unwrap().unwrap();
+        assert_eq!(restored.text_plain, repaired.text_plain);
+        assert_eq!(restored.fetched_at, repaired.fetched_at);
+        let future: String = sqlx::query_scalar(
+            "SELECT json_extract(metadata_json, '$.future_field') FROM bodies WHERE message_id = ?",
+        )
+        .bind(id.as_str())
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+        assert_eq!(future, "kept");
+
+        let later = cached_list_message(&state, "later.example.org").await;
+        assert_eq!(
+            state
+                .store
+                .get_body(&later)
+                .await
+                .unwrap()
+                .unwrap()
+                .metadata
+                .list_id
+                .as_deref(),
+            Some("later.example.org")
+        );
+        let indexed: Option<String> =
+            sqlx::query_scalar("SELECT list_id FROM messages WHERE id = ?")
+                .bind(later.as_str())
+                .fetch_one(state.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(indexed.as_deref(), Some("later.example.org"));
+        let third = incremental_analytics_backfill(&state).await;
+        assert!(!third.startup_repair_ran);
+        assert_eq!(
+            third.list_ids_backfilled, 0,
+            "new body ingestion needs no historical scan"
+        );
+    }
 
     /// `rebuild_analytics` must broadcast `OperationStarted`, six
     /// `OperationProgress` events (one per SQL pass) with

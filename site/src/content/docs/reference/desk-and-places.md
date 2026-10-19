@@ -177,15 +177,15 @@ Paper trail. The first rule that matches wins:
 |---|---|---|---|
 | 1 | You moved this sender with `mxr sender kind` or Move sender. | Your choice | `decision` |
 | 2 | A delivery update or a calendar invite. | Neither: they have their own pages | `delivery`, `invite` |
-| 3 | A notifying local part: `notifications@`, `alerts@`, `receipts@`, `billing@`, bank alert senders such as `incontact@` and `statements@`, and similar, matched anywhere in the local part. | Paper trail | `automated_address` |
+| 3 | A notifying local part: `notifications@`, `alerts@`, `receipts@`, bank alert senders such as `incontact@` and `statements@`, and similar, matched anywhere in the local part. | Paper trail | `automated_address` |
 | 4 | A newsletter local part: `newsletter@`, `digest@` and similar. | Reading | `newsletter_address` |
 | 5 | A notifying subdomain, such as `alerts.example.com`. | Paper trail | `automated_domain` |
 | 6 | A newsletter subdomain, such as `news.`, `updates.` or `marketing.`. | Reading | `newsletter_domain` |
-| 7 | A `List-Id` header, then a `List-Unsubscribe` header. Opt-out-only delivery can remain personal when reply headers and a directed request support an ATS/support conversation; actual List-Id still wins. | Reading unless supported personal reply | `list_id`, `list_unsubscribe` |
+| 7 | A `List-Id` header, then a `List-Unsubscribe` header. Opt-out-only delivery can remain personal with positive human reply evidence in an ATS/support conversation; a new request is not required for a response. Actual List-Id, auto-generated and no-reply evidence still prevent a personal interpretation. | Reading unless supported personal reply | `list_id`, `list_unsubscribe` |
 | 8 | A bank or card alert: the subject combines an amount (`R437.77`, `£12.50`) with a masked card or account number (`card..6131`). Replies never count; money words and amounts alone do not prove automation. | Paper trail | `transaction_alert` |
 | 9 | A `no-reply@` address with no list headers. | Paper trail | `no_reply_address` |
 | 10 | This message declares `Auto-Submitted: auto-generated` or `auto-replied`. | Paper trail | `bulk_sender` (legacy wire name) |
-| 11 | A role address you have never written to, unless this message has reply headers; or repeated subject templates combined with this message's bulk precedence. | Paper trail | `role_address`, `templated_sender` |
+| 11 | A role address you have never written to, unless this message has reply headers or a supported request directed to you; or repeated subject templates combined with this message's bulk precedence. Earlier decisive list, machine and no-reply rules still win. | Paper trail | `role_address`, `templated_sender` |
 | 12 | Anything else. | Possible personal mail: Messages, not necessarily Your turn | `person` |
 
 Correspondence history supports a personal interpretation but never erases

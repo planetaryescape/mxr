@@ -329,7 +329,10 @@ jobs:
           cargo build -p mxr
           echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
       # One worker: every spec shares the FakeProvider daemon's mailbox.
-      - run: npm run e2e -- --workers=1
+      - name: Run the full Chromium suite (bounded, with progress log)
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 2>&1 | tee playwright-run.log
       # Right after the suite: the speed gate below starts its own Playwright
       # run, which empties test-results before a later upload could see it.
       - name: Upload Playwright results
@@ -337,7 +340,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
-          path: apps/web/test-results
+          path: |
+            apps/web/test-results
+            apps/web/playwright-run.log
           retention-days: 3
       # The keydown-to-paint gate against a production build (about 20 s):
       # the development build's owner-stack capture isn't what users run.

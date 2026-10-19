@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestResult } from "@playwright/test/reporter";
-import fs from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import PeopleTraceReporter from "../e2e/helpers/people-trace-reporter";
 
@@ -23,17 +25,32 @@ function neverResponds() {
 }
 
 describe("optional people observer", () => {
+  let emptyCwd: string;
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.spyOn(fs, "readFileSync").mockReturnValue(
+    emptyCwd = mkdtempSync(join(tmpdir(), "mxr-reporter-state-"));
+    vi.spyOn(process, "cwd").mockReturnValue(emptyCwd);
+    const statePath = join(emptyCwd, ".playwright/state.json");
+    expect(existsSync(statePath)).toBe(false);
+    mkdirSync(join(emptyCwd, ".playwright"));
+    writeFileSync(
+      statePath,
       JSON.stringify({ bridgeUrl: "http://127.0.0.1:19999", token: "private-test-token" }),
     );
+    vi.useFakeTimers();
     vi.spyOn(console, "info").mockImplementation(() => {});
   });
   afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    try {
+      expect(fetch).toHaveBeenCalledWith(
+        "http://127.0.0.1:19999/api/v1/mail/people",
+        expect.objectContaining({ headers: { authorization: "Bearer private-test-token" } }),
+      );
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      rmSync(emptyCwd, { recursive: true, force: true });
+    }
   });
 
   it("allows at most one observation when Playwright does not await test-end hooks", async () => {

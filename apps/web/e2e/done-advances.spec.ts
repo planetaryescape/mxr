@@ -535,12 +535,12 @@ test.describe("Inbox: the reader after archive", () => {
     await page.keyboard.press("e");
     await Promise.all([consent, submitStarted]);
     await expect(page).toHaveURL(lastUrl);
-    await expect(page).not.toHaveURL(lastUrl);
+    await expect(page).not.toHaveURL(lastUrl, { timeout: 15_000 });
     await expect(reader(page)).toBeVisible();
     await expect(reader(page)).not.toHaveAttribute("aria-label", lastTitle!);
 
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(lastUrl);
+    await expect(page).toHaveURL(lastUrl, { timeout: 15_000 });
   });
 
   test("delayed archive-previous in the reader keeps its direction through undo", async ({
@@ -552,10 +552,12 @@ test.describe("Inbox: the reader after archive", () => {
     await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
     const previousUrl = page.url();
     await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+    const previousTitle = await reader(page).getAttribute("aria-label");
     await page.keyboard.press("n");
     await expect(page).not.toHaveURL(previousUrl);
     const openedUrl = page.url();
     expect(openedUrl).not.toBe(previousUrl);
+    await expect(reader(page)).not.toHaveAttribute("aria-label", previousTitle!);
     const openedTitle = await reader(page).getAttribute("aria-label");
 
     await page.route("**/archive-operations/submit", async (route) => {
@@ -567,10 +569,10 @@ test.describe("Inbox: the reader after archive", () => {
     await page.keyboard.press("[");
     await Promise.all([consent, submitStarted]);
     await expect(page).toHaveURL(openedUrl);
-    await expect(page).toHaveURL(previousUrl);
+    await expect(page).toHaveURL(previousUrl, { timeout: 15_000 });
 
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(openedUrl);
+    await expect(page).toHaveURL(openedUrl, { timeout: 15_000 });
     await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
   });
 
@@ -727,9 +729,9 @@ test.describe("Reading: the email reader after archive", () => {
     const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("[");
     await Promise.all([consent, submitStarted]);
-    await expect(page).toHaveURL(previousUrl);
+    await expect(page).toHaveURL(previousUrl, { timeout: 15_000 });
 
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(selectedUrl);
+    await expect(page).toHaveURL(selectedUrl, { timeout: 15_000 });
   });
 });

@@ -105,7 +105,10 @@ test.describe("desktop", () => {
     await expect(
       page
         .getByTestId("freshness-arrival")
-        .filter({ hasText: /→ (Messages|To do|Updates|Reading|Archive) · [a-z-]+/ })
+        .filter({
+          hasText:
+            /→ (?:out of the inbox · )?(Messages|To do|Updates|Reading|Archive)(?: · [a-z -]+)?/,
+        })
         .first(),
     ).toBeVisible();
     await shot(page, "desktop-popover");

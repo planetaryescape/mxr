@@ -32,5 +32,7 @@ export default defineConfig({
     url: appUrl,
     reuseExistingServer: false,
     timeout: 180_000,
+    // See playwright.config.ts: lets e2e-server stop its own process groups.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });

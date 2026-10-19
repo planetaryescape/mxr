@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { notifyManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -376,4 +376,63 @@ test("Undo from the explicit landing restores the original topic after a cached-
     expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
   );
   expect(posts).toEqual([["a-live"]]);
+});
+
+test("rapid Done does not revisit settled topics while query-notification delivery is deferred", async () => {
+  const people = [
+    row("person:a", [topic("a-live")]),
+    row("person:b", [topic("b-live")]),
+    row("person:c", [topic("c-live")]),
+  ];
+  let remaining = [...people];
+  client.setQueryData(listKey, listOf(...remaining));
+  for (const person of people)
+    cachePage(person, person.topics[0]?.thread_id ?? "", person.topics[0]?.thread_id ?? "");
+  const posts: string[] = [];
+  http.send.mockImplementation(async (path, options) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (path.endsWith("/messages/done")) {
+      const thread = options?.body?.thread_ids?.[0] ?? "";
+      posts.push(thread);
+      remaining = remaining.filter(
+        (person) => !person.topics.some((item) => item.thread_id === thread),
+      );
+      return {
+        mutation_id: `done-${thread}`,
+        items: [{ thread_id: thread, mode: "messages", provider: "fake", copy: "Done." }],
+      };
+    }
+    if (url.pathname.endsWith("/people"))
+      return {
+        messages: { ...listOf(...remaining), empty_state: remaining.length ? null : "All done." },
+      };
+    if (url.pathname.endsWith("/people/page")) {
+      const person = people.find((entry) => entry.id === url.searchParams.get("person"));
+      if (!person) throw new Error("Unknown synthetic person");
+      return { page: personPage(person, url.searchParams.get("topic") ?? "") };
+    }
+    throw new Error("Unexpected synthetic endpoint");
+  });
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+  const pending: (() => void)[] = [];
+  notifyManager.setScheduler((callback) => pending.push(callback));
+  try {
+    for (const thread of ["a-live", "b-live", "c-live"]) {
+      // oxlint-disable-next-line no-await-in-loop
+      await screen.findByText(thread);
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      // oxlint-disable-next-line no-await-in-loop
+      await waitFor(() => expect(useModeDone.getState().hidden.messages.has(thread)).toBe(false));
+    }
+    const stale = screen.queryByRole("button", { name: "Done" });
+    if (stale) fireEvent.click(stale);
+    expect(posts).toEqual(["a-live", "b-live", "c-live"]);
+  } finally {
+    notifyManager.setScheduler((callback) => setTimeout(callback, 0));
+    await act(async () => {
+      for (const callback of pending) callback();
+    });
+  }
+  expect(await screen.findByText("All done.")).toBeInTheDocument();
 });

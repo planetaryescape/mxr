@@ -181,7 +181,12 @@ function MessagesBody({
   const page: PersonPage | undefined = selectedId ? person.data : undefined;
   const conversation = page?.conversation ?? null;
   const hiddenDone = useModeDone((s) => s.hidden.messages);
-  const stillOpen = useMemo(() => openThreads(selected, hiddenDone), [selected, hiddenDone]);
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
+  const excludedDone = useMemo(
+    () => (settled.size === 0 ? hiddenDone : new Set([...hiddenDone, ...settled])),
+    [hiddenDone, settled],
+  );
+  const stillOpen = useMemo(() => openThreads(selected, excludedDone), [selected, excludedDone]);
   const left = useMemo(
     () => (page ? topicsLeft(page.topics, stillOpen).length : 0),
     [stillOpen, page],
@@ -275,6 +280,21 @@ function MessagesBody({
     open: false,
   });
   useEffect(() => {
+    if (settled.size === 0) return;
+    const stillPresent = new Set(
+      allRows.flatMap((row) =>
+        row.topics.filter((t) => t.state !== "done").map((t) => t.thread_id),
+      ),
+    );
+    const obsolete = [...settled].filter((id) => !stillPresent.has(id));
+    if (obsolete.length > 0) {
+      setSettled((prev) => {
+        const next = new Set([...prev].filter((id) => !obsolete.includes(id)));
+        return next.size === prev.size ? prev : next;
+      });
+    }
+  }, [allRows, settled]);
+  useEffect(() => {
     const previous = previousTopic.current;
     const open = topic !== null && stillOpen.has(topic);
     previousTopic.current = { person: selectedId, topic, open };
@@ -282,7 +302,7 @@ function MessagesBody({
       !selectedId ||
       !topic ||
       !selected ||
-      hiddenDone.has(topic) ||
+      excludedDone.has(topic) ||
       previous.person !== selectedId ||
       previous.topic !== topic ||
       !previous.open ||
@@ -292,7 +312,7 @@ function MessagesBody({
     const next = stillOpen.values().next().value;
     if (next) select(selectedId, { topic: next });
     else clearSelection();
-  }, [clearSelection, hiddenDone, select, selected, selectedId, stillOpen, topic]);
+  }, [clearSelection, excludedDone, select, selected, selectedId, stillOpen, topic]);
 
   // A row that leaves the list some other way (sync, another client) takes
   // the page with it to its neighbour.
@@ -402,16 +422,17 @@ function MessagesBody({
         open: stillOpen,
         rows,
         person: selectedId,
-        hidden: hiddenDone,
+        hidden: excludedDone,
       });
       const what =
         next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
       const from = selectedId;
+      setSettled((prev) => (prev.has(thread) ? prev : new Set([...prev, thread])));
       const nextTopic =
         next.kind === "topic"
           ? next.topic.thread_id
           : next.kind === "person"
-            ? openThreads(next.row, new Set([...hiddenDone, thread]))
+            ? openThreads(next.row, new Set([...excludedDone, thread]))
                 .values()
                 .next().value
             : undefined;
@@ -431,6 +452,12 @@ function MessagesBody({
         via: how,
         message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
         onUndone: () => {
+          setSettled((prev) => {
+            if (!prev.has(thread)) return prev;
+            const nextSet = new Set(prev);
+            nextSet.delete(thread);
+            return nextSet;
+          });
           const now = here.current;
           const stayed =
             now.mounted &&
@@ -454,13 +481,22 @@ function MessagesBody({
             },
           });
         },
+      }).then((succeeded) => {
+        if (!succeeded) {
+          setSettled((prev) => {
+            if (!prev.has(thread)) return prev;
+            const nextSet = new Set(prev);
+            nextSet.delete(thread);
+            return nextSet;
+          });
+        }
       });
     },
     [
       advanceTo,
       clearSelection,
       conversation,
-      hiddenDone,
+      excludedDone,
       navigate,
       page,
       person.isPlaceholderData,
@@ -678,7 +714,7 @@ function MessagesBody({
               onReply={onReplyRow}
               onDone={onDoneRow}
               memberships={memberships}
-              hidden={hiddenDone}
+              hidden={excludedDone}
               arrival={arrival}
             />
           </div>
@@ -698,7 +734,7 @@ function MessagesBody({
                   asSent={asSent}
                   replyAll={replyAll}
                   left={left}
-                  hidden={hiddenDone}
+                  hidden={excludedDone}
                   arrival={arrival?.person === selectedId ? arrival : null}
                   loading={person.isPlaceholderData}
                   pending={gotIt.pending}

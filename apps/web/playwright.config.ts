@@ -49,5 +49,8 @@ export default defineConfig({
     url: appUrl,
     reuseExistingServer: false,
     timeout: 120_000,
+    // e2e-server runs the daemon and Vite in their own process groups, which
+    // Playwright's default group SIGKILL never reaches; SIGTERM lets it stop them.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });

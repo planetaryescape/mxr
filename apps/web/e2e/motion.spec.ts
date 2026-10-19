@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { animationsSettled, mailRows, openList, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
+import { freshReplyRequest } from "./helpers/reply-request";
 
 /*
  * W8b: finishing feels good. A row that is done folds away for a pointer and
@@ -303,6 +304,7 @@ for (const entry of MODES) {
   test(`${entry.mode}: the finishing scene plays once a day, after work was seen`, async ({
     page,
   }) => {
+    if (entry.mode === "messages") await freshReplyRequest(page);
     await openApp(page, entry.path);
     await expect(page.getByTestId("page-empty")).toHaveCount(0);
     // Work was on the page, so the browser remembers it.
@@ -331,6 +333,7 @@ for (const entry of MODES) {
   });
 
   test(`${entry.mode}: reduced motion shows the words and the still frame`, async ({ page }) => {
+    if (entry.mode === "messages") await freshReplyRequest(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openApp(page, entry.path);
     await expect

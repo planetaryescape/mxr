@@ -94,7 +94,7 @@ pub(super) fn modes_demo_messages(
             self_addr.clone(),
             "Re: Lease renewal",
             format!(
-                "Hi Alex,\n\nThe renewal for next year is attached. Please sign and send it back by {sign_by}.\n\nAlso, are you around Thursday? The boiler engineer wants to come by in the morning.\n\nSam"
+                "Hi Alex,\n\nThe renewal for next year is attached. Please sign and send it back by {sign_by}.\n\nAlso, are you around Thursday? The boiler engineer wants to come by in the morning.\n\nAlex, could you confirm whether Thursday morning works?\n\nSam"
             ),
             now - Duration::hours(3),
         ),

@@ -10,7 +10,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use yup_oauth2::storage::{TokenInfo, TokenStorage, TokenStorageError};
 
 use crate::token_cache_file;
@@ -71,13 +71,15 @@ struct StoredToken {
     token: TokenInfo,
 }
 
+#[derive(Clone)]
 pub(crate) struct KeychainTokenStorage {
     keychain_service: String,
     token_ref: String,
     /// Private disk fallback retained alongside the keychain so noninteractive
     /// keychain access failures cannot strand an otherwise valid token cache.
     fallback_path: PathBuf,
-    cache: Mutex<Vec<StoredToken>>,
+    // Initial authorization and background refresh share the same live cache.
+    cache: Arc<Mutex<Vec<StoredToken>>>,
 }
 
 impl KeychainTokenStorage {
@@ -91,7 +93,7 @@ impl KeychainTokenStorage {
             keychain_service,
             token_ref,
             fallback_path,
-            cache: Mutex::new(cache),
+            cache: Arc::new(Mutex::new(cache)),
         }
     }
 
@@ -356,7 +358,7 @@ mod tests {
             keychain_service: KEYCHAIN_SERVICE.to_string(),
             token_ref: unique_ref("test-mem"),
             fallback_path: path,
-            cache: Mutex::new(Vec::new()),
+            cache: Arc::new(Mutex::new(Vec::new())),
         };
         let scopes = ["scope-a", "scope-b"];
         {
@@ -472,7 +474,7 @@ mod tests {
             keychain_service: KEYCHAIN_SERVICE.to_string(),
             token_ref: unique_ref("test-scope-order"),
             fallback_path: path,
-            cache: Mutex::new(vec![StoredToken {
+            cache: Arc::new(Mutex::new(vec![StoredToken {
                 // Stored in the unsorted order the legacy migration produced.
                 scopes: vec![
                     "https://www.googleapis.com/auth/gmail.readonly".to_string(),
@@ -480,7 +482,7 @@ mod tests {
                     "https://www.googleapis.com/auth/gmail.labels".to_string(),
                 ],
                 token: fake_token("legacy-token"),
-            }]),
+            }])),
         };
 
         // yup-oauth2 always passes scopes sorted+deduped to TokenStorage::get.

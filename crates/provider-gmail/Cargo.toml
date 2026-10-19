@@ -44,5 +44,5 @@ security-framework-sys = { workspace = true }
 insta = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-test-support = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }

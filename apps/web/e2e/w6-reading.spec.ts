@@ -51,13 +51,21 @@ async function mockNewsletterIssue(page: Page): Promise<void> {
   });
 }
 
+async function longThreadId(page: Page): Promise<string> {
+  const result = await bridge<{ groups: { rows: { thread_id: string; subject: string }[] }[] }>(
+    page,
+    `/api/v1/mail/search?q=${encodeURIComponent('subject:"Security review follow-up"')}`,
+  );
+  const id =
+    result.groups?.flatMap((g) => g.rows).find((r) => /Security review follow-up/.test(r.subject))
+      ?.thread_id ?? "580f04ee-43a0-51cc-9c09-8686e156785a";
+  return id;
+}
+
 /** Opens the fixture thread with five messages, the long one. */
 async function openLongThread(page: Page): Promise<void> {
-  await openList(page, "/m/inbox");
-  await mailRows(page)
-    .filter({ hasText: /Re: Security review follow-up/ })
-    .first()
-    .click();
+  const threadId = await longThreadId(page);
+  await openApp(page, `/m/inbox/${encodeURIComponent(threadId)}`);
   await expect(reader(page)).toBeVisible();
 }
 
@@ -233,12 +241,7 @@ for (const theme of THEMES) {
         await page.waitForTimeout(500);
       };
 
-      await openList(page, "/m/inbox");
-      await mailRows(page)
-        .filter({ hasText: /Re: Security review follow-up/ })
-        .first()
-        .click();
-      await expect(reader(page)).toBeVisible();
+      await openLongThread(page);
       await settle();
       await snap(page, `w6-thread-${theme}-${width}`);
 

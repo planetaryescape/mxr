@@ -93,6 +93,16 @@ pub struct TodoPageState {
     pub pending_resolution: Option<(String, String, TodoResolutionActionData)>,
     /// The exact previewed suggestion, held until explicit accept/dismiss.
     pub resolution_preview: Option<(String, String, TodoChangeData)>,
+    pub microsoft_status: Option<mxr_protocol::MicrosoftTodoStatusData>,
+    pub microsoft_preview: Option<mxr_protocol::MicrosoftTodoSendData>,
+    pub microsoft_sync_preview: Option<mxr_protocol::MicrosoftTodoSyncData>,
+    pub pending_microsoft: Option<mxr_protocol::Request>,
+    pub microsoft_busy: bool,
+    /// Geometry feedback only: confirmation is disabled until the review was drawn.
+    pub microsoft_review_visible: std::cell::Cell<bool>,
+    pub microsoft_sync_review_visible: std::cell::Cell<bool>,
+    pub microsoft_scroll_max: std::cell::Cell<u16>,
+    pub microsoft_scroll: u16,
 }
 
 impl TodoPageState {

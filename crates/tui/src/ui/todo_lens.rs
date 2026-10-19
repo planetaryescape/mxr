@@ -113,7 +113,16 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
                 .and_then(|todo| todo.resolution.as_ref())
                 .filter(|resolution| resolution.status == "pending")
                 .map_or_else(String::new, |_| "  v review resolution".into());
-            format!("\u{21b5} {enter}  {rest}{review}  ? keys")
+            let microsoft = if page
+                .microsoft_status
+                .as_ref()
+                .is_some_and(|status| status.installed)
+            {
+                "  M Microsoft To Do  S sync linked task"
+            } else {
+                ""
+            };
+            format!("\u{21b5} {enter}  {rest}{review}{microsoft}  ? keys")
         }
         TodoPanel::Expired => "\u{21b5} restore  o email  Esc back to the runway".to_string(),
         TodoPanel::Catchup => {
@@ -277,6 +286,7 @@ fn row_line(
 struct Body {
     lines: Vec<Line<'static>>,
     selected_line: usize,
+    sync_preview_end: Option<usize>,
 }
 
 impl Body {
@@ -284,6 +294,7 @@ impl Body {
         Self {
             lines: Vec::new(),
             selected_line: 0,
+            sync_preview_end: None,
         }
     }
 
@@ -313,6 +324,56 @@ impl Body {
                 self.selected_line = self.lines.len();
             }
             self.push(row_line(todo, selected, dim, width, theme));
+            if selected {
+                if let Some(preview) = view
+                    .page
+                    .microsoft_sync_preview
+                    .as_ref()
+                    .and_then(|preview| preview.results.iter().find(|item| item.todo_id == todo.id))
+                {
+                    self.text(
+                        one_line(&preview.summary),
+                        Style::default().fg(theme.text_secondary),
+                    );
+                    for (label, fields) in [
+                        ("Mixer", &preview.mixer),
+                        ("Microsoft", &preview.microsoft),
+                        ("After sync", &preview.merged),
+                    ] {
+                        if let Some(fields) = fields {
+                            self.text(
+                                format!(
+                                    "{label}: {} · due {} · scheduled {} · {}",
+                                    one_line(&fields.title),
+                                    fields
+                                        .due
+                                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                                    fields
+                                        .scheduled
+                                        .map_or_else(|| "none".into(), |day| day.to_string()),
+                                    if fields.completed { "done" } else { "open" }
+                                ),
+                                Style::default().fg(theme.text_secondary),
+                            );
+                        }
+                    }
+                    self.text(
+                        "S sync now · Esc cancel",
+                        Style::default().fg(theme.text_muted),
+                    );
+                    self.sync_preview_end = Some(self.lines.len());
+                }
+                if let Some(preview) = view
+                    .page
+                    .microsoft_preview
+                    .as_ref()
+                    .filter(|preview| preview.todo_id == todo.id)
+                {
+                    for line in wrap(&one_line(&preview.summary), width.saturating_sub(4)) {
+                        self.text(line, Style::default().fg(theme.text_secondary));
+                    }
+                }
+            }
             if let Some(resolution) = &todo.resolution {
                 let status = match (resolution.status.as_str(), resolution.action.as_str()) {
                     ("pending", "revise_date") => "New date proposed",
@@ -353,6 +414,15 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
     let page = view.page;
     let muted = Style::default().fg(theme.text_muted);
     let secondary = Style::default().fg(theme.text_secondary);
+    if let Some(status) = page
+        .microsoft_status
+        .as_ref()
+        .filter(|status| !status.installed)
+    {
+        for line in wrap(&status.hint, width.saturating_sub(4)) {
+            body.text(line, muted);
+        }
+    }
     let Some(runway) = &page.runway else {
         body.text("Loading To do…", muted);
         return body;
@@ -508,6 +578,17 @@ fn catchup_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) 
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::theme::Theme) {
+    view.page.microsoft_review_visible.set(false);
+    view.page.microsoft_sync_review_visible.set(false);
+    if let Some(preview) = view
+        .page
+        .microsoft_preview
+        .as_ref()
+        .filter(|preview| preview.state == "preview")
+    {
+        draw_microsoft_preview(frame, area, view.page, preview, theme);
+        return;
+    }
     let is_focused = *view.active_pane == ActivePane::MailList;
     let header = view.page.guide.as_ref().map_or(
         "Things email asked you to do, ordered by when to act.",
@@ -531,9 +612,21 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
 
     let footer_height = 2u16;
     let body_height = inner.height.saturating_sub(footer_height) as usize;
-    let scroll = body
-        .selected_line
-        .saturating_sub(body_height.saturating_sub(2));
+    let scroll = body.sync_preview_end.map_or_else(
+        || {
+            body.selected_line
+                .saturating_sub(body_height.saturating_sub(2))
+        },
+        |end| end.saturating_sub(body_height),
+    );
+    view.page.microsoft_sync_review_visible.set(
+        view.page.panel == TodoPanel::Runway
+            && width >= 30
+            && body.selected_line >= scroll
+            && body
+                .sync_preview_end
+                .is_some_and(|end| end <= scroll + body_height),
+    );
     let body_area = Rect {
         height: inner.height.saturating_sub(footer_height),
         ..inner
@@ -563,6 +656,70 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
     );
 
     draw_catchup_preview(frame, area, view.page.catchup_preview.as_ref(), theme);
+}
+
+fn draw_microsoft_preview(
+    frame: &mut Frame,
+    area: Rect,
+    page: &TodoPageState,
+    preview: &mxr_protocol::MicrosoftTodoSendData,
+    theme: &crate::theme::Theme,
+) {
+    frame.render_widget(Clear, area);
+    let block = Block::bordered()
+        .title(" Review Microsoft link ")
+        .style(Style::default().bg(theme.modal_bg));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.height < 5 || inner.width < 20 {
+        frame.render_widget(
+            Paragraph::new("Enlarge terminal to review. Esc cancel").wrap(Wrap { trim: false }),
+            inner,
+        );
+        return;
+    }
+    let chunks = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(3),
+        Constraint::Length(1),
+    ])
+    .split(inner);
+    frame.render_widget(
+        Paragraph::new(format!("Title: {}", one_line(&preview.title))),
+        chunks[0],
+    );
+    let text = format!(
+        "Title: {}\nDue: {}\nSchedule: {}\n{}\n\n{}",
+        one_line(&preview.title),
+        preview
+            .due
+            .map_or_else(|| "none".into(), |day| day.to_string()),
+        preview
+            .scheduled
+            .map_or_else(|| "none".into(), |day| day.to_string()),
+        one_line(&preview.summary),
+        preview
+            .notes
+            .lines()
+            .map(one_line)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+    let max = paragraph
+        .line_count(chunks[1].width)
+        .saturating_sub(usize::from(chunks[1].height));
+    let max = u16::try_from(max).unwrap_or(u16::MAX);
+    page.microsoft_scroll_max.set(max);
+    frame.render_widget(
+        paragraph.scroll((page.microsoft_scroll.min(max), 0)),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new("M confirm  j/k scroll  Esc cancel"),
+        chunks[2],
+    );
+    page.microsoft_review_visible.set(true);
 }
 
 /// "Let go of all" as the daemon previewed it: Enter lets go of exactly
@@ -822,6 +979,74 @@ pub(crate) mod tests {
                 &crate::theme::Theme::default(),
             );
         })
+    }
+
+    #[test]
+    fn microsoft_review_is_visible_and_scrollable_independent_of_the_runway_selection() {
+        let mut page = page(
+            runway(
+                (0..40)
+                    .map(|n| todo(&format!("todo_{n}"), "Other runway task"))
+                    .collect(),
+                vec![],
+            ),
+            true,
+        );
+        page.microsoft_preview = Some(mxr_protocol::MicrosoftTodoSendData {
+            todo_id: "todo_39".into(),
+            dry_run: true,
+            fingerprint: "reviewed".into(),
+            title: "Pay selected".into(),
+            due: None,
+            scheduled: None,
+            notes: format!(
+                "{}\nTAIL_CONTEXT",
+                "Long outgoing context that must stay reachable\n".repeat(30)
+            ),
+            state: "preview".into(),
+            task_id: None,
+            summary: "Shared fields sync both ways".into(),
+        });
+        for (width, height) in [(80, 9), (24, 8), (120, 12)] {
+            page.microsoft_scroll = 0;
+            let draw_review = |page: &TodoPageState| {
+                render_to_string(width, height, |frame| {
+                    draw(
+                        frame,
+                        Rect::new(0, 0, width, height),
+                        &TodoView {
+                            page,
+                            selected_index: 39,
+                            active_pane: &ActivePane::MailList,
+                        },
+                        &crate::theme::Theme::default(),
+                    );
+                })
+            };
+            let top = draw_review(&page);
+            assert!(top.contains("Title: Pay selected"), "{top}");
+            assert!(top.contains("M confirm"), "{top}");
+            assert!(page.microsoft_review_visible.get());
+            assert!(page.microsoft_scroll_max.get() > 0);
+            page.microsoft_scroll = page.microsoft_scroll_max.get();
+            let bottom = draw_review(&page);
+            assert!(bottom.contains("TAIL_CONTEXT"), "{bottom}");
+            assert!(bottom.contains("Title: Pay selected"), "{bottom}");
+        }
+        let tiny = render_to_string(20, 5, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 20, 5),
+                &TodoView {
+                    page: &page,
+                    selected_index: 39,
+                    active_pane: &ActivePane::MailList,
+                },
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(!page.microsoft_review_visible.get());
+        assert!(!tiny.contains("M confirm"));
     }
 
     fn overdue_failed_payment() -> TodoData {

@@ -176,6 +176,7 @@ pub(crate) enum AsyncResult {
         >,
     ),
     TodoExpired(Result<Vec<mxr_protocol::TodoData>, MxrError>),
+    MicrosoftTodo(Result<Box<mxr_protocol::ResponseData>, MxrError>),
     TodoCatchup(Result<mxr_protocol::TodoCatchupData, MxrError>),
     /// The dry run of letting go of the whole catch-up.
     TodoCatchupPreview(Result<mxr_protocol::TodoChangeData, MxrError>),

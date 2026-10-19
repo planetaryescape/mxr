@@ -253,6 +253,116 @@ async fn check(s: &Scoped, req: &Request) -> Result<(), String> {
     enforce_client_profile(&s.fx.state, &config, ::mxr_protocol::ClientKind::Mcp, req).await
 }
 
+#[tokio::test]
+async fn microsoft_bulk_dispatch_is_limited_to_each_external_profiles_allowed_accounts() {
+    for allow_other in [false, true] {
+        let s = scoped().await;
+        let (allowed, foreign) = if allow_other {
+            (&s.other, &s.own)
+        } else {
+            (&s.own, &s.other)
+        };
+        let mut config = s.fx.state.config_snapshot();
+        config
+            .agent_surfaces
+            .profiles
+            .get_mut("mcp")
+            .unwrap()
+            .allowed_accounts = vec![allowed.account.as_str()];
+        s.fx.state.set_config_for_test(config).await;
+        // Only the forbidden account has a live link. An unscoped fallback
+        // would reach its CLI transport instead of returning an empty plan.
+        let record =
+            s.fx.state
+                .store
+                .get_todo(&foreign.todo)
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(s
+            .fx
+            .state
+            .store
+            .claim_todo_microsoft_export(&record, "{}")
+            .await
+            .unwrap());
+        s.fx.state
+            .store
+            .accept_todo_microsoft_export(
+                &foreign.todo,
+                "synthetic-remote-never-read",
+                "operation",
+                "{}",
+            )
+            .await
+            .unwrap();
+        let bulk = Request::SyncMicrosoftTodos {
+            todo_id: None,
+            account_id: None,
+            dry_run: true,
+        };
+        assert!(check(&s, &bulk).await.is_ok());
+        assert!(
+            matches!(scoped_dispatch(&s, bulk).await, Response::Ok { data: ResponseData::MicrosoftTodoSync { sync } } if sync.results.is_empty())
+        );
+        let own_preview = Request::SendTodoToMicrosoft {
+            todo_id: allowed.todo.clone(),
+            account_id: Some(allowed.account.clone()),
+            dry_run: true,
+            fingerprint: None,
+        };
+        assert!(
+            matches!(scoped_dispatch(&s, own_preview).await, Response::Ok { data: ResponseData::MicrosoftTodoSend { result } } if result.todo_id == allowed.todo)
+        );
+        for denied in [
+            Request::SyncMicrosoftTodos {
+                todo_id: None,
+                account_id: Some(foreign.account.clone()),
+                dry_run: true,
+            },
+            Request::SendTodoToMicrosoft {
+                todo_id: foreign.todo.clone(),
+                account_id: Some(allowed.account.clone()),
+                dry_run: true,
+                fingerprint: None,
+            },
+        ] {
+            assert!(
+                matches!(scoped_dispatch(&s, denied).await, Response::Error { message, .. } if message.contains("account allowlist"))
+            );
+        }
+        // Unrelated daemon-wide requests remain forbidden.
+        assert!(
+            matches!(scoped_dispatch(&s, Request::ListRecords { account_id: None, filter: RecordFilterData::default(), limit: 10, offset: 0 }).await, Response::Error { message, .. } if message.contains("account allowlist"))
+        );
+        let mut config = s.fx.state.config_snapshot();
+        config
+            .agent_surfaces
+            .profiles
+            .get_mut("mcp")
+            .unwrap()
+            .allowed_accounts = vec![allowed.account.as_str(), foreign.account.as_str()];
+        s.fx.state.set_config_for_test(config).await;
+        for mismatch in [
+            Request::SendTodoToMicrosoft {
+                todo_id: foreign.todo.clone(),
+                account_id: Some(allowed.account.clone()),
+                dry_run: true,
+                fingerprint: None,
+            },
+            Request::SyncMicrosoftTodos {
+                todo_id: Some(foreign.todo.clone()),
+                account_id: Some(allowed.account.clone()),
+                dry_run: true,
+            },
+        ] {
+            assert!(
+                matches!(scoped_dispatch(&s, mismatch).await, Response::Error { message, .. } if message.contains("does not belong"))
+            );
+        }
+    }
+}
+
 /// Each request built for the scoped agent's own account is allowed and
 /// the same request built for the other account is denied.
 async fn assert_scoped(s: &Scoped, build: impl Fn(&Owned) -> Request) {

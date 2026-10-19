@@ -265,6 +265,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_todo_loop(todo_handle);
 
+        let microsoft_state = state.clone();
+        let microsoft_handle = tokio::spawn(async move {
+            let shutdown_rx = microsoft_state.shutdown_receiver();
+            loops::microsoft_todo_loop(microsoft_state, shutdown_rx).await;
+        });
+        state.register_microsoft_todo_loop(microsoft_handle);
+
         let records_state = state.clone();
         let records_handle = tokio::spawn(async move {
             let shutdown_rx = records_state.shutdown_receiver();

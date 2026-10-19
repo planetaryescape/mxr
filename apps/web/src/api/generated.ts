@@ -3194,6 +3194,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/todos/microsoft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the optional ms-todo CLI is installed on the daemon */
+        get: operations["mail_microsoft_todo_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/microsoft/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile linked tasks without discarding conflicting edits */
+        post: operations["mail_microsoft_todo_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/todos/state": {
         parameters: {
             query?: never;
@@ -3239,6 +3273,23 @@ export interface paths {
         put?: never;
         /** Correct a to-do's fields; it is yours from then on (dry_run previews) */
         post: operations["mail_todo_edit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/microsoft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview or create a two-way Microsoft To Do task link */
+        post: operations["mail_microsoft_todo_link"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7496,6 +7547,64 @@ export interface components {
          * @enum {string}
          */
         MessagesTurnData: "mine" | "theirs";
+        MicrosoftTodoFieldsData: {
+            completed: boolean;
+            /** Format: date */
+            due?: string | null;
+            /** Format: date */
+            scheduled?: string | null;
+            title: string;
+        };
+        MicrosoftTodoLinkBody: {
+            account_id?: components["schemas"]["AccountId"] | null;
+            dry_run?: boolean;
+            fingerprint?: string | null;
+        };
+        /**
+         * @description Preview of an explicit task link, or its durable link status. Linking
+         *     authorizes two-way synchronization of shared fields, never full email bodies.
+         */
+        MicrosoftTodoSendData: {
+            dry_run: boolean;
+            /** Format: date */
+            due?: string | null;
+            /** @description Returned by preview; a commit must name this unchanged payload. */
+            fingerprint: string;
+            notes: string;
+            /** Format: date */
+            scheduled?: string | null;
+            /** @description preview | linked | unknown | attention */
+            state: string;
+            summary: string;
+            task_id?: string | null;
+            title: string;
+            todo_id: string;
+        };
+        /** @description Optional local handoff to Microsoft To Do through the `ms-todo` CLI. */
+        MicrosoftTodoStatusData: {
+            hint: string;
+            install_url: string;
+            /** @description Available on the daemon's PATH, not the browser's computer. */
+            installed: boolean;
+        };
+        MicrosoftTodoSyncBody: {
+            account_id?: components["schemas"]["AccountId"] | null;
+            dry_run?: boolean;
+            todo_id?: string | null;
+        };
+        MicrosoftTodoSyncData: {
+            dry_run: boolean;
+            results: components["schemas"]["MicrosoftTodoSyncItemData"][];
+        };
+        MicrosoftTodoSyncItemData: {
+            merged?: components["schemas"]["MicrosoftTodoFieldsData"] | null;
+            microsoft?: components["schemas"]["MicrosoftTodoFieldsData"] | null;
+            mixer?: components["schemas"]["MicrosoftTodoFieldsData"] | null;
+            /** @description synced | changes | conflict | paused */
+            state: string;
+            summary: string;
+            todo_id: string;
+        };
         /** @description Body of `POST /api/v1/mail/modes/{mode}/done`. */
         ModeDoneBody: {
             /** @description Preview only: the same plan, nothing changed. */
@@ -11007,6 +11116,25 @@ export interface components {
                   what: string;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "GetMicrosoftTodoStatus";
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "SendTodoToMicrosoft";
+                  dry_run?: boolean;
+                  fingerprint?: string | null;
+                  todo_id: string;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "SyncMicrosoftTodos";
+                  dry_run?: boolean;
+                  todo_id?: string | null;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetTodoRunway";
@@ -12493,6 +12621,21 @@ export interface components {
                   dry_run: boolean;
                   /** @enum {string} */
                   kind: "RecordedPromise";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MicrosoftTodoStatus";
+                  status: components["schemas"]["MicrosoftTodoStatusData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MicrosoftTodoSend";
+                  result: components["schemas"]["MicrosoftTodoSendData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "MicrosoftTodoSync";
+                  sync: components["schemas"]["MicrosoftTodoSyncData"];
               }
             | {
                   /** @enum {string} */
@@ -21285,6 +21428,50 @@ export interface operations {
             };
         };
     };
+    mail_microsoft_todo_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `MicrosoftTodoStatus` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+        };
+    };
+    mail_microsoft_todo_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MicrosoftTodoSyncBody"];
+            };
+        };
+        responses: {
+            /** @description The `MicrosoftTodoSync` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+        };
+    };
     mail_todos_state: {
         parameters: {
             query?: never;
@@ -21373,6 +21560,39 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_microsoft_todo_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MicrosoftTodoLinkBody"];
+            };
+        };
+        responses: {
+            /** @description The `MicrosoftTodoSend` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Preview is stale or ms-todo is unavailable */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -18,6 +18,7 @@ State-changing or intent-expressing actions:
 - **Accounts**: `account.add`, `account.remove`, `account.signin`, `account.sync`.
 - **Rules**: `rule.create`, `rule.update`, `rule.delete`, `rule.run`, `rule.test`.
 - **Snippets / signatures / screener / reminders**: edits and triage decisions.
+- **Microsoft task links**: `todo.microsoft_link`, `todo.microsoft_sync` for confirmed link and manual sync requests. These record only the task ID, not its title, notes or email content. Previews and automatic reconciliation are not captured.
 
 Mapping is closed: every IPC verb that produces activity has an explicit entry in `crates/daemon/src/activity/mapper.rs`. New IPC verbs default to "no activity" until someone decides what to log.
 

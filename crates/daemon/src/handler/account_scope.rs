@@ -432,6 +432,17 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
         // ----- Named by another entity -----
+        Request::SyncMicrosoftTodos { todo_id, account_id, .. } => {
+            let mut targets = Vec::new();
+            if let Some(account_id) = account_id { targets.push(T::Account(account_id)); }
+            if let Some(todo_id) = todo_id { targets.push(T::Todo(todo_id)); }
+            if targets.is_empty() { AllAllowedSyncAccounts } else { Targets(targets) }
+        },
+        Request::SendTodoToMicrosoft { todo_id, account_id, .. } => {
+            let mut targets = vec![T::Todo(todo_id)];
+            if let Some(account_id) = account_id { targets.push(T::Account(account_id)); }
+            Targets(targets)
+        },
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. }
@@ -454,7 +465,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetDecision { id } => Targets(vec![T::Decision(id)]),
         Request::UndoMove { correction_id } => Targets(vec![T::MoveCorrection(*correction_id)]),
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
-        Request::GetArchiveWorkspace => Unscoped,
+        Request::GetArchiveWorkspace | Request::GetMicrosoftTodoStatus => Unscoped,
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 

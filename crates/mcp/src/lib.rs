@@ -24,7 +24,7 @@ use std::{path::Path, str::FromStr, sync::Arc};
 mod in_process;
 mod todo;
 pub use in_process::{InProcessTools, ToolCallOutcome, ToolDescriptor};
-use todo::{TodoGetInput, TodoListInput, TodoResolutionInput, TodoStateInput};
+use todo::{MicrosoftTodoInput, TodoGetInput, TodoListInput, TodoResolutionInput, TodoStateInput};
 
 #[async_trait]
 pub trait DaemonRequester: Send + Sync + std::fmt::Debug + 'static {
@@ -1288,6 +1288,40 @@ impl MxrMcpServer {
             todo_id: input.todo_id,
         })
         .await
+    }
+
+    #[tool(
+        name = "mxr_todo_microsoft",
+        description = "Optional two-way task links through ms-todo. action=status checks installation; link previews one task unless confirm=true with the preview fingerprint; sync previews cached shared-field changes unless confirm=true. account_id restricts either operation; without an ID, sync selects only the profile's allowed enabled accounts. Only link tasks the user selected. Linked titles, due dates, schedules and completion sync both ways. Never retry an unknown handoff; inspect ms-todo's outbox instead."
+    )]
+    pub async fn todo_microsoft(
+        &self,
+        Parameters(input): Parameters<MicrosoftTodoInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let dry_run = !input.confirm.unwrap_or(false);
+        let request = match input.action.as_str() {
+            "status" => Request::GetMicrosoftTodoStatus,
+            "link" => Request::SendTodoToMicrosoft {
+                account_id: parse_optional_id(input.account_id)?,
+                todo_id: input
+                    .todo_id
+                    .ok_or_else(|| ErrorData::invalid_params("link requires todo_id", None))?,
+                dry_run,
+                fingerprint: input.fingerprint,
+            },
+            "sync" => Request::SyncMicrosoftTodos {
+                account_id: parse_optional_id(input.account_id)?,
+                todo_id: input.todo_id,
+                dry_run,
+            },
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "action must be status, link or sync",
+                    None,
+                ))
+            }
+        };
+        self.daemon_json(request).await
     }
 
     #[tool(

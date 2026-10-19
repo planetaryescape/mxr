@@ -64,6 +64,12 @@ impl App {
         page.pending_refresh = true;
         page.pending_mark_seen = true;
         page.expired_on_open = 0;
+        page.microsoft_preview = None;
+        page.microsoft_sync_preview = None;
+        if !page.microsoft_busy {
+            page.pending_microsoft = Some(mxr_protocol::Request::GetMicrosoftTodoStatus);
+            page.microsoft_busy = true;
+        }
     }
 
     /// The To do lens owns the keyboard (its list, not a reader beside it).
@@ -601,6 +607,68 @@ impl App {
     /// navigation reach it: mail verbs need an email, and this list holds
     /// things to do.
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self
+            .mailbox
+            .todo_page
+            .microsoft_preview
+            .as_ref()
+            .is_some_and(|preview| preview.state == "preview")
+        {
+            let page = &mut self.mailbox.todo_page;
+            match key.code {
+                KeyCode::Esc => {
+                    page.microsoft_preview = None;
+                    page.microsoft_review_visible.set(false);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    page.microsoft_scroll = page
+                        .microsoft_scroll
+                        .saturating_add(1)
+                        .min(page.microsoft_scroll_max.get());
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    page.microsoft_scroll = page.microsoft_scroll.saturating_sub(1);
+                }
+                KeyCode::PageDown => {
+                    page.microsoft_scroll = page
+                        .microsoft_scroll
+                        .saturating_add(10)
+                        .min(page.microsoft_scroll_max.get());
+                }
+                KeyCode::PageUp => page.microsoft_scroll = page.microsoft_scroll.saturating_sub(10),
+                KeyCode::Home => page.microsoft_scroll = 0,
+                KeyCode::End => page.microsoft_scroll = page.microsoft_scroll_max.get(),
+                KeyCode::Char('M')
+                    if plain_or_shift(key.modifiers) && page.microsoft_review_visible.get() =>
+                {
+                    self.microsoft_todo_request(false);
+                }
+                _ => {}
+            }
+            return None;
+        }
+        if plain_or_shift(key.modifiers) {
+            let page = &mut self.mailbox.todo_page;
+            if key.code == KeyCode::Esc {
+                let had_preview = page.microsoft_preview.take().is_some()
+                    | page.microsoft_sync_preview.take().is_some();
+                if had_preview {
+                    return None;
+                }
+            }
+            let installed = page
+                .microsoft_status
+                .as_ref()
+                .is_some_and(|status| status.installed);
+            if key.code == KeyCode::Char('M') && installed {
+                self.microsoft_todo_request(false);
+                return None;
+            }
+            if key.code == KeyCode::Char('S') && installed {
+                self.microsoft_todo_request(true);
+                return None;
+            }
+        }
         let page = &self.mailbox.todo_page;
         if page.catchup_preview.is_some() {
             return match key.code {
@@ -688,5 +756,80 @@ impl App {
                     | Action::RespondInviteWithComment(_)
             )
         })
+    }
+
+    fn microsoft_todo_request(&mut self, sync: bool) {
+        let Some(todo) = self.selected_todo().cloned() else {
+            return;
+        };
+        let page = &mut self.mailbox.todo_page;
+        if page.microsoft_busy
+            || !page
+                .microsoft_status
+                .as_ref()
+                .is_some_and(|status| status.installed)
+        {
+            return;
+        }
+        let preview = page
+            .microsoft_preview
+            .as_ref()
+            .filter(|preview| preview.todo_id == todo.id);
+        page.pending_microsoft = Some(if sync {
+            let confirmed =
+                page.microsoft_sync_preview.take().is_some_and(|preview| {
+                    preview.results.iter().any(|item| item.todo_id == todo.id)
+                }) && page.microsoft_sync_review_visible.replace(false)
+                    && page.panel == TodoPanel::Runway;
+            mxr_protocol::Request::SyncMicrosoftTodos {
+                account_id: Some(todo.account_id.clone()),
+                todo_id: Some(todo.id),
+                dry_run: !confirmed,
+            }
+        } else if let Some(preview) = preview.filter(|preview| preview.state == "preview") {
+            mxr_protocol::Request::SendTodoToMicrosoft {
+                account_id: Some(todo.account_id.clone()),
+                todo_id: todo.id,
+                dry_run: false,
+                fingerprint: Some(preview.fingerprint.clone()),
+            }
+        } else {
+            mxr_protocol::Request::SendTodoToMicrosoft {
+                account_id: Some(todo.account_id.clone()),
+                todo_id: todo.id,
+                dry_run: true,
+                fingerprint: None,
+            }
+        });
+        page.microsoft_busy = true;
+    }
+
+    pub(crate) fn microsoft_todo_answer(&mut self, answer: mxr_protocol::ResponseData) {
+        self.mailbox.todo_page.microsoft_busy = false;
+        match answer {
+            mxr_protocol::ResponseData::MicrosoftTodoStatus { status } => {
+                self.mailbox.todo_page.microsoft_status = Some(status);
+            }
+            mxr_protocol::ResponseData::MicrosoftTodoSend { result } => {
+                self.mailbox.todo_page.microsoft_scroll = 0;
+                self.mailbox.todo_page.microsoft_review_visible.set(false);
+                self.status_message = Some(result.summary.clone());
+                self.mailbox.todo_page.microsoft_preview = Some(result);
+            }
+            mxr_protocol::ResponseData::MicrosoftTodoSync { sync } => {
+                self.mailbox
+                    .todo_page
+                    .microsoft_sync_review_visible
+                    .set(false);
+                self.status_message = sync.results.first().map(|item| item.summary.clone());
+                self.mailbox.todo_page.microsoft_preview = None;
+                if sync.dry_run {
+                    self.mailbox.todo_page.microsoft_sync_preview = Some(sync);
+                } else {
+                    self.refresh_todo();
+                }
+            }
+            _ => self.status_message = Some("Unexpected Microsoft To Do response".into()),
+        }
     }
 }

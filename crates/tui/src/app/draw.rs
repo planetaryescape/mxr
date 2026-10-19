@@ -175,6 +175,11 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
+        self.mailbox.todo_page.microsoft_review_visible.set(false);
+        self.mailbox
+            .todo_page
+            .microsoft_sync_review_visible
+            .set(false);
         let theme = &self.theme;
         let area = frame.area();
 

@@ -265,7 +265,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 90);
+    assert_eq!(manifest.schema_version, 91);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -309,7 +309,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
         .await
         .unwrap();
     sqlx::raw_sql(
-        "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
+        "DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DROP TABLE todo_resolution_queue; DELETE FROM schema_migrations WHERE version>=82;",
     )
     .execute(&mut db)
     .await
@@ -336,6 +336,100 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     )
     .unwrap();
     assert!(inspect(stage.path()).await.is_err());
+}
+
+#[tokio::test]
+async fn microsoft_link_baselines_and_uncertain_receipts_survive_backup_and_restore() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    seed_resolution_queue(&store).await;
+    sqlx::query("INSERT INTO todos (id,account_id,kind,verb,title,origin,reason,rules_version,dedup_key,created_at,updated_at) SELECT 'uncertain-task',account_id,kind,verb,title,origin,reason,rules_version,'uncertain-task',created_at,updated_at FROM todos WHERE id='backup-task'")
+        .execute(store.writer()).await.unwrap();
+    let baseline = r#"{"title":"Pay bill","due":null,"scheduled":null,"completed":false}"#;
+    let mut expected = Vec::new();
+    for id in ["backup-task", "uncertain-task"] {
+        let record = store.get_todo(id).await.unwrap().unwrap();
+        assert!(store
+            .claim_todo_microsoft_export(&record, baseline)
+            .await
+            .unwrap());
+        if id == "backup-task" {
+            store
+                .accept_todo_microsoft_export(id, "remote-task", "operation", baseline)
+                .await
+                .unwrap();
+            store
+                .reserve_todo_microsoft_sync(id, Some(baseline))
+                .await
+                .unwrap();
+            store
+                .note_todo_microsoft_sync(id, None, Some("Unconfirmed write"))
+                .await
+                .unwrap();
+        }
+        expected.push(store.todo_microsoft_export(id).await.unwrap().unwrap());
+    }
+    store.writer().close().await;
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 91);
+    inspect(stage.path()).await.unwrap();
+    retire_restored(&stage.path().join("mxr.db")).await.unwrap();
+    let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
+    assert!(restored.restore_pending().await.unwrap());
+    for receipt in expected {
+        assert_eq!(
+            restored
+                .todo_microsoft_export(&receipt.todo_id)
+                .await
+                .unwrap(),
+            Some(receipt)
+        );
+    }
+    restored.writer().close().await;
+}
+
+#[tokio::test]
+async fn exact_schema_90_backup_without_microsoft_links_remains_inspectable() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let mut manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "DROP TABLE todo_microsoft_exports; DELETE FROM schema_migrations WHERE version=91;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+    manifest.schema_version = 90;
+    *manifest
+        .files
+        .iter_mut()
+        .find(|file| file.path == "mxr.db")
+        .unwrap() = file_metadata(stage.path(), "mxr.db").unwrap();
+    std::fs::write(
+        stage.path().join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    inspect(stage.path()).await.unwrap();
 }
 
 #[tokio::test]
@@ -555,7 +649,7 @@ async fn exact_schema_82_backup_remains_restorable() {
         .execute(&mut db)
         .await
         .unwrap();
-    sqlx::raw_sql("DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version>=83;").execute(&mut db).await.unwrap();
+    sqlx::raw_sql("DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_host; DROP TABLE remote_pairings; DROP TABLE remote_clients; DELETE FROM schema_migrations WHERE version>=83;").execute(&mut db).await.unwrap();
     db.close().await.unwrap();
     manifest.schema_version = 82;
     *manifest
@@ -603,7 +697,7 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
             .execute(&mut db)
             .await
             .unwrap();
-        sqlx::raw_sql("DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;")
+        sqlx::raw_sql("DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin; ALTER TABLE reading_highlights DROP COLUMN paragraph_index; ALTER TABLE reading_highlights DROP COLUMN origin_id; ALTER TABLE reading_highlights DROP COLUMN origin; DROP TABLE remote_pairing_retirements; DROP TABLE remote_clients; DROP TABLE remote_pairings; DROP TABLE remote_host;")
         .execute(&mut db).await.unwrap();
         sqlx::raw_sql(include_str!("../../../migrations/083_remote_authority.sql"))
             .execute(&mut db)
@@ -687,7 +781,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
             .await
             .unwrap();
         sqlx::raw_sql(
-            "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
+            "DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
              ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
              ALTER TABLE reading_highlights DROP COLUMN origin_id;
              ALTER TABLE reading_highlights DROP COLUMN origin;",
@@ -712,7 +806,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 90, "source {source_version}");
+        assert_eq!(manifest.schema_version, 91, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -746,7 +840,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         populate(source.path(), stage.path()).await.unwrap(),
     );
     // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
-    assert_eq!(manifest.schema_version, 90);
+    assert_eq!(manifest.schema_version, 91);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -759,7 +853,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         .await
         .unwrap();
     sqlx::raw_sql(
-        "DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
+        "DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations; DROP TABLE reading_marginalia; DROP INDEX idx_reading_highlights_origin;
          ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
          ALTER TABLE reading_highlights DROP COLUMN origin_id;
          ALTER TABLE reading_highlights DROP COLUMN origin;
@@ -811,7 +905,7 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 90);
+    assert_eq!(manifest.schema_version, 91);
 
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
@@ -823,7 +917,7 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         .await
         .unwrap();
     sqlx::raw_sql(
-        "DROP TABLE assistant_messages; DROP TABLE assistant_conversations;
+        "DROP TABLE todo_microsoft_exports; DROP TABLE assistant_messages; DROP TABLE assistant_conversations;
          ALTER TABLE reading_highlights DROP COLUMN paragraph_index;
          DELETE FROM schema_migrations WHERE version>=87;",
     )

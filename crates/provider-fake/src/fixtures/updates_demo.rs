@@ -9,7 +9,7 @@
 //! * GitHub acme/api: green two days ago, failing twice before the cut, a
 //!   build tracker in Needs a look.
 //! * Four Vercel deploys and one from last week: routine, one line.
-//! * A new Google sign-in two hours before the cut: the top of Needs a
+//! * A new Google sign-in before the cut: the top of Needs a
 //!   look, as a suggested to-do; `t` makes it one.
 //! * A Stripe payout that failed: Needs a look, suggested the same way.
 //! * A verification code from before the cut: expired after ten minutes,
@@ -72,23 +72,37 @@ impl Default for DemoCuts {
     }
 }
 
-/// The latest cut at or before `now`, local time.
-fn latest_cut(now: DateTime<Utc>, cuts: &DemoCuts) -> DateTime<Utc> {
-    let today = now.with_timezone(&Local).date_naive();
+/// The previous and latest cuts, using the daemon's DST gap/fold policy.
+fn cut_window<Tz: TimeZone>(
+    now: DateTime<Utc>,
+    cuts: &DemoCuts,
+    tz: &Tz,
+) -> (DateTime<Utc>, DateTime<Utc>) {
+    let today = now.with_timezone(tz).date_naive();
     let yesterday = today.pred_opt().unwrap_or(today);
-    [yesterday, today]
+    let instants: Vec<_> = [yesterday.pred_opt().unwrap_or(yesterday), yesterday, today]
         .into_iter()
         .flat_map(|day| {
             cuts.0.iter().filter_map(move |time| {
-                Local
-                    .from_local_datetime(&day.and_time(*time))
+                let local = day.and_time(*time);
+                tz.from_local_datetime(&local)
                     .earliest()
+                    .or_else(|| {
+                        tz.from_local_datetime(&(local + Duration::hours(1)))
+                            .earliest()
+                    })
                     .map(|at| at.with_timezone(&Utc))
             })
         })
         .filter(|cut| *cut <= now)
+        .collect();
+    let cut = instants.iter().copied().max().unwrap_or(now);
+    let previous = instants
+        .into_iter()
+        .filter(|at| *at < cut)
         .max()
-        .unwrap_or(now - Duration::hours(12))
+        .unwrap_or(cut - Duration::days(1));
+    (previous, cut)
 }
 
 fn message(
@@ -125,8 +139,11 @@ pub(super) fn updates_demo_messages(
     cuts: &DemoCuts,
     first_num: usize,
 ) -> Vec<(Envelope, MessageBody)> {
-    let cut = latest_cut(now, cuts);
-    let before = |hours: i64| cut - Duration::hours(hours);
+    let (previous, cut) = cut_window(now, cuts, &Local);
+    // Keep the original ordering, even when configured cuts are minutes apart.
+    // Nine is the oldest fresh offset; leave a margin after the previous cut.
+    let step = Duration::hours(1).min((cut - previous) / 10);
+    let before = |hours: i32| cut - step * hours;
     // After the cut but never in the future.
     let since = cut + (now - cut) / 2;
 
@@ -152,7 +169,7 @@ pub(super) fn updates_demo_messages(
                 self_addr,
                 "Your week in running: 19.0 km over 2 runs",
                 "Hi Alex,\n\nYou covered 19.0 km over 2 runs this week.\n\nView your week https://www.strava.com/athlete/training",
-                before(24 * 7 + 3),
+                cut - Duration::hours(24 * 7 + 3),
             )),
             "strava-last",
         ),
@@ -172,7 +189,7 @@ pub(super) fn updates_demo_messages(
                 self_addr,
                 "[acme/api] Run succeeded: CI - main (5e6f7a8)",
                 "All jobs have passed.\n\nView workflow run https://github.com/acme/api/actions/runs/101",
-                before(48),
+                cut - Duration::hours(48),
             )),
             "gh-green",
         ),
@@ -202,7 +219,7 @@ pub(super) fn updates_demo_messages(
                 self_addr,
                 "Deployment succeeded for acme-web",
                 "Your deployment of acme-web is live.\n\nOpen deployment https://vercel.com/acme/acme-web",
-                before(24 * 6),
+                cut - Duration::days(6),
             )),
             "vercel-old",
         ),
@@ -232,7 +249,7 @@ pub(super) fn updates_demo_messages(
                 self_addr,
                 "Your verification code is 482913",
                 "Your Acme verification code is 482913. It expires in 10 minutes.",
-                before(1),
+                cut - Duration::hours(1),
             ),
             "acme-code",
         ),
@@ -262,7 +279,7 @@ pub(super) fn updates_demo_messages(
                 self_addr,
                 "Weekly report: 1,204 visitors",
                 "Here's your weekly report for acme.dev: 1,204 visitors.\n\nOpen dashboard https://plausible.io/acme.dev",
-                before(24 * 7 + 1),
+                cut - Duration::hours(24 * 7 + 1),
             )),
             "plausible-last",
         ),
@@ -287,7 +304,7 @@ pub(super) fn updates_demo_messages(
             "linear-since",
         ),
     ];
-    let deploys = [9_i64, 7, 5, 3].map(|hours| {
+    let deploys = [9, 7, 5, 3].map(|hours| {
         (
             message(
                 vercel.clone(),
@@ -317,4 +334,67 @@ pub(super) fn updates_demo_messages(
         ));
     }
     built
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(day: u32, hour: u32, minute: u32) -> DateTime<Utc> {
+        Local
+            .with_ymd_and_hms(2026, 10, day, hour, minute, 0)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn fresh_updates_fit_dense_and_midnight_windows_without_redating_history() {
+        let account = AccountId::new();
+        let recipient = address("Alex", "alex@example.com");
+        for (seed, times, previous, cut) in [
+            (
+                at(19, 4, 44),
+                ["03:14", "05:24", "03:17"],
+                at(19, 3, 14),
+                at(19, 3, 17),
+            ),
+            (
+                at(20, 0, 2),
+                ["23:59", "00:01", "08:00"],
+                at(19, 23, 59),
+                at(20, 0, 1),
+            ),
+        ] {
+            let cuts = DemoCuts::parse(&times.map(str::to_string));
+            let messages = updates_demo_messages(&account, &recipient, seed, &cuts, 1);
+            assert_eq!(messages.len(), 18);
+            // The twelve fresh messages, excluding history, the expired code,
+            // and Linear's post-cut update. These bounds are the digest contract.
+            for index in [1, 3, 4, 6, 7, 9, 10, 12, 14, 15, 16, 17] {
+                let envelope = &messages[index].0;
+                assert!(
+                    previous < envelope.date && envelope.date < cut,
+                    "{} at {} outside ({previous}, {cut})",
+                    envelope.subject,
+                    envelope.date
+                );
+            }
+            for (index, hours) in [(0, 171), (2, 48), (5, 144), (11, 169)] {
+                assert_eq!(messages[index].0.date, cut - Duration::hours(hours));
+            }
+            assert!(
+                messages[3].0.date < messages[4].0.date,
+                "failed runs stay ordered"
+            );
+            assert!(
+                messages[9].0.date < messages[10].0.date,
+                "resolution follows investigation"
+            );
+            assert!(
+                messages[8].0.date + Duration::minutes(10) < cut,
+                "verification stays expired"
+            );
+            assert!(cut < messages[13].0.date && messages[13].0.date <= seed);
+        }
+    }
 }

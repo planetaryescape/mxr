@@ -1124,28 +1124,74 @@ async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
 /// the seeded mail outside the digest it was read in.
 #[tokio::test]
 async fn demo_updates_mail_stays_in_the_digest_whatever_cuts_the_daemon_uses() {
-    // Seeded a minute after a cut, a minute before one, and exactly on one.
-    let seed = Utc::now();
-    let local = |minutes: i64| {
-        (seed + Duration::minutes(minutes))
-            .with_timezone(&chrono::Local)
-            .format("%H:%M")
-            .to_string()
-    };
-    let cases: Vec<Vec<String>> = vec![
-        vec!["08:00".into(), "16:30".into()],
-        vec![local(-1)],
-        vec![local(1)],
-        vec![local(0)],
-        vec![local(-90), local(40), "03:17".into()],
-    ];
-    for cuts in cases {
-        let state = demo_state(seed, &cuts).await;
-        assert_eq!(
-            strava_delta(&state, seed).await.as_deref(),
-            Some("up 12% on last week"),
-            "seeded and read at the same moment, cuts {cuts:?}"
-        );
+    // The CI failure's three-minute window, midnight, and US DST dates.
+    // Running under TZ=America/New_York also exercises missing/repeated cuts.
+    for (month, day, hour, minute) in [
+        (10, 19, 4, 44),
+        (10, 20, 0, 2),
+        (3, 8, 4, 44),
+        (11, 1, 4, 44),
+    ] {
+        let seed = chrono::Local
+            .with_ymd_and_hms(2026, month, day, hour, minute, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let local = |minutes: i64| {
+            (seed + Duration::minutes(minutes))
+                .with_timezone(&chrono::Local)
+                .format("%H:%M")
+                .to_string()
+        };
+        let cases: Vec<Vec<String>> = vec![
+            vec!["08:00".into(), "16:30".into()],
+            vec![local(-1)],
+            vec![local(1)],
+            vec![local(0)],
+            vec![local(-90), local(40), "03:17".into()],
+            vec!["23:59".into(), "00:01".into(), "08:00".into()],
+            vec!["02:14".into(), "05:24".into(), "03:17".into()],
+            vec!["01:14".into(), "01:17".into(), "05:24".into()],
+        ];
+        for cuts in cases {
+            let state = demo_state(seed, &cuts).await;
+            let digest = updates::digest_at(&state, None, None, false, false, seed, &chrono::Local)
+                .await
+                .unwrap();
+            let line = |source: &str| {
+                all_lines(&digest)
+                    .into_iter()
+                    .find(|line| line.source_key == source)
+                    .unwrap_or_else(|| panic!("missing {source} at {seed}, cuts {cuts:?}"))
+            };
+            assert_eq!(
+                line("strava.com").delta.as_ref().map(|d| d.text.as_str()),
+                Some("up 12% on last week"),
+                "seeded and read at {seed}, cuts {cuts:?}"
+            );
+            for source in ["github.com/acme/api", "google.com", "stripe.com"] {
+                assert_eq!(line(source).section, UpdateSectionData::NeedsALook);
+            }
+            assert_eq!(
+                line("github.com/acme/api").count,
+                2,
+                "two fresh failing runs"
+            );
+            assert_eq!(line("vercel.com").section, UpdateSectionData::Routine);
+            assert_eq!(line("vercel.com").count, 4, "four fresh deploys");
+            for source in ["linearstatus.example", "plausible.io"] {
+                assert_eq!(line(source).section, UpdateSectionData::Changed);
+            }
+            assert!(all_lines(&digest)
+                .iter()
+                .all(|line| line.source_key != "acme-login.example"));
+            if seed > digest.cut.at {
+                assert!(digest
+                    .since
+                    .lines
+                    .iter()
+                    .any(|line| line.source_key == "linear.app"));
+            }
+        }
     }
 }
 
@@ -1153,7 +1199,10 @@ async fn demo_updates_mail_stays_in_the_digest_whatever_cuts_the_daemon_uses() {
 /// of any length under a day never reaches another cut.
 #[tokio::test]
 async fn a_single_pinned_cut_keeps_the_seeded_digest_for_a_whole_e2e_run() {
-    let seed = Utc::now();
+    let seed = chrono::Local
+        .with_ymd_and_hms(2026, 10, 19, 4, 44, 0)
+        .unwrap()
+        .with_timezone(&Utc);
     let pinned = vec![(seed - Duration::minutes(1))
         .with_timezone(&chrono::Local)
         .format("%H:%M")

@@ -240,7 +240,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut bytes = [0; 4096];
-            stream.read(&mut bytes).await.unwrap();
+            assert!(stream.read(&mut bytes).await.unwrap() > 0);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n{")
                 .await

@@ -265,10 +265,12 @@ fn arrival_mode(placement: &mxr_store::ArrivalPlacement) -> Vec<ModeMembershipDa
     let Some(mode) = ModeKindData::parse(&placement.mode) else {
         return Vec::new();
     };
-    let tag = serde_json::from_value::<mxr_protocol::KindRuleData>(serde_json::Value::String(
+    let tag = match serde_json::from_value::<mxr_protocol::KindRuleData>(serde_json::Value::String(
         placement.rule.clone(),
-    ))
-    .map_or(placement.rule.as_str(), mail_kind::rule_tag);
+    )) {
+        Ok(rule) => mail_kind::rule_tag(rule),
+        Err(_) => placement.rule.as_str(),
+    };
     vec![membership(
         mode,
         format!("Here because: {}.", placement.reason),

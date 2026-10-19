@@ -981,6 +981,26 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
     )
     .await;
 
+    // These are declared automatic notices, not the shared attention
+    // fixture's conversational ask. Billing alone is not a machine identity.
+    for message in [&first, &again, &other, &ordinary] {
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: message.id.clone(),
+                text_plain: Some("Your scheduled account update is available.".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: now,
+                metadata: mxr_core::MessageMetadata {
+                    raw_headers: Some("Auto-Submitted: auto-generated\r\n".into()),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+    }
+
     let digest = digest(&fx, now).await;
     let acme: Vec<_> = digest
         .needs_a_look

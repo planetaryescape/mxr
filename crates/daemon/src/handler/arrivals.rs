@@ -251,7 +251,7 @@ async fn effective_window(
         };
         cursor = Some((
             last.first_seen_at.timestamp(),
-            last.message_id.as_str().to_string(),
+            last.message_id.as_str().clone(),
         ));
         for row in effective_rows(state, rows).await? {
             counts.total += 1;

@@ -257,60 +257,69 @@ mod tests {
 
     #[tokio::test]
     async fn desk_and_place_share_context_in_both_import_orders_with_or_without_a_reference() {
-        for (reversed, referenced) in [(false, false), (true, false), (false, true), (true, true)] {
-            let store = Store::in_memory().await.unwrap();
-            let account = test_account();
-            store.insert_account(&account).await.unwrap();
-            let mut sent = TestEnvelopeBuilder::new()
-                .account_id(account.id.clone())
-                .build();
-            sent.provider_id = "sent".into();
-            sent.from.email.clone_from(&account.email);
-            sent.message_id_header = Some("<earlier@example.org>".into());
-            sent.date = chrono::Utc::now() - chrono::Duration::hours(2);
-            let mut reply = TestEnvelopeBuilder::new()
-                .account_id(account.id.clone())
-                .build();
-            reply.provider_id = "reply".into();
-            reply.thread_id = sent.thread_id.clone();
-            reply.message_id_header = Some("<reply@example.org>".into());
-            reply.date = sent.date + chrono::Duration::hours(1);
-            reply.in_reply_to = referenced.then(|| sent.message_id_header.clone()).flatten();
-            let order = if reversed {
-                [
-                    (&reply, mxr_core::MessageDirection::Inbound),
-                    (&sent, mxr_core::MessageDirection::Outbound),
-                ]
-            } else {
-                [
-                    (&sent, mxr_core::MessageDirection::Outbound),
-                    (&reply, mxr_core::MessageDirection::Inbound),
-                ]
-            };
-            for (envelope, direction) in order {
+        for sent_direction in [
+            mxr_core::MessageDirection::Outbound,
+            mxr_core::MessageDirection::Unknown,
+            mxr_core::MessageDirection::Inbound,
+        ] {
+            for (reversed, referenced) in
+                [(false, false), (true, false), (false, true), (true, true)]
+            {
+                let store = Store::in_memory().await.unwrap();
+                let account = test_account();
+                store.insert_account(&account).await.unwrap();
+                let mut sent = TestEnvelopeBuilder::new()
+                    .account_id(account.id.clone())
+                    .build();
+                sent.provider_id = "sent".into();
+                sent.from.email.clone_from(&account.email);
+                sent.message_id_header = Some("<earlier@example.org>".into());
+                sent.date = chrono::Utc::now() - chrono::Duration::hours(2);
+                let mut reply = TestEnvelopeBuilder::new()
+                    .account_id(account.id.clone())
+                    .build();
+                reply.provider_id = "reply".into();
+                reply.thread_id = sent.thread_id.clone();
+                reply.message_id_header = Some("<reply@example.org>".into());
+                reply.date = sent.date + chrono::Duration::hours(1);
+                reply.in_reply_to = referenced.then(|| sent.message_id_header.clone()).flatten();
+                let order = if reversed {
+                    [
+                        (&reply, mxr_core::MessageDirection::Inbound),
+                        (&sent, sent_direction),
+                    ]
+                } else {
+                    [
+                        (&sent, sent_direction),
+                        (&reply, mxr_core::MessageDirection::Inbound),
+                    ]
+                };
+                for (envelope, direction) in order {
+                    store
+                        .upsert_envelope_with_direction(envelope, direction)
+                        .await
+                        .unwrap();
+                }
+                let previous = body(sent.id.clone(), vec![]);
+                store.insert_body(&previous).await.unwrap();
                 store
-                    .upsert_envelope_with_direction(envelope, direction)
+                    .insert_body(&body(reply.id.clone(), vec![]))
                     .await
                     .unwrap();
+                let messages = store
+                    .desk_messages_in_threads(&account.id, &[sent.thread_id])
+                    .await
+                    .unwrap();
+                let desk = messages
+                    .iter()
+                    .find(|message| message.id == reply.id)
+                    .unwrap();
+                let place = store.place_message(&reply.id).await.unwrap().unwrap();
+                assert_eq!(desk.evidence.thread_correspondence, sent_direction != mxr_core::MessageDirection::Inbound,
+                "known inbound direction must not be reinterpreted, but an owned unknown-direction sender establishes correspondence");
+                assert_eq!(desk.evidence.previous_text, previous.text_plain);
+                assert_eq!(desk.evidence, place.evidence);
             }
-            let previous = body(sent.id.clone(), vec![]);
-            store.insert_body(&previous).await.unwrap();
-            store
-                .insert_body(&body(reply.id.clone(), vec![]))
-                .await
-                .unwrap();
-            let messages = store
-                .desk_messages_in_threads(&account.id, &[sent.thread_id])
-                .await
-                .unwrap();
-            let desk = messages
-                .iter()
-                .find(|message| message.id == reply.id)
-                .unwrap();
-            let place = store.place_message(&reply.id).await.unwrap().unwrap();
-            assert!(desk.evidence.thread_correspondence);
-            assert_eq!(desk.evidence.previous_text, previous.text_plain);
-            assert_eq!(desk.evidence, place.evidence);
         }
     }
 

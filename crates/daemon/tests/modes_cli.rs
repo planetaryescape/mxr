@@ -6,28 +6,42 @@
     reason = "integration tests unwrap to keep fixture failures direct"
 )]
 
-use mxr_test_support::daemon::{daemon_lock, run_json, spawn_fake_daemon};
+use mxr_test_support::daemon::{
+    daemon_lock, instance_socket_path, run_json, spawn_fake_daemon, unique_instance_name,
+    write_fake_account_config, DaemonGuard,
+};
 use tempfile::TempDir;
 
 #[test]
 fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
     let _guard = daemon_lock();
     let temp = TempDir::new().expect("isolated classification profile");
-    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "classification-json");
+    let instance = unique_instance_name("classification-json");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    std::fs::create_dir_all(&config_dir).unwrap();
+    write_fake_account_config(&config_dir);
+    // Seed before boot: a second writer racing startup's fake sync is not
+    // the classification journey this test is intended to exercise.
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let (message_id, thread_id) = runtime.block_on(async {
         let store = mxr_store::Store::new(&data_dir.join("mxr.db")).await.unwrap();
-        let account = store.list_accounts().await.unwrap().into_iter()
-            .find(|account| account.email == "fake@example.com").unwrap();
+        let account = mxr_core::Account {
+            id: mxr_core::AccountId::from_provider_id("fake", "fake@example.com"),
+            name: "Fake Account".into(), email: "fake@example.com".into(),
+            sync_backend: Some(mxr_core::BackendRef { provider_kind: mxr_core::ProviderKind::Fake, config_key: "fake".into() }),
+            send_backend: Some(mxr_core::BackendRef { provider_kind: mxr_core::ProviderKind::Fake, config_key: "fake".into() }), enabled: true,
+        };
+        store.insert_account(&account).await.unwrap();
         let inbox = mxr_core::LabelId::from_scoped_provider_id(&account.id, "fake", "INBOX");
         store.upsert_label(&mxr_core::Label {
             id: inbox.clone(), account_id: account.id.clone(), name: "Inbox".into(),
-            kind: mxr_core::LabelKind::System, color: None, provider_id: "INBOX".into(),
-            unread_count: 0, total_count: 0, role: None,
+            kind: mxr_core::LabelKind::System, color: None, provider_id: "INBOX".into(), unread_count: 0, total_count: 0, role: None,
         }).await.unwrap();
         let id = mxr_core::MessageId::new();
         let thread = mxr_core::ThreadId::new();
-        store.upsert_envelope_with_direction(&mxr_core::Envelope {
+        let id = store.upsert_envelope_with_direction(&mxr_core::Envelope {
             id: id.clone(), account_id: account.id, provider_id: format!("classification-{id}"),
             thread_id: thread.clone(), message_id_header: Some(format!("<{id}@example.org>")),
             in_reply_to: None, references: vec![],
@@ -46,6 +60,22 @@ fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
         }).await.unwrap();
         (id.to_string(), thread.to_string())
     });
+    let mut daemon = DaemonGuard {
+        socket_path: instance_socket_path(&instance),
+        pid_path: data_dir.join("daemon.pid"),
+        pid: None,
+    };
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(
+        daemon.pid.is_some(),
+        "isolated test daemon must be owned by the guard"
+    );
     let why = run_json(
         &instance,
         &data_dir,

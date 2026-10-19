@@ -575,7 +575,9 @@ fn desk_messages_sql(active_threads: &str) -> String {
                 m.list_id, m.unsubscribe_method,
                 m.in_reply_to AS evidence_reply,
                 EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
-                    AND sent.thread_id = m.thread_id AND sent.direction = 'outbound'
+                    AND sent.thread_id = m.thread_id AND (sent.direction = 'outbound'
+                        OR (sent.direction != 'inbound' AND EXISTS (SELECT 1 FROM account_addresses own
+                            WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email))))
                     AND sent.id != m.id) AS evidence_thread_correspondence,
                 (SELECT json_object('list_id', json_extract(metadata_json, '$.list_id'),
                     'raw_headers', substr(json_extract(metadata_json, '$.raw_headers'), 1, 131072))

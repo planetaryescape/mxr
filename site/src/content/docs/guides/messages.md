@@ -58,8 +58,9 @@ a supported request naming you can stay in Messages. Human billing and support
 answers can settle Waiting on without creating another reply obligation.
 An owned directed request can remain conversational alongside document fields
 and purchase framing; an actual list, no-reply or auto-generated declaration
-still takes precedence. A referenced human answer can settle a wait even when
-its body is uncached or HTML-only. Missing plain text cannot create automatic
+still takes precedence. Reply headers or positive local thread correspondence
+can establish that a human answered, even when its body is uncached or HTML-only.
+Missing plain text cannot create automatic
 reply debt, but it does not erase your explicit Reply later choice.
 
 Possible personal mail stays accessible in Recent or Quiet without claiming

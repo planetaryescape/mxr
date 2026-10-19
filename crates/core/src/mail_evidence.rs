@@ -100,7 +100,7 @@ impl MailEvidence {
                                 })
                             })
                         })
-                    })
+                    });
                 }
                 "auto-submitted" => {
                     let keyword = value.split([';', ' ', '\t']).next().unwrap_or_default();
@@ -113,7 +113,7 @@ impl MailEvidence {
                     evidence.bulk |= matches!(
                         value.to_ascii_lowercase().as_str(),
                         "bulk" | "list" | "junk"
-                    )
+                    );
                 }
                 "in-reply-to" | "references" => evidence.is_reply |= has_reply_reference(&value),
                 _ => {}

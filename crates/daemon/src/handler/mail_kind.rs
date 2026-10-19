@@ -560,10 +560,10 @@ fn billing_document(text: &str, asks_owner: bool) -> bool {
                     ]
                     .iter()
                     .any(|format| chrono::NaiveDate::parse_from_str(value, format).is_ok())
-                }
+                };
             }
             DocumentField::Amount => {
-                amount |= DOCUMENT_AMOUNT.is_match(value) || AMOUNT.is_match(value)
+                amount |= DOCUMENT_AMOUNT.is_match(value) || AMOUNT.is_match(value);
             }
         }
     }

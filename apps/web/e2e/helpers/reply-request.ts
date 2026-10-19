@@ -25,7 +25,7 @@ interface Desk {
 export async function freshReplyRequest(
   page: Page,
 ): Promise<{ person: string; thread: string; messageIds: string[] }> {
-  const unique = `reply-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const unique = `reply-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const person = `person:${unique}@team.example`;
   deliver({
     from: `Reply acceptance <${unique}@team.example>`,
@@ -66,7 +66,9 @@ export async function freshOwedConversations(
   page: Page,
   topicCounts: readonly number[],
 ): Promise<{ rows: AttentionRow[]; messageIds: string[] }> {
-  const unique = `owed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // These subjects are quoted into real replies. A 13-digit millisecond
+  // timestamp can pass Luhn and legitimately trigger the send-safety dialog.
+  const unique = `owed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const senders = topicCounts.map((count, index) => {
     const email = `${unique}-${index}@team.example`;
     const friend = `Reply friend ${index} ${unique} <${email}>`;

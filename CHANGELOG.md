@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.107](https://github.com/planetaryescape/mxr/compare/v0.6.106...v0.6.107) (2026-10-19)
+
+
+### Features
+
+* link Mixer tasks with Microsoft To Do ([#520](https://github.com/planetaryescape/mxr/issues/520)) ([9ca8f08](https://github.com/planetaryescape/mxr/commit/9ca8f08a614494baf90de96826bf2e3db97a5166))
+
+
+### Bug Fixes
+
+* browser shortcuts, Messages previews, Reading duplicates, failure toasts ([#518](https://github.com/planetaryescape/mxr/issues/518)) ([9b08415](https://github.com/planetaryescape/mxr/commit/9b08415364e41d116aa8b55e3f1550474ccc1d90))
+
 ## [0.6.106](https://github.com/planetaryescape/mxr/compare/v0.6.105...v0.6.106) (2026-10-17)
 
 

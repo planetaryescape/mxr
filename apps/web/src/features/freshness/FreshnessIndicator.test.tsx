@@ -185,4 +185,28 @@ describe("FreshnessIndicator", () => {
     expect(arrival).toHaveTextContent("→ Updates · automated");
     expect(arrival).toHaveAttribute("href", "/m/inbox/t-1");
   });
+
+  test("an archived arrival retains its Reading annotation without claiming it is in the inbox", () => {
+    const data = freshness();
+    const arrival = data.arrivals[0];
+    if (!arrival) throw new Error("Arrival fixture missing");
+    arrival.in_inbox = false;
+    arrival.modes = [
+      {
+        mode: "reading",
+        name: "Reading",
+        key: "g r",
+        reason: "Newsletter",
+        also_in: "",
+        tag: "list",
+      },
+    ];
+    query.data = data;
+    renderIndicator();
+    fireEvent.click(screen.getByTestId("freshness-trigger"));
+    expect(screen.getByTestId("freshness-arrival")).toHaveTextContent(
+      "→ out of the inbox · Reading · list",
+    );
+    expect(screen.getByTestId("freshness-arrival")).toHaveAttribute("href", "/m/inbox/t-1");
+  });
 });

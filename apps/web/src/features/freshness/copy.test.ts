@@ -149,6 +149,25 @@ describe("freshness words", () => {
       ],
     };
     expect(wentTo(arrival)).toBe("→ Updates · automated");
+    expect(
+      wentTo({
+        ...arrival,
+        in_inbox: false,
+        modes: [
+          {
+            mode: "todo",
+            name: "To do",
+            key: "g x",
+            reason: "Explicit task",
+            also_in: "",
+            todo_ids: ["task-1"],
+          },
+        ],
+      }),
+    ).toBe("→ out of the inbox · To do");
+    expect(wentTo({ ...arrival, in_inbox: false })).toBe(
+      "→ out of the inbox · Updates · automated",
+    );
     expect(wentTo({ ...arrival, modes: [] })).toBe("→ Inbox");
     expect(wentTo({ ...arrival, modes: [], in_inbox: false })).toBe("→ out of the inbox");
   });

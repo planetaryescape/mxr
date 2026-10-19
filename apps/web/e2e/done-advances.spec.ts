@@ -12,6 +12,7 @@ import { expect, test, type Page, type Response } from "@playwright/test";
 import { acceptArchiveReview, archiveViaBridge, type ArchiveOperation } from "./helpers/archive";
 import { expectCursorOn, mailList, openList, reader } from "./helpers/mail";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
+import { freshOwedConversations } from "./helpers/reply-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -164,21 +165,28 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 test.describe("Messages: done here moves on", () => {
   let mutations: Tracked;
   let bandsBefore: Record<string, string>;
+  let fixtureMessageIds: string[];
   test.beforeEach(async ({ page }) => {
+    fixtureMessageIds = [];
+    fixtureMessageIds = (await freshOwedConversations(page, [2, 1, 1])).messageIds;
     mutations = trackMutations(page);
     bandsBefore = await bandsByPerson(page);
   });
   test.afterEach(async ({ page }) => {
-    await undoAll(page, mutations);
-    // These tests mark people done; later specs rely on everyone being back
-    // where they were, so the test that leaves somebody behind is the one
-    // that fails.
-    await expect
-      .poll(() => bandsByPerson(page), {
-        timeout: 10_000,
-        message: "everyone is back in their band",
-      })
-      .toEqual(bandsBefore);
+    try {
+      await undoAll(page, mutations);
+      // These tests mark people done; later specs rely on everyone being back
+      // where they were, so the test that leaves somebody behind is the one
+      // that fails.
+      await expect
+        .poll(() => bandsByPerson(page), {
+          timeout: 10_000,
+          message: "everyone is back in their band",
+        })
+        .toEqual(bandsBefore);
+    } finally {
+      if (fixtureMessageIds.length) await archiveViaBridge(page, fixtureMessageIds);
+    }
   });
 
   test("a person with topics left stays open on the next one, and u reopens the done one", async ({

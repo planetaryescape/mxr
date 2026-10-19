@@ -346,6 +346,19 @@ fn cli_help_snapshots_cover_all_commands() {
             &["snippets", "remove", "--help"],
         ),
         ("cli_help_todo", &["todo", "--help"]),
+        ("cli_help_todo_microsoft", &["todo", "microsoft", "--help"]),
+        (
+            "cli_help_todo_microsoft_status",
+            &["todo", "microsoft", "status", "--help"],
+        ),
+        (
+            "cli_help_todo_microsoft_link",
+            &["todo", "microsoft", "link", "--help"],
+        ),
+        (
+            "cli_help_todo_microsoft_sync",
+            &["todo", "microsoft", "sync", "--help"],
+        ),
         ("cli_help_todo_list", &["todo", "list", "--help"]),
         ("cli_help_todo_why", &["todo", "why", "--help"]),
         ("cli_help_todo_resolve", &["todo", "resolve", "--help"]),
@@ -545,7 +558,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 288);
+    assert_eq!(cases.len(), 292);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

@@ -1937,6 +1937,29 @@ pub enum Request {
         dry_run: bool,
     },
     // ----- To do -----
+    /// Whether the optional `ms-todo` executable is installed on the daemon.
+    GetMicrosoftTodoStatus,
+    /// Link one to-do with Microsoft To Do. Preview never executes the CLI;
+    /// committing requires the fingerprint returned by that preview.
+    SendTodoToMicrosoft {
+        todo_id: String,
+        #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fingerprint: Option<String>,
+    },
+    /// Reconcile explicitly linked tasks within the selected account. With
+    /// no account, external profiles select only their allowed enabled accounts.
+    /// A preview reads ms-todo's cache but changes neither application's tasks.
+    SyncMicrosoftTodos {
+        todo_id: Option<String>,
+        #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// The To do runway: Now, Coming up by week, Later, Whenever and Done
     /// this week, with the headline, the empty state and the catch-up
     /// count. `mark_seen` records that To do was opened, so the next
@@ -2882,6 +2905,9 @@ impl Request {
             | Self::DetectPromises { .. }
             | Self::RecordPromise { .. }
             | Self::GetTodoRunway { .. }
+            | Self::GetMicrosoftTodoStatus
+            | Self::SendTodoToMicrosoft { .. }
+            | Self::SyncMicrosoftTodos { .. }
             | Self::ListTodos { .. }
             | Self::GetTodo { .. }
             | Self::SetTodoState { .. }
@@ -4047,6 +4073,15 @@ pub enum ResponseData {
         commitment: CommitmentData,
         dry_run: bool,
     },
+    MicrosoftTodoStatus {
+        status: MicrosoftTodoStatusData,
+    },
+    MicrosoftTodoSend {
+        result: MicrosoftTodoSendData,
+    },
+    MicrosoftTodoSync {
+        sync: MicrosoftTodoSyncData,
+    },
     /// Returned by `Request::GetTodoRunway`.
     TodoRunway {
         runway: TodoRunwayData,
@@ -4472,6 +4507,9 @@ impl ResponseData {
             | Self::Promises { .. }
             | Self::RecordedPromise { .. }
             | Self::TodoRunway { .. }
+            | Self::MicrosoftTodoStatus { .. }
+            | Self::MicrosoftTodoSend { .. }
+            | Self::MicrosoftTodoSync { .. }
             | Self::Todos { .. }
             | Self::Todo { .. }
             | Self::TodoChange { .. }

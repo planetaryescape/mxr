@@ -73,6 +73,74 @@ On the web, press `Z` to schedule the selected task. Use
 `mxr todo snooze TODO_ID --clear --dry-run` to preview returning to the date
 mxr calculated, then repeat without `--dry-run` to apply it.
 
+## Link a task with Microsoft To Do
+
+```bash
+mxr todo microsoft status --format json
+mxr todo microsoft link TODO_ID --dry-run --format json
+mxr todo microsoft link TODO_ID --fingerprint REVIEWED_FINGERPRINT --format json
+```
+
+Install the optional [ms-todo CLI](https://github.com/planetaryescape/ms-todo#installation)
+on the machine running the Mixer daemon and sign in with `ms-todo auth login`.
+Use a current schema-2 CLI with defer-date support. Mixer checks that contract
+before creating a task and refuses older output rather than clearing a schedule.
+The web app only shows its **Microsoft To Do** button when that CLI is on the
+daemon's PATH. Open a row's **details**, choose **Microsoft To Do**, review the
+title, dates and outgoing context, then choose **Link and sync both ways**.
+Without the CLI, details offers an installation hint instead.
+
+In the TUI, select a task and press `M` to preview the link, then `M` again to
+confirm it (`Esc` cancels). These controls only appear when the CLI is installed.
+Only tasks you explicitly link participate; Mixer does not import your other
+Microsoft tasks.
+
+For the CLI, review the dry run and copy its `fingerprint` into `--fingerprint`.
+Linking without that value is refused. If the task changed, review a new dry run;
+the link command never silently substitutes a newer preview. `--account ACCOUNT`
+restricts both linking and bulk sync, and a task ID must belong to that account.
+In the TUI, the link review takes over the runway: `j`/`k` or Page Up/Down scroll
+long context without changing the selected task. An unusably small terminal
+cannot confirm the link; enlarge it or press `Esc` to cancel.
+
+After linking, the daemon checks for changes every 30 seconds, in bounded
+batches. Title, due date, completion and reopening sync in either direction.
+Scheduling syncs with ms-todo's **defer date**, which does not hide the task in
+Microsoft's phone app and is not its My Day. Dates use the daemon's local time
+zone; Microsoft dates are day-only. An unchanged day preserves Mixer's existing
+time; a changed schedule uses Mixer's configured morning hour.
+
+Microsoft-only notes, reminders, importance, steps, categories and list membership
+are not overwritten by field edits. Completing or reopening still has Microsoft's
+normal reminder behavior. The initial link sends the context shown in the
+preview, not the full email or its attachments. Mixer-specific amounts and field
+provenance remain in Mixer.
+
+```bash
+mxr todo microsoft sync TODO_ID --dry-run --format json
+mxr todo microsoft sync TODO_ID --format json
+```
+
+Omit `TODO_ID` to check every linked task; with `--account`, only that account
+participates. External MCP/agent profiles
+with no explicit account check only their allowed enabled accounts.
+A sync preview reads ms-todo's cache; a real sync asks ms-todo to refresh first.
+In the web details, use **Preview sync**
+or **Sync now**. In the TUI, `S` previews the selected link and a second `S` syncs it.
+
+If both apps changed the same field differently, sync pauses and reports the
+conflict. Set the field to the same value in both apps, then sync again. This
+comparison uses ms-todo's current cache; an edit made on another device after
+the refresh remains subject to ms-todo's own conflict handling. A recurring
+Microsoft task pauses the link because Mixer cannot represent its occurrences.
+
+Offline writes wait in ms-todo's outbox. If a handoff or write is **unconfirmed**,
+do not create another task or retry the write. Inspect
+`ms-todo outbox list --format json` and resolve it there. Mixer keeps a durable
+receipt to prevent repeated clicks or restarts from creating a duplicate.
+A deleted or missing Microsoft task pauses the link; it is not recreated, and
+the Mixer task is not deleted.
+
 ## Review later evidence separately
 
 ```bash

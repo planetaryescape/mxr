@@ -2175,6 +2175,25 @@ pub async fn run() -> anyhow::Result<()> {
 
         spawn_records_fetches(&mut app, &bg, &queued);
 
+        if let Some(request) = app.mailbox.todo_page.pending_microsoft.take() {
+            let bg = bg.clone();
+            if submit_task(&queued, async move {
+                AsyncResult::MicrosoftTodo(match ipc_call(&bg, request).await {
+                    Ok(Response::Ok { data }) => Ok(Box::new(data)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(error) => Err(error),
+                })
+            })
+            .is_err()
+            {
+                app.mailbox.todo_page.microsoft_busy = false;
+                app.status_message = Some(
+                    "Could not queue the Microsoft To Do request; reopen To do to try again."
+                        .into(),
+                );
+            }
+        }
+
         if let Some(list) = app.mailbox.todo_page.pending_list.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -4489,6 +4508,12 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Couldn't load To do: {e}"));
                         }
                         AsyncResult::TodoExpired(Ok(todos)) => app.set_todo_expired(todos),
+                        AsyncResult::MicrosoftTodo(Ok(answer)) => app.microsoft_todo_answer(*answer),
+                        AsyncResult::MicrosoftTodo(Err(error)) => {
+                            app.mailbox.todo_page.microsoft_busy = false;
+                            app.mailbox.todo_page.microsoft_preview = None;
+                            app.status_message = Some(format!("Microsoft To Do: {error}"));
+                        }
                         AsyncResult::TodoCatchup(Ok(catchup)) => app.set_todo_catchup(catchup),
                         AsyncResult::TodoExpired(Err(e)) | AsyncResult::TodoCatchup(Err(e)) => {
                             app.status_message = Some(format!("Couldn't load the list: {e}"));

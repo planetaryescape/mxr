@@ -56,6 +56,8 @@ mod messages;
 mod messages_ack;
 mod messages_text;
 mod messages_view;
+pub(crate) mod microsoft_todo;
+mod microsoft_todo_cli;
 mod mode_done;
 mod mode_guide;
 mod mode_rules;
@@ -424,6 +426,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
 
         // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
         Request::DownloadAttachment { .. }
+        | Request::SendTodoToMicrosoft { dry_run: false, .. }
+        | Request::SyncMicrosoftTodos { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
         | Request::PreviewDraftAttachment { .. }
@@ -1577,6 +1581,39 @@ async fn dispatch(
             due_at,
             dry_run,
         } => promises::record_promise(state, message_id, what, *due_at, *dry_run).await,
+        Request::GetMicrosoftTodoStatus => Ok(microsoft_todo::status()),
+        Request::SendTodoToMicrosoft {
+            todo_id,
+            account_id,
+            dry_run,
+            fingerprint,
+        } => {
+            microsoft_todo::link(
+                state,
+                todo_id,
+                account_id.as_ref(),
+                *dry_run,
+                fingerprint.as_deref(),
+            )
+            .await
+        }
+        Request::SyncMicrosoftTodos {
+            todo_id,
+            account_id,
+            dry_run,
+        } => {
+            let allowed = match (account_id, scoped_profile) {
+                (Some(account_id), _) => Some(vec![account_id.clone()]),
+                (None, Some(profile)) => {
+                    match account_scope::allowed_accounts(state, profile).await {
+                        Ok(accounts) => Some(accounts),
+                        Err(error) => return Response::error(error),
+                    }
+                }
+                (None, None) => None,
+            };
+            microsoft_todo::sync(state, todo_id.as_deref(), allowed.as_deref(), *dry_run).await
+        }
         Request::GetTodoRunway {
             account_id,
             mark_seen,
@@ -2414,6 +2451,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetReadingItem { .. }
         | Request::ExportReadingHighlights { .. }
         | Request::GetMarginaliaStatus
+        | Request::GetMicrosoftTodoStatus
+        | Request::SendTodoToMicrosoft { dry_run: true, .. }
+        | Request::SyncMicrosoftTodos { dry_run: true, .. }
         // A conversation changes no mail: each call the assistant makes is
         // classified on its own when it runs.
         | Request::GetAssistantAvailability
@@ -2502,7 +2542,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RespondInvite { dry_run: false, .. }
         | Request::AckMessage { dry_run: false, .. }
         // Sends an email's text to a third-party app.
-        | Request::SendReadingToMarginalia { dry_run: false, .. } => Send,
+        | Request::SendReadingToMarginalia { dry_run: false, .. }
+        | Request::SendTodoToMicrosoft { dry_run: false, .. }
+        | Request::SyncMicrosoftTodos { dry_run: false, .. } => Send,
 
         // --- Destructive: irreversible / provider-destructive ---
         Request::RuleCategories {
@@ -2896,6 +2938,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DetectPromises { .. } => "detect_promises",
         Request::RecordPromise { .. } => "record_promise",
         Request::GetTodoRunway { .. } => "get_todo_runway",
+        Request::GetMicrosoftTodoStatus => "get_microsoft_todo_status",
+        Request::SendTodoToMicrosoft { .. } => "send_todo_to_microsoft",
+        Request::SyncMicrosoftTodos { .. } => "sync_microsoft_todos",
         Request::ListTodos { .. } => "list_todos",
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",

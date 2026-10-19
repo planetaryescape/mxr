@@ -5,7 +5,7 @@
 use super::*;
 use crate::app::{TodoPanel, TodoPromptKind};
 use crate::ui::todo_lens::tests::{council_tax, page, runway, todo};
-use mxr_protocol::{TodoCatchupDecisionData, TodoChangeData, TodoStateActionData};
+use mxr_protocol::{ResponseData, TodoCatchupDecisionData, TodoChangeData, TodoStateActionData};
 
 fn press(app: &mut App, code: KeyCode) {
     if let Some(action) = app.handle_key(KeyEvent::new(code, KeyModifiers::NONE)) {
@@ -63,6 +63,167 @@ fn attach_resolution(app: &mut App, status: &str) {
 }
 
 #[test]
+fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
+    let mut app = todo_app(true);
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoStatus {
+        status: mxr_protocol::MicrosoftTodoStatusData {
+            installed: true,
+            install_url: "https://example.test".into(),
+            hint: "installed".into(),
+        },
+    });
+    let id = app.selected_todo().unwrap().id.clone();
+    press_shifted(&mut app, 'S');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
+    ));
+    press_shifted(&mut app, 'E');
+    assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Expired);
+    // The same task can appear on another panel while a request is in flight.
+    app.mailbox.todo_page.expired = vec![council_tax()];
+    let fields = mxr_protocol::MicrosoftTodoFieldsData {
+        title: "Pay changed title".into(),
+        due: None,
+        scheduled: None,
+        completed: false,
+    };
+    let answer = ResponseData::MicrosoftTodoSync {
+        sync: mxr_protocol::MicrosoftTodoSyncData {
+            dry_run: true,
+            results: vec![mxr_protocol::MicrosoftTodoSyncItemData {
+                todo_id: id.clone(),
+                state: "changes".into(),
+                summary: "Review pending changes".into(),
+                mixer: Some(fields.clone()),
+                microsoft: Some(fields.clone()),
+                merged: Some(fields),
+            }],
+        },
+    };
+    app.microsoft_todo_answer(answer.clone());
+    press_shifted(&mut app, 'S');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
+    ));
+    app.mailbox.todo_page.panel = TodoPanel::Runway;
+    app.microsoft_todo_answer(answer.clone());
+    let render_review = |app: &App, height| {
+        mxr_test_support::render_to_string(120, height, |frame| {
+            crate::ui::todo_lens::draw(
+                frame,
+                ratatui::layout::Rect::new(0, 0, 120, height),
+                &crate::ui::todo_lens::TodoView {
+                    page: &app.mailbox.todo_page,
+                    selected_index: app.mailbox.selected_index,
+                    active_pane: &crate::app::ActivePane::MailList,
+                },
+                &crate::theme::Theme::default(),
+            );
+        })
+    };
+    render_review(&app, 7);
+    press_shifted(&mut app, 'S');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
+    ));
+    app.microsoft_todo_answer(answer);
+    let visible = render_review(&app, 16);
+    assert!(visible.contains("Review pending changes"));
+    assert!(visible.contains("After sync: Pay changed title"));
+    press_shifted(&mut app, 'S');
+    assert!(
+        matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SyncMicrosoftTodos { todo_id: Some(actual), dry_run: false, .. }) if actual == id)
+    );
+}
+
+#[test]
+fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
+    let mut app = todo_app(true);
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::GetMicrosoftTodoStatus)
+    ));
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoStatus {
+        status: mxr_protocol::MicrosoftTodoStatusData {
+            installed: false,
+            install_url: "https://example.test/install".into(),
+            hint: "Install ms-todo".into(),
+        },
+    });
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    app.mailbox
+        .todo_page
+        .microsoft_status
+        .as_mut()
+        .unwrap()
+        .installed = true;
+    press_shifted(&mut app, 'M');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SendTodoToMicrosoft {
+            dry_run: true,
+            fingerprint: None,
+            ..
+        })
+    ));
+    // No second request may escape while the preview is still loading.
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    let id = app.selected_todo().unwrap().id.clone();
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoSend {
+        result: mxr_protocol::MicrosoftTodoSendData {
+            dry_run: true,
+            todo_id: id.clone(),
+            title: "Pay council tax".into(),
+            due: None,
+            scheduled: None,
+            notes: "Exact context".into(),
+            fingerprint: "exact-preview".into(),
+            state: "preview".into(),
+            task_id: None,
+            summary: "Shared fields sync both ways".into(),
+        },
+    });
+    // A second key before the review has actually been rendered cannot commit.
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    mxr_test_support::render_to_string(20, 5, |frame| {
+        crate::ui::todo_lens::draw(
+            frame,
+            ratatui::layout::Rect::new(0, 0, 20, 5),
+            &crate::ui::todo_lens::TodoView {
+                page: &app.mailbox.todo_page,
+                selected_index: app.mailbox.selected_index,
+                active_pane: &crate::app::ActivePane::MailList,
+            },
+            &crate::theme::Theme::default(),
+        );
+    });
+    press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    mxr_test_support::render_to_string(80, 12, |frame| {
+        crate::ui::todo_lens::draw(
+            frame,
+            ratatui::layout::Rect::new(0, 0, 80, 12),
+            &crate::ui::todo_lens::TodoView {
+                page: &app.mailbox.todo_page,
+                selected_index: app.mailbox.selected_index,
+                active_pane: &crate::app::ActivePane::MailList,
+            },
+            &crate::theme::Theme::default(),
+        );
+    });
+    press_shifted(&mut app, 'M');
+    assert!(
+        matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SendTodoToMicrosoft { todo_id, dry_run: false, fingerprint: Some(fingerprint), .. }) if todo_id == id && fingerprint == "exact-preview")
+    );
+}
+
+#[test]
 fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
     let mut app = todo_app(true);
     let message_id = app.mailbox.todo_page.runway.as_ref().unwrap().now[0]
@@ -83,6 +244,60 @@ fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
         .status_message
         .as_deref()
         .is_some_and(|status| status.contains("camden.gov.uk")));
+}
+
+#[test]
+fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirmation() {
+    let mut app = todo_app(true);
+    app.mailbox.todo_page.pending_microsoft = None;
+    app.mailbox.todo_page.microsoft_busy = false;
+    app.mailbox.todo_page.microsoft_status = Some(mxr_protocol::MicrosoftTodoStatusData {
+        installed: true,
+        install_url: "https://example.test".into(),
+        hint: "installed".into(),
+    });
+    let id = app.selected_todo().unwrap().id.clone();
+    app.microsoft_todo_answer(ResponseData::MicrosoftTodoSend {
+        result: mxr_protocol::MicrosoftTodoSendData {
+            todo_id: id.clone(),
+            dry_run: true,
+            fingerprint: "discarded-fingerprint".into(),
+            title: "Pay selected".into(),
+            due: None,
+            scheduled: None,
+            notes: "Long context\n".repeat(50),
+            state: "preview".into(),
+            task_id: None,
+            summary: "Review".into(),
+        },
+    });
+    mxr_test_support::render_to_string(80, 10, |frame| {
+        crate::ui::todo_lens::draw(
+            frame,
+            ratatui::layout::Rect::new(0, 0, 80, 10),
+            &crate::ui::todo_lens::TodoView {
+                page: &app.mailbox.todo_page,
+                selected_index: 0,
+                active_pane: &crate::app::ActivePane::MailList,
+            },
+            &crate::theme::Theme::default(),
+        );
+    });
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(app.selected_todo().unwrap().id, id);
+    assert_eq!(app.mailbox.todo_page.microsoft_scroll, 1);
+    press(&mut app, KeyCode::Esc);
+    assert!(app.mailbox.todo_page.microsoft_preview.is_none());
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    press_shifted(&mut app, 'M');
+    assert!(matches!(
+        app.mailbox.todo_page.pending_microsoft.take(),
+        Some(Request::SendTodoToMicrosoft {
+            dry_run: true,
+            fingerprint: None,
+            ..
+        })
+    ));
 }
 
 #[test]

@@ -863,6 +863,28 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             v("Listing", "Listed", "list", &format!("your {state} to-dos"))
         }
         "mxr_todo_get" => v("Opening", "Opened", "open", "a to-do"),
+        "mxr_todo_microsoft" => match arguments.get("action").and_then(Value::as_str) {
+            Some("link") if run => v("Linking", "Linked", "link", "a to-do with Microsoft To Do"),
+            Some("link") => v(
+                "Previewing",
+                "Previewed",
+                "preview",
+                "a Microsoft To Do task link",
+            ),
+            Some("sync") if run => v("Syncing", "Synced", "sync", "linked Microsoft tasks"),
+            Some("sync") => v(
+                "Previewing",
+                "Previewed",
+                "preview",
+                "linked Microsoft task changes",
+            ),
+            _ => v(
+                "Checking",
+                "Checked",
+                "check",
+                "Microsoft To Do availability",
+            ),
+        },
         "mxr_todo_set_state" => {
             let todos = counted(arguments, "todo_ids", "to-do", "to-dos");
             let (ing, ed, inf) = match arguments.get("action").and_then(Value::as_str) {
@@ -1372,6 +1394,7 @@ mod tests {
             }
             "mxr_todo_set_state" => json!({"action": "done", "todo_ids": ["t1"]}),
             "mxr_todo_resolve" => json!({"action": "accept", "todo_id": "t1"}),
+            "mxr_todo_microsoft" => json!({"action": "link", "todo_id": "t1"}),
             "mxr_reading_item" => json!({"fetch_article": true}),
             "mxr_reading_marginalia" => json!({"action": "send"}),
             "mxr_reading_highlight" => json!({"action": "remove"}),
@@ -1405,6 +1428,62 @@ mod tests {
             walked += 1;
         }
         assert!(walked >= 20, "walked only {walked} tools");
+    }
+
+    #[test]
+    fn microsoft_task_titles_distinguish_previews_without_claiming_external_success() {
+        let tool = "mxr_todo_microsoft";
+        assert_eq!(
+            titles(tool, &json!({"action": "status"}), State::Done).done,
+            "Checked Microsoft To Do availability"
+        );
+        for (action, preview_title, action_title) in [
+            (
+                "link",
+                "Previewed a Microsoft To Do task link",
+                "link a to-do with Microsoft To Do",
+            ),
+            (
+                "sync",
+                "Previewed linked Microsoft task changes",
+                "sync linked Microsoft tasks",
+            ),
+        ] {
+            for confirm in [json!(false), Value::Null] {
+                assert_eq!(
+                    titles(
+                        tool,
+                        &json!({"action": action, "confirm": confirm}),
+                        State::Done
+                    )
+                    .done,
+                    preview_title
+                );
+            }
+            assert_eq!(
+                titles(tool, &json!({"action": action}), State::Done).done,
+                preview_title
+            );
+            let committing = json!({"action": action, "confirm": true});
+            assert_eq!(
+                titles(tool, &committing, State::Waiting).done,
+                format!("Waiting for you: {action_title}")
+            );
+            // An acknowledgement or uncertain receipt is not proof of a link
+            // or successful sync. The generic change title remains neutral.
+            let result = json!({"state": "unknown", "summary": "Outcome unconfirmed"}).to_string();
+            assert_eq!(
+                step_title(
+                    tool,
+                    &committing,
+                    State::Approved,
+                    Context::default(),
+                    Some(&result)
+                )
+                .done,
+                format!("Ran: {action_title}")
+            );
+        }
     }
 
     #[test]

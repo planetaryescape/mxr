@@ -13,6 +13,7 @@ import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
 
 import type { Todo } from "./api";
+import { MicrosoftTodoAction } from "./MicrosoftTodoAction";
 import { resolveSuggestion, useTodoHidden } from "./todoVerbs";
 import {
   dueByToday,
@@ -80,6 +81,7 @@ function Details({
       </dl>
       {gate ? <p>{gate}</p> : null}
       {todo.resolution ? <Resolution todo={todo} onOpenResolution={onOpenResolution} /> : null}
+      <MicrosoftTodoAction key={todo.id} todo={todo} />
       <div>
         {thread.isLoading ? (
           <p>Loading the email…</p>
@@ -289,7 +291,6 @@ export const TodoRow = memo(function TodoRow({
   const secondary = clock.slice(1);
   const done = band === "done";
   const { unchecked } = provenanceSummary(todo.fields);
-  const unfinished = todo.resolution?.status === "pending" || Boolean(todo.looks_done);
   return (
     <Row
       data-index={index}
@@ -369,7 +370,10 @@ export const TodoRow = memo(function TodoRow({
       }
       verbs={
         done ? (
-          <RowVerb keys="Enter" label="reopen" onClick={() => onRestore(todo)} />
+          <>
+            <RowVerb keys="Enter" label="reopen" onClick={() => onRestore(todo)} />
+            <RowVerb keys="v" label="details" onClick={() => onToggleDetails(todo)} />
+          </>
         ) : (
           <>
             <RowVerb
@@ -382,9 +386,7 @@ export const TodoRow = memo(function TodoRow({
             {todo.thread_id ? (
               <RowVerb keys="o" label="email" onClick={() => onOpenEmail(todo)} />
             ) : null}
-            {unchecked > 0 || unfinished || details ? (
-              <RowVerb keys="v" label="details" onClick={() => onToggleDetails(todo)} />
-            ) : null}
+            <RowVerb keys="v" label="details" onClick={() => onToggleDetails(todo)} />
           </>
         )
       }

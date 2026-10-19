@@ -902,7 +902,7 @@ pub(super) async fn update(
     ))
 }
 
-fn apply_edits(
+pub(super) fn apply_edits(
     state: &AppState,
     mut record: TodoRecord,
     edits: &[TodoEditData],

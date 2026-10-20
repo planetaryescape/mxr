@@ -317,7 +317,7 @@ jobs:
         run: npm run test
 
   web-e2e:
-    name: Web E2E
+    name: Web E2E (${{ matrix.shard }}/2)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [changes, check, test, web-tests, build-e2e-daemon]
     # See the draft-skip note on the `test` job above — this is the single
@@ -327,9 +327,12 @@ jobs:
       !failure() && !cancelled() &&
       (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    # The suite runs serially against one daemon. Prebuilding mxr in
-    # build-e2e-daemon turns this into a pure Node.js runner.
-    timeout-minutes: 60
+    # The suite runs across 2 parallel shards against prebuilt daemon binaries.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: apps/web
@@ -358,15 +361,15 @@ jobs:
             echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
           fi
       # One worker: every spec shares the FakeProvider daemon's mailbox.
-      # Pull requests run the core engine subset (e2e:engine, ~15 specs);
-      # main and manual runs run the full regression matrix.
+      # Pull requests run the core engine subset (e2e:engine, ~15 specs) sharded across 2 runners;
+      # main and manual runs run the full regression matrix sharded across 2 runners.
       - name: Run the Chromium suite (bounded, with progress log)
         run: |
           set -o pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
           else
-            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
           fi
       # Right after the suite: the speed gate below starts its own Playwright
       # run, which empties test-results before a later upload could see it.
@@ -374,15 +377,16 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-results
+          name: playwright-results-shard-${{ matrix.shard }}
           path: |
             apps/web/test-results
             apps/web/playwright-run.log
           retention-days: 3
       # The keydown-to-paint gate against a production build (about 20 s):
       # the development build's owner-stack capture isn't what users run.
+      # Run only on shard 1 to avoid duplicate work.
       - name: Speed gate (production build)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         run: npm run e2e:perf -- --workers=1
 
   web-e2e-webkit:

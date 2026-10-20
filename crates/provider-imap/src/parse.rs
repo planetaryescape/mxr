@@ -568,6 +568,16 @@ mod tests {
             };
 
             let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+            let expected_list_id = match *fixture {
+                "folded-flowed.eml" => Some("updates.example.com"),
+                "unsubscribe-oneclick.eml" => Some("digest.example.com"),
+                _ => None,
+            };
+            assert_eq!(
+                synced.body.metadata.list_id.as_deref(),
+                expected_list_id,
+                "{fixture}"
+            );
             insta::assert_yaml_snapshot!(
                 format!("imap_fixture__{}", fixture_stem(fixture)),
                 json!({

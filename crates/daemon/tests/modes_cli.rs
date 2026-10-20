@@ -6,8 +6,145 @@
     reason = "integration tests unwrap to keep fixture failures direct"
 )]
 
-use mxr_test_support::daemon::{daemon_lock, run_json, spawn_fake_daemon};
+use mxr_test_support::daemon::{
+    daemon_lock, instance_socket_path, run_json, spawn_fake_daemon, unique_instance_name,
+    write_fake_account_config, DaemonGuard,
+};
 use tempfile::TempDir;
+
+#[test]
+fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("isolated classification profile");
+    let instance = unique_instance_name("classification-json");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    std::fs::create_dir_all(&config_dir).unwrap();
+    write_fake_account_config(&config_dir);
+    // Seed before boot: a second writer racing startup's fake sync is not
+    // the classification journey this test is intended to exercise.
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (message_id, thread_id) = runtime.block_on(async {
+        let store = mxr_store::Store::new(&data_dir.join("mxr.db")).await.unwrap();
+        let account = mxr_core::Account {
+            id: mxr_core::AccountId::from_provider_id("fake", "fake@example.com"),
+            name: "Fake Account".into(), email: "fake@example.com".into(),
+            sync_backend: Some(mxr_core::BackendRef { provider_kind: mxr_core::ProviderKind::Fake, config_key: "fake".into() }),
+            send_backend: Some(mxr_core::BackendRef { provider_kind: mxr_core::ProviderKind::Fake, config_key: "fake".into() }), enabled: true,
+        };
+        store.insert_account(&account).await.unwrap();
+        let inbox = mxr_core::LabelId::from_scoped_provider_id(&account.id, "fake", "INBOX");
+        store.upsert_label(&mxr_core::Label {
+            id: inbox.clone(), account_id: account.id.clone(), name: "Inbox".into(),
+            kind: mxr_core::LabelKind::System, color: None, provider_id: "INBOX".into(), unread_count: 0, total_count: 0, role: None,
+        }).await.unwrap();
+        let id = mxr_core::MessageId::new();
+        let thread = mxr_core::ThreadId::new();
+        let id = store.upsert_envelope_with_direction(&mxr_core::Envelope {
+            id: id.clone(), account_id: account.id, provider_id: format!("classification-{id}"),
+            thread_id: thread.clone(), message_id_header: Some(format!("<{id}@example.org>")),
+            in_reply_to: None, references: vec![],
+            from: mxr_core::Address { name: Some("Vendor Accounts".into()), email: "emea_invoicing@email.vendor.example".into() },
+            to: vec![mxr_core::Address { name: Some("Test User".into()), email: "fake@example.com".into() }],
+            cc: vec![], bcc: vec![], subject: "Your invoice Number AB12345".into(),
+            date: chrono::Utc::now() - chrono::Duration::minutes(1), flags: mxr_core::MessageFlags::empty(),
+            snippet: "A billing document is available.".into(), has_attachments: false, size_bytes: 256,
+            unsubscribe: mxr_core::UnsubscribeMethod::None, link_count: 0, body_word_count: 30,
+            label_provider_ids: vec![], keywords: Default::default(),
+        }, mxr_core::MessageDirection::Inbound).await.unwrap();
+        store.set_message_labels(&id, &[inbox], mxr_core::EventSource::User).await.unwrap();
+        store.insert_body(&mxr_core::MessageBody {
+            message_id: id.clone(), text_plain: Some("Invoice Number:AB12345\nDate of Issue:14.10.2026\n\nDear User,\nThank you for your recent purchase from Vendor.\nWeb order number: W12345678\nPlease find attached your billing document AB12345.".into()),
+            text_html: None, attachments: vec![], fetched_at: chrono::Utc::now(), metadata: Default::default(),
+        }).await.unwrap();
+        (id.to_string(), thread.to_string())
+    });
+    let mut daemon = DaemonGuard {
+        socket_path: instance_socket_path(&instance),
+        pid_path: data_dir.join("daemon.pid"),
+        pid: None,
+    };
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(
+        daemon.pid.is_some(),
+        "isolated test daemon must be owned by the guard"
+    );
+    let why = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["why", &message_id, "--format", "json"],
+    );
+    assert_eq!(why["mail_kind"]["kind"], "paper_trail", "{why}");
+    assert!(why["mail_kind"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("structured billing document"));
+    let modes = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "why", &message_id, "--format", "json"],
+    );
+    assert!(modes[0]["modes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|mode| mode["mode"] == "updates"));
+    let arrivals = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "arrivals", "list", "--mode", "updates", "--limit", "1000", "--format", "json",
+        ],
+    );
+    let arrived = arrivals["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["message_id"] == message_id)
+        .expect("the document is listed in Updates arrivals");
+    assert_eq!(arrived["bucket"], "updates");
+    assert!(arrived["reason"]
+        .as_str()
+        .unwrap()
+        .contains("structured billing document"));
+    let messages = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "--format", "json"],
+    );
+    for band in ["your_turn", "pinned", "recent", "quiet"] {
+        assert!(
+            !messages[band]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|row| row["topics"].as_array().unwrap())
+                .any(|topic| topic["thread_id"] == thread_id),
+            "the document must not merely move to Quiet"
+        );
+    }
+    let now = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["now", "--format", "json"],
+    );
+    assert!(now["people"]["rows"].is_array());
+    assert!(!serde_json::to_string(&now["people"])
+        .unwrap()
+        .contains(&thread_id));
+}
 
 #[test]
 fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {

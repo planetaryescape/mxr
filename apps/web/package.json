@@ -18,9 +18,12 @@
     "test:watch": "vitest",
     "gen:types": "node ./scripts/gen-bridge-types.mjs",
     "gen:themes": "node ./scripts/gen-themes.mjs",
+    "pree2e": "node ./scripts/e2e-owned-processes.mjs",
     "e2e": "playwright test",
+    "pree2e:webkit": "node ./scripts/e2e-owned-processes.mjs",
     "e2e:webkit": "MXR_E2E_WEBKIT=1 playwright test --project=webkit",
     "e2e:webkit:engine": "MXR_E2E_WEBKIT=1 playwright test --project=webkit --grep \"\\s(navigation|keyboard-help|keyboard-navigation|compose-send|reader|w6-reading|motion|accessibility|messages|todo|search|offline-banner|now|onboarding-redirect|smoke)\\.spec|design-gate\\.spec\\.ts.*midnight theme\"",
+    "pree2e:perf": "node ./scripts/e2e-owned-processes.mjs",
     "e2e:perf": "playwright test -c playwright.perf.config.ts",
     "analyze": "ANALYZE=1 vite build"
   },

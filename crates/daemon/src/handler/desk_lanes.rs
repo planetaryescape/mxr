@@ -112,6 +112,7 @@ pub(super) struct AccountInputs<'a> {
     pub messages: &'a [DeskMessage],
     /// Keyed by lowercased email.
     pub contacts: &'a HashMap<String, DeskContact>,
+    pub written_to: &'a HashSet<String>,
     /// Keyed by lowercased email.
     pub screener: &'a HashMap<String, ScreenerDisposition>,
     /// Threads marked done (or "done waiting"), through the messages
@@ -144,6 +145,7 @@ impl WindowFacts {
     /// screened both rest on this (D104).
     fn wrote_to(&self, inputs: &AccountInputs<'_>, email: &str) -> bool {
         inputs.contact(email).is_some_and(|c| c.total_outbound > 0)
+            || inputs.written_to.contains(&email.to_ascii_lowercase())
             || self.written_to.contains(&email.to_ascii_lowercase())
     }
 
@@ -182,7 +184,7 @@ impl AccountInputs<'_> {
 
     /// The shared classifier (`mail_kind`), so the desk and the places
     /// never disagree about a message.
-    pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
+    fn signals<'a>(&'a self, message: &'a DeskMessage) -> KindSignals<'a> {
         let email = &message.from.email;
         let mut signals = desk_signals(
             message,
@@ -195,33 +197,25 @@ impl AccountInputs<'_> {
             .treatments
             .get(&message.id)
             .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
-        mail_kind::classify(&signals).kind
+        signals.written_to |= self.written_to.contains(&email.to_ascii_lowercase());
+        signals
+    }
+
+    pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
+        mail_kind::classify(&self.signals(message)).kind
     }
 
     /// A person other than you wrote it: an answer. An auto-responder or a
     /// notification in the thread is not.
     pub(super) fn answers(&self, message: &DeskMessage) -> bool {
-        !self.is_outbound(message) && self.sender_kind(message) == SenderKind::Person
+        !self.is_outbound(message) && mail_kind::human_response(&self.signals(message))
     }
 
     /// The thread's shape, judged by the shared rule (`conversation_shape`).
     pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
-        let kept = |m: &DeskMessage| {
-            let email = &m.from.email;
-            let mut signals = desk_signals(
-                m,
-                self.contact(email),
-                self.decision(email),
-                self.moves.get(&m.id).copied(),
-                self.is_self,
-            );
-            signals.treatment = self.treatments.get(&m.id).and_then(|(mode, name)| {
-                Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str()))
-            });
-            mail_kind::kept_in_messages(&signals)
-        };
+        let kept = |m: &DeskMessage| mail_kind::kept_in_messages(&self.signals(m));
         conversation_shape(
             thread,
             &ShapeInputs {
@@ -236,7 +230,7 @@ impl AccountInputs<'_> {
 
     /// An address you wrote to that could be a person.
     pub(super) fn human_address(&self, email: &str) -> bool {
-        super::conversation_shape::human_address(email, self.contacts, self.screener)
+        super::conversation_shape::human_address(email, self.screener)
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -256,31 +250,37 @@ pub(super) fn desk_signals<'a>(
     is_self: &dyn Fn(&str) -> bool,
 ) -> KindSignals<'a> {
     KindSignals {
+        evidence: &message.evidence,
+        reply_request: mail_kind::needs_reply(message, is_self),
+        recipients: message.to.len() + message.cc.len(),
         email: &message.from.email,
         subject: &message.subject,
-        has_list_id: message.list_id.is_some(),
-        has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+        has_list_id: message
+            .list_id
+            .as_deref()
+            .and_then(mxr_core::mail_evidence::normalize_list_id)
+            .is_some()
+            || message.evidence.list_id.is_some(),
+        has_unsubscribe: message.evidence.unsubscribe
+            || !matches!(message.unsubscribe, UnsubscribeMethod::None),
         is_delivery: message.is_delivery,
         is_invite: message.is_invite,
-        list_sender: contact.is_some_and(|c| c.is_list_sender),
         sender: mail_kind::SenderFacts::of(contact),
         decision,
         written_to: contact.is_some_and(|c| c.total_outbound > 0),
-        addressed: addressed_to_you(&message.to, &message.cc, is_self),
+        addressed: addressed_to_you(&message.to, is_self),
         moved,
         treatment: None,
     }
 }
 
-/// You are in To, or in neither To nor Cc (Bcc, or an alias mxr doesn't
-/// know): addressed. Only Cc without To is "only copied", the same
-/// positive evidence the shape rule asks for.
+/// Positive evidence of a known owned To address. Unknown routing remains
+/// visible through the shape rule, but cannot assert directed attention.
 pub(super) fn addressed_to_you(
     to: &[mxr_core::types::Address],
-    cc: &[mxr_core::types::Address],
     is_self: &dyn Fn(&str) -> bool,
 ) -> bool {
-    to.iter().any(|a| is_self(&a.email)) || !cc.iter().any(|a| is_self(&a.email))
+    to.iter().any(|a| is_self(&a.email))
 }
 
 /// A desk row before the usual pace is known.
@@ -478,6 +478,11 @@ fn thread_row(
     if inputs.shape(conversation.all) == Shape::Copied {
         return None;
     }
+    // Human response occurrence is not a new obligation. Unknown semantics
+    // stays in Messages' Recent/Quiet views, never the attention rail.
+    if !mail_kind::requires_reply(&inputs.signals(inbound)) {
+        return None;
+    }
     let email = inbound.from.email.as_str();
     let key = email.to_ascii_lowercase();
     let contact = inputs.contact(email);
@@ -589,12 +594,6 @@ fn waiting_row(
     let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
-    if looks_automated(email)
-        || contact.is_some_and(|c| c.is_list_sender)
-        || inputs.decision(email) == Some(ScreenerDisposition::Deny)
-    {
-        return None;
-    }
     // Nobody replied by the time you set: back, however old or archived.
     if let Some(Timer::Back(back_at)) = timer {
         return Some(back_row(
@@ -606,6 +605,14 @@ fn waiting_row(
             "no reply by the time you set",
             back_at,
         ));
+    }
+    // Automatic waiting remains conservative; an explicit timer above is
+    // authoritative even for a role/list destination.
+    if looks_automated(email)
+        || contact.is_some_and(|c| c.is_list_sender)
+        || inputs.decision(email) == Some(ScreenerDisposition::Deny)
+    {
+        return None;
     }
     if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
         || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
@@ -811,6 +818,10 @@ mod tests {
     fn message(thread: &ThreadId, from: &str, to: &str, hours_ago: i64) -> DeskMessage {
         let outbound = from == ME;
         DeskMessage {
+            evidence: mxr_core::mail_evidence::MailEvidence {
+                text: Some("Could you reply?".into()),
+                ..Default::default()
+            },
             id: MessageId::new(),
             seq: now().timestamp() - hours_ago * 3600,
             thread_id: thread.clone(),
@@ -846,6 +857,83 @@ mod tests {
         lanes_with_screener(messages, contacts, HashMap::new())
     }
 
+    #[test]
+    fn directed_requests_need_recipient_evidence_not_history_or_recipient_count() {
+        let mut mail = message(&ThreadId::new(), "sam@example.com", ME, 1);
+        let own = |address: &str| address == ME;
+        mail.evidence.text = None;
+        mail.subject = "Could you reply?".into();
+        assert!(
+            !mail_kind::needs_reply(&mail, &own),
+            "missing body is incomplete evidence, not reply debt"
+        );
+        for text in [
+            "FYI: weekly report",
+            "Thanks, received",
+            "Please do not reply",
+            "Please find attached the weekly report",
+            "Please pay invoice INV-1234",
+            "Alice, could you decide?",
+            "Alice:\nCould you confirm the reference?",
+            "> Could you reply?",
+            "Thanks\n-----Original Message-----\nCould you reply?",
+            "Thanks\n-- \nCould you reply?",
+            "Could you not reply?",
+        ] {
+            mail.evidence.text = Some(text.into());
+            assert!(!mail_kind::needs_reply(&mail, &own), "{text}");
+        }
+        mail.to.extend((0..8).map(|i| Address {
+            name: None,
+            email: format!("p{i}@example.com"),
+        }));
+        mail.evidence.text = Some("Could you decide?".into());
+        assert!(
+            !mail_kind::needs_reply(&mail, &own),
+            "ambiguous team request"
+        );
+        mail.evidence.text = Some("Me, could you confirm the invoice reference?".into());
+        assert!(mail_kind::needs_reply(&mail, &own), "directed team request");
+        mail.to[0].name = Some("Alex Example".into());
+        mail.evidence.text = Some("Alex, could you confirm the invoice reference?".into());
+        assert!(
+            mail_kind::needs_reply(&mail, &own),
+            "owned recipient's first name"
+        );
+        mail.to.retain(|a| a.email != ME);
+        mail.cc.push(Address {
+            name: None,
+            email: ME.into(),
+        });
+        assert!(!mail_kind::needs_reply(&mail, &own), "only copied");
+    }
+
+    #[test]
+    fn reader_authored_scope_not_old_outlook_or_forwarded_requests_decides_attention() {
+        let old = "From: Alex <alex@example.org>\nSent: Monday\nTo: Me <me@example.com>\nSubject: Old request\n\nCould you confirm the details?";
+        let mut mail = message(&ThreadId::new(), "sam@example.org", ME, 1);
+        let own = |email: &str| email == ME;
+        for text in [
+            old.to_string(),
+            format!("FYI, this was handled.\n\n{old}"),
+            format!("FYI, this was handled.\n\n---------- Forwarded message ---------\n{old}"),
+        ] {
+            mail.evidence.text = Some(text);
+            assert!(!mail_kind::needs_reply(&mail, &own));
+        }
+        mail.evidence.text = Some(format!("Could you confirm the new date?\n\n{old}"));
+        assert!(mail_kind::needs_reply(&mail, &own));
+        let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
+        mail.evidence.previous_text = Some(prior.into());
+        mail.evidence.text = Some(format!("FYI, this was handled.\n\n{prior}"));
+        assert!(
+            !mail_kind::needs_reply(&mail, &own),
+            "unmarked history is compared with the bounded local cache"
+        );
+        mail.evidence.text = Some(format!("Could you confirm the new date?\n\n{prior}"));
+        assert!(mail_kind::needs_reply(&mail, &own));
+    }
+
     fn lanes_with_screener(
         messages: &[DeskMessage],
         contacts: &[DeskContact],
@@ -864,6 +952,7 @@ mod tests {
             account_id: &account,
             messages,
             contacts: &contacts,
+            written_to: &HashSet::new(),
             screener: &screener,
             dismissed: &dismissed,
             timers: &timers,
@@ -929,9 +1018,9 @@ mod tests {
     }
 
     #[test]
-    fn allowing_a_sender_makes_a_person_not_a_conversation() {
-        // Allowed and looks automated: Allow makes them a person, but you
-        // have never written to them, so their mail is new, not owed.
+    fn allowing_a_sender_controls_visibility_not_human_response_or_reply_debt() {
+        // Allow gives Messages visibility, not evidence that a notifying
+        // address is a human response or an obligation to reply.
         let never_replied = ThreadId::new();
         // Allowed and you replied in the thread: an exchange, so owed.
         let replied = ThreadId::new();
@@ -950,13 +1039,7 @@ mod tests {
         ]);
         assert!(looks_automated("notifications@studio.example"));
         let lanes = lanes_with_screener(&messages, &[], screener);
-        let new = lanes
-            .rows
-            .iter()
-            .find(|r| r.row.thread_id == never_replied)
-            .expect("an allowed sender is a person");
-        assert_eq!(new.row.lane, DeskLaneKind::PeopleNew);
-        assert_eq!(new.row.reason, "first message from them");
+        assert_eq!(lane_of(&lanes, &never_replied), None);
         assert_eq!(lane_of(&lanes, &replied), Some(DeskLaneKind::Owed));
     }
 

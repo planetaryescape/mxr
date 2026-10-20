@@ -88,7 +88,11 @@ async fn newest_mail_is_the_freshest_arrival_across_accounts_in_any_mailbox() {
     assert_eq!(all.accounts.len(), 2);
     assert_eq!(all.arrivals[0].message_id, newer.id);
     assert!(!all.arrivals[0].in_inbox);
-    assert!(all.arrivals[0].modes.is_empty());
+    assert_eq!(
+        all.arrivals[0].modes[0].mode,
+        ModeKindData::Messages,
+        "archiving does not erase the arrival's destination"
+    );
     assert!(
         all.arrivals.iter().all(|arrival| arrival.from.email != ME),
         "sent mail is not an arrival"
@@ -274,6 +278,6 @@ async fn arrivals_name_the_mode_the_sender_rule_chose() {
     );
     assert_eq!(
         went(&person.id),
-        Some((ModeKindData::Messages, Some("person".into())))
+        Some((ModeKindData::Messages, Some("possible personal".into())))
     );
 }

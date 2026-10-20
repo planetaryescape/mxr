@@ -87,11 +87,7 @@ impl AccountKinds {
             senders.iter().map(String::as_str),
         )
         .await?;
-        let written_to = contacts
-            .values()
-            .filter(|contact| contact.total_outbound > 0)
-            .map(|contact| contact.email.to_ascii_lowercase())
-            .collect();
+        let written_to = store.addresses_written_to(account_id, &lowered).await?;
         let moves = store
             .arrival_moves_in_force(account_id)
             .await?
@@ -125,24 +121,29 @@ impl AccountKinds {
     pub(super) fn signals<'a>(&'a self, message: &'a PlaceMessage) -> KindSignals<'a> {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
+            evidence: &message.evidence,
+            recipients: message.to.len() + message.cc.len(),
+            reply_request: mail_kind::directed_to_owner(&message.to, &message.evidence, &|email| {
+                self.is_self(email)
+            }),
             email: &message.from_email,
             subject: &message.subject,
-            has_list_id: message.list_id.is_some(),
-            has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+            has_list_id: message
+                .list_id
+                .as_deref()
+                .and_then(mxr_core::mail_evidence::normalize_list_id)
+                .is_some()
+                || message.evidence.list_id.is_some(),
+            has_unsubscribe: message.evidence.unsubscribe
+                || !matches!(message.unsubscribe, UnsubscribeMethod::None),
             is_delivery: message.is_delivery,
             is_invite: message.is_invite,
-            list_sender: self
-                .contacts
-                .get(&key)
-                .is_some_and(|contact| contact.is_list_sender),
             sender: mail_kind::SenderFacts::of(self.contacts.get(&key)),
             decision: self.decisions.get(&key).copied(),
             written_to: self.written_to.contains(&key),
-            addressed: super::desk_lanes::addressed_to_you(
-                &message.to,
-                &message.cc,
-                &|email: &str| self.is_self(email),
-            ),
+            addressed: super::desk_lanes::addressed_to_you(&message.to, &|email: &str| {
+                self.is_self(email)
+            }),
             moved: self.moves.get(&message.id).copied(),
             treatment: self.treatments.get(&message.id).and_then(|(mode, name)| {
                 Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str()))
@@ -276,10 +277,10 @@ async fn copied_threads(
     let senders = super::desk::Senders::load(state, account_id, &messages).await?;
     let is_self = super::desk::self_matcher(state, account_id).await?;
     let config = super::conversation_shape::shape_config(state);
-    let person_sender = |m: &mxr_store::DeskMessage| senders.answers(m, &is_self);
-    let human = |email: &str| {
-        super::conversation_shape::human_address(email, &senders.contacts, &senders.screener)
+    let person_sender = |m: &mxr_store::DeskMessage| {
+        mail_kind::classify(&senders.signals(m, &is_self)).kind == mail_kind::SenderKind::Person
     };
+    let human = |email: &str| super::conversation_shape::human_address(email, &senders.screener);
     let kept = |m: &mxr_store::DeskMessage| senders.kept_in_messages(m, &is_self);
     let inputs = super::conversation_shape::ShapeInputs {
         is_self: &is_self,

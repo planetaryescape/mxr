@@ -35,6 +35,7 @@ pub struct DeskMessage {
     /// to them.
     pub bcc: Vec<Address>,
     pub subject: String,
+    pub evidence: mxr_core::mail_evidence::MailEvidence,
     pub list_id: Option<String>,
     pub unsubscribe: UnsubscribeMethod,
     pub in_inbox: bool,
@@ -257,6 +258,7 @@ impl super::Store {
                     cc: decode_json(row.try_get::<&str, _>("cc_addrs")?)?,
                     bcc: decode_json(row.try_get::<&str, _>("bcc_addrs")?)?,
                     subject: row.try_get("subject")?,
+                    evidence: crate::body::evidence_from_row(&row)?,
                     list_id: row.try_get("list_id")?,
                     unsubscribe,
                     in_inbox: row.try_get("in_inbox")?,
@@ -571,6 +573,25 @@ fn desk_messages_sql(active_threads: &str) -> String {
                 m.rowid AS seq, m.id, m.thread_id, m.direction, m.date, m.flags,
                 m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.bcc_addrs, m.subject,
                 m.list_id, m.unsubscribe_method,
+                m.in_reply_to AS evidence_reply,
+                EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
+                    AND sent.thread_id = m.thread_id AND (sent.direction = 'outbound'
+                        OR (sent.direction != 'inbound' AND EXISTS (SELECT 1 FROM account_addresses own
+                            WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email))))
+                    AND sent.id != m.id) AS evidence_thread_correspondence,
+                (SELECT json_object('list_id', json_extract(metadata_json, '$.list_id'),
+                    'raw_headers', substr(json_extract(metadata_json, '$.raw_headers'), 1, 131072))
+                    FROM bodies WHERE message_id = m.id) AS evidence_metadata,
+                (SELECT substr(text_plain, 1, 8192) FROM bodies WHERE message_id = m.id) AS evidence_text,
+                COALESCE(
+                    (SELECT substr(pb.text_plain, 1, 8192) FROM messages previous JOIN bodies pb ON pb.message_id = previous.id
+                        WHERE previous.account_id = m.account_id AND previous.thread_id = m.thread_id
+                        AND previous.id != m.id AND previous.message_id_header = m.in_reply_to
+                        ORDER BY previous.date DESC, previous.id DESC LIMIT 1),
+                    (SELECT substr(pb.text_plain, 1, 8192) FROM messages previous JOIN bodies pb ON pb.message_id = previous.id
+                        WHERE previous.account_id = m.account_id AND previous.thread_id = m.thread_id
+                        AND (previous.date < m.date OR (previous.date = m.date AND previous.id < m.id))
+                        ORDER BY previous.date DESC, previous.id DESC LIMIT 1)) AS evidence_previous_text,
                 EXISTS (
                     SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
                     WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'

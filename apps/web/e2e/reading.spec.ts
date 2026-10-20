@@ -95,44 +95,32 @@ test("L lists the conversation's links; Enter opens one and y copies it", async 
   context,
 }) => {
   await allowClipboard(context);
-  await openList(page, "/m/inbox");
-  // A conversation whose body carries links (most demo mail does).
-  for (let step = 0; step < 12; step += 1) {
-    await page.keyboard.press("Enter");
-    await expect(reader(page)).toBeVisible();
-    await page.keyboard.press("L");
-    const dialog = page.getByRole("dialog", { name: "Links" });
-    await expect(dialog).toBeVisible();
-    const options = dialog.getByRole("option");
-    await expect
-      .poll(async () => (await options.count()) + (await dialog.getByText("no links").count()))
-      .toBeGreaterThan(0);
-    if ((await options.count()) === 0) {
-      await page.keyboard.press("Escape");
-      await page.keyboard.press("n");
-      continue;
-    }
-    const href = (await options.first().locator(".font-mono").innerText()).trim();
-    await page.keyboard.press("y");
-    await expect.poll(() => readClipboard(page)).toBe(href);
+  await openList(page, `/search?q=${encodeURIComponent('subject:"Your council tax bill"')}`);
+  await page.keyboard.press("Enter");
+  await expect(reader(page)).toBeVisible();
+  await page.keyboard.press("L");
+  const dialog = page.getByRole("dialog", { name: "Links" });
+  await expect(dialog).toBeVisible();
+  const options = dialog.getByRole("option");
+  await expect.poll(async () => options.count()).toBeGreaterThan(0);
+  const href = (await options.first().locator(".font-mono").innerText()).trim();
+  await page.keyboard.press("y");
+  await expect.poll(() => readClipboard(page)).toBe(href);
 
-    // Links open in a new tab with noopener; record the call rather than
-    // depend on a demo host that doesn't resolve.
-    await page.evaluate(() => {
-      const opened: string[] = [];
-      (window as unknown as { __opened: string[] }).__opened = opened;
-      window.open = ((url?: string | URL) => {
-        opened.push(String(url));
-        return null;
-      }) as typeof window.open;
-    });
-    await page.keyboard.press("Enter");
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { __opened: string[] }).__opened))
-      .toEqual([href]);
-    return;
-  }
-  throw new Error("no conversation with links in the first twelve");
+  // Links open in a new tab with noopener; record the call rather than
+  // depend on a demo host that doesn't resolve.
+  await page.evaluate(() => {
+    const opened: string[] = [];
+    (window as unknown as { __opened: string[] }).__opened = opened;
+    window.open = ((url?: string | URL) => {
+      opened.push(String(url));
+      return null;
+    }) as typeof window.open;
+  });
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __opened: string[] }).__opened))
+    .toEqual([href]);
 });
 
 test("the list toggles between conversations and single messages", async ({ page }) => {

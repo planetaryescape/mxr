@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { bridge, openApp } from "./helpers/state";
+import { freshReplyRequest } from "./helpers/reply-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const SAMIR = "person:samir@launchpad.example";
-const JON = "person:jon@papertrail.example";
 const IRIS = "person:iris@meridian.example";
 
 interface Row {
@@ -22,11 +22,11 @@ interface MessagesAnswer {
 }
 
 async function messages(page: Page) {
-  return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people")).messages;
+  return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people?limit=500")).messages;
 }
 
 function all(data: MessagesAnswer["messages"]): Row[] {
-  return [...data.your_turn, ...data.recent, ...data.quiet];
+  return [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet];
 }
 
 /** Wait for the demo's people to sync. */
@@ -43,21 +43,6 @@ async function topicOf(page: Page, person: string, subject: string): Promise<str
   const topic = row?.topics.find((candidate) => candidate.subject === subject);
   expect(topic, `${person} has a topic "${subject}"`).toBeTruthy();
   return topic!.thread_id;
-}
-
-/**
- * A conversation that is still your turn, for Got it: other specs may have
- * answered Samir already, and the daemon refuses Got it on an answered one.
- */
-async function unanswered(page: Page): Promise<{ person: string; thread: string }> {
-  const turn = (await messages(page)).your_turn.filter(
-    (candidate) => candidate.kind === "person" && candidate.id !== JON,
-  );
-  for (const candidate of turn) {
-    const topic = candidate.topics.find((entry) => entry.state === "your_turn");
-    if (topic) return { person: candidate.id, thread: topic.thread_id };
-  }
-  throw new Error("no conversation is your turn");
 }
 
 function row(page: Page, id: string) {
@@ -93,7 +78,8 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   expect(
     data.some((candidate) => candidate.topics.some((topic) => topic.subject === "Offsite dates")),
   ).toBe(false);
-  await expect(row(page, IRIS).getByTestId("row-preview")).toHaveText("You: Thanks, on it.");
+  const iris = data.find((candidate) => candidate.id === IRIS);
+  expect(iris?.preview?.text).toBe("You: Thanks, on it.");
   // No early-version marker on Messages any more.
   await expect(page.getByTestId("rail-early").filter({ hasText: /messages/i })).toHaveCount(0);
 
@@ -194,7 +180,7 @@ test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page 
 
 test("Got it shows the exact text and counts down; undo sends nothing", async ({ page }) => {
   await waitForPeople(page);
-  const { person, thread: contract } = await unanswered(page);
+  const { person, thread: contract } = await freshReplyRequest(page);
   await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   const sent = async () =>
@@ -220,7 +206,7 @@ test("Got it shows the exact text and counts down; undo sends nothing", async ({
 
 test("leaving mid-countdown sends nothing", async ({ page }) => {
   await waitForPeople(page);
-  const { person, thread: contract } = await unanswered(page);
+  const { person, thread: contract } = await freshReplyRequest(page);
   const sent = async () =>
     (
       await bridge<{ page: { conversation: { messages: unknown[] } } }>(
@@ -256,7 +242,7 @@ test("leaving mid-countdown sends nothing", async ({ page }) => {
 
 test("Got it sends after the countdown and the turn passes", async ({ page }) => {
   await waitForPeople(page);
-  const { person, thread } = await unanswered(page);
+  const { person, thread } = await freshReplyRequest(page);
   await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   await page.getByTestId("got-it").click();

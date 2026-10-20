@@ -216,6 +216,35 @@ const CORRECTION_COLUMNS: &str = "id, account_id, scope, message_id, sender_emai
     prior_disposition, prior_decided_at, aspect_id";
 
 impl super::Store {
+    /// Bounded, keyset-paged input for current-policy read projections. This
+    /// never rewrites arrival history or user corrections.
+    pub async fn arrival_window_page(
+        &self,
+        accounts: &[AccountId],
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+        after: Option<(i64, &str)>,
+    ) -> Result<Vec<ArrivalRow>, sqlx::Error> {
+        let sql = format!(
+            "SELECT {} FROM arrivals a JOIN messages m ON m.id = a.message_id
+             WHERE a.account_id IN (SELECT value FROM json_each(?1))
+               AND a.first_seen_at >= ?2 AND a.first_seen_at < ?3
+               AND (a.first_seen_at, a.message_id) > (?4, ?5)
+             ORDER BY a.first_seen_at, a.message_id LIMIT 400",
+            row_columns()
+        );
+        let (at, id) = after.unwrap_or((i64::MIN, ""));
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_ids_json(accounts)?)
+            .bind(since.timestamp())
+            .bind(until.timestamp())
+            .bind(at)
+            .bind(id)
+            .fetch_all(self.reader())
+            .await?;
+        rows.iter().map(decode_row).collect()
+    }
+
     /// Arrivals of `account_id` not placed yet, oldest first.
     pub async fn pending_arrivals(
         &self,

@@ -213,9 +213,9 @@ async fn owed_windows_apply_to_the_latest_message_from_them() {
 }
 
 #[tokio::test]
-async fn an_allowed_sender_is_new_from_people_until_you_write() {
+async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply_debt() {
     let fx = Fixture::new().await;
-    // An address the rules read as automated: Allow makes it a person.
+    // Allow gives Messages visibility, not proof of a human request.
     let sender = "notifications@studio.example";
     fx.state
         .store
@@ -241,11 +241,11 @@ async fn an_allowed_sender_is_new_from_people_until_you_write() {
     else {
         panic!("expected a desk");
     };
-    assert_eq!(thread_ids(&people_new), vec![thread.clone()]);
+    assert!(people_new.rows.is_empty());
     assert_eq!(owed_lane.total, 0, "allowing them is not an exchange");
     assert!(owed(&fx, 50, false).await.is_empty());
 
-    // You reply and they write back: now it is a conversation you owe.
+    // An exchange still cannot erase positive automation evidence.
     let reply = fx
         .message(
             &thread,
@@ -271,9 +271,36 @@ async fn an_allowed_sender_is_new_from_people_until_you_write() {
     else {
         panic!("expected a desk");
     };
-    assert_eq!(thread_ids(&owed_lane), vec![thread.clone()]);
+    assert!(owed_lane.rows.is_empty());
     assert_eq!(people_new.total, 0);
-    assert_eq!(owed_threads(&owed(&fx, 50, false).await), vec![thread]);
+    assert!(owed(&fx, 50, false).await.is_empty());
+    assert_eq!(
+        owed_threads(&owed(&fx, 50, true).await),
+        vec![thread.clone()],
+        "raw --all scope remains unchanged"
+    );
+    let ResponseData::Messages { messages } = request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: None,
+            limit: 50,
+        },
+    )
+    .await
+    else {
+        panic!("Messages");
+    };
+    assert!(
+        messages
+            .recent
+            .iter()
+            .chain(&messages.quiet)
+            .chain(&messages.pinned)
+            .flat_map(|row| &row.topics)
+            .any(|topic| topic.thread_id == thread),
+        "the user's explicit placement is visible without a turn"
+    );
 }
 
 /// Times `mxr owed` both ways on a disposable copy of a real store and

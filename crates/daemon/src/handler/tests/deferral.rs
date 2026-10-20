@@ -306,6 +306,212 @@ async fn a_reply_cancels_the_wait() {
 }
 
 #[tokio::test]
+async fn missing_plaintext_preserves_response_occurrence_and_explicit_later_not_automatic_debt() {
+    for (html, generated) in [(false, false), (true, false), (false, true), (true, true)] {
+        let fx = Fixture::new().await;
+        let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+        let until = Utc::now() + Duration::days(1);
+        defer(&fx, std::slice::from_ref(&thread), until, false).await;
+        let sender = if generated && !html {
+            "no-reply@vendor.example"
+        } else {
+            "jon@example.com"
+        };
+        let reply = fx
+            .message(
+                &thread,
+                sender,
+                ME,
+                Duration::minutes(5),
+                mine.message_id_header.as_deref(),
+            )
+            .await;
+        if html {
+            fx.state
+                .store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: reply.id.clone(),
+                    text_plain: None,
+                    text_html: Some("<p>I've corrected the name. No action required.</p>".into()),
+                    attachments: vec![],
+                    fetched_at: Utc::now(),
+                    metadata: mxr_core::MessageMetadata {
+                        raw_headers: generated.then(|| "Auto-Submitted: auto-replied\r\n".into()),
+                        ..Default::default()
+                    },
+                })
+                .await
+                .unwrap();
+        } else {
+            // Remove this one cache intentionally; the shared fixture's text
+            // must not mask the missing-cache contract.
+            sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+                .bind(reply.id.as_str())
+                .execute(fx.state.store.writer())
+                .await
+                .unwrap();
+        }
+        let [owed, _, _, new] = lanes_at(&fx, Utc::now()).await;
+        assert!(
+            owed.is_empty() && new.is_empty(),
+            "incomplete text is not an inferred ask"
+        );
+        assert_eq!(
+            crate::loops::process_due_timers(&fx.state, until + Duration::minutes(1)).await,
+            Ok(u32::from(generated))
+        );
+        let [owed, _, waiting, new] = lanes_at(&fx, until + Duration::minutes(1)).await;
+        assert!(owed.is_empty() && new.is_empty());
+        assert_eq!(
+            waiting.len(),
+            usize::from(generated),
+            "only a demonstrated automatic nonresponse leaves a wait"
+        );
+
+        let later = until + Duration::days(1);
+        let preview = defer(&fx, std::slice::from_ref(&thread), later, true).await;
+        let expected_kind = if generated {
+            DeferKindData::Waiting
+        } else {
+            DeferKindData::ReplyLater
+        };
+        let expected_target = if generated { &mine.id } else { &reply.id };
+        assert_eq!(preview.items[0].kind, Some(expected_kind));
+        assert_eq!(preview.items[0].message_id.as_ref(), Some(expected_target));
+        let applied = defer(&fx, std::slice::from_ref(&thread), later, false).await;
+        assert_eq!(applied.items, preview.items);
+        let [owed, _, waiting, new] = lanes_at(&fx, later + Duration::minutes(1)).await;
+        assert!(new.is_empty());
+        if generated {
+            assert!(owed.is_empty());
+            assert_eq!(waiting[0].message_id, mine.id);
+        } else {
+            assert!(waiting.is_empty());
+            assert_eq!(
+                owed[0].message_id, reply.id,
+                "explicit Later anchors the actual human reply"
+            );
+            assert_eq!(owed[0].reason, "back from reply later");
+        }
+    }
+}
+
+#[tokio::test]
+async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_differently() {
+    for (generated, referenced) in [(false, false), (false, true), (true, false), (true, true)] {
+        let fx = Fixture::new().await;
+        let thread = ThreadId::new();
+        let mine = fx
+            .message(
+                &thread,
+                ME,
+                "billing@vendor.example",
+                Duration::days(2),
+                None,
+            )
+            .await;
+        let until = Utc::now() + Duration::days(3);
+        defer(&fx, std::slice::from_ref(&thread), until, false).await;
+        let acknowledgement = fx
+            .message(
+                &thread,
+                "billing@vendor.example",
+                ME,
+                Duration::minutes(5),
+                if referenced {
+                    mine.message_id_header.as_deref()
+                } else {
+                    None
+                },
+            )
+            .await;
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: acknowledgement.id.clone(),
+                text_plain: Some("I've corrected the account name. No action is required.\n\nFrom: Alex <alex@example.org>\nSent: Monday\nTo: Me <user@example.com>\nSubject: Old request\n\nCould you confirm the details?".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: Utc::now(),
+                metadata: mxr_core::MessageMetadata {
+                    raw_headers: generated.then(|| "Auto-Submitted: auto-replied\r\n".into()),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let [owed, _, waiting, new] = lanes_at(&fx, Utc::now()).await;
+        assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+        let ResponseData::ModeMembership { threads } = request(
+            &fx,
+            Request::GetModeMembership {
+                message_id: Some(acknowledgement.id),
+                thread_id: None,
+                thread_ids: vec![],
+            },
+        )
+        .await
+        else {
+            panic!("membership");
+        };
+        let expected = if generated {
+            mxr_protocol::ModeKindData::Updates
+        } else {
+            mxr_protocol::ModeKindData::Messages
+        };
+        assert!(
+            threads[0].modes.iter().any(|mode| mode.mode == expected),
+            "{threads:?}"
+        );
+        let after = until + Duration::minutes(1);
+        assert_eq!(
+            crate::loops::process_due_timers(&fx.state, after).await,
+            Ok(u32::from(generated))
+        );
+        let [owed, _, waiting, new] = lanes_at(&fx, after).await;
+        assert!(owed.is_empty() && new.is_empty());
+        assert_eq!(waiting.len(), usize::from(generated));
+    }
+}
+
+#[tokio::test]
+async fn a_human_acknowledgement_cancels_the_wait_without_creating_reply_debt() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    let until = Utc::now() + Duration::days(3);
+    defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    let acknowledgement = fx
+        .message(
+            &thread,
+            "jon@example.com",
+            ME,
+            Duration::minutes(5),
+            mine.message_id_header.as_deref(),
+        )
+        .await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: acknowledgement.id,
+            text_plain: Some("Thanks, received. Reference REF-1234.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+    let [owed, _, waiting, new] = lanes_at(&fx, Utc::now()).await;
+    assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, until + Duration::minutes(1)).await,
+        Ok(0)
+    );
+    let [owed, _, waiting, new] = lanes_at(&fx, until + Duration::minutes(1)).await;
+    assert!(owed.is_empty() && waiting.is_empty() && new.is_empty());
+}
+
+#[tokio::test]
 async fn done_cancels_a_pending_wait_and_undo_puts_it_back() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;

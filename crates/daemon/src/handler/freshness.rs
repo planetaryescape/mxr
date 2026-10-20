@@ -10,7 +10,7 @@
 use super::desk::{self_matcher, Senders};
 use super::mail_kind;
 use super::mode_rules::membership;
-use super::modes::{is_early, signals};
+use super::modes::is_early;
 use super::places::scoped_cached_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -19,8 +19,8 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::Account;
 use mxr_protocol::{
     AccountFreshnessData, ArrivalData, FreshnessData, ModeKindData, ModeMembershipData,
-    ResponseData, SenderKindData, SyncErrorData, SyncErrorKindData, SyncHealthData,
-    FRESHNESS_DEFAULT_ARRIVALS, FRESHNESS_MAX_ARRIVALS,
+    ResponseData, SyncErrorData, SyncErrorKindData, SyncHealthData, FRESHNESS_DEFAULT_ARRIVALS,
+    FRESHNESS_MAX_ARRIVALS,
 };
 use mxr_store::{Arrival, DeskMessage, SyncRuntimeStatus};
 use std::collections::{HashMap, HashSet};
@@ -189,10 +189,8 @@ fn sync_error(row: &SyncRuntimeStatus) -> Option<SyncErrorData> {
     })
 }
 
-/// Each arrival with the mode its sender's rule sent it to: the cheap,
-/// per-message part of placement (the sender decision, list headers, the
-/// address), not the whole thread's lanes, to-dos and done marks. Freshness
-/// is polled every minute and asks "where did it go?", which this answers.
+/// Each arrival's current primary destination, including copied-thread
+/// placement and archived arrivals, by the same rule as the arrival chips.
 async fn place_arrivals(
     state: &AppState,
     arrivals: Vec<Arrival>,
@@ -210,16 +208,36 @@ async fn place_arrivals(
         let messages: Vec<DeskMessage> = state
             .store
             .desk_messages_in_threads(&account, &threads)
-            .await?
-            .into_iter()
-            .filter(|message| wanted.contains(&message.id))
-            .collect();
+            .await?;
         let senders = Senders::load(state, &account, &messages).await?;
         let is_self = self_matcher(state, &account).await?;
-        for message in &messages {
+        let by_thread: HashMap<_, _> = messages
+            .chunk_by(|a, b| a.thread_id == b.thread_id)
+            .map(|thread| (&thread[0].thread_id, thread))
+            .collect();
+        for message in messages.iter().filter(|m| wanted.contains(&m.id)) {
+            let thread = by_thread
+                .get(&message.thread_id)
+                .copied()
+                .unwrap_or_default();
+            let placement = super::arrivals::place_message(
+                message,
+                thread,
+                &senders,
+                &is_self,
+                super::conversation_shape::shape_config(state),
+                message.trashed,
+            );
             went_to.insert(
                 message.id.clone(),
-                (message.in_inbox, sender_mode(message, &senders, &is_self)),
+                (
+                    message.in_inbox,
+                    if message.trashed {
+                        vec![]
+                    } else {
+                        arrival_mode(&placement)
+                    },
+                ),
             );
         }
     }
@@ -241,36 +259,24 @@ async fn place_arrivals(
         .collect())
 }
 
-/// The mode a message's sender rule puts it in, with its one-word tag.
-/// None for mail out of the inbox or from someone screened out.
-fn sender_mode(
-    message: &DeskMessage,
-    senders: &Senders,
-    is_self: &dyn Fn(&str) -> bool,
-) -> Vec<ModeMembershipData> {
-    if !message.in_inbox || message.trashed {
+/// The shared primary destination. Archived arrivals retain their destination;
+/// screened-out/spam placement has no five-mode membership.
+fn arrival_mode(placement: &mxr_store::ArrivalPlacement) -> Vec<ModeMembershipData> {
+    let Some(mode) = ModeKindData::parse(&placement.mode) else {
         return Vec::new();
-    }
-    let described = mail_kind::describe(&signals(message, senders, is_self));
-    let mode = match described.kind {
-        SenderKindData::People => ModeKindData::Messages,
-        SenderKindData::PaperTrail => ModeKindData::Updates,
-        SenderKindData::Reading => ModeKindData::Reading,
-        SenderKindData::ScreenedOut => return Vec::new(),
     };
-    let sender = message
-        .from
-        .name
-        .as_deref()
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or(&message.from.email);
-    let source = if described.corrected { "you" } else { "rule" };
+    let tag = match serde_json::from_value::<mxr_protocol::KindRuleData>(serde_json::Value::String(
+        placement.rule.clone(),
+    )) {
+        Ok(rule) => mail_kind::rule_tag(rule),
+        Err(_) => placement.rule.as_str(),
+    };
     vec![membership(
         mode,
-        format!("Here because: {} ({source}).", described.reason),
-        format!("Also in {}: from {sender}", mode.name()),
+        format!("Here because: {}.", placement.reason),
+        format!("Also in {}", mode.name()),
         is_early(mode),
-        mail_kind::rule_tag(described.rule),
+        tag,
     )]
 }
 

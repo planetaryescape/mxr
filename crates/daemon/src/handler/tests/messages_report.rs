@@ -170,6 +170,7 @@ async fn messages_report() {
                 account_id: account,
                 messages: &messages,
                 contacts: &senders.contacts,
+                written_to: &senders.written_to,
                 screener: &senders.screener,
                 dismissed: &dismissed,
                 timers: &timers,

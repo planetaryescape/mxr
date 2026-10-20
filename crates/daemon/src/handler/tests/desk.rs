@@ -103,6 +103,21 @@ impl Fixture {
             MessageDirection::Inbound
         };
         self.store_envelope(&envelope, direction).await;
+        // Attention fixtures contain a real directed ask, not merely history.
+        if !outbound {
+            self.state
+                .store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: envelope.id.clone(),
+                    text_plain: Some("Could you review the launch plan?".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: self.now,
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+        }
         envelope
     }
 

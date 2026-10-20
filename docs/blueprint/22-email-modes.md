@@ -368,8 +368,14 @@ had 461: 26 in Spam, 54 Messages, 236 Updates (21 of them deliveries),
 
 ### Four kinds of mail are never sorted away
 
-The rules are shown under the arrivals line's `?` and in `mxr modes
-explain`, in these words:
+**Historical proposal:** N1 below was superseded by the 2026-10-18 amendment
+to [D119](15-decision-log.md#d119-sorting-shows-its-work-freshness-an-arrivals-line-that-sums-and-mail-that-is-never-sorted-away).
+Shipped sorting follows message evidence, not permanent correspondence identity.
+Current behavior and conservative reply-attention coverage are in the
+[Messages guide](../../site/src/content/docs/guides/messages.md).
+
+The original proposal used the copy below. Its N1 guarantee is superseded
+by amended D119; this is historical copy, not current shipped behavior:
 
 > People you've written to always reach Messages. Sign-in alerts and
 > failed payments always reach Now. Anything with a due date reaches To
@@ -377,7 +383,7 @@ explain`, in these words:
 
 | Rule | What it overrides | Where it goes | Measured, BK, 7 days |
 |---|---|---|---:|
-| N1. From an address you've written to, with you in To or Bcc | List-Unsubscribe, List-Id, list-sender and no-reply rules | Messages | 21 arrivals; 3 had gone to Reading |
+| N1 (superseded). From an address you've written to, with you in To or Bcc | Historical override of list/no-reply evidence; no longer applied | See amended D119 and the Messages guide | 21 arrivals; 3 had gone to Reading |
 | N2. A security alert: new sign-in, password or two-step change, account recovery | Updates' batching | Now's Updates card, as a line that stays until opened | 12 by subject (an upper bound); all in Updates, none in To do |
 | N3. A failed payment | Updates | To do, surfacing at once (`payment_failed`, `crates/todo/src/detect.rs`) | 2 by subject or to-do; both already to-dos |
 | N4. A dated deadline | Reading and Updates | To do on its runway | 13 by subject or due date; 6 already to-dos |
@@ -484,11 +490,12 @@ Choices made while building D119, where the plan above left room:
   as "also in To do". The per-email `X` to To do or Archive adds a to-do or
   files a record, since both are aspects; it never changes the primary
   count.
-- **N1** overrides List-Id, List-Unsubscribe, list-sender and no-reply
-  rules for mail addressed to you (To, or neither To nor Cc) from someone
-  you've written to, and is named as the rule only where it overrode one.
-  It does not override the copied or crowd rules; only-copied mail from
-  someone you've written to is the "Not sure" case (U1).
+- **N1 (superseded by amended D119).** The original implementation's
+  history override no longer applies. Current message evidence decides:
+  actual list, no-reply and automatic declarations remain nonpersonal even
+  after correspondence. A human reply can outweigh weak delivery hints;
+  response occurrence and an owner reply obligation are separate. Explicit
+  user sorting still wins. See the Messages guide for supported requests.
 - **Not sure** asks about the first three conflicts first seen each local
   day; an answer never pulls a fourth in, and keeping the email where it is
   counts as an answer.

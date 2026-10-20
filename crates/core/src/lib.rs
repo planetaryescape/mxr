@@ -38,6 +38,7 @@
 pub mod error;
 pub mod i18n;
 pub mod id;
+pub mod mail_evidence;
 pub mod natural_time;
 pub mod provider;
 pub mod recovery;

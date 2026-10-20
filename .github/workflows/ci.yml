@@ -298,11 +298,14 @@ jobs:
   web-e2e:
     name: Web E2E
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: changes
+    needs: [changes, check, test, web-tests]
     # See the draft-skip note on the `test` job above — this is the single
     # most expensive job in the matrix (full Playwright suite plus the
     # production-build speed gate), so it's the main target of that gate.
-    if: (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: |
+      !failure() && !cancelled() &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # The suite runs serially against one daemon, on top of the cargo build.
     # By October 2026 it took 28-33 min on a 4-vCPU runner before the speed
     # gate, so 40 cut off slow runs (main 0e112cb72). Splitting it into shards
@@ -329,7 +332,10 @@ jobs:
           cargo build -p mxr
           echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
       # One worker: every spec shares the FakeProvider daemon's mailbox.
-      - run: npm run e2e -- --workers=1
+      - name: Run the full Chromium suite (bounded, with progress log)
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 2>&1 | tee playwright-run.log
       # Right after the suite: the speed gate below starts its own Playwright
       # run, which empties test-results before a later upload could see it.
       - name: Upload Playwright results
@@ -337,7 +343,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
-          path: apps/web/test-results
+          path: |
+            apps/web/test-results
+            apps/web/playwright-run.log
           retention-days: 3
       # The keydown-to-paint gate against a production build (about 20 s):
       # the development build's owner-stack capture isn't what users run.
@@ -348,10 +356,13 @@ jobs:
   web-e2e-webkit:
     name: Web E2E (WebKit)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: changes
+    needs: [changes, check, test, web-tests]
     # Safari's engine is what Tauri's WKWebView renders with on macOS. Same
     # draft-skip as Web E2E: drafts wait for ready_for_review.
-    if: (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: |
+      !failure() && !cancelled() &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # A separate job, not extra steps in Web E2E: that job already uses about
     # 36 of its 60 minutes. Pull requests run the cross-engine subset
     # (e2e:webkit:engine, about a third of the suite); main and manual runs

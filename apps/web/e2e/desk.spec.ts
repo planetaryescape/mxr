@@ -11,6 +11,8 @@ import {
   rowById,
 } from "./helpers/mail";
 import { openApp, readE2EState } from "./helpers/state";
+import { freshReplyRequest } from "./helpers/reply-request";
+import { archiveViaBridge } from "./helpers/archive";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -19,32 +21,38 @@ function sidebar(page: import("@playwright/test").Page) {
 }
 
 test("the desk shows its lanes with reasons, and only Now has a badge", async ({ page }) => {
-  await openApp(page, "/desk");
-  await expect(page).toHaveURL(/\/desk$/);
-  const heading = page.getByRole("heading", { level: 1 });
-  await expect(heading).toContainText(/(morning|afternoon|evening|night)\./);
-  await expect(heading.getByRole("link", { name: /\d+ repl(y|ies)/ })).toBeVisible();
-  for (const lane of ["You owe", "Waiting on", "New from people"]) {
-    await expect(mailList(page).getByText(lane, { exact: true })).toBeVisible();
-  }
-  // Every row says why it is there.
-  await expect(mailRows(page).first()).toHaveAttribute(
-    "aria-label",
-    /replied to your message|wrote to you|messages since you last wrote|copied you/,
-  );
-  await expect(page.getByRole("navigation", { name: "Everything else" })).toBeVisible();
+  const fixture = await freshReplyRequest(page);
+  try {
+    await openApp(page, "/desk");
+    await expect(page).toHaveURL(/\/desk$/);
+    const heading = page.getByRole("heading", { level: 1 });
+    await expect(heading).toContainText(/(morning|afternoon|evening|night)\./);
+    await expect(heading.getByRole("link", { name: /\d+ repl(y|ies)/ })).toBeVisible();
+    for (const lane of ["You owe", "Waiting on", "New from people"]) {
+      await expect(mailList(page).getByText(lane, { exact: true })).toBeVisible();
+    }
+    // Every row says why it is there.
+    await expect(mailRows(page).first()).toHaveAttribute(
+      "aria-label",
+      /replied to your message|wrote to you|messages since you last wrote|copied you/,
+    );
+    await expect(page.getByRole("navigation", { name: "Everything else" })).toBeVisible();
 
-  // Now's badge counts work; the inbox carries no unread count.
-  const state = readE2EState();
-  const rail = (await (
-    await page.request.get(`${state.bridgeUrl}/api/v1/mail/rail`, {
-      headers: { authorization: `Bearer ${state.token}` },
-    })
-  ).json()) as { rail: { entries: { id: string; badge?: number }[] } };
-  const badge = rail.rail.entries.find((entry) => entry.id === "now")?.badge;
-  expect(badge).toBeGreaterThan(0);
-  await expect(sidebar(page).getByRole("link", { name: /^Now/ })).toContainText(String(badge));
-  await expect(sidebar(page).getByRole("link", { name: "Inbox" })).not.toContainText(/\d/);
+    // Now's badge counts work; the inbox carries no unread count.
+    const state = readE2EState();
+    // SAFETY: this test reads the fake daemon's RailData response envelope.
+    const rail = (await (
+      await page.request.get(`${state.bridgeUrl}/api/v1/mail/rail`, {
+        headers: { authorization: `Bearer ${state.token}` },
+      })
+    ).json()) as { rail: { entries: { id: string; badge?: number }[] } };
+    const badge = rail.rail.entries.find((entry) => entry.id === "now")?.badge;
+    expect(badge).toBeGreaterThan(0);
+    await expect(sidebar(page).getByRole("link", { name: /^Now/ })).toContainText(String(badge));
+    await expect(sidebar(page).getByRole("link", { name: "Inbox" })).not.toContainText(/\d/);
+  } finally {
+    await archiveViaBridge(page, fixture.messageIds);
+  }
 });
 
 test("desk journey: j, Done optimistically, undo, open and come back to the same row", async ({

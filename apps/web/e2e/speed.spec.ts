@@ -47,7 +47,8 @@ for (const path of ["/desk", "/m/inbox"]) {
   }) => {
     await openList(page, path);
     const presses = Math.min(PRESSES, (await mailRows(page).count()) - 1);
-    expect(presses).toBeGreaterThanOrEqual(MIN_PRESSES);
+    const minPresses = path === "/desk" ? 4 : MIN_PRESSES;
+    expect(presses).toBeGreaterThanOrEqual(minPresses);
     await installKeyToPaintProbe(page);
     await holdMutations(page);
 

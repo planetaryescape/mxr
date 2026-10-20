@@ -143,6 +143,7 @@ pub(super) async fn place_threads(
         account_id,
         messages: &lane_messages,
         contacts: &senders.contacts,
+        written_to: &senders.written_to,
         screener: &senders.screener,
         dismissed: &dismissed,
         timers: &timers,
@@ -269,6 +270,11 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             ));
         } else {
             done_in.push(ModeKindData::Updates);
+        }
+        // A user-set return is attention, not a change of message purpose.
+        // Keep the copied Updates membership and expose its Messages turn too.
+        if let Some(row) = inputs.row.filter(|row| row.back_at.is_some()) {
+            modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
         }
     } else if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
@@ -407,8 +413,7 @@ fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
         mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
             == mail_kind::SenderKind::Person
     };
-    let human =
-        |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
+    let human = |email: &str| human_address(email, &inputs.senders.screener);
     let kept = |m: &DeskMessage| inputs.senders.kept_in_messages(m, inputs.is_self);
     conversation_shape(
         inputs.thread,

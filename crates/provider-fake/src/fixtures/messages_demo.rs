@@ -67,7 +67,7 @@ fn message(
     }
 }
 
-const SAMIR_LETTER: &str = "Hi Alex,\n\nThanks for sending the renewal draft over. I went through it with legal this morning and most of it is fine as written.\n\nTwo things changed on our side. The support tier moves from business hours to extended hours, and the notice period goes from 30 to 60 days. Both are in the redline.\n\nThe pricing schedule stays the same for the first year, with the usual 4% uplift after that.\n\nRollout risk: legal wants a signed copy before the 15th, so the new tier starts with the next billing period.\n\nCan you take a look and reply with the next concrete step?\n\nSamir";
+const SAMIR_LETTER: &str = "Hi Alex,\n\nThanks for sending the renewal draft over. I went through it with legal this morning and most of it is fine as written.\n\nTwo things changed on our side. The support tier moves from business hours to extended hours, and the notice period goes from 30 to 60 days. Both are in the redline.\n\nThe pricing schedule stays the same for the first year, with the usual 4% uplift after that.\n\nRollout risk: legal wants a signed copy before the 15th, so the new tier starts with the next billing period.\n\nCan you take a look and reply with the next concrete step?\n\nAlex, could you review the redline and reply with the next concrete step?\n\nSamir";
 
 const SAMIR_SIGNATURE_HTML: &str = r#"<div class="gmail_signature" data-smartmail="gmail_signature"><div dir="ltr">Samir Patel<br>Head of Partnerships, Launchpad<br>+44 20 7946 0102</div></div>"#;
 

@@ -198,6 +198,32 @@ pub fn new_text(
     }
 }
 
+/// Authored plain text for semantic decisions, rather than display. Unlike
+/// `new_text`, this excludes attributed forwards and inline quoted questions.
+/// It shares the reader's Outlook/header, quote, signature and footer rules.
+pub fn authored_text(text: &str, earlier: &[EarlierMessage<'_>]) -> String {
+    let lines: Vec<_> = text.lines().collect();
+    let cut = lines
+        .iter()
+        .enumerate()
+        .find(|(index, line)| {
+            FORWARDED_HEADER.is_match(line) || is_strong_header(&lines, *index, line)
+        })
+        .map_or(lines.len(), |(index, _)| index);
+    let authored = lines[..cut]
+        .iter()
+        .filter(|line| !QUOTE_PREFIX.is_match(line) && !ON_WROTE.is_match(line))
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = new_text(Some(&authored), None, earlier);
+    if result.only_quoted {
+        String::new()
+    } else {
+        result.text
+    }
+}
+
 /// Fold trailing `>` history and strong reply headers. Quoted questions
 /// with an authored answer below them stay beside that answer. Forward
 /// headers are retained because the forwarded content is what the message

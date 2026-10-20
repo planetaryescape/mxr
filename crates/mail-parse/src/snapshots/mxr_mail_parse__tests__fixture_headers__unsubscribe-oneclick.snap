@@ -11,7 +11,7 @@ from:
   email: news@example.com
   name: Newsletter
 in_reply_to: ~
-list_id: ~
+list_id: digest.example.com
 message_id: "<unsubscribe@example.com>"
 raw_headers_present: true
 references: []

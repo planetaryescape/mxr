@@ -120,7 +120,10 @@ export function syncLine(account: AccountFreshness, staleAfterSecs: number, now:
 /** Where an arrival went: "→ Updates · automated", "→ Inbox". */
 export function wentTo(arrival: Arrival): string {
   const mode = arrival.modes[0];
-  if (mode) return mode.tag ? `→ ${mode.name} · ${mode.tag}` : `→ ${mode.name}`;
+  if (mode) {
+    const destination = mode.tag ? `${mode.name} · ${mode.tag}` : mode.name;
+    return arrival.in_inbox ? `→ ${destination}` : `→ out of the inbox · ${destination}`;
+  }
   return arrival.in_inbox ? "→ Inbox" : "→ out of the inbox";
 }
 

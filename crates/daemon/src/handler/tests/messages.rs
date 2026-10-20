@@ -524,7 +524,16 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
     assert!(first.from_me);
     assert!(!first.trimmed.any());
     let messages = list(&fx).await;
-    let preview = messages.your_turn[0].preview.as_ref().unwrap();
+    assert!(
+        messages.your_turn.is_empty(),
+        "an answer without a new ask is not reply debt"
+    );
+    assert_eq!(
+        messages.recent.len(),
+        1,
+        "a fresh answer stays accessible in Recent"
+    );
+    let preview = messages.recent[0].preview.as_ref().unwrap();
     assert_eq!(preview.text, "Yes, keep it at 5%.");
 }
 
@@ -564,6 +573,12 @@ async fn conversation_marks_snippet_fallback_and_preserves_stored_empty_body() {
         Duration::hours(1),
     )
     .await;
+    // This case deliberately represents a provider preview with no cache.
+    sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+        .bind(preview.id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
     let page = person(&fx, SAMIR, Some(&thread)).await;
     let messages = page.conversation.unwrap().messages;
     assert_eq!(

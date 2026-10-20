@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { OwnedProcesses, cleanupManifest } from "./e2e-owned-processes.mjs";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(appDir, "../..");
@@ -10,6 +10,7 @@ const runtimeDir = resolve(
   process.env.MXR_E2E_RUNTIME_DIR ?? join(appDir, ".playwright", "mxr-e2e"),
 );
 const statePath = join(appDir, ".playwright", "state.json");
+const manifestPath = join(appDir, ".playwright", "e2e-processes.json");
 const bridgePort = Number(process.env.MXR_E2E_BRIDGE_PORT ?? "17777");
 const controlPort = Number(process.env.MXR_E2E_CONTROL_PORT ?? String(bridgePort + 1));
 const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
@@ -24,6 +25,7 @@ const once = process.argv.includes("--once");
 // development build adds work that users never pay for.
 const appMode = process.env.MXR_E2E_APP_MODE === "preview" ? "preview" : "dev";
 
+let owned;
 let daemon;
 let vite;
 let controlServer;
@@ -37,6 +39,9 @@ main().catch((error) => {
 
 async function main() {
   prepareRuntime();
+  mkdirSync(dirname(manifestPath), { recursive: true });
+  await cleanupManifest(manifestPath);
+  owned = new OwnedProcesses(manifestPath);
   daemon = startDaemon();
   watchDaemon(daemon);
   await waitForHealth();
@@ -54,7 +59,7 @@ async function main() {
 
   if (once) {
     await waitForApp();
-    shutdown(0);
+    await shutdown(0);
   }
 }
 
@@ -111,27 +116,28 @@ function startDaemon() {
   if (!existsSync(bin)) {
     throw new Error(`missing mxr binary at ${bin}; run cargo build -p mxr or set MXR_E2E_BIN`);
   }
-  return spawn(bin, ["daemon", "--foreground", "--bridge-port", String(bridgePort)], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      MXR_INSTANCE: `mxr-e2e-${process.pid}`,
-      MXR_CONFIG_DIR: join(runtimeDir, "config"),
-      MXR_DATA_DIR: join(runtimeDir, "data"),
-      MXR_SOCKET_PATH: join(runtimeDir, "run", "mxr.sock"),
-      MXR_FAKE_DATASET: "demo",
-      // The account uses the demo's own address so sent mail syncs as
-      // outbound (the desk's owed and waiting lanes need it). That makes it
-      // the personal demo profile, which keeps 55% of this count: 166, the
-      // same generated threads as before plus Reading's 26 newsletters and
-      // the seeded Updates mail.
-      MXR_FAKE_MESSAGE_COUNT: "302",
-      // Specs drop messages and sync failures here (crates/provider-fake
-      // spool.rs); e2e/helpers/spool.ts writes them.
-      MXR_FAKE_SPOOL_DIR: join(runtimeDir, "spool"),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  })
+  return owned
+    .spawn("daemon", bin, ["daemon", "--foreground", "--bridge-port", String(bridgePort)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        MXR_INSTANCE: `mxr-e2e-${process.pid}`,
+        MXR_CONFIG_DIR: join(runtimeDir, "config"),
+        MXR_DATA_DIR: join(runtimeDir, "data"),
+        MXR_SOCKET_PATH: join(runtimeDir, "run", "mxr.sock"),
+        MXR_FAKE_DATASET: "demo",
+        // The account uses the demo's own address so sent mail syncs as
+        // outbound (the desk's owed and waiting lanes need it). That makes it
+        // the personal demo profile, which keeps 55% of this count: 166, the
+        // same generated threads as before plus Reading's 26 newsletters and
+        // the seeded Updates mail.
+        MXR_FAKE_MESSAGE_COUNT: "302",
+        // Specs drop messages and sync failures here (crates/provider-fake
+        // spool.rs); e2e/helpers/spool.ts writes them.
+        MXR_FAKE_SPOOL_DIR: join(runtimeDir, "spool"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    })
     .on("error", (error) => {
       throw error;
     })
@@ -199,19 +205,15 @@ function startControlServer() {
   return server;
 }
 
-function stopDaemon() {
-  if (!daemon || daemon.exitCode !== null || daemon.killed) return Promise.resolve();
+async function stopDaemon() {
+  if (!daemon || daemon.exitCode !== null || daemon.killed) return;
   daemonStoppedByControl = true;
-  // The daemon being stopped, not whichever one `daemon` names when the
-  // timer fires: a restart replaces it within the grace period.
   const child = daemon;
-  return new Promise((resolveStop) => {
-    child.once("exit", () => resolveStop());
+  if (owned) {
+    await owned.stop(child);
+  } else {
     child.kill("SIGTERM");
-    setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-    }, 2_000).unref();
-  });
+  }
 }
 
 function respondJson(res, body, status = 200) {
@@ -223,15 +225,24 @@ function startVite() {
   const env = { ...process.env, MXR_BRIDGE_URL: bridgeUrl };
   const serve = ["--host", "127.0.0.1", "--port", String(appPort), "--strictPort"];
   if (appMode === "dev") {
-    return spawn("npm", ["run", "dev", "--", ...serve], { cwd: appDir, env, stdio: "inherit" });
+    return owned.spawn("vite", "npm", ["run", "dev", "--", ...serve], {
+      cwd: appDir,
+      env,
+      stdio: "inherit",
+    });
   }
   // vite preview's proxy defaults to the dev server's, so /api still
   // reaches this bridge.
-  return spawn("sh", ["-c", `npx vite build && npx vite preview ${serve.join(" ")}`], {
-    cwd: appDir,
-    env,
-    stdio: "inherit",
-  });
+  return owned.spawn(
+    "vite",
+    "sh",
+    ["-c", `npx vite build && npx vite preview ${serve.join(" ")}`],
+    {
+      cwd: appDir,
+      env,
+      stdio: "inherit",
+    },
+  );
 }
 
 async function waitForHealth() {
@@ -333,17 +344,24 @@ function writeState() {
   );
 }
 
-function shutdown(code = 0) {
+async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   controlServer?.close();
-  vite?.kill("SIGTERM");
-  daemon?.kill("SIGTERM");
   setTimeout(() => {
-    vite?.kill("SIGKILL");
-    daemon?.kill("SIGKILL");
     process.exit(code);
-  }, 1_000).unref();
+  }, 5_000).unref();
+  try {
+    if (owned) {
+      await owned.stopAll();
+    } else {
+      vite?.kill("SIGTERM");
+      daemon?.kill("SIGTERM");
+    }
+  } catch (error) {
+    console.error(`[e2e-server] error stopping owned processes: ${error.message}`);
+  }
+  process.exit(code);
 }
 
 process.on("SIGTERM", () => shutdown(0));

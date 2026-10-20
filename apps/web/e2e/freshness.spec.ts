@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { deliver, failSyncs, restoreSyncs } from "./helpers/spool";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
+import type { Arrival } from "../src/features/freshness/copy";
 
 /*
  * The freshness indicator: when the newest mail arrived and how sync is
@@ -14,7 +15,7 @@ import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
 interface FreshnessReply {
   freshness: {
     newest_message_at?: string | null;
-    arrivals: { message_id: string; thread_id: string; subject: string }[];
+    arrivals: Arrival[];
   };
 }
 
@@ -104,7 +105,10 @@ test.describe("desktop", () => {
     await expect(
       page
         .getByTestId("freshness-arrival")
-        .filter({ hasText: /→ (Messages|To do|Updates|Reading|Archive) · [a-z-]+/ })
+        .filter({
+          hasText:
+            /→ (?:out of the inbox · )?(Messages|To do|Updates|Reading|Archive)(?: · [a-z -]+)?/,
+        })
         .first(),
     ).toBeVisible();
     await shot(page, "desktop-popover");
@@ -134,6 +138,11 @@ test.describe("desktop", () => {
 
     const newest = page.getByTestId("freshness-arrival").first();
     await expect(newest).toContainText("Status Robot");
+    const observed = (
+      await bridge<FreshnessReply>(page, "/api/v1/mail/freshness")
+    ).freshness.arrivals.find((arrival) => arrival.subject === subject);
+    expect(observed?.in_inbox).toBe(false);
+    expect(observed?.modes.length).toBeGreaterThan(0);
     await expect(newest).toContainText("→ out of the inbox");
     await expect(newest).toContainText(subject);
     await page.keyboard.press("Escape");

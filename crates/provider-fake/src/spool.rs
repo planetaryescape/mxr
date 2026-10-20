@@ -15,6 +15,9 @@
 //!   `Labels: UNREAD` replaces the default `INBOX, UNREAD`, so a message
 //!   can arrive already out of the inbox.
 //!
+//!   An optional `Thread: <fixture-key>` groups messages into one account-scoped
+//!   fake conversation, so a sent history and its current reply share a thread.
+//!
 //! - write `fail` and every sync fails until it is removed. Its first line
 //!   is the error: `rate_limit 120` is a rate limit asking for 120 seconds,
 //!   anything else is a provider error with that text, so "oauth token
@@ -199,6 +202,7 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
     };
     let mut to = Vec::new();
     let mut subject = String::new();
+    let mut thread_key = None;
     let mut labels = vec!["INBOX".to_string(), "UNREAD".to_string()];
     for line in head.lines() {
         let Some((name, value)) = line.split_once(':') else {
@@ -208,6 +212,7 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
             "from" => from = parse_address(value),
             "to" => to = value.split(',').map(parse_address).collect(),
             "subject" => subject = value.trim().to_string(),
+            "thread" => thread_key = Some(format!("spool-thread-{}", value.trim())),
             "labels" => {
                 labels = value
                     .split(',')
@@ -225,7 +230,11 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
         id: id.clone(),
         account_id: account_id.clone(),
         provider_id: provider_id.to_string(),
-        thread_id: ThreadId::from_scoped_provider_id(account_id, "fake", provider_id),
+        thread_id: ThreadId::from_scoped_provider_id(
+            account_id,
+            "fake",
+            thread_key.as_deref().unwrap_or(provider_id),
+        ),
         message_id_header: Some(format!("<{provider_id}@spool.mxr.local>")),
         in_reply_to: None,
         references: Vec::new(),
@@ -272,6 +281,19 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mxr-spool-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_fixture_thread_groups_distinct_messages_without_crossing_accounts() {
+        let account = AccountId::new();
+        let first = parse_message(&account, "sent", "Thread: contract\n\nEarlier letter");
+        let reply = parse_message(&account, "reply", "Thread: contract\n\nCurrent reply");
+        assert_eq!(first.envelope.thread_id, reply.envelope.thread_id);
+        assert_ne!(first.envelope.id, reply.envelope.id);
+        let other_account = parse_message(&AccountId::new(), "reply", "Thread: contract\n\nOther");
+        assert_ne!(reply.envelope.thread_id, other_account.envelope.thread_id);
+        let ungrouped = parse_message(&account, "reply", "Subject: contract\n\nNo thread header");
+        assert_ne!(reply.envelope.thread_id, ungrouped.envelope.thread_id);
     }
 
     #[test]

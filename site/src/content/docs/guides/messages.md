@@ -26,7 +26,7 @@ that conversation directly. Opening Messages from navigation returns to the list
 
 | Band | Who is in it | Order |
 |---|---|---|
-| Your turn | Their latest message to you is unanswered | Closest first, then whoever has waited longest past your usual pace with them |
+| Your turn | A directed request to you is unanswered, or your reply-later timer has returned | Closest first, then whoever has waited longest past your usual pace with them |
 | Pinned | Up to nine people you pinned with `s` | Most recent first, with a dot when it's your turn |
 | Recent | Everyone else you've talked with in the last 30 days | Most recent first; "You: ..." when you wrote last |
 | Quiet | Done here, or a turn nobody took | Collapsed; a new message brings them back |
@@ -45,6 +45,46 @@ than 30 days. Nothing in Messages expires; it only goes quiet.
 
 ## Which threads land here
 
+Sorting follows this email's evidence, not a permanent sender identity.
+List headers and no-reply or automatically generated messages keep their
+Reading or Updates destination even after you have written to the sender.
+Your per-email move, sender choice or custom sorting rule still wins.
+
+Cached document fields can also place an email in Updates without list
+headers: a document reference and date, an order reference or amount, plus
+purchase or document-delivery framing. An invoice subject alone is not enough.
+Team FYIs and report deliveries without a directed request go to Updates;
+a supported request naming you can stay in Messages. Human billing and support
+answers can settle Waiting on without creating another reply obligation.
+An owned directed request can remain conversational alongside document fields
+and purchase framing; an actual list, no-reply or auto-generated declaration
+still takes precedence. Reply headers or positive local thread correspondence
+can establish that a human answered, even when its body is uncached or HTML-only.
+Missing plain text cannot create automatic
+reply debt, but it does not erase your explicit Reply later choice.
+Bare greetings such as "Hi," and "Good morning," do not name another
+recipient, including inline "Hi, could you confirm ...". A greeting naming
+someone mxr cannot match to an owned recipient remains uncertain: it does
+not silently register that name as yours.
+
+Possible personal mail stays accessible in Recent or Quiet without claiming
+someone is waiting for you. Automatic Your turn requires a directed request:
+currently English requests such as "Could you confirm ..." in cached plain
+text, with you in To. A group
+request also needs your recipient name or address local part. FYIs,
+acknowledgements, quoted requests and unknown aliases do not create a turn.
+Missing text, other languages, indirect questions and HTML-only requests remain
+uncertain. Set Reply later when you want an explicit reminder; no model or
+network request is needed for this sorting.
+
+Request detection shares the reader's Outlook/header, quote, signature and
+footer rules, with one bounded earlier cached message for unmarked history.
+An explicit reference selects that context first; otherwise message date and
+stable ID select an earlier message, regardless of import order.
+Unrecognized quote formats and history beyond that context remain limitations.
+Use `mxr why MESSAGE_ID` and `mxr modes why MESSAGE_ID` to inspect the evidence
+and destination when a result looks wrong.
+
 mxr judges each thread's shape from who took part:
 
 - One other person wrote in it or you wrote to them: a topic in their row.
@@ -53,7 +93,8 @@ mxr judges each thread's shape from who took part:
 - You were only copied and never wrote in it, or it went to more than 10
   people: it goes to Updates, not Messages, and Updates lists it with the
   reason "copied". A crowd thread stays in Messages while someone has
-  replied to you in it, with you in To, and you haven't answered yet.
+  replied to you in it, with you in To, and you haven't answered yet. A
+  positively directed request can also keep a crowd thread in Messages.
 
 The 10-recipient line is `messages.large_thread_recipients` in
 [config](/reference/config/). Automated mail and lists never land here.

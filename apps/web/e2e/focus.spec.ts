@@ -2,13 +2,21 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { openList, pressSequence } from "./helpers/mail";
 import { openApp, readE2EState } from "./helpers/state";
+import { freshOwedConversations } from "./helpers/reply-request";
+import { archiveViaBridge } from "./helpers/archive";
 
 test.use({ viewport: { width: 1440, height: 900 } });
+
+let fixtureMessageIds: string[] = [];
+test.beforeEach(() => {
+  fixtureMessageIds = [];
+});
 
 // The desk refetches after sends; a stubbed refetch still in flight when a
 // test ends must not fail it.
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  if (fixtureMessageIds.length) await archiveViaBridge(page, fixtureMessageIds);
 });
 
 const auth = () => ({ Authorization: `Bearer ${readE2EState().token}` });
@@ -46,16 +54,13 @@ async function deskOwes(page: Page, rows: () => OwedRow[], total?: () => number)
 }
 
 /**
- * Each test works on the desk's first three owed conversations (real
+ * Each test establishes three owned conversations (real
  * rows, the lane cut short) and an empty reply-later queue.
  */
 async function queueOfThree(page: Page): Promise<OwedRow[]> {
-  const response = await page.request.get(
-    `${readE2EState().bridgeUrl}/api/v1/mail/desk?lane_limit=5000`,
-    { headers: auth() },
-  );
-  const { owed } = (await response.json()) as DeskAnswer;
-  const three = owed.rows.slice(0, 3);
+  const fixture = await freshOwedConversations(page, [1, 1, 1]);
+  fixtureMessageIds.push(...fixture.messageIds);
+  const three = fixture.rows;
   expect(three).toHaveLength(3);
   await deskOwes(page, () => three);
   await page.route("**/api/v1/mail/reply-later", (route) =>

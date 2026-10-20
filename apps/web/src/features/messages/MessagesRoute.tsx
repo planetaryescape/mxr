@@ -181,7 +181,12 @@ function MessagesBody({
   const page: PersonPage | undefined = selectedId ? person.data : undefined;
   const conversation = page?.conversation ?? null;
   const hiddenDone = useModeDone((s) => s.hidden.messages);
-  const stillOpen = useMemo(() => openThreads(selected, hiddenDone), [selected, hiddenDone]);
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
+  const excludedDone = useMemo(
+    () => (settled.size === 0 ? hiddenDone : new Set([...hiddenDone, ...settled])),
+    [hiddenDone, settled],
+  );
+  const stillOpen = useMemo(() => openThreads(selected, excludedDone), [selected, excludedDone]);
   const left = useMemo(
     () => (page ? topicsLeft(page.topics, stillOpen).length : 0),
     [stillOpen, page],
@@ -230,14 +235,17 @@ function MessagesBody({
 
   // A person opened without a topic shows their default one: name it in
   // the URL, so a copied link opens that topic even after the default moves.
-  const autoTopic = useRef<string | null>(null);
-  const shownTopic = person.isPlaceholderData ? undefined : conversation?.thread_id;
+  const shownTopic =
+    person.isPlaceholderData || page?.row.id !== selectedId ? undefined : conversation?.thread_id;
   useEffect(() => {
     if (threadId || !search.person || search.topic || !shownTopic || !page) return;
-    autoTopic.current = shownTopic;
-    rememberTopicPage(search.person, shownTopic, page);
-    select(search.person, { topic: shownTopic });
-  }, [page, search.person, search.topic, select, shownTopic, threadId]);
+    // A default page may be cached from before Done. Only name/cache it if
+    // the current list still holds that topic; otherwise fetch the open one.
+    const current = stillOpen.has(shownTopic) ? shownTopic : stillOpen.values().next().value;
+    if (!current) return;
+    if (current === shownTopic) rememberTopicPage(search.person, current, page);
+    select(search.person, { topic: current });
+  }, [page, search.person, search.topic, select, shownTopic, stillOpen, threadId]);
 
   // A person who still has topics left stays in view, even when the
   // daemon moves their row into the folded Quiet band.
@@ -263,6 +271,48 @@ function MessagesBody({
       replace: true,
     });
   }, [navigate, search.turn]);
+
+  // A sync can close the displayed topic without removing the person. Move
+  // only a topic that was open here: deliberately browsing history stays put.
+  const previousTopic = useRef<{ person: string | null; topic: string | null; open: boolean }>({
+    person: null,
+    topic: null,
+    open: false,
+  });
+  useEffect(() => {
+    if (settled.size === 0) return;
+    const stillPresent = new Set(
+      allRows.flatMap((row) =>
+        row.topics.filter((t) => t.state !== "done").map((t) => t.thread_id),
+      ),
+    );
+    const obsolete = [...settled].filter((id) => !stillPresent.has(id));
+    if (obsolete.length > 0) {
+      setSettled((prev) => {
+        const next = new Set([...prev].filter((id) => !obsolete.includes(id)));
+        return next.size === prev.size ? prev : next;
+      });
+    }
+  }, [allRows, settled]);
+  useEffect(() => {
+    const previous = previousTopic.current;
+    const open = topic !== null && stillOpen.has(topic);
+    previousTopic.current = { person: selectedId, topic, open };
+    if (
+      !selectedId ||
+      !topic ||
+      !selected ||
+      excludedDone.has(topic) ||
+      previous.person !== selectedId ||
+      previous.topic !== topic ||
+      !previous.open ||
+      open
+    )
+      return;
+    const next = stillOpen.values().next().value;
+    if (next) select(selectedId, { topic: next });
+    else clearSelection();
+  }, [clearSelection, excludedDone, select, selected, selectedId, stillOpen, topic]);
 
   // A row that leaves the list some other way (sync, another client) takes
   // the page with it to its neighbour.
@@ -364,27 +414,37 @@ function MessagesBody({
     (how: LeaveVia = "key") => {
       if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
       const thread = conversation.thread_id;
-      if (hiddenDone.has(thread)) return;
+      if (page.row.id !== selectedId || (topic && topic !== thread) || !stillOpen.has(thread))
+        return;
       const next = afterDone({
         topics: page.topics,
         thread,
         open: stillOpen,
         rows,
         person: selectedId,
-        hidden: hiddenDone,
+        hidden: excludedDone,
       });
       const what =
         next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
       const from = selectedId;
+      setSettled((prev) => (prev.has(thread) ? prev : new Set([...prev, thread])));
+      const nextTopic =
+        next.kind === "topic"
+          ? next.topic.thread_id
+          : next.kind === "person"
+            ? openThreads(next.row, new Set([...excludedDone, thread]))
+                .values()
+                .next().value
+            : undefined;
       // Where the move leaves the page: undo goes back only from there.
       const landed =
         next.kind === "topic"
           ? { person: from, topic: next.topic.thread_id }
           : next.kind === "person"
-            ? { person: next.row.id, topic: undefined }
+            ? { person: next.row.id, topic: nextTopic }
             : { person: undefined, topic: undefined };
       if (next.kind === "topic") advanceTo(from, next.topic.thread_id);
-      else if (next.kind === "person") advanceTo(next.row.id);
+      else if (next.kind === "person") advanceTo(next.row.id, nextTopic);
       else clearSelection();
       const account = useUiPrefs.getState().accountScope;
       const label = "subject" in what ? what.subject : what.person;
@@ -392,14 +452,18 @@ function MessagesBody({
         via: how,
         message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
         onUndone: () => {
+          setSettled((prev) => {
+            if (!prev.has(thread)) return prev;
+            const nextSet = new Set(prev);
+            nextSet.delete(thread);
+            return nextSet;
+          });
           const now = here.current;
           const stayed =
             now.mounted &&
             useUiPrefs.getState().accountScope === account &&
             now.person === landed.person &&
-            // Landing on a person names their default topic in the URL.
-            (now.topic === landed.topic ||
-              (landed.topic === undefined && now.topic === autoTopic.current));
+            now.topic === landed.topic;
           if (stayed) {
             advanceTo(from, thread);
             return;
@@ -417,19 +481,29 @@ function MessagesBody({
             },
           });
         },
+      }).then((succeeded) => {
+        if (!succeeded) {
+          setSettled((prev) => {
+            if (!prev.has(thread)) return prev;
+            const nextSet = new Set(prev);
+            nextSet.delete(thread);
+            return nextSet;
+          });
+        }
       });
     },
     [
       advanceTo,
       clearSelection,
       conversation,
-      hiddenDone,
+      excludedDone,
       navigate,
       page,
       person.isPlaceholderData,
       rows,
       selectedId,
       stillOpen,
+      topic,
     ],
   );
 
@@ -640,7 +714,7 @@ function MessagesBody({
               onReply={onReplyRow}
               onDone={onDoneRow}
               memberships={memberships}
-              hidden={hiddenDone}
+              hidden={excludedDone}
               arrival={arrival}
             />
           </div>
@@ -660,7 +734,7 @@ function MessagesBody({
                   asSent={asSent}
                   replyAll={replyAll}
                   left={left}
-                  hidden={hiddenDone}
+                  hidden={excludedDone}
                   arrival={arrival?.person === selectedId ? arrival : null}
                   loading={person.isPlaceholderData}
                   pending={gotIt.pending}

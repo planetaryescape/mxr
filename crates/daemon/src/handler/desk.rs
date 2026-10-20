@@ -186,6 +186,7 @@ pub(super) async fn thread_turn(
         account_id,
         messages: &messages,
         contacts: &senders.contacts,
+        written_to: &senders.written_to,
         screener: &senders.screener,
         dismissed: &dismissed,
         timers: &timers,
@@ -269,6 +270,7 @@ pub(super) async fn attach_histories<'a>(
 /// email.
 pub(super) struct Senders {
     pub contacts: HashMap<String, DeskContact>,
+    pub written_to: HashSet<String>,
     pub screener: HashMap<String, ScreenerDisposition>,
     /// Emails the user moved (`X`) whose move is in force, with the kind
     /// each gives.
@@ -329,6 +331,10 @@ impl Senders {
             .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
             .collect();
         Ok(Self {
+            written_to: state
+                .store
+                .addresses_written_to(account_id, &emails)
+                .await?,
             contacts,
             screener,
             moves,
@@ -354,6 +360,7 @@ impl Senders {
             .treatments
             .get(&message.id)
             .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
+        signals.written_to |= self.written_to.contains(&email);
         signals
     }
 
@@ -369,8 +376,7 @@ impl Senders {
     /// A person other than you wrote it (not an auto-responder, list or
     /// notification): it answers you.
     pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
-        !is_outbound(message, is_self)
-            && mail_kind::classify(&self.signals(message, is_self)).kind == SenderKind::Person
+        !is_outbound(message, is_self) && mail_kind::human_response(&self.signals(message, is_self))
     }
 }
 
@@ -417,6 +423,7 @@ async fn account_desk(
         account_id,
         messages: &messages,
         contacts: &senders.contacts,
+        written_to: &senders.written_to,
         screener: &senders.screener,
         dismissed: &dismissed,
         timers: &timers,

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { bridge, openApp } from "./helpers/state";
+import { freshReplyRequest } from "./helpers/reply-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -190,6 +191,7 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
 test("a Now row opens from the keyboard: Tab reaches its link, Enter follows it", async ({
   page,
 }) => {
+  await freshReplyRequest(page);
   await waitForNow(page);
   await openApp(page, "/now");
   const open = page.getByTestId("now-section-people").getByTestId("now-open").first();

@@ -70,17 +70,14 @@ impl Shape {
     }
 }
 
-/// An address you wrote to that could be a person: not automated, not a
-/// list, not screened out. `contacts` and `screener` are keyed by
-/// lowercased address.
+/// Someone the owner wrote to can be a human billing/support desk. A
+/// sender's list history is not the identity of every correspondence.
 pub(crate) fn human_address(
     email: &str,
-    contacts: &std::collections::HashMap<String, mxr_store::DeskContact>,
     screener: &std::collections::HashMap<String, mxr_store::ScreenerDisposition>,
 ) -> bool {
     let key = email.to_ascii_lowercase();
-    !super::mail_kind::looks_automated(email)
-        && !contacts.get(&key).is_some_and(|c| c.is_list_sender)
+    !super::mail_kind::no_reply_address(email)
         && screener.get(&key) != Some(&mxr_store::ScreenerDisposition::Deny)
 }
 
@@ -141,7 +138,15 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
         .iter()
         .any(|m| !m.trashed && !is_outbound(m, is_self) && (inputs.kept_in_messages)(m));
     let crowd = most_recipients > inputs.config.large_thread_recipients;
-    if !kept && ((!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs))) {
+    let directed = thread.iter().any(|m| {
+        !is_outbound(m, is_self)
+            && (inputs.person_sender)(m)
+            && super::mail_kind::needs_reply(m, is_self)
+    });
+    if !kept
+        && !directed
+        && ((!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs)))
+    {
         return Shape::Copied;
     }
     match people.len() {
@@ -190,6 +195,7 @@ mod tests {
     fn message(thread: &ThreadId, from: &str, to: &[&str], cc: &[&str], seq: i64) -> DeskMessage {
         let outbound = from == ME;
         DeskMessage {
+            evidence: Default::default(),
             id: MessageId::new(),
             seq,
             thread_id: thread.clone(),

@@ -195,6 +195,27 @@ impl Fixture {
         panic!("job {job_id} did not finish");
     }
 
+    /// A failed chunk must report its error rather than leave a test waiting
+    /// forever for a provider barrier the job can no longer reach.
+    async fn wait_for_sweep_provider(&self, job_id: &str) {
+        if tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            self.state.sweep_gate.before_provider.notified(),
+        )
+        .await
+        .is_err()
+        {
+            let status = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                self.send(Request::GetJob {
+                    job_id: job_id.to_string(),
+                }),
+            )
+            .await;
+            panic!("sweep {job_id} did not reach provider barrier; job status: {status:?}");
+        }
+    }
+
     async fn in_inbox(&self, id: &MessageId) -> bool {
         self.state
             .store
@@ -306,7 +327,7 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         other => panic!("expected SenderKindSet, got {other:?}"),
     }
     assert!(fx.place(MailPlaceData::Reading, None).await.0.is_empty());
-    // It is a person now: on the desk.
+    // A sorting correction gives visibility, not evidence of a reply debt.
     match fx
         .send(Request::GetDesk {
             account_id: None,
@@ -322,10 +343,34 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
                 .iter()
                 .chain(&owed.rows)
                 .any(|row| row.message_id == issue.id);
-            assert!(on_desk, "people_new={people_new:?} owed={owed:?}");
+            assert!(
+                !on_desk,
+                "a Messages choice alone must not manufacture debt"
+            );
         }
         other => panic!("expected Desk, got {other:?}"),
     }
+    let ResponseData::Messages { messages } = fx
+        .send(Request::ListMessages {
+            account_id: None,
+            turn: None,
+            limit: 50,
+        })
+        .await
+    else {
+        panic!("messages");
+    };
+    assert!(
+        messages
+            .quiet
+            .iter()
+            .chain(&messages.recent)
+            .chain(&messages.pinned)
+            .chain(&messages.your_turn)
+            .flat_map(|row| &row.topics)
+            .any(|topic| topic.message_ids.contains(&issue.id)),
+        "the explicit Messages placement remains visible"
+    );
 
     // Moving it to Paper trail says so, and the sender's next issue follows.
     match fx
@@ -970,7 +1015,7 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
         panic!("expected a job");
     };
     // The sweep has reached its message and waits on the provider.
-    fx.state.sweep_gate.before_provider.notified().await;
+    fx.wait_for_sweep_provider(&job.job_id).await;
 
     // A pin in the other account goes through at once. The timeout only
     // turns a hang into a failure; nothing waits on it to pass.
@@ -1030,7 +1075,7 @@ async fn an_allow_made_during_a_sweep_keeps_the_message() {
         panic!("expected a job");
     };
     // Past the chunk's recheck, waiting on the provider.
-    fx.state.sweep_gate.before_provider.notified().await;
+    fx.wait_for_sweep_provider(&job.job_id).await;
     fx.send(Request::SetScreenerDecision {
         account_id: fx.account.clone(),
         sender_email: ROBOT.into(),

@@ -579,7 +579,7 @@ async fn a_thread_outranked_by_a_watched_waiting_row_is_not_owed() {
 }
 
 #[tokio::test]
-async fn messages_keys_a_turn_the_way_the_desk_counted_it() {
+async fn list_sender_history_does_not_erase_possible_participants_or_split_surface_counts() {
     let fx = Fixture::new().await;
     let mut config = fx.state.config_snapshot();
     config.messages.recent_days = 1;
@@ -615,8 +615,8 @@ async fn messages_keys_a_turn_the_way_the_desk_counted_it() {
     let (now, rows, rail) = three_counts(&fx).await;
     assert_eq!(
         (now, rows, rail),
-        (1, 1, Some(1)),
-        "Alice once, not two group rows"
+        (3, 3, Some(3)),
+        "current personal asks and two possible group conversations remain visible consistently; list history alone is not permanent identity"
     );
 }
 

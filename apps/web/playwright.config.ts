@@ -8,9 +8,16 @@ export default defineConfig({
   // The speed gate runs against a production build: playwright.perf.config.ts.
   testIgnore: ["**/speed.spec.ts"],
   fullyParallel: true,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? [["github"], ["./e2e/helpers/people-trace-reporter.ts"]] : "list",
+  reporter: process.env.CI
+    ? [
+        ["github"],
+        ["line"],
+        ["./e2e/helpers/progress-reporter.ts"],
+        ["./e2e/helpers/people-trace-reporter.ts"],
+      ]
+    : "list",
   use: {
     baseURL: appUrl,
     // The theme follows the OS until one is picked; the suite was written
@@ -42,5 +49,8 @@ export default defineConfig({
     url: appUrl,
     reuseExistingServer: false,
     timeout: 120_000,
+    // e2e-server runs the daemon and Vite in their own process groups, which
+    // Playwright's default group SIGKILL never reaches; SIGTERM lets it stop them.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });

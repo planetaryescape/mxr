@@ -12,7 +12,7 @@ Logs go to two places:
    Shipped defaults are 250 MiB per file and 10 files including active, not the
    original 50/5 sketch. Structured tracing output; level defaults to `info`.
 
-2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Retained for 90 days by default.
+2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Manual purge uses a 90-day cutoff by default; automatic retention is not yet implemented.
 
 Both are on disk, both survive daemon restarts. The text log captures configured debug/trace events except raw `async_imap` TRACE traffic, which can contain passwords and full message bodies. The event_log captures significant events at info level and above in a structured, queryable format.
 
@@ -329,4 +329,4 @@ startup behavior, output ownership and rotation-aware follow limits.
 90-day manual event cutoff. The historical 50 MiB/five-file total and automatic
 operational-history pruning were design goals, not the current runtime contract.
 
-**Why**: Logs need to survive long enough to capture intermittent issues (an auth bug that happens once a week, a sync failure that occurs on the first of each month). 90 days covers most patterns. 250 MB is a reasonable disk budget for a power-user tool. Both are configurable for users with different constraints (e.g., low-disk-space environments can reduce retention).
+**Why**: Preserve the shipped configuration while making its limits effective. The default named-file budget is 2,500 MiB; users with less disk space can reduce the file size or count. The separate 90-day manual event cutoff keeps recent diagnostics available without claiming automatic database cleanup.

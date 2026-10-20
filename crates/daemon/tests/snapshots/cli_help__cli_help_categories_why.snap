@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr categories why <MESSAGE_ID> <CATEGORY_ID>
+
+Arguments:
+  <MESSAGE_ID>
+  <CATEGORY_ID>
+
+Options:
+  -h, --help  Print help

@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Manage outgoing compose signatures
+
+Usage: mxr signatures [OPTIONS] [COMMAND]
+
+Commands:
+  list           List all signatures (default if no subcommand)
+  set            Create or update a signature inline
+  remove         Delete a signature by name
+  defaults       List scoped default signatures
+  default        Set a scoped default signature
+  clear-default  Clear a scoped default signature
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

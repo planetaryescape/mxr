@@ -1,0 +1,136 @@
+{
+  "assistant": {
+    "use": "Check assistant availability and inspect conversations before continuing one. Deleting a transcript supports a preview.",
+    "examples": [
+      "mxr assistant status --format json",
+      "mxr assistant list --limit 10 --format json",
+      "mxr assistant show CONVERSATION_ID --format json",
+      "mxr assistant delete CONVERSATION_ID --dry-run"
+    ]
+  },
+  "backup": {
+    "use": "Preview a backup of a stopped profile, then inspect the bundle before restoring into a new, empty profile. Creation and restoration preview by default; --confirm performs the operation.",
+    "examples": [
+      "mxr backup create --source-data /path/to/stopped-profile --output /path/to/mail-backup",
+      "mxr backup inspect /path/to/mail-backup",
+      "mxr backup restore /path/to/mail-backup --destination /path/to/new-profile"
+    ]
+  },
+  "categories": {
+    "use": "Inspect a category's messages or preview a new category before creating it.",
+    "examples": [
+      "mxr categories create 'Project Atlas' --dry-run",
+      "mxr categories",
+      "mxr categories show CATEGORY_ID --limit 25"
+    ]
+  },
+  "count": {
+    "use": "Count a query without fetching message bodies. Use --quiet for a bare number in a script, or group matching mail by sender.",
+    "examples": [
+      "mxr count 'is:unread' --quiet",
+      "mxr count 'newer_than:7d' --group-by from --format json"
+    ]
+  },
+  "draft": {
+    "use": "Get a suggested revision of an existing local draft from your configured LLM. The command prints the suggestion without replacing the draft or sending it.",
+    "examples": [
+      "mxr draft refine DRAFT_ID --shorter",
+      "mxr draft refine DRAFT_ID --add-context 'The deadline is Friday'"
+    ]
+  },
+  "headers": {
+    "use": "Inspect delivery and authentication headers for a message, or choose the most recent message matching a query.",
+    "examples": [
+      "mxr headers MESSAGE_ID --format json",
+      "mxr headers --search 'from:billing@example.com' --first"
+    ]
+  },
+  "humanize": {
+    "use": "Score wording before deciding whether to rewrite it. Scoring is deterministic; rewriting calls your configured LLM.",
+    "examples": [
+      "mxr humanize --format json score 'Please send the revised invoice.'",
+      "mxr humanize rewrite 'Please send the revised invoice.' --max-iterations 1"
+    ]
+  },
+  "jobs": {
+    "use": "Check a background batch mutation's progress and retained result after starting it with --async.",
+    "examples": [
+      "mxr jobs --format json",
+      "mxr jobs JOB_ID --format json"
+    ]
+  },
+  "mcp": {
+    "use": "Expose mxr tools over stdio to an MCP client. Configure the client to launch this command; it remains running to handle requests.",
+    "examples": [
+      "mxr mcp serve"
+    ]
+  },
+  "profile": {
+    "use": "Inspect the relationship profile for a contact before replying. This is a contact profile, not a runtime configuration profile.",
+    "examples": [
+      "mxr profile alice@example.com --format json",
+      "mxr profile alice@example.com --account work --format json"
+    ]
+  },
+  "recovery": {
+    "use": "Inspect held drafts after a restore and preview activation with the workspace owner returned by status. Confirm only after stopping the source owner.",
+    "examples": [
+      "mxr recovery status --format json",
+      "mxr recovery activate --expected-workspace '<OWNER_JSON_FROM_STATUS>' --format json"
+    ]
+  },
+  "restart": {
+    "use": "Restart the daemon with the installed binary after an upgrade, then check its status.",
+    "examples": [
+      "mxr restart"
+    ]
+  },
+  "route": {
+    "use": "Preview moving reviewed mail from a queue label to its destination, optionally archiving it. Replace the label names with labels in your mailbox.",
+    "examples": [
+      "mxr route MESSAGE_ID --from-queue review --to receipts --archive --dry-run",
+      "mxr route --search 'label:review from:billing@example.com' --from-queue review --to receipts --dry-run --format json"
+    ]
+  },
+  "signatures": {
+    "use": "Inspect available signatures and scoped defaults before choosing one for outgoing mail.",
+    "examples": [
+      "mxr signatures --format json list",
+      "mxr signatures --format json defaults"
+    ]
+  },
+  "snoozed": {
+    "use": "Review mail waiting to resurface, including mail snoozed in a particular account.",
+    "examples": [
+      "mxr snoozed --format json",
+      "mxr snoozed --account work --format json"
+    ]
+  },
+  "threads": {
+    "use": "List conversations with their constituent message IDs. Paginate the list before opening a conversation with mxr thread.",
+    "examples": [
+      "mxr threads --limit 25 --format json",
+      "mxr threads --limit 25 --offset 25 --format json"
+    ]
+  },
+  "triage": {
+    "use": "Find matching mail classified ACTION, FYI or ROUTINE. Filter to action items when reviewing a busy week; uncached messages may call your configured LLM.",
+    "examples": [
+      "mxr triage 'newer_than:7d' --verdict action --limit 20 --format json",
+      "mxr triage 'from:team@example.com' --sort verdict --format json"
+    ]
+  },
+  "undo": {
+    "use": "Preview reversing a mutation using the mutation ID returned by the original operation.",
+    "examples": [
+      "mxr undo MUTATION_ID --dry-run --format json"
+    ]
+  },
+  "voice": {
+    "use": "Inspect the account-level writing voice profile used by drafting features. It is separate from a contact's relationship profile.",
+    "examples": [
+      "mxr voice --format json show",
+      "mxr voice --account work --format json show"
+    ]
+  }
+}

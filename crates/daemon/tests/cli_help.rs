@@ -1,4 +1,106 @@
 use assert_cmd::Command;
+use clap::{CommandFactory, Parser};
+use mxr::cli::Cli;
+use std::collections::{BTreeMap, BTreeSet};
+
+fn visible_command_paths(command: &clap::Command, path: &[String]) -> BTreeSet<Vec<String>> {
+    let mut paths = BTreeSet::from([path.to_vec()]);
+    for child in command.get_subcommands() {
+        // clap's generated help command is not an application command. Aliases
+        // are not separate children; retain old alias snapshots without requiring new ones.
+        if child.is_hide_set() || child.get_name() == "help" {
+            continue;
+        }
+        let mut child_path = path.to_vec();
+        child_path.push(child.get_name().to_owned());
+        paths.extend(visible_command_paths(child, &child_path));
+    }
+    paths
+}
+
+#[test]
+fn help_cases_cover_the_visible_canonical_command_tree() {
+    let mut command = Cli::command();
+    command.build();
+    let expected = visible_command_paths(&command, &[]);
+    let covered = help_cases()
+        .iter()
+        .map(|(_, args)| {
+            assert_eq!(
+                args.last(),
+                Some(&"--help"),
+                "help-only snapshot invocation"
+            );
+            args[..args.len() - 1]
+                .iter()
+                .map(|arg| (*arg).to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect::<BTreeSet<_>>();
+    let missing = expected
+        .difference(&covered)
+        .map(|path| format!("mxr {} --help", path.join(" ")))
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "missing help snapshot cases:\n{}",
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn command_tree_coverage_excludes_hidden_commands_aliases_and_generated_help() {
+    let mut command = clap::Command::new("mxr")
+        .subcommand(
+            clap::Command::new("visible")
+                .visible_alias("alias")
+                .subcommand(clap::Command::new("nested")),
+        )
+        .subcommand(
+            clap::Command::new("hidden")
+                .hide(true)
+                .subcommand(clap::Command::new("also-hidden")),
+        );
+    command.build();
+    assert_eq!(
+        visible_command_paths(&command, &[]),
+        BTreeSet::from([
+            vec![],
+            vec!["visible".to_owned()],
+            vec!["visible".to_owned(), "nested".to_owned()],
+        ])
+    );
+}
+
+#[test]
+fn curated_reference_examples_parse_without_executing_commands() {
+    #[derive(serde::Deserialize)]
+    struct Examples {
+        examples: Vec<String>,
+    }
+    let entries: BTreeMap<String, Examples> = serde_json::from_str(include_str!(
+        "../../../site/scripts/cli-reference-examples.json"
+    ))
+    .expect("curated reference examples");
+    assert_eq!(
+        entries.len(),
+        19,
+        "keep the selected command-page scope explicit"
+    );
+    for (command, entry) in entries {
+        assert!(!entry.examples.is_empty(), "mxr {command} needs an example");
+        for example in entry.examples {
+            let args = shell_words::split(&example).expect("shell words in example");
+            assert_eq!(args.first().map(String::as_str), Some("mxr"), "{example}");
+            assert_eq!(args.get(1), Some(&command), "{example}");
+            let parsed = Cli::try_parse_from(args).map(|_| ());
+            assert!(
+                parsed.is_ok(),
+                "reference example does not parse: {example}\n{parsed:?}"
+            );
+        }
+    }
+}
 
 fn assert_help_snapshot(name: &str, args: &[&str]) {
     let output = Command::cargo_bin("mxr")
@@ -48,7 +150,13 @@ fn shell_completions_run_with_the_normal_process_stack() {
 
 #[test]
 fn cli_help_snapshots_cover_all_commands() {
-    let cases: &[(&str, &[&str])] = &[
+    for (name, args) in help_cases() {
+        assert_help_snapshot(name, args);
+    }
+}
+
+fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
+    &[
         ("cli_help_root", &["--help"]),
         ("cli_help_connect", &["connect", "--help"]),
         ("cli_help_serve", &["serve", "--help"]),
@@ -556,11 +664,148 @@ fn cli_help_snapshots_cover_all_commands() {
             &["briefing", "recipient", "--help"],
         ),
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
-    ];
-
-    assert_eq!(cases.len(), 292);
-
-    for (name, args) in cases {
-        assert_help_snapshot(name, args);
-    }
+        (
+            "cli_help_activity_saved_delete",
+            &["activity", "saved", "delete", "--help"],
+        ),
+        (
+            "cli_help_activity_saved_list",
+            &["activity", "saved", "list", "--help"],
+        ),
+        (
+            "cli_help_activity_saved_open",
+            &["activity", "saved", "open", "--help"],
+        ),
+        (
+            "cli_help_activity_saved_save",
+            &["activity", "saved", "save", "--help"],
+        ),
+        (
+            "cli_help_activity_status",
+            &["activity", "status", "--help"],
+        ),
+        ("cli_help_activity_top", &["activity", "top", "--help"]),
+        ("cli_help_assistant", &["assistant", "--help"]),
+        (
+            "cli_help_assistant_answer",
+            &["assistant", "answer", "--help"],
+        ),
+        (
+            "cli_help_assistant_approve",
+            &["assistant", "approve", "--help"],
+        ),
+        (
+            "cli_help_assistant_delete",
+            &["assistant", "delete", "--help"],
+        ),
+        ("cli_help_assistant_list", &["assistant", "list", "--help"]),
+        (
+            "cli_help_assistant_reject",
+            &["assistant", "reject", "--help"],
+        ),
+        ("cli_help_assistant_send", &["assistant", "send", "--help"]),
+        ("cli_help_assistant_show", &["assistant", "show", "--help"]),
+        (
+            "cli_help_assistant_status",
+            &["assistant", "status", "--help"],
+        ),
+        ("cli_help_assistant_stop", &["assistant", "stop", "--help"]),
+        (
+            "cli_help_assistant_trust",
+            &["assistant", "trust", "--help"],
+        ),
+        (
+            "cli_help_briefing_context",
+            &["briefing", "context", "--help"],
+        ),
+        ("cli_help_categories_why", &["categories", "why", "--help"]),
+        ("cli_help_commitments", &["commitments", "--help"]),
+        (
+            "cli_help_commitments_add",
+            &["commitments", "add", "--help"],
+        ),
+        (
+            "cli_help_commitments_detect",
+            &["commitments", "detect", "--help"],
+        ),
+        (
+            "cli_help_commitments_resolve",
+            &["commitments", "resolve", "--help"],
+        ),
+        ("cli_help_demo_reset", &["demo", "reset", "--help"]),
+        ("cli_help_demo_status", &["demo", "status", "--help"]),
+        ("cli_help_demo_stop", &["demo", "stop", "--help"]),
+        ("cli_help_draft", &["draft", "--help"]),
+        ("cli_help_draft_eval", &["draft", "eval", "--help"]),
+        ("cli_help_draft_refine", &["draft", "refine", "--help"]),
+        ("cli_help_humanize", &["humanize", "--help"]),
+        (
+            "cli_help_humanize_rewrite",
+            &["humanize", "rewrite", "--help"],
+        ),
+        ("cli_help_humanize_score", &["humanize", "score", "--help"]),
+        ("cli_help_llm_key", &["llm", "key", "--help"]),
+        (
+            "cli_help_llm_key_remove",
+            &["llm", "key", "remove", "--help"],
+        ),
+        ("cli_help_llm_key_set", &["llm", "key", "set", "--help"]),
+        (
+            "cli_help_llm_key_status",
+            &["llm", "key", "status", "--help"],
+        ),
+        ("cli_help_mcp", &["mcp", "--help"]),
+        ("cli_help_mcp_serve", &["mcp", "serve", "--help"]),
+        ("cli_help_profile", &["profile", "--help"]),
+        (
+            "cli_help_reading_marginalia_disconnect",
+            &["reading", "marginalia", "disconnect", "--help"],
+        ),
+        (
+            "cli_help_reading_marginalia_status",
+            &["reading", "marginalia", "status", "--help"],
+        ),
+        (
+            "cli_help_records_subscriptions",
+            &["records", "subscriptions", "--help"],
+        ),
+        ("cli_help_replies_walk", &["replies", "walk", "--help"]),
+        (
+            "cli_help_rules_category-apply",
+            &["rules", "category-apply", "--help"],
+        ),
+        (
+            "cli_help_rules_category-preview",
+            &["rules", "category-preview", "--help"],
+        ),
+        ("cli_help_rules_form", &["rules", "form", "--help"]),
+        ("cli_help_signatures", &["signatures", "--help"]),
+        (
+            "cli_help_signatures_clear-default",
+            &["signatures", "clear-default", "--help"],
+        ),
+        (
+            "cli_help_signatures_default",
+            &["signatures", "default", "--help"],
+        ),
+        (
+            "cli_help_signatures_defaults",
+            &["signatures", "defaults", "--help"],
+        ),
+        (
+            "cli_help_signatures_list",
+            &["signatures", "list", "--help"],
+        ),
+        (
+            "cli_help_signatures_remove",
+            &["signatures", "remove", "--help"],
+        ),
+        ("cli_help_signatures_set", &["signatures", "set", "--help"]),
+        ("cli_help_threads", &["threads", "--help"]),
+        ("cli_help_time", &["time", "--help"]),
+        ("cli_help_voice", &["voice", "--help"]),
+        ("cli_help_voice_rebuild", &["voice", "rebuild", "--help"]),
+        ("cli_help_voice_show", &["voice", "show", "--help"]),
+        ("cli_help_web_stop", &["web", "stop", "--help"]),
+    ]
 }

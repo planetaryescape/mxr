@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Conversations, most recently active first
+
+Usage: mxr assistant list [OPTIONS]
+
+Options:
+      --limit <LIMIT>
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

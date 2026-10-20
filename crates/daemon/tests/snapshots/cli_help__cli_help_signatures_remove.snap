@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Delete a signature by name
+
+Usage: mxr signatures remove <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+  -h, --help  Print help

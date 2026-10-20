@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Approve a change the assistant is waiting on. It runs exactly the call shown
+
+Usage: mxr assistant approve [OPTIONS] <CONVERSATION> <CALL_ID>
+
+Arguments:
+  <CONVERSATION>
+  <CALL_ID>
+
+Options:
+      --no-wait
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

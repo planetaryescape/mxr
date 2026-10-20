@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Rebuild the profile from outbound mail
+
+Usage: mxr voice rebuild
+
+Options:
+  -h, --help  Print help

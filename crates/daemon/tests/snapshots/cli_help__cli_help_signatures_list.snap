@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List all signatures (default if no subcommand)
+
+Usage: mxr signatures list
+
+Options:
+  -h, --help  Print help

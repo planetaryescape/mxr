@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Replay your most recent replies: draft each one from what was known just before you replied and compare it with what you sent (greeting, sign-off, length, invented numbers). Calls your LLM once per reply; nothing is saved or sent. Uses --account when given
+
+Usage: mxr draft eval [OPTIONS]
+
+Options:
+      --limit <LIMIT>  How many replies to replay (at most 50) [default: 10]
+  -h, --help           Print help

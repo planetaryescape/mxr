@@ -10,10 +10,11 @@
 //!   markers go through a separate `ForceRecord` variant so they land in
 //!   the log even when paused (otherwise users would never know it took
 //!   effect).
-//! - `MXR_ACTIVITY=off` disables the recorder entirely. Set on daemon
-//!   startup; honored for the lifetime of the process.
+//! - Config disablement or `MXR_ACTIVITY=off` disables all recording,
+//!   including forced markers. Policy is fixed at daemon startup.
 
 pub mod mapper;
+mod privacy;
 pub mod tier;
 
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -44,8 +45,12 @@ pub struct OwnedEntry {
 enum RecorderMessage {
     Record(OwnedEntry),
     ForceRecord(OwnedEntry),
-    Pause { until: Option<i64> },
+    Pause {
+        until: Option<i64>,
+    },
     Resume,
+    #[cfg(test)]
+    Barrier(tokio::sync::oneshot::Sender<()>),
 }
 
 /// Handle to the recorder. Cheap to clone (everything inside is `Arc`).
@@ -59,13 +64,13 @@ struct Inner {
     paused: AtomicBool,
     paused_until: AtomicI64,
     enabled: bool,
+    policy: mxr_config::ActivityConfig,
 }
 
 impl Recorder {
-    /// Spawn the worker. `MXR_ACTIVITY=off` disables the recorder so all
-    /// `record` calls become no-ops.
-    pub fn spawn(store: Arc<Store>) -> Self {
-        let enabled = std::env::var("MXR_ACTIVITY").as_deref() != Ok("off");
+    /// Snapshot startup policy. The environment kill switch overrides config.
+    pub fn spawn(store: Arc<Store>, config: &mxr_config::ActivityConfig) -> Self {
+        let enabled = config.enabled && std::env::var("MXR_ACTIVITY").as_deref() != Ok("off");
         let (tx, rx) = mpsc::channel::<RecorderMessage>(1024);
         let paused = AtomicBool::new(false);
         let paused_until = AtomicI64::new(0);
@@ -74,11 +79,12 @@ impl Recorder {
             paused,
             paused_until,
             enabled,
+            policy: config.clone(),
         });
         if enabled {
             tokio::spawn(worker_loop(rx, store, inner.clone()));
         } else {
-            tracing::info!("activity recorder disabled via MXR_ACTIVITY=off");
+            tracing::info!("activity recorder disabled by startup policy");
             // Drain the channel quietly so try_send doesn't pile up.
             tokio::spawn(drain_loop(rx));
         }
@@ -90,10 +96,19 @@ impl Recorder {
     /// propagated to the user-facing IPC response — activity is
     /// observability, not correctness.
     pub fn record(&self, entry: OwnedEntry) {
-        if !self.inner.enabled {
+        self.submit(entry, false);
+    }
+
+    fn submit(&self, mut entry: OwnedEntry, forced: bool) {
+        if !self.inner.enabled || !privacy::prepare(&self.inner.policy, &mut entry) {
             return;
         }
-        match self.inner.tx.try_send(RecorderMessage::Record(entry)) {
+        let message = if forced {
+            RecorderMessage::ForceRecord(entry)
+        } else {
+            RecorderMessage::Record(entry)
+        };
+        match self.inner.tx.try_send(message) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
                 tracing::warn!("activity recorder backpressure; dropping entry");
@@ -108,12 +123,7 @@ impl Recorder {
     /// `activity.paused` / `activity.resumed` markers so a user can see
     /// when activity was suspended without the suspension hiding itself.
     pub fn record_forced(&self, entry: OwnedEntry) {
-        if !self.inner.enabled {
-            return;
-        }
-        if let Err(err) = self.inner.tx.try_send(RecorderMessage::ForceRecord(entry)) {
-            tracing::warn!(error = %err, "activity recorder force-record failed");
-        }
+        self.submit(entry, true);
     }
 
     /// Pause recording. Until clears the optional auto-resume timestamp
@@ -265,6 +275,10 @@ async fn worker_loop(
                 inner.paused.store(false, Ordering::SeqCst);
                 inner.paused_until.store(0, Ordering::SeqCst);
             }
+            #[cfg(test)]
+            RecorderMessage::Barrier(ack) => {
+                let _ = ack.send(());
+            }
         }
     }
 }
@@ -290,7 +304,14 @@ async fn write_entry_returning_id(store: &Store, e: OwnedEntry) -> Option<i64> {
 }
 
 async fn drain_loop(mut rx: mpsc::Receiver<RecorderMessage>) {
-    while rx.recv().await.is_some() {}
+    while let Some(message) = rx.recv().await {
+        #[cfg(test)]
+        if let RecorderMessage::Barrier(ack) = message {
+            let _ = ack.send(());
+        }
+        #[cfg(not(test))]
+        let _ = message;
+    }
 }
 
 async fn write_entry(store: &Store, e: OwnedEntry) {
@@ -346,14 +367,20 @@ pub(crate) async fn wait_for_pause_state(rec: &Recorder, expected: bool) {
     );
 }
 
-/// Barrier for a running (unpaused) recorder: flip pause on and off and wait
-/// for both edges. Writes no rows of its own.
+/// Wait for all earlier messages, even when disabled or paused. No rows or
+/// pause-state changes of its own.
 #[cfg(test)]
 pub(crate) async fn settle(rec: &Recorder) {
-    rec.pause(None);
-    wait_for_pause_state(rec, true).await;
-    rec.resume();
-    wait_for_pause_state(rec, false).await;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    rec.inner
+        .tx
+        .send(RecorderMessage::Barrier(tx))
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[cfg(test)]
@@ -369,7 +396,7 @@ mod tests {
 
     async fn fresh_recorder() -> (Recorder, Arc<Store>) {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let rec = Recorder::spawn(store.clone());
+        let rec = Recorder::spawn(store.clone(), &mxr_config::ActivityConfig::default());
         (rec, store)
     }
 
@@ -507,6 +534,33 @@ mod tests {
         let ctx: serde_json::Value =
             serde_json::from_str(page.rows[0].context_json.as_ref().unwrap()).unwrap();
         assert_eq!(ctx["count"], 3);
+    }
+
+    #[tokio::test]
+    async fn activity_privacy_redacts_before_coalescing_without_losing_counts() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let config = mxr_config::ActivityConfig {
+            track_search_queries: false,
+            ..Default::default()
+        };
+        let rec = Recorder::spawn(store.clone(), &config);
+        let base = current_unix_ms();
+        for delta in [0, 50, 100] {
+            let mut e = entry("search.run");
+            e.ts = base + delta;
+            e.tier = Tier::Standard;
+            e.context = Some(serde_json::json!({"query": "NEVER_PERSIST", "mode": "lexical"}));
+            rec.record(e);
+        }
+        settle(&rec).await;
+        let page = store
+            .list_activity(&ActivityFilter::default(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 1);
+        let context: serde_json::Value =
+            serde_json::from_str(page.rows[0].context_json.as_deref().unwrap()).unwrap();
+        assert_eq!(context, serde_json::json!({"mode": "lexical", "count": 3}));
     }
 
     #[tokio::test]

@@ -1566,4 +1566,77 @@ mod tests {
             "markdown source must not be recorded either"
         );
     }
+
+    #[tokio::test]
+    async fn activity_privacy_persisted_mapper_outputs_omit_content_and_respect_each_setting() {
+        for track in [false, true] {
+            let config = toml::from_str(&format!(
+                "[activity]\ntrack_subjects = {track}\ntrack_recipient_handles = {track}\ntrack_search_queries = {track}\n"
+            )).unwrap();
+            let state = crate::state::AppState::in_memory_without_accounts_with_config(config)
+                .await
+                .unwrap();
+            let draft = draft_with_content(
+                mxr_core::types::DraftContent::html(
+                    "BODY_HTML_NEVER_RECORD",
+                    Some("BODY_TEXT_NEVER_RECORD".into()),
+                ),
+                vec![],
+            );
+            let requests = [
+                Request::SendDraft {
+                    send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
+                    draft,
+                    override_safety_token: None,
+                },
+                Request::UpsertAccountConfig {
+                    account: secret_bearing_account_config(),
+                },
+                Request::CreateSavedSearch {
+                    name: "Keep name".into(),
+                    query: "PRIVATE_QUERY".into(),
+                    account_id: None,
+                    search_mode: mxr_core::SearchMode::Lexical,
+                },
+                Request::ExportSearch {
+                    query: "PRIVATE_EXPORT_QUERY".into(),
+                    format: mxr_core::ExportFormat::Mbox,
+                    account_id: None,
+                },
+            ];
+            for req in requests {
+                state.activity.record(ok_map(&req).expect("mapped request"));
+            }
+            crate::activity::settle(&state.activity).await;
+            let rows = state
+                .store
+                .list_activity(&mxr_store::ActivityFilter::default(), 10, None)
+                .await
+                .unwrap()
+                .rows;
+            // search.save and search.run are distinct compaction keys.
+            assert_eq!(rows.len(), 4);
+            let json =
+                serde_json::to_string(&rows.iter().map(|r| &r.context_json).collect::<Vec<_>>())
+                    .unwrap();
+            for forbidden in [
+                "BODY_HTML_NEVER_RECORD",
+                "BODY_TEXT_NEVER_RECORD",
+                "CLIENT_SECRET_DO_NOT_LOG",
+                "INLINE_PASSWORD_DO_NOT_LOG",
+                "SMTP_PASSWORD_REF",
+                "TOKEN_REF_FOR_DEBUG_SHAPE",
+                "alice@example.com",
+            ] {
+                assert!(!json.contains(forbidden), "leaked {forbidden}: {json}");
+            }
+            assert_eq!(json.contains("Quarterly numbers"), track);
+            assert_eq!(json.contains("secret@example.com"), track);
+            assert_eq!(json.contains("PRIVATE_QUERY"), track);
+            assert_eq!(json.contains("PRIVATE_EXPORT_QUERY"), track);
+            assert!(json.contains("Keep name"));
+            assert!(json.contains("to_count"));
+            assert!(json.contains("content_kind"));
+        }
+    }
 }

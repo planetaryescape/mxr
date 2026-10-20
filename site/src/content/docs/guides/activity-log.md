@@ -34,7 +34,7 @@ What you get: reverse-chronological table with `TIME / SRC / ACTION / TARGET / C
 - Cursor moves, scroll, pane focus, palette opens-then-cancelled.
 - Heartbeats, pings, status polls, background sync, FTS rebuilds.
 - Read-side getters (`mxr cat`, listing envelopes) — they don't change state.
-- Anything when `MXR_ACTIVITY=off` is set or recording is paused.
+- New activity when `[activity].enabled = false` or `MXR_ACTIVITY=off` is set at daemon startup. Pause drops ordinary activity but keeps pause/resume markers.
 
 ## Filter to the slice you care about
 
@@ -117,7 +117,24 @@ What you get: the daemon writes the file with the matching rows in the requested
 
 ## Scrub what you don't want kept
 
-Three layers, from most permanent to most temporary.
+Choose what to record, pause temporarily, or scrub existing rows.
+
+### Choose what to record (config)
+
+Edit the file printed by `mxr config path`:
+
+```toml
+[activity]
+enabled = true
+track_subjects = false
+track_recipient_handles = false
+track_search_queries = false
+track_link_clicks = false
+```
+
+Restart the daemon after changing these controls. This example keeps actions, counts and opaque IDs without subjects, email handles, search text or URL metadata. Sender-address targets are omitted too; folder destinations and rule names remain. Set `enabled = false` instead to stop all new activity rows, including administrative markers.
+
+These controls affect new rows only. To remove old context, use the dry-run and tombstone commands below. Disabling or pausing recording also stops Reading engagement, but you can still save Later items and highlights. Link-click tracking is off by default; no current producer emits `link.click` rows, so enabling it does not add browser tracking.
 
 ### Hard kill (env var)
 
@@ -125,7 +142,7 @@ Three layers, from most permanent to most temporary.
 MXR_ACTIVITY=off mxr daemon
 ```
 
-The recorder is spawned but every `record()` call is a no-op for the lifetime of the daemon.
+The kill switch overrides config for the lifetime of the daemon, including forced pause/resume markers. Set it when starting the daemon, not just on a client command talking to an already-running daemon.
 
 ### Soft pause (runtime)
 
@@ -262,11 +279,11 @@ A daily prune sweep hard-deletes rows older than the cutoffs. Each deletion writ
 
 ## Forbidden in `context_json`
 
-The recorder refuses to store credential material:
+Activity producers omit credential material and mail content:
 
 - OAuth/refresh tokens, password hashes, API keys, session ids.
 - Attachment bytes (filenames + sizes only).
-- Full mail bodies (subjects + first-80-char draft prefixes only, truncated).
+- Mail bodies and draft text. Send activity keeps content kind and counts, not body excerpts.
 
 A PII-audit test asserts the table never contains the forbidden keys after a full mapper run.
 

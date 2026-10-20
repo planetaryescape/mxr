@@ -275,7 +275,7 @@ pub(in crate::handler) async fn record_engagement(
         .get_envelope(&message_id)
         .await?
         .ok_or_else(|| HandlerError::Message(format!("No message for Reading item {key}")))?;
-    // One privacy switch: MXR_ACTIVITY=off (or a pause) stops engagement too.
+    // Recorder disablement (config or environment) and pause stop engagement too.
     if !state.activity.is_enabled() || state.activity.pause_status().0 {
         return Ok(ResponseData::ReadingEngagement {
             item_key: item_key(&message_id, idx),

@@ -264,7 +264,7 @@ pub enum ChimeSound {
 #[serde(default)]
 pub struct ActivityConfig {
     /// Global enable. When `false`, the recorder is spawned but every
-    /// `record()` call is dropped silently. Equivalent to setting
+    /// entry, including forced markers, is dropped silently. Equivalent to setting
     /// `MXR_ACTIVITY=off` at startup, but persists in config.
     pub enabled: bool,
     pub retention: ActivityRetentionConfig,
@@ -273,7 +273,7 @@ pub struct ActivityConfig {
     pub track_link_clicks: bool,
     /// Record subjects in `context_json`. Default `true`.
     pub track_subjects: bool,
-    /// Record recipient handles in `context_json`. Default `true`.
+    /// Record email handles in context and sender-address targets. Default `true`.
     pub track_recipient_handles: bool,
     /// Record search query text verbatim in `context_json`. Default `true`.
     pub track_search_queries: bool,

@@ -557,6 +557,61 @@ async fn an_article_on_this_machine_is_refused_and_the_reason_is_kept() {
 }
 
 #[tokio::test]
+async fn activity_privacy_config_and_pause_gate_reading_engagement() {
+    for enabled in [false, true] {
+        let config = toml::from_str(&format!("[activity]\nenabled = {enabled}\n")).unwrap();
+        let fx = Fixture::with_config(config).await;
+        let (id, _) = issue(&fx, WEEKLY, "Private essay", &essay(300), Utc::now()).await;
+        let report = || Request::RecordReadingEngagement {
+            item_key: format!("{id}:0"),
+            opened: true,
+            dwell_ms: 30_000,
+            progress: 0.95,
+        };
+        if enabled {
+            request(&fx, Request::PauseActivity { until_ts: None }).await;
+            crate::activity::wait_for_pause_state(&fx.state.activity, true).await;
+        }
+        let ResponseData::ReadingEngagement {
+            recorded, finished, ..
+        } = request(&fx, report()).await
+        else {
+            panic!("engagement response");
+        };
+        assert!(!recorded);
+        assert!(!finished);
+        assert!(fx
+            .state
+            .store
+            .reading_states_for_messages(std::slice::from_ref(&id))
+            .await
+            .unwrap()
+            .is_empty());
+        if enabled {
+            request(&fx, Request::ResumeActivity).await;
+            crate::activity::wait_for_pause_state(&fx.state.activity, false).await;
+            let ResponseData::ReadingEngagement {
+                recorded, finished, ..
+            } = request(&fx, report()).await
+            else {
+                panic!("engagement response");
+            };
+            assert!(recorded);
+            assert!(finished);
+            assert_eq!(
+                fx.state
+                    .store
+                    .reading_states_for_messages(std::slice::from_ref(&id))
+                    .await
+                    .unwrap()
+                    .len(),
+                1
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn opening_an_item_records_engagement_and_leaves_hints_to_their_elements() {
     let fx = Fixture::new().await;
     let (id, _) = issue(&fx, WEEKLY, "Essay", &essay(300), Utc::now()).await;

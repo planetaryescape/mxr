@@ -449,12 +449,14 @@ standard_days = 90
 important_days = 365
 ```
 
-- `enabled` — global switch. When `false`, the recorder is spawned but every `record()` call is a no-op. `MXR_ACTIVITY=off` is the env-var equivalent.
-- `track_link_clicks` — record `link.click` rows with the URL in `context_json`. Default `false` because URL history is sensitive.
+- `enabled` — global switch. When `false`, no new activity rows are written, including forced pause/resume markers. `MXR_ACTIVITY=off` overrides enabled config.
+- `track_link_clicks` — allow `link.click` rows and URL metadata. Default `false`. No current producer emits link-click rows; enabling this does not add tracking.
 - `track_subjects` — keep email subjects in `context_json`. Default `true`. Flip off if you'd rather not retain message subjects in the audit trail.
-- `track_recipient_handles` — keep `name`/`email` recipient blocks in `context_json`. Default `true`.
+- `track_recipient_handles` — keep email handles and recipient blocks in `context_json` and sender-address targets. Default `true`. Counts, opaque IDs, folder destinations and rule names remain when disabled.
 - `track_search_queries` — keep search query text verbatim. Default `true`. Flip off for high-sensitivity work.
 - `retention.ephemeral_days` / `standard_days` / `important_days` — daily prune sweep hard-deletes rows older than this. Defaults 30 / 90 / 365.
+
+Restart the daemon after changing enablement or metadata controls. They apply to new entries, including nested metadata from direct recorder calls, not existing rows. Disabled or paused recording also stops Reading engagement; saving Later items and highlights still works.
 
 Verify it's wired:
 

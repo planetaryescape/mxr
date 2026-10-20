@@ -783,7 +783,7 @@ impl AppState {
             config.search.semantic.enabled = false;
             config.search.semantic.auto_download_models = false;
         }
-        let activity = crate::activity::Recorder::spawn(store.clone());
+        let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         let (search, search_worker) =
@@ -2063,7 +2063,7 @@ impl AppState {
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let activity = crate::activity::Recorder::spawn(store.clone());
+        let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
             store,
@@ -2119,7 +2119,13 @@ impl AppState {
 
     #[cfg(test)]
     pub async fn in_memory_without_accounts() -> anyhow::Result<Self> {
-        let mut config = mxr_config::MxrConfig::default();
+        Self::in_memory_without_accounts_with_config(mxr_config::MxrConfig::default()).await
+    }
+
+    #[cfg(test)]
+    pub async fn in_memory_without_accounts_with_config(
+        mut config: mxr_config::MxrConfig,
+    ) -> anyhow::Result<Self> {
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
@@ -2148,7 +2154,7 @@ impl AppState {
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let activity = crate::activity::Recorder::spawn(store.clone());
+        let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
             store,
@@ -2205,7 +2211,13 @@ impl AppState {
     #[cfg(test)]
     pub async fn in_memory_with_fake(
     ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
-        let mut config = mxr_config::MxrConfig::default();
+        Self::in_memory_with_fake_config(mxr_config::MxrConfig::default()).await
+    }
+
+    #[cfg(test)]
+    pub async fn in_memory_with_fake_config(
+        mut config: mxr_config::MxrConfig,
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
@@ -2258,7 +2270,7 @@ impl AppState {
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let activity = crate::activity::Recorder::spawn(store.clone());
+        let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok((
             Self {
                 restore_pending: std::sync::atomic::AtomicBool::new(false),

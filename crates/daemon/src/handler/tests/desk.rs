@@ -19,8 +19,12 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) async fn new() -> Self {
+        Self::with_config(mxr_config::MxrConfig::default()).await
+    }
+
+    pub(super) async fn with_config(config: mxr_config::MxrConfig) -> Self {
         let now = chrono::Utc::now();
-        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let (state, fake) = AppState::in_memory_with_fake_config(config).await.unwrap();
         let state = Arc::new(state);
         let account = state.default_account_id();
         let inbox = LabelId::from_scoped_provider_id(&account, "fake", "INBOX");

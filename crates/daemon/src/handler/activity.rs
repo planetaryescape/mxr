@@ -504,6 +504,252 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn activity_config_disabled_blocks_dispatch_and_direct_and_forced_markers() {
+        let config = toml::from_str("[activity]\nenabled = false\n").unwrap();
+        let (s, _) = AppState::in_memory_with_fake_config(config).await.unwrap();
+        let s = Arc::new(s);
+        assert!(!s.activity.is_enabled());
+        let request = mxr_protocol::IpcMessage {
+            expected_workspace: None,
+            id: 1,
+            source: ClientKind::Cli,
+            payload: mxr_protocol::IpcPayload::Request(mxr_protocol::Request::CreateSavedSearch {
+                name: "private".into(),
+                query: "secret query".into(),
+                account_id: None,
+                search_mode: mxr_core::SearchMode::Lexical,
+            }),
+        };
+        let response = crate::handler::handle_request(&s, &request).await;
+        assert!(
+            matches!(
+                response.payload,
+                mxr_protocol::IpcPayload::Response(mxr_protocol::Response::Ok { .. })
+            ),
+            "{response:?}"
+        );
+        pause_activity(&s, None).await.unwrap();
+        resume_activity(&s).await.unwrap();
+        export_activity(&s, &empty_filter(), ActivityExportFormat::Json, None)
+            .await
+            .unwrap();
+        prune_activity(&s, 0, None, false).await.unwrap();
+        redact_activity(&s, &[1], None, false).await.unwrap();
+        crate::activity::settle(&s.activity).await;
+        assert_eq!(
+            s.store
+                .count_activity(&store::ActivityFilter::default())
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn activity_privacy_search_config_is_used_by_dispatch() {
+        let config = toml::from_str("[activity]\ntrack_search_queries = false\n").unwrap();
+        let (s, _) = AppState::in_memory_with_fake_config(config).await.unwrap();
+        let s = Arc::new(s);
+        let request = mxr_protocol::IpcMessage {
+            expected_workspace: None,
+            id: 1,
+            source: ClientKind::Cli,
+            payload: mxr_protocol::IpcPayload::Request(mxr_protocol::Request::CreateSavedSearch {
+                name: "My search".into(),
+                query: "PRIVATE_QUERY".into(),
+                account_id: None,
+                search_mode: mxr_core::SearchMode::Lexical,
+            }),
+        };
+        let response = crate::handler::handle_request(&s, &request).await;
+        assert!(
+            matches!(
+                response.payload,
+                mxr_protocol::IpcPayload::Response(mxr_protocol::Response::Ok { .. })
+            ),
+            "{response:?}"
+        );
+        crate::activity::settle(&s.activity).await;
+        let page = s
+            .store
+            .list_activity(&store::ActivityFilter::default(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 1);
+        let context: serde_json::Value =
+            serde_json::from_str(page.rows[0].context_json.as_deref().unwrap()).unwrap();
+        assert_eq!(context, serde_json::json!({"name": "My search"}));
+        assert_eq!(page.rows[0].source, "cli");
+    }
+
+    #[tokio::test]
+    async fn activity_privacy_env_kill_overrides_enabled_config_in_subprocess() {
+        const CHILD: &str = "MXR_TEST_ACTIVITY_PRIVACY_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "handler::activity::tests::activity_privacy_env_kill_overrides_enabled_config_in_subprocess", "--nocapture"])
+                .env(CHILD, "1")
+                .env("MXR_ACTIVITY", "off")
+                .output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        let config = toml::from_str("[activity]\nenabled = true\n").unwrap();
+        let s = Arc::new(
+            AppState::in_memory_without_accounts_with_config(config)
+                .await
+                .unwrap(),
+        );
+        assert!(!s.activity.is_enabled());
+        pause_activity(&s, None).await.unwrap();
+        resume_activity(&s).await.unwrap();
+        export_activity(&s, &empty_filter(), ActivityExportFormat::Json, None)
+            .await
+            .unwrap();
+        crate::activity::settle(&s.activity).await;
+        assert_eq!(
+            s.store
+                .count_activity(&store::ActivityFilter::default())
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn activity_privacy_independent_flags_cover_direct_and_forced_nested_metadata() {
+        for flag in [
+            None,
+            Some("track_subjects"),
+            Some("track_search_queries"),
+            Some("track_recipient_handles"),
+            Some("track_link_clicks"),
+        ] {
+            let mut config = mxr_config::MxrConfig::default();
+            config.activity.track_link_clicks = true;
+            match flag {
+                Some("track_subjects") => config.activity.track_subjects = false,
+                Some("track_search_queries") => config.activity.track_search_queries = false,
+                Some("track_recipient_handles") => config.activity.track_recipient_handles = false,
+                Some("track_link_clicks") => config.activity.track_link_clicks = false,
+                None => {}
+                Some(other) => panic!("unknown test flag {other}"),
+            }
+            let s = Arc::new(
+                AppState::in_memory_without_accounts_with_config(config)
+                    .await
+                    .unwrap(),
+            );
+            let nested = serde_json::json!({"items": [{
+                "subject": "PRIVATE_SUBJECT", "query": "PRIVATE_QUERY", "email": "PRIVATE_EMAIL",
+                "recipients": [{"name": "PRIVATE_NAME", "email": "PRIVATE_EMAIL"}],
+                "url": "https://private.example", "count": 2
+            }], "name": "Rule name", "to": "Folder", "to_count": 2, "target_ids": ["m_1"]});
+            for forced in [false, true] {
+                let e = OwnedEntry {
+                    ts: current_unix_ms(),
+                    account_id: None,
+                    source: ClientKind::Daemon,
+                    action: "rule.update".into(),
+                    target_kind: Some("rule".into()),
+                    target_id: Some("rule_1".into()),
+                    tier: store::Tier::Important,
+                    context: Some(nested.clone()),
+                };
+                if forced {
+                    s.activity.record_forced(e);
+                } else {
+                    s.activity.record(e);
+                }
+            }
+            let sender = OwnedEntry {
+                ts: current_unix_ms(),
+                account_id: None,
+                source: ClientKind::Cli,
+                action: "sender.kind".into(),
+                target_kind: Some("sender".into()),
+                target_id: Some("PRIVATE_EMAIL".into()),
+                tier: store::Tier::Important,
+                context: Some(serde_json::json!({"kind": "newsletter"})),
+            };
+            s.activity.record(sender);
+            let link = OwnedEntry {
+                ts: current_unix_ms(),
+                account_id: None,
+                source: ClientKind::Web,
+                action: "link.click".into(),
+                target_kind: Some("link".into()),
+                target_id: Some("https://private.example".into()),
+                tier: store::Tier::Standard,
+                context: Some(serde_json::json!({"url": "https://private.example"})),
+            };
+            s.activity.record(link.clone());
+            s.activity.record_forced(link);
+            crate::activity::settle(&s.activity).await;
+            let page = s
+                .store
+                .list_activity(&store::ActivityFilter::default(), 20, None)
+                .await
+                .unwrap();
+            let rules: Vec<_> = page
+                .rows
+                .iter()
+                .filter(|r| r.action == "rule.update")
+                .collect();
+            assert_eq!(rules.len(), 2);
+            for row in rules {
+                assert_eq!(row.target_kind.as_deref(), Some("rule"));
+                assert_eq!(row.target_id.as_deref(), Some("rule_1"));
+                let ctx: serde_json::Value =
+                    serde_json::from_str(row.context_json.as_deref().unwrap()).unwrap();
+                assert_eq!(ctx["name"], "Rule name");
+                assert_eq!(ctx["to"], "Folder");
+                assert_eq!(ctx["to_count"], 2);
+                assert_eq!(ctx["target_ids"], serde_json::json!(["m_1"]));
+                assert_eq!(ctx["items"][0]["count"], 2);
+                for (key, setting) in [
+                    ("subject", "track_subjects"),
+                    ("query", "track_search_queries"),
+                    ("email", "track_recipient_handles"),
+                    ("recipients", "track_recipient_handles"),
+                    ("url", "track_link_clicks"),
+                ] {
+                    assert_eq!(
+                        ctx["items"][0].get(key).is_some(),
+                        flag != Some(setting),
+                        "{flag:?}: {key}: {ctx}"
+                    );
+                }
+            }
+            let sender = page
+                .rows
+                .iter()
+                .find(|r| r.action == "sender.kind")
+                .unwrap();
+            assert_eq!(
+                sender.target_id.is_some(),
+                flag != Some("track_recipient_handles")
+            );
+            assert_eq!(
+                page.rows
+                    .iter()
+                    .filter(|r| r.action == "link.click")
+                    .count(),
+                if flag == Some("track_link_clicks") {
+                    0
+                } else {
+                    2
+                }
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn list_returns_empty_when_no_rows() {
         let s = state().await;
         let resp = list_activity(&s, &empty_filter(), 50, None).await.unwrap();

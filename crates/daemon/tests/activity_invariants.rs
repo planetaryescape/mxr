@@ -156,6 +156,81 @@ fn activity_mapper_preserves_agent_and_mcp_sources() {
 }
 
 #[test]
+fn activity_privacy_config_rejects_non_boolean_switches() {
+    for key in [
+        "enabled",
+        "track_subjects",
+        "track_recipient_handles",
+        "track_search_queries",
+        "track_link_clicks",
+    ] {
+        for value in ["\"false\"", "0", "[]", "{}"] {
+            assert!(
+                toml::from_str::<mxr_config::MxrConfig>(&format!("[activity]\n{key} = {value}\n"))
+                    .is_err(),
+                "{key} must reject {value} instead of silently enabling recording"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn activity_privacy_config_filters_real_mapper_shapes_before_persistence() {
+    use mxr::activity::{mapper::map_request, Recorder};
+    use mxr_protocol::{ClientKind, Request, ScreenerDispositionData};
+    use std::sync::Arc;
+
+    let config: mxr_config::MxrConfig = toml::from_str(
+        "[activity]\ntrack_subjects = false\ntrack_recipient_handles = false\ntrack_search_queries = false\n",
+    ).unwrap();
+    let store = Arc::new(mxr_store::Store::in_memory().await.unwrap());
+    let recorder = Recorder::spawn(store.clone(), &config.activity);
+    let requests = [
+        Request::Search {
+            query: "PRIVATE_QUERY".into(),
+            limit: 10,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort: None,
+            explain: false,
+        },
+        Request::SetScreenerDecision {
+            account_id: mxr_core::AccountId::new(),
+            sender_email: "private@example.com".into(),
+            disposition: ScreenerDispositionData::Allow,
+            route_label: None,
+        },
+    ];
+    for request in requests {
+        recorder.record(map_request(&request, ClientKind::Agent, None, true).unwrap());
+    }
+    // A changed pause edge is an ordered barrier behind both writes.
+    recorder.pause(None);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !recorder.pause_status().0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let rows = store
+        .list_activity(&mxr_store::ActivityFilter::default(), 10, None)
+        .await
+        .unwrap()
+        .rows;
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        assert_eq!(row.source, "agent");
+        assert!(row.target_id.is_none());
+        let context: serde_json::Value =
+            serde_json::from_str(row.context_json.as_deref().unwrap()).unwrap();
+        assert!(context.get("query").is_none());
+        assert!(context.get("sender_email").is_none());
+    }
+}
+
+#[test]
 fn only_activity_module_writes_to_user_activity_table() {
     let root = workspace_root();
     let allowed_path_substrings = [

@@ -114,6 +114,27 @@ LOGIN commands and complete server response buffers in those events, which can
 contain passwords and full message bodies. mxr's own TRACE events remain
 available through `[logging].level`, with `RUST_LOG` taking precedence.
 
+## `[logging]`
+
+```toml
+[logging]
+level = "info"
+max_size_mb = 250
+max_files = 10
+stderr = true
+event_retention_days = 90
+```
+
+Keep the shipped 250/10 defaults. The size cap is per-file MiB and the count
+includes active `mxr.log`; zero is invalid. Records over 64 KiB become a small
+valid JSON diagnostic. Cross-process locking and reopen-on-write prevent stale
+daemon handles through rotation. Stderr is mirrored only when owned by an
+ordinary CLI or foreground daemon, never stdout/TUI/stdio/dial-stdio logging.
+`mxr logs --purge --dry-run` previews manual owned-archive/event cleanup;
+automatic operational-history retention is separate. See the
+[observability guide](../../site/src/content/docs/guides/observability.md) for
+exact filenames, restart, follow and failure semantics.
+
 ## `[search]`
 
 - `default_sort`

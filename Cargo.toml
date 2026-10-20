@@ -44,6 +44,10 @@ name = "cli_help"
 path = "crates/daemon/tests/cli_help.rs"
 
 [[test]]
+name = "bounded_logs"
+path = "crates/daemon/tests/bounded_logs.rs"
+
+[[test]]
 name = "dial_stdio_cli"
 path = "crates/daemon/tests/dial_stdio_cli.rs"
 
@@ -376,6 +380,7 @@ utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
 [dependencies]
+libc = "0.2"
 getrandom = "0.4"
 mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
@@ -540,4 +545,3 @@ workspace = true
 # The vendored copy applies upstream's fix; see vendor/hnsw_rs/Cargo.toml.
 [patch.crates-io]
 hnsw_rs = { path = "vendor/hnsw_rs" }
-

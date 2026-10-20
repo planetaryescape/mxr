@@ -509,8 +509,11 @@ O               Open with xdg-open
 
 Daemon uses `tracing` crate. Output goes to:
 1. Log file: `$XDG_DATA_HOME/mxr/logs/mxr.log` (rotated)
-2. Stdout (foreground mode)
-3. Connected clients (subscribe to log streams)
+2. JSON stderr when configured and owned by an ordinary CLI/foreground daemon;
+   background, TUI/demo and stdio/dial-stdio paths stay file-only. Never tracing
+   stdout. Raw async-imap/tungstenite TRACE is filtered before either sink.
+3. Existing client diagnostics remain separate; the local log CLI does not add
+   a daemon subscription protocol.
 
 ### CLI observability commands
 
@@ -518,8 +521,8 @@ Daemon uses `tracing` crate. Output goes to:
 mxr logs                             # Tail daemon logs (live)
 mxr logs --level warn                # Filter by level
 mxr logs --since "1h"                # Time filter
-mxr logs --grep "gmail"              # Text filter
-mxr logs --category sync|rule|send   # Category filter
+mxr logs --search "gmail"            # Text filter
+mxr logs --purge --dry-run           # Preview owned archives and manual event cutoff
 mxr logs --format json
 mxr status                           # Single-command overview of everything
 mxr status --format json
@@ -559,11 +562,18 @@ CREATE INDEX idx_event_log_level ON event_log(level, timestamp DESC);
 ```toml
 [logging]
 level = "info"
-max_size_mb = 50
-max_files = 5
+max_size_mb = 250
+max_files = 10
 stderr = true
 event_retention_days = 90
 ```
+
+These shipped defaults supersede the old 50/5 sketch. `max_size_mb` is per-file
+MiB; `max_files` includes active `mxr.log`. The 20-digit numeric archive namespace,
+native cross-process lock, bounded record diagnostics and restart/follow/purge
+policy are described in the [observability guide](../../site/src/content/docs/guides/observability.md).
+Manual event pruning is implemented; automatic operational-history retention
+is a separate follow-up. This does not change activity retention.
 
 ### TUI status bar enhancement
 
@@ -693,13 +703,13 @@ use_tls = true
 
 **What was missing**: The blueprint defined logging infrastructure (A006) and issue templates, but no automated diagnostic capture. Users hitting bugs had to manually gather version info, logs, config, sync history, and daemon status — too much friction for good bug reports.
 
-**The rule**: `mxr bug-report` generates a single sanitized diagnostic bundle containing system info, config (redacted), account health, sync history, recent errors, and recent logs. Auto-sanitization removes email addresses, tokens, passwords, API keys, subjects, and body content by default (D073). Users can review before sharing. `--github` opens a pre-filled issue. Log retention defaults to 90 days / 250 MB (D074), with `mxr logs --purge` for manual cleanup.
+**The rule**: `mxr bug-report` generates a single sanitized diagnostic bundle containing system info, config (redacted), account health, sync history, recent errors, and recent logs. Auto-sanitization removes email addresses, tokens, passwords, API keys, subjects, and body content by default (D073). Users can review before sharing. `--github` opens a pre-filled issue. Text-log defaults are 250 MiB per file and 10 total files; `mxr logs --purge --dry-run` previews manual archive/event cleanup at the configured 90-day cutoff (D074).
 
 **Full specification**: See [18-bug-reporting.md](18-bug-reporting.md).
 
 ### Decision records
 
-**D072**: `mxr bug-report` as single diagnostic capture command. **D073**: Automatic log sanitization with opt-out. **D074**: Log retention defaults (90 days, 250 MB max for text logs).
+**D072**: `mxr bug-report` as single diagnostic capture command. **D073**: Automatic log sanitization with opt-out. **D074**: Shipped log defaults (250 MiB/file, 10 total files; 90-day manual event cutoff), superseding the original 250 MB-total sketch.
 
 ---
 

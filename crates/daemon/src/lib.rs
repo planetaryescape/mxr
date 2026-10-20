@@ -19,6 +19,7 @@ pub mod handler;
 pub(crate) mod history_text;
 pub mod ipc_client;
 pub(crate) mod llm_keys;
+pub(crate) mod logging;
 pub(crate) mod loops;
 pub(crate) mod message_deletion;
 pub mod output;
@@ -101,25 +102,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }
     }
 
-    // `dial-stdio` and `--stdio` both own stdout for raw frames, so they must
-    // never install a stdout tracing layer even if `--foreground` is passed.
-    let is_dial_stdio = matches!(
-        cli.command,
-        Some(Command::Daemon {
-            action: Some(DaemonAction::DialStdio),
-            ..
-        })
-    );
-    let is_stdio_server = matches!(cli.command, Some(Command::Daemon { stdio: true, .. }));
-    let is_foreground = matches!(
-        cli.command,
-        Some(Command::Daemon {
-            foreground: true,
-            ..
-        })
-    ) && !is_dial_stdio
-        && !is_stdio_server;
-    init_tracing(is_foreground)?;
+    let owns_terminal = tracing_stderr_allowed(&cli.command);
+    // Log inspection/preview must not initialize or rotate the files it reads.
+    if !matches!(cli.command, Some(Command::Logs { .. })) {
+        init_tracing(owns_terminal)?;
+    }
 
     match cli.command {
         Some(Command::Connect {
@@ -257,6 +244,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             search,
             limit,
             purge,
+            dry_run,
             format,
         }) => {
             commands::logs::run(commands::logs::LogRunOptions {
@@ -266,8 +254,10 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 search,
                 limit,
                 purge,
+                dry_run,
                 format,
-            })?;
+            })
+            .await?;
         }
         Some(Command::Reset {
             hard,
@@ -1759,20 +1749,19 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let configured_level = mxr_config::load_config()
-        .map_or_else(|_| "info".to_string(), |config| config.logging.level);
+    // Tracing must not prevent config recovery commands from opening bad TOML.
+    // Commands that require a valid configuration still validate it themselves.
+    let config = mxr_config::load_config()
+        .map(|config| config.logging)
+        .unwrap_or_default();
+    let configured_level = &config.level;
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::try_new(format!("mxr={configured_level}"))
             .unwrap_or_else(|_| EnvFilter::new("mxr=info"))
     });
 
     let log_dir = state::AppState::data_dir().join("logs");
-    std::fs::create_dir_all(&log_dir)?;
-
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_dir.join("mxr.log"))?;
+    let file = logging::LogWriter::new(log_dir, config, foreground)?;
 
     let file_layer = fmt::layer()
         .json()
@@ -1781,28 +1770,28 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
         .with_writer(file)
         .with_ansi(false);
 
-    if foreground {
-        let stdout_layer = fmt::layer().with_writer(std::io::stdout);
-
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(tracing_subscriber::filter::filter_fn(
-                safe_dependency_metadata,
-            ))
-            .with(file_layer)
-            .with(stdout_layer)
-            .init();
-    } else {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(tracing_subscriber::filter::filter_fn(
-                safe_dependency_metadata,
-            ))
-            .with(file_layer)
-            .init();
-    }
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::filter::filter_fn(
+            safe_dependency_metadata,
+        ))
+        .with(file_layer)
+        .init();
 
     Ok(())
+}
+
+fn tracing_stderr_allowed(command: &Option<Command>) -> bool {
+    match command {
+        None | Some(Command::Demo { .. } | Command::Logs { .. }) => false,
+        Some(Command::Daemon {
+            foreground,
+            stdio,
+            action,
+            ..
+        }) => *foreground && !stdio && !matches!(action, Some(DaemonAction::DialStdio)),
+        _ => true,
+    }
 }
 
 fn safe_dependency_metadata(metadata: &tracing::Metadata<'_>) -> bool {
@@ -1824,6 +1813,30 @@ mod tracing_tests {
     use super::{safe_dependency_log, safe_dependency_metadata};
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::layer::SubscriberExt;
+
+    #[test]
+    fn tracing_terminal_ownership_excludes_tui_background_and_protocols() {
+        use clap::Parser;
+        for (args, allowed) in [
+            (vec!["mxr"], false),
+            (vec!["mxr", "daemon"], false),
+            (vec!["mxr", "daemon", "--foreground"], true),
+            (vec!["mxr", "daemon", "--stdio"], false),
+            (vec!["mxr", "daemon", "dial-stdio"], false),
+            (vec!["mxr", "status"], true),
+            (vec!["mxr", "logs"], false),
+        ] {
+            let cli = crate::cli::Cli::try_parse_from(args.clone()).unwrap();
+            assert_eq!(
+                super::tracing_stderr_allowed(&cli.command),
+                allowed,
+                "{args:?}"
+            );
+        }
+        assert!(
+            crate::cli::Cli::try_parse_from(["mxr", "daemon", "--foreground", "--stdio"]).is_err()
+        );
+    }
 
     #[derive(Clone, Default)]
     struct Buffer(Arc<Mutex<Vec<u8>>>);

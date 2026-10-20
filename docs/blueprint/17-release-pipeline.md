@@ -62,6 +62,15 @@ Secrets are optional and the job summary records which level was reached:
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `KEYCHAIN_PASSWORD` | Signed (Tauri's names, v2.tauri.app/distribute/sign/macos) |
 | The above plus `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_PRIVATE_KEY` (the `.p8` contents) | Signed, notarised and stapled. Tauri notarises the app during the build; the workflow notarises and staples the dmg. |
 
+After the dmg's `notarytool submit --wait` succeeds, `scripts/staple_dmg.sh`
+attempts stapling at most three times. Only staple exit 68 is retried, after
+5 then 15 seconds, to tolerate the observed CloudKit network-loss failure.
+Other errors, including cancellation exits 130/143, fail immediately. Successful
+stapling must still pass `stapler validate`; validation errors are never retried
+or bypassed. This does not resubmit notarization or change signing/secrets and
+unsigned fallback conditions. The helper applies to subsequent normal releases;
+never move or overwrite an existing release tag to apply it to an older draft.
+
 The `homebrew` job renders `Casks/mxr-desktop.rb` from
 `packaging/homebrew/mxr-desktop.rb` with `scripts/render_homebrew_cask.sh` and
 commits it to the tap in the same commit as the formula, so the two never race
@@ -79,6 +88,24 @@ Semantic versioning (semver). Given `MAJOR.MINOR.PATCH`:
 - **PATCH** (0.1.0 → 0.1.1): Bug fixes, dependency updates, docs fixes. No new features. No breaking changes.
 - **MINOR** (0.1.1 → 0.2.0): New features, non-breaking additions. New CLI commands, new config options, new keybindings.
 - **MAJOR** (0.x → 1.0.0): Breaking changes to CLI interface, config format, IPC protocol, or provider trait API. Pre-1.0, minor versions can include breaking changes (standard Rust convention).
+
+Release-please's JSON extra-file updater sets `site/public/openapi.json`'s
+`$.info.version` to the same release version as Cargo. Do not omit this update
+from a version-only release PR: OpenAPI CI compares the artifact with the actual
+exporter, including its version. The comparison ignores JSON formatting and
+object-key order, not routes, schemas or version values. After changing API source,
+regenerate the whole artifact rather than updating only its version:
+
+```bash
+bash site/scripts/dump-openapi-spec.sh
+bash site/scripts/dump-openapi-spec.sh --check
+```
+
+The OpenAPI workflow runs an offline fixture using the release-please version
+bundled by the current v5 action (17.6.0). It applies the configured real updaters
+to Cargo and the API artifact, recompiles the exporter at the fixture version,
+checks freshness, and restores only its own temporary edits. This tests version-only
+release compatibility without creating a GitHub PR or tag.
 
 ### Release trigger
 

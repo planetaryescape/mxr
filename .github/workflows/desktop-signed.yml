@@ -173,8 +173,7 @@ jobs:
           xcrun notarytool submit "$DMG" \
             --key "$NOTARIZE_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
             --wait
-          xcrun stapler staple "$DMG"
-          xcrun stapler validate "$DMG"
+          bash scripts/staple_dmg.sh "$DMG"
 
       # Recorded, not asserted for spctl: without notarisation it says
       # "rejected", which is expected and worth reading in the summary.

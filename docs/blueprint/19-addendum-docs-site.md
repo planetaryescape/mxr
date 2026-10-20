@@ -165,6 +165,32 @@ npm --prefix site run generate
 CLI pages. Do not hand-edit generated command pages for wording drift;
 change the generator input instead.
 
+Regenerate the tracked API document after changing its Rust source, then check
+it without rewriting the input:
+
+```bash
+bash site/scripts/dump-openapi-spec.sh
+bash site/scripts/dump-openapi-spec.sh --check
+```
+
+The API explorer reads `site/public/openapi.json`, published at `/openapi.json`.
+Update mode keeps that committed file when Cargo is unavailable, so npm-only
+hosting can still build the site. Rust-equipped OpenAPI CI runs `--check` before
+any step can refresh its committed input; check mode requires Cargo and rejects
+missing or stale artifacts.
+It compares every JSON value, including `info.version`; whitespace and object-key
+order are ignored. Updates validate a complete export before atomically replacing
+the file. A check fails if its input changes during export; retry on a stable checkout.
+
+Release-please updates `info.version` alongside the Cargo versions through its
+JSON extra-file updater. The offline version-only release fixture exercises the
+real updater and recompiles the exporter before checking freshness. See
+[release versioning](17-release-pipeline.md#versioning).
+
+Freshness proves agreement with the declared Rust route inventory, not complete
+route or request/response-schema coverage. Some operations still carry metadata
+only; keep that limitation visible in the API explorer.
+
 ### Writing guidelines
 
 The full writing principles — voice, page shape, recipe pattern, anti-

@@ -68,14 +68,15 @@ The table output prints `unknown` for the fields it has no reading for, instead 
 
 ## Read past logs without `tail -f`
 
-The new `mxr logs` accepts `--level`, `--search`, `--limit`, and `--since` together, so you can replay past incidents without grepping the raw file.
+Use `mxr logs` to read the active file and retained mxr archives on this machine.
+It accepts `--level`, `--search`, `--limit`, and `--since` together.
 
 ```bash
 # Last 200 warn-or-error lines in the last hour
-mxr logs --level warn --since 1h --limit 200
+mxr logs --no-follow --level warn --since 1h --limit 200
 
 # Past errors mentioning Gmail
-mxr logs --level error --search 'gmail' --since 24h
+mxr logs --no-follow --level error --search 'gmail' --since 24h
 
 # Stream JSON to jq for ad-hoc analytics
 mxr logs --format jsonl --limit 1000 | jq -r 'select(.level=="ERROR")'
@@ -83,11 +84,92 @@ mxr logs --format jsonl --limit 1000 | jq -r 'select(.level=="ERROR")'
 
 What you get: the most recent `--limit` lines that match your filter. With `--format json|jsonl`, each line becomes `{ timestamp, level, message, raw }` for piping.
 
+`--level warn` includes WARN and ERROR, using the record's actual level rather
+than words in its message. `--since` accepts RFC 3339 or durations such as `1h`;
+records without a parseable timestamp cannot pass that time filter. Legacy
+space-delimited logs remain readable. `--limit` is the initial matching tail,
+from 1 to 10,000 lines (default 200), not a limit on later follow output. Reading
+keeps only that tail in memory, not every matching line. Legacy records over
+64 KiB are skipped.
+
+Without `--no-follow`, the command polls every 500 ms. It tracks file identity
+and complete-line offsets through rotation, replacement and daemon restart.
+Partial trailing lines wait for a newline; retained old lines are not replayed
+after a rename. Logs already removed by retention between polls cannot be
+recovered. Read snapshots may briefly keep a rotated file open until their scan
+finishes; daemon writers do not retain an old active-file handle.
+
 When you want the file open in `$EDITOR`:
 
 ```bash
 mxr logs --no-follow --limit 1000 > /tmp/mxr.log && $EDITOR /tmp/mxr.log
 ```
+
+### Bound local text logs
+
+```toml
+[logging]
+max_size_mb = 250
+max_files = 10
+stderr = true
+event_retention_days = 90
+```
+
+These are the existing defaults, not the older blueprint's 50/5 sketch.
+`max_size_mb` is a per-file MiB cap; `max_files` includes active `mxr.log`.
+The defaults retain at most 2,500 MiB in named mxr text-log files. Zero values
+and an overflowing aggregate cap are errors, not requests for unlimited logs.
+
+The owned archive namespace is `mxr.` plus a 20-digit decimal sequence plus
+`.log`, for example `mxr.00000000000000000000.log`. `.mxr-log.lock` serializes
+writers across processes. A complete JSON record fits before rollover, including
+one that lands exactly on the cap. Records larger than 64 KiB are replaced by
+a small valid JSON warning, without copying the original content. Startup and
+subsequent writes enforce reduced caps too: oversized existing owned files and
+excess old archives can be discarded. An oversized active file at startup is
+replaced with a bounded diagnostic. Unrelated names and symlinks are not rotated
+or purged. Do not move the shared lock file while mxr writers are running.
+
+Size/count/stderr settings are reread on writes; log level and `RUST_LOG` are
+selected at process startup. Malformed TOML at startup uses tracing defaults so
+config recovery commands remain available. If TOML becomes malformed while a
+writer runs, it keeps its startup logging settings; config read I/O errors still
+fail the write. Every record reopens the active path under the
+shared lock, so a CLI rollover does not strand the daemon on an unlinked file.
+When upgrading from append-only logging, run `mxr restart` after installing the
+new binary so every writer uses this lock. Installation alone does not replace
+an already-running older daemon; its old logger does not enforce these bounds.
+An I/O failure can drop a record; it never recursively logs its own failure.
+Where stderr is permitted, a fixed diagnostic reports that failure.
+
+`stderr = true` mirrors the same bounded JSON records to stderr for ordinary
+CLI commands and a foreground daemon. Tracing never writes stdout. Background
+daemon launch, TUI/demo, stdio and dial-stdio paths stay file-only, even with
+stderr enabled. `stderr = false` disables tracing mirroring, not command results
+or explicit CLI error messages. Raw async-imap and tungstenite TRACE events
+remain blocked before either sink. Log inspection and purge preview do not
+initialize or rotate the logs they inspect.
+
+### Preview manual cleanup
+
+```bash
+mxr logs --purge --dry-run --format json
+mxr logs --purge --format json
+```
+
+Preview reports `selected_log_files`, `event_cutoff`, `purged_log_files` and
+`purged_event_rows`, with `dry_run: true`; the counts are what would be removed.
+Apply uses the same archive selection and event timestamp predicate. Both use
+`event_retention_days` (default 90). Time and data can change between invocations;
+check a fresh preview before applying. This is not an immutable preview token.
+
+Only old regular owned archives are selected. The active file, lock, unknown
+names, symlinks and recent archives are preserved. Preview does not delete files,
+create a missing database, migrate it or change event rows. Apply manually prunes
+old `event_log` rows as before; it does not prune `sync_log`, AI usage or activity.
+Filesystem and database cleanup are not a single transaction: an I/O error can
+leave partial progress. Automatic operational-history retention is a separate
+follow-up, not part of text rotation. Activity's existing pruning is unchanged.
 
 ## Inspect persisted events
 

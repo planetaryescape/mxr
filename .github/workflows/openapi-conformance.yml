@@ -8,12 +8,28 @@ on:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "site/public/openapi.json"
+      - "site/scripts/dump-openapi-spec.sh"
+      - "site/scripts/openapi-artifact.mjs"
+      - "scripts/openapi-*.test.mjs"
+      - "release-please-config.json"
+      - ".github/workflows/release-please.yml"
       - ".github/workflows/openapi-conformance.yml"
   pull_request:
     paths:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "site/public/openapi.json"
+      - "site/scripts/dump-openapi-spec.sh"
+      - "site/scripts/openapi-artifact.mjs"
+      - "scripts/openapi-*.test.mjs"
+      - "release-please-config.json"
+      - ".github/workflows/release-please.yml"
       - ".github/workflows/openapi-conformance.yml"
   workflow_dispatch:
 
@@ -50,11 +66,30 @@ jobs:
   spec-lint:
     name: Spec validates as OpenAPI 3.1
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Check the checkout before any generation or release fixture can update it.
+      - name: Verify committed OpenAPI freshness
+        run: bash site/scripts/dump-openapi-spec.sh --check
+
+      - name: Test artifact freshness and atomic generation
+        run: node --test scripts/openapi-freshness.test.mjs
+
+      - name: Install isolated release updater fixture tooling
+        run: npm install --prefix .openapi/tooling --no-save --package-lock=false --ignore-scripts --no-audit --no-fund release-please@17.6.0
+
+      - name: Verify a version-only release remains fresh
+        env:
+          RELEASE_PLEASE_DIR: ${{ github.workspace }}/.openapi/tooling/node_modules/release-please
+        run: node --test scripts/openapi-release-version.test.mjs
 
       - uses: actions/setup-python@v7
         with:
@@ -69,12 +104,10 @@ jobs:
           # file. This avoids needing a long-lived bridge process in CI.
           cargo test -p mxr-web --test integration \
             openapi_spec_is_3_1_and_lists_v1_paths -- --nocapture
-          # Build, then dump the spec via a one-shot helper:
+          # The strict check above already compared the real exporter with this
+          # committed document. Lint that checked input, without refreshing it.
           mkdir -p .openapi
-          # The integration suite already asserts spec shape; we re-emit
-          # it here for downstream linting tools.
-          cargo run --quiet --example dump_openapi_spec -p mxr-web \
-            > .openapi/spec.json
+          cp site/public/openapi.json .openapi/spec.json
 
       - name: Schemathesis spec lint
         # st run with --dry-run loads + validates the spec without

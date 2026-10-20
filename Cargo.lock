@@ -4401,6 +4401,7 @@ dependencies = [
  "insta",
  "keyring",
  "lettre",
+ "libc",
  "mail-parser",
  "mime_guess",
  "mxr-assistant",

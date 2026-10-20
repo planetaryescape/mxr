@@ -61,18 +61,35 @@ The [email modes](/guides/email-modes/) plan adds background classification of e
 
 ## Deleting an email removes most of what mxr derived from it
 
-When your provider deletes or expunges a message and mxr syncs that change, the daemon deletes the local message. SQLite cascades remove what hangs off it, and sync removes it from the keyword index:
+When your provider deletes or expunges a message and mxr syncs that change,
+the daemon deletes the local message and clears derived database state in
+the same transaction. It also queues cleanup outside SQLite so a restart
+does not lose track of files and index entries that still need removing.
 
-| Removed with the message | Left behind today |
+| Data | What deletion does |
 |---|---|
-| Body, headers, labels, flags, snooze and reply-later state, pins, invite data, reply timing pairs | Thread summaries, row gists and recipient briefings in the local cache |
-| Keyword (Tantivy) index entry | Extracted promises (`mxr commitments`) and decisions (`mxr decisions`), which are still listed |
-| Semantic chunks and embeddings in the database | The in-memory semantic index until its next rebuild or a daemon restart |
-| The message's link to a delivery | The delivery row itself |
-| The cached triage verdict | Attachment files you opened, under the attachment cache |
-| Reading's items, Later, engagement, fetched articles and highlights | |
-| | Contact records and relationship summaries built from that mail |
-| Every value Archive read from the email; a record left with no source email is deleted, and one with other sources is recomputed from them | Values you typed into a record yourself, on a record that still has another source |
+| Body, headers, labels, flags, snooze, reply-later state, pins, invites and reply timing pairs | Removed with the message |
+| Thread summaries, row gists, recipient briefings and affected relationship summaries | Invalidated; later requests can rebuild them from remaining mail |
+| Extracted promises | Removed when their source message is deleted |
+| Decisions and deliveries | Lose the deleted evidence; removed when no evidence remains |
+| Archive records | Lose fields from that source; recomputed from remaining sources, or deleted with their last source |
+| Automatically detected tasks | Removed with their source; tasks you made, edited or scheduled remain, with copied evidence and source pointers cleared |
+| Reading items and their dependent data | Removed with their source message |
+| Semantic chunks and embeddings in SQLite | Removed with the message |
+| Keyword and in-memory semantic index entries, managed attachment cache files | Cleaned by sync and the durable cleanup queue |
+
+File/index cleanup is not a secure-erasure guarantee. Failed file cleanup
+uses bounded retries and is reported in daemon logs; a file the daemon
+cannot remove may remain. If the in-memory semantic index cannot forget
+a message, its next rebuild or daemon restart drops the entry. Copies you
+exported or saved outside the managed cache are yours to remove.
+
+User-authored drafts and corrections, tasks you chose to keep, and no-text
+operation/receipt identities are retained deliberately. A record with other
+source mail can keep your corrected field values. Contacts with remaining
+mail are not deleted merely because one message is gone. Assistant
+conversation history is separate: use `mxr assistant delete` to remove a
+conversation and its transcript.
 
 Moving mail to Trash is not a delete: on Gmail the message keeps its derived data until Gmail empties the trash and reports the deletion. mxr has no command that deletes a message permanently.
 
@@ -84,7 +101,10 @@ mxr reset --hard --dry-run
 
 A hard reset deletes the database, both indexes, the model cache, logs, and the attachment cache when it lives inside the data directory. It keeps `config.toml` unless you add `--including-config`, and it leaves `secrets.toml` alone either way.
 
-The email modes plan makes "deleting an email deletes everything derived from it" a rule for every new store, and the gaps above are logged as work to close.
+New stores must define how they follow message deletion. That rule is
+implemented for the derived data above; it does not mean deleting your own
+writing, exported files or the retry identities needed to prevent duplicate
+effects.
 
 ## Guardrails that exist today
 

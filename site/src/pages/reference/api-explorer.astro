@@ -5,7 +5,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 <StarlightPage
   frontmatter={{
     title: 'API route inventory',
-    description: 'Read-only list of the mxr daemon HTTP routes described in the OpenAPI document generated at build time. Some live routes are missing from that document.',
+    description: 'Read-only route inventory from the checked-in OpenAPI export, checked against mxr-web in CI. Some live routes are not declared.',
     template: 'splash',
     pagefind: false,
   }}
@@ -13,8 +13,9 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
   <p>
     A read-only list of the mxr daemon HTTP routes described in the generated
     OpenAPI document. That document carries paths, methods, and the protocol
-    schemas. It leaves out per-route parameters and response bodies, and some
-    live routes are missing from it.
+    schemas. Some operations include typed parameters and request/response
+    schemas; others carry metadata only. Some live routes are not declared.
+    A fresh export does not establish complete API contracts.
     The <a href="/reference/bridge/">HTTP bridge reference</a> documents the
     request and response shapes.
   </p>
@@ -31,7 +32,9 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
   <p>
     The raw document is at <a href="/openapi.json"><code>/openapi.json</code></a>.
-    A running daemon serves the same thing at <code>/api/v1/openapi.json</code>.
+    A running daemon serves its installed version's document at
+    <code>/api/v1/openapi.json</code>; that is a local bridge endpoint, not the
+    website download URL.
   </p>
 
   <noscript>

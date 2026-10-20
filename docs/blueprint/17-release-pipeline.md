@@ -80,6 +80,24 @@ Semantic versioning (semver). Given `MAJOR.MINOR.PATCH`:
 - **MINOR** (0.1.1 → 0.2.0): New features, non-breaking additions. New CLI commands, new config options, new keybindings.
 - **MAJOR** (0.x → 1.0.0): Breaking changes to CLI interface, config format, IPC protocol, or provider trait API. Pre-1.0, minor versions can include breaking changes (standard Rust convention).
 
+Release-please's JSON extra-file updater sets `site/public/openapi.json`'s
+`$.info.version` to the same release version as Cargo. Do not omit this update
+from a version-only release PR: OpenAPI CI compares the artifact with the actual
+exporter, including its version. The comparison ignores JSON formatting and
+object-key order, not routes, schemas or version values. After changing API source,
+regenerate the whole artifact rather than updating only its version:
+
+```bash
+bash site/scripts/dump-openapi-spec.sh
+bash site/scripts/dump-openapi-spec.sh --check
+```
+
+The OpenAPI workflow runs an offline fixture using the release-please version
+bundled by the current v5 action (17.6.0). It applies the configured real updaters
+to Cargo and the API artifact, recompiles the exporter at the fixture version,
+checks freshness, and restores only its own temporary edits. This tests version-only
+release compatibility without creating a GitHub PR or tag.
+
 ### Release trigger
 
 Releases are triggered by a `v{version}` tag, and the tag comes from release-please: pushes to `main` that change artifact-affecting paths (see the scope gate below) run `release-please.yml`, which opens or updates a release PR for `feat:`/`fix:` and breaking-change commits; merging that PR bumps the workspace version, updates `CHANGELOG.md`, and pushes the tag. Do not create tags by hand; a hand-made tag skips the version and changelog bump and can collide with the next release PR. If `.release-please-manifest.json` disagrees with the latest `v*` tag, fix the manifest on `main` before anything else.

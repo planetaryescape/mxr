@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.105"
+    "version": "0.6.111"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -6087,6 +6087,54 @@
         }
       }
     },
+    "/api/v1/mail/todos/microsoft": {
+      "get": {
+        "tags": [],
+        "summary": "Whether the optional ms-todo CLI is installed on the daemon",
+        "operationId": "mail_microsoft_todo_status",
+        "responses": {
+          "200": {
+            "description": "The `MicrosoftTodoStatus` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/microsoft/sync": {
+      "post": {
+        "tags": [],
+        "summary": "Reconcile linked tasks without discarding conflicting edits",
+        "operationId": "mail_microsoft_todo_sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MicrosoftTodoSyncBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MicrosoftTodoSync` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/todos/state": {
       "post": {
         "tags": [],
@@ -6191,6 +6239,48 @@
           },
           "401": {
             "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/microsoft": {
+      "post": {
+        "tags": [],
+        "summary": "Preview or create a two-way Microsoft To Do task link",
+        "operationId": "mail_microsoft_todo_link",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MicrosoftTodoLinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MicrosoftTodoSend` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Preview is stale or ms-todo is unavailable"
           }
         }
       }
@@ -16943,6 +17033,230 @@
           "mine",
           "theirs"
         ]
+      },
+      "MicrosoftTodoFieldsData": {
+        "type": "object",
+        "required": [
+          "title",
+          "completed"
+        ],
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "scheduled": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "MicrosoftTodoLinkBody": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MicrosoftTodoSendData": {
+        "type": "object",
+        "description": "Preview of an explicit task link, or its durable link status. Linking\nauthorizes two-way synchronization of shared fields, never full email bodies.",
+        "required": [
+          "dry_run",
+          "todo_id",
+          "title",
+          "notes",
+          "fingerprint",
+          "state",
+          "summary"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "Returned by preview; a commit must name this unchanged payload."
+          },
+          "notes": {
+            "type": "string"
+          },
+          "scheduled": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "state": {
+            "type": "string",
+            "description": "preview | linked | unknown | attention"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "todo_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MicrosoftTodoStatusData": {
+        "type": "object",
+        "description": "Optional local handoff to Microsoft To Do through the `ms-todo` CLI.",
+        "required": [
+          "installed",
+          "install_url",
+          "hint"
+        ],
+        "properties": {
+          "hint": {
+            "type": "string"
+          },
+          "install_url": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Available on the daemon's PATH, not the browser's computer."
+          }
+        }
+      },
+      "MicrosoftTodoSyncBody": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "todo_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MicrosoftTodoSyncData": {
+        "type": "object",
+        "required": [
+          "dry_run",
+          "results"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MicrosoftTodoSyncItemData"
+            }
+          }
+        }
+      },
+      "MicrosoftTodoSyncItemData": {
+        "type": "object",
+        "required": [
+          "todo_id",
+          "state",
+          "summary"
+        ],
+        "properties": {
+          "merged": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MicrosoftTodoFieldsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "microsoft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MicrosoftTodoFieldsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mixer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MicrosoftTodoFieldsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "description": "synced | changes | conflict | paused"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "todo_id": {
+            "type": "string"
+          }
+        }
       },
       "ModeDoneBody": {
         "type": "object",
@@ -28345,6 +28659,93 @@
           },
           {
             "type": "object",
+            "description": "Whether the optional `ms-todo` executable is installed on the daemon.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetMicrosoftTodoStatus"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Link one to-do with Microsoft To Do. Preview never executes the CLI;\ncommitting requires the fingerprint returned by that preview.",
+            "required": [
+              "todo_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SendTodoToMicrosoft"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "fingerprint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reconcile explicitly linked tasks within the selected account. With\nno account, external profiles select only their allowed enabled accounts.\nA preview reads ms-todo's cache but changes neither application's tasks.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SyncMicrosoftTodos"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "todo_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "The To do runway: Now, Coming up by week, Later, Whenever and Done\nthis week, with the headline, the empty state and the catch-up\ncount. `mark_seen` records that To do was opened, so the next\n\"expired since you last looked\" counts from now. Returns\n`ResponseData::TodoRunway`.",
             "required": [
               "cmd"
@@ -34085,6 +34486,60 @@
                 "enum": [
                   "RecordedPromise"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MicrosoftTodoStatus"
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/MicrosoftTodoStatusData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MicrosoftTodoSend"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/MicrosoftTodoSendData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sync",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MicrosoftTodoSync"
+                ]
+              },
+              "sync": {
+                "$ref": "#/components/schemas/MicrosoftTodoSyncData"
               }
             }
           },

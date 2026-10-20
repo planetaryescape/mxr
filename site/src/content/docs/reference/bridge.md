@@ -20,6 +20,13 @@ covers most routes and the shared protocol types; a few live routes are still
 missing. The web app uses `openapi-typescript` over the spec, then
 `openapi-fetch` on top. Use the route tables below for operational detail.
 
+The [API route inventory](/reference/api-explorer/) reads the website's
+[`/openapi.json`](/openapi.json) download. OpenAPI CI compares that checked-in
+export with `mxr-web` without refreshing the input first. A daemon's
+`/api/v1/openapi.json` describes its installed version, which may differ from
+the website. Freshness does not mean complete contracts: some declared routes
+still lack request/response schemas, and some live routes are not declared.
+
 :::tip[curl-friendly auth]
 Get the auth token from the active profile config directory's
 `bridge-token` file, unless `[bridge].token_path` or

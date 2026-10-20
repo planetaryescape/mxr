@@ -600,19 +600,12 @@ impl App {
                         }
                     }
                     LayoutMode::FullScreen => {
-                        let chunks = Layout::default()
-                            .direction(Direction::Horizontal)
-                            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
-                            .split(content_area);
-
-                        ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
-
                         let preview_blocks = self.thread_message_blocks();
                         let summary = self.thread_summary_block();
                         let context = self.thread_context_lines();
                         let clamped_scroll = ui::message_view::draw(
                             frame,
-                            chunks[1],
+                            content_area,
                             &preview_blocks,
                             ui::message_view::DrawOptions {
                                 context,

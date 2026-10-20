@@ -1293,7 +1293,7 @@ fn fullscreen_opens_selected_message_from_mail_list() {
 }
 
 #[test]
-fn fullscreen_keeps_sidebar_visible() {
+fn fullscreen_uses_the_full_message_area() {
     let mut app = App::new();
     app.mailbox.labels = make_test_labels();
     app.mailbox.envelopes = make_test_envelopes(1);
@@ -1302,13 +1302,13 @@ fn fullscreen_keeps_sidebar_visible() {
     app.apply(Action::ToggleFullscreen);
 
     let output = render_to_string(120, 20, |frame| app.draw(frame));
-    assert!(output.contains("Sidebar"));
-    assert!(output.contains("Inbox"));
+    assert!(!output.contains("Sidebar"));
+    assert!(!output.contains("Inbox"));
     assert!(output.contains("Subject 0"));
 }
 
 #[test]
-fn fullscreen_switch_pane_skips_hidden_mail_list() {
+fn fullscreen_tab_keeps_focus_on_message_and_f_restores_split_view() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
@@ -1316,11 +1316,67 @@ fn fullscreen_switch_pane_skips_hidden_mail_list() {
     app.apply(Action::ToggleFullscreen);
     assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
 
-    app.apply(Action::SwitchPane);
-    assert_eq!(app.mailbox.active_pane, ActivePane::Sidebar);
-
+    let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(app.handle_key(tab), Some(Action::SwitchPane));
     app.apply(Action::SwitchPane);
     assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+    for code in [KeyCode::Left, KeyCode::Char('h')] {
+        assert_eq!(
+            app.handle_key(KeyEvent::new(code, KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+    }
+
+    app.apply(Action::ToggleFullscreen);
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+}
+
+#[test]
+fn fullscreen_escape_returns_to_mail_list() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    app.apply(Action::ToggleFullscreen);
+
+    let escape = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(app.handle_key(escape), Some(Action::Back));
+    app.apply(Action::Back);
+
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert!(app.mailbox.viewing_envelope.is_none());
+}
+
+#[test]
+fn fullscreen_fits_minimum_terminal_without_a_sidebar() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    app.apply(Action::ToggleFullscreen);
+
+    let output = render_to_string(80, 20, |frame| app.draw(frame));
+    assert!(!output.contains("Sidebar"));
+    assert!(output.contains("Subject 0"));
+}
+
+#[test]
+fn search_tab_switches_panes_after_mailbox_fullscreen() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    app.apply(Action::ToggleFullscreen);
+    app.screen = Screen::Search;
+    app.search.page.results = make_test_envelopes(1);
+    app.search.page.active_pane = SearchPane::Results;
+
+    let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(app.handle_key(tab), Some(Action::SwitchPane));
+    app.apply(Action::SwitchPane);
+
+    assert_eq!(app.search.page.active_pane, SearchPane::Preview);
+    assert!(app.search.page.result_selected);
 }
 
 #[test]

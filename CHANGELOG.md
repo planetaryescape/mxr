@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.110](https://github.com/planetaryescape/mxr/compare/v0.6.109...v0.6.110) (2026-10-20)
+
+
+### Bug Fixes
+
+* honor configured TUI mail shortcuts ([#528](https://github.com/planetaryescape/mxr/issues/528)) ([bcee881](https://github.com/planetaryescape/mxr/commit/bcee881b3e27c8c6bf33c25483718459c2d5ed23))
+
 ## [0.6.109](https://github.com/planetaryescape/mxr/compare/v0.6.108...v0.6.109) (2026-10-20)
 
 

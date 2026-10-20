@@ -76,6 +76,13 @@ CI is the workspace gate. `scripts/ci_change_scope.sh` selects Rust, web, docs a
 - `scripts/pre-pr-rust-gate` (fmt, clippy for touched crates only, boundary script, cargo deny). `--list` shows the crates it will check; `--full` is for reproducing a CI failure you cannot narrow to one crate.
 - `scripts/cargo-test -p <crate> --tests` for the crates you touched.
 
+### Test boundaries and preventing test bloat
+
+- **Vitest first for UI**: Component rendering, modal dialogs, keypress handling, date parsing, and form validations belong in Vitest + jsdom (`apps/web/src/**/*.test.tsx`). 1,500 Vitest tests run in 1 minute; Playwright takes minutes per spec.
+- **Playwright is for full-stack integration and browser engine quirks**: Write Playwright E2E (`apps/web/e2e/`) only when verifying end-to-end user journeys against a running daemon bridge (e.g. archiving a thread and seeing it leave the list and wake in snoozed) or Safari/WebKit engine rendering bugs. Never write Playwright specs to test date parsing permutations, CSS animation frame polling, or keyboard reducer transitions.
+- **PR tiering**: PRs run `npm run e2e:engine` and `npm run e2e:webkit:engine` (the core ~15 user journey specs); the full regression matrix runs on `main` and manual dispatch.
+- **No milestone or spike specs**: Never check in or leave sprint/milestone relics (e.g. `w6-*.spec.ts`, `milestone-*.spec.ts`). Either merge the assertions into canonical feature specs or remove them before landing.
+
 Then push and read the PR checks. If one is red, reproduce that one failure with `-p <crate>`, fix, push again.
 
 **Open the PR as a draft while iterating.** `Test (fast / no semantic)`, `Test (semantic-local)` and `Web E2E` skip on draft PR pushes (they still run on every push to `main` and on `workflow_dispatch`); every other check still runs on each push, so you still get fast fmt/clippy/type feedback. Each of those three is the most expensive job in the matrix, and re-running the full set on every rebase/fixup push during iteration is most of the Blacksmith bill. Mark the PR ready for review (`gh pr ready <N>`) once it's genuinely final, which triggers the full suite once before merge; merge once it's green. If a fix is still needed after marking ready, push it and expect one more full run — that's expected and fine, just don't flip ready back and forth to dodge the gate.

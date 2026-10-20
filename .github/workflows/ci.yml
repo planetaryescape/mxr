@@ -358,10 +358,16 @@ jobs:
             echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
           fi
       # One worker: every spec shares the FakeProvider daemon's mailbox.
-      - name: Run the full Chromium suite (bounded, with progress log)
+      # Pull requests run the core engine subset (e2e:engine, ~15 specs);
+      # main and manual runs run the full regression matrix.
+      - name: Run the Chromium suite (bounded, with progress log)
         run: |
           set -o pipefail
-          timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 2>&1 | tee playwright-run.log
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 2>&1 | tee playwright-run.log
+          else
+            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 2>&1 | tee playwright-run.log
+          fi
       # Right after the suite: the speed gate below starts its own Playwright
       # run, which empties test-results before a later upload could see it.
       - name: Upload Playwright results

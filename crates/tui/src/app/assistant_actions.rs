@@ -55,9 +55,7 @@ impl App {
         {
             let press = crate::keybindings::KeyPress::from_event(key);
             let context = self.keybinding_context();
-            if self.keybindings.overrides_prefix(context, &press)
-                || self.keybindings.overrides_single_code(context, &press)
-            {
+            if self.keybindings.overrides_prefix(context, &press) {
                 return None;
             }
         }

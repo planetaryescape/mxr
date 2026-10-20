@@ -120,9 +120,11 @@ impl InputHandler {
             self.reset();
         }
         let press = KeyPress::from_event(key);
+        let overrides_alias =
+            config.overrides_legacy_alias(context, &press, || Self::new().handle_key(key));
         if self.configured.is_none()
             && !config.overrides_prefix(context, &press)
-            && !config.overrides_single_code(context, &press)
+            && !overrides_alias
         {
             return None;
         }
@@ -144,7 +146,7 @@ impl InputHandler {
         if pending.is_none() && !config.overrides_prefix(context, &press) {
             // Several legacy branches ignore modifiers (notably # and !).
             // They must not resurrect a retired destructive shortcut.
-            if config.overrides_single_code(context, &press) {
+            if overrides_alias {
                 self.used_this_turn = true;
                 return Some(None);
             }

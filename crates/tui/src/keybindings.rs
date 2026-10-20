@@ -45,13 +45,43 @@ impl KeybindingConfig {
             .any(|binding| binding.keys == sequence)
     }
 
-    pub(crate) fn overrides_single_code(&self, context: ViewContext, press: &KeyPress) -> bool {
-        self.overrides[context.index()].iter().any(|binding| {
-            binding.keys.len() == 1
-                && binding.keys[0].code == press.code
-                && !binding.keys[0]
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+    pub(crate) fn overrides_legacy_alias(
+        &self,
+        context: ViewContext,
+        press: &KeyPress,
+        legacy_action: impl FnOnce() -> Option<Action>,
+    ) -> bool {
+        let mut aliases = self.overrides[context.index()]
+            .iter()
+            .filter(|binding| {
+                binding.keys.len() == 1
+                    && binding.keys[0].code == press.code
+                    && !binding.keys[0]
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+            })
+            .peekable();
+        if aliases.peek().is_none() {
+            return false;
+        }
+        // The mail router accepts #/! with any modifier. Other aliases must
+        // resolve to the retired action, not merely share its character.
+        if matches!(press.code, KeyCode::Char('#' | '!')) {
+            return true;
+        }
+        let defaults = shown_keybindings();
+        let registered_action = resolve_action(defaults, context, std::slice::from_ref(press))
+            .and_then(|name| action_from_name(&name));
+        let Some(incoming_action) = registered_action.or_else(legacy_action) else {
+            return false;
+        };
+        aliases.any(|binding| {
+            defaults
+                .bindings(context)
+                .get(binding)
+                .and_then(|name| action_from_name(name))
+                .as_ref()
+                == Some(&incoming_action)
         })
     }
 

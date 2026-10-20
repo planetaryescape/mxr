@@ -217,6 +217,175 @@ fn press_char(app: &mut App, c: char) -> Option<Action> {
 }
 
 #[test]
+fn configured_plain_a_remap_preserves_unrelated_ctrl_a() {
+    let mut app = remapped_app("list", "[mail_list]\n\";\" = \"reply_all\"\n");
+    assert_eq!(press_char(&mut app, 'a'), None);
+    assert_eq!(press_char(&mut app, ';'), Some(Action::ReplyAll));
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+        Some(Action::ToggleAssistant),
+        "retiring plain a must not retire the unrelated Ctrl-a shortcut"
+    );
+}
+
+#[test]
+fn configured_plain_a_unbind_preserves_unrelated_ctrl_a() {
+    let mut app = remapped_app("list", "[mail_list]\n\"a\" = \"\"\n");
+    assert_eq!(press_char(&mut app, 'a'), None);
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+        Some(Action::ToggleAssistant),
+        "unbinding plain a must not unbind Ctrl-a"
+    );
+}
+
+#[test]
+fn configured_modifier_specific_keys_preserve_plain_alt_and_control_defaults() {
+    // These navigation aliases intentionally ignore modifiers in the existing
+    // dispatcher. A different, explicit modified binding must not claim them.
+    for (source, rebound, retired) in [
+        (
+            "[mail_list]\n\"Alt-j\" = \"reply_all\"\n",
+            KeyModifiers::ALT,
+            'a',
+        ),
+        (
+            "[mail_list]\n\"Ctrl-j\" = \"reply_all\"\n",
+            KeyModifiers::CONTROL,
+            'a',
+        ),
+    ] {
+        let mut app = remapped_app("list", source);
+        assert_eq!(press_char(&mut app, retired), None);
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('j'), rebound)),
+            Some(Action::ReplyAll)
+        );
+        for modifiers in [KeyModifiers::NONE, KeyModifiers::ALT, KeyModifiers::CONTROL] {
+            if modifiers != rebound {
+                assert_eq!(
+                    app.handle_key(KeyEvent::new(KeyCode::Char('j'), modifiers)),
+                    Some(Action::MoveDown)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn configured_plain_mail_keys_preserve_other_control_shortcuts_and_retire_real_aliases() {
+    for (source, key, expected) in [
+        (
+            "[mail_list]\n\";\" = \"forward\"\n",
+            'f',
+            Action::OpenMailboxFilter,
+        ),
+        (
+            "[mail_list]\n\"f\" = \"\"\n",
+            'f',
+            Action::OpenMailboxFilter,
+        ),
+        (
+            "[mail_list]\n\";\" = \"sender_profile\"\n",
+            'p',
+            Action::OpenCommandPalette,
+        ),
+        (
+            "[mail_list]\n\"p\" = \"\"\n",
+            'p',
+            Action::OpenCommandPalette,
+        ),
+    ] {
+        let mut baseline = app_in("list");
+        let modified = KeyEvent::new(KeyCode::Char(key), KeyModifiers::CONTROL);
+        assert_eq!(baseline.handle_key(modified), Some(expected.clone()));
+        let mut app = remapped_app("list", source);
+        assert_eq!(app.handle_key(modified), Some(expected));
+        assert_eq!(
+            press_char(&mut app, key),
+            None,
+            "the plain key is still retired"
+        );
+    }
+    for source in [
+        "[mail_list]\n\";\" = \"move_down\"\n",
+        "[mail_list]\n\"j\" = \"\"\n",
+    ] {
+        for modifiers in [KeyModifiers::NONE, KeyModifiers::ALT, KeyModifiers::CONTROL] {
+            let key = KeyEvent::new(KeyCode::Char('j'), modifiers);
+            assert_eq!(app_in("list").handle_key(key), Some(Action::MoveDown));
+            assert_eq!(
+                remapped_app("list", source).handle_key(key),
+                None,
+                "the real move_down alias must remain retired"
+            );
+        }
+    }
+}
+
+#[test]
+fn configured_modified_mail_keys_do_not_steal_focused_text_owners() {
+    let mut app = remapped_app(
+        "list",
+        "[mail_list]\n\"Ctrl-Shift-A\" = \"trash\"\n\";\" = \"reply_all\"\n",
+    );
+    let modified = KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    );
+    app.search.bar.active = true;
+    assert_eq!(app.handle_key(modified), None);
+    assert!(app.search.bar.query.is_empty());
+    app.search.bar.active = false;
+    app.modals.help_open = true;
+    assert_eq!(app.handle_key(modified), None);
+    app.modals.help_open = false;
+    app.assistant.open = true;
+    app.assistant.focus = crate::app::AssistantFocus::Input;
+    for c in ['a', ';', '#', '!'] {
+        assert_eq!(press_char(&mut app, c), None);
+    }
+    assert_eq!(app.assistant.input, "a;#!");
+    assert_ne!(app.handle_key(modified), Some(Action::Trash));
+    app.assistant.focus = crate::app::AssistantFocus::Away;
+    assert_eq!(app.handle_key(modified), Some(Action::Trash));
+    assert_eq!(press_char(&mut app, 'A'), Some(Action::AttachmentList));
+}
+
+#[test]
+fn configured_retired_destructive_keys_remain_blocked_with_modifiers() {
+    for (old_key, name, action) in [('#', "trash", Action::Trash), ('!', "spam", Action::Spam)] {
+        let mut baseline = app_in("list");
+        for modifiers in [
+            KeyModifiers::NONE,
+            KeyModifiers::SHIFT,
+            KeyModifiers::CONTROL,
+            KeyModifiers::ALT,
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ] {
+            assert_eq!(
+                baseline.handle_key(KeyEvent::new(KeyCode::Char(old_key), modifiers)),
+                Some(action.clone()),
+                "established destructive alias"
+            );
+            let mut app = remapped_app("list", &format!("[mail_list]\n\";\" = \"{name}\"\n"));
+            assert_eq!(
+                app.handle_key(KeyEvent::new(KeyCode::Char(old_key), modifiers)),
+                None,
+                "retired {old_key} with {modifiers:?}"
+            );
+            assert_eq!(press_char(&mut app, ';'), Some(action.clone()));
+            let mut app = remapped_app("list", &format!("[mail_list]\n\"{old_key}\" = \"\"\n"));
+            assert_eq!(
+                app.handle_key(KeyEvent::new(KeyCode::Char(old_key), modifiers)),
+                None,
+                "disabled {old_key} with {modifiers:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn configured_chord_beats_mail_and_mode_keys_and_retires_old_chord() {
     let mut app = remapped_app(
         "reading",

@@ -133,6 +133,9 @@ or purged. Do not move the shared lock file while mxr writers are running.
 Size/count/stderr settings are reread on writes; log level and `RUST_LOG` are
 selected at process startup. Every record reopens the active path under the
 shared lock, so a CLI rollover does not strand the daemon on an unlinked file.
+When upgrading from append-only logging, run `mxr restart` after installing the
+new binary so every writer uses this lock. Installation alone does not replace
+an already-running older daemon; its old logger does not enforce these bounds.
 An I/O failure can drop a record; it never recursively logs its own failure.
 Where stderr is permitted, a fixed diagnostic reports that failure.
 

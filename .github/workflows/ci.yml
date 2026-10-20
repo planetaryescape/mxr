@@ -264,6 +264,27 @@ jobs:
       - run: scripts/test_quality_audit_test.sh
       - run: scripts/test_quality_audit.sh --strict --changed-only --base-ref origin/${{ github.base_ref }}
 
+  build-e2e-daemon:
+    name: Build E2E Daemon
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: |
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      - name: Build mxr for the Playwright daemon
+        run: cargo build -p mxr
+      - name: Upload E2E mxr binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: mxr-e2e-bin
+          path: target-cli/debug/mxr
+          retention-days: 1
+
   web-tests:
     name: Web Unit Tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -298,7 +319,7 @@ jobs:
   web-e2e:
     name: Web E2E
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [changes, check, test, web-tests]
+    needs: [changes, check, test, web-tests, build-e2e-daemon]
     # See the draft-skip note on the `test` job above — this is the single
     # most expensive job in the matrix (full Playwright suite plus the
     # production-build speed gate), so it's the main target of that gate.
@@ -306,31 +327,36 @@ jobs:
       !failure() && !cancelled() &&
       (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    # The suite runs serially against one daemon, on top of the cargo build.
-    # By October 2026 it took 28-33 min on a 4-vCPU runner before the speed
-    # gate, so 40 cut off slow runs (main 0e112cb72). Splitting it into shards
-    # would halve the wall time but repeat the cargo build in each shard.
+    # The suite runs serially against one daemon. Prebuilding mxr in
+    # build-e2e-daemon turns this into a pure Node.js runner.
     timeout-minutes: 60
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Build mxr for the Playwright daemon
-        working-directory: ${{ github.workspace }}
+      - name: Download E2E mxr binary
+        uses: actions/download-artifact@v8
+        with:
+          name: mxr-e2e-bin
+          path: ${{ github.workspace }}/target-cli/debug
+      - name: Set daemon binary path and permissions
         run: |
-          cargo build -p mxr
-          echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          if [ -f "${GITHUB_WORKSPACE}/target-cli/debug/mxr" ]; then
+            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          elif [ -f "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" ]; then
+            mv "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          fi
       # One worker: every spec shares the FakeProvider daemon's mailbox.
       - name: Run the full Chromium suite (bounded, with progress log)
         run: |
@@ -356,7 +382,7 @@ jobs:
   web-e2e-webkit:
     name: Web E2E (WebKit)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [changes, check, test, web-tests]
+    needs: [changes, check, test, web-tests, build-e2e-daemon]
     # Safari's engine is what Tauri's WKWebView renders with on macOS. Same
     # draft-skip as Web E2E: drafts wait for ready_for_review.
     if: |
@@ -373,21 +399,28 @@ jobs:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: npm ci
       - run: npx playwright install --with-deps webkit
-      - name: Build mxr for the Playwright daemon
-        working-directory: ${{ github.workspace }}
+      - name: Download E2E mxr binary
+        uses: actions/download-artifact@v8
+        with:
+          name: mxr-e2e-bin
+          path: ${{ github.workspace }}/target-cli/debug
+      - name: Set daemon binary path and permissions
         run: |
-          cargo build -p mxr
-          echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          if [ -f "${GITHUB_WORKSPACE}/target-cli/debug/mxr" ]; then
+            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          elif [ -f "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" ]; then
+            mv "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
+            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+          fi
       - name: Run the WebKit suite
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then

@@ -62,6 +62,15 @@ Secrets are optional and the job summary records which level was reached:
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `KEYCHAIN_PASSWORD` | Signed (Tauri's names, v2.tauri.app/distribute/sign/macos) |
 | The above plus `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_PRIVATE_KEY` (the `.p8` contents) | Signed, notarised and stapled. Tauri notarises the app during the build; the workflow notarises and staples the dmg. |
 
+After the dmg's `notarytool submit --wait` succeeds, `scripts/staple_dmg.sh`
+attempts stapling at most three times. Only staple exit 68 is retried, after
+5 then 15 seconds, to tolerate the observed CloudKit network-loss failure.
+Other errors, including cancellation exits 130/143, fail immediately. Successful
+stapling must still pass `stapler validate`; validation errors are never retried
+or bypassed. This does not resubmit notarization or change signing/secrets and
+unsigned fallback conditions. The helper applies to subsequent normal releases;
+never move or overwrite an existing release tag to apply it to an older draft.
+
 The `homebrew` job renders `Casks/mxr-desktop.rb` from
 `packaging/homebrew/mxr-desktop.rb` with `scripts/render_homebrew_cask.sh` and
 commits it to the tap in the same commit as the formula, so the two never race

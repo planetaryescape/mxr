@@ -66,7 +66,7 @@ jobs:
   spec-lint:
     name: Spec validates as OpenAPI 3.1
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

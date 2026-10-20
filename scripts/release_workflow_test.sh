@@ -69,4 +69,21 @@ if ! grep -Fq 'group: release-publish-${{ github.ref }}' <<<"$publish_job" || ! 
     exit 1
 fi
 
+desktop_notary_block="$(sed -n '/name: Notarise and staple the dmg/,/name: Verify the signature/p' .github/workflows/desktop-signed.yml)"
+if [[ "$(grep -Fc 'xcrun notarytool submit "$DMG"' <<<"$desktop_notary_block")" -ne 1 ]] \
+    || ! grep -Fq "if: env.NOTARIZED == 'true'" <<<"$desktop_notary_block" \
+    || ! grep -Fq -- '--key "$NOTARIZE_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER"' <<<"$desktop_notary_block" \
+    || ! grep -Fq -- '--wait' <<<"$desktop_notary_block" \
+    || ! grep -Fq 'bash scripts/staple_dmg.sh "$DMG"' <<<"$desktop_notary_block"; then
+    echo "Desktop notarization must retain one submit/wait and use the bounded stapling helper." >&2
+    exit 1
+fi
+spec_lint_block="$(sed -n '/^  spec-lint:/,$p' .github/workflows/openapi-conformance.yml)"
+if ! grep -Fq 'timeout-minutes: 20' <<<"$spec_lint_block" \
+    || ! grep -Fq 'run: schemathesis run --dry-run --validate-schema=true' <<<"$spec_lint_block"; then
+    echo "OpenAPI spec lint must retain validation with a 20-minute job timeout." >&2
+    exit 1
+fi
+bash scripts/staple_dmg_test.sh
+
 echo "release_workflow_test: ok"

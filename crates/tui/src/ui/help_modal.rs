@@ -159,9 +159,26 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 | UiContext::SearchPreview
         ) {
             let view = binding_context(state);
+            let mut entries = config.all_bindings_for_context(view);
+            if matches!(
+                state.ui_context,
+                UiContext::SearchResults | UiContext::SearchPreview
+            ) {
+                // Search owns query editing and back/focus navigation unless
+                // an explicit mail override claims that key first.
+                for section in screen_sections(state.ui_context) {
+                    for (keys, label) in search_controls(section.entries, config, view) {
+                        for key in keys.split(" / ") {
+                            let canonical = search_key_display(key);
+                            entries.retain(|(key, _)| *key != canonical);
+                        }
+                        entries.push((keys, label));
+                    }
+                }
+            }
             screens = vec![HelpSection {
                 title: state.ui_context.label().into(),
-                entries: config.all_bindings_for_context(view),
+                entries,
             }];
         }
     }
@@ -235,6 +252,14 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             {
                 continue;
             }
+            if section.title == "Most Common Actions"
+                && matches!(
+                    state.ui_context,
+                    UiContext::SearchResults | UiContext::SearchPreview
+                )
+            {
+                continue; // Search controls were already filtered by ownership.
+            }
             for (key, _) in &mut section.entries {
                 if let Ok(binding) = crate::keybindings::parse_key_string(key) {
                     if let Some(name) =
@@ -270,6 +295,36 @@ fn binding_context(state: &HelpModalState<'_>) -> ViewContext {
     })
 }
 
+fn search_key_display(key: &str) -> String {
+    // The tailored Search table uses a display arrow rather than key grammar.
+    if key == "→" {
+        "Right".into()
+    } else {
+        key.into()
+    }
+}
+
+fn search_controls(
+    entries: Vec<(String, String)>,
+    config: &crate::keybindings::KeybindingConfig,
+    view: ViewContext,
+) -> Vec<(String, String)> {
+    entries
+        .into_iter()
+        .filter_map(|(keys, label)| {
+            let keys = keys
+                .split(" / ")
+                .filter(|key| {
+                    crate::keybindings::parse_key_string(&search_key_display(key))
+                        .is_ok_and(|binding| !config.overrides_prefix(view, &binding.keys[0]))
+                })
+                .collect::<Vec<_>>()
+                .join(" / ");
+            (!keys.is_empty()).then_some((keys, label))
+        })
+        .collect()
+}
+
 fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
     let mut entries = match state.ui_context {
         UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage => vec![
@@ -277,11 +332,26 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("Ctrl-f".into(), "Filter current mailbox only".into()),
             ("Ctrl-p".into(), "Open command palette".into()),
         ],
-        UiContext::SearchEditor | UiContext::SearchResults | UiContext::SearchPreview => vec![
+        UiContext::SearchEditor => vec![
             ("Enter".into(), "Run search now".into()),
             ("Tab".into(), "Switch results and preview".into()),
             ("Esc".into(), "Preview -> results -> mailbox".into()),
         ],
+        UiContext::SearchResults | UiContext::SearchPreview => search_controls(
+            vec![
+                ("/".into(), "Edit query".into()),
+                ("Tab".into(), "Switch results and preview".into()),
+                if state.ui_context == UiContext::SearchResults {
+                    ("Esc".into(), "Return to mailbox".into())
+                } else {
+                    ("h / Esc".into(), "Return focus to results".into())
+                },
+            ],
+            state
+                .keybindings
+                .unwrap_or_else(|| crate::keybindings::shown_keybindings()),
+            binding_context(state),
+        ),
         UiContext::RulesList | UiContext::RulesForm => vec![
             ("n".into(), "Start a new rule".into()),
             ("D".into(), "Dry run before save".into()),
@@ -397,10 +467,10 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("H".into(), "Toggle original HTML".into()),
                 ("M".into(), "Toggle remote images".into()),
                 ("O".into(), "Open in browser".into()),
-                (
-                    "r / a / f / e".into(),
-                    "Reply, reply all, forward, archive".into(),
-                ),
+                ("r".into(), "Reply".into()),
+                ("a".into(), "Reply all".into()),
+                ("f".into(), "Forward".into()),
+                ("e".into(), "Archive".into()),
             ],
         }],
         UiContext::RulesList | UiContext::RulesForm => vec![HelpSection {
@@ -473,7 +543,22 @@ fn command_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         None => commands_for_context(state.ui_context),
     };
     for command in commands {
-        let shortcut = if command.shortcut.is_empty() {
+        let search_owns_slash = matches!(
+            state.ui_context,
+            UiContext::SearchResults | UiContext::SearchPreview
+        ) && command.action == crate::action::Action::OpenGlobalSearch
+            && command.shortcut == "/"
+            && !state
+                .keybindings
+                .unwrap_or_else(|| crate::keybindings::shown_keybindings())
+                .overrides_prefix(
+                    binding_context(state),
+                    &crate::keybindings::KeyPress::from_event(crossterm::event::KeyEvent::new(
+                        crossterm::event::KeyCode::Char('/'),
+                        crossterm::event::KeyModifiers::NONE,
+                    )),
+                );
+        let shortcut = if command.shortcut.is_empty() || search_owns_slash {
             "palette".to_string()
         } else {
             command.shortcut

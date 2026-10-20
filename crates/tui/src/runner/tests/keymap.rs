@@ -216,6 +216,254 @@ fn press_char(app: &mut App, c: char) -> Option<Action> {
     app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
 }
 
+// A regression here can overflow the stack before an assertion runs. Keep it
+// in a bounded child test process, without changing the parent's environment.
+#[tokio::test]
+async fn configured_retired_prefixes_are_bounded() {
+    const CHILD: &str = "MXR_TEST_RETIRED_PREFIX_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "runner::tests::keymap::configured_retired_prefixes_are_bounded",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(std::time::Duration::from_secs(10), command.output())
+            .await
+            .expect("retired prefix dispatch must finish within ten seconds")
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "retired prefix child failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    let mut app = remapped_app("list", "[mail_list]\n\";\" = \"center_current\"\n");
+    assert_eq!(press_char(&mut app, ';'), Some(Action::CenterCurrent));
+    for _ in 0..4 {
+        assert_eq!(press_char(&mut app, 'z'), None);
+        assert!(
+            !app.input_pending(),
+            "a retired lone prefix must be consumed"
+        );
+    }
+    assert_eq!(press_char(&mut app, ';'), Some(Action::CenterCurrent));
+    assert_eq!(press_char(&mut app, 'j'), Some(Action::MoveDown));
+    let mut app = remapped_app(
+        "list",
+        "[mail_list]\n\";\" = \"center_current\"\n\"wq\" = \"archive\"\n",
+    );
+    assert_eq!(press_char(&mut app, 'w'), None);
+    assert_eq!(press_char(&mut app, 'z'), None);
+    assert!(
+        !app.input_pending(),
+        "an invalid suffix can be a retired prefix"
+    );
+    assert_eq!(press_char(&mut app, 'w'), None);
+    assert_eq!(press_char(&mut app, 'w'), None);
+    assert!(
+        app.input_pending(),
+        "a live repeated prefix starts a new chord"
+    );
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::Archive));
+
+    let mut app = remapped_app(
+        "list",
+        "[mail_list]\n\";\" = \"invite_accept\"\n\",\" = \"invite_tentative\"\n\".\" = \"invite_decline\"\n",
+    );
+    for _ in 0..4 {
+        assert_eq!(press_char(&mut app, 'i'), None);
+        assert!(!app.input_pending());
+    }
+    assert_eq!(
+        press_char(&mut app, 'a'),
+        Some(Action::ReplyAll),
+        "retired i must not revive invite_accept on the next key"
+    );
+    for (key, rsvp) in [
+        (';', mxr_protocol::CalendarInviteActionData::Accept),
+        (',', mxr_protocol::CalendarInviteActionData::Tentative),
+        ('.', mxr_protocol::CalendarInviteActionData::Decline),
+    ] {
+        assert_eq!(press_char(&mut app, key), Some(Action::RespondInvite(rsvp)));
+    }
+    let mut partial = remapped_app("list", "[mail_list]\n\";\" = \"invite_accept\"\n");
+    assert_eq!(press_char(&mut partial, 'i'), None);
+    assert!(
+        partial.input_pending(),
+        "other invite chords are still live"
+    );
+    assert_eq!(
+        press_char(&mut partial, 'm'),
+        Some(Action::RespondInvite(
+            mxr_protocol::CalendarInviteActionData::Tentative
+        ))
+    );
+    let mut defaults = app_in("list");
+    assert_eq!(press_char(&mut defaults, 'z'), None);
+    assert!(defaults.input_pending());
+    assert_eq!(press_char(&mut defaults, 'z'), Some(Action::CenterCurrent));
+}
+
+fn rendered_help_lines(app: &mut App, query: &str) -> Vec<String> {
+    app.modals.help_open = true;
+    app.modals.help_query = query.into();
+    let backend = ratatui::backend::TestBackend::new(140, 60);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let popup = crate::ui::centered_rect(88, 88, ratatui::layout::Rect::new(0, 0, 140, 60));
+    let buffer = terminal.backend().buffer();
+    (popup.y..popup.bottom())
+        .map(|y| {
+            (popup.x..popup.right())
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+                .trim_matches(|c: char| c == '│' || c.is_whitespace())
+                .to_string()
+        })
+        .collect()
+}
+
+fn assert_search_help_matches_dispatch(source: &str, archive_key: char) {
+    for (pane, message_count) in [
+        (SearchPane::Results, 0),
+        (SearchPane::Preview, 1),
+        (SearchPane::Preview, 2),
+    ] {
+        let mut app = remapped_app("list", source);
+        app.screen = Screen::Search;
+        app.search.page.editing = false;
+        app.search.page.active_pane = pane;
+        app.mailbox.viewed_thread_messages = make_test_envelopes(message_count);
+        assert_eq!(press_char(&mut app, '/'), None);
+        assert!(app.search.page.editing, "slash edits the existing query");
+        app.search.page.editing = false;
+        let lines = rendered_help_lines(&mut app, "Edit query");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with('/') && line.contains("Edit query")),
+            "missing query control in {pane:?}: {lines:?}"
+        );
+        let back = if pane == SearchPane::Results {
+            "Return to mailbox"
+        } else {
+            "Return focus to results"
+        };
+        let lines = rendered_help_lines(&mut app, back);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Esc") && line.contains(back)),
+            "missing back control in {pane:?}: {lines:?}"
+        );
+        let lines = rendered_help_lines(&mut app, "Search All Mail");
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with('/') && line.contains("Search All Mail")),
+            "slash must not advertise a different action in Search: {lines:?}"
+        );
+        let lines = rendered_help_lines(&mut app, "Run search now");
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("Enter") && line.contains("Run search now")),
+            "Enter opens a message outside query editing: {lines:?}"
+        );
+        let lines = rendered_help_lines(&mut app, "Archive");
+        assert!(
+            lines.iter().any(|line| line.split_whitespace().next()
+                == Some(archive_key.to_string().as_str())
+                && line.contains("Archive")),
+            "missing effective archive key in {pane:?}: {lines:?}"
+        );
+        if archive_key != 'e' {
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line.split_whitespace().next() == Some("e")
+                        && line.contains("Archive")),
+                "retired e must not be advertised: {lines:?}"
+            );
+        }
+        app.modals.help_open = false;
+        assert_eq!(press_char(&mut app, archive_key), Some(Action::Archive));
+        if archive_key != 'e' {
+            assert_eq!(press_char(&mut app, 'e'), None);
+        }
+        if pane == SearchPane::Preview {
+            assert_eq!(press_char(&mut app, 'h'), None);
+            assert_eq!(app.search.page.active_pane, SearchPane::Results);
+            app.search.page.active_pane = SearchPane::Preview;
+            assert_eq!(
+                app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                None
+            );
+            assert_eq!(app.search.page.active_pane, SearchPane::Results);
+        } else {
+            assert_eq!(
+                app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                Some(Action::OpenMailboxScreen)
+            );
+        }
+    }
+}
+
+#[test]
+fn configured_search_help_preserves_default_query_and_back_controls() {
+    assert_search_help_matches_dispatch("", 'e');
+}
+
+#[test]
+fn configured_search_help_preserves_query_and_back_controls_with_mail_remaps() {
+    assert_search_help_matches_dispatch("[mail_list]\n\";\" = \"archive\"\n[message_view]\n\";\" = \"archive\"\n[thread_view]\n\";\" = \"archive\"\n", ';');
+}
+
+#[test]
+fn configured_search_help_does_not_restore_explicitly_overridden_controls() {
+    let source = ["mail_list", "message_view", "thread_view"]
+        .map(|section| {
+            format!("[{section}]\n\"/\" = \"archive\"\n\"h\" = \"trash\"\n\"Esc\" = \"spam\"\n")
+        })
+        .join("");
+    for pane in [SearchPane::Results, SearchPane::Preview] {
+        let mut app = remapped_app("list", &source);
+        app.screen = Screen::Search;
+        app.search.page.editing = false;
+        app.search.page.active_pane = pane;
+        for (query, key) in [("Archive", "/"), ("Trash", "h"), ("Spam", "Esc")] {
+            let lines = rendered_help_lines(&mut app, query);
+            assert!(lines.iter().any(|line| line.split_whitespace().next() == Some(key) && line.contains(query)), "missing configured control: {lines:?}");
+        }
+        for query in ["Edit query", "Return focus to results", "Return to mailbox"] {
+            let lines = rendered_help_lines(&mut app, query);
+            assert!(
+                !lines.iter().any(|line| matches!(
+                    line.split_whitespace().next(),
+                    Some("/" | "h" | "Esc")
+                ) && line.contains(query)),
+                "overridden control must not be restored: {lines:?}"
+            );
+        }
+        app.modals.help_open = false;
+        assert_eq!(press_char(&mut app, '/'), Some(Action::Archive));
+        assert!(!app.search.page.editing);
+        assert_eq!(press_char(&mut app, 'h'), Some(Action::Trash));
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Some(Action::Spam)
+        );
+        assert_eq!(app.search.page.active_pane, pane);
+    }
+}
+
 #[test]
 fn configured_plain_a_remap_preserves_unrelated_ctrl_a() {
     let mut app = remapped_app("list", "[mail_list]\n\";\" = \"reply_all\"\n");

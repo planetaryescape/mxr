@@ -153,6 +153,7 @@ impl InputHandler {
             return None;
         }
         self.used_this_turn = true;
+        let had_pending_chord = pending.is_some();
         let mut sequence = pending.map(|chord| chord.keys).unwrap_or_default();
         sequence.push(press);
         if let Some(name) = crate::keybindings::resolve_action(config, context, &sequence) {
@@ -171,6 +172,12 @@ impl InputHandler {
             return Some(None);
         }
         if config.retired_sequence(context, &sequence) {
+            self.state = KeyState::Normal;
+            return Some(None);
+        }
+        // A retired chord can leave a prefix with no live continuation. It
+        // owns this press, but must not retry itself as a fresh prefix.
+        if !had_pending_chord {
             self.state = KeyState::Normal;
             return Some(None);
         }
@@ -572,6 +579,22 @@ mod tests {
         assert_eq!(
             input.handle_configured_key(&config, context, key(KeyCode::Char(';'))),
             Some(Some("archive".into()))
+        );
+        assert!(!input.is_pending());
+        input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
+        input.configured.as_mut().unwrap().deadline = Instant::now() - Duration::from_millis(1);
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('w'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('q'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('r'))),
+            Some(Some("trash".into())),
+            "a new configured chord can start after timeout"
         );
         assert!(!input.is_pending());
     }

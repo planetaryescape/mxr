@@ -196,6 +196,86 @@ mod tests {
         messages: Vec<SyncedMessage>,
     }
 
+    /// Finite provider responses make an accidental repair loop fail instead
+    /// of hanging the suite. Cursors describe the provider paging contract.
+    struct LabelRepairProvider {
+        account_id: AccountId,
+        supports_labels: bool,
+        labels: Vec<Label>,
+        pages:
+            std::sync::Mutex<std::collections::VecDeque<(SyncCursor, Result<SyncBatch, MxrError>)>>,
+    }
+
+    fn label_repair_page(messages: Vec<Envelope>, next_cursor: &[u8], has_more: bool) -> SyncBatch {
+        SyncBatch {
+            upserted: messages
+                .into_iter()
+                .map(|envelope| SyncedMessage {
+                    body: make_empty_body(&envelope.id),
+                    envelope,
+                })
+                .collect(),
+            deleted_provider_ids: vec![],
+            label_changes: vec![],
+            next_cursor: SyncCursor::from_bytes(next_cursor.to_vec()),
+            has_more,
+            threads_changed: vec![],
+            remaining_estimate: None,
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for LabelRepairProvider {
+        fn name(&self) -> &str {
+            "label-repair"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            let mut caps = SyncCapabilities::default();
+            caps.sync.native_threading = true;
+            caps.mutate.labels = self.supports_labels;
+            caps
+        }
+        fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+            // Like the real adapters, only continuation tokens denote backfill;
+            // an empty cursor starts it and a settled cursor denotes delta sync.
+            cursor.as_bytes().starts_with(b"page-")
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(self.labels.clone())
+        }
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            let (expected_cursor, response) =
+                self.pages.lock().unwrap().pop_front().ok_or_else(|| {
+                    MxrError::Provider("label repair exceeded fixture page budget".into())
+                })?;
+            assert_eq!(
+                cursor.as_bytes(),
+                expected_cursor.as_bytes(),
+                "sync must preserve provider paging cursors"
+            );
+            response
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        #[expect(
+            clippy::panic,
+            reason = "fixture fails if label recovery mutates provider mail"
+        )]
+        async fn apply_mutation(&self, _id: &str, _mutation: &Mutation) -> Result<(), MxrError> {
+            panic!("label recovery must not mutate provider mail")
+        }
+    }
+
     /// Provider that advertises `native_threading = true` so the
     /// engine does NOT run the JWZ rethread pass. Used to verify
     /// that the upsert path alone produces `threads_changed`
@@ -1931,6 +2011,493 @@ mod tests {
         assert!(
             !envelopes.is_empty(),
             "Inbox should still return messages after delta sync"
+        );
+    }
+
+    #[tokio::test]
+    async fn label_repair_recovers_one_account_without_touching_another() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+        let account_a = AccountId::new();
+        let account_b = AccountId::new();
+        let label_a = make_test_label(&account_a, "Inbox", "INBOX");
+        let label_b = make_test_label(&account_b, "Inbox", "INBOX");
+        let message_a = make_test_envelope(&account_a, "a", vec!["INBOX".into()]);
+        let message_b = make_test_envelope(&account_b, "b", vec!["INBOX".into()]);
+        let provider_a = DeltaLabelProvider::new(
+            account_a.clone(),
+            vec![message_a.clone()],
+            vec![label_a.clone()],
+            vec![],
+        );
+        let provider_b = DeltaLabelProvider::new(
+            account_b.clone(),
+            vec![message_b.clone()],
+            vec![label_b.clone()],
+            vec![],
+        );
+        for account_id in [&account_b, &account_a] {
+            store
+                .insert_account(&test_account(account_id.clone()))
+                .await
+                .unwrap();
+        }
+        engine.sync_account(&provider_b).await.unwrap();
+        engine.sync_account(&provider_a).await.unwrap();
+        let cursor_b = store.get_sync_cursor(&account_b).await.unwrap().unwrap();
+        let labels_b = store.get_message_label_ids(&message_b.id).await.unwrap();
+        assert_eq!(labels_b, vec![label_b.id.clone()]);
+
+        // Simulate the historical cascade bug for A only; B stays healthy.
+        sqlx::query("DELETE FROM message_labels WHERE message_id IN (SELECT id FROM messages WHERE account_id = ?)")
+            .bind(account_a.as_str())
+            .execute(store.writer()).await.unwrap();
+        assert!(store
+            .list_envelopes_by_label(&label_a.id, 10, 0)
+            .await
+            .unwrap()
+            .is_empty());
+        let progress = CollectedProgress::default();
+        let outcome = engine
+            .sync_account_reporting(&provider_a, &progress.sink())
+            .await
+            .unwrap();
+
+        let restored = store
+            .list_envelopes_by_label(&label_a.id, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            restored.iter().map(|env| &env.id).collect::<Vec<_>>(),
+            vec![&message_a.id]
+        );
+        assert_eq!(outcome.upserted_message_ids, vec![message_a.id.clone()]);
+        assert_eq!(
+            progress
+                .milestones
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|step| **step == SyncProgress::Restarted)
+                .count(),
+            1
+        );
+        assert_eq!(
+            store.get_message_label_ids(&message_b.id).await.unwrap(),
+            labels_b
+        );
+        assert_eq!(
+            store
+                .get_sync_cursor(&account_b)
+                .await
+                .unwrap()
+                .unwrap()
+                .as_bytes(),
+            cursor_b.as_bytes()
+        );
+        for (account, message) in [(&account_a, &message_a), (&account_b, &message_b)] {
+            let page = search
+                .search_in_account(
+                    "body_text:test",
+                    Some(&account.as_str()),
+                    10,
+                    0,
+                    SortOrder::Relevance,
+                )
+                .await
+                .unwrap();
+            assert_eq!(page.total, 1);
+            assert_eq!(page.results[0].message_id, message.id.as_str());
+            assert_eq!(store.count_messages_by_account(account).await.unwrap(), 1);
+            assert!(store.get_body(&message.id).await.unwrap().is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn label_repair_is_bounded_when_provider_labels_cannot_be_resolved() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+        let account = AccountId::new();
+        store
+            .insert_account(&test_account(account.clone()))
+            .await
+            .unwrap();
+        let message = make_test_envelope(&account, "unresolved", vec!["missing-label".into()]);
+        store.upsert_envelope(&message).await.unwrap();
+        let stale = SyncCursor::from_bytes(b"stale-delta".to_vec());
+        store.set_sync_cursor(&account, &stale).await.unwrap();
+        let delta = label_repair_page(vec![], b"delta", false);
+        let rebuilt = label_repair_page(vec![message.clone()], b"rebuilt", false);
+        let provider = LabelRepairProvider {
+            account_id: account.clone(),
+            supports_labels: true,
+            labels: vec![make_test_label(&account, "Inbox", "INBOX")],
+            pages: std::sync::Mutex::new(
+                [(stale, Ok(delta)), (SyncCursor::empty(), Ok(rebuilt))].into(),
+            ),
+        };
+        let progress = CollectedProgress::default();
+        // Exhausting the finite responses is an error, not a timeout-based pass.
+        let outcome = engine
+            .sync_account_reporting(&provider, &progress.sink())
+            .await
+            .unwrap();
+        assert_eq!(outcome.upserted_message_ids, vec![message.id.clone()]);
+        assert!(!outcome.has_more);
+        assert_eq!(
+            store
+                .get_sync_cursor(&account)
+                .await
+                .unwrap()
+                .unwrap()
+                .as_bytes(),
+            b"rebuilt"
+        );
+        assert!(store
+            .get_message_label_ids(&message.id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            progress
+                .milestones
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|step| **step == SyncProgress::Restarted)
+                .count(),
+            1
+        );
+        assert_eq!(search.num_docs().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn label_repair_finishes_unresolvable_backfill_and_allows_later_retry() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+        let account = AccountId::new();
+        store
+            .insert_account(&test_account(account.clone()))
+            .await
+            .unwrap();
+        let first = make_test_envelope(&account, "first", vec!["missing-label".into()]);
+        let last = make_test_envelope(&account, "last", vec!["missing-label".into()]);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .set_sync_cursor(&account, &SyncCursor::from_bytes(b"stale-delta".to_vec()))
+            .await
+            .unwrap();
+        let provider = LabelRepairProvider {
+            account_id: account.clone(),
+            supports_labels: true,
+            labels: vec![make_test_label(&account, "Inbox", "INBOX")],
+            pages: std::sync::Mutex::new(std::collections::VecDeque::new()),
+        };
+
+        // A later ordinary poll may retry, but each full refetch must reach idle.
+        for start in [b"stale-delta".as_slice(), b"settled".as_slice()] {
+            provider.pages.lock().unwrap().extend([
+                (
+                    SyncCursor::from_bytes(start.to_vec()),
+                    Ok(label_repair_page(vec![], b"delta", false)),
+                ),
+                (
+                    SyncCursor::empty(),
+                    Ok(label_repair_page(vec![first.clone()], b"page-final", true)),
+                ),
+                (
+                    SyncCursor::from_bytes(b"page-final".to_vec()),
+                    Ok(label_repair_page(vec![last.clone()], b"settled", false)),
+                ),
+            ]);
+            let progress = CollectedProgress::default();
+            let mut upserted = Vec::new();
+            let mut passes = 0;
+            // Drive actual per-page calls as the daemon does. Extra resets exhaust
+            // the three finite responses and fail, rather than hanging or sleeping.
+            loop {
+                let outcome = engine
+                    .sync_account_reporting(&provider, &progress.sink())
+                    .await
+                    .unwrap();
+                passes += 1;
+                upserted.extend(outcome.upserted_message_ids);
+                if !outcome.has_more {
+                    break;
+                }
+            }
+            assert_eq!(passes, 2);
+            assert_eq!(upserted, vec![first.id.clone(), last.id.clone()]);
+            assert_eq!(
+                progress
+                    .milestones
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|step| **step == SyncProgress::Restarted)
+                    .count(),
+                1
+            );
+            assert_eq!(
+                store
+                    .get_sync_cursor(&account)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes(),
+                b"settled"
+            );
+            assert_eq!(
+                store
+                    .count_message_labels_by_account(&account)
+                    .await
+                    .unwrap(),
+                0
+            );
+            assert_eq!(store.count_messages_by_account(&account).await.unwrap(), 2);
+            let page = search
+                .search_in_account(
+                    "body_text:test",
+                    Some(&account.as_str()),
+                    10,
+                    0,
+                    SortOrder::Relevance,
+                )
+                .await
+                .unwrap();
+            assert_eq!(page.total, 2);
+            assert_eq!(
+                page.results
+                    .into_iter()
+                    .map(|hit| hit.message_id)
+                    .collect::<HashSet<_>>(),
+                HashSet::from([first.id.as_str(), last.id.as_str()])
+            );
+            for message in [&first, &last] {
+                assert_eq!(
+                    store
+                        .get_message_id_by_provider_id(&account, &message.provider_id)
+                        .await
+                        .unwrap(),
+                    Some(message.id.clone())
+                );
+                assert!(store.get_body(&message.id).await.unwrap().is_some());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn label_repair_preserves_pagination_before_labels_arrive() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+        let account = AccountId::new();
+        store
+            .insert_account(&test_account(account.clone()))
+            .await
+            .unwrap();
+        let first = make_test_envelope(&account, "first", vec![]);
+        let second = make_test_envelope(&account, "second", vec!["INBOX".into()]);
+        let first_page = label_repair_page(vec![first.clone()], b"page-two", true);
+        let second_page = label_repair_page(vec![second.clone()], b"done", false);
+        let label = make_test_label(&account, "Inbox", "INBOX");
+        let provider = LabelRepairProvider {
+            account_id: account.clone(),
+            supports_labels: true,
+            labels: vec![label.clone()],
+            pages: std::sync::Mutex::new(
+                [
+                    (SyncCursor::empty(), Ok(first_page)),
+                    (
+                        SyncCursor::from_bytes(b"page-two".to_vec()),
+                        Ok(second_page),
+                    ),
+                ]
+                .into(),
+            ),
+        };
+        let progress = CollectedProgress::default();
+        let first_outcome = engine
+            .sync_account_reporting(&provider, &progress.sink())
+            .await
+            .unwrap();
+        assert!(first_outcome.has_more);
+        assert_eq!(first_outcome.upserted_message_ids, vec![first.id.clone()]);
+        assert_eq!(
+            store
+                .get_sync_cursor(&account)
+                .await
+                .unwrap()
+                .unwrap()
+                .as_bytes(),
+            b"page-two"
+        );
+        let second_outcome = engine
+            .sync_account_reporting(&provider, &progress.sink())
+            .await
+            .unwrap();
+        assert!(!second_outcome.has_more);
+        assert_eq!(second_outcome.upserted_message_ids, vec![second.id.clone()]);
+        assert_eq!(
+            store
+                .get_sync_cursor(&account)
+                .await
+                .unwrap()
+                .unwrap()
+                .as_bytes(),
+            b"done"
+        );
+        assert!(!progress
+            .milestones
+            .lock()
+            .unwrap()
+            .contains(&SyncProgress::Restarted));
+        assert_eq!(
+            store.get_message_label_ids(&second.id).await.unwrap(),
+            vec![label.id]
+        );
+        assert_eq!(store.count_messages_by_account(&account).await.unwrap(), 2);
+        assert_eq!(search.num_docs().await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn label_repair_skips_healthy_empty_and_unsupported_accounts() {
+        for (scenario, supports_labels, has_message, has_association) in [
+            ("healthy", true, true, true),
+            ("empty", true, false, false),
+            ("unsupported", false, true, false),
+        ] {
+            let store = Arc::new(Store::in_memory().await.unwrap());
+            let engine = SyncEngine::new(store.clone(), in_memory_search());
+            let account = AccountId::new();
+            store
+                .insert_account(&test_account(account.clone()))
+                .await
+                .unwrap();
+            let message = make_test_envelope(&account, scenario, vec![]);
+            let label = make_test_label(&account, "Inbox", "INBOX");
+            if has_message {
+                store.upsert_envelope(&message).await.unwrap();
+            }
+            if has_association {
+                store.upsert_label(&label).await.unwrap();
+                store
+                    .set_message_labels(
+                        &message.id,
+                        std::slice::from_ref(&label.id),
+                        EventSource::Sync,
+                    )
+                    .await
+                    .unwrap();
+            }
+            let cursor = SyncCursor::from_bytes(b"steady".to_vec());
+            store.set_sync_cursor(&account, &cursor).await.unwrap();
+            let provider = LabelRepairProvider {
+                account_id: account.clone(),
+                supports_labels,
+                labels: vec![label.clone()],
+                pages: std::sync::Mutex::new(
+                    [(cursor, Ok(label_repair_page(vec![], b"advanced", false)))].into(),
+                ),
+            };
+            let progress = CollectedProgress::default();
+            let outcome = engine
+                .sync_account_reporting(&provider, &progress.sink())
+                .await
+                .unwrap();
+            assert_eq!(outcome.synced_count, 0, "{scenario}");
+            assert!(
+                !progress
+                    .milestones
+                    .lock()
+                    .unwrap()
+                    .contains(&SyncProgress::Restarted),
+                "{scenario}"
+            );
+            assert_eq!(
+                store
+                    .get_sync_cursor(&account)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes(),
+                b"advanced",
+                "{scenario}"
+            );
+            assert_eq!(
+                store.count_messages_by_account(&account).await.unwrap(),
+                u32::from(has_message),
+                "{scenario}"
+            );
+            if has_message {
+                let expected = if has_association {
+                    vec![label.id]
+                } else {
+                    vec![]
+                };
+                assert_eq!(
+                    store.get_message_label_ids(&message.id).await.unwrap(),
+                    expected,
+                    "{scenario}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn label_repair_propagates_provider_failure_after_reset() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+        let account = AccountId::new();
+        store
+            .insert_account(&test_account(account.clone()))
+            .await
+            .unwrap();
+        let message = make_test_envelope(&account, "missing", vec![]);
+        store.upsert_envelope(&message).await.unwrap();
+        let cursor = SyncCursor::from_bytes(b"stale".to_vec());
+        store.set_sync_cursor(&account, &cursor).await.unwrap();
+        let provider = LabelRepairProvider {
+            account_id: account.clone(),
+            supports_labels: true,
+            labels: vec![],
+            pages: std::sync::Mutex::new(
+                [
+                    (cursor, Ok(label_repair_page(vec![], b"delta", false))),
+                    (
+                        SyncCursor::empty(),
+                        Err(MxrError::Provider("repair offline".into())),
+                    ),
+                ]
+                .into(),
+            ),
+        };
+        let progress = CollectedProgress::default();
+        let error = engine
+            .sync_account_reporting(&provider, &progress.sink())
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(error, MxrError::Provider(ref message) if message == "repair offline"));
+        assert!(store
+            .get_sync_cursor(&account)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert_eq!(store.count_messages_by_account(&account).await.unwrap(), 1);
+        assert_eq!(
+            progress
+                .milestones
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|step| **step == SyncProgress::Restarted)
+                .count(),
+            1
         );
     }
 

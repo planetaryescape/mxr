@@ -612,12 +612,13 @@ impl SyncEngine {
                     .map_err(|e| MxrError::Store(e.to_string()))?;
             }
 
-            // Backfill: if junction table is empty but messages exist, reset cursor
-            // and re-sync to rebuild label associations (handles DBs corrupted by
-            // the old INSERT OR REPLACE cascade bug).
+            // Recover empty junctions from a completed steady-state poll (the
+            // old INSERT OR REPLACE cascade bug). Initial/refetch pages already
+            // rebuild associations: even their last page must keep its cursor
+            // when no labels resolve, rather than start another full refetch.
             let junction_count = self
                 .store
-                .count_message_labels()
+                .count_message_labels_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             let message_count = self
@@ -625,10 +626,17 @@ impl SyncEngine {
                 .count_messages_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            if provider.capabilities().mutate.labels && junction_count == 0 && message_count > 0 {
+            if provider.capabilities().mutate.labels
+                && !cursor.is_empty()
+                && !provider.is_backfill_cursor(&cursor)
+                && !has_more
+                && junction_count == 0
+                && message_count > 0
+            {
                 tracing::warn!(
+                    account = %account_id,
                     message_count,
-                    "Junction table empty — resetting sync cursor for full re-sync"
+                    "Account label associations empty — resetting sync cursor for full re-sync"
                 );
                 self.store
                     .set_sync_cursor(account_id, &SyncCursor::empty())

@@ -48,7 +48,7 @@ jobs:
           # at runtime by `mxr semantic enable`. Intel mac artifacts are not built.
           MATRIX='{"include":[
             {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"},
-            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
+            {"os":["self-hosted","macOS","ARM64","mxr-builder"],"target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
           ]}'
           {
             echo 'build_matrix<<EOF'

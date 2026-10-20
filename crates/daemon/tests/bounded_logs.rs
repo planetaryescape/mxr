@@ -2,7 +2,7 @@
     clippy::unwrap_used,
     reason = "synthetic fixtures unwrap direct failures"
 )]
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -59,13 +59,201 @@ fn writer_child() {
         return;
     }
     mxr::init_tracing(std::env::var_os("MXR_LOG_MIRROR").is_some()).unwrap();
-    for seq in 0..160 {
+    let malformed = std::env::var_os("MXR_LOG_MALFORMED_AFTER_START").is_some();
+    if malformed {
+        std::fs::write(
+            std::env::var_os("MXR_CONFIG_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap()
+                .join("writer-ready"),
+            "ready",
+        )
+        .unwrap();
+        let mut resume = String::new();
+        std::io::stdin().read_line(&mut resume).unwrap();
+    }
+    for seq in 0..if malformed { 320 } else { 160 } {
         tracing::info!(target: "mxr::logging_test", seq, payload = %"x".repeat(12_000), "synthetic operation");
     }
     tracing::info!(target: "mxr::logging_test", payload = %"s".repeat(2_000_000), "oversized synthetic event");
     tracing::trace!(target: "async_imap::imap_stream", secret = "SYNTHETIC_WIRE_SECRET");
     tracing::trace!(target: "tungstenite::protocol::frame", secret = "SYNTHETIC_WIRE_SECRET");
     tracing::info!(target: "mxr::logging_test", "final synthetic operation");
+}
+
+fn wait_bounded(child: &mut OwnedChild, limit: Duration) -> Option<std::process::ExitStatus> {
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return Some(status);
+        }
+        if start.elapsed() >= limit {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn malformed_config_keeps_recovery_commands_available() {
+    let dir = profile();
+    let config = dir.path().join("config/config.toml");
+    let invalid = "[logging\ninvalid=???";
+    std::fs::write(&config, invalid).unwrap();
+    let mut failures = Vec::new();
+    for args in [
+        vec!["config", "path"],
+        vec!["config", "show"],
+        vec!["config", "edit"],
+        vec!["completions", "bash"],
+    ] {
+        let output = cli(dir.path())
+            .env("EDITOR", "/usr/bin/true")
+            .args(&args)
+            .output()
+            .unwrap();
+        if !output.status.success() {
+            failures.push(format!(
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        if args[1] == "path" && output.status.success() {
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout).trim(),
+                config.display().to_string(),
+                "config path must be available without parsing TOML"
+            );
+        }
+    }
+    assert_eq!(std::fs::read_to_string(config).unwrap(), invalid);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn malformed_config_keeps_live_writer_startup_policy() {
+    let dir = profile();
+    let stdout = dir.path().join("writer.stdout");
+    let stderr = dir.path().join("writer.stderr");
+    let mut cmd = Command::new(std::env::current_exe().unwrap());
+    env(&mut cmd, dir.path());
+    let mut child = OwnedChild(
+        cmd.args(["--exact", "writer_child", "--nocapture"])
+            .env("MXR_LOG_CHILD", "1")
+            .env("MXR_LOG_MIRROR", "1")
+            .env("MXR_LOG_MALFORMED_AFTER_START", "1")
+            .stdin(Stdio::piped())
+            .stdout(std::fs::File::create(&stdout).unwrap())
+            .stderr(std::fs::File::create(&stderr).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let start = std::time::Instant::now();
+    while !dir.path().join("config/writer-ready").exists() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "writer did not reach startup barrier"
+        );
+        assert!(child.try_wait().unwrap().is_none());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::fs::write(
+        dir.path().join("config/config.toml"),
+        "[logging\nCONFIG_PARSE_SENTINEL=???",
+    )
+    .unwrap();
+    child.stdin.take().unwrap().write_all(b"resume\n").unwrap();
+    assert!(wait_bounded(&mut child, Duration::from_secs(10))
+        .unwrap()
+        .success());
+    let mut files = 0;
+    let mut final_record = false;
+    for entry in std::fs::read_dir(dir.path().join("data/logs")).unwrap() {
+        let entry = entry.unwrap();
+        if entry.path().extension().is_none_or(|ext| ext != "log") {
+            continue;
+        }
+        files += 1;
+        assert!(entry.metadata().unwrap().len() <= 1024 * 1024);
+        let text = std::fs::read_to_string(entry.path()).unwrap();
+        assert!(!text.contains("CONFIG_PARSE_SENTINEL"));
+        for line in text.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).unwrap();
+            final_record |= row["fields"]["message"] == "final synthetic operation";
+        }
+    }
+    assert_eq!(files, 3, "startup count/size caps remain effective");
+    assert!(
+        final_record,
+        "malformed config must not disable an already started writer"
+    );
+    for path in [&stdout, &stderr] {
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(
+            !text.contains("synthetic operation") && !text.contains("CONFIG_PARSE_SENTINEL"),
+            "startup stderr=false must survive malformed config"
+        );
+    }
+}
+
+#[tokio::test]
+async fn purge_pending_on_sqlite_does_not_block_independent_logger() {
+    let dir = profile();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(data.join("logs")).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(data.join("logs/.mxr-log.lock"))
+        .unwrap();
+    let store = mxr_store::Store::new(&data.join("mxr.db")).await.unwrap();
+    let mut transaction = store.writer().begin().await.unwrap();
+    sqlx::query("INSERT INTO event_log (timestamp, level, category, summary) VALUES (1, 'info', 'synthetic', 'held write fixture')").execute(&mut *transaction).await.unwrap();
+    let mut purge = OwnedChild(
+        cli(dir.path())
+            .args(["logs", "--purge", "--format", "json"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    // Observe the old archive-lock ownership when present; otherwise allow a
+    // bounded startup window. SQLite stays write-locked until after the probe.
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(2) {
+        if lock.try_lock().is_err() {
+            break;
+        }
+        lock.unlock().unwrap();
+        assert!(
+            purge.try_wait().unwrap().is_none(),
+            "purge must remain pending while SQLite writer is held"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let mut probe = OwnedChild(
+        cli(dir.path())
+            .args(["config", "path"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let probe_while_blocked = wait_bounded(&mut probe, Duration::from_secs(3));
+    assert!(purge.try_wait().unwrap().is_none());
+    transaction.rollback().await.unwrap();
+    assert!(wait_bounded(&mut purge, Duration::from_secs(10))
+        .unwrap()
+        .success());
+    assert!(wait_bounded(&mut probe, Duration::from_secs(10))
+        .unwrap()
+        .success());
+    assert!(
+        probe_while_blocked.is_some_and(|status| status.success()),
+        "independent tracing/config path waited on the SQLite-blocked purge"
+    );
 }
 
 #[test]

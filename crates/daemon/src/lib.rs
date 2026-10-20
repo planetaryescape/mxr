@@ -1749,7 +1749,11 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let config = mxr_config::load_config()?.logging;
+    // Tracing must not prevent config recovery commands from opening bad TOML.
+    // Commands that require a valid configuration still validate it themselves.
+    let config = mxr_config::load_config()
+        .map(|config| config.logging)
+        .unwrap_or_default();
     let configured_level = &config.level;
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::try_new(format!("mxr={configured_level}"))

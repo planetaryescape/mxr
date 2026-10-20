@@ -70,19 +70,24 @@ pub async fn run(options: LogRunOptions) -> anyhow::Result<()> {
             .ok_or_else(|| {
                 anyhow::anyhow!("logging.event_retention_days exceeds supported cutoff range")
             })?;
-        // Preview opens an existing lock read-only, and never creates log files.
-        let _lock = if dir.exists() {
-            logging::lock(&dir, !options.dry_run)?
-        } else {
-            None
-        };
-        let selected = purge_selection(&dir, SystemTime::from(cutoff))?;
+        // Database work can wait for a writer. Never hold the archive lock
+        // across that await: a database writer may itself need to trace.
         let events = purge_events(cutoff.timestamp(), options.dry_run).await?;
-        if !options.dry_run {
-            for path in &selected {
-                std::fs::remove_file(path)?;
+        let selected = {
+            // Preview opens an existing lock read-only, without creating logs.
+            let _lock = if dir.exists() {
+                logging::lock(&dir, !options.dry_run)?
+            } else {
+                None
+            };
+            let selected = purge_selection(&dir, SystemTime::from(cutoff))?;
+            if !options.dry_run {
+                for path in &selected {
+                    std::fs::remove_file(path)?;
+                }
             }
-        }
+            selected
+        };
         if json_mode {
             println!(
                 "{}",

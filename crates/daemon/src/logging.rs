@@ -140,9 +140,9 @@ impl LogWriter {
         // Do not call load_config here: its missing-file DEBUG event would
         // recursively enter this writer. Parsing itself emits no tracing.
         match std::fs::read_to_string(&self.config_path) {
-            Ok(text) => mxr_config::load_config_from_str(&text)
+            Ok(text) => Ok(mxr_config::load_config_from_str(&text)
                 .map(|c| c.logging)
-                .map_err(io::Error::other),
+                .unwrap_or_else(|_| self.fallback.clone())),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(self.fallback.clone()),
             Err(e) => Err(e),
         }
@@ -367,5 +367,23 @@ mod tests {
         std::fs::create_dir(dir.path().join("mxr.log")).unwrap();
         assert!(test_writer(dir.path(), 1).commit(b"{}\n", false).is_err());
         assert_eq!(std::fs::read_to_string(archive).unwrap(), "history");
+    }
+
+    #[test]
+    fn malformed_toml_keeps_startup_policy_but_read_errors_propagate() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = test_writer(dir.path(), 2);
+        std::fs::write(&writer.config_path, "[logging\ninvalid=???").unwrap();
+        let config = writer.config().unwrap();
+        assert_eq!(config.max_size_mb, 1);
+        assert_eq!(config.max_files, 2);
+        assert!(!config.stderr);
+        std::fs::remove_file(&writer.config_path).unwrap();
+        std::fs::create_dir(&writer.config_path).unwrap();
+        assert!(
+            writer.config().is_err(),
+            "a config read I/O error is not a TOML parse fallback"
+        );
+        assert!(writer.commit(b"{}\n", false).is_err());
     }
 }

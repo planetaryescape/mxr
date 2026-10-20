@@ -131,7 +131,10 @@ replaced with a bounded diagnostic. Unrelated names and symlinks are not rotated
 or purged. Do not move the shared lock file while mxr writers are running.
 
 Size/count/stderr settings are reread on writes; log level and `RUST_LOG` are
-selected at process startup. Every record reopens the active path under the
+selected at process startup. Malformed TOML at startup uses tracing defaults so
+config recovery commands remain available. If TOML becomes malformed while a
+writer runs, it keeps its startup logging settings; config read I/O errors still
+fail the write. Every record reopens the active path under the
 shared lock, so a CLI rollover does not strand the daemon on an unlinked file.
 When upgrading from append-only logging, run `mxr restart` after installing the
 new binary so every writer uses this lock. Installation alone does not replace

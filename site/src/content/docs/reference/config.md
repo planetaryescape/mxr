@@ -805,15 +805,17 @@ marginalia_url = "https://reader.example.com/"
 
 ## Custom keybindings
 
-Default TUI keybindings can be overridden via `keys.toml` next to the active config file. Run `mxr config path` and put `keys.toml` in that directory. The file is split into three view contexts that match the TUI's input router:
+Run `mxr config path`, then create `keys.toml` in the same directory. Restart the TUI after editing it. These bindings apply to mail panes, including Search results and preview; they do not replace text-field, modal, sidebar, or other screens' controls.
+
+Use `[mail_list]` for lists, `[message_view]` for a reader containing one message, and `[thread_view]` for a reader containing multiple messages:
 
 ```toml
 [mail_list]
 "j" = "move_down"
 "k" = "move_up"
-"6" = "open_tab_6"          # bind Analytics to a digit (default is unbound)
-"Ctrl-Shift-A" = "open_tab_6"
-"e" = "archive"
+"Ctrl-Shift-A" = "open_tab_6" # open Analytics from a mail list
+";" = "archive"              # replaces e in mail lists
+"wq" = "trash"               # replaces # in mail lists
 
 [message_view]
 "R" = "toggle_reader_mode"
@@ -823,20 +825,22 @@ Default TUI keybindings can be overridden via `keys.toml` next to the active con
 "E" = "export_thread"
 ```
 
-Anything you _don't_ list keeps its default. To remove a binding, set it to `""`.
+Remapping an action removes its old shortcuts in that context. To keep an alias, list it explicitly too (for example, both `"e" = "archive"` and `";" = "archive"`). Other actions keep their defaults unless you reuse their key. To disable a key without replacing it, set its action to `""`.
+
+Explicit remaps take precedence over mode-specific mail keys. A chord also reserves its prefix: `"ra" = "archive"` replaces the single-key `r` reply shortcut. Avoid overlapping user bindings such as `"w"` and `"wq"`; the TUI ignores that context's overrides rather than choosing an ambiguous action.
 
 ### Key-string grammar
 
 - Bare characters: `"j"`, `"E"`, `"#"`, `";"`, `","`
-- Modifier prefixes: `Ctrl-` and `Ctrl-Alt-`; bare uppercase letters imply Shift.
-- Special keys: `Enter`, `Esc`, `Escape`, and `Tab`.
-- Chords: concatenate (no separator) — `"gg"`, `"gi"`, `"zz"`. Chords are limited to two characters today.
+- Modifier prefixes: `Ctrl-`, `Alt-`, and `Shift-`, including combinations such as `Ctrl-Shift-A`. Bare uppercase letters imply Shift.
+- Special keys: `Enter`, `Esc`, `Escape`, `Tab`, `Space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Backspace`, and `Delete`.
+- Character chords: concatenate without separators, such as `"gg"`, `"wq"`, or `"wqr"`. Press each next key within 500 ms. A timeout discards the prefix; an unmatched suffix is processed as a fresh key.
 
 ### Action names
 
-Bindings reference actions by name. Most TUI actions have a serializable name registered in `crates/tui/src/keybindings.rs`. As of today, ~47 of the ~122 internal `Action` variants are exposed as user-rebindable. The reachable names cover the common surfaces: navigation, mail mutations, screen switching (`open_tab_1`–`open_tab_6`), reader-mode toggles, and the standard chords.
+Bindings reference names registered in `crates/tui/src/keybindings.rs`. These include navigation, mail mutations, screen switching (`open_tab_1`–`open_tab_6`), reader-mode toggles, and the standard chords. Deferred pattern-selection and count-prefix features are not enabled by this file.
 
-If you bind a string the system doesn't recognise, the daemon logs a warning at startup and silently keeps the default for that key. Run with `mxr daemon --foreground` while iterating to see the warnings.
+Unknown action names and invalid key strings are ignored, leaving their defaults unchanged. If the file is malformed TOML or contains a non-string action value, the TUI uses defaults for the whole file. The daemon does not load this file.
 
 ### Reading what's bound
 
@@ -847,7 +851,7 @@ mxr --help                 # command surface
 Ctrl-p                     # command palette searches by action name
 ```
 
-The palette is the fastest way to discover a binding while you're using the TUI; the [keybindings reference](/reference/keybindings/) is the printable cheat sheet.
+Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. The [keybindings reference](/reference/keybindings/) lists defaults, not your local remaps. Web shortcuts are unchanged by this TUI-only file.
 
 ## Notes
 

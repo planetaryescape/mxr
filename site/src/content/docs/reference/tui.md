@@ -30,6 +30,10 @@ The TUI has seven top-level screens, one per digit key:
 The command palette (`Ctrl-p`) opens each by name too. Rebind the keys in
 `keys.toml` next to the file printed by `mxr config path` (see
 [Custom keybindings](/reference/config/#custom-keybindings)).
+Restart the TUI to load changes. Mail lists, single-message readers and
+multi-message threads each have their own binding section. Help, the palette
+and mail-pane hints use those effective keys; typing in a search or compose
+field still enters text.
 
 ## Discoverability
 

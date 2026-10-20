@@ -329,8 +329,6 @@ jobs:
       && needs.release-smoke.result == 'success'
       && (needs.build-binaries.result == 'success'
         || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
-      && (needs.desktop.result == 'success'
-        || (needs.plan.outputs.has_artifacts != 'true' && needs.desktop.result == 'skipped'))
     steps:
       - uses: actions/checkout@v7
         with:
@@ -390,7 +388,14 @@ jobs:
       - name: Render cask
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          bash ./scripts/render_homebrew_cask.sh "$VERSION" artifacts Casks/mxr-desktop.rb
+          DMG_CHECKSUM="artifacts/mxr-desktop-${VERSION}-aarch64.dmg.sha256"
+          if [ -f "$DMG_CHECKSUM" ]; then
+            bash ./scripts/render_homebrew_cask.sh "$VERSION" artifacts Casks/mxr-desktop.rb
+            echo "HAS_CASK=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning ::Desktop DMG checksum not found; skipping Homebrew cask update for this release."
+            echo "HAS_CASK=false" >> "$GITHUB_ENV"
+          fi
       - name: Update tap formula and cask
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -403,8 +408,11 @@ jobs:
           git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
           mkdir -p tap/Formula tap/Casks
           cp Formula/mxr.rb tap/Formula/mxr.rb
-          cp Casks/mxr-desktop.rb tap/Casks/mxr-desktop.rb
-          git -C tap add Formula/mxr.rb Casks/mxr-desktop.rb
+          git -C tap add Formula/mxr.rb
+          if [ "${HAS_CASK:-false}" = "true" ] && [ -f Casks/mxr-desktop.rb ]; then
+            cp Casks/mxr-desktop.rb tap/Casks/mxr-desktop.rb
+            git -C tap add Casks/mxr-desktop.rb
+          fi
           if git -C tap diff --cached --quiet; then
             echo "No Homebrew formula or cask changes"
             exit 0
@@ -419,6 +427,7 @@ jobs:
           brew install planetaryescape/mxr/mxr
           mxr version
       - name: Verify Homebrew cask install
+        if: env.HAS_CASK == 'true'
         run: |
           brew install --cask planetaryescape/mxr/mxr-desktop
           test -d /Applications/mxr.app

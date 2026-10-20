@@ -307,7 +307,13 @@ async fn live_hook_receives_stored_mail_and_preview_never_executes_it() {
         envelope.has_attachments = kind == "plain";
         fx.store_envelope(&envelope, MessageDirection::Inbound)
             .await;
-        if kind != "missing" {
+        if kind == "missing" {
+            sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+                .bind(envelope.id.as_str())
+                .execute(fx.state.store.writer())
+                .await
+                .unwrap();
+        } else {
             let attachments = if kind == "plain" {
                 [
                     Some(cached.clone()),

@@ -48,6 +48,19 @@ The standalone `cargo-deny check --hide-inclusion-graph` and scoped
 binary. Deny reports existing duplicate-version, yanked-crate, and
 unmatched-skip warnings, but advisories, bans, licenses, and sources all pass.
 
+The first PR Docs Build (`39514396385`) then failed at site `npm audit` with
+three `launch-editor` advisories in Vite 8.1.5. `site/package-lock.json` had
+Vite under the affected range. A package-lock-only npm update advanced to
+8.3.4 and changed the rolldown dependency graph, so that generated lockfile
+change was discarded. npm rejects versions on `npm update`, while
+`npm install --no-save --package-lock-only` did not update the lock. The
+minimal exact `site` override to Vite 8.1.6 let npm update only the Vite lock
+entry. No other package versions changed. The site audit and docs validator
+now pass locally; the full Docs Build must pass on the PR before merge.
+`apps/web` remains separately tracked in
+`docs/issues/apps-web-vite-launch-editor-advisories.md` because its lockfile
+resolves Vite 7.3.6, also in the advisories' affected range.
+
 ## Review notes
 
 The first review caught Search pane handling behind the mailbox fullscreen

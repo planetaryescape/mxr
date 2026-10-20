@@ -82,6 +82,20 @@ mxr doctor --semantic-status
 
 ## If something looks wrong
 
+If an account still has messages but all its local label associations are
+missing, trigger sync for that account:
+
+```bash
+mxr sync --account personal --wait --wait-timeout-secs 900
+mxr search "label:inbox" --account personal --format json
+```
+
+For label-capable providers, sync can refetch the account's mail to restore
+associations even when other accounts have healthy labels. Recovery waits for
+the current pages to finish and allows one repair restart per sync invocation.
+It does not detect partial label loss or invent labels the provider cannot
+resolve. If labels remain missing, inspect diagnostics:
+
 ```bash
 mxr doctor --check
 mxr events --format json

@@ -683,6 +683,95 @@ async fn sync_runtime_status_roundtrip() {
 }
 
 #[tokio::test]
+async fn message_label_counts_are_scoped_to_the_message_account() {
+    let store = Store::in_memory().await.unwrap();
+    let account_a = test_account();
+    let account_b = test_account();
+    let empty_account = test_account();
+    for account in [&account_b, &empty_account, &account_a] {
+        store.insert_account(account).await.unwrap();
+    }
+    let message_a = test_envelope(&account_a.id);
+    let message_b = test_envelope(&account_b.id);
+    for message in [&message_b, &message_a] {
+        store.upsert_envelope(message).await.unwrap();
+    }
+    for (account, message, provider_ids) in [
+        (&account_b, &message_b, vec!["INBOX"]),
+        (&account_a, &message_a, vec!["INBOX", "STARRED"]),
+    ] {
+        let mut label_ids = Vec::new();
+        for provider_id in provider_ids {
+            let label = Label {
+                id: LabelId::new(),
+                account_id: account.id.clone(),
+                name: provider_id.into(),
+                provider_id: provider_id.into(),
+                kind: LabelKind::System,
+                color: None,
+                role: None,
+                unread_count: 0,
+                total_count: 0,
+            };
+            store.upsert_label(&label).await.unwrap();
+            label_ids.push(label.id);
+        }
+        store
+            .set_message_labels(&message.id, &label_ids, EventSource::Sync)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&account_a.id)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&account_b.id)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&empty_account.id)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&AccountId::new())
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(store.count_message_labels().await.unwrap(), 3);
+
+    store
+        .set_message_labels(&message_a.id, &[], EventSource::Sync)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&account_a.id)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .count_message_labels_by_account(&account_b.id)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn message_labels_junction() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

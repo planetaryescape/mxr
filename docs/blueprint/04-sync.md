@@ -122,9 +122,16 @@ This keeps recovery boring and explicit instead of leaving the account stuck on 
 Current repair paths:
 
 - bad Gmail cursor -> reset to `Initial` and retry once
-- label-capable account with messages but empty `message_labels` -> reset cursor and rebuild associations through full sync
+- label-capable account with messages but zero associations in that account -> reset its cursor and rebuild associations through full sync
 - lexical index drift on daemon startup -> rebuild Tantivy from SQLite
 - single-message `GetBody` on a missing, legacy, or suspicious best-effort body row -> provider hydrate and persist
+
+Label recovery checks the affected account, so another account's healthy labels
+cannot suppress it. It waits until the provider reports no more pages and resets
+at most once per sync invocation. If the refetch still cannot resolve any labels,
+sync keeps the returned cursor instead of restarting indefinitely; a later sync
+can retry. This detects an account with no associations, not arbitrary partial
+label loss. Providers without label-mutation capability skip this repair.
 
 Note the boundary:
 

@@ -312,6 +312,7 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
+        let mut restarted_label_repair = false;
         // Phase F: accumulate thread_ids touched this sync run. Populated
         // from each upserted envelope plus any (old, canonical) pair
         // returned by `rethread_account`. Drained into
@@ -612,12 +613,12 @@ impl SyncEngine {
                     .map_err(|e| MxrError::Store(e.to_string()))?;
             }
 
-            // Backfill: if junction table is empty but messages exist, reset cursor
-            // and re-sync to rebuild label associations (handles DBs corrupted by
-            // the old INSERT OR REPLACE cascade bug).
+            // Recover an account's empty junctions after the last page (the old
+            // INSERT OR REPLACE cascade bug). A partial page can legitimately
+            // have no labels yet; restarting it would discard paging progress.
             let junction_count = self
                 .store
-                .count_message_labels()
+                .count_message_labels_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             let message_count = self
@@ -625,15 +626,24 @@ impl SyncEngine {
                 .count_messages_by_account(account_id)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            if provider.capabilities().mutate.labels && junction_count == 0 && message_count > 0 {
+            if provider.capabilities().mutate.labels
+                && !restarted_label_repair
+                && !has_more
+                && junction_count == 0
+                && message_count > 0
+            {
                 tracing::warn!(
+                    account = %account_id,
                     message_count,
-                    "Junction table empty — resetting sync cursor for full re-sync"
+                    "Account label associations empty — resetting sync cursor for full re-sync"
                 );
                 self.store
                     .set_sync_cursor(account_id, &SyncCursor::empty())
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                // A provider may have no resolvable associations even after a
+                // full refetch. Keep that refetch's cursor rather than loop.
+                restarted_label_repair = true;
                 progress(SyncProgress::Restarted);
                 continue;
             }

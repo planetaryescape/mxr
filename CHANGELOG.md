@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.114](https://github.com/planetaryescape/mxr/compare/v0.6.113...v0.6.114) (2026-10-20)
+
+
+### Bug Fixes
+
+* bound local logs and enforce OpenAPI artifact freshness ([#537](https://github.com/planetaryescape/mxr/issues/537)) ([83b54c0](https://github.com/planetaryescape/mxr/commit/83b54c0a312c32f85bee9b9f301f617b28d14535))
+
 ## [0.6.113](https://github.com/planetaryescape/mxr/compare/v0.6.112...v0.6.113) (2026-10-20)
 
 

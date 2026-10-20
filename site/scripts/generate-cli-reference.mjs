@@ -13,7 +13,7 @@
  * directory and rewrites it from scratch each invocation.
  */
 
-import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -834,6 +834,6 @@ For higher-level concepts (query operators, search modes, JSON output shapes), s
   console.log(`Generated ${commandsForIndex.length} command pages in ${outDir}`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   generateReference();
 }

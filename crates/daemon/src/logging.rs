@@ -141,8 +141,7 @@ impl LogWriter {
         // recursively enter this writer. Parsing itself emits no tracing.
         match std::fs::read_to_string(&self.config_path) {
             Ok(text) => Ok(mxr_config::load_config_from_str(&text)
-                .map(|c| c.logging)
-                .unwrap_or_else(|_| self.fallback.clone())),
+                .map_or_else(|_| self.fallback.clone(), |c| c.logging)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(self.fallback.clone()),
             Err(e) => Err(e),
         }

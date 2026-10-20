@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   cursorRowId,
+  cursorTo,
   mailList,
   openList,
   pressSequence,
@@ -102,10 +103,9 @@ test("Wake now is clickable with the mouse", async ({ page }) => {
 
 // /snoozed lists a conversation once, and waking it wakes every message.
 test("waking a snoozed conversation wakes all of its messages", async ({ page }) => {
-  await openList(page, `/search?q=${encodeURIComponent('subject:"Security review follow-up"')}`);
-  const row = mailList(page)
-    .getByRole("option", { name: /5 messages in conversation/ })
-    .first();
+  await openList(page, "/m/inbox");
+  const rowId = await cursorTo(page, (label) => /messages in conversation/.test(label));
+  const row = rowById(page, rowId);
   await expect(row).toBeVisible();
   // The inbox shows the latest subject ("Re: …"); /snoozed may show another.
   const subject = stableRowName((await row.getAttribute("aria-label"))!)

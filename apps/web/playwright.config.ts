@@ -8,7 +8,7 @@ export default defineConfig({
   // The speed gate runs against a production build: playwright.perf.config.ts.
   testIgnore: ["**/speed.spec.ts"],
   fullyParallel: true,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI
     ? [

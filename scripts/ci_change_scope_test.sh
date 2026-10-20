@@ -19,11 +19,11 @@ reset_fixture() {
 
 assert_scope() {
   local event_name="$1" base="$2" head="$3"
-  local expected_rust="$4" expected_web="$5" expected_docs="$6" expected_expensive="$7"
+  local expected_rust="$4" expected_web="$5" expected_apps_web="$6" expected_docs="$7" expected_expensive="$8"
   local expected actual
 
-  expected="$(printf 'rust=%s\nweb=%s\ndocs=%s\nexpensive=%s' \
-    "$expected_rust" "$expected_web" "$expected_docs" "$expected_expensive")"
+  expected="$(printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s' \
+    "$expected_rust" "$expected_web" "$expected_apps_web" "$expected_docs" "$expected_expensive")"
   actual="$(bash scripts/ci_change_scope.sh "$event_name" "$base" "$head")"
   if [[ "$actual" != "$expected" ]]; then
     printf 'unexpected scope for %s %s %s\nexpected:\n%s\nactual:\n%s\n' \
@@ -49,63 +49,63 @@ baseline="$(git rev-parse HEAD)"
 
 echo rust >src/main.rs
 commit_all 'Rust-only change'
-assert_scope push "$baseline" HEAD true false false false
+assert_scope push "$baseline" HEAD true false false false false
 
 reset_fixture
 echo web >apps/web/src/app.ts
 commit_all 'web-only change'
-assert_scope push "$baseline" HEAD false true false false
+assert_scope push "$baseline" HEAD false true true false false
 
 reset_fixture
 echo protocol >crates/protocol/src/lib.rs
 commit_all 'protocol change'
-assert_scope pull_request "$baseline" HEAD true true false false
+assert_scope pull_request "$baseline" HEAD true true false false false
 
 reset_fixture
 echo web >crates/web/src/lib.rs
 commit_all 'web crate change'
-assert_scope push "$baseline" HEAD true true false false
+assert_scope push "$baseline" HEAD true true false false false
 
 reset_fixture
 echo docs >site/index.md
 commit_all 'site-only change'
-assert_scope push "$baseline" HEAD false false true false
+assert_scope push "$baseline" HEAD false false false true false
 
 reset_fixture
 mkdir -p site/scripts
 echo '{}' >site/scripts/cli-reference-examples.json
 commit_all 'CLI reference examples change'
-assert_scope pull_request "$baseline" HEAD true false true false
+assert_scope pull_request "$baseline" HEAD true false false true false
 
 reset_fixture
 for workflow_file in .github/workflows/ci.yml .github/workflows/openapi-conformance.yml .github/workflows/release.yml; do
   reset_fixture
   echo workflow >"$workflow_file"
   commit_all "workflow change $workflow_file"
-  assert_scope push "$baseline" HEAD true true true false
+  assert_scope push "$baseline" HEAD true true false true false
 done
 
 reset_fixture
 printf '\n# classifier change\n' >>scripts/ci_change_scope.sh
 commit_all 'classifier change'
-assert_scope push "$baseline" HEAD true true true false
+assert_scope push "$baseline" HEAD true true false true false
 
 reset_fixture
 printf '\n# workflow test change\n' >>scripts/ci_workflow_test.sh
 commit_all 'workflow test change'
-assert_scope push "$baseline" HEAD true true true false
+assert_scope push "$baseline" HEAD true true false true false
 
 reset_fixture
 echo rust >src/main.rs
 echo web >apps/web/src/app.ts
 echo docs >site/index.md
 commit_all 'mixed change'
-assert_scope push "$baseline" HEAD true true true false
+assert_scope push "$baseline" HEAD true true true true false
 
 reset_fixture
 git rm -q apps/web/src/app.ts
 commit_all 'delete web path'
-assert_scope push "$baseline" HEAD false true false false
+assert_scope push "$baseline" HEAD false true true false false
 
 reset_fixture
 git mv site/index.md apps/web/src/renamed.md
@@ -114,17 +114,17 @@ if ! git diff --name-status --find-renames "$baseline" HEAD | grep -Eq '^R[0-9]+
   echo 'rename fixture must be recognized as a rename' >&2
   exit 1
 fi
-assert_scope push "$baseline" HEAD false true true false
+assert_scope push "$baseline" HEAD false true true true false
 
 reset_fixture
 echo spaced >'apps/web/src/file with spaces.ts'
 commit_all 'path with spaces'
-assert_scope push "$baseline" HEAD false true false false
+assert_scope push "$baseline" HEAD false true true false false
 
 reset_fixture
-assert_scope push '' HEAD true true true false
-assert_scope push 0000000000000000000000000000000000000000 HEAD true true true false
-assert_scope workflow_dispatch '' '' true true true true
+assert_scope push '' HEAD true true true true false
+assert_scope push 0000000000000000000000000000000000000000 HEAD true true true true false
+assert_scope workflow_dispatch '' '' true true true true true
 
 if bash scripts/ci_change_scope.sh push invalid-ref HEAD >/dev/null 2>&1; then
   echo 'invalid base ref must fail' >&2

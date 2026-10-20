@@ -13,12 +13,13 @@ head="$3"
 
 rust=false
 web=false
+apps_web=false
 docs=false
 expensive=false
 
 print_scope() {
-  printf 'rust=%s\nweb=%s\ndocs=%s\nexpensive=%s\n' \
-    "$rust" "$web" "$docs" "$expensive"
+  printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s\n' \
+    "$rust" "$web" "$apps_web" "$docs" "$expensive"
 }
 
 classify_path() {
@@ -38,7 +39,11 @@ classify_path() {
   esac
 
   case "$path" in
-    apps/web/*|crates/web/*|crates/protocol/*)
+    apps/web/*)
+      apps_web=true
+      web=true
+      ;;
+    crates/web/*|crates/protocol/*)
       web=true
       ;;
   esac
@@ -61,6 +66,7 @@ classify_path() {
 if [[ "$event_name" == "workflow_dispatch" ]]; then
   rust=true
   web=true
+  apps_web=true
   docs=true
   expensive=true
   print_scope
@@ -76,6 +82,7 @@ if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
   # The first push has no usable comparison point, so run every normal gate.
   rust=true
   web=true
+  apps_web=true
   docs=true
   print_scope
   exit 0

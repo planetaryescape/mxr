@@ -384,9 +384,11 @@ jobs:
           retention-days: 3
       # The keydown-to-paint gate against a production build (about 20 s):
       # the development build's owner-stack capture isn't what users run.
-      # Run only on shard 1 to avoid duplicate work.
+      # Run only on shard 1 to avoid duplicate work; allow 75ms on shared CI runners.
       - name: Speed gate (production build)
         if: ${{ !cancelled() && matrix.shard == 1 }}
+        env:
+          MXR_KEY_TO_PAINT_BUDGET_MS: 75
         run: npm run e2e:perf -- --workers=1
 
   web-e2e-webkit:

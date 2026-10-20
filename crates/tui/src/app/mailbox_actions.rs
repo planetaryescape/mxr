@@ -128,15 +128,16 @@ impl App {
                     };
                     return;
                 }
+                if self.mailbox.layout_mode == LayoutMode::FullScreen {
+                    self.mailbox.active_pane = ActivePane::MessageView;
+                    return;
+                }
                 self.mailbox.active_pane =
                     match (self.mailbox.layout_mode, self.mailbox.active_pane) {
                         // ThreePane: Sidebar → MailList → MessageView → Sidebar
                         (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
                         (LayoutMode::ThreePane, ActivePane::MailList) => ActivePane::MessageView,
                         (LayoutMode::ThreePane, ActivePane::MessageView) => ActivePane::Sidebar,
-                        // FullScreen: Sidebar → MessageView → Sidebar
-                        (LayoutMode::FullScreen, ActivePane::Sidebar) => ActivePane::MessageView,
-                        (LayoutMode::FullScreen, ActivePane::MessageView) => ActivePane::Sidebar,
                         // TwoPane: Sidebar → MailList → Sidebar
                         (_, ActivePane::Sidebar) => ActivePane::MailList,
                         (_, ActivePane::MailList) => ActivePane::Sidebar,

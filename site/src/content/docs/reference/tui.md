@@ -59,6 +59,7 @@ Behavior:
 - Optional message-list mode
 - Focused-thread-message targeting for reply and mutations
 - Explicit right-pane dismissal with `Esc`
+- Press `F` in an open message to fill the main mail area; the sidebar and message list hide. Press `F` again for split view, or `Esc` to return to the list.
 - Bulk selection with confirmation modals
 - The sidebar opens **Now**, **Messages**, **To do**, **Updates**, **Reading**,
   **Archive** and **Inbox**. Additional views include Screener, Reply queue,

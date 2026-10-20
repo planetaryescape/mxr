@@ -78,9 +78,11 @@ impl App {
                     }
                 } else if self.mailbox.layout_mode == LayoutMode::FullScreen {
                     self.mailbox.layout_mode = LayoutMode::ThreePane;
+                    self.mailbox.active_pane = ActivePane::MessageView;
                     self.status_message = Some("Showing split view".into());
                 } else if self.mailbox.viewing_envelope.is_some() {
                     self.mailbox.layout_mode = LayoutMode::FullScreen;
+                    self.mailbox.active_pane = ActivePane::MessageView;
                     self.status_message = Some("Showing full message view".into());
                 } else if self.screen == Screen::Mailbox {
                     match self.mailbox.mailbox_view {

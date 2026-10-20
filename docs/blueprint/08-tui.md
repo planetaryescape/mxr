@@ -57,7 +57,7 @@ When a message is selected, the right pane shows the message body:
 
 - **Two-pane**: Sidebar + message list (default when no message selected)
 - **Three-pane**: Sidebar + message list + message view (when a message is selected)
-- **Full-screen**: Message view takes full width (toggle with `f`)
+- **Full-screen**: Message view fills the main mail area, with the sidebar and message list hidden (toggle with `F`)
 - **Thread view**: Full conversation, messages stacked vertically
 
 ## Diagnostics

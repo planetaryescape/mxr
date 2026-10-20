@@ -1487,7 +1487,9 @@ impl App {
                 }
                 // h = move left to mail list
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
-                    self.mailbox.active_pane = ActivePane::MailList;
+                    if self.mailbox.layout_mode != LayoutMode::FullScreen {
+                        self.mailbox.active_pane = ActivePane::MailList;
+                    }
                     None
                 }
                 // o = open in browser (message already open in pane)

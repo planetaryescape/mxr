@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Clear a scoped default signature
+
+Usage: mxr signatures clear-default [OPTIONS]
+
+Options:
+      --kind <KIND>        Which compose kind to clear [default: all] [possible values: all, new, reply]
+      --account <ACCOUNT>  Account selector (key, name, email, or id). Omit for global default
+      --from <FROM_EMAIL>  Exact from-address default within the account
+  -h, --help               Print help

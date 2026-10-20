@@ -1,0 +1,26 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+What matters before reading a conversation: the person, whether you owe a reply, open promises, and the gist and ask from a model.
+
+Facts come from the local store. The gist and ask need a configured model; `--no-ai` skips them.
+
+Usage: mxr briefing context [OPTIONS] <THREAD_ID>
+
+Arguments:
+  <THREAD_ID>
+
+
+Options:
+      --no-ai
+          Facts from the local store only; don't ask the model
+
+      --refresh
+          Ask the model again instead of using the cached gist
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

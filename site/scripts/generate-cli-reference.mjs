@@ -25,6 +25,8 @@ const PREFIX = 'cli_help__cli_help_';
 const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW`, `--operation-id OPERATION_ID_FROM_PREVIEW` and `--expected-workspace \'<OWNER_JSON_FROM_PREVIEW>\'`. Use that same quoted owner for `mxr send-outcome` and for scheduling with `--at TIME`.';
 
 const COMMAND_EXAMPLES = {
+  // Shared with the clap-only example test; existing examples stay inline.
+  ...JSON.parse(readFileSync(new URL('./cli-reference-examples.json', import.meta.url), 'utf8')),
   serve: {
     use: 'Inspect local pairing authority or run the foreground loopback gateway behind private HTTPS. Commands use the explicit local socket and ignore saved remote selection and MXR_DAEMON_ADDR. Approval and revocation preview by default; compare the pairing challenge before confirming.',
     examples: [
@@ -519,14 +521,10 @@ const COMMAND_EXAMPLES = {
   version: { use: 'Print the installed mxr version.', examples: ["mxr version"] },
 };
 
-function readSnapshotBody(file) {
-  const raw = readFileSync(join(SNAPSHOT_DIR, file), 'utf8');
+function readSnapshotBody(snapshotDir, file) {
+  const raw = readFileSync(join(snapshotDir, file), 'utf8');
   const parts = raw.split(/^---\s*$/m);
   return parts.slice(2).join('---').replace(/^\n+/, '').trimEnd();
-}
-
-function snapshotKeyToTokens(name) {
-  return name.replace(new RegExp('^' + PREFIX), '').replace(/\.snap$/, '').split('_');
 }
 
 function parseHelpText(body) {
@@ -697,68 +695,70 @@ function tokensToCommandName(tokens) {
   return tokens.join(' ');
 }
 
-function main() {
-  const files = readdirSync(SNAPSHOT_DIR).filter(
+export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) {
+  const files = readdirSync(snapshotDir).filter(
     (f) => f.startsWith(PREFIX) && f.endsWith('.snap'),
   );
 
   const rootFile = files.find((f) => f === `${PREFIX}root.snap`);
   if (!rootFile) {
-    console.error('cli_help_root.snap missing; cannot derive top-level command list.');
-    process.exit(1);
+    throw new Error('cli_help_root.snap missing; cannot derive top-level command list.');
   }
 
-  const rootBody = readSnapshotBody(rootFile);
+  const rootBody = readSnapshotBody(snapshotDir, rootFile);
   const rootParsed = parseHelpText(rootBody);
   const rootCommands = parseSubcommandBlock(rootParsed.sections.Commands || '');
-  const topLevel = new Set(rootCommands.map((c) => c.name));
 
-  // Group snapshots by top-level command. The first underscored token
-  // is the parent (with `-` form preferred when it matches a known
-  // top-level hyphenated command).
+  // Usage supplies canonical spelling even for legacy snapshot filenames such
+  // as daemon_dial_stdio, or snapshots captured through a command alias.
   const groups = new Map(); // commandName -> { own?: parsed, subs: { name, parsed }[] }
 
   for (const file of files) {
     if (file === rootFile) continue;
-    const tokens = snapshotKeyToTokens(file);
-    const body = readSnapshotBody(file);
+    const body = readSnapshotBody(snapshotDir, file);
     const parsed = parseHelpText(body);
-
-    // Try progressively shorter joinings to find the parent top-level command.
-    let parent = null;
-    let tail = null;
-    for (let n = tokens.length; n >= 1; n--) {
-      const candidate = tokens.slice(0, n).join('-');
-      if (topLevel.has(candidate)) {
-        parent = candidate;
-        tail = tokens.slice(n);
-        break;
-      }
+    const commandPath = parsed.usage.match(/^mxr ([a-z][a-z0-9-]*(?: [a-z][a-z0-9-]*)*)/);
+    if (!commandPath) {
+      throw new Error(`Cannot read command path from Usage in ${file}.`);
     }
-
-    if (!parent) {
-      // Either a hyphenated command not snapshotted in root, or an orphan.
-      // Fall back to first token.
-      parent = tokens[0];
-      tail = tokens.slice(1);
-    }
+    const [parent, ...tail] = commandPath[1].split(' ');
 
     if (!groups.has(parent)) groups.set(parent, { own: null, subs: [] });
     const group = groups.get(parent);
     if (tail.length === 0) {
       group.own = parsed;
-    } else {
+    } else if (!group.subs.some((sub) => sub.name === tail.join(' '))) {
       group.subs.push({ name: tail.join(' '), parsed });
     }
   }
 
+  // Validate the whole visible tree before touching the last generated output.
+  // Commands sections contain canonical visible children; clap's generated
+  // `help` command has no application reference page or dedicated snapshot.
+  function requireHelp(parsed, path) {
+    for (const child of parseSubcommandBlock(parsed.sections.Commands || '')) {
+      if (child.name === 'help') continue;
+      const childPath = [...path, child.name];
+      const group = groups.get(childPath[0]);
+      const help = childPath.length === 1
+        ? group?.own
+        : group?.subs.find((sub) => sub.name === childPath.slice(1).join(' '))?.parsed;
+      if (!help?.usage) {
+        throw new Error(`Missing help snapshot for mxr ${childPath.join(' ')}; add its --help case in crates/daemon/tests/cli_help.rs.`);
+      }
+      requireHelp(help, childPath);
+    }
+  }
+  if (!rootParsed.usage) throw new Error('cli_help_root.snap has no Usage line.');
+  requireHelp(rootParsed, []);
+
   // Wipe and recreate the output directory, but preserve handwritten
   // sibling pages like `concepts.md` that aren't covered by snapshots.
   const PRESERVE = new Set(['concepts.md']);
-  mkdirSync(OUT_DIR, { recursive: true });
-  for (const f of readdirSync(OUT_DIR)) {
+  mkdirSync(outDir, { recursive: true });
+  for (const f of readdirSync(outDir)) {
     if (PRESERVE.has(f)) continue;
-    rmSync(join(OUT_DIR, f), { recursive: true, force: true });
+    rmSync(join(outDir, f), { recursive: true, force: true });
   }
 
   // ------- Emit per-command pages -------
@@ -775,16 +775,11 @@ title: "mxr ${cmd.name}"
 description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
 ---
 
-> Generated from \`mxr ${cmd.name} --help\`. Edit the clap definitions in \`crates/daemon/src/cli/\` and re-run \`npm run build\` in \`site/\` to regenerate.
+> Generated from \`mxr ${cmd.name} --help\`. After editing \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test cli_help\`, then rebuild \`site/\`.
 
 `;
 
-    if (group?.own) {
-      md += renderSection(group.own, 2);
-    } else {
-      md += `${summary || ''}\n\n`;
-      md += '_No detailed `--help` snapshot is captured for this subcommand yet. See [`cli_help.rs`](https://github.com/planetaryescape/mxr/blob/main/crates/daemon/tests/cli_help.rs) to add one._\n\n';
-    }
+    md += renderSection(group.own, 2);
 
     md += renderExamples(cmd.name);
 
@@ -799,7 +794,7 @@ description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
     md += `\n## See also\n\n- [CLI overview](/reference/cli/): full command index\n- [Concepts](/reference/cli/concepts/): query operators, search modes, JSON shapes\n- [Automation contract](/guides/automation-contract/): which commands support \`--format json\`, \`--dry-run\`, stdin\n`;
 
     const slug = cmd.name; // already in hyphenated form from root parse
-    writeFileSync(join(OUT_DIR, `${slug}.md`), md);
+    writeFileSync(join(outDir, `${slug}.md`), md);
     commandsForIndex.push({ name: cmd.name, summary });
   }
 
@@ -816,7 +811,7 @@ title: CLI reference
 description: Every \`mxr\` subcommand. Generated from --help snapshots, so it matches the binary.
 ---
 
-> Generated from the captured \`--help\` snapshots at \`crates/daemon/tests/snapshots/cli_help__*.snap\`. To change a flag, change the clap definition in \`crates/daemon/src/cli/\` and the docs follow on rebuild.
+> Generated from the captured \`--help\` snapshots at \`crates/daemon/tests/snapshots/cli_help__*.snap\`. After changing a clap definition in \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test cli_help\`, then rebuild the site. Missing command-help inputs fail generation.
 
 mxr is a single binary with subcommands. Running \`mxr\` with no arguments launches the TUI.
 
@@ -834,9 +829,11 @@ For higher-level concepts (query operators, search modes, JSON output shapes), s
     index += '\n';
   }
 
-  writeFileSync(join(OUT_DIR, 'index.md'), index);
+  writeFileSync(join(outDir, 'index.md'), index);
 
-  console.log(`Generated ${commandsForIndex.length} command pages in ${OUT_DIR}`);
+  console.log(`Generated ${commandsForIndex.length} command pages in ${outDir}`);
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  generateReference();
+}

@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Export the complete editable RuleFormData JSON for preview/apply
+
+Usage: mxr rules form <RULE>
+
+Arguments:
+  <RULE>
+
+Options:
+  -h, --help  Print help

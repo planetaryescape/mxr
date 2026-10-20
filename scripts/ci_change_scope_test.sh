@@ -72,6 +72,12 @@ commit_all 'site-only change'
 assert_scope push "$baseline" HEAD false false true false
 
 reset_fixture
+mkdir -p site/scripts
+echo '{}' >site/scripts/cli-reference-examples.json
+commit_all 'CLI reference examples change'
+assert_scope pull_request "$baseline" HEAD true false true false
+
+reset_fixture
 for workflow_file in .github/workflows/ci.yml .github/workflows/openapi-conformance.yml .github/workflows/release.yml; do
   reset_fixture
   echo workflow >"$workflow_file"

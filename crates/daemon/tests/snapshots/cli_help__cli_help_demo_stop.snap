@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Exit demo mode: shut down the demo daemon and remove the active marker. Real-profile commands resume on the next invocation
+
+Usage: mxr demo stop
+
+Options:
+  -h, --help  Print help

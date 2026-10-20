@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Delete a stored key
+
+Usage: mxr llm key remove [OPTIONS] <PROVIDER>
+
+Arguments:
+  <PROVIDER>  [possible values: anthropic, openrouter]
+
+Options:
+      --dry-run          Show what would be removed, without removing it
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

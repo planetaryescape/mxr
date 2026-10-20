@@ -25,6 +25,10 @@ classify_path() {
   local path="$1"
 
   case "$path" in
+    site/scripts/cli-reference-examples.json)
+      # CLI-help tests parse these shared examples with the real clap definition.
+      rust=true
+      ;;
     Cargo.toml|Cargo.lock|rust-toolchain*|build.rs|crates/*|src/*|.sqlx/*)
       rust=true
       ;;

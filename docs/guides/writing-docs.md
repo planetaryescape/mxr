@@ -52,21 +52,38 @@ If it ships, it has a doc page:
 - Every saved-search operator (every `is:` / `has:` / field).
 - Every TUI keybinding.
 
-The mxr site enforces this mechanically: clap `--help` snapshots are
-captured in CI, the CLI reference is regenerated from them, and the
-build fails if a snapshot drifts. Don't add a flag without
-re-snapshotting; don't hand-edit a generated reference page.
+Run the CLI help tests after changing a command or flag:
+
+```bash
+scripts/cargo-test -p mxr --test cli_help
+```
+
+The test compares help cases with clap's visible canonical command tree,
+including nested commands. Hidden commands and clap's generated `help`
+command are excluded; aliases do not need separate snapshots. Review new
+or changed snapshots before rebuilding the site. The reference generator
+rejects missing own-help or nested-help inputs before replacing its output.
+Keep generated CLI pages ignored; edit their inputs, not the generated pages.
 
 **Where the surfaces live:**
 
 | Surface | Source of truth | Doc page |
 |---|---|---|
 | CLI commands & flags | `crates/daemon/src/cli/` | Auto-generated `site/src/content/docs/reference/cli/<cmd>.md` |
-| CLI examples | `site/scripts/generate-cli-reference.mjs` `COMMAND_EXAMPLES` map | Same |
+| CLI examples | `site/scripts/generate-cli-reference.mjs` `COMMAND_EXAMPLES` map and `site/scripts/cli-reference-examples.json` | Same |
 | Config keys | `crates/config/src/types.rs` | Hand-written `site/src/content/docs/reference/config.md` |
 | IPC | `crates/protocol/src/types.rs` | Hand-written `site/src/content/docs/reference/json-output.md` + OpenAPI dump |
 | Search operators | `mail-query` crate + mxr custom filters in `crates/search/src/lib.rs` | Hand-written `site/src/content/docs/guides/search.md` + `reference/cli/concepts.md` |
 | Keybindings | `crates/tui/src/keys.rs` + `keys.toml` | Hand-written `site/src/content/docs/reference/keybindings.md` |
+
+The JSON examples are shared by the generator and a clap-only test in
+`cli_help`. That test parses the commands without executing them. To check
+the generated reference and its omission guards, run:
+
+```bash
+npm --prefix site test
+agent-work run -- npm --prefix site run build
+```
 
 ### 3. Recipes are mandatory where composition is possible
 

@@ -78,16 +78,7 @@ impl RuleEngine {
             if !rule.enabled {
                 continue;
             }
-            let matches = if rule
-                .actions
-                .iter()
-                .any(|action| matches!(action, RuleAction::SetTreatment { .. }))
-            {
-                rule.conditions.evaluate_known(msg) == Some(true)
-            } else {
-                rule.conditions.evaluate(msg)
-            };
-            if matches {
+            if rule_matches(rule, msg) {
                 tracing::debug!(
                     rule_name = %rule.name,
                     message_id = %message_id,
@@ -124,7 +115,7 @@ impl RuleEngine {
 
         let matches: Vec<DryRunMatch> = messages
             .iter()
-            .filter(|(msg, _, _, _)| rule.conditions.evaluate(*msg))
+            .filter(|(msg, _, _, _)| rule_matches(rule, *msg))
             .map(|(_, id, from, subject)| DryRunMatch {
                 message_id: id.to_string(),
                 from: from.to_string(),
@@ -138,6 +129,20 @@ impl RuleEngine {
             rule_name: rule.name.clone(),
             matches,
         })
+    }
+}
+
+// Keep the existing conservative sorting policy, including mixed-action rules,
+// identical in live evaluation and explicit previews of disabled rules.
+fn rule_matches(rule: &Rule, msg: &dyn MessageView) -> bool {
+    if rule
+        .actions
+        .iter()
+        .any(|action| matches!(action, RuleAction::SetTreatment { .. }))
+    {
+        rule.conditions.evaluate_known(msg) == Some(true)
+    } else {
+        rule.conditions.evaluate(msg)
     }
 }
 
@@ -183,6 +188,122 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
+    }
+
+    #[test]
+    fn preview_and_live_share_action_dependent_missing_body_policy() {
+        let body = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Contains("sale".into()),
+        });
+        let not_body = Conditions::Not {
+            condition: Box::new(body.clone()),
+        };
+        let cases = vec![
+            (not_body.clone(), [true, true, false], [false, true, false]),
+            (
+                Conditions::And {
+                    conditions: vec![
+                        Conditions::Field(FieldCondition::HasUnsubscribe),
+                        not_body.clone(),
+                    ],
+                },
+                [true, true, false],
+                [false, true, false],
+            ),
+            (
+                Conditions::Or {
+                    conditions: vec![
+                        Conditions::Field(FieldCondition::IsStarred),
+                        not_body.clone(),
+                    ],
+                },
+                [true, true, false],
+                [false, true, false],
+            ),
+            (
+                Conditions::Not {
+                    condition: Box::new(Conditions::Or {
+                        conditions: vec![body, Conditions::Field(FieldCondition::IsStarred)],
+                    }),
+                },
+                [true, true, false],
+                [false, true, false],
+            ),
+            (
+                Conditions::Or {
+                    conditions: vec![
+                        Conditions::Field(FieldCondition::HasUnsubscribe),
+                        not_body.clone(),
+                    ],
+                },
+                [true, true, true],
+                [true, true, true],
+            ),
+            (
+                Conditions::And {
+                    conditions: vec![Conditions::Field(FieldCondition::IsStarred), not_body],
+                },
+                [false, false, false],
+                [false, false, false],
+            ),
+        ];
+        for (condition, ordinary_expected, sorting_expected) in cases {
+            for sorting in [false, true] {
+                let mut rule = archive_newsletters_rule();
+                rule.conditions = condition.clone();
+                if sorting {
+                    rule.actions.insert(
+                        0,
+                        RuleAction::SetTreatment {
+                            treatment: crate::Treatment::Reading,
+                        },
+                    );
+                }
+                let id = rule.id.clone();
+                let engine = RuleEngine::new(vec![rule]);
+                for (index, text) in [None, Some(""), Some("sale")].into_iter().enumerate() {
+                    let mut msg = newsletter_msg();
+                    msg.body = text.map(str::to_string);
+                    let expected = if sorting {
+                        sorting_expected[index]
+                    } else {
+                        ordinary_expected[index]
+                    };
+                    let live = engine.evaluate(&msg, "fixture");
+                    let preview = engine
+                        .dry_run(&id, &[(&msg, "fixture", "sender", "subject")])
+                        .unwrap();
+                    assert_eq!(
+                        !live.matched_rules.is_empty(),
+                        expected,
+                        "live sorting={sorting} body={text:?}"
+                    );
+                    assert_eq!(
+                        !preview.matches.is_empty(),
+                        expected,
+                        "preview sorting={sorting} body={text:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn explicitly_selected_disabled_rule_can_be_previewed() {
+        let mut rule = archive_newsletters_rule();
+        rule.enabled = false;
+        let id = rule.id.clone();
+        let engine = RuleEngine::new(vec![rule]);
+        let msg = newsletter_msg();
+        assert!(engine.evaluate(&msg, "fixture").actions.is_empty());
+        assert_eq!(
+            engine
+                .dry_run(&id, &[(&msg, "fixture", "sender", "subject")])
+                .unwrap()
+                .matches
+                .len(),
+            1
+        );
     }
 
     #[test]

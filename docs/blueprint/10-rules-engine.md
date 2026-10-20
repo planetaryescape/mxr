@@ -12,6 +12,9 @@ Rules are deterministic first. They are data, not scripts. They must be:
 
 This matters because once mail automation starts mutating things, users need trust. If a rule archives something it shouldn't have, the user needs to understand why and reverse it.
 
+Replayability and idempotence above are design goals, not blanket runtime
+guarantees. In particular, a shell hook is not an exactly-once interface.
+
 ## Rule structure
 
 ```rust
@@ -104,12 +107,22 @@ New message arrives via sync
 
 Rules are evaluated in priority order. A message can match multiple rules. Actions are accumulated and applied after all rules have been evaluated (not between rules). This prevents rule ordering bugs where rule A's action changes the message in a way that affects rule B's conditions.
 
+Live evaluation and ordinary preview share the same stored message view,
+including persisted link/word counts and labels resolved to provider IDs.
+They also share the action-dependent missing-data policy: ordinary rules treat
+a missing body predicate as false (including true under negation); rules with
+`SetTreatment` keep it unknown under `And`/`Or`/`Not` and require a known-true
+condition. Empty text is known data. Body matching prefers plain text, falling
+back to stored HTML; neither path fetches body data. Independent rule previews
+do not simulate preceding actions. Equal-priority ordinary rules retain storage
+order; sorting winner tie-breaking remains rule-ID based.
+
 ## Dry-run mode
 
 ```
-mxr rules dry-run RULE_ID                    # What would this rule do to current inbox?
+mxr rules dry-run RULE_ID                    # Preview a selected rule, even if disabled
 mxr rules dry-run RULE_ID --after 2026-03-10 # What would it do to messages from last week?
-mxr rules dry-run --all                      # What would ALL rules do?
+mxr rules dry-run --all                      # Preview all enabled rules
 ```
 
 Dry-run outputs a table of matches:
@@ -122,14 +135,20 @@ Matched 47 messages:
     digest@github.com "Your digest for March 14"    → archive
   ...
 
-Would affect 47 messages. Run with --execute to apply.
+Would affect 47 messages.
 ```
+
+The table above illustrates the match summary, not literal CLI output. Ordinary
+preview scans at most the newest 10,000 stored envelopes per account and then
+applies the inclusive `--after` midnight-UTC cutoff. `--all` selects rules, not
+an exhaustive mailbox scan. Preview respects rule account scope and never runs
+actions or shell hooks. There is no ordinary dry-run `--execute` flag.
 
 ## Rule definition
 
 Rules can be defined in:
 
-1. **Config file** (TOML):
+1. **Config file design sketch** (TOML; rule import is not implemented):
 
 ```toml
 [[rules]]
@@ -141,14 +160,14 @@ priority = 10
 type = "and"
 conditions = [
     { type = "field", field = "has_label", label = "newsletters" },
-    { type = "field", field = "is_read" },
+    { type = "not", condition = { type = "field", field = "is_unread" } },
 ]
 
 [[rules.actions]]
 type = "archive"
 ```
 
-2. **Command palette**: Interactive rule builder (future)
+2. **Rules page**: Interactive rule editor
 
 3. **CLI**:
 ```
@@ -159,21 +178,14 @@ mxr rules add "Archive read newsletters" \
 
 ## Shell hooks (the escape hatch)
 
-For anything the declarative rules engine can't do, shell hooks pipe message data to external commands:
+For anything the declarative rules engine can't do, an explicitly configured
+shell action pipes private stored mail to a trusted local command. Configure it
+through the Rules editor or CLI, not a config-file rule import:
 
-```toml
-[[rules]]
-name = "Process invoices"
-enabled = true
-
-[rules.conditions]
-type = "field"
-field = "subject"
-pattern = { type = "contains", value = "invoice" }
-
-[[rules.actions]]
-type = "shell_hook"
-command = "~/scripts/process-invoice.sh"
+```bash
+mxr rules edit RULE_ID --then 'shell:/absolute/path/to/process-message' --disable
+mxr rules --format json dry-run RULE_ID
+mxr rules enable RULE_ID
 ```
 
 The shell hook receives the message as JSON on stdin:
@@ -193,7 +205,25 @@ The shell hook receives the message as JSON on stdin:
 
 The script can do whatever it wants: save to a folder, update a spreadsheet, ping a webhook, etc. mxr doesn't care about the script's output.
 
+`id`, sender name/email, subject and RFC 3339 date come from the stored envelope.
+`body_text` contains only stored plain text: missing and HTML-only bodies yield
+`null`, while an empty plain-text body yields `""`. Attachments come from stored
+body metadata, without remote downloads. `local_path` is `null` unless the
+cached path can be opened as a regular file at payload construction time; a
+command must still handle files disappearing afterward.
+
+Mail fields are JSON stdin, never part of the configured `sh -c` command.
+Commands run with the user's privileges and can disclose that private mail;
+enabling a shell rule is an explicit trust decision. Preview never starts it.
+`[general].hook_timeout` (30 seconds by default) accounts for serialization,
+stdin delivery and waiting. Timeout kills and reaps the direct child, with up
+to one additional second for cleanup; cancellation kills the child on drop.
+This does not supervise the command's descendants or detached processes. Nonzero exit
+and timeout are failures in execution history; stdout is ignored.
+
 ## Execution phasing
+
+This original roadmap is historical; use the rules guide for current workflows.
 
 ### v0.1: No rules engine
 Focus on core: sync, search, compose, TUI.

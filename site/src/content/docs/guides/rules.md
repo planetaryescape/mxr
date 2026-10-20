@@ -156,6 +156,65 @@ during sync.
 - Shell hooks are opt-in escape hatches, not the foundation.
 - Sync-time execution and dry-run share the same rule model.
 
+### Preview selection and missing data
+
+```bash
+mxr rules --format json dry-run RULE_ID
+mxr rules --format json dry-run --all --after 2026-03-10
+```
+
+An ordinary dry run examines at most the newest 10,000 stored envelopes per
+account, then applies `--after` (inclusive, midnight UTC). `--all` selects all
+enabled rules; it does not scan the entire mailbox. Selecting a disabled rule
+by name or ID previews it so you can check it before enabling it. Account-scoped
+rules match only that account, and label conditions use provider label IDs.
+Preview returns each rule's matching message IDs and actions without executing
+actions or hooks. It does not simulate effects from earlier actions.
+
+Preview and sync use the stored link and word counts for `has:link`,
+`has:link-heavy` and `has:link-none`, including negated conditions. Body text
+conditions use stored plain text, falling back to stored HTML if plain text is
+absent. Neither path fetches a missing body. For ordinary rules a missing body
+makes a body predicate false, so its negation is true. Rules containing a
+sorting action instead keep missing body data unknown, even under `NOT`; they
+match only when the whole condition is known true. An empty stored string is
+known data, not a missing body. The sorting editor requires header predicates
+as described above.
+
+### Pass stored mail to a shell hook
+
+```bash
+mxr rules edit RULE_ID --then 'shell:/absolute/path/to/process-message' --disable
+mxr rules --format json dry-run RULE_ID
+mxr rules enable RULE_ID
+mxr rules --format json history RULE_ID
+```
+
+Use only commands you trust. An enabled matching rule runs its configured
+command through `sh -c` with your OS privileges. The command receives private
+mail as JSON on stdin; it can transmit that data if you configure it to do so.
+Mail text is serialized data, never interpolated into the command.
+
+The existing payload fields are:
+
+- `id`: stored message ID.
+- `from`: stored sender `name` (or `null`) and `email`.
+- `subject` and `date`: stored subject and RFC 3339 message date, not hook time.
+- `body_text`: stored plain text; `null` for missing or HTML-only bodies. An
+  empty plain-text body remains `""`. Unlike body matching, hooks do not put
+  HTML into this plain-text field.
+- `attachments`: stored `filename`, `size_bytes` and `local_path` for each
+  attachment. A path is included only if the cached file can currently be
+  opened and is a regular file; otherwise it is `null`. Files can disappear
+  after this check, so the command must handle a missing file.
+
+Hooks do not download bodies or attachments. `[general].hook_timeout` defaults
+to 30 seconds and covers JSON preparation, stdin delivery and command waiting.
+A stalled stdin is subject to the same deadline. On timeout mxr kills and
+reaps its direct child, allowing up to one additional second for cleanup;
+cancellation also kills that child. This does not supervise the command's
+descendants or detached processes. Nonzero exits and timeouts appear in rule history.
+
 ## Recommended workflow
 
 1. Create a rule with `mxr rules add` or `n` in the TUI.

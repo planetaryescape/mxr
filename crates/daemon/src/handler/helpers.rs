@@ -263,7 +263,11 @@ pub(super) async fn dry_run_rules(
                 .filter(|label| label_ids.iter().any(|id| id == &label.id))
                 .map(|label| label.provider_id.clone())
                 .collect();
-            owned_messages.push(DryRunMessage::from_parts(envelope, body, visible_labels));
+            owned_messages.push(crate::loops::RuleMessage::from_parts(
+                envelope,
+                body,
+                visible_labels,
+            ));
         }
     }
 
@@ -276,107 +280,18 @@ pub(super) async fn dry_run_rules(
                 .filter(|message| {
                     rule.account_id
                         .as_ref()
-                        .is_none_or(|id| id == &message.account_id)
+                        .is_none_or(|id| id == &message.envelope.account_id)
                 })
                 .map(|message| {
                     (
                         message as &dyn mxr_rules::MessageView,
                         message.id.as_str(),
-                        message.from.as_str(),
-                        message.subject.as_str(),
+                        message.envelope.from.email.as_str(),
+                        message.envelope.subject.as_str(),
                     )
                 })
                 .collect();
             engine.dry_run(&rule.id, &input)
         })
         .collect())
-}
-
-struct DryRunMessage {
-    id: String,
-    account_id: mxr_core::AccountId,
-    from: String,
-    to: Vec<String>,
-    subject: String,
-    labels: Vec<String>,
-    has_attachment: bool,
-    size_bytes: u64,
-    date: chrono::DateTime<chrono::Utc>,
-    is_unread: bool,
-    is_starred: bool,
-    has_unsubscribe: bool,
-    body_text: Option<String>,
-}
-
-impl DryRunMessage {
-    fn from_parts(
-        envelope: mxr_core::Envelope,
-        body: Option<mxr_core::MessageBody>,
-        labels: Vec<String>,
-    ) -> Self {
-        Self {
-            account_id: envelope.account_id.clone(),
-            id: envelope.id.to_string(),
-            from: envelope.from.email,
-            to: envelope.to.into_iter().map(|addr| addr.email).collect(),
-            subject: envelope.subject,
-            labels,
-            has_attachment: envelope.has_attachments,
-            size_bytes: envelope.size_bytes,
-            date: envelope.date,
-            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
-            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-            has_unsubscribe: !matches!(
-                envelope.unsubscribe,
-                mxr_core::types::UnsubscribeMethod::None
-            ),
-            body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
-        }
-    }
-}
-
-impl mxr_rules::MessageView for DryRunMessage {
-    fn sender_email(&self) -> &str {
-        &self.from
-    }
-
-    fn to_emails(&self) -> &[String] {
-        &self.to
-    }
-
-    fn subject(&self) -> &str {
-        &self.subject
-    }
-
-    fn labels(&self) -> &[String] {
-        &self.labels
-    }
-
-    fn has_attachment(&self) -> bool {
-        self.has_attachment
-    }
-
-    fn size_bytes(&self) -> u64 {
-        self.size_bytes
-    }
-
-    fn date(&self) -> chrono::DateTime<chrono::Utc> {
-        self.date
-    }
-
-    fn is_unread(&self) -> bool {
-        self.is_unread
-    }
-
-    fn is_starred(&self) -> bool {
-        self.is_starred
-    }
-
-    fn has_unsubscribe(&self) -> bool {
-        self.has_unsubscribe
-    }
-
-    fn body_text(&self) -> Option<&str> {
-        self.body_text.as_deref()
-    }
 }

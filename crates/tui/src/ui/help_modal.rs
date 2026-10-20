@@ -31,6 +31,8 @@ struct HelpSearchResult {
 }
 
 pub struct HelpModalState<'a> {
+    pub keybindings: Option<&'a crate::keybindings::KeybindingConfig>,
+    pub binding_context: Option<ViewContext>,
     pub open: bool,
     pub ui_context: UiContext,
     pub selected_count: usize,
@@ -147,7 +149,23 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         },
     ]);
 
-    sections.extend(screen_sections(state.ui_context));
+    let mut screens = screen_sections(state.ui_context);
+    if let Some(config) = state.keybindings {
+        if matches!(
+            state.ui_context,
+            UiContext::MailboxList
+                | UiContext::MailboxMessage
+                | UiContext::SearchResults
+                | UiContext::SearchPreview
+        ) {
+            let view = binding_context(state);
+            screens = vec![HelpSection {
+                title: state.ui_context.label().into(),
+                entries: config.all_bindings_for_context(view),
+            }];
+        }
+    }
+    sections.extend(screens);
     sections.push(HelpSection {
         title: "Modals".into(),
         entries: vec![
@@ -170,8 +188,86 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             ),
         ],
     });
-    sections.extend(command_sections(state.ui_context));
+    sections.extend(command_sections(state));
+    if let Some(config) = state.keybindings.filter(|_| {
+        matches!(
+            state.ui_context,
+            UiContext::MailboxList
+                | UiContext::MailboxMessage
+                | UiContext::SearchResults
+                | UiContext::SearchPreview
+        )
+    }) {
+        // Replace shortcuts in the introductory rows too, not just the key table.
+        let defaults = crate::keybindings::shown_keybindings();
+        let view = binding_context(state);
+        for section in &mut sections {
+            if section.title == "How do I…" {
+                for (label, hint) in &mut section.entries {
+                    let action = match label.as_str() {
+                        "Compose and send" => Some((crate::action::Action::Compose, "c")),
+                        "Search and save a search" => {
+                            Some((crate::action::Action::OpenGlobalSearch, "/"))
+                        }
+                        "Undo a destructive action" => {
+                            Some((crate::action::Action::UndoLastMutation, "u"))
+                        }
+                        _ => None,
+                    };
+                    if let Some((action, old_key)) = action {
+                        if config.has_action_override(view, &action) {
+                            let effective = config
+                                .primary_key_display(view, &action)
+                                .unwrap_or_else(|| "palette".into());
+                            if let Some(rest) = hint.strip_prefix(old_key) {
+                                *hint = format!("{effective}{rest}");
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+            if section.title != "Start Here"
+                && section.title != "Most Common Actions"
+                && !state
+                    .mode_guide
+                    .is_some_and(|guide| section.title == guide.name)
+            {
+                continue;
+            }
+            for (key, _) in &mut section.entries {
+                if let Ok(binding) = crate::keybindings::parse_key_string(key) {
+                    if let Some(name) =
+                        crate::keybindings::resolve_action(defaults, view, &binding.keys).or_else(
+                            || {
+                                crate::keybindings::resolve_action(
+                                    defaults,
+                                    ViewContext::MailList,
+                                    &binding.keys,
+                                )
+                            },
+                        )
+                    {
+                        if let Some(action) = crate::keybindings::action_from_name(&name) {
+                            if config.has_action_override(view, &action) {
+                                *key = config
+                                    .primary_key_display(view, &action)
+                                    .unwrap_or_else(|| "palette".into());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     sections
+}
+
+fn binding_context(state: &HelpModalState<'_>) -> ViewContext {
+    state.binding_context.unwrap_or(match state.ui_context {
+        UiContext::MailboxMessage | UiContext::SearchPreview => ViewContext::ThreadView,
+        _ => ViewContext::MailList,
+    })
 }
 
 fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
@@ -366,9 +462,17 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
     }
 }
 
-fn command_sections(context: UiContext) -> Vec<HelpSection> {
+fn command_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
     let mut by_category: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
-    for command in commands_for_context(context) {
+    let commands = match state.keybindings {
+        Some(config) => crate::ui::command_palette::commands_with_keybindings(
+            state.ui_context,
+            config,
+            binding_context(state),
+        ),
+        None => commands_for_context(state.ui_context),
+    };
+    for command in commands {
         let shortcut = if command.shortcut.is_empty() {
             "palette".to_string()
         } else {
@@ -722,6 +826,8 @@ mod tests {
 
     fn help_state(context: UiContext, query: &'static str) -> HelpModalState<'static> {
         HelpModalState {
+            keybindings: None,
+            binding_context: None,
             open: true,
             ui_context: context,
             selected_count: 2,
@@ -754,6 +860,53 @@ mod tests {
             titles.iter().any(|t| t.starts_with("Mailbox")),
             "keybinding sections must still appear; got {titles:?}"
         );
+    }
+
+    #[test]
+    fn configured_help_and_palette_show_effective_keys_without_old_shortcuts() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("keys.toml"),
+            "[message_view]\n\";\" = \"archive\"\n\"wq\" = \"trash\"\n",
+        )
+        .unwrap();
+        let config = crate::keybindings::load_keybindings(dir.path());
+        let mut state = help_state(UiContext::MailboxMessage, "");
+        state.keybindings = Some(&config);
+        state.binding_context = Some(crate::keybindings::ViewContext::MessageView);
+        let rows = help_rows(&state);
+        assert!(rows
+            .iter()
+            .any(|row| row.label == "Archive" && row.shortcut == ";"));
+        assert!(rows
+            .iter()
+            .any(|row| row.label == "Trash" && row.shortcut == "wq"));
+        assert!(!rows
+            .iter()
+            .any(|row| matches!(row.shortcut.as_str(), "e" | "#")));
+        let mut palette = crate::ui::command_palette::CommandPalette {
+            keybindings: config.clone(),
+            binding_context: state.binding_context,
+            ..Default::default()
+        };
+        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
+        for (action, shortcut) in [
+            (crate::action::Action::Archive, ";"),
+            (crate::action::Action::Trash, "wq"),
+        ] {
+            let command = palette
+                .visible_commands()
+                .find(|command| command.action == action)
+                .unwrap();
+            assert_eq!(command.shortcut, shortcut);
+            let selected = palette
+                .visible_commands()
+                .position(|command| command.action == action)
+                .unwrap();
+            palette.selected = selected;
+            assert_eq!(palette.confirm(), Some(action));
+            palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
+        }
     }
 
     /// Phase 3.3 / Behavior 2: each task-oriented entry references

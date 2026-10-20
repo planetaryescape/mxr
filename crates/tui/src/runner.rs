@@ -399,6 +399,10 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    let config_path = mxr_config::config_file_path();
+    if let Some(directory) = config_path.parent() {
+        app.load_keybindings_from(directory);
+    }
     if session.target.is_paired_remote() {
         app.enable_paired_remote_read_only_session();
     }

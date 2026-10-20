@@ -11,15 +11,7 @@ use mxr_tui::ui::command_palette::commands_for_context;
 use mxr_tui::ui::command_palette::{CommandPalette, PaletteCommand};
 
 fn palette_with(commands: Vec<PaletteCommand>) -> CommandPalette {
-    let mut palette = CommandPalette {
-        visible: false,
-        input: String::new(),
-        commands,
-        filtered: Vec::new(),
-        selected: 0,
-        context: UiContext::MailboxList,
-        recent_actions: Vec::new(),
-    };
+    let mut palette = CommandPalette::with_commands(commands);
     palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
     palette
 }

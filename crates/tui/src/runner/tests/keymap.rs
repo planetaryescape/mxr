@@ -177,6 +177,276 @@ fn app_in(context: &str) -> App {
     app
 }
 
+fn remapped_app(context: &str, toml: &str) -> App {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("keys.toml"), toml).unwrap();
+    let mut app = app_in(context);
+    app.load_keybindings_from(dir.path());
+    app
+}
+
+#[test]
+fn configured_keys_dispatch_through_app_in_each_mail_context() {
+    for (context, section, thread_size) in [
+        ("list", "mail_list", 0),
+        ("reader", "message_view", 1),
+        ("reader", "thread_view", 2),
+    ] {
+        let mut app = remapped_app(context, &format!("[{section}]\n\";\" = \"trash\"\n"));
+        app.mailbox.viewed_thread_messages = make_test_envelopes(thread_size);
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char(';'), KeyModifiers::NONE)),
+            Some(Action::Trash),
+            "{section}"
+        );
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT)),
+            None,
+            "retired destructive key in {section}"
+        );
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+            Some(Action::Reply),
+            "unconfigured default in {section}"
+        );
+    }
+}
+
+fn press_char(app: &mut App, c: char) -> Option<Action> {
+    app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+}
+
+#[test]
+fn configured_chord_beats_mail_and_mode_keys_and_retires_old_chord() {
+    let mut app = remapped_app(
+        "reading",
+        "[mail_list]\n\"ra\" = \"trash\"\n\";\" = \"go_inbox\"\n",
+    );
+    assert_eq!(press_char(&mut app, 'r'), None);
+    assert!(app.input_pending());
+    assert_eq!(press_char(&mut app, 'a'), Some(Action::Trash));
+    assert!(!app.input_pending());
+    assert_eq!(press_char(&mut app, '#'), None);
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(
+        press_char(&mut app, 'i'),
+        None,
+        "retired gi must not navigate"
+    );
+    assert_eq!(press_char(&mut app, ';'), Some(Action::GoToInbox));
+    // A default chord with the same prefix still works, including the
+    // dynamic saved-search chords not present in the display registry.
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(press_char(&mut app, 's'), Some(Action::GoToStarred));
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(
+        press_char(&mut app, '2'),
+        Some(Action::OpenSavedSearchByIndex(2))
+    );
+    let mut app = remapped_app("reading", "[mail_list]\n\"p\" = \"trash\"\n");
+    assert_eq!(
+        press_char(&mut app, 'p'),
+        Some(Action::Trash),
+        "explicit remap wins over Reading's pin key"
+    );
+    let mut app = remapped_app("list", "[mail_list]\n\";\" = \"reply_all\"\n");
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(press_char(&mut app, 'a'), Some(Action::GoToAllMail));
+    assert_eq!(press_char(&mut app, 'i'), None);
+    assert_eq!(
+        press_char(&mut app, 'a'),
+        Some(Action::RespondInvite(
+            mxr_protocol::CalendarInviteActionData::Accept
+        ))
+    );
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(
+        press_char(&mut app, ';'),
+        Some(Action::ReplyAll),
+        "invalid legacy chord recovers to remapped key"
+    );
+}
+
+#[test]
+fn configured_keys_keep_text_entry_and_modal_owners_safe() {
+    let mut app = remapped_app(
+        "list",
+        "[mail_list]\n\"wq\" = \"trash\"\n\";\" = \"archive\"\n",
+    );
+    assert_eq!(press_char(&mut app, 'w'), None);
+    app.search.bar.active = true;
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert_eq!(press_char(&mut app, 'q'), None);
+    assert!(app.search.bar.query.ends_with(";q"));
+    app.search.bar.active = false;
+    assert_eq!(
+        press_char(&mut app, 'q'),
+        Some(Action::QuitView),
+        "no stale chord after text entry"
+    );
+
+    assert_eq!(press_char(&mut app, 'w'), None);
+    app.modals.help_open = true;
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert_eq!(app.modals.help_query, ";");
+    app.modals.help_open = false;
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::QuitView));
+
+    app.modals.draft_options.visible = true;
+    app.modals.draft_options.active = crate::app::DraftOptionsField::Instruction;
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert!(app.modals.draft_options.instruction.ends_with(';'));
+    app.modals.draft_options.visible = false;
+
+    app.screen = Screen::Search;
+    app.search.page.editing = true;
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert!(app.search.page.query.ends_with(';'));
+    app.screen = Screen::Rules;
+    app.rules.page.form.visible = true;
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert!(app.rules.page.form.name.ends_with(';'));
+    app.rules.page.form.visible = false;
+    assert_ne!(
+        press_char(&mut app, ';'),
+        Some(Action::Archive),
+        "mail remaps do not leak into rules"
+    );
+}
+
+#[test]
+fn configured_keys_preserve_reader_navigation_semantics() {
+    let mut app = remapped_app(
+        "reader",
+        "[thread_view]\n\";\" = \"scroll_down\"\n\"w\" = \"next_message\"\n\"z\" = \"page_down\"\n",
+    );
+    app.mailbox.viewed_thread_messages = make_test_envelopes(2);
+    assert_eq!(press_char(&mut app, ';'), None);
+    assert!(app.mailbox.message_scroll_offset > 0);
+    let before = app.mailbox.message_scroll_offset;
+    assert_eq!(press_char(&mut app, 'j'), None);
+    assert_eq!(app.mailbox.message_scroll_offset, before);
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL)),
+        None
+    );
+    assert_eq!(
+        app.mailbox.message_scroll_offset, before,
+        "retired reader page key must not run its inline fallback"
+    );
+    assert_eq!(press_char(&mut app, 'z'), None);
+    assert_eq!(app.mailbox.message_scroll_offset, before + 20);
+    assert_eq!(press_char(&mut app, 'w'), None);
+    assert_eq!(app.mailbox.thread_selected_index, 1);
+    assert_eq!(press_char(&mut app, 'K'), None);
+    assert_eq!(
+        app.mailbox.thread_selected_index, 0,
+        "unconfigured previous-message default survives scroll remap"
+    );
+}
+
+#[test]
+fn configured_uppercase_modifiers_unbinds_and_context_changes_are_safe() {
+    let mut app = remapped_app("list", "[mail_list]\n\"Ctrl-Shift-A\" = \"trash\"\n\"e\" = \"\"\n\"wq\" = \"archive\"\n[message_view]\n\";\" = \"compose\"\n");
+    for (code, modifiers) in [
+        ('A', KeyModifiers::CONTROL | KeyModifiers::SHIFT),
+        ('a', KeyModifiers::CONTROL | KeyModifiers::SHIFT),
+        ('A', KeyModifiers::CONTROL),
+    ] {
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char(code), modifiers)),
+            Some(Action::Trash)
+        );
+    }
+    assert_eq!(press_char(&mut app, '#'), None);
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::CONTROL)),
+        None
+    );
+    assert_eq!(press_char(&mut app, 'e'), None);
+    assert_eq!(
+        press_char(&mut app, 'A'),
+        Some(Action::AttachmentList),
+        "Ctrl-Shift-A does not steal plain A"
+    );
+    assert_eq!(press_char(&mut app, 'w'), None);
+    app.mailbox.active_pane = ActivePane::MessageView;
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::QuitView));
+    assert_eq!(
+        press_char(&mut app, ';'),
+        Some(Action::Compose),
+        "the reader's own map applies after a context change"
+    );
+    app.mailbox.active_pane = ActivePane::MailList;
+    assert_eq!(press_char(&mut app, 'w'), None);
+    app.mailbox.mailbox_view = MailboxView::People;
+    assert_eq!(
+        press_char(&mut app, 'q'),
+        Some(Action::QuitView),
+        "a chord does not survive a mode change"
+    );
+}
+
+#[test]
+fn configured_help_render_and_palette_take_the_apps_effective_snapshot() {
+    let mut app = remapped_app(
+        "reader",
+        "[message_view]\n\";\" = \"archive\"\n[mail_list]\n\"w\" = \"archive\"\n",
+    );
+    // Closing an already-open palette avoids reading archive recovery state
+    // from the developer's data directory, while exercising App's wiring.
+    app.command_palette.palette.visible = true;
+    app.apply(Action::OpenCommandPalette);
+    app.command_palette
+        .palette
+        .toggle_with_archive_operations(app.current_ui_context(), &[]);
+    assert_eq!(
+        app.command_palette
+            .palette
+            .visible_commands()
+            .find(|command| command.action == Action::Archive)
+            .unwrap()
+            .shortcut,
+        ";"
+    );
+    app.command_palette.palette.visible = false;
+    app.modals.help_open = true;
+    app.modals.help_query = "archive".into();
+    let backend = ratatui::backend::TestBackend::new(120, 30);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let text: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(
+        text.contains(';'),
+        "rendered help must show the reader remap, not the default e or list remap w"
+    );
+}
+
+#[test]
+fn configured_actions_retire_unlisted_mail_aliases_without_stealing_navigation() {
+    let mut app = remapped_app(
+        "list",
+        "[mail_list]\n\";\" = \"undo_last_mutation\"\n\"w\" = \"next_message\"\n",
+    );
+    assert_eq!(press_char(&mut app, ';'), Some(Action::UndoLastMutation));
+    assert_eq!(
+        press_char(&mut app, 'u'),
+        None,
+        "the hardcoded undo alias is retired too"
+    );
+    assert_eq!(
+        press_char(&mut app, 'j'),
+        Some(Action::MoveDown),
+        "next_message is not the list's move_down binding"
+    );
+}
+
 /// A key and its name in the web app's chord grammar (`lib/keys/chord.ts`).
 fn probe_keys() -> Vec<(KeyEvent, String)> {
     let mut keys = Vec::new();

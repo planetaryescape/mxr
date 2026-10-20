@@ -764,6 +764,8 @@ fn help_modal_snapshot() {
             frame,
             Rect::new(0, 0, 100, 28),
             HelpModalState {
+                keybindings: None,
+                binding_context: None,
                 open: true,
                 ui_context: UiContext::MailboxList,
                 selected_count: 2,

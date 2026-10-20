@@ -510,6 +510,8 @@ pub struct App {
     pub download_dir: std::path::PathBuf,
     recorder: ActionRecorder,
     input: InputHandler,
+    pub(crate) keybindings: crate::keybindings::KeybindingConfig,
+    input_context: Option<(UiContext, MailboxView)>,
 }
 
 impl Default for App {
@@ -650,6 +652,8 @@ impl App {
             }),
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
+            keybindings: crate::keybindings::default_keybindings(),
+            input_context: None,
         }
     }
 

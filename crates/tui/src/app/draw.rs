@@ -236,6 +236,8 @@ impl App {
             frame,
             hint_bar_area,
             ui::hint_bar::HintBarState {
+                keybindings: Some(&self.keybindings),
+                binding_context: Some(self.keybinding_context()),
                 ui_context,
                 search_active: self.search.bar.active,
                 help_modal_open: self.modals.help_open,
@@ -833,6 +835,8 @@ impl App {
             frame,
             area,
             ui::help_modal::HelpModalState {
+                keybindings: Some(&self.keybindings),
+                binding_context: Some(self.help_keybinding_context()),
                 open: self.modals.help_open,
                 ui_context: self.help_modal_context(),
                 selected_count: self.mailbox.selected_set.len(),

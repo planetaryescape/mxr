@@ -15,6 +15,8 @@ pub struct PaletteCommand {
 }
 
 pub struct CommandPalette {
+    pub(crate) keybindings: crate::keybindings::KeybindingConfig,
+    pub(crate) binding_context: Option<crate::keybindings::ViewContext>,
     pub visible: bool,
     pub input: String,
     pub commands: Vec<PaletteCommand>,
@@ -28,11 +30,18 @@ pub struct CommandPalette {
 
 impl Default for CommandPalette {
     fn default() -> Self {
-        let commands = default_commands();
+        Self::with_commands(default_commands())
+    }
+}
+
+impl CommandPalette {
+    pub fn with_commands(commands: Vec<PaletteCommand>) -> Self {
         let context = UiContext::MailboxList;
         let recent_actions: Vec<Action> = Vec::new();
         let filtered = filtered_indices(&commands, context, "", &recent_actions);
         Self {
+            keybindings: crate::keybindings::default_keybindings(),
+            binding_context: None,
             visible: false,
             input: String::new(),
             commands,
@@ -42,9 +51,7 @@ impl Default for CommandPalette {
             recent_actions,
         }
     }
-}
 
-impl CommandPalette {
     pub fn toggle(&mut self, context: UiContext) {
         let operations = if self.visible {
             Vec::new()
@@ -70,6 +77,13 @@ impl CommandPalette {
             // overrides don't linger.
             apply_registered_mail_list_shortcuts(&mut self.commands);
             apply_context_shortcuts(&mut self.commands, context);
+            apply_effective_shortcuts(
+                &mut self.commands,
+                &self.keybindings,
+                context,
+                self.binding_context
+                    .unwrap_or_else(|| view_context_for(context)),
+            );
             self.input.clear();
             self.selected = 0;
             self.update_filtered(None);
@@ -199,6 +213,43 @@ pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
         .into_iter()
         .filter(|command| action_allowed_in_context(&command.action, context))
         .collect()
+}
+
+pub(crate) fn commands_with_keybindings(
+    context: UiContext,
+    config: &crate::keybindings::KeybindingConfig,
+    view: crate::keybindings::ViewContext,
+) -> Vec<PaletteCommand> {
+    let mut commands = commands_for_context(context);
+    apply_effective_shortcuts(&mut commands, config, context, view);
+    commands
+}
+
+fn apply_effective_shortcuts(
+    commands: &mut [PaletteCommand],
+    config: &crate::keybindings::KeybindingConfig,
+    view_context: UiContext,
+    view: crate::keybindings::ViewContext,
+) {
+    if !matches!(
+        view_context,
+        UiContext::MailboxList
+            | UiContext::MailboxMessage
+            | UiContext::SearchResults
+            | UiContext::SearchPreview
+    ) {
+        return;
+    }
+    for command in commands {
+        // Do not retain a registry shortcut after its key was removed or stolen.
+        if crate::keybindings::primary_key_display(view, &command.action).is_some()
+            || config.has_action_override(view, &command.action)
+        {
+            command.shortcut = config
+                .primary_key_display(view, &command.action)
+                .unwrap_or_default();
+        }
+    }
 }
 
 /// Keybinding view map that governs which chord fires for `context`.

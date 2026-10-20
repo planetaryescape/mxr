@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.112](https://github.com/planetaryescape/mxr/compare/v0.6.111...v0.6.112) (2026-10-20)
+
+
+### Bug Fixes
+
+* cover the visible CLI help tree and reference examples ([#532](https://github.com/planetaryescape/mxr/issues/532)) ([164271a](https://github.com/planetaryescape/mxr/commit/164271ac0ae6a6ba5434821d066f6503c78a77f2))
+* isolate account label recovery across backfill pages ([#535](https://github.com/planetaryescape/mxr/issues/535)) ([b80f492](https://github.com/planetaryescape/mxr/commit/b80f4929d924c713cdca2156d17e790ee7fd7cef))
+* separate message purpose from reply obligations ([4b6c6bc](https://github.com/planetaryescape/mxr/commit/4b6c6bca1d9d2d489de14ceba25df5e2ec3ee0e7))
+
+
+### Documentation
+
+* support symlinked CLI reference generation ([#534](https://github.com/planetaryescape/mxr/issues/534)) ([92c69ec](https://github.com/planetaryescape/mxr/commit/92c69ec821d7d2b88e53c228fb7667de8dd3bf9f))
+
 ## [0.6.111](https://github.com/planetaryescape/mxr/compare/v0.6.110...v0.6.111) (2026-10-20)
 
 

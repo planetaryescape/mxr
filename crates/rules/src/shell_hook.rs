@@ -3,7 +3,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::time::{timeout, Instant};
 
 /// Default timeout for shell hooks.
 const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(30);
@@ -41,9 +41,16 @@ pub async fn execute_shell_hook(
     hook_timeout: Option<Duration>,
 ) -> Result<(), ShellHookError> {
     let timeout_dur = hook_timeout.unwrap_or(DEFAULT_HOOK_TIMEOUT);
+    let deadline = Instant::now() + timeout_dur;
 
     let json = serde_json::to_string(payload)
         .map_err(|e| ShellHookError::SerializationFailed(e.to_string()))?;
+    if Instant::now() >= deadline {
+        return Err(ShellHookError::Timeout {
+            command: command.to_string(),
+            timeout: timeout_dur,
+        });
+    }
 
     let mut child = Command::new("sh")
         .arg("-c")
@@ -51,41 +58,76 @@ pub async fn execute_shell_hook(
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| ShellHookError::SpawnFailed {
             command: command.to_string(),
             error: e.to_string(),
         })?;
 
-    let stdin_write_error = if let Some(mut stdin) = child.stdin.take() {
-        match stdin.write_all(json.as_bytes()).await {
-            Ok(()) => None,
-            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => None,
-            Err(error) => Some(error.to_string()),
-        }
-    } else {
-        None
+    let stdin = child.stdin.take();
+    let stderr = child.stderr.take();
+    // Drain stderr while writing: a hook can fill its stderr pipe before it
+    // reads stdin. Keep ownership of the child outside the timed future so a
+    // timeout can kill and reap it, rather than merely dropping the wait.
+    let execution = async {
+        let write = async {
+            if let Some(mut stdin) = stdin {
+                match stdin.write_all(json.as_bytes()).await {
+                    Ok(()) => None,
+                    Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => None,
+                    Err(error) => Some(error.to_string()),
+                }
+            } else {
+                None
+            }
+        };
+        let read = async {
+            use tokio::io::AsyncReadExt;
+            let mut bytes = Vec::new();
+            if let Some(mut stderr) = stderr {
+                stderr
+                    .read_to_end(&mut bytes)
+                    .await
+                    .map_err(|e| ShellHookError::WaitFailed(e.to_string()))?;
+            }
+            Ok::<_, ShellHookError>(bytes)
+        };
+        let wait = async {
+            child
+                .wait()
+                .await
+                .map_err(|e| ShellHookError::WaitFailed(e.to_string()))
+        };
+        let (write_error, stderr, status) = tokio::join!(write, read, wait);
+        Ok::<_, ShellHookError>((write_error, stderr?, status?))
     };
-
-    let result = timeout(timeout_dur, child.wait_with_output())
-        .await
-        .map_err(|_| ShellHookError::Timeout {
-            command: command.to_string(),
-            timeout: timeout_dur,
-        })?
-        .map_err(|e| ShellHookError::WaitFailed(e.to_string()))?;
+    let (stdin_write_error, stderr, status) =
+        match tokio::time::timeout_at(deadline, execution).await {
+            Ok(result) => result?,
+            Err(_) => {
+                let _ = child.start_kill();
+                // Reaping is bounded independently; kill_on_drop is the fallback
+                // for cancellation or a platform wait that does not finish.
+                let _ = timeout(Duration::from_secs(1), child.wait()).await;
+                return Err(ShellHookError::Timeout {
+                    command: command.to_string(),
+                    timeout: timeout_dur,
+                });
+            }
+        };
 
     if let Some(error) = stdin_write_error {
         return Err(ShellHookError::StdinWriteFailed(error));
     }
 
-    if result.status.success() {
+    if status.success() {
         Ok(())
     } else {
-        let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+        let stderr = String::from_utf8_lossy(&stderr).to_string();
         Err(ShellHookError::NonZeroExit {
             command: command.to_string(),
-            code: result.status.code(),
+            code: status.code(),
             stderr,
         })
     }
@@ -139,6 +181,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hook_timeout_includes_stalled_large_stdin_and_reaps_owned_child() {
+        let mut payload = sample_payload();
+        payload.body_text = Some("x".repeat(2 * 1024 * 1024));
+        let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
+        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
+        // The finite sleep bounds the red test even before stdin has a timeout.
+        let started = std::time::Instant::now();
+        let result = execute_shell_hook(&command, &payload, Some(Duration::from_millis(200))).await;
+        let elapsed = started.elapsed();
+        let pid = std::fs::read_to_string(&pid_file).expect("hook recorded its pid");
+        std::fs::remove_file(pid_file).expect("remove owned fixture pid file");
+        let alive = std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(Stdio::null())
+            .status()
+            .expect("probe owned pid")
+            .success();
+        assert!(!alive, "owned hook child {pid} survived timeout");
+        assert!(
+            matches!(result, Err(ShellHookError::Timeout { .. })),
+            "{result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "stdin exceeded the hook deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_hook_kills_owned_child() {
+        let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
+        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
+        let task =
+            tokio::spawn(
+                async move { execute_shell_hook(&command, &sample_payload(), None).await },
+            );
+        let pid = timeout(Duration::from_secs(1), async {
+            loop {
+                if let Ok(pid) = std::fs::read_to_string(&pid_file) {
+                    if !pid.trim().is_empty() {
+                        break pid;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("hook started");
+        task.abort();
+        let _ = task.await;
+        let gone = timeout(Duration::from_secs(1), async {
+            loop {
+                let alive = std::process::Command::new("kill")
+                    .args(["-0", pid.trim()])
+                    .stderr(Stdio::null())
+                    .status()
+                    .expect("probe owned pid")
+                    .success();
+                if !alive {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        std::fs::remove_file(pid_file).expect("remove owned fixture pid file");
+        assert!(gone.is_ok(), "cancelled child {pid} survived");
+    }
+
+    #[tokio::test]
     async fn hook_success_exit_zero() {
         execute_shell_hook("cat > /dev/null", &sample_payload(), None)
             .await
@@ -165,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn hook_timeout() {
         let result = execute_shell_hook(
-            "sleep 60",
+            "exec sleep 2",
             &sample_payload(),
             Some(Duration::from_millis(100)),
         )

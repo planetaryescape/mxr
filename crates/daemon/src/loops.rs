@@ -1435,7 +1435,7 @@ pub(crate) async fn apply_rules_to_messages(
             .filter(|label| label_ids.iter().any(|id| id == &label.id))
             .map(|label| label.provider_id.clone())
             .collect();
-        let message = RuleMessage::from_parts(envelope.clone(), body, label_provider_ids);
+        let message = RuleMessage::from_parts(envelope, body, label_provider_ids);
         let message_id_str = message_id.as_str();
         {
             let _sorting = state.rule_mutation_gate.lock().await;
@@ -1468,7 +1468,7 @@ pub(crate) async fn apply_rules_to_messages(
         for action in &result.actions {
             action_names.push(format!("{action:?}"));
             if let Err(err) =
-                execute_rule_action(state, account_id, provider, message_id, action, &labels).await
+                execute_rule_action(state, account_id, provider, &message, action, &labels).await
             {
                 error = Some(err);
                 break;
@@ -1510,7 +1510,7 @@ pub(crate) async fn apply_rules_to_messages(
             .insert_event_refs(
                 if error.is_some() { "error" } else { "info" },
                 "rule",
-                &format!("Applied rules to {}", message.subject),
+                &format!("Applied rules to {}", message.envelope.subject),
                 mxr_store::EventLogRefs {
                     account_id: Some(account_id),
                     message_id: Some(message_id_str.as_str()),
@@ -1535,11 +1535,12 @@ async fn execute_rule_action(
     state: &AppState,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
-    message_id: &mxr_core::MessageId,
+    message: &RuleMessage,
     action: &RuleAction,
     labels: &[mxr_core::Label],
 ) -> Result<(), String> {
     state.ensure_effects_allowed()?;
+    let message_id = &message.envelope.id;
     if matches!(
         action,
         RuleAction::SetTreatment { .. }
@@ -1695,26 +1696,10 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
         }
         RuleAction::ShellHook { command } => {
-            let payload = serde_json::json!({
-                "message_id": message_id.as_str(),
-                "provider_message_id": provider_message_id,
-            });
+            let payload = message.shell_hook_payload().await;
             mxr_rules::shell_hook::execute_shell_hook(
                 command,
-                &mxr_rules::shell_hook::ShellHookPayload {
-                    id: payload["message_id"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string(),
-                    from: mxr_rules::shell_hook::ShellHookAddress {
-                        name: None,
-                        email: String::new(),
-                    },
-                    subject: String::new(),
-                    date: chrono::Utc::now().to_rfc3339(),
-                    body_text: None,
-                    attachments: Vec::new(),
-                },
+                &payload,
                 Some(Duration::from_secs(state.hook_timeout_secs())),
             )
             .await
@@ -1726,19 +1711,11 @@ async fn execute_rule_action(
 }
 
 pub(crate) struct RuleMessage {
-    subject: String,
-    from: String,
+    pub(crate) id: String,
+    pub(crate) envelope: mxr_core::Envelope,
+    body: Option<mxr_core::MessageBody>,
     to: Vec<String>,
     labels: Vec<String>,
-    has_attachment: bool,
-    size_bytes: u64,
-    date: chrono::DateTime<chrono::Utc>,
-    is_unread: bool,
-    is_starred: bool,
-    has_unsubscribe: bool,
-    body_text: Option<String>,
-    link_count: u32,
-    body_word_count: u32,
 }
 
 impl RuleMessage {
@@ -1748,62 +1725,99 @@ impl RuleMessage {
         labels: Vec<String>,
     ) -> Self {
         Self {
-            subject: envelope.subject,
-            from: envelope.from.email,
-            to: envelope.to.into_iter().map(|addr| addr.email).collect(),
+            id: envelope.id.to_string(),
+            to: envelope.to.iter().map(|addr| addr.email.clone()).collect(),
+            envelope,
+            body,
             labels,
-            has_attachment: envelope.has_attachments,
-            size_bytes: envelope.size_bytes,
-            date: envelope.date,
-            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
-            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-            has_unsubscribe: !matches!(
-                envelope.unsubscribe,
-                mxr_core::types::UnsubscribeMethod::None
-            ),
-            body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
-            link_count: envelope.link_count,
-            body_word_count: envelope.body_word_count,
+        }
+    }
+
+    async fn shell_hook_payload(&self) -> mxr_rules::shell_hook::ShellHookPayload {
+        use mxr_rules::shell_hook::{ShellHookAddress, ShellHookAttachment, ShellHookPayload};
+        let mut attachments = Vec::new();
+        if let Some(body) = &self.body {
+            for attachment in &body.attachments {
+                let mut local_path = None;
+                if let Some(path) = &attachment.local_path {
+                    // A stored cache pointer may be stale or refer to a directory.
+                    // Never materialize remote data just to invoke a hook.
+                    if tokio::fs::metadata(path)
+                        .await
+                        .is_ok_and(|meta| meta.is_file())
+                    {
+                        if let Ok(file) = tokio::fs::File::open(path).await {
+                            if file.metadata().await.is_ok_and(|meta| meta.is_file()) {
+                                local_path = Some(path.to_string_lossy().into_owned());
+                            }
+                        }
+                    }
+                }
+                attachments.push(ShellHookAttachment {
+                    filename: attachment.filename.clone(),
+                    size_bytes: attachment.size_bytes,
+                    local_path,
+                });
+            }
+        }
+        ShellHookPayload {
+            id: self.id.clone(),
+            from: ShellHookAddress {
+                name: self.envelope.from.name.clone(),
+                email: self.envelope.from.email.clone(),
+            },
+            subject: self.envelope.subject.clone(),
+            date: self.envelope.date.to_rfc3339(),
+            // The public field is plain text, not a rendering of stored HTML.
+            body_text: self.body.as_ref().and_then(|body| body.text_plain.clone()),
+            attachments,
         }
     }
 }
 
 impl mxr_rules::MessageView for RuleMessage {
     fn sender_email(&self) -> &str {
-        &self.from
+        &self.envelope.from.email
     }
     fn to_emails(&self) -> &[String] {
         &self.to
     }
     fn subject(&self) -> &str {
-        &self.subject
+        &self.envelope.subject
     }
     fn labels(&self) -> &[String] {
         &self.labels
     }
     fn has_attachment(&self) -> bool {
-        self.has_attachment
+        self.envelope.has_attachments
     }
     fn size_bytes(&self) -> u64 {
-        self.size_bytes
+        self.envelope.size_bytes
     }
     fn date(&self) -> chrono::DateTime<chrono::Utc> {
-        self.date
+        self.envelope.date
     }
     fn is_unread(&self) -> bool {
-        self.is_unread
+        !self.envelope.flags.contains(mxr_core::MessageFlags::READ)
     }
     fn is_starred(&self) -> bool {
-        self.is_starred
+        self.envelope
+            .flags
+            .contains(mxr_core::MessageFlags::STARRED)
     }
     fn has_unsubscribe(&self) -> bool {
-        self.has_unsubscribe
+        !matches!(
+            self.envelope.unsubscribe,
+            mxr_core::types::UnsubscribeMethod::None
+        )
     }
     fn body_text(&self) -> Option<&str> {
-        self.body_text.as_deref()
+        self.body
+            .as_ref()
+            .and_then(|body| body.text_plain.as_deref().or(body.text_html.as_deref()))
     }
     fn link_density_inputs(&self) -> (u32, u32) {
-        (self.link_count, self.body_word_count)
+        (self.envelope.link_count, self.envelope.body_word_count)
     }
 }
 

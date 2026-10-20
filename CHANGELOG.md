@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.115](https://github.com/planetaryescape/mxr/compare/v0.6.114...v0.6.115) (2026-10-20)
+
+
+### Performance
+
+* run native webkit on m3 max runner and drop from pr gates ([da76665](https://github.com/planetaryescape/mxr/commit/da76665746610e3fd143b6122977c5adbdb485a9))
+
 ## [0.6.114](https://github.com/planetaryescape/mxr/compare/v0.6.113...v0.6.114) (2026-10-20)
 
 

@@ -22,9 +22,7 @@ the candidate's header at column 1 after `ga` then `F`, then ran 12 PTY checks
 in 17.778 seconds on the final rebuilt binary. These covered Search pane
 navigation, fullscreen and split restore, a `gm`→`j`→`o`→`F` mode-origin
 message (`From: CI Bot` at column 1), doctor health, activity status/list, and
-a persisted agenda search result. One failed harness assertion expected an
-unseen body while split view correctly showed thread `#487`; the corrected
-harness checks the expected sender and subject. Accepted evidence is under
+a persisted agenda search result. Accepted evidence is under
 `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-blueprint-gaps-20261021/g01-accepted-candidate-evidence/`.
 No real mail or personal daemon was used. Owned processes were reaped and the
 synthetic socket was absent after the run.

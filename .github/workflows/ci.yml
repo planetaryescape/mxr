@@ -25,6 +25,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
+      apps_web: ${{ steps.filter.outputs.apps_web }}
       docs: ${{ steps.filter.outputs.docs }}
       expensive: ${{ steps.filter.outputs.expensive }}
       rust_version: ${{ steps.rust-version.outputs.version }}
@@ -269,7 +270,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: |
-      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
+      (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - uses: actions/checkout@v7
@@ -325,7 +326,7 @@ jobs:
     # production-build speed gate), so it's the main target of that gate.
     if: |
       !failure() && !cancelled() &&
-      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
+      (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # The suite runs across 2 parallel shards against prebuilt daemon binaries.
     timeout-minutes: 40
@@ -392,20 +393,17 @@ jobs:
         run: npm run e2e:perf -- --workers=1
 
   web-e2e-webkit:
-    name: Web E2E (WebKit)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [changes, check, test, web-tests, build-e2e-daemon]
-    # Safari's engine is what Tauri's WKWebView renders with on macOS. Same
-    # draft-skip as Web E2E: drafts wait for ready_for_review.
+    name: Web E2E (WebKit / macOS)
+    runs-on: [self-hosted, macOS, ARM64, mxr-builder]
+    needs: [changes, check, test, web-tests]
+    # Dropped from PR gates: PRs run Chromium only (~4.5m with sharding).
+    # Relegated to merges on main or manual dispatch, running natively on M3 Max
+    # only when apps/web/ changes.
     if: |
       !failure() && !cancelled() &&
-      (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    # A separate job, not extra steps in Web E2E: that job already uses about
-    # 36 of its 60 minutes. Pull requests run the cross-engine subset
-    # (e2e:webkit:engine, about a third of the suite); main and manual runs
-    # run all of it.
-    timeout-minutes: 60
+      github.event_name != 'pull_request' &&
+      (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true')
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/web
@@ -417,29 +415,14 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps webkit
-      - name: Download E2E mxr binary
-        uses: actions/download-artifact@v8
-        with:
-          name: mxr-e2e-bin
-          path: ${{ github.workspace }}/target-cli/debug
-      - name: Set daemon binary path and permissions
+      - run: npx playwright install webkit
+      - name: Build mxr for the Playwright daemon
+        working-directory: ${{ github.workspace }}
         run: |
-          if [ -f "${GITHUB_WORKSPACE}/target-cli/debug/mxr" ]; then
-            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
-            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
-          elif [ -f "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" ]; then
-            mv "${GITHUB_WORKSPACE}/target-cli/debug/target-cli/debug/mxr" "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
-            chmod +x "${GITHUB_WORKSPACE}/target-cli/debug/mxr"
-            echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
-          fi
-      - name: Run the WebKit suite
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            npm run e2e:webkit:engine -- --workers=1
-          else
-            npm run e2e:webkit -- --workers=1
-          fi
+          cargo build -p mxr
+          echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
+      - name: Run the native WebKit suite
+        run: npm run e2e:webkit -- --workers=1
       - name: Upload Playwright results
         if: failure()
         uses: actions/upload-artifact@v7

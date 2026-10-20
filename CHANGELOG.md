@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.116](https://github.com/planetaryescape/mxr/compare/v0.6.115...v0.6.116) (2026-10-20)
+
+
+### Bug Fixes
+
+* use the full mail area for fullscreen reader ([36c88ac](https://github.com/planetaryescape/mxr/commit/36c88ac87c130862d463a7a10ee5f7a9267d97d2))
+
 ## [0.6.115](https://github.com/planetaryescape/mxr/compare/v0.6.114...v0.6.115) (2026-10-20)
 
 

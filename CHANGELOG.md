@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.113](https://github.com/planetaryescape/mxr/compare/v0.6.112...v0.6.113) (2026-10-20)
+
+
+### Performance
+
+* tier and shard web e2e suites with prebuilt daemon ([bc565c0](https://github.com/planetaryescape/mxr/commit/bc565c02e3e1c53a426f604489c6b3bd6f78493d))
+
 ## [0.6.112](https://github.com/planetaryescape/mxr/compare/v0.6.111...v0.6.112) (2026-10-20)
 
 

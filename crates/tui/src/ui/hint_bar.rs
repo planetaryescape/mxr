@@ -1,5 +1,5 @@
 use crate::action::UiContext;
-use crate::keybindings::{display_bindings_for_actions, ViewContext};
+use crate::keybindings::ViewContext;
 use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -10,6 +10,8 @@ use ratatui::widgets::*;
 pub const HINT_BAR_MAX_HINTS: usize = 5;
 
 pub struct HintBarState<'a> {
+    pub keybindings: Option<&'a crate::keybindings::KeybindingConfig>,
+    pub binding_context: Option<ViewContext>,
     pub ui_context: UiContext,
     pub search_active: bool,
     pub help_modal_open: bool,
@@ -54,7 +56,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         )]
     } else {
         build_lines(
-            &hints_for_context(state.ui_context, state.selected_count, state.viewing_invite),
+            &hints_with_keybindings(
+                state.ui_context,
+                state.selected_count,
+                state.viewing_invite,
+                state.keybindings,
+                state.binding_context,
+            ),
             theme,
         )
     };
@@ -115,6 +123,24 @@ pub fn hints_for_context(
     selected_count: usize,
     viewing_invite: bool,
 ) -> Vec<(String, String)> {
+    hints_with_keybindings(context, selected_count, viewing_invite, None, None)
+}
+
+fn hints_with_keybindings(
+    context: UiContext,
+    selected_count: usize,
+    viewing_invite: bool,
+    config: Option<&crate::keybindings::KeybindingConfig>,
+    view: Option<ViewContext>,
+) -> Vec<(String, String)> {
+    let config = if context == UiContext::MailboxSidebar {
+        crate::keybindings::shown_keybindings()
+    } else {
+        config.unwrap_or_else(|| crate::keybindings::shown_keybindings())
+    };
+    let display_bindings_for_actions = |context, actions: &[&str]| {
+        config.display_bindings_for_actions(view.unwrap_or(context), actions)
+    };
     let mut hints = match context {
         UiContext::MailboxSidebar => display_bindings_for_actions(
             ViewContext::MailList,

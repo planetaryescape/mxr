@@ -2,7 +2,7 @@ use crate::action::Action;
 use mxr_protocol::CalendarInviteActionData;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Parsed keybinding configuration.
 #[derive(Debug, Clone)]
@@ -10,6 +10,151 @@ pub struct KeybindingConfig {
     pub mail_list: HashMap<KeyBinding, String>,
     pub message_view: HashMap<KeyBinding, String>,
     pub thread_view: HashMap<KeyBinding, String>,
+    // Explicit keys and retired defaults must not reach hardcoded fallbacks.
+    overrides: [HashSet<KeyBinding>; 3],
+}
+
+impl ViewContext {
+    fn index(self) -> usize {
+        match self {
+            Self::MailList => 0,
+            Self::MessageView => 1,
+            Self::ThreadView => 2,
+        }
+    }
+}
+
+impl KeybindingConfig {
+    pub(crate) fn bindings(&self, context: ViewContext) -> &HashMap<KeyBinding, String> {
+        match context {
+            ViewContext::MailList => &self.mail_list,
+            ViewContext::MessageView => &self.message_view,
+            ViewContext::ThreadView => &self.thread_view,
+        }
+    }
+
+    pub(crate) fn overrides_prefix(&self, context: ViewContext, first: &KeyPress) -> bool {
+        self.overrides[context.index()]
+            .iter()
+            .any(|binding| binding.keys.first() == Some(first))
+    }
+
+    pub(crate) fn retired_sequence(&self, context: ViewContext, sequence: &[KeyPress]) -> bool {
+        self.overrides[context.index()]
+            .iter()
+            .any(|binding| binding.keys == sequence)
+    }
+
+    pub(crate) fn overrides_legacy_alias(
+        &self,
+        context: ViewContext,
+        press: &KeyPress,
+        legacy_action: impl FnOnce() -> Option<Action>,
+    ) -> bool {
+        let mut aliases = self.overrides[context.index()]
+            .iter()
+            .filter(|binding| {
+                binding.keys.len() == 1
+                    && binding.keys[0].code == press.code
+                    && !binding.keys[0]
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+            })
+            .peekable();
+        if aliases.peek().is_none() {
+            return false;
+        }
+        // The mail router accepts #/! with any modifier. Other aliases must
+        // resolve to the retired action, not merely share its character.
+        if matches!(press.code, KeyCode::Char('#' | '!')) {
+            return true;
+        }
+        let defaults = shown_keybindings();
+        let registered_action = resolve_action(defaults, context, std::slice::from_ref(press))
+            .and_then(|name| action_from_name(&name));
+        let Some(incoming_action) = registered_action.or_else(legacy_action) else {
+            return false;
+        };
+        aliases.any(|binding| {
+            defaults
+                .bindings(context)
+                .get(binding)
+                .and_then(|name| action_from_name(name))
+                .as_ref()
+                == Some(&incoming_action)
+        })
+    }
+
+    pub(crate) fn primary_key_display(
+        &self,
+        context: ViewContext,
+        action: &Action,
+    ) -> Option<String> {
+        let mut matches: Vec<_> = self
+            .bindings(context)
+            .iter()
+            .filter(|(_, name)| action_from_name(name).as_ref() == Some(action))
+            .map(|(binding, _)| {
+                (
+                    !self.overrides[context.index()].contains(binding),
+                    format_keybinding(binding),
+                )
+            })
+            .collect();
+        matches.sort_by(|(a_default, a), (b_default, b)| {
+            a_default
+                .cmp(b_default)
+                .then_with(|| a.len().cmp(&b.len()))
+                .then_with(|| a.cmp(b))
+        });
+        matches.into_iter().next().map(|(_, key)| key)
+    }
+
+    pub(crate) fn has_action_override(&self, context: ViewContext, action: &Action) -> bool {
+        self.overrides[context.index()].iter().any(|binding| {
+            self.bindings(context)
+                .get(binding)
+                .and_then(|name| action_from_name(name))
+                .as_ref()
+                == Some(action)
+                || shown_keybindings()
+                    .bindings(context)
+                    .get(binding)
+                    .and_then(|name| action_from_name(name))
+                    .as_ref()
+                    == Some(action)
+        })
+    }
+
+    pub(crate) fn all_bindings_for_context(&self, context: ViewContext) -> Vec<(String, String)> {
+        let mut entries: Vec<_> = self
+            .bindings(context)
+            .iter()
+            .map(|(binding, action)| (format_keybinding(binding), action_display_name(action)))
+            .collect();
+        entries.sort();
+        entries
+    }
+
+    pub(crate) fn display_bindings_for_actions(
+        &self,
+        context: ViewContext,
+        actions: &[&str],
+    ) -> Vec<(String, String)> {
+        actions
+            .iter()
+            .filter_map(|action| {
+                let mut bindings: Vec<_> = self
+                    .bindings(context)
+                    .iter()
+                    .filter(|(_, name)| name == action)
+                    .map(|(key, _)| format_keybinding(key))
+                    .collect();
+                bindings.sort();
+                (!bindings.is_empty()).then(|| (bindings.join("/"), action_display_name(action)))
+            })
+            .collect()
+    }
 }
 
 /// A single key or key combination.
@@ -24,6 +169,28 @@ pub struct KeyPress {
     pub modifiers: KeyModifiers,
 }
 
+impl KeyPress {
+    pub(crate) fn from_event(key: ratatui::crossterm::event::KeyEvent) -> Self {
+        let mut code = key.code;
+        let mut modifiers = key.modifiers;
+        if code == KeyCode::BackTab {
+            code = KeyCode::Tab;
+            modifiers.insert(KeyModifiers::SHIFT);
+        }
+        if let KeyCode::Char(c) = code {
+            if c.is_ascii_alphabetic() && modifiers.contains(KeyModifiers::SHIFT) {
+                code = KeyCode::Char(c.to_ascii_uppercase());
+            }
+            if matches!(code, KeyCode::Char(c) if c.is_uppercase()) {
+                modifiers.insert(KeyModifiers::SHIFT);
+            } else if !c.is_alphabetic() {
+                modifiers.remove(KeyModifiers::SHIFT);
+            }
+        }
+        Self { code, modifiers }
+    }
+}
+
 /// View context for resolving keybindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewContext {
@@ -34,49 +201,65 @@ pub enum ViewContext {
 
 /// Parse a key string like "Ctrl-p", "gg", "G", "/", "Enter" into a KeyBinding.
 pub fn parse_key_string(s: &str) -> Result<KeyBinding, String> {
-    let mut keys = Vec::new();
-
-    if let Some(rest) = s.strip_prefix("Ctrl-Alt-") {
-        let ch = rest.chars().next().ok_or("Missing char after Ctrl-Alt-")?;
-        keys.push(KeyPress {
-            code: KeyCode::Char(ch),
-            modifiers: KeyModifiers::CONTROL | KeyModifiers::ALT,
-        });
-    } else if let Some(rest) = s.strip_prefix("Ctrl-") {
-        let ch = rest.chars().next().ok_or("Missing char after Ctrl-")?;
-        keys.push(KeyPress {
-            code: KeyCode::Char(ch),
-            modifiers: KeyModifiers::CONTROL,
-        });
-    } else if s == "Enter" {
-        keys.push(KeyPress {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::NONE,
-        });
-    } else if s == "Escape" || s == "Esc" {
-        keys.push(KeyPress {
-            code: KeyCode::Esc,
-            modifiers: KeyModifiers::NONE,
-        });
-    } else if s == "Tab" {
-        keys.push(KeyPress {
-            code: KeyCode::Tab,
-            modifiers: KeyModifiers::NONE,
-        });
-    } else {
-        for ch in s.chars() {
-            let modifiers = if ch.is_uppercase() {
-                KeyModifiers::SHIFT
-            } else {
-                KeyModifiers::NONE
-            };
-            keys.push(KeyPress {
-                code: KeyCode::Char(ch),
-                modifiers,
-            });
-        }
+    if s.is_empty() || s.chars().any(char::is_control) {
+        return Err("Empty or control-character binding".into());
     }
-
+    let mut rest = s;
+    let mut modifiers = KeyModifiers::NONE;
+    loop {
+        let (prefix, flag) = if rest.starts_with("Ctrl-") {
+            ("Ctrl-", KeyModifiers::CONTROL)
+        } else if rest.starts_with("Alt-") {
+            ("Alt-", KeyModifiers::ALT)
+        } else if rest.starts_with("Shift-") {
+            ("Shift-", KeyModifiers::SHIFT)
+        } else {
+            break;
+        };
+        if modifiers.contains(flag) {
+            return Err("Duplicate modifier".into());
+        }
+        modifiers.insert(flag);
+        rest = &rest[prefix.len()..];
+    }
+    let named = match rest {
+        "Enter" => Some(KeyCode::Enter),
+        "Escape" | "Esc" => Some(KeyCode::Esc),
+        "Tab" => Some(KeyCode::Tab),
+        "Up" => Some(KeyCode::Up),
+        "Down" => Some(KeyCode::Down),
+        "Left" => Some(KeyCode::Left),
+        "Right" => Some(KeyCode::Right),
+        "Home" => Some(KeyCode::Home),
+        "End" => Some(KeyCode::End),
+        "PageUp" => Some(KeyCode::PageUp),
+        "PageDown" => Some(KeyCode::PageDown),
+        "Backspace" => Some(KeyCode::Backspace),
+        "Delete" => Some(KeyCode::Delete),
+        "Space" => Some(KeyCode::Char(' ')),
+        _ => None,
+    };
+    let keys = if let Some(code) = named {
+        vec![KeyPress::from_event(
+            ratatui::crossterm::event::KeyEvent::new(code, modifiers),
+        )]
+    } else {
+        if rest.is_empty()
+            || (!modifiers.is_empty() && rest.chars().count() != 1)
+            || rest.contains('-') && rest != "-"
+            || rest.chars().any(char::is_whitespace)
+        {
+            return Err("Expected a key or a concatenated character chord".into());
+        }
+        rest.chars()
+            .map(|c| {
+                KeyPress::from_event(ratatui::crossterm::event::KeyEvent::new(
+                    KeyCode::Char(c),
+                    modifiers,
+                ))
+            })
+            .collect()
+    };
     Ok(KeyBinding { keys })
 }
 
@@ -227,11 +410,27 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
             if kp.modifiers.contains(KeyModifiers::ALT) {
                 s.push_str("Alt-");
             }
+            if kp.modifiers.contains(KeyModifiers::SHIFT)
+                && !matches!(kp.code, KeyCode::Char(c) if c.is_uppercase())
+            {
+                s.push_str("Shift-");
+            }
             match kp.code {
+                KeyCode::Char(' ') => s.push_str("Space"),
                 KeyCode::Char(c) => s.push(c),
                 KeyCode::Enter => s.push_str("Enter"),
                 KeyCode::Esc => s.push_str("Esc"),
                 KeyCode::Tab => s.push_str("Tab"),
+                KeyCode::Up => s.push_str("Up"),
+                KeyCode::Down => s.push_str("Down"),
+                KeyCode::Left => s.push_str("Left"),
+                KeyCode::Right => s.push_str("Right"),
+                KeyCode::Home => s.push_str("Home"),
+                KeyCode::End => s.push_str("End"),
+                KeyCode::PageUp => s.push_str("PageUp"),
+                KeyCode::PageDown => s.push_str("PageDown"),
+                KeyCode::Backspace => s.push_str("Backspace"),
+                KeyCode::Delete => s.push_str("Delete"),
                 _ => s.push('?'),
             }
             s
@@ -252,75 +451,18 @@ pub(crate) fn primary_mail_list_key_display(action: &Action) -> Option<String> {
 /// [`primary_mail_list_key_display`] so the command palette can show the
 /// key that actually fires in the focused view.
 pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
-    let cfg = shown_keybindings();
-    let map = match context {
-        ViewContext::MailList => &cfg.mail_list,
-        ViewContext::MessageView => &cfg.message_view,
-        ViewContext::ThreadView => &cfg.thread_view,
-    };
-    let mut matches: Vec<String> = map
-        .iter()
-        .filter_map(|(binding, name)| {
-            let mapped = action_from_name(name)?;
-            if mapped != *action {
-                return None;
-            }
-            Some(format_keybinding(binding))
-        })
-        .collect();
-    if matches.is_empty() {
-        None
-    } else {
-        matches.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
-        matches.first().cloned()
-    }
+    shown_keybindings().primary_key_display(context, action)
 }
 
 pub fn display_bindings_for_actions(
     context: ViewContext,
     actions: &[&str],
 ) -> Vec<(String, String)> {
-    let config = shown_keybindings();
-    let map = match context {
-        ViewContext::MailList => &config.mail_list,
-        ViewContext::MessageView => &config.message_view,
-        ViewContext::ThreadView => &config.thread_view,
-    };
-
-    actions
-        .iter()
-        .filter_map(|action| {
-            let mut bindings: Vec<String> = map
-                .iter()
-                .filter(|(_, name)| name == action)
-                .map(|(binding, _)| format_keybinding(binding))
-                .collect();
-            bindings.sort();
-            bindings.dedup();
-
-            (!bindings.is_empty()).then(|| (bindings.join("/"), action_display_name(action)))
-        })
-        .collect()
+    shown_keybindings().display_bindings_for_actions(context, actions)
 }
 
 pub fn all_bindings_for_context(context: ViewContext) -> Vec<(String, String)> {
-    let config = shown_keybindings();
-    let map = match context {
-        ViewContext::MailList => &config.mail_list,
-        ViewContext::MessageView => &config.message_view,
-        ViewContext::ThreadView => &config.thread_view,
-    };
-
-    let mut entries: Vec<(String, String)> = map
-        .iter()
-        .map(|(binding, action)| (format_keybinding(binding), action_display_name(action)))
-        .collect();
-    entries.sort_by(|(left_key, left_action), (right_key, right_action)| {
-        left_key
-            .cmp(right_key)
-            .then_with(|| left_action.cmp(right_action))
-    });
-    entries
+    shown_keybindings().all_bindings_for_context(context)
 }
 
 fn action_display_name(action: &str) -> String {
@@ -429,24 +571,78 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     let mut config = default_keybindings();
 
     if let Some(user) = user_config {
-        for (key, action) in &user.mail_list {
-            if let Ok(kb) = parse_key_string(key) {
-                config.mail_list.insert(kb, action.clone());
+        for (index, (map, user)) in [
+            (&mut config.mail_list, user.mail_list),
+            (&mut config.message_view, user.message_view),
+            (&mut config.thread_view, user.thread_view),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut entries: Vec<_> = user
+                .into_iter()
+                .filter_map(|(key, name)| {
+                    let binding = parse_key_string(&key).ok()?;
+                    (name.is_empty() || action_from_name(&name).is_some())
+                        .then_some((binding, name))
+                })
+                .collect();
+            entries.sort_by_key(|(key, _)| format_keybinding(key));
+            // Reject ambiguous user prefixes rather than choosing by HashMap order.
+            if entries.iter().enumerate().any(|(i, (key, name))| {
+                !name.is_empty()
+                    && entries.iter().enumerate().any(|(j, (other, other_name))| {
+                        i != j && !other_name.is_empty() && other.keys.starts_with(&key.keys)
+                    })
+            }) {
+                tracing::warn!(context = index, "Ignoring ambiguous keybinding context");
+                continue;
             }
-        }
-        for (key, action) in &user.message_view {
-            if let Ok(kb) = parse_key_string(key) {
-                config.message_view.insert(kb, action.clone());
-            }
-        }
-        for (key, action) in &user.thread_view {
-            if let Ok(kb) = parse_key_string(key) {
-                config.thread_view.insert(kb, action.clone());
+            map.retain(|key, name| {
+                // Scroll and next-message names deliberately share an Action,
+                // but are distinct reader operations and must retain their keys.
+                let retired = entries
+                    .iter()
+                    .any(|(_, user_name)| same_binding_action(name, user_name))
+                    || entries.iter().any(|(user_key, _)| {
+                        user_key == key
+                            || user_key.keys.starts_with(&key.keys)
+                            || key.keys.starts_with(&user_key.keys)
+                    });
+                if retired {
+                    config.overrides[index].insert(key.clone());
+                }
+                !retired
+            });
+            for (key, name) in entries {
+                config.overrides[index].insert(key.clone());
+                if !name.is_empty() {
+                    map.insert(key, name);
+                }
             }
         }
     }
 
     config
+}
+
+fn same_binding_action(left: &str, right: &str) -> bool {
+    if matches!(left, "move_down" | "scroll_down") && matches!(right, "move_down" | "scroll_down")
+        || matches!(left, "move_up" | "scroll_up") && matches!(right, "move_up" | "scroll_up")
+    {
+        return true;
+    }
+    if matches!(
+        left,
+        "move_down" | "scroll_down" | "next_message" | "move_up" | "scroll_up" | "prev_message"
+    ) || matches!(
+        right,
+        "move_down" | "scroll_down" | "next_message" | "move_up" | "scroll_up" | "prev_message"
+    ) {
+        left == right
+    } else {
+        action_from_name(left).is_some() && action_from_name(left) == action_from_name(right)
+    }
 }
 
 // Mail list defaults — Gmail-native scheme (A005). Module-level so tests
@@ -540,6 +736,12 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
 
 // Message view defaults
 const MV_DEFAULTS: &[(&str, &str)] = &[
+    ("Ctrl-d", "page_down"),
+    ("Ctrl-u", "page_up"),
+    ("G", "jump_bottom"),
+    ("gg", "jump_top"),
+    ("/", "search_all_mail"),
+    ("Ctrl-f", "mailbox_filter"),
     ("j", "scroll_down"),
     ("k", "scroll_up"),
     ("J", "next_message"),
@@ -581,6 +783,12 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
 
 // Thread view defaults
 const TV_DEFAULTS: &[(&str, &str)] = &[
+    ("Ctrl-d", "page_down"),
+    ("Ctrl-u", "page_up"),
+    ("G", "jump_bottom"),
+    ("gg", "jump_top"),
+    ("/", "search_all_mail"),
+    ("Ctrl-f", "mailbox_filter"),
     ("j", "scroll_down"),
     ("k", "scroll_up"),
     ("J", "next_message"),
@@ -623,7 +831,7 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
 /// The default tables, built once. Help, the hint bar and every palette
 /// command read them, so rebuilding per lookup parsed every key string
 /// over a hundred times each time the palette was created.
-fn shown_keybindings() -> &'static KeybindingConfig {
+pub(crate) fn shown_keybindings() -> &'static KeybindingConfig {
     static SHOWN: std::sync::LazyLock<KeybindingConfig> =
         std::sync::LazyLock::new(default_keybindings);
     &SHOWN
@@ -657,6 +865,7 @@ pub fn default_keybindings() -> KeybindingConfig {
     }
 
     KeybindingConfig {
+        overrides: Default::default(),
         mail_list,
         message_view,
         thread_view,
@@ -666,6 +875,85 @@ pub fn default_keybindings() -> KeybindingConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remap_retires_old_destructive_binding() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("keys.toml"),
+            "[mail_list]\n\";\" = \"trash\"\n",
+        )
+        .unwrap();
+        let config = load_keybindings(dir.path());
+        assert_eq!(
+            resolve_action(
+                &config,
+                ViewContext::MailList,
+                &parse_key_string(";").unwrap().keys
+            ),
+            Some("trash".into())
+        );
+        assert_eq!(
+            resolve_action(
+                &config,
+                ViewContext::MailList,
+                &parse_key_string("#").unwrap().keys
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn malformed_unknown_and_ambiguous_overrides_keep_safe_defaults() {
+        for source in [
+            "[mail_list]\n\"#\" = 42\n",
+            "[mail_list]\n\"#\" = \"__proto__\"\n",
+            "[mail_list]\n\"Ctrl-ab\" = \"trash\"\n",
+            "[mail_list]\n\"\" = \"trash\"\n",
+            "[mail_list]\n\"w\" = \"trash\"\n\"wq\" = \"archive\"\n",
+            "this is not toml",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("keys.toml"), source).unwrap();
+            let config = load_keybindings(dir.path());
+            assert_eq!(
+                resolve_action(
+                    &config,
+                    ViewContext::MailList,
+                    &parse_key_string("#").unwrap().keys
+                ),
+                Some("trash".into()),
+                "{source}"
+            );
+            assert_eq!(
+                config.mail_list,
+                default_keybindings().mail_list,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn remap_swaps_are_order_independent_and_aliases_are_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("keys.toml"), "[mail_list]\n\"j\" = \"move_up\"\n\"k\" = \"move_down\"\n\";\" = \"archive\"\n\"e\" = \"archive\"\n").unwrap();
+        let config = load_keybindings(dir.path());
+        for (key, action) in [
+            ("j", "move_up"),
+            ("k", "move_down"),
+            (";", "archive"),
+            ("e", "archive"),
+        ] {
+            assert_eq!(
+                resolve_action(
+                    &config,
+                    ViewContext::MailList,
+                    &parse_key_string(key).unwrap().keys
+                ),
+                Some(action.into())
+            );
+        }
+    }
 
     #[test]
     fn parse_key_string_single_char() {
@@ -704,6 +992,22 @@ mod tests {
         assert_eq!(kb.keys.len(), 1);
         assert_eq!(kb.keys[0].code, KeyCode::Char('G'));
         assert_eq!(kb.keys[0].modifiers, KeyModifiers::SHIFT);
+    }
+
+    #[test]
+    fn shifted_tab_and_space_use_terminal_key_codes_and_readable_labels() {
+        let tab = parse_key_string("Shift-Tab").unwrap();
+        assert_eq!(
+            tab.keys,
+            vec![KeyPress::from_event(
+                ratatui::crossterm::event::KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)
+            )]
+        );
+        assert_eq!(format_keybinding(&tab), "Shift-Tab");
+        assert_eq!(
+            format_keybinding(&parse_key_string("Space").unwrap()),
+            "Space"
+        );
     }
 
     #[test]

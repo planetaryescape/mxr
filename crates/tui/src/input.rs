@@ -1,4 +1,5 @@
 use crate::action::Action;
+use crate::keybindings::{KeyPress, KeybindingConfig, ViewContext};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
@@ -34,6 +35,14 @@ pub enum KeyState {
 
 pub struct InputHandler {
     state: KeyState,
+    configured: Option<ConfiguredChord>,
+    used_this_turn: bool,
+}
+
+struct ConfiguredChord {
+    context: ViewContext,
+    keys: Vec<KeyPress>,
+    deadline: Instant,
 }
 
 impl Default for InputHandler {
@@ -46,17 +55,30 @@ impl InputHandler {
     pub fn new() -> Self {
         Self {
             state: KeyState::Normal,
+            configured: None,
+            used_this_turn: false,
         }
     }
 
     /// A chord prefix is waiting and has not timed out.
     pub fn is_pending(&self) -> bool {
-        matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if Instant::now() <= deadline)
+        self.configured
+            .as_ref()
+            .is_some_and(|chord| Instant::now() <= chord.deadline)
+            || matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if Instant::now() <= deadline)
     }
 
     /// First key of an in-progress multi-key chord, if any. Lets the
     /// hint bar surface "g …" while the handler waits for the second key.
     pub fn pending_prefix(&self) -> Option<char> {
+        if let Some(chord) = &self.configured {
+            if Instant::now() <= chord.deadline {
+                return chord.keys.first().and_then(|key| match key.code {
+                    KeyCode::Char(c) => Some(c),
+                    _ => None,
+                });
+            }
+        }
         match self.state {
             KeyState::WaitingForSecond { first, .. } => Some(first),
             KeyState::Normal => None,
@@ -66,9 +88,122 @@ impl InputHandler {
     /// Drop a waiting chord prefix: a lens took its second key.
     pub fn reset(&mut self) {
         self.state = KeyState::Normal;
+        self.configured = None;
+    }
+
+    pub(crate) fn begin_turn(&mut self) {
+        self.used_this_turn = false;
+    }
+
+    pub(crate) fn end_turn(&mut self) {
+        // A modal, input field or pane-local handler claimed this turn.
+        // Its keys must never complete an earlier mail chord later.
+        if !self.used_this_turn {
+            self.reset();
+        }
+    }
+
+    /// `None`: leave the established mode-specific defaults alone.
+    /// `Some(None)`: consume a prefix or retired key, without falling back.
+    pub(crate) fn handle_configured_key(
+        &mut self,
+        config: &KeybindingConfig,
+        context: ViewContext,
+        key: KeyEvent,
+    ) -> Option<Option<String>> {
+        self.check_timeout();
+        if self
+            .configured
+            .as_ref()
+            .is_some_and(|chord| chord.context != context)
+        {
+            self.reset();
+        }
+        let press = KeyPress::from_event(key);
+        let overrides_alias =
+            config.overrides_legacy_alias(context, &press, || Self::new().handle_key(key));
+        if self.configured.is_none()
+            && !config.overrides_prefix(context, &press)
+            && !overrides_alias
+        {
+            return None;
+        }
+        if self.configured.is_none() {
+            if let KeyState::WaitingForSecond { first, .. } = self.state {
+                // A remapped suffix must not steal a valid, unrelated default
+                // chord (e.g. retiring `a` must not break `ga` or `ia`).
+                let mut probe = Self::new();
+                probe.handle_key(KeyEvent::new(KeyCode::Char(first), KeyModifiers::NONE));
+                let chord = probe.handle_key(key);
+                let single = Self::new().handle_key(key);
+                if chord.is_some() && chord != single {
+                    return None;
+                }
+                self.state = KeyState::Normal;
+            }
+        }
+        let pending = self.configured.take();
+        if pending.is_none() && !config.overrides_prefix(context, &press) {
+            // Several legacy branches ignore modifiers (notably # and !).
+            // They must not resurrect a retired destructive shortcut.
+            if overrides_alias {
+                self.used_this_turn = true;
+                return Some(None);
+            }
+            return None;
+        }
+        self.used_this_turn = true;
+        let had_pending_chord = pending.is_some();
+        let mut sequence = pending.map(|chord| chord.keys).unwrap_or_default();
+        sequence.push(press);
+        if let Some(name) = crate::keybindings::resolve_action(config, context, &sequence) {
+            self.state = KeyState::Normal;
+            return Some(Some(name));
+        }
+        if config.bindings(context).keys().any(|binding| {
+            binding.keys.starts_with(&sequence) && binding.keys.len() > sequence.len()
+        }) {
+            self.state = KeyState::Normal;
+            self.configured = Some(ConfiguredChord {
+                context,
+                keys: sequence,
+                deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+            });
+            return Some(None);
+        }
+        if config.retired_sequence(context, &sequence) {
+            self.state = KeyState::Normal;
+            return Some(None);
+        }
+        // A retired chord can leave a prefix with no live continuation. It
+        // owns this press, but must not retry itself as a fresh prefix.
+        if !had_pending_chord {
+            self.state = KeyState::Normal;
+            return Some(None);
+        }
+        // Preserve default chords outside the registry (saved-search digits,
+        // invite comments). Replay only into the pure legacy key resolver.
+        self.state = KeyState::Normal;
+        for previous in sequence.iter().take(sequence.len().saturating_sub(1)) {
+            self.handle_key(KeyEvent::new(previous.code, previous.modifiers));
+        }
+        // An invalid chord recovers by processing this key afresh, including
+        // a different configured prefix rather than just hardcoded defaults.
+        if config.overrides_prefix(context, sequence.last()?) {
+            self.state = KeyState::Normal;
+            return self.handle_configured_key(config, context, key);
+        }
+        None
     }
 
     pub fn check_timeout(&mut self) -> Option<Action> {
+        if self
+            .configured
+            .as_ref()
+            .is_some_and(|chord| Instant::now() > chord.deadline)
+        {
+            self.reset();
+        }
         if let KeyState::WaitingForSecond { deadline, .. } = &self.state {
             if Instant::now() > *deadline {
                 self.state = KeyState::Normal;
@@ -79,6 +214,7 @@ impl InputHandler {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        self.used_this_turn = true;
         self.check_timeout();
 
         match (&self.state, key.code, key.modifiers) {
@@ -408,6 +544,59 @@ mod tests {
 
     fn key_with(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn configured_chord_timeout_and_invalid_suffix_recover_without_sleep() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("keys.toml"),
+            "[mail_list]\n\"wqr\" = \"trash\"\n\";\" = \"archive\"\n",
+        )
+        .unwrap();
+        let config = crate::keybindings::load_keybindings(dir.path());
+        let mut input = InputHandler::new();
+        let context = ViewContext::MailList;
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('w'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('q'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('r'))),
+            Some(Some("trash".into()))
+        );
+        input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
+        input.configured.as_mut().unwrap().deadline = Instant::now() - Duration::from_millis(1);
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char(';'))),
+            Some(Some("archive".into()))
+        );
+        input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char(';'))),
+            Some(Some("archive".into()))
+        );
+        assert!(!input.is_pending());
+        input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
+        input.configured.as_mut().unwrap().deadline = Instant::now() - Duration::from_millis(1);
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('w'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('q'))),
+            Some(None)
+        );
+        assert_eq!(
+            input.handle_configured_key(&config, context, key(KeyCode::Char('r'))),
+            Some(Some("trash".into())),
+            "a new configured chord can start after timeout"
+        );
+        assert!(!input.is_pending());
     }
 
     /// Slice 1 / B1.4: a single press of '6' from the normal state

@@ -3,6 +3,11 @@ title: Keybindings
 description: Default keybindings for the mxr TUI and web app.
 ---
 
+These tables show defaults. To remap TUI mail-pane actions, create
+[`keys.toml`](/reference/config/#custom-keybindings) and restart the TUI.
+Help and the command palette show your effective shortcuts in each mail view;
+the web app keeps its own defaults.
+
 :::tip[The 10 keys that get you 80% of mxr]
 If you only learn ten, learn these:
 
@@ -525,7 +530,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 
 ## Web app
 
-The web app follows the TUI's live bindings. One dispatcher reads every key
+The web app shares the TUI's default mail shortcuts. One dispatcher reads every key
 from the shared action registry (`apps/web/src/lib/actions/`), so these
 tables, the in-app help (`?`), the command palette and **Settings →
 Keybindings** always agree. Where the web deliberately differs from the TUI,
@@ -534,7 +539,8 @@ to different things without a listed reason. Keys never fire while you
 type in a field or while compose is open, except `⌘K` / `Ctrl+K`.
 
 :::note[Changed in 0.6.41]
-Web keys now match the TUI's: `g h` opens the desk (was `g d`), `g d`
+In 0.6.41, `g h` became the desk shortcut (was `g d`); it now opens Now.
+`mxr desk` still lists the legacy lanes. `g d`
 opens Drafts (`g E` still does), `g r` / `g p` open Reading / Paper trail
 (were `g R` / `g P`, which keep working until 0.6.42), `g H` shows raw
 headers (was `g h`), and in Reading and Paper trail `S` sweeps a sender's

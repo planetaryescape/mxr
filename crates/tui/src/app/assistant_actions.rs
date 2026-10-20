@@ -42,6 +42,23 @@ impl App {
     /// it gets it. While the pane has focus it takes every key, so typing
     /// never reaches the screen's shortcuts.
     pub(super) fn assistant_key(&mut self, key: KeyEvent) -> Option<Option<Action>> {
+        // Explicit mail remaps may reuse a global assistant shortcut, but
+        // never take characters away from a focused assistant text field.
+        if (!self.assistant.open || self.assistant.focus == AssistantFocus::Away)
+            && matches!(
+                self.current_ui_context(),
+                UiContext::MailboxList
+                    | UiContext::MailboxMessage
+                    | UiContext::SearchResults
+                    | UiContext::SearchPreview
+            )
+        {
+            let press = crate::keybindings::KeyPress::from_event(key);
+            let context = self.keybinding_context();
+            if self.keybindings.overrides_prefix(context, &press) {
+                return None;
+            }
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if ctrl && key.code == KeyCode::Char('a') && !self.text_entry_active() {
             return Some(Some(Action::ToggleAssistant));

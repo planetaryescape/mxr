@@ -50,8 +50,111 @@ fn draft_from_pending(
 }
 
 impl App {
+    pub(crate) fn keybinding_context(&self) -> crate::keybindings::ViewContext {
+        use crate::keybindings::ViewContext;
+        if matches!(
+            self.current_ui_context(),
+            UiContext::MailboxMessage | UiContext::SearchPreview
+        ) {
+            if self.mailbox.viewed_thread_messages.len() > 1 {
+                ViewContext::ThreadView
+            } else {
+                ViewContext::MessageView
+            }
+        } else {
+            ViewContext::MailList
+        }
+    }
+
+    pub(crate) fn help_keybinding_context(&self) -> crate::keybindings::ViewContext {
+        if self.help_modal_context() == self.current_ui_context() {
+            self.keybinding_context()
+        } else if matches!(
+            self.help_modal_context(),
+            UiContext::MailboxMessage | UiContext::SearchPreview
+        ) {
+            crate::keybindings::ViewContext::MessageView
+        } else {
+            crate::keybindings::ViewContext::MailList
+        }
+    }
+
+    pub(crate) fn load_keybindings_from(&mut self, directory: &std::path::Path) {
+        self.keybindings = crate::keybindings::load_keybindings(directory);
+        self.input.reset();
+    }
+
+    fn configured_mail_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Option<Action>> {
+        let context = self.keybinding_context();
+        let resolved = self
+            .input
+            .handle_configured_key(&self.keybindings, context, key);
+        let Some(name) = resolved else {
+            // Some historic mail defaults are not listed in the display
+            // registry (e.g. undo). Retire those fallback aliases as well.
+            if !self.input.is_pending()
+                && self
+                    .mail_action_key(key)
+                    .is_some_and(|action| self.keybindings.has_action_override(context, &action))
+            {
+                return Some(None);
+            }
+            return None;
+        };
+        let Some(name) = name else {
+            return Some(None);
+        };
+        let action = crate::keybindings::action_from_name(&name)?;
+        if !crate::action::action_allowed_in_context(&action, self.current_ui_context()) {
+            return Some(None);
+        }
+        // Reader navigation is intentionally inline in the existing router.
+        if matches!(
+            context,
+            crate::keybindings::ViewContext::MessageView
+                | crate::keybindings::ViewContext::ThreadView
+        ) {
+            match name.as_str() {
+                "scroll_down" | "move_down" => {
+                    self.move_message_view_down();
+                    return Some(None);
+                }
+                "scroll_up" | "move_up" => {
+                    self.move_message_view_up();
+                    return Some(None);
+                }
+                "next_message" => {
+                    self.move_thread_focus_down();
+                    return Some(None);
+                }
+                "prev_message" => {
+                    self.move_thread_focus_up();
+                    return Some(None);
+                }
+                "page_down" => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(20);
+                    return Some(None);
+                }
+                "page_up" => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(20);
+                    return Some(None);
+                }
+                "jump_bottom" => {
+                    self.mailbox.message_scroll_offset = u16::MAX;
+                    return Some(None);
+                }
+                _ => {}
+            }
+        }
+        Some(Some(action))
+    }
+
     fn help_modal_state(&self) -> crate::ui::help_modal::HelpModalState<'_> {
         crate::ui::help_modal::HelpModalState {
+            keybindings: Some(&self.keybindings),
+            binding_context: Some(self.help_keybinding_context()),
             open: self.modals.help_open,
             ui_context: self.help_modal_context(),
             selected_count: self.mailbox.selected_set.len(),
@@ -156,6 +259,19 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Option<Action> {
         let action = self.input.handle_key(key)?;
+        if matches!(
+            self.current_ui_context(),
+            UiContext::MailboxList
+                | UiContext::MailboxMessage
+                | UiContext::SearchResults
+                | UiContext::SearchPreview
+        ) && !matches!(action, Action::MoveDown | Action::MoveUp)
+            && self
+                .keybindings
+                .has_action_override(self.keybinding_context(), &action)
+        {
+            return None;
+        }
         crate::action::action_allowed_in_context(&action, self.current_ui_context())
             .then_some(action)
     }
@@ -226,7 +342,15 @@ impl App {
             return None;
         }
         self.note_key_for_hints();
-        self.handle_key_press(key)
+        let context = (self.current_ui_context(), self.mailbox.mailbox_view);
+        if self.input_context != Some(context) {
+            self.input.reset();
+        }
+        self.input_context = Some(context);
+        self.input.begin_turn();
+        let action = self.handle_key_press(key);
+        self.input.end_turn();
+        action
     }
 
     fn handle_key_press(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
@@ -1281,6 +1405,20 @@ impl App {
                     self.answer_promise(keep, std::time::Instant::now());
                 }
                 return None;
+            }
+        }
+
+        // Remaps are authoritative only in mail panes, after all modal/text
+        // owners. Explicit keys also beat lens-specific single-key defaults.
+        if matches!(
+            self.current_ui_context(),
+            UiContext::MailboxList
+                | UiContext::MailboxMessage
+                | UiContext::SearchResults
+                | UiContext::SearchPreview
+        ) {
+            if let Some(action) = self.configured_mail_key(key) {
+                return action;
             }
         }
 

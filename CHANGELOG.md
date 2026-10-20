@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.111](https://github.com/planetaryescape/mxr/compare/v0.6.110...v0.6.111) (2026-10-20)
+
+
+### Bug Fixes
+
+* align rule previews and deliver stored mail to hooks ([#530](https://github.com/planetaryescape/mxr/issues/530)) ([3c47791](https://github.com/planetaryescape/mxr/commit/3c47791a384025802fb903f1a60a5234c293eb77))
+
 ## [0.6.110](https://github.com/planetaryescape/mxr/compare/v0.6.109...v0.6.110) (2026-10-20)
 
 

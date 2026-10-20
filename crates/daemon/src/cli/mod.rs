@@ -1259,13 +1259,16 @@ pub enum Command {
         /// Free-text substring filter applied to each log line. Case-insensitive.
         #[arg(long)]
         search: Option<String>,
-        /// Maximum lines to return when not following. Default 200.
-        #[arg(long, default_value_t = 200)]
+        /// Initial matching tail across retained logs (1..=10000). Default 200.
+        #[arg(long, default_value_t = 200, value_parser = clap::value_parser!(u32).range(1..=10000))]
         limit: u32,
         #[arg(long)]
         purge: bool,
+        /// Preview the same owned-archive/event cutoff without deleting anything.
+        #[arg(long, requires = "purge")]
+        dry_run: bool,
         /// Output format. `json`/`jsonl` emit one JSON object per line with
-        /// `{ timestamp, level, message }` fields parsed from the log line.
+        /// `{ timestamp, level, message, raw }` fields parsed from JSON or legacy text.
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
     },

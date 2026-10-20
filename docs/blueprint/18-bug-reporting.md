@@ -8,7 +8,9 @@
 
 Logs go to two places:
 
-1. **Text log file**: `<data_dir>/logs/mxr.log` for the active runtime identity. Rotated at 50 MB, 5 files kept. Structured tracing output. Configurable level (default: `info`).
+1. **Text log file**: `<data_dir>/logs/mxr.log` for the active runtime identity.
+   Shipped defaults are 250 MiB per file and 10 files including active, not the
+   original 50/5 sketch. Structured tracing output; level defaults to `info`.
 
 2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Retained for 90 days by default.
 
@@ -261,14 +263,15 @@ Users should understand how much disk space logs consume and how to manage them.
 
 | Storage | Default retention | Default max size |
 |---|---|---|
-| Text log file | 5 rotated files | 50 MB each (250 MB max) |
-| event_log table | 90 days | No size limit (grows with usage, pruned by age) |
-| sync_log table | 90 days | No size limit (pruned by age) |
-| ai_usage table | 90 days | No size limit (pruned by age) |
+| Text log files | 10 total including active | 250 MiB each (2,500 MiB named-file cap) |
+| event_log table | Manual purge at 90 days | No automatic size/age bound added by text rotation |
+| sync_log / ai_usage | Automatic retention remains a separate follow-up | Not pruned by `mxr logs --purge` |
 
 ### Pruning
 
-The daemon runs a daily cleanup job (or on startup) that prunes old rows:
+Automatic operational-history pruning below is an original design proposal,
+not shipped by S4a. The existing manual event purge uses this predicate only
+for `event_log`; activity has its own existing startup/daily policy:
 
 ```sql
 DELETE FROM event_log WHERE timestamp < strftime('%s', 'now', '-90 days');
@@ -282,8 +285,9 @@ DELETE FROM ai_usage WHERE timestamp < strftime('%s', 'now', '-90 days');
 # file printed by `mxr config path`
 [logging]
 level = "info"
-max_size_mb = 50
-max_files = 5
+max_size_mb = 250
+max_files = 10
+stderr = true
 event_retention_days = 90
 ```
 
@@ -292,11 +296,16 @@ event_retention_days = 90
 mxr doctor --store-stats
 # Output includes: log file sizes, event_log row count, total log disk usage
 
-# Manually purge old logs
-mxr logs --purge                  # Delete logs older than retention period
-mxr logs --purge --before "2026-01-01"  # Delete logs before specific date
-mxr logs --purge --all            # Delete all logs (with confirmation)
+# Preview, then manually purge owned archives and old event rows
+mxr logs --purge --dry-run --format json
+mxr logs --purge --format json
 ```
+
+The active file, `.mxr-log.lock`, unknown filenames, symlinks and recent owned
+archives are excluded. There is no `--before` or `--all` purge flag. See the
+[observability guide](../../site/src/content/docs/guides/observability.md) for
+the exact owned filenames, 64 KiB record bound, zero-cap errors, reduced-cap
+startup behavior, output ownership and rotation-aware follow limits.
 
 ---
 
@@ -314,8 +323,10 @@ mxr logs --purge --all            # Delete all logs (with confirmation)
 
 **Why**: Trust is critical. If users fear that sharing a bug report might expose their email content or credentials, they won't report bugs. Auto-sanitization makes the safe choice the default. The sanitizer over-redacts intentionally. Users can always add back context they're comfortable sharing in the issue description.
 
-**D074: Log retention defaults — 90 days, 250 MB max for text logs**
+**D074: Log retention defaults — shipped configuration supersedes the original sketch**
 
-**Chosen**: Text logs rotate at 50 MB with 5 files kept (250 MB max). Structured event tables pruned at 90 days.
+**Current**: Preserve shipped 250 MiB/file, 10 total files, stderr=true and
+90-day manual event cutoff. The historical 50 MiB/five-file total and automatic
+operational-history pruning were design goals, not the current runtime contract.
 
 **Why**: Logs need to survive long enough to capture intermittent issues (an auth bug that happens once a week, a sync failure that occurs on the first of each month). 90 days covers most patterns. 250 MB is a reasonable disk budget for a power-user tool. Both are configurable for users with different constraints (e.g., low-disk-space environments can reduce retention).

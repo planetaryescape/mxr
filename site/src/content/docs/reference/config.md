@@ -425,11 +425,20 @@ Notes:
 
 ## `logging`
 
-- `level`
-- `max_size_mb`
-- `max_files`
-- `stderr`
-- `event_retention_days`
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `level` | `"info"` | Startup tracing level; `RUST_LOG` takes precedence. |
+| `max_size_mb` | `250` | Per-file cap in MiB, positive. Oversized records become bounded JSON diagnostics. |
+| `max_files` | `10` | Positive total number of owned text files, including active `mxr.log`. |
+| `stderr` | `true` | Mirror tracing JSON to stderr only when the CLI/foreground daemon owns that output; never protocol stdout or TUI output. |
+| `event_retention_days` | `90` | Age cutoff for manual `mxr logs --purge`, not automatic database retention. |
+
+Size/count/stderr changes are read on subsequent writes. Archives use
+`mxr.<20-digit sequence>.log`; the shared `.mxr-log.lock` is never purged.
+Unknown files and symlinks are excluded. Zero/unrepresentable caps fail instead
+of disabling bounds. The default named-file budget is 2,500 MiB. See
+[text logs and purge preview](/guides/observability/#bound-local-text-logs) for
+64 KiB record limits, reduced-cap behavior, failure and follow semantics.
 
 ## `activity`
 

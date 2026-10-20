@@ -11,7 +11,8 @@ Options:
       --level <LEVEL>
       --since <SINCE>
       --search <SEARCH>  Free-text substring filter applied to each log line. Case-insensitive
-      --limit <LIMIT>    Maximum lines to return when not following. Default 200 [default: 200]
+      --limit <LIMIT>    Initial matching tail across retained logs (1..=10000). Default 200 [default: 200]
       --purge
-      --format <FORMAT>  Output format. `json`/`jsonl` emit one JSON object per line with `{ timestamp, level, message }` fields parsed from the log line [possible values: table, json, jsonl, csv, ids]
+      --dry-run          Preview the same owned-archive/event cutoff without deleting anything
+      --format <FORMAT>  Output format. `json`/`jsonl` emit one JSON object per line with `{ timestamp, level, message, raw }` fields parsed from JSON or legacy text [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

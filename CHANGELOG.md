@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.109](https://github.com/planetaryescape/mxr/compare/v0.6.108...v0.6.109) (2026-10-20)
+
+
+### Bug Fixes
+
+* honor activity recording privacy controls ([#526](https://github.com/planetaryescape/mxr/issues/526)) ([b9840d3](https://github.com/planetaryescape/mxr/commit/b9840d384d59b21b88e5740e5d07f063c4f20204))
+
+
+### Documentation
+
+* align mode guides with shipped workflows ([#525](https://github.com/planetaryescape/mxr/issues/525)) ([f83c039](https://github.com/planetaryescape/mxr/commit/f83c03992eed4ad5848781aaf4cd8515e6912169))
+* document local build resource limits in AGENTS.md ([#524](https://github.com/planetaryescape/mxr/issues/524)) ([404c223](https://github.com/planetaryescape/mxr/commit/404c223d4cb66714fa9750cdd8eefc5c935ab1ee))
+
 ## [0.6.108](https://github.com/planetaryescape/mxr/compare/v0.6.107...v0.6.108) (2026-10-19)
 
 

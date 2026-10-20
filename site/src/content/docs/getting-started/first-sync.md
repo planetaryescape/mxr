@@ -91,10 +91,11 @@ mxr search "label:inbox" --account personal --format json
 ```
 
 For label-capable providers, sync can refetch the account's mail to restore
-associations even when other accounts have healthy labels. Recovery waits for
-the current pages to finish and allows one repair restart per sync invocation.
-It does not detect partial label loss or invent labels the provider cannot
-resolve. If labels remain missing, inspect diagnostics:
+associations even when other accounts have healthy labels. An ordinary poll can
+start one full refetch. The refetch runs through its pages and finishes even if
+labels remain unresolved, rather than restarting again on its final page. A
+later poll can retry. Recovery does not detect partial label loss or invent
+labels the provider cannot resolve. If labels remain missing, inspect diagnostics:
 
 ```bash
 mxr doctor --check

@@ -127,11 +127,13 @@ Current repair paths:
 - single-message `GetBody` on a missing, legacy, or suspicious best-effort body row -> provider hydrate and persist
 
 Label recovery checks the affected account, so another account's healthy labels
-cannot suppress it. It waits until the provider reports no more pages and resets
-at most once per sync invocation. If the refetch still cannot resolve any labels,
-sync keeps the returned cursor instead of restarting indefinitely; a later sync
-can retry. This detects an account with no associations, not arbitrary partial
-label loss. Providers without label-mutation capability skip this repair.
+cannot suppress it. A completed steady-state poll can reset the cursor to start
+one full refetch. Initial-sync and refetch pages keep their continuation or final
+cursor even when no labels resolve; finishing a refetch does not start another
+one. A later steady-state poll can retry. Providers identify continuation cursors
+through `is_backfill_cursor`; an empty cursor starts a fresh traversal. This
+detects an account with no associations, not arbitrary partial label loss.
+Providers without label-mutation capability skip this repair.
 
 Note the boundary:
 

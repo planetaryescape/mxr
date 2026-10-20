@@ -312,7 +312,6 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
-        let mut restarted_label_repair = false;
         // Phase F: accumulate thread_ids touched this sync run. Populated
         // from each upserted envelope plus any (old, canonical) pair
         // returned by `rethread_account`. Drained into
@@ -613,9 +612,10 @@ impl SyncEngine {
                     .map_err(|e| MxrError::Store(e.to_string()))?;
             }
 
-            // Recover an account's empty junctions after the last page (the old
-            // INSERT OR REPLACE cascade bug). A partial page can legitimately
-            // have no labels yet; restarting it would discard paging progress.
+            // Recover empty junctions from a completed steady-state poll (the
+            // old INSERT OR REPLACE cascade bug). Initial/refetch pages already
+            // rebuild associations: even their last page must keep its cursor
+            // when no labels resolve, rather than start another full refetch.
             let junction_count = self
                 .store
                 .count_message_labels_by_account(account_id)
@@ -627,7 +627,8 @@ impl SyncEngine {
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             if provider.capabilities().mutate.labels
-                && !restarted_label_repair
+                && !cursor.is_empty()
+                && !provider.is_backfill_cursor(&cursor)
                 && !has_more
                 && junction_count == 0
                 && message_count > 0
@@ -641,9 +642,6 @@ impl SyncEngine {
                     .set_sync_cursor(account_id, &SyncCursor::empty())
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-                // A provider may have no resolvable associations even after a
-                // full refetch. Keep that refetch's cursor rather than loop.
-                restarted_label_repair = true;
                 progress(SyncProgress::Restarted);
                 continue;
             }

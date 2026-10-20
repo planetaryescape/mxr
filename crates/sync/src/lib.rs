@@ -238,6 +238,11 @@ mod tests {
             caps.mutate.labels = self.supports_labels;
             caps
         }
+        fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+            // Like the real adapters, only continuation tokens denote backfill;
+            // an empty cursor starts it and a settled cursor denotes delta sync.
+            cursor.as_bytes().starts_with(b"page-")
+        }
         async fn authenticate(&mut self) -> Result<(), MxrError> {
             Ok(())
         }
@@ -2166,6 +2171,122 @@ mod tests {
             1
         );
         assert_eq!(search.num_docs().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn label_repair_finishes_unresolvable_backfill_and_allows_later_retry() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+        let account = AccountId::new();
+        store
+            .insert_account(&test_account(account.clone()))
+            .await
+            .unwrap();
+        let first = make_test_envelope(&account, "first", vec!["missing-label".into()]);
+        let last = make_test_envelope(&account, "last", vec!["missing-label".into()]);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .set_sync_cursor(&account, &SyncCursor::from_bytes(b"stale-delta".to_vec()))
+            .await
+            .unwrap();
+        let provider = LabelRepairProvider {
+            account_id: account.clone(),
+            supports_labels: true,
+            labels: vec![make_test_label(&account, "Inbox", "INBOX")],
+            pages: std::sync::Mutex::new(std::collections::VecDeque::new()),
+        };
+
+        // A later ordinary poll may retry, but each full refetch must reach idle.
+        for start in [b"stale-delta".as_slice(), b"settled".as_slice()] {
+            provider.pages.lock().unwrap().extend([
+                (
+                    SyncCursor::from_bytes(start.to_vec()),
+                    Ok(label_repair_page(vec![], b"delta", false)),
+                ),
+                (
+                    SyncCursor::empty(),
+                    Ok(label_repair_page(vec![first.clone()], b"page-final", true)),
+                ),
+                (
+                    SyncCursor::from_bytes(b"page-final".to_vec()),
+                    Ok(label_repair_page(vec![last.clone()], b"settled", false)),
+                ),
+            ]);
+            let progress = CollectedProgress::default();
+            let mut upserted = Vec::new();
+            let mut passes = 0;
+            // Drive actual per-page calls as the daemon does. Extra resets exhaust
+            // the three finite responses and fail, rather than hanging or sleeping.
+            loop {
+                let outcome = engine
+                    .sync_account_reporting(&provider, &progress.sink())
+                    .await
+                    .unwrap();
+                passes += 1;
+                upserted.extend(outcome.upserted_message_ids);
+                if !outcome.has_more {
+                    break;
+                }
+            }
+            assert_eq!(passes, 2);
+            assert_eq!(upserted, vec![first.id.clone(), last.id.clone()]);
+            assert_eq!(
+                progress
+                    .milestones
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|step| **step == SyncProgress::Restarted)
+                    .count(),
+                1
+            );
+            assert_eq!(
+                store
+                    .get_sync_cursor(&account)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .as_bytes(),
+                b"settled"
+            );
+            assert_eq!(
+                store
+                    .count_message_labels_by_account(&account)
+                    .await
+                    .unwrap(),
+                0
+            );
+            assert_eq!(store.count_messages_by_account(&account).await.unwrap(), 2);
+            let page = search
+                .search_in_account(
+                    "body_text:test",
+                    Some(&account.as_str()),
+                    10,
+                    0,
+                    SortOrder::Relevance,
+                )
+                .await
+                .unwrap();
+            assert_eq!(page.total, 2);
+            assert_eq!(
+                page.results
+                    .into_iter()
+                    .map(|hit| hit.message_id)
+                    .collect::<HashSet<_>>(),
+                HashSet::from([first.id.as_str(), last.id.as_str()])
+            );
+            for message in [&first, &last] {
+                assert_eq!(
+                    store
+                        .get_message_id_by_provider_id(&account, &message.provider_id)
+                        .await
+                        .unwrap(),
+                    Some(message.id.clone())
+                );
+                assert!(store.get_body(&message.id).await.unwrap().is_some());
+            }
+        }
     }
 
     #[tokio::test]

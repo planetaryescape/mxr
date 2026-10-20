@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { generateReference } from './generate-cli-reference.mjs';
 
@@ -17,8 +19,35 @@ function fixture(t) {
   function snapshot(name, body) {
     writeFileSync(join(snapshots, `cli_help__cli_help_${name}.snap`), `---\nsource: fixture\n---\n${body}\n`);
   }
-  return { snapshots, output, snapshot };
+  return { root, snapshots, output, snapshot };
 }
+
+test('a symlinked CLI entry generates pages while stdin imports remain side-effect free', (t) => {
+  const { root, snapshots, snapshot } = fixture(t);
+  snapshot('root', 'Usage: mxr [COMMAND]\n\nCommands:\n  example  Example command');
+  snapshot('example', 'Usage: mxr example [OPTIONS]');
+  const scripts = join(root, 'site', 'scripts');
+  mkdirSync(scripts, { recursive: true });
+  for (const name of ['generate-cli-reference.mjs', 'cli-reference-examples.json']) {
+    copyFileSync(new URL(name, import.meta.url), join(scripts, name));
+  }
+  cpSync(snapshots, join(root, 'crates', 'daemon', 'tests', 'snapshots'), { recursive: true });
+  const script = join(scripts, 'generate-cli-reference.mjs');
+  const output = join(root, 'site', 'src', 'content', 'docs', 'reference', 'cli', 'example.md');
+  const imported = spawnSync(process.execPath, ['--input-type=module', '-'], {
+    encoding: 'utf8',
+    input: `import { generateReference } from ${JSON.stringify(pathToFileURL(script).href)}; console.log(typeof generateReference);`,
+  });
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(imported.stdout.trim(), 'function');
+  assert.equal(existsSync(output), false);
+  const entry = join(root, 'generator-entry.mjs');
+  symlinkSync(script, entry);
+  const executed = spawnSync(process.execPath, [entry], { encoding: 'utf8' });
+  assert.equal(executed.status, 0, executed.stderr);
+  assert.match(executed.stdout, /Generated 1 command pages/);
+  assert.match(readFileSync(output, 'utf8'), /mxr example/);
+});
 
 test('generation requires the root reference input', (t) => {
   const { snapshots, output } = fixture(t);

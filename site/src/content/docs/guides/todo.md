@@ -42,6 +42,39 @@ renewal reviews can become tasks automatically. An alert in Updates offers
 `t` to create a task when you choose; it does not automatically create one
 merely because it appears in `Needs a look`.
 
+## Add or correct a task yourself
+
+```bash
+mxr todo add --from MESSAGE_ID --title "Send the signed form" --due "in 2d" --dry-run
+mxr todo add --from MESSAGE_ID --title "Send the signed form" --due "in 2d"
+mxr todo edit TODO_ID 'title=Send the completed form' 'due=in 3d' --dry-run
+mxr todo edit TODO_ID 'title=Send the completed form' 'due=in 3d'
+```
+
+Use a source message ID from search or the reader for `--from`. The title
+names the action, not the email's subject. `edit` accepts `title`, `due`,
+`amount`, `counterparty` and `kind` as `field=value`; an empty value clears
+due, amount or counterparty. A task you create or edit is yours: it no
+longer expires automatically. Check the preview before applying either
+change.
+
+## Review the first-run catch-up
+
+```bash
+mxr todo catchup --format json
+mxr todo catchup --keep TODO_ID --dry-run
+mxr todo catchup --keep TODO_ID
+mxr todo catchup --let-go TODO_ID --dry-run
+mxr todo catchup --let-go TODO_ID
+```
+
+The first run offers older undated tasks in a bounded catch-up rather than
+putting every historical task on your runway. Keep the ones that still
+matter, or let them go to the Expired list without archiving their email.
+Use `--undecide TODO_ID` to return a decision to this review, previewing it
+with `--dry-run` first. `--let-go-all --dry-run` previews the remaining
+batch before `--let-go-all` applies it.
+
 ## Tick off finished work
 
 ```bash

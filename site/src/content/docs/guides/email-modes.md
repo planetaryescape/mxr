@@ -20,6 +20,7 @@ mxr todo           # tasks ordered by when to act
 mxr updates        # notifications grouped into a briefing
 mxr reading        # newsletters as an edition
 mxr records        # receipts, orders, bookings and bills
+mxr modes explain  # what each shipped mode does and its keys
 ```
 
 ## Each mode does one job, with its own verb
@@ -67,6 +68,8 @@ placement before correcting it:
 mxr why MESSAGE_ID --format json
 mxr reclassify MESSAGE_ID reading --dry-run
 mxr reclassify MESSAGE_ID reading
+mxr arrivals list --mode reading --format json
+mxr corrections --format json
 ```
 
 Use `--sender` with Messages, Updates or Reading when the choice should apply
@@ -118,9 +121,11 @@ mxr llm status --format json
 
 ## Each mode will search the part of the email it cares about (planned)
 
-Today semantic search indexes every message the same way: a header chunk
-plus overlapping windows of the body and attachment text, embedded on your
-machine. [Semantic search](/guides/semantic-search/) covers how to run it.
+Today semantic search uses header chunks and overlapping windows of the
+cleaned body and attachment text, plus saved highlights. Archive also adds
+a chunk of record fields, with PDF text when the attachment is cached.
+Embedding runs on your machine.
+[Semantic search](/guides/semantic-search/) covers how to run it.
 
 The plan gives each mode its own recipe. Messages indexes each message's
 new text without the quoted history. To do indexes one line per task.
@@ -141,26 +146,39 @@ mxr semantic status
 
 | Mode | Status today | Shipped features that already serve it | Planned |
 |---|---|---|---|
-| Now | Built | [Now](/guides/now/) (`mxr now`, `g h`): People, Due soon, the Updates card and an evening Reading pick, at most ten things; the rail (`mxr modes rail`), done here per mode (`mxr modes done`) and "Also in" (`mxr modes why`) | The first-run progress card and catch-up across every mode |
+| Now | Built | [Now](/guides/now/) (`mxr now`, `g h`): People, Due soon, the Updates card and an evening Reading pick, at most ten things; first-run progress, arrivals (`mxr arrivals`), corrections (`mxr corrections`), the rail (`mxr modes rail`), done here per mode (`mxr modes done`) and "Also in" (`mxr modes why`) | Background classification by your model and a model-history horizon |
 | Messages | Built (`g m`) | [Messages](/guides/messages/) (`mxr messages`): people as rows with their topics inside, Your turn by closeness and pace, Got it (`mxr messages ack`), thread-aware quote stripping, manual merges with a suggestion; [Focus & reply](/guides/focus-and-reply/) | Incoming Gmail reactions as a mark on the message; the Messages index recipe once the retrieval eval favours it |
-| To do | Built (`g x`) | [To do](/guides/todo/) (`mxr todo`): bills, renewals, forms and promises as one row each, with act-by dates; [review later email evidence](/guides/todo-resolution/) before accepting a completion or date change; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
+| To do | Built (`g x`) | [To do](/guides/todo/) (`mxr todo`): bills, renewals, forms and promises with act-by dates; add and edit tasks, review the first-run catch-up (`mxr todo catchup`), [review later evidence](/guides/todo-resolution/), and optionally [link Microsoft tasks](/guides/todo/#link-a-task-with-microsoft-to-do); [calendar invites](/guides/calendar-invites/) (`mxr invites`) | An accuracy-gated rail badge; the planned `mxr modes eval` command is not available yet |
 | Updates | Built (`g u`) | [Updates](/guides/updates/) (`mxr updates`): one line per source at the 08:00 and 16:30 cuts, code-computed changes, parcels, builds and incidents as trackers, let go in one key (`mxr updates let-go`); a new sign-in, failed payment or delivery problem leads Needs a look as a suggested to-do that `t` adds; [deliveries](/guides/deliveries/) (`mxr deliveries`) | One fact per message in the semantic index, and model-written facts for generic subjects (phase 7) |
 | Reading | Built (`g r`) | [Reading](/guides/reading/) (`mxr reading`): an edition banded since your last visit, earlier and fading, a 66-character reader with the linked article on request, a Later shelf, let go with `e` and `A`, [unsubscribe](/guides/unsubscribe/) with evidence, highlights you can edit and remove, and [Marginalia](/guides/marginalia/) on `M` | Section-aware search chunks and lazy embedding for whole issues |
-| Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as one record each, an answer box (`mxr records ask "lisbon booking ref"`) with [`mxr ask`](/guides/archive-intelligence/) as its fallback, and a CSV export | Record fields read by the smart tier, and learned templates per issuer |
+| Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as records, an answer box with [`mxr ask`](/guides/archive-intelligence/) fallback, CSV/PDF export, recurring subscriptions (`mxr records subscriptions`), renewal reviews, coming-up moments and record-field search chunks | Record fields read by the smart tier, and learned templates per issuer |
 
 Classification by your own model is phase 7. Phase numbers come from the
 plan and can change; this page changes when each phase ships.
 
-## Deleting an email will delete what mxr derived from it (planned)
+## Deleting an email clears its derived data
 
-When your provider deletes a message and mxr syncs that change, mxr
-removes the message, its body, its keyword search entry, its semantic
-chunks in the database and the per-message data built from it. Some
-derived data still outlives it today, such as cached summaries and gists,
-extracted promises and decisions, and opened attachment files.
+When mxr observes a provider deletion, it removes the local message and
+its per-message data, invalidates affected summaries and briefings, and
+removes extracted facts that have no remaining evidence. Managed cache
+files and in-memory index entries are cleaned through a durable queue.
+File cleanup has bounded retries; an in-memory index failure waits for its
+next rebuild or daemon restart. Failures are reported in daemon logs.
 [Security & Privacy](/guides/security-and-privacy/#deleting-an-email-removes-most-of-what-mxr-derived-from-it)
-lists what is and isn't removed. The modes plan treats "deleting an email
-deletes everything derived from it" as a rule every new store must follow.
+explains the timing and the user-authored state and no-text receipts kept
+deliberately. Moving a message to Trash is not a provider deletion.
+
+## Find a mode's explanation again
+
+```bash
+mxr modes explain todo --format json
+mxr modes hint todo.runway --show
+```
+
+`modes explain` lists the mode's purpose, actions, keys and hint IDs.
+`modes hint ID --show` makes a dismissed hint eligible to appear again;
+without `--show`, it dismisses that hint across clients. Use the mode's
+`?` help in the app when you want the explanation beside your mail.
 
 ## Read the plan
 

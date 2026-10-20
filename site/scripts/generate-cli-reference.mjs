@@ -277,6 +277,85 @@ const COMMAND_EXAMPLES = {
       "mxr messages merge --suggestions",
     ],
   },
+  now: {
+    use: 'Start with what needs you now: people waiting on you, due tasks, the Updates card and an evening Reading pick. Each section links to its mode. See [Now](/guides/now/).',
+    examples: [
+      'mxr now',
+      'mxr now --format json',
+      'mxr now --format ids',
+    ],
+  },
+  arrivals: {
+    use: 'See where arriving mail went, counted once per email, then inspect the messages behind a mode count. See [arrivals](/guides/now/#see-where-everything-that-arrived-went).',
+    examples: [
+      'mxr arrivals --format json',
+      'mxr arrivals list --mode reading --format json',
+      'mxr arrivals list --mode todo --limit 20',
+    ],
+  },
+  reclassify: {
+    use: 'Correct where an email belongs. A message move changes that email; --sender applies a sender preference to current and future mail. To do and Archive add membership rather than replacing every other mode. See [mode corrections](/guides/email-modes/#sorting-rules-and-categories-serve-different-jobs).',
+    examples: [
+      'mxr reclassify MESSAGE_ID reading --dry-run',
+      'mxr reclassify MESSAGE_ID reading',
+      'mxr reclassify MESSAGE_ID updates --sender --dry-run',
+      'mxr reclassify MESSAGE_ID updates --sender',
+      'mxr corrections --format json   # keep the correction id for undo',
+    ],
+  },
+  corrections: {
+    use: 'Inspect your mode moves and sender preferences, or undo a correction by its numeric id. Undoing the same correction twice changes nothing. See [mode corrections](/guides/email-modes/#sorting-rules-and-categories-serve-different-jobs).',
+    examples: [
+      'mxr corrections --format json',
+      'mxr corrections undo CORRECTION_ID',
+    ],
+  },
+  modes: {
+    use: 'Look up a mode\'s purpose, keys and hints, inspect overlapping membership, or preview finishing a conversation in one mode. See [email modes](/guides/email-modes/).',
+    examples: [
+      'mxr modes explain',
+      'mxr modes explain todo --format json',
+      'mxr modes rail --format json',
+      'mxr modes why MESSAGE_ID --format json',
+      'mxr modes done THREAD_ID --mode messages --dry-run',
+      'mxr modes done THREAD_ID --mode messages',
+      'mxr modes hint todo.runway --show',
+    ],
+  },
+  todo: {
+    use: 'Act on tasks by their act-by dates, add or correct a task from mail, and review older work in the first-run catch-up. Preview changes before applying them. See [To do](/guides/todo/) and [later-evidence review](/guides/todo-resolution/).',
+    examples: [
+      'mxr todo --format json',
+      'mxr todo why TODO_ID',
+      'mxr todo add --from MESSAGE_ID --title "Send the signed form" --due "in 2d" --dry-run',
+      'mxr todo edit TODO_ID "due=in 3d" --dry-run',
+      'mxr todo catchup --format json',
+      'mxr todo catchup --keep TODO_ID --dry-run',
+      'mxr todo done TODO_ID --dry-run',
+      'mxr todo done TODO_ID',
+    ],
+  },
+  updates: {
+    use: 'Read the twice-daily notification digest and the mail behind its facts. Without --dry-run, let-go previews and commits that exact selection in one invocation. See [Updates](/guides/updates/).',
+    examples: [
+      'mxr updates --format json',
+      'mxr updates --expired --format json',
+      'mxr updates let-go --dry-run --format json',
+      'mxr updates let-go --format json',
+    ],
+  },
+  records: {
+    use: 'Find receipts, orders, bookings and documents filed in Archive. Inspect a field\'s source, ask for a reference, review recurring subscriptions or preview an export. Filing a record does not archive its source email at the provider. See [Archive](/guides/archive/).',
+    examples: [
+      'mxr records --format json',
+      'mxr records show RECORD_ID --format json',
+      'mxr records ask "lisbon booking ref" --no-fallback',
+      'mxr records subscriptions --format json',
+      'mxr records file MESSAGE_ID --dry-run',
+      'mxr records export --year 2026 --out receipts.csv --dry-run',
+      'mxr records export --year 2026 --out receipts.csv',
+    ],
+  },
   desk: {
     use: 'See what needs you: replies you owe, promises coming due, threads waiting on someone and new mail from people. `done` puts a row away; preview it with `--dry-run`. See [Clear the desk](/guides/now/) and the [desk reference](/reference/desk-and-places/).',
     examples: [

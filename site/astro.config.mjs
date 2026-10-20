@@ -92,6 +92,7 @@ export default defineConfig({
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Local Pairing Authority', slug: 'guides/pairing-authority' },
             { label: 'Remote Mailbox', slug: 'guides/remote-mailbox' },
+            { label: 'Headless Linux', slug: 'guides/headless-linux' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },
             { label: 'Compose', slug: 'guides/compose' },

@@ -72,6 +72,10 @@ will not start or replace one. See [`transports`](#transports) and the
 [safety.recipients]
 [safety.tone]
 [deliveries]
+[modes]
+[messages]
+[todo]
+[records]
 [updates]
 [reading]
 
@@ -704,6 +708,64 @@ enabled = true
 mxr deliveries scan --since-days 30 --dry-run    # preview detection without writing
 mxr deliveries list                              # what's been found
 ```
+
+## `modes`
+
+```toml
+[modes]
+archive_on_last_done = true
+```
+
+When the last active mode finishes with a conversation, also archive it at
+the provider. With `false`, finishing only changes mode state; provider
+archiving stays a separate action. Preview with
+`mxr modes done THREAD_ID --mode messages --dry-run`.
+
+## `messages`
+
+```toml
+[messages]
+large_thread_recipients = 10
+recent_days = 30
+```
+
+Threads with more than `large_thread_recipients` recipients go to Updates
+unless you wrote in the thread and a later reply is addressed to you.
+`recent_days` bounds the Recent/Quiet window; conversations whose turn it
+is and ones brought back by your timers can be older. Explicit corrections
+still take precedence. See [Messages](/guides/messages/).
+
+## `todo`
+
+```toml
+[todo]
+enabled = true
+catchup_days = 14
+```
+
+`enabled` controls automatic task detection. `catchup_days` sets the
+first-run window for older undated work offered in the bounded catch-up.
+Use `mxr todo catchup` to review it. See [To do](/guides/todo/).
+
+## `records`
+
+```toml
+[records]
+enabled = true
+pdf_prefetch = true
+pdf_budget_mb = 512
+pdf_max_file_mb = 15
+```
+
+`enabled` controls automatic record filing and history scanning.
+`pdf_prefetch` downloads record PDFs into the managed attachment cache for
+offline reading and text extraction. `pdf_budget_mb` limits the total
+prefetch budget; PDFs larger than `pdf_max_file_mb` wait until you open
+them. Detection is local rules/schema.org processing, not smart-tier model
+extraction. See [Archive](/guides/archive/).
+
+Edit these sections in `mxr config edit`, then restart the daemon with
+`mxr restart`. The CLI's `config set` command does not expose every TOML key.
 
 ## `updates`
 

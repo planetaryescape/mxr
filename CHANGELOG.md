@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.117](https://github.com/planetaryescape/mxr/compare/v0.6.116...v0.6.117) (2026-10-21)
+
+
+### Bug Fixes
+
+* unblock release proof and web dependency audit ([8bfe7f7](https://github.com/planetaryescape/mxr/commit/8bfe7f7289484fb521be429dfe083fd5712b3df1))
+
 ## [0.6.116](https://github.com/planetaryescape/mxr/compare/v0.6.115...v0.6.116) (2026-10-20)
 
 

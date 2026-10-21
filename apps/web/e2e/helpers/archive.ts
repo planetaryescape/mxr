@@ -1,41 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import type { components } from "../../src/api/generated";
 import { bridge } from "./state";
 
 export type ArchiveOperation = components["schemas"]["ArchiveOperationData"];
 type Workspace = components["schemas"]["ArchiveWorkspaceData"];
-
-/** Accept only the native confirmation used by a reviewed Archive action. */
-export function acceptArchiveReview(
-  page: Page,
-  beforeAccept?: (message: string) => Promise<void>,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    page.once("dialog", (dialog) => {
-      const message = dialog.message();
-      try {
-        expect(dialog.type()).toBe("confirm");
-        expect(message).toMatch(/^Archive \d+ reviewed messages\?\n/);
-      } catch (error) {
-        void dialog.dismiss().finally(() => reject(error));
-        return;
-      }
-      void (async () => {
-        try {
-          await beforeAccept?.(message);
-          await dialog.accept();
-          resolve(message);
-        } catch {
-          await dialog.dismiss();
-          reject(new Error("Archive review consent check failed"));
-        }
-      })();
-    });
-  });
-}
 
 /** Exercise a second client's recoverable Archive path: review, submit, then query to a terminal receipt. */
 export async function archiveViaBridge(

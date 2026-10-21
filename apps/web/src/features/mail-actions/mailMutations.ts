@@ -37,18 +37,27 @@ export interface MailMutationOutcome {
 }
 
 let opSequence = 0;
+/**
+ * Archive does not project optimistically (the row stays until the daemon
+ * confirms), so a second `e` on the same row would start a second operation
+ * and take the `u` slot. These ids already have an Archive in flight.
+ */
+const archivesInFlight = new Set<string>();
 
 export async function performMailAction(
   action: MailAction,
   messageIds: string[],
   options: MailMutationOptions = {},
 ): Promise<MailMutationOutcome> {
-  const ids = [...new Set(messageIds)];
+  const ids = [...new Set(messageIds)].filter(
+    (id) => action !== "archive" || !archivesInFlight.has(id),
+  );
   if (ids.length === 0) return { ok: false };
   // A silent change (mark read on open) just doesn't happen yet.
   if (options.silent ? isDaemonDown() : refuseMailActionWhileDaemonDown(action)) {
     return { ok: false };
   }
+  if (action === "archive") for (const id of ids) archivesInFlight.add(id);
   const opId = `op-${Date.now()}-${(opSequence += 1)}`;
   const pending = usePendingMailOps.getState();
   if (action !== "archive")
@@ -85,6 +94,7 @@ export async function performMailAction(
     if (action !== "archive") void invalidateMailQueries().catch(() => undefined);
     return { ok: false, error, response: response ?? undefined };
   } finally {
+    if (action === "archive") for (const id of ids) archivesInFlight.delete(id);
     usePendingMailOps.getState().remove(opId);
   }
 }

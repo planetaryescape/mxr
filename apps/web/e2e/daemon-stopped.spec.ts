@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { acceptArchiveReview } from "./helpers/archive";
 import {
   expectCursorOn,
   mailRows,
@@ -125,9 +124,7 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
 
   // Actions work again: archive, then undo to leave the mailbox as it was.
   await expectCursorOn(page, first!);
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   await expect(rowById(page, first!)).toHaveCount(0);
   await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible({ timeout: 15_000 });
   await page.keyboard.press("u");
@@ -236,9 +233,7 @@ test("an event stream that keeps failing backs off and pauses nothing that doesn
   await expect(daemonBanner(page)).toHaveCount(0);
   const [first] = await renderedRowIds(page);
   await expectCursorOn(page, first!);
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   await expect(rowById(page, first!)).toHaveCount(0);
   await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible({ timeout: 15_000 });
   await page.keyboard.press("u");

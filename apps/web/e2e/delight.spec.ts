@@ -1,6 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import { acceptArchiveReview } from "./helpers/archive";
 import { mailRows, openList, pressSequence } from "./helpers/mail";
 import { openApp, readE2EState } from "./helpers/state";
 
@@ -176,9 +175,7 @@ test("sound: off by default, previews in the browser, plays on archive but never
   await page.waitForTimeout(300);
   expect(await audioStarts(page)).toBe(before);
 
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible();
   await expect.poll(() => audioStarts(page)).toBeGreaterThan(before);
   await page.keyboard.press("u");
@@ -198,9 +195,7 @@ async function pointerArchiveAndUndo(page: Page): Promise<void> {
     // At the row's left edge: the toasts sit top centre, over the middle of
     // the first rows.
     await row.hover({ position: { x: 24, y: 12 } });
-    const consent = acceptArchiveReview(page);
     await row.locator('[title="archive (e)"]').click({ timeout: 1000 });
-    await consent;
   }).toPass({ timeout: 10_000 });
   await expect(row).toHaveCount(0);
   const toast = page
@@ -270,9 +265,7 @@ test.describe("touch", () => {
     const layer = page.getByTestId("swipe-layer");
     await expect(layer).toContainText("Archive");
     await expect(layer.locator("[data-armed]")).toHaveCount(1);
-    const consent = acceptArchiveReview(page);
     await release();
-    await consent;
 
     await expect(page.locator(`[id="${id}"]`)).toHaveCount(0);
     const toast = page.locator("[data-sonner-toast]").filter({ hasText: /^Archived/ });
@@ -298,10 +291,8 @@ test("holding e archives exactly one conversation", async ({ page }) => {
   const first = await mailRows(page).first().getAttribute("id");
   const second = await mailRows(page).nth(1).getAttribute("id");
   // Playwright marks every down of a key that is already down as a repeat.
-  const consent = acceptArchiveReview(page);
   for (let press = 0; press < 8; press += 1) await page.keyboard.down("e");
   await page.keyboard.up("e");
-  await consent;
   await expect(page.locator(`[id="${first}"]`)).toHaveCount(0);
   await expect(page.locator(`[id="${second}"]`)).toBeVisible();
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: /^Archived/ })).toHaveCount(1);

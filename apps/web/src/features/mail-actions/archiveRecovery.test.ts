@@ -148,7 +148,7 @@ describe("Archive consuming client recovery", () => {
           },
         ],
       };
-      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const confirm = vi.spyOn(window, "confirm");
       vi.stubGlobal(
         "fetch",
         vi.fn<typeof fetch>(async (input) => {
@@ -169,6 +169,8 @@ describe("Archive consuming client recovery", () => {
       const response = await archiveMessagesRecoverably(
         reviewed.items.map((item) => item.message_id),
       );
+      // Archive acts at once; the safety record is the retained journal, not a dialog.
+      expect(confirm).not.toHaveBeenCalled();
       expect(response.ok).toBe(false);
       expect(response.result).toMatchObject({
         requested: 2,

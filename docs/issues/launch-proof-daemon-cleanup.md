@@ -1,6 +1,6 @@
-# Launch-proof cleanup does not wait for daemon exit
+# Launch-proof cleanup waits for daemon exit
 
-Status: fixed in source; release verification pending. Reproduced twice in [release v0.6.116](https://github.com/planetaryescape/mxr/actions/runs/39518033868):
+Status: resolved in v0.6.117, source `51c747a5992b73a9c4729fdb4e6c325967cd7d4d`. Reproduced twice in [release v0.6.116](https://github.com/planetaryescape/mxr/actions/runs/39518033868):
 job `118954899126` at `2026-10-21T00:08:03Z` and retry job
 `118962649238` at `2026-10-21T00:24:45Z`. Source:
 `v0.6.116`, commit `748d2e9d6b5cba4374d1cd5fbd8ed035b4563d9f`.
@@ -54,8 +54,8 @@ previously built candidate debug binary (reports `mxr 0.6.115`, SHA-256
 Its captured daemon exited, socket disappeared, and temporary directory was
 removed. Evidence:
 `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-blueprint-gaps-20261021/g01-launch-proof-cleanup-runtime/proof-cleanup-final.jsonl`.
-No real mail, keychain or personal daemon was used. The fix needs a new
-release through release-please; preserve the v0.6.116 tag and assets.
+No real mail, keychain or personal daemon was used. The fix shipped through
+release-please in v0.6.117; the v0.6.116 tag and unpublished draft are preserved.
 
 The final frozen proof at `4ed210f10` inherited a foreign sentinel socket.
 All 13 proof rows passed; the sentinel accepted zero connections and stayed
@@ -64,3 +64,8 @@ removed, then the sentinel was stopped and reaped. The receipt is
 `g01-launch-proof-cleanup-runtime/socket-isolation-postconditions.json` under
 the same run directory. This checks fixture isolation; it makes no claim
 about an incident involving a personal daemon.
+
+[Tagged release CI](https://github.com/planetaryescape/mxr/actions/runs/39526018048)
+passed the launch-proof step on v0.6.117, including cleanup and the following
+mailmerge verification. The Linux proof emitted all 13 rows as `ok`.
+Receipt: `g01-release117-smoke-receipt.json` in the run directory above.

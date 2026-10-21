@@ -559,6 +559,8 @@ pub struct AppState {
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
+    /// Ready-made Now, rail and mode views; see `handler::mode_cache`.
+    pub(crate) mode_cache: crate::handler::mode_cache::ModeCache,
     /// Set on the first successful sync after daemon start when the
     /// one-shot heavy analytics repair (reply_pairs backfill from
     /// existing messages) has run. Subsequent syncs only run the
@@ -868,6 +870,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2103,6 +2106,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2194,6 +2198,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2311,6 +2316,7 @@ impl AppState {
                 sync_error_chimes: Default::default(),
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
+                mode_cache: Default::default(),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),

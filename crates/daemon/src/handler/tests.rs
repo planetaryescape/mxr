@@ -719,6 +719,7 @@ mod legacy_transport;
 mod llm_routes;
 mod messages;
 mod messages_report;
+mod mode_cache;
 mod modes;
 mod modes_report;
 mod mutations_and_delivery;

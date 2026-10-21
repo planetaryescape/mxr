@@ -46,6 +46,10 @@ classify_path() {
     crates/web/*|crates/protocol/*)
       web=true
       ;;
+    # Web unit tests check these docs against the web keymap and TUI parity.
+    site/src/content/docs/reference/keybindings.md|docs/reference/tui-keymap.json)
+      web=true
+      ;;
   esac
 
   case "$path" in

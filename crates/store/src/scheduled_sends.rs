@@ -86,35 +86,44 @@ impl super::Store {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Claim a due scheduled send: clear `send_at` AND record a send-attempt
-    /// marker in a single transaction, so a crash can never leave the
-    /// schedule cleared with no durable record that a send was attempted.
-    /// The marker's outcome starts NULL and is resolved by
+    /// Claim a due scheduled send for the flusher: in one writer
+    /// transaction, read the schedule's reviewed identity, clear `send_at`
+    /// and record a send-attempt marker. A crash can never leave the
+    /// schedule cleared with no durable record that a send was attempted;
+    /// the marker's outcome starts NULL and is resolved by
     /// `record_scheduled_send_outcome`.
     ///
-    /// Returns `false`, recording nothing, when the schedule is already gone:
-    /// a cancel that landed after the flusher listed the draft wins, and the
-    /// draft must not be sent. Claim and cancel both require `send_at`, so
-    /// exactly one of them takes effect.
-    pub async fn clear_send_at_and_record_attempt(
+    /// Returns `None`, changing nothing, unless the draft is still a draft
+    /// with a schedule due by `now`. The flusher lists due drafts before
+    /// claiming them, and in between the user may cancel (Undo Send) or
+    /// move the schedule later; both must win. The identity is read with
+    /// the claim so the send uses exactly the schedule that was cleared.
+    pub async fn claim_due_scheduled_send(
         &self,
         draft_id: &DraftId,
-        attempted_at: DateTime<Utc>,
-    ) -> Result<bool, sqlx::Error> {
+        now: DateTime<Utc>,
+    ) -> Result<Option<mxr_core::SendIdentity>, sqlx::Error> {
         let id = draft_id.as_str();
-        let ts = attempted_at.timestamp();
+        let ts = now.timestamp();
         let mut tx = self.writer().begin().await?;
-        let claimed =
-            sqlx::query("UPDATE drafts SET send_at = NULL WHERE id = ?1 AND send_at IS NOT NULL")
-                .bind(id.clone())
-                .execute(&mut *tx)
-                .await?
-                .rows_affected()
-                > 0;
-        if !claimed {
+        let due: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT scheduled_send_revision, send_at FROM drafts
+             WHERE id = ?1 AND status = 'draft' AND scheduled_send_revision IS NOT NULL
+               AND send_at IS NOT NULL AND send_at <= ?2",
+        )
+        .bind(id.clone())
+        .bind(ts)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((revision, send_at)) = due else {
             tx.rollback().await?;
-            return Ok(false);
-        }
+            return Ok(None);
+        };
+        sqlx::query("UPDATE drafts SET send_at = NULL WHERE id = ?1 AND send_at = ?2")
+            .bind(id.clone())
+            .bind(send_at)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(
             "INSERT OR IGNORE INTO scheduled_send_attempts (draft_id, attempted_at, outcome)
              VALUES (?1, ?2, NULL)",
@@ -124,7 +133,10 @@ impl super::Store {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(true)
+        Ok(Some(mxr_core::SendIdentity {
+            operation_id: format!("scheduled:{draft_id}:{revision}:{send_at}"),
+            expected_revision: revision,
+        }))
     }
 
     /// Resolve a previously-recorded attempt with its final outcome
@@ -360,10 +372,11 @@ mod tests {
         store.schedule_send(&cancelled_first, at).await.unwrap();
         assert!(store.cancel_scheduled_send(&cancelled_first).await.unwrap());
         assert!(
-            !store
-                .clear_send_at_and_record_attempt(&cancelled_first, at)
+            store
+                .claim_due_scheduled_send(&cancelled_first, at)
                 .await
-                .unwrap(),
+                .unwrap()
+                .is_none(),
             "a cancelled draft is not claimed"
         );
         assert!(store.list_lost_scheduled_sends().await.unwrap().is_empty());
@@ -371,13 +384,48 @@ mod tests {
         let claimed_first = seed_draft(&store).await;
         store.schedule_send(&claimed_first, at).await.unwrap();
         assert!(store
-            .clear_send_at_and_record_attempt(&claimed_first, at)
+            .claim_due_scheduled_send(&claimed_first, at)
             .await
-            .unwrap());
+            .unwrap()
+            .is_some());
         assert!(
             !store.cancel_scheduled_send(&claimed_first).await.unwrap(),
             "too late once the flusher has claimed it"
         );
+    }
+
+    /// A draft listed as due and then moved later must keep its new
+    /// schedule, and a claim sends exactly the schedule it cleared.
+    #[tokio::test]
+    async fn claim_takes_only_a_due_schedule_and_its_own_identity() {
+        let store = Store::in_memory().await.unwrap();
+        let id = seed_draft(&store).await;
+        let due_at = anchor() - Duration::minutes(1);
+        store.schedule_send(&id, due_at).await.unwrap();
+
+        let tomorrow = anchor() + Duration::days(1);
+        store.schedule_send(&id, tomorrow).await.unwrap();
+        assert!(
+            store
+                .claim_due_scheduled_send(&id, anchor())
+                .await
+                .unwrap()
+                .is_none(),
+            "a schedule moved later is not due"
+        );
+        assert_eq!(store.get_scheduled_send(&id).await.unwrap(), Some(tomorrow));
+
+        let identity = store
+            .claim_due_scheduled_send(&id, tomorrow)
+            .await
+            .unwrap()
+            .expect("due at its new time");
+        assert_eq!(
+            identity.operation_id,
+            format!("scheduled:{id}:1:{}", tomorrow.timestamp())
+        );
+        assert_eq!(identity.expected_revision, 1);
+        assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
     }
 
     #[tokio::test]
@@ -389,10 +437,7 @@ mod tests {
 
         // Atomic clear + attempt marker: send_at is cleared AND a
         // NULL-outcome marker now exists (a candidate lost send).
-        store
-            .clear_send_at_and_record_attempt(&id, at)
-            .await
-            .unwrap();
+        store.claim_due_scheduled_send(&id, at).await.unwrap();
         assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
         let lost = store.list_lost_scheduled_sends().await.unwrap();
         assert_eq!(lost.len(), 1);
@@ -547,7 +592,7 @@ mod tests {
         let sending = seed_draft(&store).await;
         store.schedule_send(&fired, anchor()).await.unwrap();
         store
-            .clear_send_at_and_record_attempt(&fired, anchor())
+            .claim_due_scheduled_send(&fired, anchor())
             .await
             .unwrap();
         store.schedule_send(&sending, anchor()).await.unwrap();
@@ -571,10 +616,7 @@ mod tests {
         let second = anchor() - Duration::hours(1);
         for (at, outcome) in [(first, "blocked"), (second, "failed")] {
             store.schedule_send(&id, at).await.unwrap();
-            store
-                .clear_send_at_and_record_attempt(&id, at)
-                .await
-                .unwrap();
+            store.claim_due_scheduled_send(&id, at).await.unwrap();
             store
                 .record_scheduled_send_outcome(&id, at, outcome)
                 .await

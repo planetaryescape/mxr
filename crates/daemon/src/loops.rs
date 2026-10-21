@@ -2110,69 +2110,59 @@ pub async fn process_due_scheduled_sends(
         .map_err(|e| e.to_string())?;
     let count = due.len() as u32;
     for draft_id in due {
-        let identity = state
-            .store
-            .get_scheduled_send_identity(&draft_id)
-            .await
-            .map_err(|error| error.to_string())?;
+        // Held from claim to outcome: scheduling and editing the draft wait
+        // for it, so nothing new is accepted while this send goes out.
+        let _draft_guard = state.acquire_draft_operation(&draft_id).await;
         // Clear `send_at` and record a durable attempt marker in one
         // transaction, BEFORE sending — so a retry from a crashed prior
         // attempt can't re-fire indefinitely (at-most-once), and a crash
         // mid-send leaves an unresolved marker we can surface at startup
         // rather than a silent loss.
-        match state
-            .store
-            .clear_send_at_and_record_attempt(&draft_id, now)
-            .await
-        {
-            Ok(true) => {}
-            Ok(false) => {
-                // Cancelled (Undo Send) after it was listed as due.
-                tracing::debug!(draft_id = %draft_id, "scheduled-send: cancelled before claim");
+        let identity = match state.store.claim_due_scheduled_send(&draft_id, now).await {
+            Ok(Some(identity)) => identity,
+            Ok(None) => {
+                // Cancelled (Undo Send) or moved later since it was listed.
+                tracing::debug!(draft_id = %draft_id, "scheduled-send: no longer due");
                 continue;
             }
             Err(e) => {
                 tracing::warn!(
                     draft_id = %draft_id,
-                    "scheduled-send: failed to clear send_at / record attempt before send: {e}"
+                    "scheduled-send: failed to claim / record attempt before send: {e}"
                 );
                 continue;
             }
-        }
-        let outcome = match crate::handler::send_stored_draft_reviewed(
-            state,
-            &draft_id,
-            identity.as_ref(),
-            None,
-        )
-        .await
-        {
-            Ok(_) => {
-                tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
-                "sent"
-            }
-            Err(e) => {
-                if e.to_string().contains("Send outcome uncertain")
-                    || state.store.get_draft_status(&draft_id).await.ok().flatten()
-                        == Some(mxr_core::DraftStatus::Sending)
-                {
-                    "uncertain"
-                } else if e.to_string().contains("draft safety blocked send") {
-                    // Keep the draft; the schedule is already cleared by
-                    // clear_send_at_and_record_attempt above. The error
-                    // already carries a freshly-minted single-use override
-                    // token and the exact resend command, so just surface it.
-                    tracing::warn!(
-                        draft_id = %draft_id,
-                        "scheduled-send: blocked by safety pipeline; schedule cleared. {e}"
-                    );
-                    "blocked"
-                } else {
-                    tracing::warn!(draft_id = %draft_id, "scheduled-send: send failed: {e}");
-                    "failed"
-                }
-            }
         };
+        let outcome =
+            match crate::handler::send_stored_draft_reviewed_locked(state, &draft_id, &identity)
+                .await
+            {
+                Ok(_) => {
+                    tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
+                    "sent"
+                }
+                Err(e) => {
+                    if e.to_string().contains("Send outcome uncertain")
+                        || state.store.get_draft_status(&draft_id).await.ok().flatten()
+                            == Some(mxr_core::DraftStatus::Sending)
+                    {
+                        "uncertain"
+                    } else if e.to_string().contains("draft safety blocked send") {
+                        // Keep the draft; the schedule is already cleared by
+                        // claim_due_scheduled_send above. The error
+                        // already carries a freshly-minted single-use override
+                        // token and the exact resend command, so just surface it.
+                        tracing::warn!(
+                            draft_id = %draft_id,
+                            "scheduled-send: blocked by safety pipeline; schedule cleared. {e}"
+                        );
+                        "blocked"
+                    } else {
+                        tracing::warn!(draft_id = %draft_id, "scheduled-send: send failed: {e}");
+                        "failed"
+                    }
+                }
+            };
         // Resolve the attempt marker so it isn't surfaced as a lost send.
         if let Err(e) = state
             .store

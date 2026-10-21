@@ -3605,6 +3605,20 @@ pub(crate) async fn send_stored_draft_reviewed(
     send_stored_draft_locked(state, draft_id, identity, override_safety_token, false).await
 }
 
+/// `send_stored_draft_reviewed` for a caller that already holds the draft's
+/// operation lock: the scheduled-send flusher claims and sends under it, so
+/// a reschedule cannot be accepted while a claimed send is going out.
+pub(crate) async fn send_stored_draft_reviewed_locked(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    identity: &mxr_core::SendIdentity,
+) -> HandlerResult {
+    if identity.expected_revision <= 0 {
+        return Err("A saved draft's reviewed revision is required".into());
+    }
+    send_stored_draft_locked(state, draft_id, identity, None, false).await
+}
+
 pub(super) async fn send_stored_draft_remote(
     state: &AppState,
     draft_id: &mxr_core::DraftId,

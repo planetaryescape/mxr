@@ -72,7 +72,7 @@ Now, the rail, Messages, Updates and the Reading edition are built from every in
 
 - Anything you change through mxr (a done, a move, a reply) makes the next read rebuild first.
 - New mail and other stored changes do the same. Log, sync-bookkeeping and index writes don't count.
-- A view older than a minute is rebuilt first, because the views word time ("due soon", evening).
+- A view older than a minute, or built before the current hour, is rebuilt first, because the views word time ("due soon", evening, today).
 
 In the background, the daemon rebuilds the views you read in the last 30 minutes a couple of seconds after mail changes, so reads usually find one ready. `generated_at` in the JSON says when a view was built. A read that records something always runs: `mxr reading` counts as a visit; `mxr reading edition --peek` does not.
 

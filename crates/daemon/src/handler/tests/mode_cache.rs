@@ -86,6 +86,54 @@ async fn the_refresher_rebuilds_a_view_after_a_mutation_so_reads_stay_instant() 
     );
 }
 
+#[tokio::test]
+async fn a_view_built_in_an_earlier_hour_is_rebuilt_before_it_answers() {
+    let fx = Fixture::new().await;
+    let first = now_built_at(&fx).await;
+    fx.state.mode_cache.previous_hour();
+    assert_ne!(now_built_at(&fx).await, first);
+}
+
+/// A build that starts while a commit may still be landing is rebuilt once
+/// the change feed has been quiet, even though the count did not move.
+#[tokio::test]
+async fn a_view_built_while_a_change_settles_is_rebuilt_once_it_has() {
+    let fx = Fixture::new().await;
+    fx.message(
+        &ThreadId::new(),
+        "maya@example.com",
+        ME,
+        Duration::minutes(5),
+        None,
+    )
+    .await;
+    let unsettled = now_built_at(&fx).await;
+    fx.state.mode_cache.refresh(&fx.state).await;
+    assert_eq!(now_built_at(&fx).await, unsettled, "not settled yet");
+
+    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+    fx.state.mode_cache.age(std::time::Duration::from_secs(6));
+    fx.state.mode_cache.refresh(&fx.state).await;
+    assert_ne!(now_built_at(&fx).await, unsettled);
+}
+
+#[tokio::test]
+async fn client_chosen_keys_keep_at_most_sixteen_views() {
+    let fx = Fixture::new().await;
+    for limit in 1..=20 {
+        request(
+            &fx,
+            Request::ListMessages {
+                account_id: None,
+                turn: None,
+                limit,
+            },
+        )
+        .await;
+    }
+    assert_eq!(fx.state.mode_cache.len(), 16);
+}
+
 #[test]
 fn requests_that_mark_something_seen_always_run() {
     let updates = |mark_seen| Request::GetUpdatesDigest {

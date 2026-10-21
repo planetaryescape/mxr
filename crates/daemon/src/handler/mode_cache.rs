@@ -8,8 +8,8 @@
 //! - no request that is not read-only has finished since (any mutation
 //!   through the daemon, so your own changes always show);
 //! - the store's change feed has not moved since (sync, background loops);
-//! - it is younger than `MAX_AGE`, because the views word time ("due soon",
-//!   evening).
+//! - it is younger than `MAX_AGE` and was built in the current local hour,
+//!   because the views word time ("due soon", the evening switch, today).
 //!
 //! Otherwise the read builds it, as it would without the cache.
 
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use mxr_core::AccountId;
 use mxr_protocol::{MessagesTurnData, Request, ResponseData};
 use parking_lot::Mutex;
@@ -40,6 +40,10 @@ const SETTLE: Duration = Duration::from_secs(2);
 const MIN_REBUILD: Duration = Duration::from_secs(5);
 /// Views nobody read for this long are dropped instead of rebuilt.
 const ACTIVE: Duration = Duration::from_secs(30 * 60);
+/// Most views kept. Messages' `limit` and Updates' `cut` come from the
+/// client, so the set of keys is otherwise unbounded; the least recently
+/// read view goes first.
+const MAX_ENTRIES: usize = 16;
 const TICK: Duration = Duration::from_millis(500);
 
 /// A cacheable read: one of the mode requests without side effects asked.
@@ -155,6 +159,8 @@ struct Entry {
     /// The feed had been quiet for `SETTLE` when the build started, so the
     /// build saw every change counted in `changes`.
     settled: bool,
+    /// The local hour the build started in; see `local_hour`.
+    hour: i64,
     last_read: Instant,
     /// Held while this view builds, so concurrent readers wait for one build.
     building: Arc<tokio::sync::Mutex<()>>,
@@ -182,6 +188,16 @@ impl ModeCache {
             let index = match entries.iter().position(|e| e.view == view) {
                 Some(index) => index,
                 None => {
+                    if entries.len() >= MAX_ENTRIES {
+                        if let Some(oldest) = entries
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|(_, e)| e.last_read)
+                            .map(|(index, _)| index)
+                        {
+                            entries.swap_remove(oldest);
+                        }
+                    }
                     entries.push(Entry::new(view.clone()));
                     entries.len() - 1
                 }
@@ -217,10 +233,25 @@ impl ModeCache {
         }
     }
 
+    /// How many views are kept.
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize {
+        self.entries.lock().len()
+    }
+
+    /// Make every cached view look built in the previous local hour.
+    #[cfg(test)]
+    pub(super) fn previous_hour(&self) {
+        for entry in self.entries.lock().iter_mut() {
+            entry.hour -= 1;
+        }
+    }
+
     fn servable(&self, entry: &Entry, changes: u64) -> Option<ResponseData> {
         let good = entry.mutations == self.mutations.load(Ordering::Acquire)
             && entry.changes == changes
-            && entry.built.elapsed() < MAX_AGE;
+            && entry.built.elapsed() < MAX_AGE
+            && entry.hour == local_hour();
         good.then(|| entry.data.clone()).flatten()
     }
 
@@ -230,8 +261,12 @@ impl ModeCache {
         let feed = state.store.change_feed();
         let started = Instant::now();
         let mutations = self.mutations.load(Ordering::Acquire);
-        let settled = feed.quiet_for() >= SETTLE;
+        let hour = local_hour();
+        // The count first: a commit whose hook runs after this read is not
+        // counted, so the next read rebuilds; one whose hook ran before it
+        // makes the feed not yet quiet, so the build is marked unsettled.
         let changes = feed.seq();
+        let settled = feed.quiet_for() >= SETTLE;
         let result = view.build(state).await;
         if let Ok(data) = &result {
             let mut entries = self.entries.lock();
@@ -243,6 +278,7 @@ impl ModeCache {
                     entry.mutations = mutations;
                     entry.changes = changes;
                     entry.settled = settled;
+                    entry.hour = hour;
                 }
             }
         }
@@ -266,7 +302,10 @@ impl ModeCache {
                     let changed = (e.changes != seq || !e.settled)
                         && settled
                         && e.built.elapsed() >= MIN_REBUILD;
-                    changed || e.mutations != mutations || e.built.elapsed() >= REFRESH_AGE
+                    changed
+                        || e.mutations != mutations
+                        || e.built.elapsed() >= REFRESH_AGE
+                        || e.hour != local_hour()
                 })
                 .map(|e| (e.view.clone(), Arc::clone(&e.building)))
                 .collect()
@@ -289,6 +328,16 @@ impl ModeCache {
     }
 }
 
+/// Hours since the epoch in local time: changes at every local hour, so at
+/// the evening switch and at midnight.
+fn local_hour() -> i64 {
+    Local::now()
+        .naive_local()
+        .and_utc()
+        .timestamp()
+        .div_euclid(3600)
+}
+
 impl Entry {
     fn new(view: ModeView) -> Self {
         let now = Instant::now();
@@ -300,6 +349,7 @@ impl Entry {
             mutations: 0,
             changes: 0,
             settled: false,
+            hour: local_hour(),
             last_read: now,
             building: Arc::new(tokio::sync::Mutex::new(())),
         }

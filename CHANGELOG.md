@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.121](https://github.com/planetaryescape/mxr/compare/v0.6.120...v0.6.121) (2026-10-21)
+
+
+### Bug Fixes
+
+* do clock-change-proof calendar-day arithmetic in to-do lead times ([#558](https://github.com/planetaryescape/mxr/issues/558)) ([5854383](https://github.com/planetaryescape/mxr/commit/585438304cce12a08abe585d21cb998f4ba64d4f))
+* resolve decision and delivery dates from the email's own words ([#560](https://github.com/planetaryescape/mxr/issues/560)) ([3467e50](https://github.com/planetaryescape/mxr/commit/3467e506903b2dcb09867e1d524cd9e2a510e38b))
+
 ## [0.6.120](https://github.com/planetaryescape/mxr/compare/v0.6.119...v0.6.120) (2026-10-21)
 
 

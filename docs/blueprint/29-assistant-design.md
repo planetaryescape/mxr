@@ -84,9 +84,10 @@ The protocol's `Calling` gains the `title` field so clients don't rebuild it. Wh
 
 Replies keep their markdown, but references render as mxr objects (Linear draws an agent's links as its own issue and person chips):
 
+- **Names are linked whatever the model writes.** A title a reply quotes exactly from a step's rows (a to-do, an email's subject, a person's name) becomes the same chip as an explicit link, so a model that writes plain prose still gets chips and rows. The daemon links only ids a tool returned.
 - **A person** (`mxr:person/...`) is an inline chip: a 16px avatar and the name in Body, the 3px chip radius. Click or `Enter` opens Messages on them, beside the assistant.
 - **An email** (`mxr:thread/...`) is an inline chip with the mode glyph of where it lives and the subject. It opens in All Mail's reader, beside the assistant (v0.6.105's behaviour, new look).
-- **A list** in a reply that names three or more emails or people is drawn from the step readout, not the prose: the shared `Row` in compact rhythm, with avatar, name, subject and time, under the sentence that introduces it. The prose doesn't need to repeat what the rows show. The prompt asks the model to introduce lists in one sentence and let the app show the rows. The daemon attaches the readout rows the reply refers to (`AssistantItemData::Assistant` gains `rows: Vec<AssistantReadoutRowData>`, filled when the reply links two or more objects from one readout).
+- **A list** in a reply that names three or more emails or people is drawn from the step readout, not the prose: the shared `Row` in compact rhythm, with avatar, name, subject and time, under the sentence that introduces it. The prose doesn't need to repeat what the rows show. The prompt asks the model to introduce lists in one sentence and let the app show the rows. The daemon attaches the readout rows the reply refers to (`AssistantItemData::Assistant` gains `rows: Vec<AssistantReadoutRowData>`, filled when the reply names two or more objects from one step's readout, by linking them or quoting their row titles exactly).
 - **Model text is marked.** The answer's footer has the model mark: `model · local` (D136).
 
 The underlined-link look ("API design discussion" in cyan underline mid-sentence) goes away.

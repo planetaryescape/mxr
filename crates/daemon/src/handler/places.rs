@@ -221,8 +221,9 @@ pub(super) async fn placed_inbox(
             }
             // Classify first; only mail that stays gets its reason written.
             let signals = kinds.signals(&message);
+            let classification = mail_kind::classify(&signals);
             if copied.contains(&message.thread_id)
-                && mail_kind::classify(&signals).kind == mail_kind::SenderKind::Person
+                && classification.kind == mail_kind::SenderKind::Person
             {
                 // A person's mail in a thread you were only copied on is in
                 // Updates (blueprint 22), so Updates lists it.
@@ -238,12 +239,12 @@ pub(super) async fn placed_inbox(
                 continue;
             }
             if !matches!(
-                mail_kind::classify(&signals).kind.to_data(),
+                classification.kind.to_data(),
                 SenderKindData::Reading | SenderKindData::PaperTrail
             ) {
                 continue;
             }
-            let kind = mail_kind::describe(&signals);
+            let kind = mail_kind::describe_classified(&signals, classification);
             placed.push(Placed { message, kind });
         }
     }

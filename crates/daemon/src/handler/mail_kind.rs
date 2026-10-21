@@ -13,7 +13,9 @@ use mxr_protocol::{KindRuleData, MailKindData, ModeKindData, SenderKindData};
 use mxr_store::{DeskContact, ScreenerDisposition};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, PoisonError};
 
 /// Local parts of machines that notify: receipts, alerts, notifications.
 /// Their mail is paper trail even when it carries list headers (GitHub's
@@ -437,6 +439,39 @@ enum DocumentField {
     Amount,
 }
 
+const REFERENCE_LABEL: &[&str] = &[
+    "invoice",
+    "document",
+    "number",
+    "no",
+    "reference",
+    "ref",
+    "id",
+];
+const ISSUE_DATE_LABEL: &[&str] = &[
+    "date", "of", "issue", "issued", "invoice", "document", "billing",
+];
+const ORDER_LABEL: &[&str] = &[
+    "web",
+    "purchase",
+    "sales",
+    "order",
+    "number",
+    "no",
+    "reference",
+    "ref",
+    "id",
+];
+const AMOUNT_LABEL: &[&str] = &["total", "amount", "due", "invoice", "billing", "balance"];
+
+/// Every field label is made only of these words, so a label containing any
+/// other word cannot be a field.
+fn label_word(word: &str) -> bool {
+    [REFERENCE_LABEL, ISSUE_DATE_LABEL, ORDER_LABEL, AMOUNT_LABEL]
+        .iter()
+        .any(|allowed| allowed.contains(&word))
+}
+
 /// Labels are a small field grammar: order and qualifiers vary, but the
 /// independent reference/date/order/amount families must still be present.
 fn document_field(label: &str) -> Option<DocumentField> {
@@ -452,43 +487,13 @@ fn document_field(label: &str) -> Option<DocumentField> {
         || has("ref")
         || has("id")
         || label.trim_end().ends_with('#');
-    if (has("invoice") || has("document"))
-        && reference
-        && only(&[
-            "invoice",
-            "document",
-            "number",
-            "no",
-            "reference",
-            "ref",
-            "id",
-        ])
-    {
+    if (has("invoice") || has("document")) && reference && only(REFERENCE_LABEL) {
         Some(DocumentField::Reference)
-    } else if has("date")
-        && only(&[
-            "date", "of", "issue", "issued", "invoice", "document", "billing",
-        ])
-    {
+    } else if has("date") && only(ISSUE_DATE_LABEL) {
         Some(DocumentField::IssueDate)
-    } else if has("order")
-        && reference
-        && only(&[
-            "web",
-            "purchase",
-            "sales",
-            "order",
-            "number",
-            "no",
-            "reference",
-            "ref",
-            "id",
-        ])
-    {
+    } else if has("order") && reference && only(ORDER_LABEL) {
         Some(DocumentField::Order)
-    } else if (has("total") || has("amount"))
-        && only(&["total", "amount", "due", "invoice", "billing", "balance"])
-    {
+    } else if (has("total") || has("amount")) && only(AMOUNT_LABEL) {
         Some(DocumentField::Amount)
     } else {
         None
@@ -509,10 +514,48 @@ fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentF
     if let Some(field) = document_field(line) {
         return Some((field, next?));
     }
-    line.char_indices()
+    // A label is a short run of label words, so only a split before the
+    // first other word, or within the first few words, can match. Trying
+    // every split of a long paragraph re-parsed it once per word: quadratic,
+    // and most of a Now request.
+    let label_end = label_end(line);
+    line[..label_end]
+        .char_indices()
         .rev()
         .filter(|(_, c)| c.is_whitespace())
         .find_map(|(index, _)| Some((document_field(&line[..index])?, line[index..].trim())))
+}
+
+/// No field label is longer than a few words ("web order reference
+/// number"); a longer run of label words is prose, not a label.
+const MAX_LABEL_WORDS: usize = 8;
+
+/// Byte offset where a label must have ended: the start of the first word
+/// that cannot appear in a label or of the word after `MAX_LABEL_WORDS`, or
+/// the line's length. Words split on non-alphabetic characters, as in
+/// `document_field`.
+fn label_end(line: &str) -> usize {
+    let mut start = None;
+    let mut words = 0;
+    for (index, c) in line.char_indices().chain([(line.len(), ' ')]) {
+        match (start, c.is_alphabetic()) {
+            (None, true) => {
+                if words == MAX_LABEL_WORDS {
+                    return index;
+                }
+                start = Some(index);
+            }
+            (Some(word_start), false) => {
+                if !label_word(&line[word_start..index]) {
+                    return word_start;
+                }
+                words += 1;
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    line.len()
 }
 
 /// Recognize a document's field/value grammar, not an invoice subject word
@@ -602,9 +645,59 @@ fn authored_content(evidence: &mxr_core::mail_evidence::MailEvidence) -> String 
     mxr_reader::authored_text(text, &earlier)
 }
 
+/// Most authored-text entries, and bytes of text, a daemon keeps before
+/// starting over. Evidence text is cut to 8 KiB when it is read, so the
+/// byte budget only matters if a caller ever passes a whole body.
+const AUTHORED_CACHE_LIMIT: usize = 4096;
+const AUTHORED_CACHE_BYTES: usize = 16 * 1024 * 1024;
+/// A result larger than this is returned but not kept.
+const AUTHORED_CACHE_ENTRY_BYTES: usize = 64 * 1024;
+
+#[derive(Default)]
+struct AuthoredCache {
+    texts: HashMap<u64, Arc<str>>,
+    bytes: usize,
+}
+
+static AUTHORED_CACHE: Lazy<Mutex<AuthoredCache>> =
+    Lazy::new(|| Mutex::new(AuthoredCache::default()));
+
+/// The lowercased authored text, computed once per distinct body. Every
+/// classification of a message (kind, reason, directed request) needs it,
+/// and stripping quoted history is the costly part of a mode read; the
+/// result depends only on the two cached texts, so it is keyed by them.
+fn authored_lower(evidence: &mxr_core::mail_evidence::MailEvidence) -> Arc<str> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (evidence.text.as_deref(), evidence.previous_text.as_deref()).hash(&mut hasher);
+    let key = hasher.finish();
+    if let Some(found) = AUTHORED_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .texts
+        .get(&key)
+    {
+        return Arc::clone(found);
+    }
+    let lower: Arc<str> = authored_content(evidence).to_lowercase().into();
+    if lower.len() > AUTHORED_CACHE_ENTRY_BYTES {
+        return lower;
+    }
+    let mut cache = AUTHORED_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if cache.texts.len() >= AUTHORED_CACHE_LIMIT || cache.bytes + lower.len() > AUTHORED_CACHE_BYTES
+    {
+        *cache = AuthoredCache::default();
+    }
+    cache.bytes += lower.len();
+    if let Some(replaced) = cache.texts.insert(key, Arc::clone(&lower)) {
+        cache.bytes -= replaced.len();
+    }
+    lower
+}
+
 fn purpose_evidence(signals: &KindSignals<'_>) -> PurposeEvidence {
-    let authored = authored_content(signals.evidence);
-    let text = authored.to_lowercase();
+    let text = authored_lower(signals.evidence);
     let has_authored_text = !text.trim().is_empty();
     let document = billing_document(&text, signals.reply_request);
     let frames = [
@@ -776,8 +869,7 @@ pub(super) fn directed_to_owner(
     if evidence.text.is_none() {
         return false;
     }
-    let authored = authored_content(evidence);
-    let lower = authored.to_lowercase();
+    let lower = authored_lower(evidence);
     let names: Vec<_> = owned
         .iter()
         .flat_map(|address| {
@@ -1017,7 +1109,14 @@ pub(super) const COPIED_REASON: &str = "copied to you, or sent to a crowd, and n
 
 /// The wire form: kind, rule, reason and whether the user chose it.
 pub(super) fn describe(signals: &KindSignals<'_>) -> MailKindData {
-    let classification = classify(signals);
+    describe_classified(signals, classify(signals))
+}
+
+/// `describe` for a caller that already classified these signals.
+pub(super) fn describe_classified(
+    signals: &KindSignals<'_>,
+    classification: Classification,
+) -> MailKindData {
     MailKindData {
         kind: classification.kind.to_data(),
         rule: classification.rule,
@@ -1255,6 +1354,89 @@ mod tests {
             .kind,
             SenderKind::Person
         );
+    }
+
+    /// The cache returns what stripping returns, and the earlier message is
+    /// part of the key: the same body reads differently against it.
+    #[test]
+    fn authored_text_cache_matches_stripping_and_keys_on_the_earlier_message() {
+        let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
+        let alone = mxr_core::mail_evidence::MailEvidence {
+            text: Some(format!("FYI, this was handled.\n\n{prior}")),
+            ..Default::default()
+        };
+        let against_earlier = mxr_core::mail_evidence::MailEvidence {
+            previous_text: Some(prior.into()),
+            ..alone.clone()
+        };
+        for evidence in [&alone, &against_earlier, &alone] {
+            assert_eq!(
+                &*authored_lower(evidence),
+                authored_content(evidence).to_lowercase()
+            );
+        }
+        assert_ne!(
+            authored_content(&alone),
+            authored_content(&against_earlier),
+            "the fixture must depend on the earlier message"
+        );
+    }
+
+    /// The bounded split search must find exactly what trying every split
+    /// found, and a long unbroken paragraph must stay linear.
+    #[test]
+    fn document_value_matches_every_split_search_and_stays_linear() {
+        fn every_split(line: &str) -> Option<(DocumentField, &str)> {
+            line.char_indices()
+                .rev()
+                .filter(|(_, c)| c.is_whitespace())
+                .find_map(|(index, _)| {
+                    Some((document_field(&line[..index])?, line[index..].trim()))
+                })
+        }
+        let field = |found: Option<(DocumentField, &str)>| {
+            found.map(|(field, value)| (field as u8, value.to_string()))
+        };
+        for line in [
+            "invoice number 12345",
+            "invoice no. 778",
+            "web order number 1234-55",
+            "date of issue 12 march 2026",
+            "invoice date 2026-03-12 total due 40",
+            "amount due $12.40",
+            "total £9.99 thanks",
+            "order # 42",
+            "your order number 42",
+            "reference 9 for invoice 3",
+            "invoice-number 12",
+            "café total 12",
+            "no",
+            "",
+            "   ",
+            "hello there invoice number 9",
+        ] {
+            assert_eq!(
+                field(document_value(line, None)),
+                field(document_field(line).map_or_else(|| every_split(line), |_| None)),
+                "{line:?}"
+            );
+        }
+
+        // Prose, and a long run of words that could each be in a label
+        // (untrusted mail can be written to be slow).
+        for paragraph in [
+            "word ".repeat(5_000) + "total 12",
+            "invoice order number ".repeat(2_000) + "12",
+            "invoice ".repeat(5_000) + "12",
+        ] {
+            let started = std::time::Instant::now();
+            assert!(document_value(&paragraph, None).is_none());
+            assert!(
+                started.elapsed() < std::time::Duration::from_millis(50),
+                "{:?}",
+                started.elapsed()
+            );
+        }
     }
 
     #[test]

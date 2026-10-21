@@ -1,6 +1,6 @@
 # 29. The assistant as the copy desk
 
-Status: proposal, 2026-10-16. Source baseline: `origin/main` at `f209d84ef`.
+Status: Built (v0.6.x, W7a #494, W7b #500, A1 #TBD). Source baseline: `origin/main` at `ec94e1f19`. Proposal of 2026-10-16.
 
 How the assistant ([25](25-assistant.md), D122) should look and feel, in the terms of [26](26-web-design-concept.md). The behaviour stays as 25 specifies: the daemon runs the turn, the gate enforces approval, `ask_user` asks, history is append-only. This chapter replaces its presentation. Decision: D135, with D136 for model text.
 
@@ -65,7 +65,7 @@ Each step is one line of meta in two tenses, with no tool names, ids or JSON (D1
 ```
 
 - **The daemon writes both tenses.** `AssistantItemData::ToolCall` gains `title: AssistantStepTitleData { running, done }`, built in the daemon from the tool and its arguments (`crates/daemon/src/assistant/titles.rs`, beside `readout.rs`). For example, `mxr_search` with `query: "shipped"` becomes "Searching your mail for "shipped"" and then "Searched your mail: 14 found", with the count from the search result's own `total`. A title never claims more than the result confirms: a change reads "Ran: archive 3 emails", worded from the request, unless its tool is on a short verified list (mutations, to-do state changes, sync, archive submit, send, search) whose real result fields say what happened, and a result that is blocked, carries an error or reports nothing succeeded reads as failed in every state. The outcome shows in the step's readout. Values from mail or the model sit inside typographic quotes, clipped inside the quotes. The model's own reason stays, as the step's tooltip and its detail, but it is never the title. Small models write odd reasons, and the daemon's words are always right.
-- **One source of words.** `describe_change` exists twice today (`crates/tui/src/ui/assistant_describe.rs` and `apps/web/src/features/assistant/describe.ts`). Both move to the daemon's titles, so the web, the TUI and `mxr assistant show` say the same thing.
+- **One source of words.** The change wording lives in the daemon only (`crates/daemon/src/assistant/titles.rs`). The two client copies of `describe_change` are gone, so the web, the TUI and `mxr assistant show` say the same thing. A waiting change with no title reads "Change waiting for you", never a tool name.
 - **Folding.** While a turn runs, steps show as wire lines under your message. When it ends they fold to one line: "3 steps · 14 found · 1 change waiting", or "· 1 failed" in `--danger`. Clicking the line, or pressing `e` in the TUI, opens them all, and every step opens to its readout (Found N, the rows, "and N more") with the raw call under "Details". This is the research's main lesson from Cursor's forum: folds must always open, fully.
 - **No tool icons per step.** The state glyph is the only mark.
 
@@ -99,7 +99,7 @@ A change waiting for approval is a proof on the overlay surface:
 - **The reason** is the model's one-line reason under it, in `--text-2`.
 - **What it touches** is listed as rows: emails with sender, subject and date, a draft as its recipients, subject and body in the reading voice, and "and N more" opening the full list.
 - **One Apply** (primary, with `y`). Below it, quiet: `n` "send back with a note", which opens a one-line field whose text goes to the model as the rejection reason (Claude Code's comment-on-No), and `x` "exact call", the raw tool and arguments under "Details".
-- **Irreversible changes say so** in `--danger` meta above Apply: "Sends an email. Can't be undone." Trash, spam, rules and anything that reaches another service.
+- **Irreversible changes say so** in `--danger` meta above Apply: "Sends an email. Can't be undone." Trash, spam, rules and anything that reaches another service. The daemon writes the line (`warning` on the waiting approval, `irreversible_warning` in `crates/daemon/src/assistant/view.rs`), so the web, the TUI (in the danger colour, last on the card, above the keys) and `mxr assistant show` carry the same words. The field is optional: a web app talking to an older daemon works the line out itself from the same rule.
 - **When applied,** the proof collapses to its wire line ("✓ Archived 14 emails · Undo"), and the rows in the page beside fold away with the landing mark (D134). That's the moment the copy desk feels connected to the desk.
 
 A proof covers exactly one stored call; the whole call is applied or sent back (D122: approving runs exactly the stored call). Dropping single items from a proof would need the daemon to accept a narrowed call; that is Q5 in [31](31-design-open-questions.md).
@@ -120,11 +120,11 @@ A trusted conversation (D122's amendment) says so in the header ("trusted ▾"),
 
 - **Empty:** no robot or illustration. A Heading, "Ask about your mail, or have it do the tedious part.", then three suggestions as quiet rows, with the current page's context first ("Summarise who's waiting in Messages" when Messages is open). The `⌘.` hint sits in the composer's meta.
 - **History:** a list using the shared `Row`: the title, the last line in `--text-2`, the time, and a mark for conversations waiting on you. `D` deletes after the dry run, as now.
-- **Composer:** Body in the input, with the model and where it runs in meta below. `↵` sends; Stop replaces the send button while running.
+- **Composer:** Body in the input, with the model and where it runs in meta below. `↵` sends. While a turn runs, Stop lives in the live line above the composer, not in place of the send button, so the composer keeps one shape.
 
 ## Arriving and leaving
 
-The panel slides in from the right in 180ms when opened by click and appears at once when opened by `⌘.` (keyboard-triggered, D134). The page beside it narrows; it never overlays above 1024px. Its open state and conversation survive navigation and reloads (D122). Links open beside it.
+The panel slides in from the right (16px and a fade, 180ms, ease-out) when opened by click and appears at once when opened by `⌘.` (keyboard-triggered, D134). Reduced motion keeps only a 120ms fade. A reload with the panel open, and opening a panel that is already open, never animate. Below 1024px the drawer follows the same rules. Closing is instant. The page beside it narrows; it never overlays above 1024px. Its open state and conversation survive navigation and reloads (D122). Links open beside it.
 
 ## The TUI pane
 
@@ -136,16 +136,16 @@ The same grammar in the terminal, which suits it best:
 │ ▸ 3 steps · 14 found · 1 change waiting              │
 │ I found 14 shipping notices from before 16 Sep,      │
 │ from Amazon [1], DHL [2] and Royal Mail [3].         │
-│ ┌ Archive 14 emails ───────────────────────────────┐ │
+│ ┌ YOUR CALL ───────────────────────────────────────┐ │
+│ │ Archive 14 emails                                 │ │
 │ │ Older than a month, nothing pending.              │ │
-│ │ Amazon       Your order has shipped      12 Sep   │ │
-│ │ DHL          Delivery scheduled           9 Sep   │ │
-│ │ … 12 more                                         │ │
-│ │ y archive  n send back  x exact call              │ │
+│ │ • Your order has shipped  Amazon                  │ │
+│ │ • Delivery scheduled  DHL                         │ │
+│ │   and 12 more                                     │ │
 │ └───────────────────────────────────────────────────┘ │
 │ ◌ Archiving 14 emails…                       4s       │
 │ › _                                                   │
-│ y archive · n send back · 1-3 open link · e steps    │
+│ y approve · n reject · x exact call · i write instead │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -157,7 +157,8 @@ Steps use the daemon's titles; links keep their numbers (v0.6.106); proofs list 
 |---|---|---|
 | `AssistantStepTitleData { running, done }` on `ToolCall`, and `title` on `AssistantProgressData::Calling` | `crates/protocol/src/types/assistant.rs`, `crates/daemon/src/assistant/titles.rs` (new), `view.rs` | Wire lines and the live line in the daemon's words. |
 | `rows` on `AssistantItemData::Assistant` | `view.rs`, from the readouts the reply links | Lists drawn as the app's rows. |
-| Change titles from the daemon (replacing both `describe_change` copies) | `titles.rs`; `PendingCards.tsx`, `assistant_describe.rs` read the field | One source of words. |
+| Change titles from the daemon (replacing both `describe_change` copies) | `titles.rs`; `Proof.tsx` and `assistant_pane.rs` read the field | One source of words. |
+| `warning` on a waiting approval | `crates/protocol/src/types/assistant.rs`, `view.rs`; read by `Proof.tsx` and `assistant_pane.rs` | One irreversible line for both clients. |
 | A prompt line asking for one-sentence list introductions | `crates/assistant/src/prompt.rs` | The prose stops duplicating the rows. |
 | Plain-language turn errors | the daemon's turn error mapping | No raw "LLM returned an empty completion". |
 

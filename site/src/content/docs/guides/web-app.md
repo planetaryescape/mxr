@@ -509,7 +509,7 @@ keys pressed before it has focus land in its field.
 
 `⌘.` (`Ctrl+.`), or the assistant button beside Search, opens the
 [assistant](/guides/assistant/) on the right. It stays as you move between
-pages and slides over the page on narrow windows. Ask it questions or tell
+pages, and opens as a drawer over the page below 1024px wide. Ask it questions or tell
 it what to do; replies appear as they are written, and every change waits
 on a card until you approve it.
 

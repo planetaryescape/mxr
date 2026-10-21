@@ -27,4 +27,4 @@ the rule and wait rather than exempt vitest.
 Once 4.1.12 is seven days old, run `npm install --ignore-scripts
 vitest@^4.1.12` in `apps/web/`, so that `@vitest/mocker` follows. Then check
 that `npm audit --audit-level=moderate` reports 0 and the unit suite passes,
-and remove this file.
+remove this file, and remove the note in `AGENTS.md` and the comment above the audit step in `.github/workflows/ci.yml`.

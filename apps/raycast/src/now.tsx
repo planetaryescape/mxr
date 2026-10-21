@@ -3,7 +3,7 @@ import { useCachedPromise } from "@raycast/utils";
 import { getNow, markDone, tickOffTodo } from "./bridge/modes";
 import type { NowData } from "./bridge/types";
 import { ReplyForm } from "./components/ReplyForm";
-import { runPreviewed } from "./components/previewed";
+import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 import Updates from "./updates";
 
@@ -67,6 +67,7 @@ export default function Now() {
                       preview: () => markDone("messages", [row.thread_id], true),
                       commit: () => markDone("messages", [row.thread_id], false),
                       describe: (done) => done.items.map((item) => item.copy).join("\n"),
+                      failures: (done) => itemErrors(done.items),
                       undoId: (done) => done.mutation_id,
                       done: "Done here",
                       refresh: revalidate,
@@ -100,6 +101,10 @@ export default function Now() {
                       preview: () => tickOffTodo(todo.id, true),
                       commit: () => tickOffTodo(todo.id, false),
                       describe: (change) => change.change.summary,
+                      failures: (change) =>
+                        (change.change.unchanged ?? []).map(
+                          () => "Already done, or no longer a to-do.",
+                        ),
                       done: "Ticked off",
                       refresh: revalidate,
                     })

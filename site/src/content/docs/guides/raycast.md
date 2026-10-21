@@ -53,7 +53,8 @@ Done Here, Tick Off, Let Go and Save for Later each ask the daemon for a dry
 run first and show what it says will change, for example "Would change 1
 to-do (ticked off). Nothing changed yet." Nothing happens until you confirm.
 Changes the daemon can undo get an Undo button (⌘Z) on the toast that
-follows.
+follows. Anything the daemon could not change is listed, in the dialog and
+on the toast, instead of being reported as done.
 
 ## Reply
 
@@ -69,14 +70,16 @@ send:
   toast offers Undo Send. The daemon owns that wait, so closing Raycast does
   not lose the reply. Its scheduled-send loop runs every minute, so the reply
   goes out within about a minute. Undo stops it and keeps it in mxr as a
-  draft.
+  draft; once the daemon has started sending, Undo says it is too late.
 - Warnings are listed before the reply is scheduled.
 - A reply the check would block is only sent if you choose Send Anyway. That
   send goes immediately, because a scheduled send is checked again when it
   fires and cannot carry the override, so there is no undo for it.
 
-Leaving the form without sending throws the draft away. Open in mxr (⌘O) on
-the form opens the web composer for the same reply instead.
+If you edit the reply while it is being checked, nothing is sent; send again
+to check what is on screen. Leaving the form without sending throws the draft
+away. Open in mxr (⌘O) on the form saves what you have written as an mxr draft
+and opens it in the web composer.
 
 ## Open in mxr
 

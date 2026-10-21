@@ -2,7 +2,7 @@ import { Action, ActionPanel, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { getReading, markDone, saveForLater } from "./bridge/modes";
 import type { ReadingItem } from "./bridge/types";
-import { runPreviewed } from "./components/previewed";
+import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 
 export default function Reading() {
@@ -43,6 +43,7 @@ export default function Reading() {
                   preview: () => saveForLater(entry.item_key, true),
                   commit: () => saveForLater(entry.item_key, false),
                   describe: () => `${entry.title} stays on your Later shelf instead of fading.`,
+                  failures: (later) => itemErrors(later.items),
                   done: "Saved for later",
                   refresh: revalidate,
                 })
@@ -60,6 +61,7 @@ export default function Reading() {
                 preview: () => markDone("reading", [entry.thread_id], true),
                 commit: () => markDone("reading", [entry.thread_id], false),
                 describe: (done) => done.items.map((outcome) => outcome.copy).join("\n"),
+                failures: (done) => itemErrors(done.items),
                 undoId: (done) => done.mutation_id,
                 done: "Let go",
                 refresh: revalidate,

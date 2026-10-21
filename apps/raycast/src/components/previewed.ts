@@ -11,6 +11,9 @@ export interface Previewed<R> {
   commit: () => Promise<R>;
   /** What the daemon says the change will do, for the dialog. */
   describe: (preview: R) => string;
+  /** Items the daemon reports it could not change (HTTP 200 is not every
+   * item succeeding). */
+  failures?: (result: R) => string[];
   /** The undo handle of a committed change, when the daemon kept one. */
   undoId?: (result: R) => string | null | undefined;
   /** Toast title once it is done. */
@@ -25,9 +28,13 @@ export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
   try {
     const preview = await change.preview();
     await toast.hide();
+    const blocked = change.failures?.(preview) ?? [];
     const confirmed = await confirmAlert({
       title: change.title,
-      message: change.describe(preview),
+      message: [
+        change.describe(preview),
+        ...(blocked.length ? ["Won't change:", ...blocked.map((reason) => `• ${reason}`)] : []),
+      ].join("\n"),
       primaryAction: { title: change.confirm, style: Alert.ActionStyle.Default },
     });
     if (!confirmed) return;
@@ -36,8 +43,10 @@ export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
     const result = await change.commit();
     change.refresh();
     const undoId = change.undoId?.(result);
-    progress.style = Toast.Style.Success;
-    progress.title = change.done;
+    const failed = change.failures?.(result) ?? [];
+    progress.style = failed.length ? Toast.Style.Failure : Toast.Style.Success;
+    progress.title = failed.length ? `${change.done}, not everything` : change.done;
+    if (failed.length) progress.message = failed.join(" ");
     if (undoId) {
       progress.primaryAction = {
         title: "Undo",
@@ -61,6 +70,11 @@ export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
   } catch (error) {
     await showToast({ style: Toast.Style.Failure, title: "mxr", message: message(error) });
   }
+}
+
+/** Per-item errors from the daemon's outcome lists. */
+export function itemErrors(items: { error?: string | null }[]): string[] {
+  return items.flatMap((item) => (item.error ? [item.error] : []));
 }
 
 export function message(error: unknown): string {

@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   Alert,
+  open,
   Form,
   Icon,
   Toast,
@@ -17,6 +18,7 @@ import {
   cancelScheduled,
   checkSafety,
   discardReply,
+  saveForWeb,
   scheduleReply,
   sendReply,
   startReply,
@@ -44,44 +46,77 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
   const webBase = useWebBase();
   const [draft, setDraft] = useState<ReplyDraft>();
   const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const current = useRef<ReplyDraft>(undefined);
-  // Once the daemon owns the reply (sent, scheduled or handed to the web
+  // What the form shows now; a submission compares it with what it checked.
+  const latestBody = useRef("");
+  const submitting = useRef(false);
+  const closed = useRef(false);
+  // Once the daemon owns the reply (sent, scheduled or saved for the web
   // composer), leaving the form must not discard it.
   const handedOver = useRef(false);
 
+  const editBody = (text: string) => {
+    latestBody.current = text;
+    setBody(text);
+  };
+
+  const discardIfAbandoned = () => {
+    const open = current.current;
+    if (open && !handedOver.current) void discardReply(open).catch(() => undefined);
+  };
+
   useEffect(() => {
-    let closed = false;
+    closed.current = false;
     startReply(messageId, kind)
       .then((opened) => {
-        if (closed) return void discardReply(opened).catch(() => undefined);
         current.current = opened;
+        if (closed.current) return discardIfAbandoned();
         setDraft(opened);
-        setBody(opened.session.bodyMarkdown);
+        editBody(opened.session.bodyMarkdown);
       })
       .catch((failure) => setError(message(failure)));
     return () => {
-      closed = true;
-      const open = current.current;
-      if (open && !handedOver.current) void discardReply(open).catch(() => undefined);
+      closed.current = true;
+      // A submission in flight decides the draft's fate when it settles.
+      if (!submitting.current) discardIfAbandoned();
     };
   }, [messageId, kind]);
 
+  /** Save the shown body, unless a submission already owns the draft. */
+  async function saveShownBody(): Promise<{ written: ReplyDraft; text: string } | undefined> {
+    const open = current.current;
+    if (!open) return undefined;
+    const text = latestBody.current;
+    const written = await writeBody(open, text);
+    current.current = written;
+    setDraft(written);
+    return { written, text };
+  }
+
   async function submit() {
-    if (!draft || busy) return;
-    setBusy(true);
+    if (!current.current || submitting.current) return;
+    submitting.current = true;
     const toast = await showToast({ style: Toast.Style.Animated, title: "Checking the reply…" });
     try {
-      const written = await writeBody(draft, body);
-      current.current = written;
-      setDraft(written);
-      const report = await checkSafety(written);
+      const saved = await saveShownBody();
+      if (!saved) return;
+      const report = await checkSafety(saved.written);
       await toast.hide();
       if (!(await confirmIssues(report))) return;
+      // The text area stays editable while the daemon checks; send only the
+      // body that was checked and is still on screen.
+      if (latestBody.current !== saved.text) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "The reply changed while it was checked",
+          message: "Send again to check and send what is on screen.",
+        });
+        return;
+      }
 
       if (report.allowed) {
-        await scheduleWithUndo(written);
+        await scheduleWithUndo(saved.written);
       } else {
         // A scheduled send re-checks when it fires and has no override, so
         // an overridden reply goes now.
@@ -94,12 +129,12 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
           });
           return;
         }
-        await sendReply(written, override);
+        await sendReply(saved.written, override);
         handedOver.current = true;
         await showToast({ style: Toast.Style.Success, title: "Sent (no undo for an override)" });
       }
       onSent?.();
-      pop();
+      if (!closed.current) pop();
     } catch (failure) {
       await showToast({
         style: Toast.Style.Failure,
@@ -107,7 +142,8 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
         message: message(failure),
       });
     } finally {
-      setBusy(false);
+      submitting.current = false;
+      if (closed.current) discardIfAbandoned();
     }
   }
 
@@ -128,6 +164,7 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
             shown.style = Toast.Style.Success;
             shown.title = "Not sent; kept as a draft in mxr";
           } catch (failure) {
+            // The daemon refuses a cancel once the send has started.
             shown.style = Toast.Style.Failure;
             shown.title = "Too late to stop it";
             shown.message = message(failure);
@@ -147,12 +184,36 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
         threadId,
         "Reply to the latest message in this conversation.",
       );
-      setBody((existing) => `${suggestion.trim()}\n\n${existing}`);
+      if (submitting.current || closed.current) {
+        toast.style = Toast.Style.Failure;
+        toast.title = "Draft not added: the reply is already being sent";
+        return;
+      }
+      editBody(`${suggestion.trim()}\n\n${latestBody.current}`.trim());
       toast.style = Toast.Style.Success;
-      toast.title = "Draft added above the quote";
+      toast.title = "Draft added above what you wrote";
     } catch (failure) {
       toast.style = Toast.Style.Failure;
       toast.title = "No draft";
+      toast.message = message(failure);
+    }
+  }
+
+  /** Hand the reply as written to the web composer instead of starting over. */
+  async function openInMxr() {
+    if (!webBase || submitting.current) return;
+    const toast = await showToast({ style: Toast.Style.Animated, title: "Opening in mxr…" });
+    try {
+      const saved = await saveShownBody();
+      if (!saved) return;
+      const draftId = await saveForWeb(saved.written);
+      handedOver.current = true;
+      await open(`${webBase}${web.draft(draftId)}`);
+      await toast.hide();
+      if (!closed.current) pop();
+    } catch (failure) {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Could not open the reply in mxr";
       toast.message = message(failure);
     }
   }
@@ -171,11 +232,12 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
             shortcut={{ modifiers: ["cmd"], key: "d" }}
             onAction={draftInMyVoice}
           />
-          {webBase && (
-            <Action.OpenInBrowser
+          {webBase && draft && (
+            <Action
               title="Open in mxr"
-              url={`${webBase}${web.reply(messageId, kind === "reply_all" ? "all" : "single")}`}
+              icon={Icon.Globe}
               shortcut={Keyboard.Shortcut.Common.Open}
+              onAction={openInMxr}
             />
           )}
         </ActionPanel>
@@ -189,7 +251,7 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
         id="body"
         title="Reply"
         value={body}
-        onChange={setBody}
+        onChange={editBody}
         enableMarkdown
         autoFocus
       />

@@ -49,16 +49,21 @@ export async function webBase(): Promise<string> {
 
 let cachedToken: string | undefined;
 
-async function token(base: string, refresh: boolean): Promise<string> {
-  if (cachedToken && !refresh) return cachedToken;
-  const fromFile = refresh ? undefined : await readTrimmed(join(dataDirectory(), "bridge-token"));
-  if (fromFile) return (cachedToken = fromFile);
-  // The daemon hands its token to loopback callers, as it does for the web
-  // app, so a rotated or relocated token file still works.
+/**
+ * The bridge token: the cached one, else the daemon's token file. After a
+ * 401, `rejected` is the token that failed, so a rotated file is reread
+ * first and the loopback handshake (which a daemon may turn off) is the
+ * fallback, as it is for the web app.
+ */
+async function token(base: string, rejected?: string): Promise<string> {
+  if (cachedToken && cachedToken !== rejected) return cachedToken;
+  const fromFile = await readTrimmed(join(dataDirectory(), "bridge-token"));
+  if (fromFile && fromFile !== rejected) return (cachedToken = fromFile);
   const response = await send(`${base}/api/v1/auth/local-token`, { method: "GET" });
   if (!response.ok) {
+    cachedToken = undefined;
     throw new BridgeError(
-      "mxr did not hand over its bridge token. Check the data directory in this extension's preferences.",
+      "mxr rejected the bridge token and did not hand over a new one. Check the data directory in this extension's preferences.",
       response.status,
     );
   }
@@ -87,18 +92,19 @@ export interface RequestOptions {
 /** Call the daemon's HTTP bridge and return its JSON body. */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const base = await bridgeBase();
-  const attempt = async (refresh: boolean) =>
+  const attempt = async (bearer: string) =>
     send(`${base}${path}`, {
       method: options.method ?? (options.body === undefined ? "GET" : "POST"),
       headers: {
-        Authorization: `Bearer ${await token(base, refresh)}`,
+        Authorization: `Bearer ${bearer}`,
         ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
         ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-  let response = await attempt(false);
-  if (response.status === 401) response = await attempt(true);
+  const first = await token(base);
+  let response = await attempt(first);
+  if (response.status === 401) response = await attempt(await token(base, first));
   if (!response.ok) throw new BridgeError(await failure(response), response.status);
   return (await response.json()) as T;
 }

@@ -11,8 +11,8 @@ export const web = {
     `/messages?${new URLSearchParams({ person: personId, ...(topic ? { topic } : {}) })}`,
   todo: (todoId: string) => `/todo?${new URLSearchParams({ row: todoId })}`,
   readingItem: (itemKey: string) => `/reading/item/${encodeURIComponent(itemKey)}`,
-  reply: (messageId: string, mode: "single" | "all") =>
-    `/compose/new?${new URLSearchParams({ reply: messageId, mode })}`,
+  /** A stored draft in the web composer. */
+  draft: (draftId: string) => `/compose/${encodeURIComponent(draftId)}`,
 };
 
 /** The web app's address; links render once it is known. */

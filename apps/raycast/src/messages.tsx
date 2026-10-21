@@ -3,7 +3,7 @@ import { useCachedPromise } from "@raycast/utils";
 import { getMessages, markDone } from "./bridge/modes";
 import type { MessagesRow } from "./bridge/types";
 import { ReplyForm } from "./components/ReplyForm";
-import { runPreviewed } from "./components/previewed";
+import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 
 export default function Messages() {
@@ -17,7 +17,7 @@ export default function Messages() {
     const name = row.person?.name ?? row.title;
     return (
       <List.Item
-        key={`${band}-${row.id}`}
+        key={`${band}-${row.account_id}-${row.id}`}
         icon={
           row.overdue
             ? { source: Icon.Clock, tintColor: Color.Orange }
@@ -86,6 +86,7 @@ export default function Messages() {
                     preview: () => markDone("messages", threads, true),
                     commit: () => markDone("messages", threads, false),
                     describe: (done) => done.items.map((outcome) => outcome.copy).join("\n"),
+                    failures: (done) => itemErrors(done.items),
                     undoId: (done) => done.mutation_id,
                     done: "Done here",
                     refresh: revalidate,

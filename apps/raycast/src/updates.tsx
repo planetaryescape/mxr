@@ -2,7 +2,7 @@ import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { getUpdates, letGoDigest, markDone } from "./bridge/modes";
 import type { UpdateLine, UpdatesDigest } from "./bridge/types";
-import { runPreviewed } from "./components/previewed";
+import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 
 export default function Updates() {
@@ -18,6 +18,7 @@ export default function Updates() {
       preview: () => letGoDigest(digest, true),
       commit: () => letGoDigest(digest, false),
       describe: (reply) => reply.result.line,
+      failures: (reply) => itemErrors(reply.result.items),
       undoId: (reply) => reply.result.mutation_id,
       done: "Let go",
       refresh: revalidate,
@@ -56,6 +57,7 @@ export default function Updates() {
                   preview: () => markDone("updates", threads, true),
                   commit: () => markDone("updates", threads, false),
                   describe: (done) => done.items.map((outcome) => outcome.copy).join("\n"),
+                  failures: (done) => itemErrors(done.items),
                   undoId: (done) => done.mutation_id,
                   done: "Done here",
                   refresh: revalidate,

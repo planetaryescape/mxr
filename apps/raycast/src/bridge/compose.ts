@@ -113,6 +113,26 @@ export async function cancelScheduled(draftId: string): Promise<void> {
   });
 }
 
+/**
+ * Store the reply as a local mxr draft so the web composer can pick it up
+ * where Raycast left off. Not pushed to the provider's drafts.
+ */
+export async function saveForWeb(draft: ReplyDraft): Promise<string> {
+  const result = await owned<{ draft_id?: string }>(
+    "/api/v1/mail/compose/session/save",
+    {
+      draft_path: draft.session.draftPath,
+      account_id: accountOf(draft),
+      save_to_server: false,
+      expected_revision: draft.session.revision,
+      draft_id: draft.session.draftId ?? undefined,
+    },
+    draft.workspace,
+  );
+  if (!result.draft_id) throw new Error("mxr saved the reply but did not return its draft.");
+  return result.draft_id;
+}
+
 /** Throw the draft away, so an abandoned reply leaves nothing behind. */
 export async function discardReply(draft: ReplyDraft): Promise<void> {
   await owned(

@@ -29,6 +29,8 @@ export default function TodoCommand() {
                 preview: () => tickOffTodo(todo.id, true),
                 commit: () => tickOffTodo(todo.id, false),
                 describe: (change) => change.change.summary,
+                failures: (change) =>
+                  (change.change.unchanged ?? []).map(() => "Already done, or no longer a to-do."),
                 done: "Ticked off",
                 refresh: revalidate,
               })

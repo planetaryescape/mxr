@@ -414,3 +414,232 @@ async fn a_trusted_conversation_stars_without_asking() {
         }
     )));
 }
+
+fn call(call_id: &str) -> ToolCall {
+    ToolCall {
+        id: call_id.into(),
+        name: "mxr_search".into(),
+        arguments: serde_json::json!({}),
+    }
+}
+
+/// Appends the messages in order and returns each one's seq.
+async fn append_messages(
+    fx: &Fixture,
+    conversation_id: &str,
+    messages: Vec<mxr_llm::ToolChatMessage>,
+) -> Vec<i64> {
+    let mut seqs = Vec::new();
+    for message in messages {
+        seqs.push(
+            fx.state
+                .store
+                .append_assistant_message(
+                    conversation_id,
+                    &serde_json::to_string(&message).unwrap(),
+                    None,
+                )
+                .await
+                .unwrap(),
+        );
+    }
+    seqs
+}
+
+fn search_result(subjects: impl Iterator<Item = String>) -> String {
+    let results: Vec<_> = subjects
+        .map(|subject| serde_json::json!({"subject": subject, "thread_id": subject}))
+        .collect();
+    serde_json::json!({"kind": "Search", "results": results, "total": 14}).to_string()
+}
+
+/// A conversation with one step (`call1`) that stored a 12-email result, and
+/// a second step (`call2`) still waiting for its result. Returns the seq of
+/// the message that declared `call1`.
+async fn seeded_step(fx: &Fixture, id: &str, listed: usize) -> i64 {
+    fx.state
+        .store
+        .create_assistant_conversation(id, "steps")
+        .await
+        .unwrap();
+    let seqs = append_messages(
+        fx,
+        id,
+        vec![
+            mxr_llm::ToolChatMessage::Assistant {
+                text: String::new(),
+                tool_calls: vec![call("call1"), call("call2")],
+                provider_turn: None,
+            },
+            mxr_llm::ToolChatMessage::Tool {
+                call_id: "call1".into(),
+                content: search_result((0..listed).map(|n| format!("Mail {n}"))),
+                is_error: false,
+            },
+        ],
+    )
+    .await;
+    seqs[0]
+}
+
+async fn step_rows(fx: &Fixture, conversation_id: &str, call_id: &str, seq: i64) -> Response {
+    let reply = handle_request(
+        &fx.state,
+        &IpcMessage {
+            expected_workspace: None,
+            id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::GetAssistantStepRows {
+                conversation_id: conversation_id.into(),
+                call_id: call_id.into(),
+                seq,
+            }),
+        },
+    )
+    .await;
+    match reply.payload {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_step_hands_over_every_row_its_result_lists() {
+    let fx = Fixture::new().await;
+    let seq = seeded_step(&fx, "asst_steps", 12).await;
+
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_steps", "call1", seq).await
+    else {
+        panic!("expected the step's rows");
+    };
+    assert_eq!(rows.len(), 12);
+    assert_eq!(rows[0].title, "Mail 0");
+    assert_eq!(rows[11].title, "Mail 11");
+    assert_eq!(listed, 12);
+    assert_eq!(total, Some(14));
+
+    // A step still running has no result yet, so it has nothing to show.
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_steps", "call2", seq).await
+    else {
+        panic!("expected an empty step");
+    };
+    assert!(rows.is_empty());
+    assert_eq!(listed, 0);
+    assert_eq!(total, None);
+}
+
+#[tokio::test]
+async fn an_unknown_step_or_conversation_is_not_found() {
+    let fx = Fixture::new().await;
+    let seq = seeded_step(&fx, "asst_steps", 3).await;
+
+    for (conversation, call_id, at) in [
+        ("asst_steps", "call9", seq),
+        ("asst_steps", "call1", seq + 1000),
+        ("asst_missing", "call1", seq),
+    ] {
+        let Response::Error { message, .. } = step_rows(&fx, conversation, call_id, at).await
+        else {
+            panic!("expected an error for {conversation} {call_id} at {at}");
+        };
+        assert!(message.contains("not found"), "{message}");
+    }
+}
+
+#[tokio::test]
+async fn a_repeated_call_id_names_its_own_step() {
+    let fx = Fixture::new().await;
+    fx.state
+        .store
+        .create_assistant_conversation("asst_repeat", "repeat")
+        .await
+        .unwrap();
+    // The stream names id-less calls `call_0`, so one id repeats across turns.
+    let seqs = append_messages(
+        &fx,
+        "asst_repeat",
+        vec![
+            mxr_llm::ToolChatMessage::Assistant {
+                text: String::new(),
+                tool_calls: vec![call("call_0")],
+                provider_turn: None,
+            },
+            mxr_llm::ToolChatMessage::Tool {
+                call_id: "call_0".into(),
+                content: search_result((0..3).map(|n| format!("First {n}"))),
+                is_error: false,
+            },
+            mxr_llm::ToolChatMessage::Assistant {
+                text: String::new(),
+                tool_calls: vec![call("call_0")],
+                provider_turn: None,
+            },
+            mxr_llm::ToolChatMessage::Tool {
+                call_id: "call_0".into(),
+                content: search_result((0..5).map(|n| format!("Later {n}"))),
+                is_error: false,
+            },
+            mxr_llm::ToolChatMessage::Assistant {
+                text: String::new(),
+                tool_calls: vec![call("call_0")],
+                provider_turn: None,
+            },
+            mxr_llm::ToolChatMessage::Tool {
+                call_id: "call_0".into(),
+                content: "{}".into(),
+                is_error: true,
+            },
+        ],
+    )
+    .await;
+    let (first, later, failed) = (seqs[0], seqs[2], seqs[4]);
+
+    let titles = |response: Response| match response {
+        Response::Ok {
+            data: ResponseData::AssistantStepRows { rows, .. },
+        } => rows.into_iter().map(|row| row.title).collect::<Vec<_>>(),
+        other => panic!("expected the step's rows, got {other:?}"),
+    };
+    let first_rows = titles(step_rows(&fx, "asst_repeat", "call_0", first).await);
+    assert_eq!(first_rows, ["First 0", "First 1", "First 2"]);
+    let later_rows = titles(step_rows(&fx, "asst_repeat", "call_0", later).await);
+    assert_eq!(later_rows.len(), 5);
+    assert_eq!(later_rows[0], "Later 0");
+    // The later step failed, so it has no rows, and the earlier ones keep theirs.
+    assert!(titles(step_rows(&fx, "asst_repeat", "call_0", failed).await).is_empty());
+}
+
+#[tokio::test]
+async fn a_step_hands_over_at_most_500_rows() {
+    let fx = Fixture::new().await;
+    let seq = seeded_step(&fx, "asst_big", 600).await;
+
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_big", "call1", seq).await
+    else {
+        panic!("expected the step's rows");
+    };
+    assert_eq!(rows.len(), 500);
+    assert_eq!(listed, 500);
+    assert_eq!(total, Some(600));
+}

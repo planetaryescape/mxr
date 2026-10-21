@@ -140,6 +140,35 @@ async fn get_conversation(
     passthrough(response)
 }
 
+/// Query of `GET /api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows`.
+#[derive(Debug, Deserialize)]
+struct StepRowsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// The `seq` of the assistant message that declared the call.
+    seq: i64,
+}
+
+async fn get_step_rows(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath((conversation_id, call_id)): AxumPath<(String, String)>,
+    Query(query): Query<StepRowsQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetAssistantStepRows {
+            conversation_id,
+            call_id,
+            seq: query.seq,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 /// Body of `POST /api/v1/mail/assistant/conversations/{id}/decide`.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct AssistantDecideBody {
@@ -240,6 +269,10 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/assistant/model", post(set_model))
         .route("/assistant/conversations", get(list).post(send))
         .route("/assistant/conversations/{id}", get(get_conversation))
+        .route(
+            "/assistant/conversations/{id}/steps/{call_id}/rows",
+            get(get_step_rows),
+        )
         .route("/assistant/conversations/{id}/decide", post(decide))
         .route("/assistant/conversations/{id}/cancel", post(cancel))
         .route("/assistant/conversations/{id}/delete", post(delete))

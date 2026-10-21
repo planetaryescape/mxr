@@ -1865,6 +1865,7 @@ async fn dispatch(
         | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
+        | Request::GetAssistantStepRows { .. }
         | Request::DeleteAssistantConversation { .. } => {
             Box::pin(assistant::handle(state, req)).await
         }
@@ -2502,6 +2503,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::AssistantCancel { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
+        | Request::GetAssistantStepRows { .. }
         | Request::DeleteAssistantConversation { dry_run: true, .. }
         | Request::SendReadingToMarginalia { dry_run: true, .. }
         | Request::UpdateHighlight { dry_run: true, .. }
@@ -3028,6 +3030,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetAssistantAutoApprove { .. } => "set_assistant_auto_approve",
         Request::ListAssistantConversations { .. } => "list_assistant_conversations",
         Request::GetAssistantConversation { .. } => "get_assistant_conversation",
+        Request::GetAssistantStepRows { .. } => "get_assistant_step_rows",
         Request::DeleteAssistantConversation { .. } => "delete_assistant_conversation",
         Request::GetUpdatesDigest { .. } => "get_updates_digest",
         Request::LetGoDigest { .. } => "let_go_digest",
@@ -4601,6 +4604,7 @@ fn is_assistant_request(req: &Request) -> bool {
             | Request::SetAssistantAutoApprove { .. }
             | Request::ListAssistantConversations { .. }
             | Request::GetAssistantConversation { .. }
+            | Request::GetAssistantStepRows { .. }
             | Request::DeleteAssistantConversation { .. }
     )
 }

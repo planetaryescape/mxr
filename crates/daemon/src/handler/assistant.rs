@@ -3,8 +3,8 @@
 
 use super::{HandlerError, HandlerResult};
 use crate::assistant::{
-    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn, summary_view,
-    TurnStart,
+    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn, step_rows,
+    summary_view, TurnStart,
 };
 use crate::state::AppState;
 use mxr_assistant::{Answer, Decision};
@@ -21,6 +21,8 @@ const MAX_LIST_LIMIT: u32 = 500;
 const TITLE_CHARS: usize = 60;
 /// Longest message a user can send, in characters.
 const MAX_MESSAGE_CHARS: usize = 20_000;
+/// Most rows a step's full list gives.
+const STEP_ROWS: usize = 500;
 
 pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResult {
     let result = match req {
@@ -59,6 +61,11 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
         Request::GetAssistantConversation { conversation_id } => {
             conversation(state, conversation_id).await
         }
+        Request::GetAssistantStepRows {
+            conversation_id,
+            call_id,
+            seq,
+        } => step_rows_for(state, conversation_id, call_id, *seq).await,
         Request::DeleteAssistantConversation {
             conversation_id,
             dry_run,
@@ -243,6 +250,36 @@ async fn conversation(state: &AppState, conversation_id: &str) -> Result<Respons
         .map_err(|error| error.to_string())?;
     Ok(ResponseData::AssistantConversation {
         conversation: conversation_view(&row, &messages),
+    })
+}
+
+/// Every row a step's stored result lists. Reads only; the rows are mail
+/// and model text, so they are never logged here.
+async fn step_rows_for(
+    state: &AppState,
+    conversation_id: &str,
+    call_id: &str,
+    seq: i64,
+) -> Result<ResponseData, String> {
+    state
+        .store
+        .get_assistant_conversation(conversation_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("assistant conversation {conversation_id} not found"))?;
+    let messages = state
+        .store
+        .assistant_messages(conversation_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    // "not found" is what the protocol's error classifier maps to a 404.
+    let (rows, total) = step_rows(&messages, call_id, seq, STEP_ROWS).ok_or_else(|| {
+        format!("step {call_id} at {seq} not found in assistant conversation {conversation_id}")
+    })?;
+    Ok(ResponseData::AssistantStepRows {
+        listed: rows.len() as u64,
+        rows,
+        total,
     })
 }
 

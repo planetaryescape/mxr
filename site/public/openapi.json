@@ -1148,6 +1148,58 @@
         }
       }
     },
+    "/api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows": {
+      "get": {
+        "tags": [],
+        "summary": "Every row one assistant step's stored result lists, up to 500",
+        "operationId": "mail_assistant_step_rows",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Conversation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "call_id",
+            "in": "path",
+            "description": "The step's tool call id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "query",
+            "description": "The seq of the assistant message that declared the call",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `AssistantStepRows` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/assistant/model": {
       "post": {
         "tags": [],
@@ -30842,6 +30894,34 @@
           },
           {
             "type": "object",
+            "description": "Every row a step's stored result lists, up to 500, for a client that\nshows the rest of a step's \"and N more\". A call id can repeat across\na conversation, so `seq` names the assistant message that declared\nthe call (the step's `seq`). An unknown conversation or step is an\nerror; a step with no stored result has no rows. Returns\n`ResponseData::AssistantStepRows`.",
+            "required": [
+              "conversation_id",
+              "call_id",
+              "seq",
+              "cmd"
+            ],
+            "properties": {
+              "call_id": {
+                "type": "string"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetAssistantStepRows"
+                ]
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Delete a conversation and its transcript; `dry_run` says what would\ngo. A running turn must be stopped first. Returns\n`ResponseData::AssistantDelete`.",
             "required": [
               "conversation_id",
@@ -35900,6 +35980,42 @@
                 "enum": [
                   "AssistantConversations"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetAssistantStepRows`. `listed` counts the rows\nreturned; `total` is the readout's total, which can be larger when\nthe tool returned only one page.",
+            "required": [
+              "rows",
+              "listed",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantStepRows"
+                ]
+              },
+              "listed": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssistantReadoutRowData"
+                }
+              },
+              "total": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "minimum": 0
               }
             }
           },

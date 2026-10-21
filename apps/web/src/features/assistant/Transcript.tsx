@@ -51,11 +51,14 @@ function blocks(items: AssistantItem[]): Block[] {
 export function Transcript({
   items,
   running,
+  conversationId,
   writing = null,
   provenance,
 }: {
   items: AssistantItem[];
   running: boolean;
+  /** The conversation the steps belong to, for opening what a step found. */
+  conversationId: string;
   /** The reply being written now, shown until it is stored. */
   writing?: string | null;
   provenance?: Provenance;
@@ -111,8 +114,14 @@ export function Transcript({
           }
           case "steps":
             return (
-              <li key={`s${block.items[0]?.call_id ?? index}`}>
-                <Steps items={block.items} live={running && isLast} />
+              <li
+                key={`s${block.items[0] ? `${block.items[0].seq}:${block.items[0].call_id}` : index}`}
+              >
+                <Steps
+                  items={block.items}
+                  live={running && isLast}
+                  conversationId={conversationId}
+                />
               </li>
             );
         }

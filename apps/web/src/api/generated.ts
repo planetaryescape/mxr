@@ -545,6 +545,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every row one assistant step's stored result lists, up to 500 */
+        get: operations["mail_assistant_step_rows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/assistant/model": {
         parameters: {
             query?: never;
@@ -11752,6 +11769,14 @@ export interface components {
                   conversation_id: string;
               }
             | {
+                  call_id: string;
+                  /** @enum {string} */
+                  cmd: "GetAssistantStepRows";
+                  conversation_id: string;
+                  /** Format: int64 */
+                  seq: number;
+              }
+            | {
                   /** @enum {string} */
                   cmd: "DeleteAssistantConversation";
                   conversation_id: string;
@@ -13087,6 +13112,15 @@ export interface components {
                   conversations: components["schemas"]["AssistantConversationSummaryData"][];
                   /** @enum {string} */
                   kind: "AssistantConversations";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "AssistantStepRows";
+                  /** Format: int64 */
+                  listed: number;
+                  rows: components["schemas"]["AssistantReadoutRowData"][];
+                  /** Format: int64 */
+                  total?: number | null;
               }
             | {
                   delete: components["schemas"]["AssistantDeleteData"];
@@ -16288,6 +16322,41 @@ export interface operations {
         };
         responses: {
             /** @description The `AssistantDelete` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_step_rows: {
+        parameters: {
+            query: {
+                /** @description The seq of the assistant message that declared the call */
+                seq: number;
+            };
+            header?: never;
+            path: {
+                /** @description Conversation id */
+                id: string;
+                /** @description The step's tool call id */
+                call_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantStepRows` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

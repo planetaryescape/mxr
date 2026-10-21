@@ -126,6 +126,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
+        | Request::GetAssistantStepRows { .. }
         | Request::DeleteAssistantConversation { .. } => AllAccounts,
         // ----- Named by account -----
         Request::ListEnvelopes {

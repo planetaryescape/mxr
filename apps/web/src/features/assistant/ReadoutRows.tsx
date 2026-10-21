@@ -5,11 +5,13 @@
  * set as text.
  */
 
+import { useEffect, useRef, useState } from "react";
+
 import { Row } from "@/components/Row";
 import { Avatar } from "@/components/Avatar";
 import { linkHref, type AssistantLink } from "./links";
 import { APP_LINK_ATTRIBUTE } from "./markdown";
-import type { AssistantItem } from "./api";
+import type { AssistantItem, AssistantStepRows } from "./api";
 
 type ReplyItem = Extract<AssistantItem, { kind: "assistant" }>;
 export type ReadoutRow = NonNullable<ReplyItem["rows"]>[number];
@@ -17,26 +19,106 @@ export type ReadoutRow = NonNullable<ReplyItem["rows"]>[number];
 /** Compact rhythm inside the panel (docs/blueprint/29 "The copy"). */
 const COMPACT = { "--row-height": "44px" } as React.CSSProperties;
 
+type Rest = "closed" | "loading" | "open" | "failed";
+
+/**
+ * A step's rows. When the step found more than these, "and N more" opens
+ * every row the step's result lists; the first click fetches them. Without
+ * `loadRest` the count stays plain text.
+ *
+ * The button is the same element in every state, so keyboard focus stays on
+ * it while the rest loads and when it collapses. A response that arrives
+ * after unmount is dropped, so a step that was swapped out never shows rows
+ * fetched for it.
+ */
 export function ReadoutRows({
   rows,
   more = 0,
   label,
+  loadRest,
 }: {
   rows: ReadoutRow[];
   /** How many the step found beyond these. */
   more?: number;
   label: string;
+  loadRest?: () => Promise<AssistantStepRows>;
 }) {
+  const [rest, setRest] = useState<Rest>("closed");
+  const [all, setAll] = useState<AssistantStepRows | null>(null);
+  const mounted = useRef(false);
+  // Each click that starts a fetch takes a number; only the latest may land.
+  const request = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, []);
   if (rows.length === 0) return null;
+
+  const open = rest === "open" && all !== null;
+  const shown = open ? all.rows : rows;
+  const unloaded = all && all.total != null && all.total > all.listed ? all.total - all.listed : 0;
+
+  const expand = () => {
+    if (rest === "loading") return;
+    if (rest === "open") {
+      setRest("closed");
+      return;
+    }
+    if (all) {
+      setRest("open");
+      return;
+    }
+    if (!loadRest) return;
+    const id = ++request.current;
+    setRest("loading");
+    loadRest().then(
+      (loaded) => {
+        if (!mounted.current || id !== request.current) return;
+        setAll(loaded);
+        setRest("open");
+      },
+      () => {
+        if (!mounted.current || id !== request.current) return;
+        setRest("failed");
+      },
+    );
+  };
+
+  const loading = rest === "loading";
   return (
     <div className="-mx-3">
       <ul aria-label={label} style={COMPACT}>
-        {rows.map((row, index) => (
+        {shown.map((row, index) => (
           // oxlint-disable-next-line react/no-array-index-key -- rows have no id of their own and never reorder
           <ReadoutLine key={index} row={row} />
         ))}
       </ul>
-      {more > 0 ? <p className="type-meta px-3 py-1 text-text-3">and {more} more</p> : null}
+      {more > 0 && loadRest ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-busy={loading}
+            onClick={expand}
+            className="type-meta px-3 py-1 text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
+          >
+            {loading ? "Loading the rest…" : open ? "Show fewer" : `and ${more} more`}
+          </button>
+          {rest === "failed" ? (
+            <p className="type-meta px-3 py-1 text-danger">{"Couldn't load the rest"}</p>
+          ) : null}
+        </>
+      ) : more > 0 ? (
+        <p className="type-meta px-3 py-1 text-text-3">and {more} more</p>
+      ) : null}
+      {open && unloaded > 0 ? (
+        <p className="type-meta px-3 py-1 text-text-3">
+          {`and ${unloaded} more matched that this step didn't load`}
+        </p>
+      ) : null}
     </div>
   );
 }

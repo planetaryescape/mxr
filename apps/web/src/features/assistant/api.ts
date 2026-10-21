@@ -15,6 +15,12 @@ export type AssistantAnswer = Schemas["AssistantAnswerData"];
 export type AssistantProgress = Schemas["AssistantProgressData"];
 export type AssistantViewContext = Schemas["AssistantViewContextData"];
 export type AssistantCallState = Schemas["AssistantCallStateData"];
+/** Every row one step's result lists; `total` can exceed `listed`. */
+export type AssistantStepRows = {
+  rows: Schemas["AssistantReadoutRowData"][];
+  listed: number;
+  total?: number | null;
+};
 
 const BASE = "/api/v1/mail/assistant";
 
@@ -57,6 +63,17 @@ export async function fetchConversation(id: string): Promise<AssistantConversati
     `${BASE}/conversations/${encodeURIComponent(id)}`,
   );
   return response.conversation;
+}
+
+/** `seq` is the seq of the assistant message that declared the call: call ids repeat. */
+export async function fetchStepRows(
+  conversationId: string,
+  callId: string,
+  seq: number,
+): Promise<AssistantStepRows> {
+  return apiFetch<AssistantStepRows>(
+    `${BASE}/conversations/${encodeURIComponent(conversationId)}/steps/${encodeURIComponent(callId)}/rows?seq=${seq}`,
+  );
 }
 
 export async function sendMessage(input: {

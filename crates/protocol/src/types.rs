@@ -2580,6 +2580,17 @@ pub enum Request {
     GetAssistantConversation {
         conversation_id: String,
     },
+    /// Every row a step's stored result lists, up to 500, for a client that
+    /// shows the rest of a step's "and N more". A call id can repeat across
+    /// a conversation, so `seq` names the assistant message that declared
+    /// the call (the step's `seq`). An unknown conversation or step is an
+    /// error; a step with no stored result has no rows. Returns
+    /// `ResponseData::AssistantStepRows`.
+    GetAssistantStepRows {
+        conversation_id: String,
+        call_id: String,
+        seq: i64,
+    },
     /// Delete a conversation and its transcript; `dry_run` says what would
     /// go. A running turn must be stopped first. Returns
     /// `ResponseData::AssistantDelete`.
@@ -2997,6 +3008,7 @@ impl Request {
             | Self::SetAssistantAutoApprove { .. }
             | Self::ListAssistantConversations { .. }
             | Self::GetAssistantConversation { .. }
+            | Self::GetAssistantStepRows { .. }
             | Self::DeleteAssistantConversation { .. }
             | Self::GetUpdatesDigest { .. }
             | Self::LetGoDigest { .. }
@@ -4324,6 +4336,14 @@ pub enum ResponseData {
     AssistantConversations {
         conversations: Vec<AssistantConversationSummaryData>,
     },
+    /// Returned by `Request::GetAssistantStepRows`. `listed` counts the rows
+    /// returned; `total` is the readout's total, which can be larger when
+    /// the tool returned only one page.
+    AssistantStepRows {
+        rows: Vec<AssistantReadoutRowData>,
+        listed: u64,
+        total: Option<u64>,
+    },
     /// Returned by `Request::DeleteAssistantConversation`.
     AssistantDelete {
         delete: AssistantDeleteData,
@@ -4603,6 +4623,7 @@ impl ResponseData {
             | Self::AssistantModelChange { .. }
             | Self::AssistantConversation { .. }
             | Self::AssistantConversations { .. }
+            | Self::AssistantStepRows { .. }
             | Self::AssistantDelete { .. }
             | Self::UpdatesDigest { .. }
             | Self::UpdatesLetGo { .. }

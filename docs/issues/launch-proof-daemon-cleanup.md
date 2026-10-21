@@ -29,8 +29,12 @@ The repair is commit `2957da9aa759dc297e50fea48a282d88272eaf70`.
 `scripts/v1_launch_proof_cleanup.sh` sends SIGTERM only to a validated PID,
 waits up to ten seconds for exit, and treats a zombie as stopped. Failed
 process inspection and shutdown timeout retain the runtime. An original proof
-failure keeps its exit status and diagnostic files. The proof's direct IPC
-client also honors `MXR_SOCKET_PATH`, matching the CLI and daemon.
+failure keeps its exit status and diagnostic files. Follow-up commits
+`283d3e897b9a52c747cdbbf1cbeb65e6ec39aa61` and
+`4ed210f10e026f34cfdfef89e632c98999ab9b44` force the proof to use a socket
+inside its own temporary runtime, check the selected path before accepting a
+daemon PID, and give `mktemp` an explicit TMPDIR template. The direct IPC
+client uses the same owned socket as the CLI and daemon.
 
 Run the production helper regression:
 
@@ -52,3 +56,11 @@ removed. Evidence:
 `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-blueprint-gaps-20261021/g01-launch-proof-cleanup-runtime/proof-cleanup-final.jsonl`.
 No real mail, keychain or personal daemon was used. The fix needs a new
 release through release-please; preserve the v0.6.116 tag and assets.
+
+The final frozen proof at `4ed210f10` inherited a foreign sentinel socket.
+All 13 proof rows passed; the sentinel accepted zero connections and stayed
+alive through the proof. The owned daemon exited and its runtime/socket were
+removed, then the sentinel was stopped and reaped. The receipt is
+`g01-launch-proof-cleanup-runtime/socket-isolation-postconditions.json` under
+the same run directory. This checks fixture isolation; it makes no claim
+about an incident involving a personal daemon.

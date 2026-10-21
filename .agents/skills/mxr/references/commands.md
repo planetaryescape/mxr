@@ -260,7 +260,7 @@ All compose commands open `$EDITOR` (markdown + YAML frontmatter) unless `--body
 ```
 
 ### `mxr reply-all <MESSAGE_ID> [OPTIONS]`
-Same flags as `reply` (including `--draft`).
+Same flags as `reply` (including `--draft`). Replying to a message you sent goes to its original recipients, never to you.
 
 ### `mxr forward <MESSAGE_ID> [OPTIONS]`
 ```

@@ -3004,42 +3004,22 @@ pub(super) async fn prepare_reply(
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
-    // Prefer the Reply-To: header when the sender set one — mailing lists
-    // and no-reply senders depend on it — falling back to From: otherwise.
-    // Reply-To is captured into the body metadata at parse time.
-    let reply_to = body
+    // Reply-To is captured into the body metadata at parse time. The rules for
+    // who receives the reply, including replies to the user's own messages,
+    // live in `reply_recipients`.
+    let reply_to_header = body
         .as_ref()
-        .and_then(|body| body.metadata.reply_to.first())
-        .map_or_else(
-            || envelope.from.email.clone(),
-            |address| address.email.clone(),
-        );
-
-    let cc = if reply_all {
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        seen.insert(reply_to.to_ascii_lowercase());
-        // Exclude every owned address (primary + aliases), not just the one we
-        // reply from, so a reply-all never CCs the sender's own addresses.
-        for owned_email in &owned {
-            let key = owned_email.trim().to_ascii_lowercase();
-            if !key.is_empty() {
-                seen.insert(key);
-            }
-        }
-        envelope
-            .to
-            .iter()
-            .chain(envelope.cc.iter())
-            .map(|address| address.email.clone())
-            .filter(|email| {
-                let key = email.to_ascii_lowercase();
-                seen.insert(key)
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        String::new()
-    };
+        .and_then(|body| body.metadata.reply_to.first());
+    let recipients = super::reply_recipients::reply_recipients(
+        &envelope.from,
+        &envelope.to,
+        &envelope.cc,
+        reply_to_header,
+        &owned,
+        reply_all,
+    );
+    let reply_to = recipients.to.join(", ");
+    let cc = recipients.cc.join(", ");
 
     Ok(ResponseData::ReplyContext {
         context: ReplyContext {

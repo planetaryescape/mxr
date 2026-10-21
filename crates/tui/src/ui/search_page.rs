@@ -144,7 +144,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
     }
 }
 
-fn search_mode_label(mode: SearchMode) -> &'static str {
+pub(crate) fn search_mode_label(mode: SearchMode) -> &'static str {
     match mode {
         SearchMode::Lexical => "lexical",
         SearchMode::Hybrid => "hybrid",

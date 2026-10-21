@@ -320,7 +320,6 @@ pub struct HumanizerConfig {
     pub auto_fix: bool,
     pub max_rewrite_iterations: u8,
     pub apply_to_drafts: bool,
-    pub apply_to_summaries: bool,
 }
 
 impl Default for HumanizerConfig {
@@ -331,7 +330,6 @@ impl Default for HumanizerConfig {
             auto_fix: true,
             max_rewrite_iterations: 2,
             apply_to_drafts: true,
-            apply_to_summaries: false,
         }
     }
 }
@@ -839,8 +837,4 @@ pub struct LoggingConfig {
 #[serde(default)]
 pub struct AppearanceConfig {
     pub theme: String,
-    pub sidebar: bool,
-    pub date_format: String,
-    pub date_format_full: String,
-    pub subject_max_width: usize,
 }

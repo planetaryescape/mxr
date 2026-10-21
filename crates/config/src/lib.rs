@@ -9,10 +9,10 @@ pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, clear_bridge_port, config_dir,
     config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service, is_demo_instance,
     load_config, load_config_from_path, load_config_from_str, read_bridge_port,
-    read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token, save_config,
-    save_config_to_path, scoped_credential_service, secrets_file_path, socket_path, token_dir,
-    write_bridge_port, ConfigError, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME,
-    PROD_INSTANCE_NAME,
+    read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token,
+    retired_config_keys_in, save_config, save_config_to_path, scoped_credential_service,
+    secrets_file_path, socket_path, token_dir, write_bridge_port, ConfigError, DAEMON_TOKEN_ENV,
+    DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
 };
 pub use secret_store::SecretStore;
 pub use types::*;
@@ -130,10 +130,6 @@ event_retention_days = 30
 
 [appearance]
 theme = "catppuccin"
-sidebar = false
-date_format = "%m/%d"
-date_format_full = "%Y-%m-%d %H:%M:%S"
-subject_max_width = 80
 "#;
 
         let config: MxrConfig = toml::from_str(toml_str).expect("parse full toml");
@@ -186,7 +182,35 @@ editor = "emacs"
         );
         assert_eq!(config.snooze.morning_hour, 9);
         assert_eq!(config.logging.event_retention_days, 90);
-        assert_eq!(config.appearance.subject_max_width, 60);
+    }
+
+    #[test]
+    fn retired_keys_still_load_and_are_reported() {
+        let toml_str = r#"
+[appearance]
+theme = "catppuccin"
+sidebar = false
+date_format = "%m/%d"
+date_format_full = "%Y-%m-%d %H:%M:%S"
+subject_max_width = 80
+
+[humanizer]
+apply_to_summaries = true
+"#;
+
+        let config = load_config_from_str(toml_str).expect("retired keys must not break loading");
+        assert_eq!(config.appearance.theme, "catppuccin");
+
+        let table: toml::Table = toml_str.parse().expect("parse raw toml");
+        assert_eq!(retired_config_keys_in(&table), RETIRED_CONFIG_KEYS);
+    }
+
+    #[test]
+    fn config_without_retired_keys_reports_nothing() {
+        let table: toml::Table = "[appearance]\ntheme = \"default\"\n"
+            .parse()
+            .expect("parse raw toml");
+        assert!(retired_config_keys_in(&table).is_empty());
     }
 
     #[test]

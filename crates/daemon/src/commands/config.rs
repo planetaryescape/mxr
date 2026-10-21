@@ -125,11 +125,8 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "logging.event_retention_days" => Ok(config.logging.event_retention_days.to_string()),
         // appearance
         "appearance.theme" => Ok(config.appearance.theme.clone()),
-        "appearance.sidebar" => Ok(config.appearance.sidebar.to_string()),
-        "appearance.date_format" => Ok(config.appearance.date_format.clone()),
-        "appearance.date_format_full" => Ok(config.appearance.date_format_full.clone()),
-        "appearance.subject_max_width" => Ok(config.appearance.subject_max_width.to_string()),
-        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme, appearance.sidebar, appearance.date_format, appearance.date_format_full, appearance.subject_max_width"),
+        key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
+        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
     }
 }
 
@@ -234,19 +231,14 @@ fn set_config_value(
         }
         // appearance
         "appearance.theme" => config.appearance.theme = value.to_string(),
-        "appearance.sidebar" => {
-            config.appearance.sidebar = parse_bool(value)?;
-        }
-        "appearance.date_format" => config.appearance.date_format = value.to_string(),
-        "appearance.date_format_full" => config.appearance.date_format_full = value.to_string(),
-        "appearance.subject_max_width" => {
-            config.appearance.subject_max_width = value
-                .parse()
-                .map_err(|_| anyhow::anyhow!("Invalid integer: {value}"))?;
-        }
+        key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
         _ => anyhow::bail!("Unknown or read-only config key: {key}\n\nRun 'mxr config get <key>' to see available keys."),
     }
     Ok(())
+}
+
+fn retired_key_message(key: &str) -> String {
+    format!("`{key}` was retired and no longer does anything; remove it from config.toml")
 }
 
 fn parse_bool(value: &str) -> anyhow::Result<bool> {
@@ -315,5 +307,32 @@ mod tests {
         assert_eq!(config.llm.context_window, 80_000);
         assert_eq!(config.llm.request_timeout_secs, 30);
         assert!(config.llm.allow_cloud_relationship_data);
+    }
+
+    #[test]
+    fn retired_appearance_keys_are_rejected_on_get_and_set() {
+        let mut config = mxr_config::MxrConfig::default();
+        for key in mxr_config::RETIRED_CONFIG_KEYS {
+            let get_error = get_config_value(&config, key).expect_err("get must reject");
+            assert!(
+                get_error.to_string().contains("was retired"),
+                "{key}: {get_error}"
+            );
+            let set_error = set_config_value(&mut config, key, "1").expect_err("set must reject");
+            assert!(
+                set_error.to_string().contains("was retired"),
+                "{key}: {set_error}"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_is_still_settable() {
+        let mut config = mxr_config::MxrConfig::default();
+        set_config_value(&mut config, "appearance.theme", "midnight").expect("set theme");
+        assert_eq!(
+            get_config_value(&config, "appearance.theme").expect("get theme"),
+            "midnight"
+        );
     }
 }

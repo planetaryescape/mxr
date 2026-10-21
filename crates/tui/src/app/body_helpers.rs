@@ -91,6 +91,7 @@ impl App {
                 pending_mutation_status: self.pending_mutation_status.clone(),
                 mutation_batch_total: self.mutation_batch_total,
                 busy: self.has_in_flight_work(),
+                search_mode: self.active_search_mode(),
             };
         }
 
@@ -123,6 +124,7 @@ impl App {
                 pending_mutation_status: self.pending_mutation_status.clone(),
                 mutation_batch_total: self.mutation_batch_total,
                 busy: self.has_in_flight_work(),
+                search_mode: self.active_search_mode(),
             };
         }
 
@@ -146,6 +148,7 @@ impl App {
                 pending_mutation_status: self.pending_mutation_status.clone(),
                 mutation_batch_total: self.mutation_batch_total,
                 busy: self.has_in_flight_work(),
+                search_mode: self.active_search_mode(),
             };
         }
 
@@ -172,7 +175,17 @@ impl App {
             pending_mutation_status: self.pending_mutation_status.clone(),
             mutation_batch_total: self.mutation_batch_total,
             busy: self.has_in_flight_work(),
+            search_mode: self.active_search_mode(),
         }
+    }
+
+    /// The search mode to name in the status bar: the search screen's query
+    /// while that screen is open, otherwise an applied mailbox filter (Ctrl-f).
+    fn active_search_mode(&self) -> Option<mxr_core::SearchMode> {
+        if self.screen == Screen::Search {
+            return (!self.search.page.query.is_empty()).then_some(self.search.page.mode);
+        }
+        (self.search.active && !self.search.bar.query.is_empty()).then_some(self.search.bar.mode)
     }
 
     fn recovery_pause_warning(&self) -> Option<String> {

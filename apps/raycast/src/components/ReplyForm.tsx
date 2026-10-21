@@ -202,6 +202,9 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
   /** Hand the reply as written to the web composer instead of starting over. */
   async function openInMxr() {
     if (!webBase || submitting.current) return;
+    // Same guard as Send: one handover at a time, and leaving the form
+    // waits for this one to settle before discarding anything.
+    submitting.current = true;
     const toast = await showToast({ style: Toast.Style.Animated, title: "Opening in mxr…" });
     try {
       const saved = await saveShownBody();
@@ -215,6 +218,9 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
       toast.style = Toast.Style.Failure;
       toast.title = "Could not open the reply in mxr";
       toast.message = message(failure);
+    } finally {
+      submitting.current = false;
+      if (closed.current) discardIfAbandoned();
     }
   }
 

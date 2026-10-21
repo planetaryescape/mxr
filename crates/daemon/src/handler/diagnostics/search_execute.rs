@@ -885,6 +885,7 @@ mod owed_reply_filter_tests {
         let selection = match crate::handler::handle_request(
             &state,
             &request(Request::Search {
+                limit_from_config: false,
                 query: query.clone(),
                 limit: crate::commands::selection::SEARCH_HARD_CAP,
                 offset: 0,

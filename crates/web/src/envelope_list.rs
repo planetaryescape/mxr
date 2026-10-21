@@ -108,6 +108,7 @@ pub(crate) async fn search_envelopes(
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,
+            limit_from_config: false,
         },
     )
     .await?

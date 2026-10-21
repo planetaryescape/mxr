@@ -1222,6 +1222,7 @@ mod tests {
         let wake_at = chrono::DateTime::<chrono::Utc>::from_timestamp(1_715_592_090, 0).unwrap();
         let logged = [
             Request::Search {
+                limit_from_config: false,
                 query: "invoice 2026".into(),
                 limit: 50,
                 offset: 0,
@@ -1286,6 +1287,7 @@ mod tests {
     #[test]
     fn search_run_carries_query_and_mode() {
         let req = Request::Search {
+            limit_from_config: false,
             query: "invoice 2026".into(),
             limit: 50,
             offset: 0,
@@ -1401,6 +1403,7 @@ mod tests {
     #[test]
     fn source_propagates_through_entry() {
         let req = Request::Search {
+            limit_from_config: false,
             query: "x".into(),
             limit: 10,
             offset: 0,
@@ -1416,6 +1419,7 @@ mod tests {
     #[test]
     fn account_id_propagates_when_provided() {
         let req = Request::Search {
+            limit_from_config: false,
             query: "x".into(),
             limit: 10,
             offset: 0,
@@ -1431,6 +1435,7 @@ mod tests {
     #[test]
     fn entry_tier_matches_classifier() {
         let req = Request::Search {
+            limit_from_config: false,
             query: "x".into(),
             limit: 10,
             offset: 0,
@@ -1456,6 +1461,7 @@ mod tests {
     fn long_search_query_truncates_with_ellipsis() {
         let long_query = "a".repeat(1000);
         let req = Request::Search {
+            limit_from_config: false,
             query: long_query,
             limit: 10,
             offset: 0,

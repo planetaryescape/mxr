@@ -956,7 +956,7 @@ fn search_jump_bottom_loads_remaining_pages() {
         Some(PendingSearchRequest {
             query: "deploy".into(),
             mode: mxr_core::SearchMode::Lexical,
-            sort: mxr_core::SortOrder::DateDesc,
+            sort: None,
             limit: SEARCH_PAGE_SIZE,
             offset: 3,
             target: SearchTarget::SearchPage,

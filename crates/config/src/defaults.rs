@@ -30,7 +30,7 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             default_sort: SortOrder::DateDesc,
-            max_results: 200,
+            max_results: 50,
             default_mode: mxr_core::SearchMode::Lexical,
             semantic: SemanticConfig::default(),
         }

@@ -279,6 +279,7 @@ impl Client {
                 mode: None,
                 sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: false,
+                limit_from_config: false,
             })
             .await?;
         match resp {

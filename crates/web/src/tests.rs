@@ -2226,10 +2226,12 @@ async fn search_endpoint_proxies_results() {
                 offset: 50,
                 account_id: None,
                 mode: None,
-                sort: Some(SortOrder::DateDesc),
+                sort: None,
                 explain: false,
+                limit_from_config: false,
             } if query == "buildkite" => Some(Response::Ok {
                 data: ResponseData::SearchResults {
+                    limit: None,
                     results: vec![result.clone()],
                     total: 1,
                     has_more: false,
@@ -2438,8 +2440,10 @@ async fn search_endpoint_supports_mode_sort_and_explain() {
                 mode: Some(SearchMode::Semantic),
                 sort: Some(SortOrder::DateDesc),
                 explain: true,
+                limit_from_config: _,
             } if query == "deploy" => Some(Response::Ok {
                 data: ResponseData::SearchResults {
+                    limit: None,
                     results: vec![newer_result.clone(), older_result.clone()],
                     total: 2,
                     has_more: false,
@@ -2531,10 +2535,12 @@ async fn search_endpoint_dedupes_threads_by_thread_id() {
                 offset: 0,
                 account_id: None,
                 mode: None,
-                sort: Some(SortOrder::DateDesc),
+                sort: None,
                 explain: false,
+                limit_from_config: true,
             } if query == "dalumuzi" => Some(Response::Ok {
                 data: ResponseData::SearchResults {
+                    limit: None,
                     results: results.clone(),
                     total: results.len() as u32,
                     has_more: false,
@@ -2610,10 +2616,12 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
                 offset: 0,
                 account_id: None,
                 mode: None,
-                sort: Some(SortOrder::DateDesc),
+                sort: None,
                 explain: false,
+                limit_from_config: true,
             } if query == "deploy artifacts" => Some(Response::Ok {
                 data: ResponseData::SearchResults {
+                    limit: None,
                     results: vec![result.clone()],
                     total: 1,
                     has_more: false,
@@ -4758,6 +4766,7 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
                 Request::Search { account_id, .. } => {
                     assert_eq!(account_id.as_ref(), Some(&scoped), "search scope");
                     ResponseData::SearchResults {
+                        limit: None,
                         results: Vec::new(),
                         explain: None,
                         has_more: false,
@@ -5784,6 +5793,7 @@ async fn mailbox_and_search_rows_carry_labels() {
                     envelopes: envelopes.clone(),
                 },
                 Request::Search { .. } => ResponseData::SearchResults {
+                    limit: None,
                     results: results.clone(),
                     explain: None,
                     has_more: false,

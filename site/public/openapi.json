@@ -25639,6 +25639,10 @@
                 "format": "int32",
                 "minimum": 0
               },
+              "limit_from_config": {
+                "type": "boolean",
+                "description": "Page size comes from `[search] max_results` on the daemon and `limit`\nis only the fallback for a daemon that does not know this field."
+              },
               "mode": {
                 "oneOf": [
                   {
@@ -25660,7 +25664,8 @@
               "sort": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/SortOrder"
+                    "$ref": "#/components/schemas/SortOrder",
+                    "description": "`None` asks the daemon for `[search] default_sort`."
                   },
                   {
                     "type": "null"
@@ -31823,6 +31828,15 @@
                 "enum": [
                   "SearchResults"
                 ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The page size the daemon actually used, which may come from\n`[search] max_results`. Older daemons omit it.",
+                "minimum": 0
               },
               "next_offset": {
                 "type": [

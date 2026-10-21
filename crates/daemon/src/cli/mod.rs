@@ -225,13 +225,15 @@ pub enum Command {
         account: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
-        #[arg(long, default_value = "50")]
+        /// Page size. Omitted, the daemon's `[search] max_results` applies.
+        #[arg(long)]
         limit: Option<u32>,
         /// Skip this many matching results before returning a page.
         #[arg(long, default_value_t = 0)]
         offset: u32,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
+        /// Sort order. Omitted, the daemon's `[search] default_sort` applies.
         #[arg(long, value_enum)]
         sort: Option<SearchSortArg>,
         /// Aggregate the query result set by a field instead of listing messages.

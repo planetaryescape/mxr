@@ -5,7 +5,7 @@ pub(super) struct SearchRequestDraft {
     append: bool,
     query: String,
     mode: SearchMode,
-    sort: SortOrder,
+    sort: Option<SortOrder>,
     offset: u32,
     session_id: u64,
 }
@@ -194,7 +194,7 @@ impl App {
     pub(super) fn schedule_search_page_search(&mut self) {
         self.search.bar.query = self.search.page.query.clone();
         self.search.bar.mode = self.search.page.mode;
-        self.search.page.sort = SortOrder::DateDesc;
+        self.search.page.sort = None;
         let query = self.search.page.query.trim().to_string();
         if query.is_empty() {
             self.reset_search_page_workspace();
@@ -213,7 +213,7 @@ impl App {
     pub fn execute_search_page_search(&mut self) {
         self.search.bar.query = self.search.page.query.clone();
         self.search.bar.mode = self.search.page.mode;
-        self.search.page.sort = SortOrder::DateDesc;
+        self.search.page.sort = None;
         let query = self.search.page.query.trim().to_string();
         self.search.pending_debounce = None;
         if query.is_empty() {
@@ -300,7 +300,7 @@ impl App {
         let query_source = self.search.bar.query.clone();
         self.search.bar.query = query_source.clone();
         self.search.page.mode = self.search.bar.mode;
-        self.search.page.sort = SortOrder::DateDesc;
+        self.search.page.sort = None;
         let query = query_source.to_lowercase();
         if query.is_empty() {
             Self::bump_search_session_id(&mut self.search.mailbox_session_id);
@@ -345,7 +345,7 @@ impl App {
                 append: false,
                 query: query_source,
                 mode: self.search.bar.mode,
-                sort: SortOrder::DateDesc,
+                sort: None,
                 offset: 0,
                 session_id,
             });

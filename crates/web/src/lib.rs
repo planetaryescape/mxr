@@ -462,10 +462,12 @@ async fn search(
         })));
     }
 
+    // Omitted sort defers to the daemon's `[search] default_sort`.
     let sort = match query.sort.as_deref() {
-        Some("relevant") => SortOrder::Relevance,
-        Some("oldest") => SortOrder::DateAsc,
-        _ => SortOrder::DateDesc,
+        None => None,
+        Some("relevant") => Some(SortOrder::Relevance),
+        Some("oldest") => Some(SortOrder::DateAsc),
+        Some(_) => Some(SortOrder::DateDesc),
     };
 
     let scope = query.scope.as_deref().unwrap_or("threads");
@@ -480,12 +482,13 @@ async fn search(
         &state.config.socket_path,
         Request::Search {
             query: query.q,
-            limit: query.limit,
+            limit: query.limit.unwrap_or_else(default_limit),
             offset: query.offset,
             account_id,
             mode: query.mode,
-            sort: Some(sort),
+            sort,
             explain: query.explain,
+            limit_from_config: query.limit.is_none(),
         },
     )
     .await?
@@ -496,6 +499,7 @@ async fn search(
             has_more,
             total,
             next_offset,
+            limit: _,
         } => {
             let effective_results = if thread_scope {
                 dedupe_search_results_by_thread(results)
@@ -545,7 +549,8 @@ async fn search(
 
             Ok(Json(json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
-                "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
+                // Omitted, the daemon applied its own `[search] default_sort`.
+                "sort": query.sort.unwrap_or_else(|| "default".to_string()),
                 "mode": query.mode.unwrap_or_default(),
                 "total": response_total,
                 "has_more": has_more,
@@ -590,7 +595,7 @@ async fn triage_response(
         &state.config.socket_path,
         Request::TriageSearch {
             query: query.q,
-            limit: query.limit,
+            limit: query.limit.unwrap_or_else(default_limit),
             offset: query.offset,
             account_id,
             mode,
@@ -694,7 +699,7 @@ async fn search_groups(
             account_id,
             mode: query.mode,
             group_by,
-            limit: Some(query.limit),
+            limit: Some(query.limit.unwrap_or_else(default_limit)),
         },
     )
     .await?

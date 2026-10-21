@@ -1393,6 +1393,7 @@ async fn dispatch_search_returns_results() {
         id: 10,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "deployment".to_string(),
             limit: 10,
             offset: 0,
@@ -1433,6 +1434,7 @@ async fn dispatch_search_explain_returns_execution_details() {
         id: 11,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "deployment".to_string(),
             limit: 5,
             offset: 0,
@@ -1479,6 +1481,7 @@ async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
         id: 13,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "is:unread".to_string(),
             limit: 10,
             offset: 0,
@@ -1524,6 +1527,7 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
             mode: Some(mxr_core::SearchMode::Semantic),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
+            limit_from_config: false,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -1574,6 +1578,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
             mode: Some(mxr_core::SearchMode::Hybrid),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
+            limit_from_config: false,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -1607,6 +1612,7 @@ async fn dispatch_search_rejects_invalid_structured_query() {
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "older:30q".to_string(),
             limit: 10,
             offset: 0,
@@ -1970,3 +1976,130 @@ async fn status_recovery_metadata_does_not_escape_starved_reader_budget() {
         .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
         .await;
 }
+
+/// A daemon whose `[search]` defaults are the test's own config, with the
+/// fake account synced so the index has messages to page through.
+async fn search_defaults_state(
+    max_results: usize,
+    default_sort: mxr_config::SortOrder,
+) -> Arc<AppState> {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let mut config = state.config_snapshot();
+    config.search.max_results = max_results;
+    config.search.default_sort = default_sort;
+    state.set_config_for_test(config).await;
+    state
+}
+
+/// Dates of the hits, in result order, read back from the store.
+async fn hit_dates(state: &Arc<AppState>, results: &[mxr_protocol::SearchResultItem]) -> Vec<chrono::DateTime<chrono::Utc>> {
+    let message_ids = results.iter().map(|r| r.message_id.clone()).collect();
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 41,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ListEnvelopesByIds { message_ids }),
+    };
+    let envelopes = match handle_request(state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Envelopes { envelopes },
+        }) => envelopes,
+        other => panic!("Expected Envelopes, got {other:?}"),
+    };
+    results
+        .iter()
+        .map(|r| {
+            envelopes
+                .iter()
+                .find(|e| e.id == r.message_id)
+                .expect("every hit has an envelope")
+                .date
+        })
+        .collect()
+}
+
+async fn dispatch_search_page(
+    state: &Arc<AppState>,
+    limit: u32,
+    sort: Option<mxr_core::types::SortOrder>,
+    limit_from_config: bool,
+) -> (Vec<mxr_protocol::SearchResultItem>, Option<u32>) {
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 40,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Search {
+            query: "after:2000-01-01".to_string(),
+            limit,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort,
+            explain: false,
+            limit_from_config,
+        }),
+    };
+    match handle_request(state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::SearchResults { results, limit, .. },
+        }) => (results, limit),
+        other => panic!("Expected SearchResults, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn search_without_its_own_page_size_or_sort_uses_daemon_search_defaults() {
+    let state = search_defaults_state(3, mxr_config::SortOrder::DateAsc).await;
+
+    let (results, page_limit) = dispatch_search_page(&state, 50, None, true).await;
+
+    assert_eq!(results.len(), 3, "max_results is the default page size");
+    assert_eq!(page_limit, Some(3));
+    let dates = hit_dates(&state, &results).await;
+    let mut oldest_first = dates.clone();
+    oldest_first.sort();
+    assert_eq!(dates, oldest_first, "default_sort = date_asc orders oldest first");
+}
+
+#[tokio::test]
+async fn explicit_limit_and_sort_win_over_daemon_search_defaults() {
+    let state = search_defaults_state(3, mxr_config::SortOrder::DateAsc).await;
+
+    let (results, page_limit) = dispatch_search_page(
+        &state,
+        5,
+        Some(mxr_core::types::SortOrder::DateDesc),
+        false,
+    )
+    .await;
+
+    assert_eq!(results.len(), 5, "an explicit limit above max_results is honoured");
+    assert_eq!(page_limit, Some(5));
+    let dates = hit_dates(&state, &results).await;
+    let mut newest_first = dates.clone();
+    newest_first.sort_by(|a, b| b.cmp(a));
+    assert_eq!(dates, newest_first, "an explicit date_desc sort wins over date_asc");
+}
+
+#[tokio::test]
+async fn zero_max_results_reads_as_one_row_per_page() {
+    let state = search_defaults_state(0, mxr_config::SortOrder::DateDesc).await;
+
+    let (results, page_limit) = dispatch_search_page(&state, 50, None, true).await;
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(page_limit, Some(1));
+}
+
+#[test]
+fn search_page_size_from_config_clamps_to_u32_and_never_returns_zero() {
+    assert_eq!(search_page_size_from_config(0), 1);
+    assert_eq!(search_page_size_from_config(200), 200);
+    assert_eq!(search_page_size_from_config(usize::MAX), u32::MAX);
+}
+

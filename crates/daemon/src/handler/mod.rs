@@ -1209,15 +1209,23 @@ async fn dispatch(
             mode,
             sort,
             explain,
+            limit_from_config,
         } => {
+            let search_config = state.config_snapshot().search;
+            let limit = if *limit_from_config {
+                search_page_size_from_config(search_config.max_results)
+            } else {
+                *limit
+            };
             runtime::search(
                 state,
                 query,
-                *limit,
+                limit,
                 *offset,
                 account_id.as_ref(),
-                mode.unwrap_or(state.config_snapshot().search.default_mode),
-                sort.clone().unwrap_or(mxr_core::types::SortOrder::DateDesc),
+                mode.unwrap_or(search_config.default_mode),
+                sort.clone()
+                    .unwrap_or_else(|| search_config.default_sort.into()),
                 *explain,
             )
             .await
@@ -4562,6 +4570,12 @@ fn is_assistant_request(req: &Request) -> bool {
             | Request::GetAssistantConversation { .. }
             | Request::DeleteAssistantConversation { .. }
     )
+}
+
+/// `[search] max_results` as a page size. Zero would return empty pages with
+/// `has_more` set and clients would page forever, so it reads as one row.
+fn search_page_size_from_config(max_results: usize) -> u32 {
+    u32::try_from(max_results).unwrap_or(u32::MAX).max(1)
 }
 
 #[cfg(test)]

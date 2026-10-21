@@ -105,7 +105,7 @@ html_remote_content = true         # allow remote images in HTML view; every img
 
 [search]
 default_sort = "date_desc"
-max_results = 200
+max_results = 50
 default_mode = "lexical"           # lexical | hybrid | semantic
 
 [search.semantic]
@@ -361,12 +361,14 @@ an unencrypted connection.
 - `max_results`
 - `default_mode`
 
+`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen, the web `/search` API and the MCP `mxr_search` tool. The web app's search page still uses its own sort and page size. `max_results` defaults to 50. `max_results` is the default page size, not a cap, and an explicit `--limit` or `--sort` always wins. The daemon reads these values when it starts, so run `mxr restart` after changing them.
+
 Example:
 
 ```toml
 [search]
 default_sort = "date_desc"
-max_results = 200
+max_results = 50
 default_mode = "lexical"
 ```
 

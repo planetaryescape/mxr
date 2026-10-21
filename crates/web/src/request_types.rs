@@ -78,7 +78,7 @@ impl MailboxQuery {
     }
 }
 
-fn default_limit() -> u32 {
+pub(super) fn default_limit() -> u32 {
     200
 }
 
@@ -86,8 +86,10 @@ fn default_limit() -> u32 {
 pub(super) struct SearchQuery {
     #[serde(default)]
     pub(super) q: String,
-    #[serde(default = "default_limit")]
-    pub(super) limit: u32,
+    /// Omitted, the daemon's `[search] max_results` applies to search; triage
+    /// and aggregation keep their own default.
+    #[serde(default)]
+    pub(super) limit: Option<u32>,
     #[serde(default)]
     pub(super) offset: u32,
     #[serde(default)]

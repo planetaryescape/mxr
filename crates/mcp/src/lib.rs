@@ -948,12 +948,13 @@ impl MxrMcpServer {
         let McpJson(mut result) = self
             .daemon_json(Request::Search {
                 query: input.query,
-                limit: input.limit.unwrap_or(25).min(100),
+                limit: input.limit.map_or(MCP_SEARCH_FALLBACK_LIMIT, |limit| limit.min(100)),
                 offset: input.offset.unwrap_or(0),
                 account_id: parse_optional_id(input.account_id)?,
                 mode: None,
                 sort: None,
                 explain: input.explain.unwrap_or(false),
+                limit_from_config: input.limit.is_none(),
             })
             .await?;
         self.name_search_results(&mut result).await;
@@ -2238,6 +2239,10 @@ pub struct ListMessagesInput {
     pub offset: Option<u32>,
 }
 
+/// Page size asked for when the caller omits `limit` and an older daemon
+/// ignores `limit_from_config`. A current daemon uses `[search] max_results`.
+const MCP_SEARCH_FALLBACK_LIMIT: u32 = 25;
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchInput {
     pub query: String,
@@ -2887,6 +2892,7 @@ mod tests {
         async fn request(&self, request: Request) -> anyhow::Result<Response> {
             let data = match request {
                 Request::Search { .. } => ResponseData::SearchResults {
+                    limit: None,
                     results: vec![mxr_protocol::SearchResultItem {
                         message_id: self.message_id.clone(),
                         account_id: AccountId::new(),

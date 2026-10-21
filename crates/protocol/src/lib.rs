@@ -51,6 +51,80 @@ mod tests {
     use super::*;
     use bytes::BytesMut;
 
+    /// The request shape before `limit_from_config` existed. A daemon built
+    /// from that code decodes a new client's search with this type.
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "cmd")]
+    enum PreConfigLimitRequest {
+        Search {
+            query: String,
+            limit: u32,
+            #[serde(default)]
+            offset: u32,
+            #[serde(default)]
+            account_id: Option<AccountId>,
+            mode: Option<SearchMode>,
+            #[serde(default)]
+            sort: Option<SortOrder>,
+            explain: bool,
+        },
+    }
+
+    #[test]
+    fn search_limit_from_config_stays_off_the_wire_unless_set() {
+        let search = |limit_from_config| Request::Search {
+            query: "inbox".into(),
+            limit: 50,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort: None,
+            explain: false,
+            limit_from_config,
+        };
+
+        let off = serde_json::to_value(search(false)).unwrap();
+        assert!(off.get("limit_from_config").is_none());
+        let on = serde_json::to_value(search(true)).unwrap();
+        assert_eq!(on["limit_from_config"], serde_json::json!(true));
+
+        let decoded: Request = serde_json::from_value(off).unwrap();
+        assert!(matches!(
+            decoded,
+            Request::Search {
+                limit_from_config: false,
+                sort: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn search_with_limit_from_config_decodes_on_a_daemon_that_predates_the_field() {
+        let on = serde_json::to_value(Request::Search {
+            query: "inbox".into(),
+            limit: 50,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort: None,
+            explain: false,
+            limit_from_config: true,
+        })
+        .unwrap();
+
+        // serde ignores keys a struct variant does not declare, so the older
+        // daemon reads the fallback `limit` as its page size, as it always did.
+        let legacy: PreConfigLimitRequest = serde_json::from_value(on).unwrap();
+        match legacy {
+            PreConfigLimitRequest::Search { query, limit, sort, .. } => {
+                assert_eq!(query, "inbox");
+                assert_eq!(limit, 50);
+                assert_eq!(sort, None);
+            }
+        }
+    }
+
     #[test]
     fn a_provider_key_in_a_request_never_shows_in_debug_output_and_roundtrips() {
         let request = Request::SetLlmKey {
@@ -677,6 +751,7 @@ mod tests {
                     mode: Some(SearchMode::Lexical),
                     sort: Some(SortOrder::DateDesc),
                     explain: false,
+                    limit_from_config: false,
                 },
                 IpcCategory::CoreMail,
             ),
@@ -940,6 +1015,7 @@ mod tests {
             ),
             (
                 ResponseData::SearchResults {
+                    limit: None,
                     results: Vec::new(),
                     total: 0,
                     has_more: false,
@@ -1360,6 +1436,7 @@ mod tests {
                 mode: None,
                 sort: None,
                 explain: false,
+                limit_from_config: false,
             },
         ];
 
@@ -1914,6 +1991,7 @@ mod tests {
                 id,
                 source: crate::ClientKind::default(),
                 payload: IpcPayload::Request(Request::Search {
+                    limit_from_config: false,
                     query: query.clone(),
                     limit,
                     offset,

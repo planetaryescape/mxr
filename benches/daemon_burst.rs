@@ -151,6 +151,7 @@ fn search_request(id: u64) -> IpcMessage {
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,
+            limit_from_config: false,
         }),
     }
 }

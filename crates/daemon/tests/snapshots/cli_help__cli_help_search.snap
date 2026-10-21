@@ -12,10 +12,10 @@ Arguments:
 Options:
       --account <ACCOUNT>
       --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
-      --limit <LIMIT>        [default: 50]
+      --limit <LIMIT>        Page size. Omitted, the daemon's `[search] max_results` applies
       --offset <OFFSET>      Skip this many matching results before returning a page [default: 0]
       --mode <MODE>          [possible values: lexical, hybrid, semantic]
-      --sort <SORT>          [possible values: date, relevance]
+      --sort <SORT>          Sort order. Omitted, the daemon's `[search] default_sort` applies [possible values: date, relevance]
       --group-by <GROUP_BY>  Aggregate the query result set by a field instead of listing messages [possible values: from, list, category]
       --explain
       --triage               Classify matching messages with cached ACTION/FYI/ROUTINE verdicts

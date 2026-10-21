@@ -128,6 +128,15 @@ the exact error already shown from sync status, and drops repeated identical
 log findings, so one transport failure appears once at Error severity. A
 different failure in the log still appears.
 
+## Open: doctor's log dedupe ignores which account a line belongs to
+
+`crates/daemon/src/handler/status_helpers.rs` drops a mirrored log line when it
+contains any account's current sync-status error. If two accounts hit the same
+failure text, account A's status finding can hide account B's log line even
+when B has no status finding of its own. Match the account and the exact
+sanitized error rather than a substring. Found by independent review of
+`916bd0188`; not a release blocker.
+
 ## Verification for a follow-up change
 
 Run focused tests through the shared build queue, reusing the worktree's

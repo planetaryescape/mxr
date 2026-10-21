@@ -588,9 +588,9 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         // name the real cause first and keep re-authorization as the last step.
         let mut steps = Vec::new();
         if lower.contains("invalid_client") || lower.contains("unauthorized_client") {
-            steps.push("Google rejected the OAuth client, not the sign-in: check the client ID and secret in the account config. A custom client must be a \"Desktop app\" client in Google Cloud Console.".to_string());
+            steps.push("The provider rejected the OAuth client, not the sign-in: check the client ID and secret in the account config. For Gmail, a custom client must be a \"Desktop app\" client; for Outlook, check the app registration.".to_string());
         } else if lower.contains("invalid_scope") {
-            steps.push("Google rejected the requested scopes: enable the Gmail API for the project and list the gmail.readonly, gmail.modify and gmail.labels scopes on the OAuth consent screen.".to_string());
+            steps.push("The provider rejected the requested scopes: check that the OAuth app may request them. For Gmail, enable the Gmail API and list the gmail.readonly, gmail.modify and gmail.labels scopes on the consent screen; for Outlook, check the app registration's API permissions.".to_string());
         }
         steps.push(format!(
             "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."

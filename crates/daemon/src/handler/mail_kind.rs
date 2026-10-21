@@ -515,9 +515,10 @@ fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentF
         return Some((field, next?));
     }
     // A label is a short run of label words, so only a split before the
-    // first other word can match. Trying every split of a long paragraph
-    // re-parsed it once per word: quadratic, and most of a Now request.
-    let label_end = first_non_label_word(line);
+    // first other word, or within the first few words, can match. Trying
+    // every split of a long paragraph re-parsed it once per word: quadratic,
+    // and most of a Now request.
+    let label_end = label_end(line);
     line[..label_end]
         .char_indices()
         .rev()
@@ -525,18 +526,30 @@ fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentF
         .find_map(|(index, _)| Some((document_field(&line[..index])?, line[index..].trim())))
 }
 
-/// Byte offset where the first word that cannot appear in a label starts, or
+/// No field label is longer than a few words ("web order reference
+/// number"); a longer run of label words is prose, not a label.
+const MAX_LABEL_WORDS: usize = 8;
+
+/// Byte offset where a label must have ended: the start of the first word
+/// that cannot appear in a label or of the word after `MAX_LABEL_WORDS`, or
 /// the line's length. Words split on non-alphabetic characters, as in
 /// `document_field`.
-fn first_non_label_word(line: &str) -> usize {
+fn label_end(line: &str) -> usize {
     let mut start = None;
+    let mut words = 0;
     for (index, c) in line.char_indices().chain([(line.len(), ' ')]) {
         match (start, c.is_alphabetic()) {
-            (None, true) => start = Some(index),
+            (None, true) => {
+                if words == MAX_LABEL_WORDS {
+                    return index;
+                }
+                start = Some(index);
+            }
             (Some(word_start), false) => {
                 if !label_word(&line[word_start..index]) {
                     return word_start;
                 }
+                words += 1;
                 start = None;
             }
             _ => {}
@@ -632,11 +645,22 @@ fn authored_content(evidence: &mxr_core::mail_evidence::MailEvidence) -> String 
     mxr_reader::authored_text(text, &earlier)
 }
 
-/// Most authored-text entries a daemon keeps before starting over.
+/// Most authored-text entries, and bytes of text, a daemon keeps before
+/// starting over. Evidence text is cut to 8 KiB when it is read, so the
+/// byte budget only matters if a caller ever passes a whole body.
 const AUTHORED_CACHE_LIMIT: usize = 4096;
+const AUTHORED_CACHE_BYTES: usize = 16 * 1024 * 1024;
+/// A result larger than this is returned but not kept.
+const AUTHORED_CACHE_ENTRY_BYTES: usize = 64 * 1024;
 
-static AUTHORED_CACHE: Lazy<Mutex<HashMap<u64, Arc<str>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+#[derive(Default)]
+struct AuthoredCache {
+    texts: HashMap<u64, Arc<str>>,
+    bytes: usize,
+}
+
+static AUTHORED_CACHE: Lazy<Mutex<AuthoredCache>> =
+    Lazy::new(|| Mutex::new(AuthoredCache::default()));
 
 /// The lowercased authored text, computed once per distinct body. Every
 /// classification of a message (kind, reason, directed request) needs it,
@@ -649,18 +673,26 @@ fn authored_lower(evidence: &mxr_core::mail_evidence::MailEvidence) -> Arc<str> 
     if let Some(found) = AUTHORED_CACHE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
+        .texts
         .get(&key)
     {
         return Arc::clone(found);
     }
     let lower: Arc<str> = authored_content(evidence).to_lowercase().into();
+    if lower.len() > AUTHORED_CACHE_ENTRY_BYTES {
+        return lower;
+    }
     let mut cache = AUTHORED_CACHE
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
-    if cache.len() >= AUTHORED_CACHE_LIMIT {
-        cache.clear();
+    if cache.texts.len() >= AUTHORED_CACHE_LIMIT || cache.bytes + lower.len() > AUTHORED_CACHE_BYTES
+    {
+        *cache = AuthoredCache::default();
     }
-    cache.insert(key, Arc::clone(&lower));
+    cache.bytes += lower.len();
+    if let Some(replaced) = cache.texts.insert(key, Arc::clone(&lower)) {
+        cache.bytes -= replaced.len();
+    }
     lower
 }
 
@@ -1390,14 +1422,21 @@ mod tests {
             );
         }
 
-        let paragraph = "word ".repeat(5_000) + "total 12";
-        let started = std::time::Instant::now();
-        assert!(document_value(&paragraph, None).is_none());
-        assert!(
-            started.elapsed() < std::time::Duration::from_millis(50),
-            "{:?}",
-            started.elapsed()
-        );
+        // Prose, and a long run of words that could each be in a label
+        // (untrusted mail can be written to be slow).
+        for paragraph in [
+            "word ".repeat(5_000) + "total 12",
+            "invoice order number ".repeat(2_000) + "12",
+            "invoice ".repeat(5_000) + "12",
+        ] {
+            let started = std::time::Instant::now();
+            assert!(document_value(&paragraph, None).is_none());
+            assert!(
+                started.elapsed() < std::time::Duration::from_millis(50),
+                "{:?}",
+                started.elapsed()
+            );
+        }
     }
 
     #[test]

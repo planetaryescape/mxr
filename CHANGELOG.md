@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.127](https://github.com/planetaryescape/mxr/compare/v0.6.126...v0.6.127) (2026-10-21)
+
+
+### Features
+
+* open everything an assistant step found ([#584](https://github.com/planetaryescape/mxr/issues/584)) ([d08625d](https://github.com/planetaryescape/mxr/commit/d08625d2553e0207b54d30313c7aac40d1e4f185))
+
+
+### Bug Fixes
+
+* keep Compose whole in the phone top bar ([#578](https://github.com/planetaryescape/mxr/issues/578)) ([bcb007a](https://github.com/planetaryescape/mxr/commit/bcb007a3395097e17ac0c53ef94a5c999733977f))
+* partial trash toast e2e, TUI O override, settings fade, journey 2 evidence ([#577](https://github.com/planetaryescape/mxr/issues/577)) ([8da770b](https://github.com/planetaryescape/mxr/commit/8da770b74b91b6c8c1a15ce262a8fc9b8c637e94))
+* reply to your own sent message goes to its recipients ([#580](https://github.com/planetaryescape/mxr/issues/580)) ([2b580fc](https://github.com/planetaryescape/mxr/commit/2b580fcf8a2c671948271c3bfb6558d4d22b51a9))
+* stop idle syncs rebuilding every cached mode view ([#581](https://github.com/planetaryescape/mxr/issues/581)) ([9b80ad8](https://github.com/planetaryescape/mxr/commit/9b80ad883db7127ff1d0c7f1d8372ea4b6b4a65b))
+
+
+### Documentation
+
+* warn agents about the known Vitest audit failure ([#583](https://github.com/planetaryescape/mxr/issues/583)) ([bde2da5](https://github.com/planetaryescape/mxr/commit/bde2da5e938b94b7b89ab55b525e52a734123173))
+
 ## [0.6.126](https://github.com/planetaryescape/mxr/compare/v0.6.125...v0.6.126) (2026-10-21)
 
 

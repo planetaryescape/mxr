@@ -351,6 +351,9 @@ pub fn map_request(
         Request::DraftEval { .. } => {
             skip_activity!("draft_eval", "local evaluation; creates nothing")
         }
+        Request::ClassifyEval { .. } => {
+            skip_activity!("classify_eval", "local evaluation; reads only")
+        }
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),
         Request::SaveDraft { draft } => (
             "draft.save",

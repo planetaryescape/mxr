@@ -475,6 +475,17 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Measure how well mxr sorts mail: today's classifier against labelled
+    /// scenarios.
+    Classify {
+        #[command(subcommand)]
+        action: ClassifyAction,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// First-run setup wizard for demo, Gmail, or IMAP/SMTP.
     Setup {
         /// Legacy helper that drops a fake-provider account into the current
@@ -2308,6 +2319,26 @@ pub enum DraftsAction {
         /// Draft ID to edit.
         draft_id: String,
     },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ClassifyAction {
+    /// Grade the mail already in this mailbox against labelled scenarios:
+    /// per question (who sent it, which mode it goes to, whether it makes a
+    /// to-do, whether it makes a record) how often today's rules agree, and
+    /// every email they get wrong. Read-only and local. Run `mxr demo`
+    /// first to get mail with labels.
+    Eval {
+        /// Which labelled set to grade against.
+        #[arg(long, value_enum, default_value_t = ClassifySetArg::Quick)]
+        set: ClassifySetArg,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ClassifySetArg {
+    /// The labelled demo mail and every near-miss twin.
+    Quick,
 }
 
 #[derive(Debug, Clone, Subcommand)]

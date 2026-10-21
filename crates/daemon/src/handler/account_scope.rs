@@ -175,6 +175,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListSenders { account_id, .. }
         | Request::TriageSearch { account_id, .. }
         | Request::DraftEval { account_id, .. }
+        | Request::ClassifyEval { account_id, .. }
         | Request::ExportSearch { account_id, .. }
         | Request::GetDesk { account_id, .. }
         | Request::GetTodoRunway { account_id, .. }

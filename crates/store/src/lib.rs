@@ -34,6 +34,7 @@ mod body;
 mod calendar;
 mod categories;
 mod category_rules;
+mod classify_eval;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -121,6 +122,7 @@ pub use calendar::CalendarInviteRecord;
 pub use categories::{
     normalize_category_name, CategoryMembershipChange, CategoryMembershipVersion,
 };
+pub use classify_eval::{EvalAspects, EvalCandidate};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};

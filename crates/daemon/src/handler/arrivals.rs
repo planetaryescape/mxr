@@ -186,6 +186,17 @@ async fn place_all(
     Ok(sorted)
 }
 
+/// Where these emails (id, thread, in Spam) go now, placed live by today's
+/// rules without reading or writing their arrivals rows: for mail that has
+/// none, such as history older than 30 days when the account first synced.
+pub(super) async fn place_live(
+    state: &AppState,
+    account_id: &AccountId,
+    wanted: &[(MessageId, ThreadId, bool)],
+) -> Result<Vec<ArrivalPlacement>, HandlerError> {
+    Ok(place_all(state, account_id, wanted).await?.placements)
+}
+
 /// Re-evaluate only the requested cached mail. This is a read projection,
 /// not a repair mutation: first placement, first-seen, moves, tasks, marks,
 /// reminders and provider state are untouched, including across retries.

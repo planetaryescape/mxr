@@ -1,0 +1,50 @@
+---
+source: crates/daemon/src/handler/tests/classify_eval.rs
+expression: "report(&summary, &mismatches)"
+---
+label schema v1; 147 labelled in the set, 147 in the mailbox, 0 not placed
+who     131/147  89.1%
+home    132/147  89.8%
+todo    144/147  98.0%
+record  142/147  96.6%
+
+39 mismatches
+application-auto-ack demo-msg-148 who: expected machine, got list [label to check]
+application-auto-ack demo-msg-148 home: expected updates, got reading [label to check]
+card-expiring demo-msg-152 todo: expected yes, got no
+colleague-fyi-no-need-to-reply demo-msg-113 who: expected person, got machine [label to check]
+payment-failed demo-msg-132 record: expected no, got yes
+receipt-asks-for-an-address demo-msg-111 who: expected machine, got person [label to check]
+receipt-asks-for-an-address demo-msg-111 home: expected updates, got messages [label to check]
+receipt-asks-for-an-address demo-msg-111 todo: expected yes, got no [label to check]
+receipt-with-unsubscribe-header demo-msg-142 who: expected machine, got list
+receipt-with-unsubscribe-header demo-msg-142 home: expected updates, got reading
+records-event-tickets demo-msg-38 who: expected machine, got person
+records-event-tickets demo-msg-38 home: expected updates, got messages
+sign-completed demo-msg-154 who: expected machine, got person
+sign-completed demo-msg-154 home: expected updates, got messages
+sign-request demo-msg-153 who: expected machine, got person
+sign-request demo-msg-153 home: expected updates, got messages
+subscriptions-disney-cancellation demo-msg-106 who: expected machine, got person
+subscriptions-disney-cancellation demo-msg-106 home: expected updates, got messages
+subscriptions-disney-receipt demo-msg-103 who: expected machine, got person
+subscriptions-disney-receipt demo-msg-103 home: expected updates, got messages
+subscriptions-disney-receipt demo-msg-104 who: expected machine, got person
+subscriptions-disney-receipt demo-msg-104 home: expected updates, got messages
+subscriptions-disney-receipt demo-msg-105 who: expected machine, got person
+subscriptions-disney-receipt demo-msg-105 home: expected updates, got messages
+todo-bill-with-due-date demo-msg-9 who: expected machine, got person
+todo-bill-with-due-date demo-msg-9 home: expected updates, got messages
+todo-council-statement demo-msg-6 who: expected machine, got person
+todo-council-statement demo-msg-6 home: expected updates, got messages
+todo-council-statement demo-msg-6 record: expected yes, got no [label to check]
+todo-council-statement demo-msg-7 who: expected machine, got person
+todo-council-statement demo-msg-7 home: expected updates, got messages
+todo-council-statement demo-msg-7 record: expected yes, got no [label to check]
+todo-council-statement demo-msg-8 who: expected machine, got person
+todo-council-statement demo-msg-8 home: expected updates, got messages
+todo-council-statement demo-msg-8 record: expected yes, got no [label to check]
+todo-document-to-sign demo-msg-16 who: expected machine, got person
+todo-document-to-sign demo-msg-16 home: expected updates, got messages
+todo-statement-ready demo-msg-13 record: expected no, got yes [label to check]
+updates-payout-failed demo-msg-78 todo: expected yes, got no [label to check]

@@ -732,6 +732,8 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
             "cli_help_commitments_resolve",
             &["commitments", "resolve", "--help"],
         ),
+        ("cli_help_classify", &["classify", "--help"]),
+        ("cli_help_classify_eval", &["classify", "eval", "--help"]),
         ("cli_help_demo_reset", &["demo", "reset", "--help"]),
         ("cli_help_demo_status", &["demo", "status", "--help"]),
         ("cli_help_demo_stop", &["demo", "stop", "--help"]),

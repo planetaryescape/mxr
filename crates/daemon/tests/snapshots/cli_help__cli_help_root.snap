@@ -25,6 +25,7 @@ Commands:
   summarize           Summarise an email thread using the configured LLM (Ollama, LM Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config. Pass a positional thread ID or use `--search QUERY` plus `--first` (most recent match) or `--limit N` to summarize multiple threads in one go. Multi-summary output is separated by `--- THREAD_ID ---`
   draft-assist        Generate a draft reply for a thread, grounded on the thread context plus the user's instruction. Output goes to stdout — pipe it into `$EDITOR` or your scratch buffer. Never auto-sends. Two equivalent forms:
   draft               Draft a new email or refine an existing local draft with LLM assistance
+  classify            Measure how well mxr sorts mail: today's classifier against labelled scenarios
   setup               First-run setup wizard for demo, Gmail, or IMAP/SMTP
   demo                Launch an isolated, realistic demo inbox without touching your real config
   screener            Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider

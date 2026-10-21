@@ -20,6 +20,7 @@ mod auth_sessions;
 mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
+mod classify_eval;
 mod commitments;
 mod commitments_extract;
 mod conversation_shape;
@@ -2028,6 +2029,9 @@ async fn dispatch(
         Request::DraftEval { account_id, limit } => {
             draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
         }
+        Request::ClassifyEval { account_id, set } => {
+            classify_eval::classify_eval(state, account_id.as_ref(), *set).await
+        }
         Request::ListDrafts => mutations::list_drafts(state).await,
         Request::ListOrphanedDrafts => mutations::list_orphaned_drafts(state).await,
         Request::ResetOrphanedDraft { draft_id } => {
@@ -2438,6 +2442,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetArrivals { .. }
         | Request::ListArrivals { .. }
         | Request::GetArrivalModes { .. }
+        | Request::ClassifyEval { .. }
         | Request::ListCorrections { .. }
         | Request::GetRail { .. }
         | Request::GetFreshness { .. }
@@ -2907,6 +2912,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
         Request::DraftEval { .. } => "draft_eval",
+        Request::ClassifyEval { .. } => "classify_eval",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
@@ -3134,6 +3140,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
+        Request::ClassifyEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),

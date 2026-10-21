@@ -93,7 +93,7 @@ mxr decisions --topic pricing --since 180 --format json
 mxr decisions show DECISION_ID --format json
 ```
 
-What you get: rows `{ id, thread_id, decision, topic_tags, participants, evidence, decided_at, status }`. `id` is `hash(account, thread, normalized_decision, evidence_ids)` — stable across rebuilds.
+What you get: rows `{ id, thread_id, decision, topic_tags, participants, evidence, decided_at, status }`. `id` is `hash(account, thread, normalized_decision, evidence_ids)` — stable across rebuilds. `decided_at` is set only when the thread says when the decision was made (for example "on Friday"), resolved against the message that cites it; otherwise it is empty.
 
 ### Rebuilding
 

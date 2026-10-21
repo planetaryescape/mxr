@@ -224,6 +224,8 @@ async fn scan_one(
                     from_domain: &from_domain,
                     subject: &envelope.subject,
                     body_text: &cleaned,
+                    received_at: envelope.date,
+                    time_prefs: state.snooze_time_prefs(),
                 },
                 signal,
             )

@@ -156,12 +156,6 @@ export async function submitArchive(operation: ArchiveOperation): Promise<Archiv
 }
 export async function archiveMessagesRecoverably(ids: string[]): Promise<MutationResponse> {
   const operation = await previewArchive(ids);
-  if (
-    !window.confirm(
-      `Archive ${operation.items.length} reviewed messages?\n${operation.items.map((item) => item.message_id).join("\n")}`,
-    )
-  )
-    throw new Error("Archive review retained; submission cancelled");
   async function waitForOutcome(outcome: ArchiveOperation): Promise<ArchiveOperation> {
     if (!outcome.running) return outcome;
     await new Promise<void>((resolve) => window.setTimeout(resolve, 100));

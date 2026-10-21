@@ -166,6 +166,25 @@ describe("performMailAction", () => {
     await done;
   });
 
+  test("a second Archive of a message already in flight starts nothing and keeps the u slot", async () => {
+    const request = deferred<MutationResponse>();
+    api.archiveMessages.mockReturnValue(request.promise);
+
+    const first = performMailAction("archive", ["a-1", "a-2"]);
+    const undoSlot = useUndo.getState().lastUndo;
+    await expect(performMailAction("archive", ["a-1"])).resolves.toEqual({ ok: false });
+
+    expect(api.archiveMessages).toHaveBeenCalledTimes(1);
+    expect(useUndo.getState().lastUndo).toBe(undoSlot);
+    request.resolve(ok(2, "mut-1"));
+    await first;
+
+    // Once the first settles, the message can be archived again.
+    api.archiveMessages.mockResolvedValue(ok(1, "mut-2"));
+    await expect(performMailAction("archive", ["a-1"])).resolves.toMatchObject({ ok: true });
+    expect(api.archiveMessages).toHaveBeenCalledTimes(2);
+  });
+
   test("Archive success toasts with Undo and waits for the confirmed refetch", async () => {
     api.archiveMessages.mockResolvedValue(ok(2, "mut-1"));
     const serverAnswer = deferred<MailboxResponse>();

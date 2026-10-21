@@ -859,7 +859,10 @@ impl App {
                     }
                     return None;
                 }
-                (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
+                // `O` is the advertised override, matching the web app. Ctrl-O
+                // stays as a silent alias for existing muscle memory.
+                (KeyCode::Char('o'), KeyModifiers::CONTROL)
+                | (KeyCode::Char('O'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     // Override + send. Consumes the single-use token
                     // the daemon minted on the prior CheckDraftSafety.
                     // Only meaningful when the verdict is Blocked.

@@ -2,8 +2,9 @@
  * Pre-send confirmation, opened when the daemon's safety check found issues
  * (or could not run). States exactly who receives the message and from
  * which address, shows the verdict and each issue, and never sends a
- * blocked draft without an explicit override (the TUI uses Ctrl-O; the
- * browser keeps that key, so the web uses a plain O).
+ * blocked draft without an explicit override. The override is O in both the
+ * TUI and the web; the TUI keeps Ctrl-O as an alias, since the browser reserves
+ * it for Open File.
  */
 
 import { AlertTriangle, Loader2, Send, ShieldAlert, ShieldCheck, UserPlus } from "lucide-react";

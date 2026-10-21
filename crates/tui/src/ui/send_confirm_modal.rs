@@ -154,7 +154,7 @@ fn modal_lines(
 
     match pending.mode {
         PendingSendMode::SendOrSave if blocked => {
-            lines.push("[e] edit again   [^O] override + send   [Esc] discard".to_string());
+            lines.push("[e] edit again   [O] override + send   [Esc] discard".to_string());
         }
         PendingSendMode::SendOrSave => {
             lines.push("[s] send   [a] send at   [n] remind   [d] save draft".to_string());
@@ -203,7 +203,7 @@ fn push_safety_lines(
     if matches!(report.verdict, DraftSafetyVerdict::Blocked) {
         if let Some(token) = override_token {
             lines.push(format!("Override token: {token}"));
-            lines.push("Press Ctrl-O to override and send (single use).".to_string());
+            lines.push("Press O to override and send (single use).".to_string());
         }
     }
 }
@@ -550,7 +550,8 @@ mod tests {
         assert!(rendered.contains("[BLOCK] secret pattern detected: sk-...abcd"));
         // Override token must be visible to user (copy-pasteable).
         assert!(rendered.contains("Override token: tok-abc-123"));
-        assert!(rendered.contains("[^O] override + send"));
+        assert!(rendered.contains("[O] override + send"));
+        assert!(rendered.contains("Press O to override and send"));
         // Blocked verdict suppresses the normal [s] send shortcut and [r] refine.
         assert!(!rendered.contains("[s] send"));
         assert!(!rendered.contains("[r] refine"));

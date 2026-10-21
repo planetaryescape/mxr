@@ -272,7 +272,7 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
 /// Slice 1.5 wiring contract (C2.1): pressing `[s] send` while
 /// the safety verdict is Blocked is a no-op — the modal stays
 /// open, no SendDraft mutation is queued. The user must use
-/// `Ctrl-O` to override or edit the draft.
+/// `O` to override or edit the draft.
 #[test]
 fn pressing_s_with_blocked_verdict_is_a_noop() {
     let mut app = App::new();
@@ -324,19 +324,22 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
     );
 }
 
-/// Slice 1.5 wiring contract (C2.1): Ctrl-O on a Blocked verdict
-/// dispatches SendDraft with override_safety_token = the token
-/// the daemon minted.
-#[test]
-fn ctrl_o_dispatches_send_with_override_token() {
+/// A send confirm whose safety verdict is `verdict_blocked` (Blocked when true,
+/// Safe otherwise). The override token is present either way, so the blocked
+/// verdict alone decides whether `O` applies.
+fn app_with_send_confirm(verdict_blocked: bool) -> App {
     let mut app = App::new();
-    let issue = mxr_core::DraftSafetyIssue::new(
-        mxr_core::DraftSafetyIssueCode::PiiSecret,
-        mxr_core::DraftSafetySeverity::Blocker,
-        "secret",
-    )
-    .with_override_token("tok-override-9");
-    let report = mxr_core::DraftSafetyReport::from_issues(vec![issue]);
+    let report = if verdict_blocked {
+        let issue = mxr_core::DraftSafetyIssue::new(
+            mxr_core::DraftSafetyIssueCode::PiiSecret,
+            mxr_core::DraftSafetySeverity::Blocker,
+            "secret",
+        )
+        .with_override_token("tok-override-9");
+        mxr_core::DraftSafetyReport::from_issues(vec![issue])
+    } else {
+        mxr_core::DraftSafetyReport::from_issues(vec![])
+    };
     app.compose.pending_send_confirm = Some(PendingSend {
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
@@ -364,9 +367,38 @@ fn ctrl_o_dispatches_send_with_override_token() {
         resolved_from: None,
     });
 
-    let key = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
-    let _ = app.handle_key(key);
+    app
+}
 
+/// Slice 1.5 wiring contract (C2.1): Ctrl-O on a Blocked verdict
+/// dispatches SendDraft with override_safety_token = the token
+/// the daemon minted. Ctrl-O stays as an alias of the advertised `O`.
+#[test]
+fn ctrl_o_dispatches_send_with_override_token() {
+    let mut app = app_with_send_confirm(true);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
+    assert_override_dispatched(&app);
+}
+
+/// `O` is the override the modal advertises, matching the web app.
+#[test]
+fn shift_o_dispatches_send_with_override_token() {
+    let mut app = app_with_send_confirm(true);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+    assert_override_dispatched(&app);
+}
+
+/// The override only applies when a block exists: on a draft that is not
+/// blocked, `O` queues nothing and leaves the confirm open.
+#[test]
+fn shift_o_on_unblocked_draft_is_a_noop() {
+    let mut app = app_with_send_confirm(false);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+    assert!(app.pending_mutation_queue.is_empty());
+    assert!(app.compose.pending_send_confirm.is_some());
+}
+
+fn assert_override_dispatched(app: &App) {
     // The mutation queue must contain a SendDraft with the
     // override token.
     let queued = app.pending_mutation_queue.first().expect("mutation queued");

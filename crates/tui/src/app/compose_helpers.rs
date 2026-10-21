@@ -91,7 +91,7 @@ impl App {
 
     /// Build a Draft from the PendingSend and dispatch SendDraft via
     /// the mutation queue. Shared between the regular `[s] send` path
-    /// and the `[Ctrl-O] override + send` path. `override_safety_token`
+    /// and the `[O] override + send` path. `override_safety_token`
     /// is `Some(token)` only on the override path.
     pub(crate) fn dispatch_send_pending(
         &mut self,

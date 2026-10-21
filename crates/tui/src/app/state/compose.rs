@@ -49,7 +49,7 @@ impl PendingSend {
     }
 
     /// True iff the latest safety check verdict is Blocked. Drives
-    /// the `[s] send` gate and the visibility of the `[Ctrl-O]
+    /// the `[s] send` gate and the visibility of the `[O]
     /// override` affordance in the modal.
     pub fn is_blocked(&self) -> bool {
         matches!(

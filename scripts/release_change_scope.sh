@@ -63,7 +63,7 @@ while IFS= read -r path; do
     apps/desktop/*|.github/workflows/desktop-signed.yml|scripts/render_homebrew_cask.sh|packaging/homebrew/mxr-desktop.rb)
       cli_changed=true
       ;;
-    scripts/v1_launch_proof.sh|scripts/verify-mailmerge-outcomes.py|scripts/s08c_headless_smoke.py|scripts/verify-archive-recovery.py)
+    scripts/v1_launch_proof.sh|scripts/v1_launch_proof_cleanup.sh|scripts/verify-mailmerge-outcomes.py|scripts/s08c_headless_smoke.py|scripts/verify-archive-recovery.py)
       cli_changed=true
       ;;
     crates/*|vendor/*|.sqlx/*)

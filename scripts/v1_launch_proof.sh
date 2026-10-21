@@ -3,6 +3,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${root}/scripts/v1_launch_proof_cleanup.sh"
 artifact="${MXR_PROOF_ARTIFACT:-}"
 if [[ -z "${artifact}" ]]; then
   artifact="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mxr-v1-launch-proof.$(date -u +%Y%m%dT%H%M%SZ).jsonl"
@@ -41,12 +42,16 @@ run_mxr() {
 
 tmp="$(mktemp -d)"
 cleanup() {
-  if [[ -n "${daemon_pid:-}" ]]; then
-    kill "${daemon_pid}" 2>/dev/null || true
+  local original_status="$1"
+  trap - EXIT
+  if v1_launch_proof_cleanup "$original_status" "${daemon_pid:-}" "$tmp"; then
+    exit 0
+  else
+    local cleanup_status=$?
+    exit "$cleanup_status"
   fi
-  rm -rf "${tmp}"
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 export MXR_DATA_DIR="${tmp}/data"
 export MXR_CONFIG_DIR="${tmp}/config"
@@ -143,10 +148,12 @@ import json, os, socket, struct, sys, uuid
 
 instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
 owner = json.loads(owner_json)
-if sys.platform == 'darwin':
-    sock_path = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', instance, 'mxr.sock')
-else:
-    sock_path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', instance, 'mxr.sock')
+sock_path = os.environ.get('MXR_SOCKET_PATH')
+if not sock_path:
+    if sys.platform == 'darwin':
+        sock_path = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', instance, 'mxr.sock')
+    else:
+        sock_path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', instance, 'mxr.sock')
 
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.connect(sock_path)

@@ -172,6 +172,7 @@ jobs:
       - run: bash scripts/release_workflow_test.sh
       - run: bash scripts/publish_github_release_test.sh
       - run: bash scripts/provider_smoke_workflow_test.sh
+      - run: bash scripts/v1_launch_proof_cleanup_test.sh
       - run: bash scripts/ci_change_scope_test.sh
       - run: bash scripts/ci_workflow_test.sh
 

@@ -62,7 +62,8 @@ The later release-harness PR enabled the required web audit, which failed
 on `apps/web` Vite 7.3.6 in CI `39522071231`. Commit
 `72f77c20fb56b4feb3eb452b31218202457e4f17` pins Vite 7.3.7; only its package
 record and root constraint changed. The patched network audit reports zero
-vulnerabilities. Required web checks remain pending on the final candidate;
+vulnerabilities. Required web audit, typecheck, lint and tests passed in final
+CI `39523116233` on `795e90295`;
 receipts are in `docs/issues/apps-web-vite-launch-editor-advisories.md`.
 
 ## Review notes
@@ -82,7 +83,7 @@ review corrected the blueprint's stale lowercase `f` spelling and added the
 fullscreen workflow to the TUI reference. Site docs validation passed; the
 documentation clean-text pass reported zero removals and replacements.
 
-## Release verification is pending
+## v0.6.117 passed the installed reader checks
 
 [PR 543](https://github.com/planetaryescape/mxr/pull/543) merged the reviewed
 candidate `1e4853d865c27ee78d4d43757de845c16631881a` as main commit
@@ -109,11 +110,36 @@ failure-boundary regression tests plus all 13 rows of an isolated launch
 proof. A further inherited-socket review finding is fixed in `283d3e897`
 and `4ed210f10`: the proof chooses its own socket and explicit temp-directory
 template. Final verification passed 13 proof rows with an untouched foreign
-sentinel, then confirmed all owned processes and sockets stopped. Release-please must
-create a new version for the repair; v0.6.116 remains unpublished.
+sentinel, then confirmed all owned processes and sockets stopped.
+Release-please created v0.6.117 for the repair; v0.6.116 remains unpublished.
 
-Next: require successful release publication and Homebrew update, verify the
-published install.sh download and the Homebrew binary, and run the isolated
-13-check PTY acceptance against the released binary. Preserve the existing
-personal daemon. Keep the registered worktree, build cache and evidence until
-scope-bound cleanup approval is given.
+[v0.6.117](https://github.com/planetaryescape/mxr/releases/tag/v0.6.117)
+ships the fullscreen reader and the release repairs. Release-please PR 546
+merged as source `51c747a5992b73a9c4729fdb4e6c325967cd7d4d`, tree
+`1b0e805d391f4a128727b1d59de86b6aa9917641`, equal to the reviewed metadata
+tree. [The tagged release workflow](https://github.com/planetaryescape/mxr/actions/runs/39526018048)
+passed both native CLI builds, desktop build, smoke checks, publication and
+Homebrew update. The Linux launch proof passed all 13 rows and cleanup;
+mailmerge, supervised ownership/search and Archive recovery checks passed.
+Live Gmail, IMAP and SMTP checks skipped for missing CI credentials.
+
+Both published CLI archive checksums passed. The tag installer and Homebrew
+executables match the Mac archive. The tested `mxr` SHA-256 is
+`d5bc6a8be2ae2871f449798a6bb28e091155a6e5e9d6bb9e62fecee899a00be5`.
+Homebrew reports `mxr 0.6.117 (Mixer)` and is the sole distinct `mxr` path;
+its v0.6.115 keg remains available for rollback. The personal daemon was not
+restarted.
+
+Published-binary acceptance passed 13 PTY checks in 21.382 seconds, including
+scrolling, geometry, focus, split restore, Search and mode-origin navigation.
+Doctor reported healthy; activity stayed empty and persisted agenda search
+returned one result. The owned daemon exited, the intentionally terminated
+TUI was reaped, and both PIDs and the socket were absent afterward.
+Receipts are in
+`/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-blueprint-gaps-20261021/g01-published-postconditions.json`
+and `published-v0.6.117/verification.json` under the same run directory.
+
+Next: G02's TUI export format/destination journey, after a fresh code check.
+Other blueprint gaps remain queued. Run-owned workspaces and generated data
+remain subject to the scope-bound cleanup approval recorded in the run ledger;
+source branches and durable evidence are preserved.

@@ -948,7 +948,9 @@ impl MxrMcpServer {
         let McpJson(mut result) = self
             .daemon_json(Request::Search {
                 query: input.query,
-                limit: input.limit.map_or(MCP_SEARCH_FALLBACK_LIMIT, |limit| limit.min(100)),
+                limit: input
+                    .limit
+                    .map_or(MCP_SEARCH_FALLBACK_LIMIT, |limit| limit.min(100)),
                 offset: input.offset.unwrap_or(0),
                 account_id: parse_optional_id(input.account_id)?,
                 mode: None,

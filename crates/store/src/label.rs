@@ -25,12 +25,16 @@ impl super::Store {
                 .await?;
 
         if let Some(existing_id) = existing_id {
+            // Only a real change writes: sync upserts every label on every
+            // pass, and a rewrite of the same values still counts as a change
+            // for the cached mode views (and grows the WAL).
             sqlx::query(
                 "UPDATE labels SET
-                    name = ?,
-                    kind = ?,
-                    color = ?
-                 WHERE id = ?",
+                    name = ?1,
+                    kind = ?2,
+                    color = ?3
+                 WHERE id = ?4
+                   AND (name IS NOT ?1 OR kind IS NOT ?2 OR color IS NOT ?3)",
             )
             .bind(&label.name)
             .bind(kind)
@@ -178,13 +182,18 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<(), sqlx::Error> {
         let aid = account_id.as_str();
+        // Rows whose counts already match are left alone; see `upsert_label`.
         sqlx::query!(
-            "UPDATE labels SET
-                total_count = (SELECT COUNT(*) FROM message_labels WHERE label_id = labels.id),
-                unread_count = (SELECT COUNT(*) FROM message_labels ml
-                    JOIN messages m ON m.id = ml.message_id
-                    WHERE ml.label_id = labels.id AND (m.flags & 1) = 0)
-            WHERE account_id = ?",
+            "UPDATE labels SET total_count = counts.total, unread_count = counts.unread
+            FROM (SELECT l.id,
+                    (SELECT COUNT(*) FROM message_labels WHERE label_id = l.id) AS total,
+                    (SELECT COUNT(*) FROM message_labels ml
+                        JOIN messages m ON m.id = ml.message_id
+                        WHERE ml.label_id = l.id AND (m.flags & 1) = 0) AS unread
+                FROM labels l WHERE l.account_id = ?) AS counts
+            WHERE labels.id = counts.id
+              AND (labels.total_count IS NOT counts.total
+                OR labels.unread_count IS NOT counts.unread)",
             aid,
         )
         .execute(self.writer())

@@ -112,6 +112,58 @@ mod tests {
     use crate::test_fixtures::*;
     use crate::Store;
 
+    /// Sync rewrites every label and its counts, and saves its cursor, on
+    /// every pass. Unchanged values must not count, or an idle daemon
+    /// rebuilds every cached view after each sync.
+    #[tokio::test]
+    async fn repeating_unchanged_sync_writes_counts_nothing() {
+        use mxr_core::id::LabelId;
+        use mxr_core::types::{Label, LabelKind, SyncCursor};
+
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let mut label = Label {
+            id: LabelId::from_scoped_provider_id(&account.id, "fake", "INBOX"),
+            account_id: account.id.clone(),
+            name: "Inbox".into(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "INBOX".into(),
+            unread_count: 0,
+            total_count: 0,
+            role: None,
+        };
+        let cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec());
+        store.upsert_label(&label).await.unwrap();
+        store.recalculate_label_counts(&account.id).await.unwrap();
+        store.set_sync_cursor(&account.id, &cursor).await.unwrap();
+
+        let feed = store.change_feed();
+        let settled = feed.seq();
+        store.upsert_label(&label).await.unwrap();
+        store.recalculate_label_counts(&account.id).await.unwrap();
+        store.set_sync_cursor(&account.id, &cursor).await.unwrap();
+        assert_eq!(feed.seq(), settled, "nothing changed");
+
+        label.name = "Inbox (renamed)".into();
+        store.upsert_label(&label).await.unwrap();
+        assert!(feed.seq() > settled, "a renamed label is a change");
+        let renamed = feed.seq();
+        let moved = SyncCursor::from_bytes(br#"{"v":"1","history_id":43}"#.to_vec());
+        store.set_sync_cursor(&account.id, &moved).await.unwrap();
+        assert!(feed.seq() > renamed, "a moved cursor is a write");
+        assert_eq!(
+            store
+                .list_sync_cursors()
+                .await
+                .unwrap()
+                .get(&account.id)
+                .map(SyncCursor::as_bytes),
+            Some(moved.as_bytes())
+        );
+    }
+
     #[tokio::test]
     async fn view_tables_count_and_bookkeeping_does_not() {
         let store = Store::in_memory().await.unwrap();

@@ -37,7 +37,7 @@ mod tests {
         assert_eq!(deserialized.general.sync_interval, 60);
         assert_eq!(deserialized.general.hook_timeout, 30);
         assert_eq!(deserialized.general.safety_policy, SafetyPolicy::Full);
-        assert_eq!(deserialized.search.max_results, 200);
+        assert_eq!(deserialized.search.max_results, 50);
         assert_eq!(
             deserialized.search.default_mode,
             mxr_core::SearchMode::Lexical
@@ -177,7 +177,7 @@ editor = "emacs"
         assert_eq!(config.general.hook_timeout, 30);
         assert_eq!(config.general.safety_policy, SafetyPolicy::Full);
         assert!(config.render.reader_mode);
-        assert_eq!(config.search.max_results, 200);
+        assert_eq!(config.search.max_results, 50);
         assert_eq!(config.search.default_mode, mxr_core::SearchMode::Lexical);
         assert!(config.search.semantic.enabled);
         assert_eq!(

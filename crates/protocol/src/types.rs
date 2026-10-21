@@ -3545,8 +3545,8 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         next_offset: Option<u32>,
         explain: Option<SearchExplain>,
-        /// The page size the daemon actually used. Set when the request chose
-        /// its own size; older daemons omit it.
+        /// The page size the daemon actually used, which may come from
+        /// `[search] max_results`. Older daemons omit it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u32>,
     },

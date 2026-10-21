@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.118](https://github.com/planetaryescape/mxr/compare/v0.6.117...v0.6.118) (2026-10-21)
+
+
+### Features
+
+* pick export format and destination from the TUI ([#548](https://github.com/planetaryescape/mxr/issues/548)) ([18d3fcd](https://github.com/planetaryescape/mxr/commit/18d3fcd305bf775e27af74116a47618ba839db4e))
+
+
+### Documentation
+
+* record verified fullscreen release ([fd81896](https://github.com/planetaryescape/mxr/commit/fd818964c2d5fad46f8ac04f01d1c904a33d6ddc))
+
 ## [0.6.117](https://github.com/planetaryescape/mxr/compare/v0.6.116...v0.6.117) (2026-10-21)
 
 

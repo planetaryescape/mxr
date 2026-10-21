@@ -118,8 +118,14 @@ pub fn write_export_file(path: &Path, content: &str, overwrite_ok: bool) -> Resu
         std::io::ErrorKind::AlreadyExists => format!("{} already exists", path.display()),
         _ => format!("could not write {}: {error}", path.display()),
     })?;
-    file.write_all(content.as_bytes())
-        .map_err(|error| format!("could not write {}: {error}", path.display()))
+    file.write_all(content.as_bytes()).map_err(|error| {
+        // A file this call created holds only part of the export; leaving it
+        // would make the retry ask to overwrite a file the user never saw.
+        if !overwrite_ok {
+            let _ = std::fs::remove_file(path);
+        }
+        format!("could not write {}: {error}", path.display())
+    })
 }
 
 fn copy_to_clipboard(content: &str) -> Result<(), String> {

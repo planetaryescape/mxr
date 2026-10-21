@@ -61,7 +61,8 @@ URL.
 mxr is not a hosted connector layer, managed auth service, remote
 workflow platform, or backend email API for a server product. It is also
 not a standalone desktop app; the GUI surface is the web app, opened with
-`mxr web` or in the thin [desktop window](/guides/desktop-app/) around it.
+`mxr web` or in the thin [desktop window](/guides/desktop-app/) around it,
+with the modes also in [Raycast](/guides/raycast/).
 
 Use something else when:
 
@@ -120,4 +121,5 @@ touching your real profile.
 - [For agents](/guides/for-agents/)
 - [MCP server](/reference/mcp/)
 - [Desktop app](/guides/desktop-app/)
+- [Raycast](/guides/raycast/)
 - [Architecture](/guides/architecture/)

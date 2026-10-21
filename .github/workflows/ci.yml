@@ -287,6 +287,27 @@ jobs:
           path: target-cli/debug/mxr
           retention-days: 1
 
+  raycast:
+    name: Raycast Typecheck
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    # It imports the web app's generated bridge types, so any web change can break it.
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
+    defaults:
+      run:
+        working-directory: apps/raycast
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/raycast/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+
   web-tests:
     name: Web Unit Tests
     runs-on: blacksmith-4vcpu-ubuntu-2404

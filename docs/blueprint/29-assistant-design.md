@@ -1,6 +1,6 @@
 # 29. The assistant as the copy desk
 
-Status: Built (v0.6.x, W7a #494, W7b #500, A1 #TBD). Source baseline: `origin/main` at `ec94e1f19`. Proposal of 2026-10-16.
+Status: Built (v0.6.x, W7a #494, W7b #500, A1 #551). Source baseline: `origin/main` at `ec94e1f19`. Proposal of 2026-10-16.
 
 How the assistant ([25](25-assistant.md), D122) should look and feel, in the terms of [26](26-web-design-concept.md). The behaviour stays as 25 specifies: the daemon runs the turn, the gate enforces approval, `ask_user` asks, history is append-only. This chapter replaces its presentation. Decision: D135, with D136 for model text.
 

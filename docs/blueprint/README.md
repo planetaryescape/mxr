@@ -39,6 +39,7 @@
 | 29 | [The assistant as the copy desk](29-assistant-design.md) | The assistant's presentation in web and TUI: wire-line steps in the daemon's words, a live line, the app's own objects, proofs to sign |
 | 30 | [Design roadmap](30-design-roadmap.md) | Rungs W1-W8 from one page frame to finishing moments, each with its demo and design gate |
 | 31 | [Design open questions](31-design-open-questions.md) | Spikes S1-S4 and BK's product questions Q1-Q6 for the design work |
+| 32 | [Classifier and attention](32-classifier.md) | One design for understanding each email (five questions, one stored assessment, every email a home), Now as an attention scheduler across modes, teaching versus action rules, and the label, scenario-corpus and eval loop that improves both (draft, not built) |
 | 26r | Web design research | [Audit of every screen, 2026-10-16](../research/web-design/audit-2026-10-16.md) and [agent panels and the best mail apps](../research/web-design/agents-and-mail-apps.md) |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |

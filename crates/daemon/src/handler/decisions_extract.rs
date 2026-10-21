@@ -11,6 +11,7 @@
 //! is within `since_days` and calls `extract_thread` for each
 //! candidate that passes the prefilter.
 
+use super::time::due_words_in_zone;
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_llm::{
@@ -22,6 +23,7 @@ use mxr_store::{decision_id, decision_source_hash, DecisionLogEntry};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Cheap keyword prefilter — if a thread has no message body matching
 /// any of these terms, skip the LLM call. Threads with ≥3 messages
@@ -44,8 +46,9 @@ struct LlmDecision {
     topic: Option<String>,
     #[serde(default)]
     evidence_msg_ids: Vec<String>,
+    /// The words the thread copied for when it was decided, not a date.
     #[serde(default)]
-    decided_at: Option<chrono::DateTime<chrono::Utc>>,
+    decided_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,9 +78,13 @@ pub(crate) async fn extract_thread(
     let allowed: std::collections::HashSet<String> =
         envelopes.iter().map(|e| e.id.to_string()).collect();
 
-    // Build the transcript and gather the prefilter signal.
+    // Build the transcript and gather the prefilter signal. Each message's
+    // cleaned text and date are kept so a decided_at the model copied can be
+    // checked against, and resolved from, the message that cites it.
     let mut transcript = String::new();
     let mut keyword_hit = false;
+    let mut message_texts: HashMap<String, (String, chrono::DateTime<chrono::Utc>)> =
+        HashMap::new();
     for env in &envelopes {
         let body = state
             .store
@@ -98,6 +105,7 @@ pub(crate) async fn extract_thread(
             env.date.to_rfc3339(),
             cleaned
         ));
+        message_texts.insert(env.id.to_string(), (cleaned, env.date));
     }
 
     // Prefilter: skip the LLM call when neither signal fires.
@@ -119,8 +127,9 @@ pub(crate) async fn extract_thread(
                  Cite ONLY msg_id values that appear in the [msg_id=...] markers \
                  in the thread. Skip brainstorming threads where nothing was \
                  actually agreed -- return an empty array in that case. \
-                 \"decided_at\" is RFC 3339 if a date is named in the thread, \
-                 else null.",
+                 \"decided_at\" is the words in the thread that say when it was \
+                 decided, copied exactly as written (for example \"on Friday\"), \
+                 else null. Never work out a date yourself.",
             )),
             // Wrap the thread transcript in untrusted-content delimiters.
             // `transcript` stays raw for `decision_source_hash` below so
@@ -171,6 +180,24 @@ pub(crate) async fn extract_thread(
             continue;
         }
 
+        // The words are checked against, and resolved from, the first cited
+        // message: its text and its date are the "now" the thread was
+        // written in. Anything the text doesn't say leaves the decision undated.
+        let decided_at = match (
+            d.decided_at.as_deref(),
+            evidence
+                .first()
+                .and_then(|id| message_texts.get(&id.to_string())),
+        ) {
+            (Some(words), Some((text, written))) => {
+                due_words_in_zone(state, text, words, Some(*written), None)
+                    .map_err(|e| e.to_string())?
+                    .and_then(|found| found.resolution)
+                    .map(|resolution| resolution.at)
+            }
+            _ => None,
+        };
+
         let source_hash = decision_source_hash(&transcript, &evidence);
         let id = decision_id(account_id, thread_id, &d.decision, &evidence);
         let entry = DecisionLogEntry {
@@ -181,7 +208,7 @@ pub(crate) async fn extract_thread(
             decision: d.decision,
             rationale: d.rationale,
             evidence_msg_ids: evidence,
-            decided_at: d.decided_at,
+            decided_at,
             extracted_at: now,
             source_hash,
         };
@@ -243,6 +270,7 @@ pub(crate) async fn rebuild(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Local, TimeZone};
     use mxr_core::types::*;
     use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use mxr_store::CommitmentStatus;
@@ -283,6 +311,31 @@ mod tests {
         Vec<MessageId>,
         Arc<CannedLlm>,
     ) {
+        let messages = [
+            ("Should we use Postgres or Mongo?", 3),
+            ("I think Postgres makes sense for relational data.", 2),
+            ("Agreed -- let's go with Postgres.", 1),
+        ]
+        .map(|(text, hours_ago)| {
+            (
+                text,
+                chrono::Utc::now() - chrono::Duration::hours(hours_ago),
+            )
+        });
+        thread_fixture(&messages, body).await
+    }
+
+    /// A three-message thread whose messages are written at the given times.
+    async fn thread_fixture(
+        messages: &[(&str, chrono::DateTime<chrono::Utc>); 3],
+        body: &str,
+    ) -> (
+        Arc<AppState>,
+        AccountId,
+        ThreadId,
+        Vec<MessageId>,
+        Arc<CannedLlm>,
+    ) {
         let (state, _) = AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
         let stub = Arc::new(CannedLlm {
@@ -294,14 +347,7 @@ mod tests {
 
         let thread_id = ThreadId::new();
         let mut ids = Vec::new();
-        for (i, body_text) in [
-            "Should we use Postgres or Mongo?",
-            "I think Postgres makes sense for relational data.",
-            "Agreed -- let's go with Postgres.",
-        ]
-        .iter()
-        .enumerate()
-        {
+        for (i, (body_text, written)) in messages.iter().enumerate() {
             let env = Envelope {
                 id: MessageId::new(),
                 account_id: account_id.clone(),
@@ -321,7 +367,7 @@ mod tests {
                 cc: vec![],
                 bcc: vec![],
                 subject: "DB choice".into(),
-                date: chrono::Utc::now() - chrono::Duration::hours(3 - i as i64),
+                date: *written,
                 flags: MessageFlags::empty(),
                 snippet: body_text.to_string(),
                 has_attachments: false,
@@ -436,6 +482,109 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].decision, "Use Postgres");
         assert_eq!(rows[0].evidence_msg_ids, vec![ids[2].clone()]);
+    }
+
+    /// A thread written on Tuesday 5 March 2024. A "Thursday" in it means 7 March.
+    fn tuesday_thread(last_body: &str) -> [(&str, chrono::DateTime<chrono::Utc>); 3] {
+        let tuesday = chrono::Utc.with_ymd_and_hms(2024, 3, 5, 12, 0, 0).unwrap();
+        [
+            ("Should we use Postgres or Mongo?", tuesday),
+            ("I think Postgres makes sense for relational data.", tuesday),
+            (last_body, tuesday),
+        ]
+    }
+
+    async fn extract_with_decided_at(
+        messages: &[(&str, chrono::DateTime<chrono::Utc>); 3],
+        decided_at: &str,
+    ) -> (Arc<AppState>, AccountId, usize) {
+        let (state, account, thread, ids, _) =
+            thread_fixture(messages, r#"{"decisions":[]}"#).await;
+        let canned = format!(
+            r#"{{"decisions":[{{
+                "decision":"Use Postgres",
+                "evidence_msg_ids":["{}"],
+                "decided_at":{decided_at}
+            }}]}}"#,
+            ids[2]
+        );
+        state.llm.replace(Arc::new(CannedLlm {
+            body: Mutex::new(canned),
+            calls: Mutex::new(0),
+        }));
+        let n = extract_thread(&state, &account, &thread).await.unwrap();
+        (state, account, n)
+    }
+
+    #[tokio::test]
+    async fn decided_at_words_the_cited_message_says_resolve_against_its_date() {
+        let (state, account, n) = extract_with_decided_at(
+            &tuesday_thread("Agreed -- let's go with Postgres, decided on Thursday."),
+            r#""on Thursday""#,
+        )
+        .await;
+        assert_eq!(n, 1);
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
+        let decided = rows[0].decided_at.expect("resolved from the words");
+        // The Thursday after the Tuesday the message was written, not the
+        // Thursday after today.
+        assert_eq!(
+            decided.with_timezone(&Local).date_naive(),
+            chrono::NaiveDate::from_ymd_opt(2024, 3, 7).expect("valid date")
+        );
+    }
+
+    #[tokio::test]
+    async fn decided_at_words_the_text_never_says_leave_the_decision_undated() {
+        let (state, account, n) = extract_with_decided_at(
+            &tuesday_thread("Agreed -- let's go with Postgres."),
+            r#""on Thursday""#,
+        )
+        .await;
+        assert_eq!(n, 1, "the decision is kept even when its time is not");
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].decided_at, None);
+    }
+
+    #[tokio::test]
+    async fn an_rfc3339_date_the_text_does_not_contain_is_not_stored() {
+        let (state, account, n) = extract_with_decided_at(
+            &tuesday_thread("Agreed -- let's go with Postgres."),
+            r#""2024-03-07T09:00:00Z""#,
+        )
+        .await;
+        assert_eq!(n, 1);
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
+        assert_eq!(rows[0].decided_at, None);
+    }
+
+    #[tokio::test]
+    async fn decided_at_words_the_parser_cannot_read_leave_the_decision_undated() {
+        let (state, account, n) = extract_with_decided_at(
+            &tuesday_thread("Agreed -- let's go with Postgres once the budget clears."),
+            r#""once the budget clears""#,
+        )
+        .await;
+        assert_eq!(n, 1);
+        let rows = state
+            .store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap();
+        assert_eq!(rows[0].decided_at, None);
     }
 
     #[tokio::test]

@@ -8,7 +8,8 @@
 //! the original heuristic signal — never errors the caller.
 
 use crate::{tracking, Decision, DeliverySignal, DeliveryStatus, DetectionSource};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
+use mxr_core::natural_time::{due_words, TimePrefs};
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, FeatureLlmRuntime,
     LlmError,
@@ -23,8 +24,8 @@ Output STRICT JSON and nothing else, with this schema:\n\
 \"merchant\": str|null, \"carrier\": str|null, \"tracking_number\": str|null, \
 \"tracking_url\": str|null, \"order_number\": str|null, \
 \"items\": [{\"name\": str, \"quantity\": int|null}], \
-\"eta_from\": \"RFC3339|null\", \"eta_until\": \"RFC3339|null\", \
-\"delivered_at\": \"RFC3339|null\", \"confidence\": 0.0}\n\n\
+\"eta_from\": str|null, \"eta_until\": str|null, \
+\"confidence\": 0.0}\n\n\
 Rules: set is_shipment_related=true only for emails about a physical package/order \
 shipment (order confirmation, shipped, out-for-delivery, delivered, delay/exception). \
 Marketing/deals, digital receipts, and subscription emails are NOT shipment-related. \
@@ -34,7 +35,10 @@ contain reference codes or hashes that look like tracking numbers; these are NOT
 shipments. Only set is_shipment_related=true when the email is clearly from a \
 merchant or carrier about a physical parcel the recipient is receiving. \
 Copy the tracking number verbatim if present, else null. Do not invent values. \
-Return JSON only.";
+eta_from and eta_until are the words in the email that say when the parcel \
+arrives, copied exactly as written, or null: for example \"arriving Thursday\". \
+For a window such as \"between 2pm and 4pm\", copy the start into eta_from and \
+the end into eta_until. Never work out a date or time yourself. Return JSON only.";
 
 #[derive(Debug, Deserialize)]
 struct LlmDelivery {
@@ -54,6 +58,7 @@ struct LlmDelivery {
     order_number: Option<String>,
     #[serde(default)]
     items: Vec<LlmItem>,
+    /// Words the email copies for when, resolved by `due_words`. Never a date.
     #[serde(default)]
     eta_from: Option<String>,
     #[serde(default)]
@@ -75,6 +80,12 @@ pub struct LlmInput<'a> {
     pub from_domain: &'a str,
     pub subject: &'a str,
     pub body_text: &'a str,
+    /// When the email was sent. "Thursday" in it means the Thursday of that
+    /// week, not the next one after today.
+    pub received_at: DateTime<Utc>,
+    /// The user's snooze hours, which the time parser uses for a day named
+    /// without a time.
+    pub time_prefs: TimePrefs,
 }
 
 /// Confirm + enrich a shortlisted candidate. On confirmation, returns a signal
@@ -82,6 +93,10 @@ pub struct LlmInput<'a> {
 /// from the model. On rejection, returns `Reject`. If the LLM is
 /// disabled/blocked/erroring, returns `base` unchanged so the caller can fall
 /// back to heuristic-only handling.
+///
+/// The model copies the words that say when the parcel arrives; those are
+/// checked against the text it read and resolved against the send time. Words
+/// the text doesn't say leave the field unset.
 ///
 /// `message_key` names the message for the background gate: a message that
 /// already failed is not re-sent while it backs off, and one that succeeded
@@ -155,12 +170,25 @@ pub async fn enrich(
         };
     }
 
-    merge(base, parsed)
+    merge(
+        base,
+        parsed,
+        &email_block,
+        input.received_at,
+        input.time_prefs,
+    )
 }
 
 /// Merge LLM output into the heuristic signal: deterministic/schema fields win,
-/// the LLM only fills gaps. The LLM tracking number is re-validated.
-fn merge(mut base: DeliverySignal, llm: LlmDelivery) -> DeliverySignal {
+/// the LLM only fills gaps. The LLM tracking number is re-validated, and its
+/// time words are checked against `text` (the email the model read).
+fn merge(
+    mut base: DeliverySignal,
+    llm: LlmDelivery,
+    text: &str,
+    received_at: DateTime<Utc>,
+    prefs: TimePrefs,
+) -> DeliverySignal {
     base.decision = Decision::Create;
     // Keep schema as the source of record; otherwise credit the LLM.
     if base.source != DetectionSource::Schema {
@@ -196,11 +224,17 @@ fn merge(mut base: DeliverySignal, llm: LlmDelivery) -> DeliverySignal {
     if base.merchant.is_none() {
         base.merchant = llm.merchant.filter(|s| !s.trim().is_empty());
     }
+    let when = |words: Option<&str>| resolve_when(words, text, received_at, prefs);
     if base.eta_from.is_none() {
-        base.eta_from = llm.eta_from.as_deref().and_then(parse_dt);
+        base.eta_from = when(llm.eta_from.as_deref());
     }
     if base.eta_until.is_none() {
-        base.eta_until = llm.eta_until.as_deref().and_then(parse_dt);
+        // The parser reads one phrase at a time, so a window's end is resolved
+        // on its own. "Thursday" then "4pm" gives Thursday's start and the next
+        // 4pm, which is before it; an end before its start is that mismatch, so
+        // it is dropped.
+        base.eta_until = when(llm.eta_until.as_deref())
+            .filter(|until| base.eta_from.is_none_or(|from| *until >= from));
     }
     if base.items.is_empty() {
         base.items = llm
@@ -223,16 +257,20 @@ fn merge(mut base: DeliverySignal, llm: LlmDelivery) -> DeliverySignal {
     base
 }
 
-fn parse_dt(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|| {
-            chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .ok()
-                .and_then(|d| d.and_hms_opt(23, 59, 59))
-                .map(|ndt| DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc))
-        })
+/// The instant the model's copied words say, or `None` when the email doesn't
+/// contain them or the parser can't read them. The email's own send time is
+/// "now" for the words, and the daemon's local zone is used, as the snooze
+/// phrases are.
+fn resolve_when(
+    words: Option<&str>,
+    text: &str,
+    received_at: DateTime<Utc>,
+    prefs: TimePrefs,
+) -> Option<DateTime<Utc>> {
+    let words = words?;
+    due_words(text, words, &received_at.with_timezone(&Local), &prefs)?
+        .resolution
+        .map(|resolution| resolution.at)
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -258,6 +296,7 @@ fn extract_json(content: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{NaiveDate, TimeZone};
 
     #[test]
     fn extract_json_unwraps_fences() {
@@ -306,6 +345,8 @@ mod tests {
             from_domain: "shop.example",
             subject: "Your order",
             body_text: "PACKAGE-BODY-MARKER shipped today",
+            received_at: sent(),
+            time_prefs: TimePrefs::default(),
         };
 
         let _ = enrich(&feature, "msg-1", false, &input, base_signal()).await;
@@ -329,6 +370,105 @@ mod tests {
             begin < body && body < end,
             "email content must sit between the untrusted-content markers"
         );
+    }
+
+    /// Monday 6 May 2024, 10:00 UTC: the email's send time in the tests below.
+    fn sent() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2024, 5, 6, 10, 0, 0).unwrap()
+    }
+
+    fn local_date(at: DateTime<Utc>) -> NaiveDate {
+        at.with_timezone(&Local).date_naive()
+    }
+
+    fn llm_when(eta_from: Option<&str>, eta_until: Option<&str>) -> LlmDelivery {
+        LlmDelivery {
+            is_shipment_related: true,
+            status: None,
+            merchant: None,
+            carrier: None,
+            tracking_number: None,
+            tracking_url: None,
+            order_number: None,
+            items: vec![],
+            eta_from: eta_from.map(str::to_string),
+            eta_until: eta_until.map(str::to_string),
+            confidence: 0.8,
+        }
+    }
+
+    fn when(llm: LlmDelivery, text: &str) -> DeliverySignal {
+        merge(base_signal(), llm, text, sent(), TimePrefs::default())
+    }
+
+    #[test]
+    fn eta_words_the_email_says_resolve_against_the_email_date() {
+        // An old email's "Thursday" is the Thursday of its own week.
+        let old = Utc.with_ymd_and_hms(2024, 3, 5, 10, 0, 0).unwrap();
+        let merged = merge(
+            base_signal(),
+            llm_when(Some("arriving Thursday"), None),
+            "Your parcel is arriving Thursday.",
+            old,
+            TimePrefs::default(),
+        );
+        assert_eq!(
+            local_date(merged.eta_from.expect("resolved")),
+            NaiveDate::from_ymd_opt(2024, 3, 7).expect("valid date")
+        );
+        assert_eq!(merged.eta_until, None);
+    }
+
+    #[test]
+    fn words_the_email_does_not_contain_leave_the_field_unset() {
+        let merged = when(
+            llm_when(Some("arriving Thursday"), None),
+            "Your parcel is on its way.",
+        );
+        assert_eq!(merged.eta_from, None);
+    }
+
+    #[test]
+    fn an_rfc3339_date_the_email_does_not_contain_is_not_used() {
+        let merged = when(
+            llm_when(None, Some("2024-05-10T12:00:00Z")),
+            "Your parcel is arriving Friday.",
+        );
+        assert_eq!(merged.eta_until, None);
+    }
+
+    #[test]
+    fn words_the_parser_cannot_read_leave_the_field_unset() {
+        let merged = when(
+            llm_when(Some("once the warehouse reopens"), None),
+            "Your parcel ships once the warehouse reopens.",
+        );
+        assert_eq!(merged.eta_from, None);
+    }
+
+    #[test]
+    fn a_window_resolves_each_end_from_its_own_words() {
+        let merged = when(
+            llm_when(Some("2pm"), Some("4pm")),
+            "Arriving today between 2pm and 4pm.",
+        );
+        let (from, until) = (
+            merged.eta_from.expect("start"),
+            merged.eta_until.expect("end"),
+        );
+        assert_eq!(until - from, chrono::Duration::hours(2));
+    }
+
+    #[test]
+    fn a_window_end_before_its_start_is_dropped() {
+        // "4pm" alone reads as the next 4pm, which is before Thursday's
+        // start: the day did not carry across, so the end is not stored.
+        let merged = when(
+            llm_when(Some("arriving Thursday"), Some("4pm")),
+            "Arriving Thursday between 2pm and 4pm.",
+        );
+        assert!(merged.eta_from.is_some());
+        assert_eq!(merged.eta_until, None);
     }
 
     fn base_signal() -> DeliverySignal {
@@ -366,10 +506,16 @@ mod tests {
                 quantity: Some(2),
             }],
             eta_from: None,
-            eta_until: Some("2024-05-10T12:00:00Z".into()),
+            eta_until: Some("arriving Friday".into()),
             confidence: 0.8,
         };
-        let merged = merge(base_signal(), llm);
+        let merged = merge(
+            base_signal(),
+            llm,
+            "Your parcel is arriving Friday.",
+            sent(),
+            TimePrefs::default(),
+        );
         assert_eq!(merged.decision, Decision::Create);
         assert_eq!(merged.source, DetectionSource::Llm);
         assert_eq!(merged.stage, Some(DeliveryStatus::InTransit));
@@ -385,7 +531,11 @@ mod tests {
         );
         assert_eq!(merged.dedup_key.as_deref(), Some("1Z5R89390357567127"));
         assert_eq!(merged.items.len(), 1);
-        assert!(merged.eta_until.is_some());
+        assert_eq!(
+            local_date(merged.eta_until.expect("eta from the email's words")),
+            NaiveDate::from_ymd_opt(2024, 5, 10).expect("valid date"),
+            "Friday of the week the email was sent"
+        );
     }
 
     #[test]
@@ -403,7 +553,7 @@ mod tests {
             eta_until: None,
             confidence: 0.5,
         };
-        let merged = merge(base_signal(), llm);
+        let merged = merge(base_signal(), llm, "", sent(), TimePrefs::default());
         assert!(
             merged.tracking_numbers.is_empty(),
             "checksum-invalid dropped"
@@ -454,6 +604,8 @@ mod tests {
             from_domain: "shop.example",
             subject: "Your order",
             body_text: "shipped today",
+            received_at: sent(),
+            time_prefs: TimePrefs::default(),
         };
 
         for _ in 0..3 {

@@ -10,7 +10,7 @@ mxr watches incoming mail for shipping notifications, collapses the many emails 
 Three stages, all local-first:
 
 1. **Heuristic shortlist** — a deterministic, offline pass over each new message: carrier/merchant senders, shipping subject lines, schema.org `ParcelDelivery`/`Order` markup, and **checksum-validated** tracking numbers (UPS, FedEx, USPS, DHL, Amazon, S10 international, …).
-2. **LLM confirm + extract** (optional) — shortlisted-but-uncertain candidates go to your configured [LLM](/guides/llm-features/) to confirm it's really a shipment and pull out merchant, carrier, items, and ETA. Any tracking number the model returns is re-checked against the checksum library before it's trusted.
+2. **LLM confirm + extract** (optional) — shortlisted-but-uncertain candidates go to your configured [LLM](/guides/llm-features/) to confirm it's really a shipment and pull out merchant, carrier, items, and ETA. An ETA comes only from words the email itself uses (such as "arriving Thursday"), resolved against the day the email was sent, so the model never writes a date. Any tracking number the model returns is re-checked against the checksum library before it's trusted.
 3. **Lifecycle** — emails are correlated (by tracking number, then merchant + order number) into one delivery whose status only ever advances. A "delivered" email resolves it automatically.
 
 It optimizes for precision: a string that merely *looks* like a tracking number inside an unrelated email (a finance code, a hosting receipt) won't create a delivery on its own — it needs a real shipping signal or LLM confirmation.

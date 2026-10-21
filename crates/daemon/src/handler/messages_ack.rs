@@ -122,6 +122,14 @@ fn refuse(reason: impl Into<String>) -> HandlerError {
     HandlerError::InvalidRequest(reason.into())
 }
 
+/// Whether the user wrote `message`, judged by its From against the
+/// addresses the account owns now. The stored direction alone is not enough:
+/// a message sent from an alias synced before the alias was registered stays
+/// stored as inbound.
+fn sent_by_you(direction: &str, from: &str, is_self: &dyn Fn(&str) -> bool) -> bool {
+    direction == "outbound" || is_self(from)
+}
+
 /// Got it answers one person who wrote to you. It refuses to answer your own
 /// message, and a reply that would reach more than one address.
 fn ack_addressing_refusal(sent_by_you: bool, reply_to: &[String]) -> Option<String> {
@@ -197,7 +205,7 @@ async fn plan(
             "Already answered: you've written in this conversation since their last message.",
         ));
     }
-    let sent_by_you = super::desk_lanes::is_outbound(target, &is_self);
+    let sent_by_you = sent_by_you(&target.direction, &target.from.email, &is_self);
     let email = target.from.email.to_ascii_lowercase();
     let name = target
         .from
@@ -566,6 +574,16 @@ mod tests {
         let habits = analyse_habits(&mine, &["Ruth Vega"]);
         let (text, _) = ack_text("Ruth", &habits);
         assert!(text.starts_with("Hey Ruth,\n\nGot it, thanks."), "{text}");
+    }
+
+    #[test]
+    fn your_message_stored_as_inbound_still_counts_as_sent_by_you() {
+        // Sent from an alias that was registered after the message synced:
+        // stored direction says inbound, but From is yours now.
+        let is_self = |email: &str| email.eq_ignore_ascii_case("alias@x.com");
+        assert!(sent_by_you("inbound", "Alias@x.com", &is_self));
+        assert!(sent_by_you("outbound", "someone@y.com", &is_self));
+        assert!(!sent_by_you("inbound", "someone@y.com", &is_self));
     }
 
     #[test]

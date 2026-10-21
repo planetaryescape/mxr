@@ -280,7 +280,7 @@ Reply and forward drafts include message context. If the original message only h
 
 A reply targets the original message's `Reply-To:` header when the sender set one, falling back to `From:` otherwise. This is what mailing lists and `no-reply@` senders rely on — a reply to a list digest goes to the list, not the unmonitored sender address. `reply-all` adds the other original recipients as Cc on top of that target.
 
-Replying to a message you sent goes to the people you sent it to, never to you, and `Reply-To:` is ignored. `reply` addresses the original To, or the original Cc if To had only you. `reply-all` copies the original Cc, leaving out you and anyone already in To. If you were the only recipient, the reply goes to you.
+Replying to a message you sent goes to the people you sent it to, not back to you, and `Reply-To:` is ignored. `reply` addresses the original To, or the original Cc if To had only you. `reply-all` copies the original Cc, leaving out you and anyone already in To. If you were the only recipient, the reply goes to you.
 
 The reply's own From defaults to the owned address the original was delivered to — see [Sending from an alias](#sending-from-an-alias-per-message-from).
 

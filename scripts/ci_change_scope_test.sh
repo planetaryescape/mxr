@@ -72,6 +72,18 @@ commit_all 'site-only change'
 assert_scope push "$baseline" HEAD false false false true false
 
 reset_fixture
+mkdir -p site/src/content/docs/reference
+echo docs >site/src/content/docs/reference/keybindings.md
+commit_all 'keybindings reference change'
+assert_scope pull_request "$baseline" HEAD false true false true false
+
+reset_fixture
+mkdir -p docs/reference
+echo '{}' >docs/reference/tui-keymap.json
+commit_all 'TUI keymap reference change'
+assert_scope pull_request "$baseline" HEAD false true false false false
+
+reset_fixture
 mkdir -p site/scripts
 echo '{}' >site/scripts/cli-reference-examples.json
 commit_all 'CLI reference examples change'

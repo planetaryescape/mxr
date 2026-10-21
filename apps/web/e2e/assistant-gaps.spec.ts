@@ -31,6 +31,30 @@ test("an archive waiting for approval shows no irreversible line", async ({ page
   await expect(page.getByText(/can't be undone/i)).toHaveCount(0);
 });
 
+test("the model mark is a menu: five choices, an unavailable one says why, a pick changes the mark", async ({
+  page,
+}) => {
+  await mockAssistant(page, "empty");
+  await openList(page, "/m/inbox");
+  const mark = page.getByRole("button", { name: /^Model: Gemma 4/ });
+  await expect(mark).toHaveText(/Gemma 4 · local/);
+
+  await mark.click();
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
+  const luna = menu.getByRole("menuitem", { name: /GPT-6 Luna/ });
+  await expect(luna).toBeDisabled();
+  await expect(luna).toContainText("Add an OpenAI key: mxr llm key set openai");
+  await expect(menu.getByRole("menuitem", { name: /Gemma 4/ })).toContainText("on this machine");
+  await expect(menu.getByRole("menuitem", { name: /Claude Haiku 5.5/ })).toContainText("cloud");
+
+  await menu.getByRole("menuitem", { name: /Claude Haiku 5.5/ }).click();
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("button", { name: /^Model: Claude Haiku 5.5/ })).toHaveText(
+    /Claude Haiku 5.5 · cloud/,
+  );
+});
+
 test("an email chip in a reply shows the glyph of the mode that holds it", async ({ page }) => {
   await page.route("**/api/v1/mail/modes/membership", (route) =>
     route.fulfill({

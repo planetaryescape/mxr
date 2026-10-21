@@ -7,7 +7,7 @@ Store a key read from stdin (never from an argument, so it stays out of shell hi
 Usage: mxr llm key set [OPTIONS] <PROVIDER>
 
 Arguments:
-  <PROVIDER>  [possible values: anthropic, openrouter]
+  <PROVIDER>  [possible values: anthropic, openai, openrouter]
 
 Options:
       --dry-run          Check the key and show what would be stored, without storing it

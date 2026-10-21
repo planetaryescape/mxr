@@ -1,7 +1,8 @@
 /*
  * Where you write to the assistant. Enter sends, Shift+Enter adds a line,
  * Esc leaves the field (to a waiting proof, if there is one, so its keys
- * can answer). The model and where it runs sit under the field, once.
+ * can answer). The model and where it runs sit under the field, once, and
+ * open the model choices.
  */
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -9,7 +10,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ASSISTANT_SHORTCUT } from "./actions";
 import { useAssistantUi } from "./assistantStore";
 import { PENDING_CARD_ATTRIBUTE } from "./cardKeys";
-import { useAvailability } from "./useAssistant";
+import { ModelMenu } from "./ModelMenu";
 import { KeyChip } from "@/components/KeyChip";
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
@@ -82,7 +83,7 @@ export function Composer({
       />
       <div className="type-meta flex items-center gap-2 px-3 pb-2 text-text-3">
         <span className="min-w-0 flex-1 truncate">
-          {waiting && text.trim() ? "Sending this declines what is waiting above." : <Disclosure />}
+          {waiting && text.trim() ? "Sending this declines what is waiting above." : <ModelMenu />}
         </span>
         <span className="flex shrink-0 items-center gap-1 pointer-coarse:hidden">
           <KeyChip className="h-4 px-1">↵</KeyChip>
@@ -92,23 +93,5 @@ export function Composer({
         </span>
       </div>
     </form>
-  );
-}
-
-/** Where the conversation goes, said once, inside the composer. */
-function Disclosure() {
-  const availability = useAvailability();
-  const data = availability.data;
-  if (!data?.available || !data.model) return null;
-  return (
-    <span
-      title={
-        data.leaves_machine
-          ? `${data.model} runs off this machine: your messages and the mail it reads go to its provider`
-          : `${data.model} runs on this machine: nothing leaves it`
-      }
-    >
-      {data.model} · {data.leaves_machine ? "cloud" : "local"}
-    </span>
   );
 }

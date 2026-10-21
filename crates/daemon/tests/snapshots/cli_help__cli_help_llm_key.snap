@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Manage the Anthropic and OpenRouter API keys used for Claude models
+Manage the Anthropic, OpenAI and OpenRouter API keys used for hosted models
 
 Usage: mxr llm key [OPTIONS] <COMMAND>
 

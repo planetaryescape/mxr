@@ -1,0 +1,28 @@
+---
+source: crates/tui/src/ui/assistant_pane.rs
+expression: render(&state)
+---
+"╭ Assistant ───────────────────────────────────╮"
+"│ Model                                        │"
+"│                                              │"
+"│   ✓ Gemma 4  on this machine                 │"
+"│ ›   GPT-6 Luna  cloud                        │"
+"│       Add an OpenAI key: mxr llm key set     │"
+"│       openai                                 │"
+"│     Claude Sonnet 5.5  cloud                 │"
+"│                                              │"
+"│ A cloud model receives your messages and the │"
+"│ mail the assistant reads.                    │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│                                              │"
+"│ j/k move · Enter use this model · Esc back   │"
+"╰──────────────────────────────────────────────╯"

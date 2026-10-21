@@ -41,9 +41,10 @@ export function LlmRoutesPanel({
       <div>
         <h3 className="text-sm font-semibold">Models and routes</h3>
         <p className="mt-1 max-w-2xl text-2xs text-muted-foreground">
-          What each feature uses right now. A Claude model goes to Anthropic first and to OpenRouter
-          when Anthropic is not working; mxr remembers which one is failing and tries it again
-          later.
+          What each feature uses right now. A Claude model goes to Anthropic first and a GPT model
+          to OpenAI first, each then to OpenRouter when it is not working; mxr remembers which one
+          is failing and tries it again later. The assistant's model is also picked under its
+          message box.
         </p>
       </div>
       <ul className="divide-y divide-border/60 border-y border-border/60">
@@ -62,7 +63,8 @@ export function LlmRoutesPanel({
       <p className="text-2xs text-muted-foreground">
         Keys are stored with the command line, not here:{" "}
         <code className="font-mono">printf %s &quot;$KEY&quot; | mxr llm key set anthropic</code>{" "}
-        (or <code className="font-mono">openrouter</code>).
+        (or <code className="font-mono">openai</code> or{" "}
+        <code className="font-mono">openrouter</code>).
       </p>
     </section>
   );
@@ -149,11 +151,16 @@ function clockTime(value: string | null | undefined): string {
 }
 
 function providerName(provider: string): string {
-  return provider === "openrouter"
-    ? "OpenRouter"
-    : provider === "anthropic"
-      ? "Anthropic"
-      : provider;
+  switch (provider) {
+    case "openrouter":
+      return "OpenRouter";
+    case "openai":
+      return "OpenAI";
+    case "anthropic":
+      return "Anthropic";
+    default:
+      return provider;
+  }
 }
 
 function featureLabel(key: string): string {

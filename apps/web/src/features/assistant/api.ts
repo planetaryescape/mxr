@@ -3,6 +3,8 @@ import type { components } from "@/api/generated";
 
 type Schemas = components["schemas"];
 export type AssistantAvailability = Schemas["AssistantAvailabilityData"];
+export type AssistantModels = Schemas["AssistantModelsData"];
+export type AssistantModelChoice = Schemas["AssistantModelChoiceData"];
 export type AssistantConversation = Schemas["AssistantConversationData"];
 export type AssistantSummary = Schemas["AssistantConversationSummaryData"];
 export type AssistantItem = Schemas["AssistantItemData"];
@@ -19,6 +21,7 @@ const BASE = "/api/v1/mail/assistant";
 export const assistantKeys = {
   all: ["assistant"] as const,
   availability: ["assistant", "availability"] as const,
+  models: ["assistant", "models"] as const,
   list: ["assistant", "conversations"] as const,
   conversation: (id: string) => ["assistant", "conversation", id] as const,
 };
@@ -26,6 +29,20 @@ export const assistantKeys = {
 export async function fetchAvailability(): Promise<AssistantAvailability> {
   const response = await apiFetch<{ availability: AssistantAvailability }>(`${BASE}/availability`);
   return response.availability;
+}
+
+export async function fetchModels(): Promise<AssistantModels> {
+  const response = await apiFetch<{ models: AssistantModels }>(`${BASE}/models`);
+  return response.models;
+}
+
+/** Refused with the daemon's sentence when the model can't be used yet. */
+export async function setModel(model: string): Promise<AssistantModels> {
+  const response = await apiFetch<{ change: { models: AssistantModels } }>(`${BASE}/model`, {
+    method: "POST",
+    body: { model },
+  });
+  return response.change.models;
 }
 
 export async function fetchConversations(): Promise<AssistantSummary[]> {

@@ -1031,6 +1031,8 @@ pub fn map_request(
             );
         }
         Request::GetAssistantAvailability
+        | Request::GetAssistantModels
+        | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }

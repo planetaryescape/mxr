@@ -1,5 +1,5 @@
-//! A model served through more than one provider: Anthropic's own API
-//! first, OpenRouter when Anthropic isn't working.
+//! A model served through more than one provider: the vendor's own API
+//! first (Anthropic's or OpenAI's), OpenRouter when that isn't working.
 //!
 //! Which provider is "not working" comes from [`RouteHealth`], shared by
 //! every caller, so a batch of background work makes one failed attempt
@@ -8,7 +8,7 @@
 use crate::anthropic::{AnthropicClient, ANTHROPIC_BASE_URL};
 use crate::failure::{AttemptError, ErrorClass};
 use crate::health::{Admission, RouteFailure, RouteHealth, RouteState, RouteView, Ticket};
-use crate::route::{is_claude_model, ApiKey, ApiKeySource, Route, RouteProvider};
+use crate::route::{is_claude_model, is_openai_model, ApiKey, ApiKeySource, Route, RouteProvider};
 use crate::{
     CallKind, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
     OpenAiCompatibleConfig, OpenAiCompatibleProvider, TextCallback, ToolChatRequest,
@@ -21,6 +21,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 pub(crate) const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+pub(crate) const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 /// Room for adaptive thinking on top of the answer a caller asked for:
 /// thinking tokens count against `max_tokens`, and a budget sized for the
@@ -46,6 +47,7 @@ pub struct RoutedProviderConfig {
     /// Where each provider lives. The public APIs unless a test points them
     /// at a local server.
     pub anthropic_base_url: String,
+    pub openai_base_url: String,
     pub openrouter_base_url: String,
 }
 
@@ -66,6 +68,7 @@ impl RoutedProviderConfig {
             keys,
             health,
             anthropic_base_url: ANTHROPIC_BASE_URL.to_string(),
+            openai_base_url: OPENAI_BASE_URL.to_string(),
             openrouter_base_url: OPENROUTER_BASE_URL.to_string(),
         }
     }
@@ -78,28 +81,33 @@ pub struct RoutedProvider {
     keys: Arc<dyn ApiKeySource>,
     health: RouteHealth,
     anthropic: AnthropicClient,
+    openai: Option<OpenAiCompatibleProvider>,
     openrouter: Option<OpenAiCompatibleProvider>,
 }
 
 impl RoutedProvider {
     pub fn new(config: RoutedProviderConfig) -> Self {
-        let openrouter = config
-            .routes
-            .iter()
-            .find(|route| route.provider == RouteProvider::OpenRouter)
-            .map(|route| {
-                OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
-                    base_url: config.openrouter_base_url.clone(),
-                    // The key is read per request and passed in.
-                    api_key: None,
-                    model: route.model.clone(),
-                    context_window: config.context_window,
-                    request_timeout: config.request_timeout,
+        let client_for = |provider: RouteProvider, base_url: &str| {
+            config
+                .routes
+                .iter()
+                .find(|route| route.provider == provider)
+                .map(|route| {
+                    OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+                        base_url: base_url.to_string(),
+                        // The key is read per request and passed in.
+                        api_key: None,
+                        model: route.model.clone(),
+                        context_window: config.context_window,
+                        request_timeout: config.request_timeout,
+                    })
                 })
-            });
+        };
         Self {
             anthropic: AnthropicClient::new(&config.anthropic_base_url, config.request_timeout),
-            openrouter,
+            openai: client_for(RouteProvider::OpenAI, &config.openai_base_url)
+                .map(OpenAiCompatibleProvider::with_completion_token_cap),
+            openrouter: client_for(RouteProvider::OpenRouter, &config.openrouter_base_url),
             model: config.model,
             routes: config.routes,
             context_window: config.context_window,
@@ -112,11 +120,12 @@ impl RoutedProvider {
         &self.routes
     }
 
-    /// The request as the routes want it. Claude 5.x answers any non-default
-    /// sampling parameter with HTTP 400, on either provider, so none is sent;
-    /// and `max_tokens` leaves room for thinking.
+    /// The request as the routes want it. Claude 5.x and OpenAI's current
+    /// models answer any non-default sampling parameter with HTTP 400, on
+    /// either provider, so none is sent; and `max_tokens` leaves room for
+    /// thinking.
     fn prepare(&self, req: CompletionRequest) -> CompletionRequest {
-        if !is_claude_model(&self.model) {
+        if !is_claude_model(&self.model) && !is_openai_model(&self.model) {
             return req;
         }
         CompletionRequest {
@@ -180,9 +189,13 @@ impl RoutedProvider {
                     .complete(&key, &route.model, req, timeout)
                     .await
             }
+            RouteProvider::OpenAI => match &self.openai {
+                Some(openai) => openai.attempt(req, Some(key.expose()), timeout).await,
+                None => Err(no_route(RouteProvider::OpenAI)),
+            },
             RouteProvider::OpenRouter => match &self.openrouter {
                 Some(openrouter) => openrouter.attempt(req, Some(key.expose()), timeout).await,
-                None => Err(no_openrouter_route()),
+                None => Err(no_route(RouteProvider::OpenRouter)),
             },
         }
     }
@@ -196,13 +209,17 @@ impl RoutedProvider {
     ) -> Result<ToolChatResponse, AttemptError> {
         match route.provider {
             RouteProvider::Anthropic => self.anthropic.chat(&key, &route.model, req, timeout).await,
+            RouteProvider::OpenAI => match &self.openai {
+                Some(openai) => openai.chat_attempt(req, Some(key.expose()), timeout).await,
+                None => Err(no_route(RouteProvider::OpenAI)),
+            },
             RouteProvider::OpenRouter => match &self.openrouter {
                 Some(openrouter) => {
                     openrouter
                         .chat_attempt(req, Some(key.expose()), timeout)
                         .await
                 }
-                None => Err(no_openrouter_route()),
+                None => Err(no_route(RouteProvider::OpenRouter)),
             },
         }
     }
@@ -235,13 +252,21 @@ impl RoutedProvider {
                     .chat_stream(&key, &route.model, req, timeout, on_text)
                     .await
             }
+            RouteProvider::OpenAI => match &self.openai {
+                Some(openai) => {
+                    openai
+                        .chat_stream_attempt(req, Some(key.expose()), timeout, on_text)
+                        .await
+                }
+                None => Err(no_route(RouteProvider::OpenAI)),
+            },
             RouteProvider::OpenRouter => match &self.openrouter {
                 Some(openrouter) => {
                     openrouter
                         .chat_stream_attempt(req, Some(key.expose()), timeout, on_text)
                         .await
                 }
-                None => Err(no_openrouter_route()),
+                None => Err(no_route(RouteProvider::OpenRouter)),
             },
         }
     }
@@ -448,10 +473,11 @@ fn answered_by(provider: RouteProvider, reported: &str, requested: &str) -> Stri
     format!("{model} via {}", provider.label())
 }
 
-fn no_openrouter_route() -> AttemptError {
-    AttemptError::request(LlmError::Other(
-        "no OpenRouter route is configured for this model".to_string(),
-    ))
+fn no_route(provider: RouteProvider) -> AttemptError {
+    AttemptError::request(LlmError::Other(format!(
+        "no {} route is configured for this model",
+        provider.label()
+    )))
 }
 
 fn no_key_message(routes: &[Route]) -> String {

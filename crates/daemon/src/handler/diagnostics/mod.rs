@@ -999,6 +999,7 @@ fn normalize_llm_config(
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
         // Config-file only, like the background timeout.
         gist_concurrency: current.gist_concurrency,
+        assistant_models: current.assistant_models.clone(),
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,
             None => current.overrides.clone(),

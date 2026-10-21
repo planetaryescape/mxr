@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mxr_llm::{
-    route_statuses, routes_for_model, ApiKey, ApiKeySource, ChatMessage, CompletionRequest,
+    route_statuses, routes_for_model, ApiKey, ApiKeySource, Endpoint, ChatMessage, CompletionRequest,
     LlmError, LlmFeature, LlmRuntime, RouteHealth, RouteProvider, RouteState, RoutedProvider,
     RoutedProviderConfig,
 };
@@ -75,7 +75,7 @@ impl Rig {
         let health = RouteHealth::default();
         let mut config = RoutedProviderConfig::new(
             MODEL.to_string(),
-            routes_for_model(MODEL, false).unwrap(),
+            routes_for_model(MODEL, Endpoint::Default).unwrap(),
             200_000,
             Duration::from_secs(10),
             keys.clone(),
@@ -190,7 +190,7 @@ async fn mount_openrouter(rig: &Rig, response: ResponseTemplate) {
 }
 
 fn anthropic_route() -> mxr_llm::Route {
-    routes_for_model(MODEL, false).unwrap().remove(0)
+    routes_for_model(MODEL, Endpoint::Default).unwrap().remove(0)
 }
 
 #[tokio::test]
@@ -459,7 +459,7 @@ async fn a_forced_foreground_attempt_that_works_brings_the_route_back() {
     assert_eq!(rig.foreground().await.unwrap().content, "from openrouter");
     assert_eq!(
         rig.health
-            .view(&routes_for_model(MODEL, false).unwrap()[1])
+            .view(&routes_for_model(MODEL, Endpoint::Default).unwrap()[1])
             .state,
         RouteState::Ok
     );
@@ -475,7 +475,7 @@ async fn keys_are_read_per_request_and_a_changed_key_clears_its_verdict() {
     assert_eq!(rig.foreground().await.unwrap().content, "from openrouter");
     assert!(rig.anthropic_requests().await.is_empty());
     let statuses = route_statuses(
-        &routes_for_model(MODEL, false).unwrap(),
+        &routes_for_model(MODEL, Endpoint::Default).unwrap(),
         rig.keys.as_ref(),
         &rig.health,
     );

@@ -110,10 +110,18 @@ pub(crate) struct OpenAiToolChatBody<'a> {
     pub tools: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<u32>,
     pub stream: bool,
 }
 
-pub(crate) fn openai_body<'a>(model: &'a str, req: &ToolChatRequest) -> OpenAiToolChatBody<'a> {
+/// The request in chat-completions form. `completion_token_cap` names the
+/// token cap `max_completion_tokens`, which OpenAI's own API wants.
+pub(crate) fn openai_body<'a>(
+    model: &'a str,
+    req: &ToolChatRequest,
+    completion_token_cap: bool,
+) -> OpenAiToolChatBody<'a> {
     let messages = req
         .messages
         .iter()
@@ -176,7 +184,8 @@ pub(crate) fn openai_body<'a>(model: &'a str, req: &ToolChatRequest) -> OpenAiTo
         model,
         messages,
         tools,
-        max_tokens: req.max_tokens,
+        max_tokens: req.max_tokens.filter(|_| !completion_token_cap),
+        max_completion_tokens: req.max_tokens.filter(|_| completion_token_cap),
         stream: false,
     }
 }
@@ -405,7 +414,7 @@ mod tests {
 
     #[test]
     fn openai_body_carries_tool_calls_as_json_strings_and_tool_results_by_id() {
-        let body = serde_json::to_value(openai_body("m", &request())).unwrap();
+        let body = serde_json::to_value(openai_body("m", &request(), false)).unwrap();
         assert_eq!(body["messages"][2]["content"], Value::Null);
         assert_eq!(
             body["messages"][2]["tool_calls"][0]["function"]["arguments"],
@@ -415,6 +424,87 @@ mod tests {
         assert_eq!(body["messages"][3]["tool_call_id"], "c1");
         assert_eq!(body["tools"][0]["function"]["name"], "mxr_search");
         assert_eq!(body["stream"], false);
+    }
+
+    #[test]
+    fn openai_names_the_token_cap_max_completion_tokens_and_others_max_tokens() {
+        let plain = serde_json::to_value(openai_body("m", &request(), false)).unwrap();
+        assert_eq!(plain["max_tokens"], 100);
+        assert!(plain.get("max_completion_tokens").is_none());
+        let openai = serde_json::to_value(openai_body("m", &request(), true)).unwrap();
+        assert_eq!(openai["max_completion_tokens"], 100);
+        assert!(openai.get("max_tokens").is_none());
+    }
+
+    /// A conversation that moved between providers: one turn written by a
+    /// local model, one by Claude (carrying the thinking blocks Anthropic
+    /// wants back), one by another provider. Switching to an OpenAI-shaped
+    /// provider sends each as plain text and tool calls, every result still
+    /// following the call it answers.
+    #[test]
+    fn history_written_by_other_providers_is_sent_as_text_and_tool_calls() {
+        let turn = |id: &str, provider_turn: Option<ProviderTurn>| ToolChatMessage::Assistant {
+            text: format!("using {id}"),
+            tool_calls: vec![ToolCall {
+                id: id.into(),
+                name: "mxr_search".into(),
+                arguments: json!({"query": id}),
+            }],
+            provider_turn,
+        };
+        let result = |id: &str| ToolChatMessage::Tool {
+            call_id: id.into(),
+            content: "[]".into(),
+            is_error: false,
+        };
+        let req = ToolChatRequest {
+            messages: vec![
+                ToolChatMessage::User {
+                    content: "one".into(),
+                },
+                turn("call_local", None),
+                result("call_local"),
+                ToolChatMessage::User {
+                    content: "two".into(),
+                },
+                turn(
+                    "toolu_claude",
+                    Some(ProviderTurn {
+                        provider: "anthropic".into(),
+                        content: json!([{"type": "thinking", "thinking": "", "signature": "s"}]),
+                    }),
+                ),
+                result("toolu_claude"),
+                ToolChatMessage::User {
+                    content: "three".into(),
+                },
+            ],
+            tools: Vec::new(),
+            max_tokens: None,
+        };
+        let body = serde_json::to_value(openai_body("gpt-6-luna", &req, true)).unwrap();
+        let messages = body["messages"].as_array().unwrap();
+        assert!(!body.to_string().contains("signature"));
+        let mut open_calls: Vec<String> = Vec::new();
+        for message in messages {
+            match message["role"].as_str().unwrap() {
+                "assistant" => {
+                    assert!(open_calls.is_empty(), "calls left without a result");
+                    for call in message["tool_calls"].as_array().into_iter().flatten() {
+                        open_calls.push(call["id"].as_str().unwrap().to_string());
+                    }
+                }
+                "tool" => {
+                    let id = message["tool_call_id"].as_str().unwrap();
+                    assert!(open_calls.contains(&id.to_string()), "orphan result {id}");
+                    open_calls.retain(|open| open != id);
+                }
+                _ => {}
+            }
+        }
+        assert!(open_calls.is_empty());
+        assert_eq!(messages[1]["content"], "using call_local");
+        assert_eq!(messages[4]["tool_calls"][0]["id"], "toolu_claude");
     }
 
     #[test]

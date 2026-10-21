@@ -1,4 +1,4 @@
-//! Provider API keys for the Claude routes: stored in `secrets.toml` with the
+//! Provider API keys for the hosted routes (Anthropic, OpenAI, OpenRouter): stored in `secrets.toml` with the
 //! account passwords (disk is authoritative, mode 0600, written by the daemon
 //! alone), read from the provider's environment variable when none is stored.
 //!
@@ -119,6 +119,7 @@ impl ApiKeySource for LlmKeys {
 pub(crate) fn provider_from_data(provider: LlmProviderData) -> RouteProvider {
     match provider {
         LlmProviderData::Anthropic => RouteProvider::Anthropic,
+        LlmProviderData::Openai => RouteProvider::OpenAI,
         LlmProviderData::Openrouter => RouteProvider::OpenRouter,
     }
 }
@@ -126,6 +127,7 @@ pub(crate) fn provider_from_data(provider: LlmProviderData) -> RouteProvider {
 pub(crate) fn provider_data(provider: RouteProvider) -> LlmProviderData {
     match provider {
         RouteProvider::Anthropic => LlmProviderData::Anthropic,
+        RouteProvider::OpenAI => LlmProviderData::Openai,
         RouteProvider::OpenRouter => LlmProviderData::Openrouter,
     }
 }

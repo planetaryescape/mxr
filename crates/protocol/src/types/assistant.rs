@@ -103,6 +103,11 @@ pub enum AssistantItemData {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model: Option<String>,
+        /// Whether the model that wrote this reply runs off this machine,
+        /// as it was when it wrote it. Absent for replies from before the
+        /// daemon recorded it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        leaves_machine: Option<bool>,
         /// The steps right before this reply that failed and weren't redone
         /// after: a small model can say it did what these didn't, so
         /// clients name them under the reply.
@@ -367,6 +372,48 @@ pub struct AssistantAvailabilityData {
     pub reason: Option<String>,
 }
 
+/// One model the assistant can run on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantModelChoiceData {
+    /// The model id, as `set` takes it.
+    pub id: String,
+    /// What a person calls it ("Claude Haiku 5.5").
+    pub label: String,
+    /// True when conversations with it go to a provider off this machine.
+    pub cloud: bool,
+    /// Whether it can be picked now.
+    pub available: bool,
+    /// Why it can't be picked, with the command that fixes it when there is
+    /// one. Set exactly when `available` is false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+}
+
+/// The models the assistant can be set to, and the one it uses now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantModelsData {
+    /// The model the next turn uses. It may not be in `choices`: a model set
+    /// by hand in config.toml stays as it is until one is picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
+    pub choices: Vec<AssistantModelChoiceData>,
+}
+
+/// What `SetAssistantModel` did, or with `dry_run` would do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AssistantModelChangeData {
+    pub dry_run: bool,
+    /// False when the model was already the one in use.
+    pub changed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<String>,
+    /// The models after the change (with `dry_run`, as they would be).
+    pub models: AssistantModelsData,
+}
+
 impl AssistantProgressData {
     /// The line a client shows above the composer while the turn runs, in
     /// place of "Thinking". The static phrases live here rather than on
@@ -446,11 +493,14 @@ mod tests {
             seq: 1,
             text: "hi".into(),
             model: None,
+            leaves_machine: None,
             failed_call_ids: Vec::new(),
             rows: Vec::new(),
             created_at: 0,
         };
-        assert!(serde_json::to_value(reply).unwrap().get("rows").is_none());
+        let wire = serde_json::to_value(reply).unwrap();
+        assert!(wire.get("rows").is_none());
+        assert!(wire.get("leaves_machine").is_none());
     }
 
     #[test]

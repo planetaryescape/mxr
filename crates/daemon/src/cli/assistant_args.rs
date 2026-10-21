@@ -5,6 +5,12 @@ use clap::Subcommand;
 pub enum AssistantAction {
     /// Whether the assistant can run, and on which model
     Status,
+    /// The model the assistant uses: list the choices, or set one for every
+    /// conversation. Hosted models need their key (`mxr llm key set`).
+    Model {
+        #[command(subcommand)]
+        action: Option<AssistantModelAction>,
+    },
     /// Send a message, starting a conversation unless --conversation is
     /// given, and wait for the reply. Changes the assistant wants to make,
     /// and questions it asks, are printed with the command that answers them.
@@ -80,6 +86,18 @@ pub enum AssistantAction {
     Delete {
         conversation: String,
         /// Show what would be deleted, without deleting it
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AssistantModelAction {
+    /// Use this model for the assistant's next message, in every conversation
+    Set {
+        /// A model id from `mxr assistant model`, such as claude-haiku-5-5
+        model: String,
+        /// Check the choice and show what would change, without changing it
         #[arg(long)]
         dry_run: bool,
     },

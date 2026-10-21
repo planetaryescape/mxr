@@ -238,6 +238,28 @@ export const ASSISTANT_STATES = {
 
 export type AssistantState = keyof typeof ASSISTANT_STATES;
 
+/**
+ * The picker's choices as the daemon answers them with an Anthropic key and
+ * no OpenAI key: GPT-6 Luna and GPT-5.6 Terra are listed but can't be used.
+ */
+function modelChoices(): Json[] {
+  const noOpenAi = "Add an OpenAI key: mxr llm key set openai";
+  const choice = (id: string, label: string, cloud: boolean, reason?: string): Json => ({
+    id,
+    label,
+    cloud,
+    available: reason === undefined,
+    ...(reason === undefined ? {} : { unavailable_reason: reason }),
+  });
+  return [
+    choice("gemma4:latest", "Gemma 4", false),
+    choice("gpt-6-luna", "GPT-6 Luna", true, noOpenAi),
+    choice("gpt-5.6-terra", "GPT-5.6 Terra", true, noOpenAi),
+    choice("claude-haiku-5-5", "Claude Haiku 5.5", true),
+    choice("claude-sonnet-5-5", "Claude Sonnet 5.5", true),
+  ];
+}
+
 /** Opens the app with the panel open on a recorded conversation (or none), and answers `decide`. */
 export async function mockAssistant(
   page: Page,
@@ -254,11 +276,27 @@ export async function mockAssistant(
     },
     { id: conversation ? CONVERSATION_ID : null },
   );
+  const choices = modelChoices();
+  let current = "gemma4:latest";
+  const inUse = () => choices.find((choice) => choice.id === current) as Json;
   await page.route("**/api/v1/mail/assistant/**", async (route) => {
     const url = new URL(route.request().url());
     const json = (body: unknown) => route.fulfill({ json: body });
     if (url.pathname.endsWith("/availability")) {
-      return json({ availability: { available: true, leaves_machine: false, model: "gemma4" } });
+      return json({
+        availability: {
+          available: true,
+          leaves_machine: inUse().cloud,
+          model: current === "gemma4:latest" ? "gemma4" : current,
+        },
+      });
+    }
+    if (url.pathname.endsWith("/models")) return json({ models: { current, choices } });
+    if (url.pathname.endsWith("/model")) {
+      current = (route.request().postDataJSON() as { model: string }).model;
+      return json({
+        change: { dry_run: false, changed: true, models: { current, choices } },
+      });
     }
     if (url.pathname.endsWith("/decide")) {
       onDecide?.(route.request().postDataJSON());

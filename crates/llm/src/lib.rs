@@ -65,7 +65,10 @@ pub use endpoint::is_loopback_endpoint;
 pub use health::{FailureReason, RouteHealth, RouteState, RouteView};
 use observations::CompletionObservations;
 pub use observations::{CompletionObservation, LlmFailureKind};
-pub use route::{is_claude_model, routes_for_model, ApiKey, ApiKeySource, Route, RouteProvider};
+pub use route::{
+    is_claude_model, is_openai_model, routes_for_model, ApiKey, ApiKeySource, Endpoint, Route,
+    RouteProvider,
+};
 pub use routed::{route_statuses, RouteStatus, RoutedProvider, RoutedProviderConfig};
 /// Called with the whole reply text so far while a reply streams in.
 pub type TextCallback<'a> = &'a (dyn for<'t> Fn(&'t str) + Send + Sync);
@@ -820,6 +823,9 @@ pub struct OpenAiCompatibleProvider {
     /// it honours `reasoning_effort: "none"`. Not sent by default because
     /// hosted non-reasoning models (e.g. OpenAI gpt-4o-mini) reject it.
     disable_reasoning: AtomicBool,
+    /// Send the token cap as `max_completion_tokens`. OpenAI's current
+    /// models refuse `max_tokens`; other servers only know that one.
+    completion_token_cap: bool,
 }
 
 impl OpenAiCompatibleProvider {
@@ -833,7 +839,15 @@ impl OpenAiCompatibleProvider {
             request_timeout: config.request_timeout,
             client,
             disable_reasoning: AtomicBool::new(false),
+            completion_token_cap: false,
         }
+    }
+
+    /// For OpenAI's own API: name the token cap `max_completion_tokens`.
+    #[must_use]
+    pub(crate) fn with_completion_token_cap(mut self) -> Self {
+        self.completion_token_cap = true;
+        self
     }
 
     /// Convenience constructor for a local Ollama instance.
@@ -882,7 +896,8 @@ impl OpenAiCompatibleProvider {
         let body = ChatCompletionsRequestBody {
             model: &self.model,
             messages: &req.messages,
-            max_tokens: req.max_tokens,
+            max_tokens: req.max_tokens.filter(|_| !self.completion_token_cap),
+            max_completion_tokens: req.max_tokens.filter(|_| self.completion_token_cap),
             temperature: req.temperature,
             reasoning_effort: disable_reasoning.then_some("none"),
             stream: false,
@@ -916,7 +931,7 @@ impl OpenAiCompatibleProvider {
         api_key: Option<&str>,
         timeout: Option<Duration>,
     ) -> Result<ToolChatResponse, AttemptError> {
-        let body = tool_chat::openai_body(&self.model, req);
+        let body = tool_chat::openai_body(&self.model, req, self.completion_token_cap);
         let raw: tool_chat::OpenAiToolChatReply = self.post(&body, api_key, timeout).await?;
         let response = tool_chat::openai_reply(raw, &self.model)
             .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
@@ -934,7 +949,7 @@ impl OpenAiCompatibleProvider {
         timeout: Option<Duration>,
         on_text: stream::TextSink<'_>,
     ) -> Result<ToolChatResponse, AttemptError> {
-        let mut body = tool_chat::openai_body(&self.model, req);
+        let mut body = tool_chat::openai_body(&self.model, req, self.completion_token_cap);
         body.stream = true;
         let response = self.send_checked(&body, api_key, timeout).await?;
         let mut folded = stream::OpenAiStream::default();
@@ -1144,6 +1159,8 @@ struct ChatCompletionsRequestBody<'a> {
     messages: &'a [ChatMessage],
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

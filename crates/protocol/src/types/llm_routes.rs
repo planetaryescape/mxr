@@ -34,6 +34,7 @@ impl fmt::Debug for LlmKeySecret {
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderData {
     Anthropic,
+    Openai,
     Openrouter,
 }
 
@@ -41,6 +42,7 @@ impl LlmProviderData {
     pub const fn key(self) -> &'static str {
         match self {
             Self::Anthropic => "anthropic",
+            Self::Openai => "openai",
             Self::Openrouter => "openrouter",
         }
     }

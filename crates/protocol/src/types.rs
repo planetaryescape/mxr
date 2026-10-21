@@ -2526,6 +2526,19 @@ pub enum Request {
     /// Whether the assistant can run and on which model. Returns
     /// `ResponseData::AssistantAvailability`.
     GetAssistantAvailability,
+    /// The models the assistant can be set to and the one it uses now.
+    /// Returns `ResponseData::AssistantModels`.
+    GetAssistantModels,
+    /// Set the model the assistant's next turn uses, for every conversation.
+    /// Refused for a model that isn't in the list, has no key, or would send
+    /// mail off this machine without `llm.allow_cloud_relationship_data`.
+    /// With `dry_run` nothing is written. Returns
+    /// `ResponseData::AssistantModelChange`.
+    SetAssistantModel {
+        model: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Send the user's message, starting a conversation when
     /// `conversation_id` is `None`. Returns as soon as the turn starts, with
     /// the conversation `running`; `AssistantUpdated` events follow until it
@@ -2976,6 +2989,8 @@ impl Request {
             | Self::SendReadingToMarginalia { .. }
             | Self::SyncMarginaliaHighlights { .. }
             | Self::GetAssistantAvailability
+            | Self::GetAssistantModels
+            | Self::SetAssistantModel { .. }
             | Self::AssistantSend { .. }
             | Self::AssistantDecide { .. }
             | Self::AssistantCancel { .. }
@@ -4293,6 +4308,14 @@ pub enum ResponseData {
     AssistantAvailability {
         availability: AssistantAvailabilityData,
     },
+    /// Returned by `Request::GetAssistantModels`.
+    AssistantModels {
+        models: AssistantModelsData,
+    },
+    /// Returned by `Request::SetAssistantModel`.
+    AssistantModelChange {
+        change: AssistantModelChangeData,
+    },
     /// Returned by the assistant's send, decide, cancel and get requests.
     AssistantConversation {
         conversation: AssistantConversationData,
@@ -4576,6 +4599,8 @@ impl ResponseData {
             | Self::MarginaliaSend { .. }
             | Self::MarginaliaSync { .. }
             | Self::AssistantAvailability { .. }
+            | Self::AssistantModels { .. }
+            | Self::AssistantModelChange { .. }
             | Self::AssistantConversation { .. }
             | Self::AssistantConversations { .. }
             | Self::AssistantDelete { .. }

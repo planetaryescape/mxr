@@ -16,8 +16,10 @@ import {
   fetchAvailability,
   fetchConversation,
   fetchConversations,
+  fetchModels,
   sendMessage,
   setAutoApprove,
+  setModel,
   type AssistantConversation,
   type AssistantDecision,
   type AssistantProgress,
@@ -37,6 +39,16 @@ export function useAvailability() {
     queryKey: assistantKeys.availability,
     queryFn: fetchAvailability,
     staleTime: 30_000,
+  });
+}
+
+/** The picker's choices. A daemon from before the picker answers 404: no picker then. */
+export function useModels() {
+  return useQuery({
+    queryKey: assistantKeys.models,
+    queryFn: fetchModels,
+    staleTime: 10_000,
+    retry: false,
   });
 }
 
@@ -178,7 +190,15 @@ export function useAssistantActions() {
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setAutoApprove(id, enabled),
     onSuccess: settle,
   });
-  return { send, answer, stop, trust };
+  const pickModel = useMutation({
+    mutationFn: setModel,
+    onSuccess: (models) => {
+      queryClient.setQueryData(assistantKeys.models, models);
+      // The composer's mark and the next reply's provenance follow the choice.
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
+    },
+  });
+  return { send, answer, stop, trust, pickModel };
 }
 
 /**

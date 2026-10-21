@@ -78,6 +78,10 @@ impl App {
             self.assistant.prompt,
             Some(AssistantPrompt::ConfirmDelete(_))
         );
+        if self.assistant.models.is_some() {
+            self.assistant_models_key(key);
+            return Some(None);
+        }
         if self.assistant.list.is_some() && !confirming {
             self.assistant_list_key(key);
             return Some(None);
@@ -251,6 +255,7 @@ impl App {
             }
             (KeyCode::Char('N'), _) => return Some(Action::NewAssistantConversation),
             (KeyCode::Char('L'), _) => return Some(Action::OpenAssistantConversations),
+            (KeyCode::Char('M'), _) => return Some(Action::OpenAssistantModels),
             (KeyCode::Char('T'), _) => return Some(Action::ToggleAssistantTrust),
             (KeyCode::Char('D'), _) => return Some(Action::DeleteAssistantConversation),
             _ => {}
@@ -294,6 +299,50 @@ impl App {
             }
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.assistant.list = None;
+                self.assistant.error = None;
+            }
+            _ => {}
+        }
+    }
+
+    fn assistant_models_key(&mut self, key: KeyEvent) {
+        let Some(picker) = self.assistant.models.as_mut() else {
+            return;
+        };
+        let count = picker.models.as_ref().map_or(0, |data| data.choices.len());
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if picker.selected + 1 < count {
+                    picker.selected += 1;
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
+            KeyCode::Enter => {
+                let Some(choice) = picker
+                    .models
+                    .as_ref()
+                    .and_then(|data| data.choices.get(picker.selected))
+                else {
+                    return;
+                };
+                // A choice that can't run says why, here, instead of
+                // asking the daemon to refuse it.
+                if let Some(reason) = &choice.unavailable_reason {
+                    self.assistant.error = Some(reason.clone());
+                    return;
+                }
+                let model = choice.id.clone();
+                self.assistant.error = None;
+                self.assistant.queue(
+                    AssistantCall::SetModel,
+                    Request::SetAssistantModel {
+                        model,
+                        dry_run: false,
+                    },
+                );
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.assistant.models = None;
                 self.assistant.error = None;
             }
             _ => {}
@@ -551,6 +600,7 @@ impl App {
                     self.assistant.open = false;
                     self.assistant.focus = AssistantFocus::Away;
                     self.assistant.list = None;
+                    self.assistant.models = None;
                     if matches!(
                         self.assistant.prompt,
                         Some(AssistantPrompt::ConfirmDelete(_))
@@ -565,6 +615,7 @@ impl App {
                 self.open_assistant();
                 self.assistant.reset_conversation();
                 self.assistant.list = None;
+                self.assistant.models = None;
                 if self.assistant.available() {
                     self.assistant.focus = AssistantFocus::Input;
                 }
@@ -572,6 +623,7 @@ impl App {
             Action::OpenAssistantConversations => {
                 self.open_assistant();
                 self.assistant.focus = AssistantFocus::Pane;
+                self.assistant.models = None;
                 self.assistant.list = Some(AssistantListState {
                     loading: true,
                     ..AssistantListState::default()
@@ -582,6 +634,18 @@ impl App {
                         limit: Some(HISTORY_LIMIT),
                     },
                 );
+            }
+            Action::OpenAssistantModels => {
+                self.open_assistant();
+                self.assistant.focus = AssistantFocus::Pane;
+                self.assistant.list = None;
+                self.assistant.error = None;
+                self.assistant.models = Some(AssistantModelsState {
+                    loading: true,
+                    ..AssistantModelsState::default()
+                });
+                self.assistant
+                    .queue(AssistantCall::Models, Request::GetAssistantModels);
             }
             Action::ToggleAssistantTrust => {
                 let Some(conversation) = self.assistant.conversation.as_ref() else {
@@ -748,6 +812,36 @@ impl App {
                 self.assistant.input_sent = None;
                 self.settle_assistant_conversation(conversation);
             }
+            (AssistantCall::Models, Ok(ResponseData::AssistantModels { models })) => {
+                if let Some(picker) = self.assistant.models.as_mut() {
+                    picker.loading = false;
+                    picker.selected = models
+                        .choices
+                        .iter()
+                        .position(|choice| models.current.as_deref() == Some(choice.id.as_str()))
+                        .unwrap_or(0);
+                    picker.models = Some(models);
+                }
+            }
+            (AssistantCall::SetModel, Ok(ResponseData::AssistantModelChange { change })) => {
+                self.assistant.models = None;
+                let current = change.models.current.clone().unwrap_or_default();
+                let label = change
+                    .models
+                    .choices
+                    .iter()
+                    .find(|choice| choice.id == current)
+                    .map_or(current, |choice| choice.label.clone());
+                self.push_toast(Toast::success(format!(
+                    "The assistant uses {} from its next message",
+                    crate::ui::sanitize::one_line(&label)
+                )));
+                // The model line under the message box follows the choice.
+                self.assistant.queue(
+                    AssistantCall::Availability,
+                    Request::GetAssistantAvailability,
+                );
+            }
             (AssistantCall::List, Ok(ResponseData::AssistantConversations { conversations })) => {
                 if let Some(list) = self.assistant.list.as_mut() {
                     list.loading = false;
@@ -807,6 +901,9 @@ impl App {
                 }
                 if let Some(list) = assistant.list.as_mut() {
                     list.loading = false;
+                }
+                if let Some(picker) = assistant.models.as_mut() {
+                    picker.loading = false;
                 }
                 assistant.error = Some(error_words(&error));
             }

@@ -2,10 +2,11 @@
 //!
 //! A `claude-*` model is Anthropic's own id: it goes to Anthropic's API first
 //! and to OpenRouter (under OpenRouter's slug for the same model) when
-//! Anthropic isn't working. Everything else keeps using the single
-//! OpenAI-compatible endpoint from config, except OpenRouter-style
-//! `vendor/model` ids when the user hasn't pointed mxr at an endpoint of
-//! their own.
+//! Anthropic isn't working. A `gpt-<digit>...` model is OpenAI's own id and
+//! goes the same way: OpenAI first, then OpenRouter as `openai/<id>`.
+//! Everything else keeps using the single OpenAI-compatible endpoint from
+//! config, except OpenRouter-style `vendor/model` ids when the user hasn't
+//! pointed mxr at an endpoint of their own.
 
 use std::fmt;
 use std::sync::Arc;
@@ -14,16 +15,18 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RouteProvider {
     Anthropic,
+    OpenAI,
     OpenRouter,
 }
 
 impl RouteProvider {
-    pub const ALL: [Self; 2] = [Self::Anthropic, Self::OpenRouter];
+    pub const ALL: [Self; 3] = [Self::Anthropic, Self::OpenAI, Self::OpenRouter];
 
     /// Stable machine name, used in IPC, CLI arguments and the key store.
     pub const fn key(self) -> &'static str {
         match self {
             Self::Anthropic => "anthropic",
+            Self::OpenAI => "openai",
             Self::OpenRouter => "openrouter",
         }
     }
@@ -31,6 +34,7 @@ impl RouteProvider {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Anthropic => "Anthropic",
+            Self::OpenAI => "OpenAI",
             Self::OpenRouter => "OpenRouter",
         }
     }
@@ -39,6 +43,7 @@ impl RouteProvider {
     pub const fn env_var(self) -> &'static str {
         match self {
             Self::Anthropic => "ANTHROPIC_API_KEY",
+            Self::OpenAI => "OPENAI_API_KEY",
             Self::OpenRouter => "OPENROUTER_API_KEY",
         }
     }
@@ -107,13 +112,25 @@ const OPENROUTER_VENDORS: &[&str] = &[
     "microsoft",
 ];
 
+/// Where `llm.base_url` points, as far as routing cares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Endpoint {
+    /// The default local Ollama.
+    Default,
+    /// A server of the user's own on this machine (LM Studio, another port).
+    Local,
+    /// A server of the user's own off this machine, whose model names are
+    /// theirs: only Anthropic's own ids still route.
+    Remote,
+}
+
 /// The routes for `model`, in the order they are tried, or `None` when the
 /// model isn't routed and `llm.base_url` serves it as before.
 ///
-/// `custom_endpoint` is true when `llm.base_url` differs from the default:
-/// the user pointed mxr at a server of their own, so its model names are
-/// theirs and only Anthropic's own ids still route.
-pub fn routes_for_model(model: &str, custom_endpoint: bool) -> Option<Vec<Route>> {
+/// A `gpt-*` id stays with a remote endpoint of the user's own (it may be
+/// OpenAI itself or a proxy with its own keys), but goes to OpenAI for the
+/// local ones: a local server doesn't serve these ids.
+pub fn routes_for_model(model: &str, endpoint: Endpoint) -> Option<Vec<Route>> {
     let model = model.trim();
     if is_anthropic_id(model) {
         let slug = openrouter_slug(model)?;
@@ -128,13 +145,27 @@ pub fn routes_for_model(model: &str, custom_endpoint: bool) -> Option<Vec<Route>
             },
         ]);
     }
+    if is_openai_id(model) {
+        return (endpoint != Endpoint::Remote).then(|| {
+            vec![
+                Route {
+                    provider: RouteProvider::OpenAI,
+                    model: model.to_string(),
+                },
+                Route {
+                    provider: RouteProvider::OpenRouter,
+                    model: format!("openai/{model}"),
+                },
+            ]
+        });
+    }
     let (vendor, name) = model.split_once('/')?;
     if name.is_empty() {
         return None;
     }
     // `anthropic/...` names the OpenRouter slug directly: OpenRouter only.
     let openrouter_only =
-        vendor == "anthropic" || (!custom_endpoint && OPENROUTER_VENDORS.contains(&vendor));
+        vendor == "anthropic" || (endpoint == Endpoint::Default && OPENROUTER_VENDORS.contains(&vendor));
     openrouter_only.then(|| {
         vec![Route {
             provider: RouteProvider::OpenRouter,
@@ -152,6 +183,26 @@ pub fn is_claude_model(model: &str) -> bool {
         || model
             .strip_prefix("anthropic/")
             .is_some_and(|name| name.starts_with("claude-"))
+}
+
+/// Whether the model is one of OpenAI's, under either naming. The newer
+/// families reject `max_tokens` and non-default sampling parameters.
+pub fn is_openai_model(model: &str) -> bool {
+    let model = model.trim();
+    is_openai_id(model)
+        || model
+            .strip_prefix("openai/")
+            .is_some_and(is_openai_id)
+}
+
+/// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.
+fn is_openai_id(model: &str) -> bool {
+    model
+        .strip_prefix("gpt-")
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+        && model
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
 }
 
 fn is_anthropic_id(model: &str) -> bool {
@@ -230,7 +281,7 @@ mod tests {
     #[test]
     fn a_claude_model_tries_anthropic_then_openrouter() {
         assert_eq!(
-            routes_for_model("claude-haiku-5-5", false),
+            routes_for_model("claude-haiku-5-5", Endpoint::Default),
             Some(vec![
                 route(RouteProvider::Anthropic, "claude-haiku-5-5"),
                 route(RouteProvider::OpenRouter, "anthropic/claude-haiku-5.5"),
@@ -239,7 +290,7 @@ mod tests {
         // A server of the user's own doesn't change where Anthropic's own
         // ids go.
         assert_eq!(
-            routes_for_model("  claude-opus-5-5 ", true),
+            routes_for_model("  claude-opus-5-5 ", Endpoint::Remote),
             Some(vec![
                 route(RouteProvider::Anthropic, "claude-opus-5-5"),
                 route(RouteProvider::OpenRouter, "anthropic/claude-opus-5.5"),
@@ -249,9 +300,9 @@ mod tests {
 
     #[test]
     fn an_explicit_anthropic_slug_means_openrouter_only() {
-        for custom in [false, true] {
+        for endpoint in [Endpoint::Default, Endpoint::Local, Endpoint::Remote] {
             assert_eq!(
-                routes_for_model("anthropic/claude-haiku-5.5", custom),
+                routes_for_model("anthropic/claude-haiku-5.5", endpoint),
                 Some(vec![route(
                     RouteProvider::OpenRouter,
                     "anthropic/claude-haiku-5.5"
@@ -263,18 +314,18 @@ mod tests {
     #[test]
     fn other_vendor_ids_route_to_openrouter_only_without_a_custom_endpoint() {
         assert_eq!(
-            routes_for_model("openai/gpt-4o-mini", false),
+            routes_for_model("openai/gpt-4o-mini", Endpoint::Default),
             Some(vec![route(RouteProvider::OpenRouter, "openai/gpt-4o-mini")])
         );
         assert_eq!(
-            routes_for_model("google/gemini-2.5-flash", false),
+            routes_for_model("google/gemini-2.5-flash", Endpoint::Default),
             Some(vec![route(
                 RouteProvider::OpenRouter,
                 "google/gemini-2.5-flash"
             )])
         );
         // The user's own server names models like this too.
-        assert_eq!(routes_for_model("google/gemma-3-4b", true), None);
+        assert_eq!(routes_for_model("google/gemma-3-4b", Endpoint::Local), None);
     }
 
     #[test]
@@ -282,7 +333,10 @@ mod tests {
         for model in [
             "gemma4",
             "qwen2.5:3b-instruct",
-            "gpt-4o-mini",
+            "gpt-oss:20b",
+            "gpt-oss-20b",
+            "gpt-",
+            "GPT-6-luna",
             "llama-3.1-8b-instant",
             "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
             "lmstudio-community/gemma-3-4b",
@@ -293,8 +347,34 @@ mod tests {
             "openai/",
             "",
         ] {
-            assert_eq!(routes_for_model(model, false), None, "{model}");
+            assert_eq!(routes_for_model(model, Endpoint::Default), None, "{model}");
         }
+    }
+
+    #[test]
+    fn a_gpt_model_tries_openai_then_openrouter() {
+        for id in ["gpt-6-luna", "gpt-5.6-terra", "gpt-4o-mini"] {
+            let expected = Some(vec![
+                route(RouteProvider::OpenAI, id),
+                route(RouteProvider::OpenRouter, &format!("openai/{id}")),
+            ]);
+            // The default Ollama and a server on this machine don't serve
+            // these ids, so both route.
+            for endpoint in [Endpoint::Default, Endpoint::Local] {
+                assert_eq!(routes_for_model(id, endpoint), expected, "{id}");
+            }
+            // A remote server of the user's own keeps its model names.
+            assert_eq!(routes_for_model(id, Endpoint::Remote), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn openai_models_are_recognised_under_both_names() {
+        assert!(is_openai_model("gpt-6-luna"));
+        assert!(is_openai_model("openai/gpt-5.6-terra"));
+        assert!(!is_openai_model("gpt-oss:20b"));
+        assert!(!is_openai_model("claude-haiku-5-5"));
+        assert!(!is_openai_model("gemma4"));
     }
 
     #[test]

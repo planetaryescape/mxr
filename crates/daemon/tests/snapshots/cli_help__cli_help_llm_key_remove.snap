@@ -7,7 +7,7 @@ Delete a stored key
 Usage: mxr llm key remove [OPTIONS] <PROVIDER>
 
 Arguments:
-  <PROVIDER>  [possible values: anthropic, openrouter]
+  <PROVIDER>  [possible values: anthropic, openai, openrouter]
 
 Options:
       --dry-run          Show what would be removed, without removing it

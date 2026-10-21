@@ -1856,6 +1856,8 @@ async fn dispatch(
             Box::pin(reading::handle(state, scoped_profile, req)).await
         }
         Request::GetAssistantAvailability
+        | Request::GetAssistantModels
+        | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }
@@ -2492,6 +2494,8 @@ fn classify_request(req: &Request) -> RequestClass {
         // A conversation changes no mail: each call the assistant makes is
         // classified on its own when it runs.
         | Request::GetAssistantAvailability
+        | Request::GetAssistantModels
+        | Request::SetAssistantModel { dry_run: true, .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }
@@ -2727,6 +2731,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DeleteAssistantConversation { dry_run: false, .. }
         // Decides which changes run without asking.
         | Request::SetAssistantAutoApprove { .. }
+        // Decides which model, and so which provider, reads the mailbox.
+        | Request::SetAssistantModel { dry_run: false, .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -3013,6 +3019,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendReadingToMarginalia { .. } => "send_reading_to_marginalia",
         Request::SyncMarginaliaHighlights { .. } => "sync_marginalia_highlights",
         Request::GetAssistantAvailability => "get_assistant_availability",
+        Request::GetAssistantModels => "get_assistant_models",
+        Request::SetAssistantModel { .. } => "set_assistant_model",
         Request::AssistantSend { .. } => "assistant_send",
         Request::AssistantDecide { .. } => "assistant_decide",
         Request::AssistantCancel { .. } => "assistant_cancel",
@@ -4584,6 +4592,8 @@ fn is_assistant_request(req: &Request) -> bool {
     matches!(
         req,
         Request::GetAssistantAvailability
+            | Request::GetAssistantModels
+            | Request::SetAssistantModel { .. }
             | Request::AssistantSend { .. }
             | Request::AssistantDecide { .. }
             | Request::AssistantCancel { .. }

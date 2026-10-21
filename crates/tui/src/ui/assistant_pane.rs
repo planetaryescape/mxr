@@ -88,7 +88,9 @@ pub fn draw(
     ])
     .split(inner);
 
-    let (body, max_scroll) = if let Some(list) = &state.list {
+    let (body, max_scroll) = if let Some(models) = &state.models {
+        (models_lines(models, width, theme), 0)
+    } else if let Some(list) = &state.list {
         (list_lines(list, width, theme), 0)
     } else {
         let lines = transcript_lines(state, width, theme);
@@ -158,6 +160,9 @@ pub fn hint_text(state: &AssistantState) -> String {
     match &state.prompt {
         // A delete confirm can sit over the history list.
         Some(AssistantPrompt::ConfirmDelete(_)) => return "y delete · n keep".into(),
+        _ if state.models.is_some() => {
+            return "j/k move · Enter use this model · Esc back".into();
+        }
         _ if state.list.is_some() => {
             return "j/k move · Enter open · D delete · Esc back".into();
         }
@@ -194,7 +199,9 @@ pub fn hint_text(state: &AssistantState) -> String {
                     1 => "1 open link · ".into(),
                     n => format!("1-{n} open link · "),
                 };
-                format!("{links}i write · N new · L history · T trust · D delete · e steps{stop}")
+                format!(
+                    "{links}i write · N new · L history · M model · T trust · D delete · e steps{stop}"
+                )
             }
         },
         AssistantFocus::Away => "Ctrl-a to use the assistant".into(),
@@ -634,7 +641,7 @@ pub(crate) fn transcript_lines(
 /// the danger colour. Drawn after the card, right above the keys.
 fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    if state.list.is_some() {
+    if state.overlay_open() {
         return lines;
     }
     let danger = Style::default().fg(theme.error).bold();
@@ -659,7 +666,7 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
     let mut lines: Vec<Line<'static>> = Vec::new();
     let muted = Style::default().fg(theme.text_muted);
     // Over the history list the card is only the delete confirm.
-    let pending: &[AssistantPendingData] = if state.list.is_some() {
+    let pending: &[AssistantPendingData] = if state.overlay_open() {
         &[]
     } else {
         state.pending()
@@ -912,8 +919,8 @@ fn footer_lines(
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let muted = Style::default().fg(theme.text_muted);
-    if state.list.is_some() {
-        // A refused delete from the list says why there.
+    if state.overlay_open() {
+        // A refused delete or model choice says why there.
         if let Some(error) = &state.error {
             let style = Style::default().fg(theme.error);
             push_wrapped(&mut lines, "", &one_line(error), width, style, style);
@@ -1068,6 +1075,64 @@ fn list_lines(
         }
         lines.push(Line::from(Span::styled(format!("  {meta}"), muted)));
     }
+    lines
+}
+
+/// The model picker: each choice with where it runs, the one in use marked,
+/// and for one that can't be picked, what to do about it.
+fn models_lines(
+    models: &crate::app::AssistantModelsState,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let muted = Style::default().fg(theme.text_muted);
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Model",
+            Style::default().fg(theme.accent).bold(),
+        )),
+        Line::default(),
+    ];
+    let Some(data) = &models.models else {
+        lines.push(Line::from(Span::styled(
+            if models.loading { "Loading…" } else { "No models listed." },
+            muted,
+        )));
+        return lines;
+    };
+    for (index, choice) in data.choices.iter().enumerate() {
+        let selected = index == models.selected;
+        let current = data.current.as_deref() == Some(choice.id.as_str());
+        let style = if selected {
+            Style::default()
+                .fg(theme.selection_fg)
+                .bg(theme.selection_bg)
+        } else if choice.available {
+            Style::default().fg(theme.text_primary)
+        } else {
+            muted
+        };
+        let place = if choice.cloud { "cloud" } else { "on this machine" };
+        let row = format!(
+            "{}{} {}  {place}",
+            if selected { "› " } else { "  " },
+            if current { "✓" } else { " " },
+            one_line(&choice.label),
+        );
+        lines.push(Line::from(Span::styled(truncate(&row, width), style)));
+        if let Some(reason) = &choice.unavailable_reason {
+            push_wrapped(&mut lines, "      ", &one_line(reason), width, muted, muted);
+        }
+    }
+    lines.push(Line::default());
+    push_wrapped(
+        &mut lines,
+        "",
+        "A cloud model receives your messages and the mail the assistant reads.",
+        width,
+        muted,
+        muted,
+    );
     lines
 }
 
@@ -1396,6 +1461,39 @@ mod tests {
     }
 
     #[test]
+    fn assistant_pane_model_picker() {
+        let choice = |id: &str, label: &str, cloud: bool, reason: Option<&str>| {
+            mxr_protocol::AssistantModelChoiceData {
+                id: id.into(),
+                label: label.into(),
+                cloud,
+                available: reason.is_none(),
+                unavailable_reason: reason.map(str::to_string),
+            }
+        };
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.models = Some(crate::app::AssistantModelsState {
+            loading: false,
+            selected: 1,
+            models: Some(mxr_protocol::AssistantModelsData {
+                current: Some("gemma4:latest".into()),
+                choices: vec![
+                    choice("gemma4:latest", "Gemma 4", false, None),
+                    choice(
+                        "gpt-6-luna",
+                        "GPT-6 Luna",
+                        true,
+                        Some("Add an OpenAI key: mxr llm key set openai"),
+                    ),
+                    choice("claude-sonnet-5-5", "Claude Sonnet 5.5", true, None),
+                ],
+            }),
+        });
+        insta::assert_snapshot!("assistant_pane_model_picker", render(&state));
+    }
+
+    #[test]
     fn assistant_pane_question_waiting() {
         let mut state = open_state();
         state.focus = AssistantFocus::Pane;
@@ -1475,6 +1573,7 @@ mod tests {
             seq,
             text: "Starred it.".into(),
             model: None,
+            leaves_machine: None,
             failed_call_ids: vec![failed.to_string()],
             created_at: 0,
         };
@@ -1647,6 +1746,7 @@ mod tests {
                     seq: 2,
                     text: "These two wrote.".into(),
                     model: None,
+                    leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     rows: vec![
                         mxr_protocol::AssistantReadoutRowData {
@@ -1685,6 +1785,7 @@ mod tests {
                     seq: 3,
                     text: "Two wrote.".into(),
                     model: None,
+                    leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     rows: vec![mxr_protocol::AssistantReadoutRowData {
                         title: hostile.into(),

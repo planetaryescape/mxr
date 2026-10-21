@@ -222,7 +222,7 @@ impl RuntimeTasks {
 
 /// Build the configured LLM provider. Returns a `NoopProvider` when
 /// LLM is disabled in config; a `RoutedProvider` when the model is one mxr
-/// routes itself (`claude-*` through Anthropic then OpenRouter, using the
+/// routes itself (`claude-*` through Anthropic and `gpt-*` through OpenAI, each then OpenRouter, using the
 /// keys stored with `mxr llm key set`); otherwise an
 /// `OpenAiCompatibleProvider` pointed at the configured `base_url`
 /// (Ollama / LM Studio / OpenAI / etc.). That one reads its API key from
@@ -280,8 +280,14 @@ pub(crate) fn llm_model_routes(
 ) -> Option<Vec<mxr_llm::Route>> {
     let default_url = mxr_config::LlmConfig::default().base_url;
     let url = config.base_url.trim().trim_end_matches('/');
-    let custom_endpoint = !url.is_empty() && url != default_url.trim_end_matches('/');
-    mxr_llm::routes_for_model(&config.model, custom_endpoint)
+    let endpoint = if url.is_empty() || url == default_url.trim_end_matches('/') {
+        mxr_llm::Endpoint::Default
+    } else if mxr_llm::is_loopback_endpoint(url) {
+        mxr_llm::Endpoint::Local
+    } else {
+        mxr_llm::Endpoint::Remote
+    };
+    mxr_llm::routes_for_model(&config.model, endpoint)
 }
 
 pub(crate) fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
@@ -427,7 +433,7 @@ fn relationship_data_block_reason(
         && (llm_model_routes(effective).is_some()
             || !mxr_llm::is_loopback_endpoint(&effective.base_url))
     {
-        // Routed models go to Anthropic and OpenRouter, whatever base_url says.
+        // Routed models go to their vendor and OpenRouter, whatever base_url says.
         let endpoint = if llm_model_routes(effective).is_some() {
             format!("hosted provider (model {})", effective.model)
         } else {

@@ -426,6 +426,7 @@ impl App {
             Action::ToggleAssistant
             | Action::NewAssistantConversation
             | Action::OpenAssistantConversations
+            | Action::OpenAssistantModels
             | Action::ToggleAssistantTrust
             | Action::DeleteAssistantConversation => self.apply_assistant_action(action),
         }

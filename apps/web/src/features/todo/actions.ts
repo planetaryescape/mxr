@@ -6,8 +6,9 @@
  * to-do from a conversation.
  */
 
-import { CalendarClock, Check, ListTodo, PenLine, X } from "lucide-react";
+import { CalendarClock, Check, PenLine, X } from "lucide-react";
 
+import { MODE_GLYPHS } from "@/components/ModeMark";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import type { Action, ActionScope, CommandAction } from "@/lib/actions/types";
 
@@ -41,7 +42,7 @@ export const todoActions: Action[] = [
     label: "To do",
     description: "Things email asked you to do, ordered by when to act",
     group: "Navigate",
-    icon: ListTodo,
+    icon: MODE_GLYPHS.todo,
     shortcut: "g x",
     run: () => getRuntimeNavigate().navigate("/todo"),
   },

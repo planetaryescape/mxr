@@ -9,19 +9,15 @@ import {
   Activity,
   Archive,
   BarChart3,
-  Bell,
   CalendarDays,
   Clock,
   FileText,
-  FolderArchive,
   Hourglass,
   Inbox,
   LampDesk,
   ListTodo,
   Mail,
   MailX,
-  MessagesSquare,
-  Newspaper,
   Package,
   Reply,
   Search,
@@ -31,7 +27,6 @@ import {
   ShieldAlert,
   Star,
   Stethoscope,
-  Sun,
   Tag,
   Timer,
   Trash2,
@@ -41,6 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { MODE_GLYPHS } from "@/components/ModeMark";
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { holdTypeAhead } from "@/lib/keys/typeAhead";
 import { useModals } from "@/state/modalStore";
@@ -124,7 +120,7 @@ export const navigationActions: Action[] = [
     label: "Go to Now",
     description: "The few things that need you now, from every mode",
     group: "Navigate",
-    icon: Sun,
+    icon: MODE_GLYPHS.now,
     shortcut: "g h",
     run: go("/now"),
   },
@@ -133,7 +129,7 @@ export const navigationActions: Action[] = [
     label: "Go to Messages",
     description: "People you talk with: whose turn it is, and who you're waiting on",
     group: "Navigate",
-    icon: MessagesSquare,
+    icon: MODE_GLYPHS.messages,
     shortcut: "g m",
     run: go("/messages"),
   },
@@ -142,7 +138,7 @@ export const navigationActions: Action[] = [
     label: "Go to Updates",
     description: "Notifications gathered twice a day: read the digest, then let go",
     group: "Navigate",
-    icon: Bell,
+    icon: MODE_GLYPHS.updates,
     shortcut: "g u",
     // g p opened Paper trail, which is Updates now (blueprint 22).
     aliases: ["g p"],
@@ -154,7 +150,7 @@ export const navigationActions: Action[] = [
     label: "Go to Archive",
     description: "Receipts, orders, bookings and documents, filed as records",
     group: "Navigate",
-    icon: FolderArchive,
+    icon: MODE_GLYPHS.archive,
     shortcut: "g e",
     run: go("/archive"),
   },
@@ -325,7 +321,7 @@ export const navigationActions: Action[] = [
     label: "Reading",
     description: "Newsletters you chose, as an edition; nothing here is owed",
     group: "Triage",
-    icon: Newspaper,
+    icon: MODE_GLYPHS.reading,
     shortcut: "g r",
     // The web used g R and g P up to 0.6.40, while g r opened Rules.
     // Drop these retired aliases after 0.6.41.

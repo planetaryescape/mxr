@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Ellipsis, ListTodo, MessagesSquare, Newspaper, Sun, type LucideIcon } from "lucide-react";
+import { Ellipsis, type LucideIcon } from "lucide-react";
 
 import { CountBadge } from "@/components/CountBadge";
+import { MODE_GLYPHS } from "@/components/ModeMark";
 import { phoneTabFor, type PhoneTab } from "@/components/navMap";
 import { useRailQuery } from "@/features/modes/rail";
 import { cn } from "@/lib/utils";
@@ -20,10 +21,10 @@ interface Tab {
  * other page, and is lit for all of them (D133, `phoneTabFor`).
  */
 export const TABS: Tab[] = [
-  { key: "now", to: "/now", label: "Now", Icon: Sun },
-  { key: "messages", to: "/messages", label: "Messages", Icon: MessagesSquare },
-  { key: "todo", to: "/todo", label: "To do", Icon: ListTodo },
-  { key: "reading", to: "/reading", label: "Reading", Icon: Newspaper },
+  { key: "now", to: "/now", label: "Now", Icon: MODE_GLYPHS.now },
+  { key: "messages", to: "/messages", label: "Messages", Icon: MODE_GLYPHS.messages },
+  { key: "todo", to: "/todo", label: "To do", Icon: MODE_GLYPHS.todo },
+  { key: "reading", to: "/reading", label: "Reading", Icon: MODE_GLYPHS.reading },
   { key: "more", to: "", label: "More", Icon: Ellipsis },
 ];
 

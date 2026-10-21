@@ -66,7 +66,7 @@ The 18 October repair was the right fix, and it shows the pattern: what
 an email is for and whether you owe a reply had to be pulled apart after
 the fact, because the classifier had one axis where mail has several.
 
-## One shared model: emails, assessments, items
+## One shared model: emails, assessments, items, surfaces
 
 ```text
  email ─▶ FACTS ─▶ ASSESSMENT ─────────────▶ ITEMS ──────────────▶ NOW
@@ -76,13 +76,16 @@ the fact, because the classifier had one axis where mail has several.
                     a policy version          fact, a readable,    neglect and the time
                                               a record, each with  you have
                                               attention evidence
-                 ▲                                       ▲
-                 │ your teaching: this email,            │ your attention feedback,
-                 │ this sender or domain, mail like this │ and misses mxr detects
-                 └──────────── LABELS ◀───────────────────┘
-                                 │
-                                 ▼
-                 eval against the scenario corpus ─▶ redesign ─▶ new policy version
+                          │                        │
+                          ▼                        ▼
+                 SURFACES show both: mxr's clients (CLI, TUI, web, MCP, desktop)
+                 and each account's mail server (mxr/ labels, via the effects queue)
+                          │
+                          │ every correction, on any surface, is one TEACHING EVENT
+                          ▼
+                 overrides (email, thread, sender, domain, rule) ─▶ back into the resolver
+                 LABELS (the right answer, recorded) ─▶ eval against the scenario corpus
+                                                    ─▶ redesign ─▶ new policy version
 ```
 
 - **Facts** are what can be observed about an email without interpreting
@@ -93,12 +96,24 @@ the fact, because the classifier had one axis where mail has several.
   conversation turn in Messages, an action in To do, a fact or tracker in
   Updates, a readable in Reading, a record in Archive. Each carries the
   evidence attention needs.
-- **Projections** (modes, Inbox, the arrivals line, `mxr why`) read
+- **Projections** (modes, Inbox, the arrivals line, `mxr why`, Now) read
   assessments and items plus live state (in inbox, done, snoozed,
   window). None of them classifies.
-- **Labels** record what the right answer was, from every correction and
-  answer you give and from misses mxr can detect on its own. They drive
-  the eval and the redesign loop.
+- **Surfaces** are where projections are shown and teaching happens:
+  mxr's own clients, and each account's mail server, where the
+  projection is a set of `mxr/` mailbox labels. A surface never decides
+  anything; it shows the assessment and reports what the person changed.
+- **Teaching events** are every act that tells mxr the right answer, from
+  any surface: a key in a client, a "Not sure" answer, a label moved in
+  Gmail. One service applies them.
+- **Provider effects** are every write mxr makes to a mail server: the
+  archive on last done, an action rule's provider actions, and the
+  `mxr/` labels. One queue carries them all.
+- **Labels** record what the right answer was, from every teaching event
+  and from misses mxr can detect on its own. They drive the eval and the
+  redesign loop. (A *mailbox label* is the provider's tag: a Gmail label,
+  an Outlook category, an IMAP keyword. The two are never confused in
+  code or docs.)
 
 ## Understanding answers five questions about every email
 
@@ -191,6 +206,13 @@ of each kind becomes the one (`mxr_todo::money` for amounts,
 `natural_time` for dates, one schema.org reader). Facts hold
 observations, never verdicts: no "is automated" flag lives here, only
 what an automated-sender judgment looks at.
+
+Mailbox labels are facts with one exception. A user's own labels and the
+provider's own categories (Gmail's Promotions, for instance) are evidence a
+judge or a rule may use. mxr's own `mxr/` labels are never facts: they are
+the assessment's projection, so reading them would make a judge read its
+own answer. A change someone makes to an `mxr/` label reaches the classifier
+only as a teaching event.
 
 ### Judgments answer each question with evidence, or abstain
 
@@ -345,6 +367,83 @@ urgency, and it never learns its ranking from what you click, because
 that would teach it your procrastination. It learns only from explicit
 attention feedback and from misses it can detect.
 
+## Surfaces show the assessment and take teaching, and the mail server is one of them
+
+BK, 21 October 2026: mxr's sorting is written back to each account's mail
+server as ordinary mailbox labels, and changing one there teaches mxr. In
+this design that isn't a feature beside the classifier. The server is a
+surface like any client: it shows the same projection, and what the
+person changes on it arrives as the same teaching events a key press makes.
+
+### The server shows the projection as `mxr/` mailbox labels
+
+| Mailbox label | Projects | Changes when |
+|---|---|---|
+| `mxr/Messages`, `mxr/Updates`, `mxr/Reading` | The assessment's home | The home changes: a teaching event, a rule, an explicit reclassification |
+| `mxr/To do`, `mxr/Archive` | An aspect the email carries | The aspect is created or dismissed |
+| `mxr/Open` | Item state: something in it still needs you in some mode | It's done, snoozed or expired in every mode that holds it |
+| `mxr/<category>` | A personal category set to sync | The category is added or removed |
+
+Home and aspect labels are permanent filing tags, so a ticked-off to-do
+keeps `mxr/To do` and `label:mxr/to-do` finds every to-do email ever;
+only `mxr/Open` is live. Each personal category has its own setting,
+synced or local, and mode names are reserved for modes. The labels are a
+pure function of the stored assessment, item states and category
+memberships, so the server can never show something mxr's own views don't.
+
+### A mirror reconciles three states per message
+
+For each message on a labelling surface, the mirror keeps:
+
+| State | What it is |
+|---|---|
+| Desired | The `mxr/` labels the assessment, items and synced categories imply now |
+| Written | The `mxr/` labels mxr last confirmed on the server, with the provider's revision marker (Gmail history id, IMAP `MODSEQ`, Outlook change key) |
+| Observed | The `mxr/` labels sync sees now |
+
+On every sync and every assessment change it does one thing in order:
+
+1. **Observed differs from written** after the written revision: the
+   person changed it on the server. The difference becomes teaching
+   events (next section), which update overrides, which update the
+   assessment, which updates desired.
+2. **Desired differs from observed:** the difference is enqueued as a
+   provider effect. When the provider confirms, written takes the new
+   state and revision.
+
+mxr's own writes are recognised by revision, not by guessing from values,
+so an echo of its own write is never mistaken for a correction, and a
+correction made while mxr's write is in flight is still seen. Where a
+provider gives no revision marker, the mirror falls back to comparing with
+written and says so in diagnostics.
+
+### What the server labels, and with whose consent
+
+New mail and the last 90 days of existing mail are in scope; older mail
+comes into scope when it enters a mode again (a reply, a new to-do or
+record, an open from search). Mail out of scope is left as it is on the
+server, neither labelled nor cleaned. Nothing is written until the person
+agrees: once at setup, and once after the upgrade that adds this, mxr says
+which labels it will write and how many emails the first pass covers. The
+setting is per account. Turning it off offers, through the same preview and
+effects path, to remove every `mxr/` label mxr wrote.
+
+Providers expose this as one capability on `MailSyncProvider`: read the
+`mxr/` labels on a message and set a desired set of them, mapped in the
+provider crate to Gmail labels, Outlook categories or IMAP keywords (names
+sanitised to the IMAP keyword charset; a server whose `PERMANENTFLAGS`
+won't take new keywords reports the surface as unavailable). The order is
+Gmail, then Outlook, then IMAP, all in scope; IMAP keywords are invisible
+in many mail apps, and the setup screen says so.
+
+### Server health is part of the trust surfaces
+
+A label backlog or a failing write shows where sync health already shows:
+the freshness line ("Gmail labels 120 behind"), `mxr doctor` and sync
+status. A server change that can't be honoured (removing a home label with
+nothing in its place: every email has a home) is written back and named in
+`mxr why`, never dropped silently.
+
 ## Teaching is one model for everything you tell mxr
 
 There are three scopes of teaching about what mail is, plus one kind of
@@ -361,6 +460,41 @@ feedback about attention.
 its marketing often belong in different modes, and a domain can include
 real people. All three scopes appear in one teaching list, so you can see
 in one place everything you've taught mxr and undo any of it.
+
+### Every correction is one teaching event, whatever surface it came from
+
+```text
+TeachingEvent { scope: email | thread | sender | domain,
+                change: home → mode | add/dismiss aspect | done in all modes
+                        | add/remove category | attention feedback,
+                source: client key | Not-sure answer | server label change
+                        | accepted audit finding | accepted rule suggestion,
+                at, account }
+```
+
+One teaching service applies every event the same way: it writes the
+override at its scope (email moves and sender choices keep their storage
+and time-ordered precedence), records a label at the current policy
+version, writes the activity entry, and triggers reassessment of what the
+scope covers. Rules stay a separate, persistent kind of teaching with
+their own planner; an accepted rule suggestion creates a rule, not an
+event.
+
+A server label change maps onto the event a key would make:
+
+| Change on the server | Teaching event |
+|---|---|
+| A home label replaced by another (`mxr/Updates` → `mxr/Messages`) | home → that mode |
+| `mxr/To do` or `mxr/Archive` added or removed | add or dismiss that aspect |
+| `mxr/Open` removed | done in every mode holding it |
+| A synced category's label added or removed | add or remove that category |
+| A home label removed with nothing in its place | none: rejected, written back, named in `mxr why` |
+
+Thread scope exists because Gmail's apps apply a label to every message in
+a conversation. When one sync sees the same change on every message of a
+thread, the mirror emits one thread-scope event; it applies to the emails
+already in the thread, and later emails are judged on their own. In mxr's
+clients, `X` on a conversation offers the same scope.
 
 ### Rules split in two: teaching rules sit inside understanding, action rules run after it
 
@@ -429,7 +563,7 @@ the right answer was writes one, and so do misses mxr can detect itself.
 
 | Label source | About |
 |---|---|
-| Email move, sender or domain choice | understanding |
+| Email move, sender or domain choice, in a client or on the server | understanding |
 | Not-sure answer, including keeping it where it is | understanding |
 | To-do dismissed or edited, record field fixed | understanding |
 | A correction against one of your own rules | that rule |
@@ -576,71 +710,19 @@ labels shows its precision above a bar recorded in the rubric.
 | Generalising corrections into a rule | suggestion |
 | Accepting an audit finding | suggestion |
 
-## Sorting lives on the mail server too, as mailbox labels you can change anywhere
+### Every write to a mail server goes through one effects queue
 
-BK, 21 October 2026. mxr's sorting is written back to each account's own
-server as ordinary mailbox labels, so Gmail on the phone or the web shows
-it, and changing one there teaches mxr. "Mailbox label" here means the
-provider's own tag (a Gmail label, an Outlook category, an IMAP keyword),
-not a learning label from the next section.
-
-| Mailbox label | Means | Changes when |
-|---|---|---|
-| `mxr/Messages`, `mxr/Updates`, `mxr/Reading` | The email's home | Its home changes (a correction, a rule, a new policy version) |
-| `mxr/To do`, `mxr/Archive` | The email carries that aspect | The aspect is created or dismissed |
-| `mxr/Open` | Something in it still needs you in some mode | It's done, snoozed or expired in every mode that holds it |
-| `mxr/<category>` | A personal category you chose to sync | You add or remove the category |
-
-The kind labels are permanent filing tags: a ticked-off to-do keeps
-`mxr/To do`, so `label:mxr/to-do` finds every to-do email ever, and only
-`mxr/Open` tracks what's live. Each personal category has its own setting,
-synced to the server or kept local; mode names are reserved, so a category
-can't be called "Updates".
-
-### Labels are written from the stored assessment, never from a placement path
-
-The writer reads the stored assessment and the item states, so the server
-shows exactly what mxr's own views show. It sits behind the provider
-traits: the daemon asks for a desired set of `mxr/` tags per message and
-each provider crate maps it to its own mechanism (Gmail labels via batch
-modify, Outlook categories, IMAP keywords via `STORE`, with keyword names
-sanitised to the IMAP charset). Writes go through a bounded queue that
-respects provider rate limits and batch sizes, and only ever touch tags in
-the `mxr/` namespace; a user's own labels are never changed.
-
-### A change made on the server is a correction, and mxr's own writes are not
-
-Sync already sees label changes. Every write mxr makes is recorded with the
-tag state it expects, so an incoming change that matches a pending or
-recent write is mxr's echo and is ignored. Any other change to an `mxr/`
-tag is the user teaching:
-
-| Change on the server | Treated as |
-|---|---|
-| A home label replaced by another (`mxr/Updates` → `mxr/Messages`) | An email move (`X`) to that mode |
-| `mxr/To do` or `mxr/Archive` added | A move to To do (creates the to-do) or Archive (files the record) |
-| `mxr/To do` or `mxr/Archive` removed | Dismissing that aspect |
-| `mxr/Open` removed | Done in every mode holding it |
-| A synced category label added or removed | Adding or removing that category |
-| A home label removed with nothing in its place | Ignored: every email has a home, so mxr writes it back and notes the conflict in `mxr why` |
-
-Each of these goes through the same path as the key it stands for, so it
-writes a learning label and counts in the eval exactly like a correction
-made in mxr.
-
-### What gets labelled, and with whose consent
-
-New mail, plus the last 90 days of existing mail, gets labels. Older mail
-gets them only when it enters a mode again (a reply, a new to-do or
-record, an open from search). Nothing is written until the person agrees:
-on first run, and once for existing users after the upgrade that brings
-this, mxr says what it will write and how many emails the first pass
-covers, and asks. Turning it off later offers, with a preview, to remove
-every `mxr/` label it wrote.
-
-The rollout is per provider in this order: Gmail, then Outlook categories,
-then IMAP keywords. All three are in scope (BK); IMAP keywords are invisible
-in many mail apps, which the setup screen says.
+Three things write to providers today, each its own way: the archive on
+last done (D108), action rules' provider actions (label, archive), and now
+the `mxr/` labels. They share one queue. Each effect is keyed by message,
+kind and the state it moves to, so a retry or replay never writes twice;
+the queue batches to each provider's limits (Gmail's batch modify takes up
+to 1,000 messages), backs off on throttling, and records every outcome.
+Bulk effects (a first labelling pass, turning labels off, an explicit
+reclassification) are planned and previewed by the same planner as rules
+and reclassification, so the preview counts include the server writes, and
+the selection previewed is exactly what runs. Failures surface in sync
+health, never only in a log.
 
 ## Models are optional judges, never the foundation
 
@@ -690,7 +772,9 @@ first; today every feature parses free text.
 | `conversation_shape` | input to the Who claim |
 | eight placement paths | one stored assessment, read by every projection |
 | `RULES_VERSION` ×3, `EXTRACTOR_VERSION` | one version per judge, combined into the policy version |
-| arrivals ledger, `mode_corrections`, screener decisions, `rule_treatments` | kept; every correction also writes a label; screener decisions gain domain scope |
+| arrivals ledger, `mode_corrections`, screener decisions, `rule_treatments` | kept; every correction arrives as a teaching event and also writes a label; screener decisions gain domain scope |
+| archive on last done, action rules' provider actions | one provider-effects queue, shared with the mirror |
+| provider labels in rule conditions (`HasLabel`) | facts, with the `mxr/` namespace excluded |
 | `SetTreatment` sorting rules, category rules | teaching and action rules in one engine with one condition language and one planner |
 | Now's four fixed sections and caps (`now.rs`) | can't wait plus next best, ranked across modes, optional time budget |
 | desk pace, act-by, update windows, Reading affinity and fade | the attention evidence on items |
@@ -714,22 +798,23 @@ everything else: they adopt the verbatim quote check and `natural_time`.
 3. **Judgments, the resolver and the stored assessment.** Every
    projection reads it; every email gets a home; "Why here" comes from
    the deciding claim.
-3a. **Your sorting shows up in Gmail.** Consent at setup and upgrade,
-   `mxr/` home, aspect and `mxr/Open` labels written from the stored
-   assessment for new mail and the last 90 days, with the echo ledger.
-3b. **Change it in Gmail and mxr learns.** Server-side changes to `mxr/`
-   labels become corrections through the existing move, dismiss and done
-   paths (needs step 5's learning labels to count in the eval).
-3c. **Synced categories, then Outlook categories, then IMAP keywords**,
-   each its own release.
 4. **Attention evidence on items.** Severity, when the cost lands, effort
    and value on every item type, from the shared facts.
-5. **Labels, uncertainty and reports.** Labels from every correction,
-   the four uncertainty kinds, the cap on questions shown, fallback
+5. **Teaching events, labels, uncertainty and reports.** One teaching
+   service for every correction (thread scope included), labels from every
+   event, the four uncertainty kinds, the cap on questions shown, fallback
    tracking and `classify report`.
-6. **Teaching.** Fact conditions, action rules after the assessment, one
-   planner for every preview, domain scope on `K`, the teaching list, and
-   rule suggestions.
+5a. **Gmail is a surface: your sorting shows there, and changing it teaches
+   mxr.** The provider-effects queue (archive on last done moves onto it),
+   the label capability on the Gmail provider, the mirror with revision
+   markers, two-way from the first release through teaching events,
+   consent, the 90-day scope, and server health in the trust surfaces.
+5b. **Synced personal categories**, per category.
+5c. **Outlook categories**, then **5d. IMAP keywords**, each through the
+   same provider capability.
+6. **Teaching rules.** Fact conditions, action rules after the assessment
+   with their provider actions on the effects queue, one planner for every
+   preview, domain scope on `K`, the teaching list, and rule suggestions.
 7. **Now as an attention scheduler.** Can't wait, next best, neglect,
    the optional time budget and the end state, replacing the fixed
    sections, plus attention feedback and miss detection. `now eval` gates

@@ -50,7 +50,7 @@ pub fn lead_time<Tz: TimeZone>(input: &TimingInput<'_>, tz: &Tz, morning_hour: u
     }
     let (act_by, act_by_rule) = match (input.kind, input.due) {
         (TodoKind::Rsvp, None) => match input.event_start {
-            Some(start) => (start - Duration::days(2), "2 days before the event"),
+            Some(start) => (minus_days(start, 2, tz), "2 days before the event"),
             None => return Timing::undated(),
         },
         (_, None) => return Timing::undated(),
@@ -120,36 +120,58 @@ impl Timing {
 /// `at` moved back `months` calendar months in `tz`, so the wall time
 /// stays put across a clock change.
 fn minus_months<Tz: TimeZone>(at: DateTime<Utc>, months: u32, tz: &Tz) -> DateTime<Utc> {
-    at.with_timezone(tz)
+    let local = at.with_timezone(tz).naive_local();
+    local
+        .date()
         .checked_sub_months(Months::new(months))
-        .map_or(at, |moved| moved.with_timezone(&Utc))
+        .map_or(at, |day| at_wall_time(day, local.time(), tz))
+}
+
+/// `at` moved back `days` calendar days in `tz`, so the wall time stays put
+/// across a clock change. Subtracting `Duration::days` would take 24 hours
+/// and land an hour off on a 23- or 25-hour day, which near midnight is the
+/// wrong day.
+fn minus_days<Tz: TimeZone>(at: DateTime<Utc>, days: i64, tz: &Tz) -> DateTime<Utc> {
+    let local = at.with_timezone(tz).naive_local();
+    at_wall_time(local.date() - Duration::days(days), local.time(), tz)
 }
 
 /// `at` moved back `days` working days (Monday to Friday), keeping the
-/// time of day.
+/// wall time of day.
 pub fn minus_working_days<Tz: TimeZone>(at: DateTime<Utc>, days: i64, tz: &Tz) -> DateTime<Utc> {
-    let mut moved = at;
+    let local = at.with_timezone(tz).naive_local();
+    let mut day = local.date();
     let mut left = days;
     while left > 0 {
-        moved -= Duration::days(1);
-        if !matches!(
-            moved.with_timezone(tz).weekday(),
-            Weekday::Sat | Weekday::Sun
-        ) {
+        day -= Duration::days(1);
+        if !matches!(day.weekday(), Weekday::Sat | Weekday::Sun) {
             left -= 1;
         }
     }
-    moved
+    at_wall_time(day, local.time(), tz)
 }
 
 /// The start of working hours on `day` in `tz`.
 pub fn start_of_day<Tz: TimeZone>(day: NaiveDate, tz: &Tz, morning_hour: u8) -> DateTime<Utc> {
     let time =
         NaiveTime::from_hms_opt(u32::from(morning_hour.min(23)), 0, 0).unwrap_or(NaiveTime::MIN);
-    tz.from_local_datetime(&day.and_time(time))
-        .earliest()
+    at_wall_time(day, time, tz)
+}
+
+/// `time` on `day` as the wall clock in `tz` reads it. A time a clock
+/// change repeats is its first pass; one it skips moves on to the first
+/// moment that exists, so a deadline in the lost hour is not dropped.
+fn at_wall_time<Tz: TimeZone>(day: NaiveDate, time: NaiveTime, tz: &Tz) -> DateTime<Utc> {
+    let wall = day.and_time(time);
+    // Gaps are at most a few hours; half-hour steps cover zones whose
+    // change is not on the hour.
+    (0..=12)
+        .find_map(|step| {
+            tz.from_local_datetime(&(wall + Duration::minutes(30 * step)))
+                .earliest()
+        })
         .map_or_else(
-            || Utc.from_utc_datetime(&day.and_time(time)),
+            || Utc.from_utc_datetime(&wall),
             |local| local.with_timezone(&Utc),
         )
 }
@@ -397,6 +419,174 @@ mod tests {
             9,
         );
         assert_eq!(timing.surface_at, Some(at(2026, 9, 28, 8)));
+    }
+
+    /// A wall-clock time in `tz`, for the days the clocks change.
+    fn wall<Z: TimeZone>(
+        tz: &Z,
+        y: i32,
+        m: u32,
+        d: u32,
+        h: u32,
+        mi: u32,
+        sec: u32,
+    ) -> DateTime<Utc> {
+        tz.with_ymd_and_hms(y, m, d, h, mi, sec)
+            .earliest()
+            .expect("a time that exists")
+            .with_timezone(&Utc)
+    }
+
+    fn arrived_long_before(kind: TodoKind, due: Option<DateTime<Utc>>) -> TimingInput<'static> {
+        TimingInput {
+            arrived: wall(&London, 2026, 1, 5, 8, 0, 0),
+            ..input(kind, due)
+        }
+    }
+
+    #[test]
+    fn a_bill_shows_up_on_the_calendar_day_three_before_it_across_a_clock_change() {
+        // Due at the end of the day, as a date-only due date is read.
+        let cases = [
+            // BST ends Sunday 25 Oct 2026: a 25-hour day sits in the window.
+            (London, (2026, 10, 27), (2026, 10, 24)),
+            // BST starts Sunday 29 Mar 2026: a 23-hour day.
+            (London, (2026, 4, 1), (2026, 3, 29)),
+        ];
+        for (tz, due, shows) in cases {
+            let due_at = wall(&tz, due.0, due.1, due.2, 23, 59, 59);
+            let timing = lead_time(&arrived_long_before(TodoKind::Bill, Some(due_at)), &tz, 9);
+            assert_eq!(timing.act_by, Some(due_at));
+            assert_eq!(
+                timing.surface_at,
+                Some(wall(&tz, shows.0, shows.1, shows.2, 9, 0, 0)),
+                "due {due:?} in {tz}"
+            );
+        }
+        let ny = chrono_tz::America::New_York;
+        for (due, shows) in [
+            ((2026, 11, 3), (2026, 10, 31)),
+            ((2026, 3, 11), (2026, 3, 8)),
+        ] {
+            let due_at = wall(&ny, due.0, due.1, due.2, 23, 59, 59);
+            let timing = lead_time(&arrived_long_before(TodoKind::Bill, Some(due_at)), &ny, 9);
+            assert_eq!(
+                timing.surface_at,
+                Some(wall(&ny, shows.0, shows.1, shows.2, 9, 0, 0)),
+                "due {due:?} in New York"
+            );
+        }
+    }
+
+    #[test]
+    fn a_working_day_lead_keeps_the_wall_time_across_a_clock_change() {
+        let mut bank = arrived_long_before(
+            TodoKind::Bill,
+            Some(wall(&London, 2026, 10, 28, 23, 59, 59)),
+        );
+        bank.doc_type = Some("bill_bank");
+        // Wednesday 28 Oct minus 3 working days is Friday 23 Oct, in BST.
+        let timing = lead_time(&bank, &London, 9);
+        assert_eq!(timing.act_by, Some(wall(&London, 2026, 10, 23, 23, 59, 59)));
+        assert_eq!(
+            timing.surface_at,
+            Some(wall(&London, 2026, 10, 20, 9, 0, 0))
+        );
+        // Tuesday 31 Mar 2026 minus 3 working days is Thursday 26 Mar, in GMT.
+        bank.due = Some(wall(&London, 2026, 3, 31, 23, 59, 59));
+        let timing = lead_time(&bank, &London, 9);
+        assert_eq!(timing.act_by, Some(wall(&London, 2026, 3, 26, 23, 59, 59)));
+    }
+
+    #[test]
+    fn an_rsvp_event_near_midnight_acts_two_calendar_days_before_across_a_clock_change() {
+        let ny = chrono_tz::America::New_York;
+        // Just after midnight after a spring-forward, and just before it
+        // after a fall-back: 48 hours earlier is on the wrong day.
+        for (tz, event, acts) in [
+            (London, (2026, 3, 30, 0, 30), (2026, 3, 28, 0, 30)),
+            (London, (2026, 10, 27, 23, 30), (2026, 10, 25, 23, 30)),
+            (London, (2026, 10, 26, 23, 30), (2026, 10, 24, 23, 30)),
+        ] {
+            let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
+            rsvp.event_start = Some(wall(&tz, event.0, event.1, event.2, event.3, event.4, 0));
+            let timing = lead_time(&rsvp, &tz, 9);
+            assert_eq!(
+                timing.act_by,
+                Some(wall(&tz, acts.0, acts.1, acts.2, acts.3, acts.4, 0)),
+                "event {event:?} in {tz}"
+            );
+        }
+        let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
+        rsvp.event_start = Some(wall(&ny, 2026, 3, 9, 0, 30, 0));
+        let timing = lead_time(&rsvp, &ny, 9);
+        assert_eq!(timing.act_by, Some(wall(&ny, 2026, 3, 7, 0, 30, 0)));
+        assert_eq!(timing.surface_at, Some(wall(&ny, 2026, 3, 5, 9, 0, 0)));
+    }
+
+    #[test]
+    fn every_day_of_the_year_acts_and_shows_up_on_the_calendar_day() {
+        fn check<Z: TimeZone>(tz: &Z) {
+            let mut day = NaiveDate::from_ymd_opt(2026, 1, 10).expect("a date");
+            while day < NaiveDate::from_ymd_opt(2026, 12, 20).expect("a date") {
+                // 02:30 is skipped on a spring-forward day; 00:30 and 23:30
+                // are the times 24-hour arithmetic pushes onto a neighbour.
+                for (h, mi) in [(0, 30), (2, 30), (23, 30)] {
+                    let time = NaiveTime::from_hms_opt(h, mi, 0).expect("a time");
+                    let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
+                    rsvp.event_start = Some(at_wall_time(day, time, tz));
+                    let timing = lead_time(&rsvp, tz, 9);
+                    let local_day = |at: DateTime<Utc>| at.with_timezone(tz).date_naive();
+                    assert_eq!(
+                        local_day(timing.act_by.expect("dated")),
+                        day - Duration::days(2),
+                        "event {day} {time}"
+                    );
+                    assert_eq!(
+                        local_day(timing.surface_at.expect("dated")),
+                        day - Duration::days(4),
+                        "event {day} {time}"
+                    );
+                }
+                day += Duration::days(1);
+            }
+        }
+        check(&London);
+        check(&chrono_tz::America::New_York);
+    }
+
+    #[test]
+    fn a_notice_date_in_the_skipped_hour_still_moves_back_the_months() {
+        // 28 May 2027 01:30 BST minus two months is 28 Mar 01:30, an hour
+        // the clocks skip that day: the notice date is the first moment
+        // after the gap, not the lease end unchanged.
+        let lease =
+            arrived_long_before(TodoKind::Lease, Some(wall(&London, 2027, 5, 28, 1, 30, 0)));
+        let timing = lead_time(&lease, &London, 9);
+        assert_eq!(timing.act_by, Some(wall(&London, 2027, 3, 28, 2, 0, 0)));
+        assert_eq!(timing.surface_at, Some(wall(&London, 2027, 2, 28, 9, 0, 0)));
+    }
+
+    #[test]
+    fn working_hours_start_in_the_hour_after_a_gap_and_on_the_first_pass_of_a_repeat() {
+        let ny = chrono_tz::America::New_York;
+        let day = |m, d| NaiveDate::from_ymd_opt(2026, m, d).expect("a date");
+        // 02:00 does not exist on 8 Mar; it is 03:00 EDT, not a day early.
+        assert_eq!(
+            start_of_day(day(3, 8), &ny, 2),
+            wall(&ny, 2026, 3, 8, 3, 0, 0)
+        );
+        // 01:00 happens twice on 1 Nov; the first pass is the one that counts.
+        assert_eq!(
+            start_of_day(day(11, 1), &ny, 1),
+            Utc.with_ymd_and_hms(2026, 11, 1, 5, 0, 0)
+                .single()
+                .expect("a time")
+        );
+        assert_eq!(
+            start_of_day(day(10, 6), &London, 9),
+            wall(&London, 2026, 10, 6, 9, 0, 0)
+        );
     }
 
     #[test]

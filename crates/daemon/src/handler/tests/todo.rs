@@ -5,7 +5,7 @@
 use super::desk::{request, Fixture};
 use super::*;
 use crate::handler::todos;
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{
     Address, Envelope, MessageBody, MessageDirection, MessageFlags, MessageMetadata,
@@ -610,7 +610,10 @@ async fn camden_bill(fx: &Fixture, now: DateTime<Utc>) -> MessageId {
 #[tokio::test]
 async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_email() {
     let fx = Fixture::new().await;
-    let now = Utc::now();
+    // Pinned to a week with no clock change in any zone, so the machine's
+    // zone and today's date cannot shift the days. Clock changes are
+    // covered in `mxr_todo::timing`, where the zone is explicit.
+    let now = Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap();
     let bill = camden_bill(&fx, now).await;
     finish_first_run(&fx, now).await;
 
@@ -650,11 +653,10 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
     );
 
     let surface = row.surface_at.expect("a surface time");
+    // Three calendar days, not 72 hours: the two differ across a clock change.
     assert_eq!(
         surface.with_timezone(&Local).date_naive(),
-        (row.due_at.unwrap() - Duration::days(3))
-            .with_timezone(&Local)
-            .date_naive()
+        row.due_at.unwrap().with_timezone(&Local).date_naive() - Duration::days(3)
     );
     let then = surface + Duration::minutes(1);
     let later = runway(&fx, then).await;

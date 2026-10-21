@@ -23,7 +23,7 @@ On BK's computer, run heavy local commands through `agent-work run -- <command> 
 All projects and worktrees share Pueue's two-job queue. Cargo on the dotfiles PATH
 queues builds/checks/tests automatically; explicitly wrap toolchain-specific Cargo
 and native build scripts. Inside a queued command, run children directly.
-Keep build, libtest, nextest and Rayon workers at four or fewer. Keep each
+Keep build, libtest, nextest and Rayon workers at six or fewer. Keep each
 worktree's target directory separate and preserve sccache.
 Use `agent-work status` and `agent-work cancel <id>` for your own job; never kill
 Cargo/rustc or test daemons globally to free a slot. Build persistent daemons in

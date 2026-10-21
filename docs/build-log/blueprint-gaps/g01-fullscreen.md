@@ -56,10 +56,14 @@ change was discarded. npm rejects versions on `npm update`, while
 `npm install --no-save --package-lock-only` did not update the lock. The
 minimal exact `site` override to Vite 8.1.6 let npm update only the Vite lock
 entry. No other package versions changed. The site audit and docs validator
-now pass locally; the full Docs Build must pass on the PR before merge.
-`apps/web` remains separately tracked in
-`docs/issues/apps-web-vite-launch-editor-advisories.md` because its lockfile
-resolves Vite 7.3.6, also in the advisories' affected range.
+passed locally. The full Docs Build passed on final PR CI
+`39515274566`, alongside the required Rust checks.
+The later release-harness PR enabled the required web audit, which failed
+on `apps/web` Vite 7.3.6 in CI `39522071231`. Commit
+`72f77c20fb56b4feb3eb452b31218202457e4f17` pins Vite 7.3.7; only its package
+record and root constraint changed. The patched network audit reports zero
+vulnerabilities. Required web checks remain pending on the final candidate;
+receipts are in `docs/issues/apps-web-vite-launch-editor-advisories.md`.
 
 ## Review notes
 
@@ -78,9 +82,38 @@ review corrected the blueprint's stale lowercase `f` spelling and added the
 fullscreen workflow to the TUI reference. Site docs validation passed; the
 documentation clean-text pass reported zero removals and replacements.
 
-## Handover
+## Release verification is pending
 
-Parent owns final candidate review, exact-SHA acceptance, PR, release, and
-published install verification. Release is not complete until those checks
-pass. Keep this registered worktree, target cache, and ledger evidence until
-the parent authorizes cleanup.
+[PR 543](https://github.com/planetaryescape/mxr/pull/543) merged the reviewed
+candidate `1e4853d865c27ee78d4d43757de845c16631881a` as main commit
+`36c88ac87c130862d463a7a10ee5f7a9267d97d2`. Their trees match:
+`c25925031fb6780002471194f098414f2e04afb8`.
+[CI 39515274566](https://github.com/planetaryescape/mxr/actions/runs/39515274566)
+passed on the exact candidate. Independent second-opinion review was waived
+by BK; worker checks and parent review passed.
+
+Release-please [PR 544](https://github.com/planetaryescape/mxr/pull/544)
+passed its required CI and merged as
+`748d2e9d6b5cba4374d1cd5fbd8ed035b4563d9f`, the source of `v0.6.116`.
+Its tree matches the reviewed release metadata tree
+`e728dc6903cf182ea1e50422363ef7d62376cf5a`.
+
+The [tagged release workflow](https://github.com/planetaryescape/mxr/actions/runs/39518033868)
+completed both CLI builds and the signed desktop build. Both attempts failed
+at launch-proof temporary-directory cleanup after all 13 proof rows passed;
+publication did not run. The cleanup ordering and observed error are tracked
+in [the launch-proof issue](../../issues/launch-proof-daemon-cleanup.md).
+The failed-job retry reproduced the error. Cleanup repair
+`2957da9aa759dc297e50fea48a282d88272eaf70` now passes its delayed-writer and
+failure-boundary regression tests plus all 13 rows of an isolated launch
+proof. A further inherited-socket review finding is fixed in `283d3e897`
+and `4ed210f10`: the proof chooses its own socket and explicit temp-directory
+template. Final verification passed 13 proof rows with an untouched foreign
+sentinel, then confirmed all owned processes and sockets stopped. Release-please must
+create a new version for the repair; v0.6.116 remains unpublished.
+
+Next: require successful release publication and Homebrew update, verify the
+published install.sh download and the Homebrew binary, and run the isolated
+13-check PTY acceptance against the released binary. Preserve the existing
+personal daemon. Keep the registered worktree, build cache and evidence until
+scope-bound cleanup approval is given.

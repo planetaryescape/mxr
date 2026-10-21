@@ -3,6 +3,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${root}/scripts/v1_launch_proof_cleanup.sh"
 artifact="${MXR_PROOF_ARTIFACT:-}"
 if [[ -z "${artifact}" ]]; then
   artifact="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mxr-v1-launch-proof.$(date -u +%Y%m%dT%H%M%SZ).jsonl"
@@ -39,17 +40,23 @@ run_mxr() {
   fi
 }
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/mxr-v1-launch-proof.XXXXXX")"
 cleanup() {
-  if [[ -n "${daemon_pid:-}" ]]; then
-    kill "${daemon_pid}" 2>/dev/null || true
+  local original_status="$1"
+  trap - EXIT
+  if v1_launch_proof_cleanup "$original_status" "${daemon_pid:-}" "$tmp"; then
+    exit 0
+  else
+    local cleanup_status=$?
+    exit "$cleanup_status"
   fi
-  rm -rf "${tmp}"
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 export MXR_DATA_DIR="${tmp}/data"
 export MXR_CONFIG_DIR="${tmp}/config"
+owned_socket_path="${tmp}/mxr.sock"
+export MXR_SOCKET_PATH="${owned_socket_path}"
 export MXR_INSTANCE="mxr-v1-launch-proof-$$-$(date +%s%N)"
 export EDITOR=true
 mkdir -p "${MXR_DATA_DIR}" "${MXR_CONFIG_DIR}"
@@ -88,12 +95,17 @@ version="$(run_mxr --version | head -n1)"
 emit binary_invocation ok "$(python3 -c 'import json,sys; print(json.dumps({"version": sys.argv[1]}))' "$version")"
 
 status_json="$(run_mxr status --format json)"
+reported_socket_path="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("socket_path") or "")' <<<"${status_json}")"
+if [[ "${reported_socket_path}" != "${owned_socket_path}" ]]; then
+  echo "daemon status reported unexpected socket path: ${reported_socket_path}" >&2
+  exit 1
+fi
 daemon_pid="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("daemon_pid") or "")' <<<"${status_json}")"
 if [[ -z "${daemon_pid}" ]]; then
   echo "daemon did not auto-start" >&2
   exit 1
 fi
-emit daemon_autostart ok "$(python3 -c 'import json,sys; print(json.dumps({"daemon_pid": int(sys.argv[1])}))' "$daemon_pid")"
+emit daemon_autostart ok "$(python3 -c 'import json,sys; print(json.dumps({"daemon_pid": int(sys.argv[1]), "socket_path": sys.argv[2]}))' "$daemon_pid" "$reported_socket_path")"
 
 run_mxr sync --wait --wait-timeout-secs 30 >/dev/null
 emit sync ok '{"provider":"fake"}'
@@ -143,10 +155,12 @@ import json, os, socket, struct, sys, uuid
 
 instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
 owner = json.loads(owner_json)
-if sys.platform == 'darwin':
-    sock_path = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', instance, 'mxr.sock')
-else:
-    sock_path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', instance, 'mxr.sock')
+sock_path = os.environ.get('MXR_SOCKET_PATH')
+if not sock_path:
+    if sys.platform == 'darwin':
+        sock_path = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', instance, 'mxr.sock')
+    else:
+        sock_path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', instance, 'mxr.sock')
 
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.connect(sock_path)

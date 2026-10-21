@@ -252,7 +252,7 @@ Journeys:
 | Journey | Result |
 |---|---|
 | 1 Evening clear-down (Now, open a row) | Pass in all themes and widths. |
-| 2 Answer a person (Messages, person open, compose sheet) | Pass. Compose's From address now shows at 390. |
+| 2 Answer a person (Messages, person open, compose sheet) | Pass for the person page; one defect. Re-walked after the first grade: `j2-person-open-{midnight,light}-{1440,390}` show Samir Patel open (topics, the open thread, the reply bar) and pass the design gate's person frame in all four themes at three widths. The earlier `j2-person-open-1440` showed no person open, so it is superseded. Defect: the top-bar Compose button is clipped at its right edge at 390 in every theme (also on `j1-now-390`); not fixed here. Compose's From address now shows at 390. |
 | 3 Tick off a to-do, clear Updates (To do, Updates, a toast, put to bed) | Pass after the two truncation fixes. The finishing scene shows in all four themes; with reduced motion it shows its still frame and words (Midnight, both widths). |
 | 4 Read (Reading, an issue) | Pass; duplicate footer actions noted above. |
 | 5 Ask the copy desk (a proof) | Pass; no sparkle anywhere, the panel is marked by `gemma4 · local`. |

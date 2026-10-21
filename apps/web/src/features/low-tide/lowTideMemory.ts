@@ -14,6 +14,7 @@ export type TidePlace =
   | "reading"
   | "paper_trail"
   // The modes that end in a finishing moment (D134): once per mode per day.
+  | "now"
   | "messages"
   | "todo"
   | "updates";

@@ -70,7 +70,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
   const memberships = useThreadModesMap(messages ? [...byThread.keys()] : []).data;
   // Only the whole desk has a low tide; a lane's page is just a list.
   const hasWork = groups.some((group) => group.rows.length > 0);
-  const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork);
+  const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork, { daily: true });
 
   // The desk's rows by conversation, for the verbs below. They read it
   // through a ref so their identity never changes and the list's rows stay

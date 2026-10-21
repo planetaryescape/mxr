@@ -6,7 +6,8 @@ import { PageFrame } from "@/components/PageFrame";
 import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
 import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
-import { LowTideScene } from "@/features/low-tide/LowTide";
+import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
@@ -135,6 +136,9 @@ function NowBody({ now }: { now: Now }) {
   const navigate = useNavigate();
   const hidden = useModeDone((s) => s.hidden);
   const items = useMemo(() => nowItems(now, hidden), [hidden, now]);
+  // Now is put to bed when it has no items (docs/blueprint/27). A Now still
+  // on its first run is sorting, not finished.
+  const finished = useLowTide("now", !now.first_run.complete, items.length > 0, { daily: true });
   // Every row, done or not: a row done with the pointer stays in the list while it folds.
   const everyItem = useMemo(() => nowItems(now, NONE_HIDDEN), [now]);
   // In the URL, so coming back to Now (or a copied link) lands on the same row.
@@ -270,7 +274,7 @@ function NowBody({ now }: { now: Now }) {
   });
 
   if (items.length === 0) {
-    return <NowEmpty now={now} />;
+    return <NowEmpty now={now} finished={finished} />;
   }
 
   const position = new Map(everyItem.map((item, at) => [item.key, at]));
@@ -415,7 +419,7 @@ function NowBody({ now }: { now: Now }) {
  * Nothing on Now. Before the first run finishes, the never-had-any line;
  * after it, the empty state with the low tide scene as its finishing moment.
  */
-function NowEmpty({ now }: { now: Now }) {
+function NowEmpty({ now, finished }: { now: Now; finished: boolean }) {
   if (!now.first_run.complete) {
     return (
       <PageEmpty framed glyph="now" title="Sorting your mail" body={now.empty_state ?? undefined} />
@@ -424,7 +428,8 @@ function NowEmpty({ now }: { now: Now }) {
   return (
     <PageEmpty
       framed
-      moment={<LowTideScene sound />}
+      glyph={finished ? undefined : "now"}
+      moment={finished ? <FinishingMoment /> : undefined}
       title={now.empty_state ?? "Clear."}
       body={
         <>

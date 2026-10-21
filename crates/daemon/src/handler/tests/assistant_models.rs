@@ -492,6 +492,75 @@ fn saving_llm_settings_without_overrides_keeps_a_pick_made_at_the_same_time() {
 }
 
 #[test]
+fn a_settings_form_loaded_after_a_pick_saves_its_full_overrides_without_undoing_it() {
+    isolated(|state| async move {
+        cloud_allowed_on_disk(&state).await;
+        picked(&state, "claude-haiku-5-5").await;
+
+        // What the web form does: load the whole config (overrides included,
+        // the assistant's among them), edit something else, send it all back.
+        let Response::Ok {
+            data: ResponseData::LlmConfig { mut config },
+        } = send(&state, Request::GetLlmConfig).await
+        else {
+            panic!("expected the config");
+        };
+        let overrides = config.overrides.as_ref().expect("overrides are sent");
+        assert_eq!(
+            overrides
+                .assistant
+                .as_ref()
+                .and_then(|a| a.model.as_deref()),
+            Some("claude-haiku-5-5")
+        );
+        config.request_timeout_secs += 1;
+        let saved = send(
+            &state,
+            Request::UpdateLlmConfig {
+                config: Box::new(config),
+            },
+        )
+        .await;
+        assert!(matches!(saved, Response::Ok { .. }), "{saved:?}");
+
+        assert_eq!(
+            assistant_model_on_disk().as_deref(),
+            Some("claude-haiku-5-5")
+        );
+    });
+}
+
+#[test]
+fn a_form_that_loaded_before_a_pick_saves_over_it_which_is_why_the_web_refreshes_it() {
+    isolated(|state| async move {
+        cloud_allowed_on_disk(&state).await;
+        let Response::Ok {
+            data: ResponseData::LlmConfig { config: stale },
+        } = send(&state, Request::GetLlmConfig).await
+        else {
+            panic!("expected the config");
+        };
+        picked(&state, "claude-haiku-5-5").await;
+
+        // The form submits the whole overrides map it loaded. The daemon
+        // can't tell an old value left alone from one the person typed, so
+        // the form's map wins; the web invalidates its copy on every pick.
+        let saved = send(
+            &state,
+            Request::UpdateLlmConfig {
+                config: Box::new(stale),
+            },
+        )
+        .await;
+        assert!(matches!(saved, Response::Ok { .. }), "{saved:?}");
+        assert_ne!(
+            assistant_model_on_disk().as_deref(),
+            Some("claude-haiku-5-5")
+        );
+    });
+}
+
+#[test]
 fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
     isolated(|state| async move {
         // The file says AI is on; a restored workspace keeps it off until it

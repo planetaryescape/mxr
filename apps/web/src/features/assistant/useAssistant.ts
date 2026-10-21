@@ -60,6 +60,10 @@ export function usePickModel() {
     onSuccess: (models) => {
       queryClient.setQueryData(assistantKeys.models, models);
       void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
+      // An open Settings > LLM form holds the old assistant model and saves
+      // its whole overrides map; it must show the new one before it can.
+      void queryClient.invalidateQueries({ queryKey: ["llm-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["llm-status"] });
     },
   });
 }

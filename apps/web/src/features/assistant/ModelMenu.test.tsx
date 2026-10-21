@@ -30,8 +30,10 @@ const choices: AssistantModels["choices"] = [
   { id: "claude-haiku-5-5", label: "Claude Haiku 5.5", cloud: true, available: true },
 ];
 
-function wrap(children: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrap(
+  children: ReactNode,
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(<QueryClientProvider client={client}>{children}</QueryClientProvider>);
 }
 
@@ -111,6 +113,22 @@ describe("ModelMenu", () => {
     expect(mark).toHaveTextContent("Claude Haiku 5.5 · cloud");
     expect(mark).not.toHaveTextContent("local");
     expect(mark).toHaveAttribute("title", expect.stringContaining("runs off this machine"));
+  });
+
+  test("a pick refreshes the Settings > LLM data, so an open form can't save the old model back", async () => {
+    api.setModel.mockResolvedValue({ current: "claude-haiku-5-5", choices });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    wrap(<ModelMenu />, client);
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Claude Haiku 5.5/ }));
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["llm-config"] }),
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["llm-status"] }));
   });
 
   test("Escape closes the menu", async () => {

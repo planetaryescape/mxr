@@ -219,3 +219,81 @@ test("a provider rejection in a multi-message Archive keeps Undo for the complet
     cleanup();
   }
 });
+
+test("a trash where one message fails says what moved and keeps the message that did not", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  const subjects = [`trash-part-a-${stamp}`, `trash-part-b-${stamp}`, `trash-part-c-${stamp}`];
+  const files = subjects.map((subject) =>
+    deliver({
+      from: `${subject}@example.test`,
+      subject,
+      body: "This partial trash fixture has readable text for the reader.",
+    }),
+  );
+  const cleanup = () => {
+    for (const file of files) {
+      rmSync(join(readE2EState().runtimeDir, "spool", `${file}.msg`), { force: true });
+    }
+  };
+  try {
+    await bridge(page, "/api/v1/mail/sync", {});
+    await openList(page, "/m/inbox");
+    for (const subject of subjects) {
+      await expect(mailRows(page).filter({ hasText: subject })).toBeVisible();
+    }
+    // The fake provider can only reject archives, so the partial answer is routed:
+    // the daemon really trashes the first two ids and the last one is reported failed.
+    await page.route("**/api/v1/mail/mutations/trash", async (route) => {
+      // SAFETY: this route only intercepts the trash body from the client under test.
+      const body = route.request().postDataJSON() as { message_ids: string[] };
+      const done = body.message_ids.slice(0, -1);
+      await route.fetch({ postData: JSON.stringify({ message_ids: done }) });
+      await route.fulfill({
+        json: {
+          ok: true,
+          result: {
+            requested: body.message_ids.length,
+            succeeded: done.length,
+            skipped: 0,
+            failed: 1,
+            mutation_id: "partial-trash",
+            accounts: [
+              {
+                account_id: "fake",
+                account_name: "Fake",
+                succeeded: done.length,
+                skipped: 0,
+                failed: 1,
+                error: "rate limited",
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    await page.getByTestId("mailbox-list").focus();
+    for (const subject of subjects) {
+      await page.keyboard.press("Home");
+      await cursorTo(page, (label) => label.includes(subject));
+      await page.keyboard.press("x");
+    }
+
+    await page.keyboard.press("#");
+    // Three conversations ask first; the list shows what it will touch.
+    const confirm = page.getByRole("alertdialog", { name: "Move to Trash 3 conversations?" });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "Move to Trash" }).click();
+
+    // The answer counts what moved, so the toast names the split.
+    await expect(
+      page.getByText("Moved 2 of 3 messages to Trash; the rest failed").first(),
+    ).toBeVisible();
+    // The route fails whichever id comes last, so the one row left is not fixed by name.
+    await expect(mailRows(page).filter({ hasText: `-${stamp}` })).toHaveCount(1);
+  } finally {
+    cleanup();
+  }
+});

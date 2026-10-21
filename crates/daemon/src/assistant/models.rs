@@ -152,9 +152,17 @@ pub(crate) async fn set_model(
         }
     } else {
         let id = model.to_string();
+        let restore_pending = state.is_restore_pending();
         let config = state
             .try_mutate_config(|config| {
-                if let Some(refusal) = refusal(&models_for(&config.llm, &keys), &id) {
+                // The file as it is now. A restored workspace keeps AI off
+                // in the daemon whatever the file says, so judge it that way.
+                let mut judged = config.llm.clone();
+                if restore_pending {
+                    judged.enabled = false;
+                    judged.overrides = Default::default();
+                }
+                if let Some(refusal) = refusal(&models_for(&judged, &keys), &id) {
                     return Err(refusal);
                 }
                 config

@@ -318,13 +318,14 @@ pub(super) async fn remove_account_config(
         );
     }
 
-    let save_result = (|| -> Result<(), String> {
-        let mut config = config;
+    // The database work is done; the config change is one locked update that
+    // loads the file inside the lock, not the copy read before those awaits.
+    let save_result = mxr_config::update_config(|config| {
         config.accounts.remove(key);
-        refresh_default_account(&mut config);
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
-        Ok(())
-    })();
+        refresh_default_account(config);
+        Ok::<_, mxr_config::ConfigError>(())
+    })
+    .map_err(|e| e.to_string());
     if let Err(error) = save_result {
         return account_operation_result(
             false,

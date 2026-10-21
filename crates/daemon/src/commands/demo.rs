@@ -1605,52 +1605,52 @@ const DEMO_TCP_PORT: u16 = 42840;
 fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
     let paths = prepare_environment(messages)?;
     let config_path = paths.config_dir.join("config.toml");
-    let mut config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
-
-    config.general.default_account = Some(DEMO_ACCOUNT_KEY.to_string());
-    config.accounts.insert(
-        DEMO_ACCOUNT_KEY.to_string(),
-        AccountConfig {
-            name: "Demo Personal".to_string(),
-            email: DEMO_PERSONAL_EMAIL.to_string(),
-            enabled: true,
-            sync: Some(SyncProviderConfig::Fake),
-            send: Some(SendProviderConfig::Fake),
-        },
-    );
-    config.accounts.insert(
-        DEMO_WORK_ACCOUNT_KEY.to_string(),
-        AccountConfig {
-            name: "Demo Work".to_string(),
-            email: DEMO_WORK_EMAIL.to_string(),
-            enabled: true,
-            sync: Some(SyncProviderConfig::Fake),
-            send: Some(SendProviderConfig::Fake),
-        },
-    );
-
-    // Flip LLM on in the demo config so handlers like summarize / briefing /
-    // draft-assist don't short-circuit before the runtime can swap in
-    // `DemoLlmProvider`. The provider itself ignores config.llm.base_url and
-    // api_key_env when running in demo mode (`build_llm_provider` shortcuts
-    // on `is_demo_instance`), so no real network calls are ever made.
-    config.llm.enabled = true;
-    config.llm.model = "mxr-demo-canned".to_string();
-
-    // The demo runs beside the real profile, whose daemon holds the default
-    // ports, so the demo's bridge would fail to bind. Move them while they
-    // are still the defaults; a port the user chose is kept.
-    let defaults = mxr_config::MxrConfig::default();
-    if config.bridge.port == defaults.bridge.port {
-        config.bridge.port = DEMO_BRIDGE_PORT;
-    }
-    if config.transports.tcp.port == defaults.transports.tcp.port {
-        config.transports.tcp.port = DEMO_TCP_PORT;
-    }
-
     std::fs::create_dir_all(&paths.config_dir)?;
     std::fs::create_dir_all(&paths.data_dir)?;
-    mxr_config::save_config_to_path(&config, &config_path)?;
+    // One locked read-modify-write of the demo profile's own file.
+    mxr_config::update_config_at_path(&config_path, |config| {
+        config.general.default_account = Some(DEMO_ACCOUNT_KEY.to_string());
+        config.accounts.insert(
+            DEMO_ACCOUNT_KEY.to_string(),
+            AccountConfig {
+                name: "Demo Personal".to_string(),
+                email: DEMO_PERSONAL_EMAIL.to_string(),
+                enabled: true,
+                sync: Some(SyncProviderConfig::Fake),
+                send: Some(SendProviderConfig::Fake),
+            },
+        );
+        config.accounts.insert(
+            DEMO_WORK_ACCOUNT_KEY.to_string(),
+            AccountConfig {
+                name: "Demo Work".to_string(),
+                email: DEMO_WORK_EMAIL.to_string(),
+                enabled: true,
+                sync: Some(SyncProviderConfig::Fake),
+                send: Some(SendProviderConfig::Fake),
+            },
+        );
+
+        // Flip LLM on in the demo config so handlers like summarize / briefing /
+        // draft-assist don't short-circuit before the runtime can swap in
+        // `DemoLlmProvider`. The provider itself ignores config.llm.base_url and
+        // api_key_env when running in demo mode (`build_llm_provider` shortcuts
+        // on `is_demo_instance`), so no real network calls are ever made.
+        config.llm.enabled = true;
+        config.llm.model = "mxr-demo-canned".to_string();
+
+        // The demo runs beside the real profile, whose daemon holds the default
+        // ports, so the demo's bridge would fail to bind. Move them while they
+        // are still the defaults; a port the user chose is kept.
+        let defaults = mxr_config::MxrConfig::default();
+        if config.bridge.port == defaults.bridge.port {
+            config.bridge.port = DEMO_BRIDGE_PORT;
+        }
+        if config.transports.tcp.port == defaults.transports.tcp.port {
+            config.transports.tcp.port = DEMO_TCP_PORT;
+        }
+        Ok::<_, mxr_config::ConfigError>(())
+    })?;
     Ok(paths)
 }
 

@@ -907,10 +907,13 @@ pub(crate) async fn llm_config(state: &AppState) -> HandlerResult {
 }
 
 pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -> HandlerResult {
-    let config = normalize_llm_config(config, &state.config_snapshot().llm)?;
+    // Everything that depends on the current config is read inside the
+    // locked update, from the file as it is then, not from a copy taken
+    // before the lock.
     let saved = state
-        .mutate_config(|current| {
-            current.llm = config;
+        .try_mutate_config(|current| {
+            current.llm = normalize_llm_config(config, &current.llm)?;
+            Ok(())
         })
         .await?;
     Ok(ResponseData::LlmConfig {

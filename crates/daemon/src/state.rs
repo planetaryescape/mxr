@@ -272,6 +272,20 @@ fn build_llm_provider(
     ))
 }
 
+/// Why a locked config update did not happen.
+enum ConfigChangeError {
+    /// The file couldn't be locked, read or written.
+    Failed(mxr_config::ConfigError),
+    /// The change looked at the current config and said no.
+    Refused(String),
+}
+
+impl From<mxr_config::ConfigError> for ConfigChangeError {
+    fn from(error: mxr_config::ConfigError) -> Self {
+        Self::Failed(error)
+    }
+}
+
 /// The providers a model goes through when mxr routes it itself, or `None`
 /// when `llm.base_url` serves it. A `base_url` other than the default is the
 /// user's own server, whose model names are theirs.
@@ -1826,13 +1840,22 @@ impl AppState {
     /// holds `config_write`.
     fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        if self.is_restore_pending() {
-            config.llm.enabled = false;
-            config.llm.overrides = Default::default();
-        }
+        self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;
         Ok(())
+    }
+
+    /// A restored workspace stays paused: AI and semantic search are off in
+    /// the running daemon until it is activated, whatever the file says. The
+    /// file itself is never written with this mask.
+    fn mask_for_restore(&self, config: &mut mxr_config::MxrConfig) {
+        if self.is_restore_pending() {
+            config.llm.enabled = false;
+            config.llm.overrides = Default::default();
+            config.search.semantic.enabled = false;
+            config.search.semantic.auto_download_models = false;
+        }
     }
 
     pub async fn mutate_config<F>(
@@ -1849,9 +1872,13 @@ impl AppState {
         .await
     }
 
-    /// [`Self::mutate_config`] where the change can be refused after seeing
-    /// the config it would apply to. The check and the write share one
-    /// critical section, so what was checked is what is changed.
+    /// Change the config file and the running daemon together. The change is
+    /// made to the file's own current contents, never to the daemon's copy:
+    /// the file is the source of every write, because `mxr config set` and an
+    /// editor change it behind the daemon's back and the daemon's copy can be
+    /// older. The mutator sees what is on disk, may refuse after looking at
+    /// it, and what it leaves is saved and then installed in memory the way a
+    /// reload installs it (restore mask and runtime application included).
     pub async fn try_mutate_config<F>(
         &self,
         mutator: F,
@@ -1861,20 +1888,35 @@ impl AppState {
     {
         // In-process writers first, then the file lock, always in that order.
         let _writing = self.config_write.lock().await;
-        let config = {
-            // `mxr config set` writes the file from another process. Holding
-            // the file lock from the re-read to the save means its write lands
-            // wholly before this change (and is read here) or wholly after
-            // (and is not overwritten by a copy taken before it).
-            let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
-            if let Err(error) = self.sync_llm_from_disk() {
-                tracing::warn!(%error, "couldn't re-read [llm] before changing config");
+        let mut seen = None;
+        let result = mxr_config::update_config(|config| {
+            seen = Some(config.clone());
+            mutator(config).map_err(ConfigChangeError::Refused)?;
+            Ok::<_, ConfigChangeError>(config.clone())
+        });
+        match result {
+            Ok(saved) => self.install_config(saved).await,
+            Err(ConfigChangeError::Refused(reason)) => {
+                // Looking at the file taught the daemon what it has now, even
+                // though nothing was changed: keep its copy in step.
+                if let Some(on_disk) = seen {
+                    if let Err(error) = self.install_config(on_disk).await {
+                        tracing::warn!(%error, "couldn't apply the config found on disk");
+                    }
+                }
+                Err(reason)
             }
-            let mut config = self.config_snapshot();
-            mutator(&mut config)?;
-            mxr_config::save_config(&config).map_err(|e| e.to_string())?;
-            config
-        };
+            Err(ConfigChangeError::Failed(error)) => Err(error.to_string()),
+        }
+    }
+
+    /// Put a config that is already on disk into the running daemon. The
+    /// caller holds `config_write`. Returns what was installed.
+    async fn install_config(
+        &self,
+        mut config: mxr_config::MxrConfig,
+    ) -> std::result::Result<mxr_config::MxrConfig, String> {
+        self.mask_for_restore(&mut config);
         self.semantic
             .apply_config(config.search.semantic.clone())
             .await

@@ -400,6 +400,98 @@ fn a_config_set_in_another_process_is_never_restored_by_a_pick_in_flight() {
 }
 
 #[test]
+fn a_config_set_of_another_key_made_while_the_daemon_runs_survives_a_pick() {
+    isolated(|state| async move {
+        cloud_allowed_on_disk(&state).await;
+        // `mxr config set search.max_results 200`: the file changes, the
+        // daemon's copy is older and doesn't know.
+        mxr_config::update_config(|config| {
+            config.search.max_results = 200;
+            Ok::<_, mxr_config::ConfigError>(())
+        })
+        .unwrap();
+        assert_ne!(state.config_snapshot().search.max_results, 200);
+
+        let change = picked(&state, "claude-haiku-5-5").await;
+        assert!(change.changed);
+
+        // The pick is on disk and the other key was not reverted by it.
+        assert_eq!(
+            assistant_model_on_disk().as_deref(),
+            Some("claude-haiku-5-5")
+        );
+        assert_eq!(mxr_config::load_config().unwrap().search.max_results, 200);
+        // And the daemon now runs with both.
+        assert_eq!(state.config_snapshot().search.max_results, 200);
+        assert_eq!(
+            state
+                .config_snapshot()
+                .llm
+                .overrides
+                .assistant
+                .and_then(|assistant| assistant.model)
+                .as_deref(),
+            Some("claude-haiku-5-5")
+        );
+    });
+}
+
+#[test]
+fn saving_llm_settings_without_overrides_keeps_a_pick_made_at_the_same_time() {
+    isolated(|state| async move {
+        for round in 0..10 {
+            cloud_allowed_on_disk(&state).await;
+            let mut config = state.config_snapshot();
+            config.llm.overrides.assistant = None;
+            save(&state, config).await;
+            let Response::Ok {
+                data: ResponseData::LlmConfig { mut config },
+            } = send(&state, Request::GetLlmConfig).await
+            else {
+                panic!("expected the config");
+            };
+            // A client that doesn't send overrides.
+            config.overrides = None;
+
+            let (pick, update) = tokio::join!(
+                pick(&state, "claude-haiku-5-5", false),
+                send(
+                    &state,
+                    Request::UpdateLlmConfig {
+                        config: Box::new(config)
+                    }
+                )
+            );
+            assert!(
+                matches!(pick, Response::Ok { .. }),
+                "round {round}: {pick:?}"
+            );
+            assert!(
+                matches!(update, Response::Ok { .. }),
+                "round {round}: {update:?}"
+            );
+
+            assert_eq!(
+                assistant_model_on_disk().as_deref(),
+                Some("claude-haiku-5-5"),
+                "round {round}: the settings save undid the pick on disk"
+            );
+            assert_eq!(
+                state
+                    .config_snapshot()
+                    .llm
+                    .overrides
+                    .assistant
+                    .and_then(|assistant| assistant.model)
+                    .as_deref(),
+                Some("claude-haiku-5-5"),
+                "round {round}: the daemon lost the pick"
+            );
+        }
+    });
+}
+
+#[test]
 fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
     isolated(|state| async move {
         // The file says AI is on; a restored workspace keeps it off until it

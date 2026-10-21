@@ -3286,38 +3286,11 @@ pub async fn run() -> anyhow::Result<()> {
         }
         app.pending_mutation_queue.extend(deferred_mutations);
 
-        // Handle thread export (uses daemon ExportThread which runs mxr-export)
-        if let Some(thread_id) = app.mailbox.pending_export_thread.take() {
+        // Thread export: the picker chose the format and destination.
+        if let Some(pending) = app.mailbox.pending_export.take() {
             let bg = bg.clone();
             let _ = submit_task(&local_io, async move {
-                let resp = ipc_call(
-                    &bg,
-                    Request::ExportThread {
-                        thread_id,
-                        format: mxr_core::types::ExportFormat::Markdown,
-                    },
-                )
-                .await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::ExportResult { content },
-                    }) => {
-                        // Write to temp file
-                        let filename = format!(
-                            "mxr-export-{}.md",
-                            chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                        );
-                        let path = std::env::temp_dir().join(&filename);
-                        match tokio::fs::write(&path, &content).await {
-                            Ok(()) => Ok(format!("Exported to {}", path.display())),
-                            Err(e) => Err(MxrError::Ipc(format!("Write failed: {e}"))),
-                        }
-                    }
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response to ExportThread".into())),
-                };
-                AsyncResult::ExportResult(result)
+                AsyncResult::ExportResult(crate::export_output::export_thread(&bg, pending).await)
             });
         }
 

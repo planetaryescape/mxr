@@ -736,6 +736,9 @@ impl App {
         // modal so it appears on top.
         ui::save_attachment_modal::draw(frame, area, &self.modals.save_attachment, theme);
 
+        // Export picker, drawn over everything else it can open above.
+        ui::export_modal::draw(frame, area, &self.modals.export, theme);
+
         // URL picker overlay
         ui::url_modal::draw(frame, area, self.mailbox.url_modal.as_ref(), theme);
 

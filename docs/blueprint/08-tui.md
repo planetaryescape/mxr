@@ -118,7 +118,7 @@ u               Mark as unread
 U               Unsubscribe (one-key, with confirmation)
 Z               Snooze menu (Z t = tomorrow, Z n = next week, etc.)
 o               Open in browser (HTML body or attachment)
-e               Export thread
+E               Export thread (format and destination picker)
 /               Search (focus search input)
 Tab (in search) Cycle search mode: lexical → hybrid → semantic
 n               Next search result
@@ -198,7 +198,7 @@ r = "reply"
 R = "toggle_reader_mode"
 f = "forward"
 o = "open_in_browser"
-e = "export_thread"
+E = "export_thread"
 
 [message_view]
 j = "scroll_down"

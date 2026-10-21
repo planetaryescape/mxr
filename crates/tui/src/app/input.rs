@@ -1221,6 +1221,53 @@ impl App {
             }
         }
 
+        // The export picker takes every key while it is open. Keys are read
+        // per stage, so `c`, `s` and the format letters only mean something
+        // where they're offered.
+        if self.modals.export.visible {
+            match self.modals.export.stage {
+                crate::app::ExportStage::Format => match (key.code, key.modifiers) {
+                    (KeyCode::Esc, _) => self.modals.export.close(),
+                    (KeyCode::Up, _) => self.export_modal_move(false),
+                    (KeyCode::Down, _) => self.export_modal_move(true),
+                    (KeyCode::Enter, _) => {
+                        let format = crate::export_output::FORMAT_CHOICES
+                            .get(self.modals.export.selected)
+                            .cloned();
+                        if let Some(format) = format {
+                            self.export_modal_choose_format(format);
+                        }
+                    }
+                    (KeyCode::Char(c), m) if m.is_empty() => {
+                        let format = crate::export_output::FORMAT_CHOICES
+                            .iter()
+                            .find(|format| crate::export_output::format_key(format) == c)
+                            .cloned();
+                        if let Some(format) = format {
+                            self.export_modal_choose_format(format);
+                        }
+                    }
+                    _ => {}
+                },
+                crate::app::ExportStage::Destination => match (key.code, key.modifiers) {
+                    (KeyCode::Esc, _) => self.modals.export.close(),
+                    (KeyCode::Char('c'), m) if m.is_empty() => self.export_modal_choose_clipboard(),
+                    (KeyCode::Char('s'), m) if m.is_empty() => self.export_modal_choose_save(),
+                    _ => {}
+                },
+                crate::app::ExportStage::Path => match (key.code, key.modifiers) {
+                    (KeyCode::Esc, _) => self.modals.export.close(),
+                    (KeyCode::Enter, _) => self.export_modal_confirm_path(),
+                    (KeyCode::Backspace, _) => self.export_modal_backspace(),
+                    (KeyCode::Char(c), m) if !m.contains(KeyModifiers::CONTROL) => {
+                        self.export_modal_push_char(c);
+                    }
+                    _ => {}
+                },
+            }
+            return None;
+        }
+
         // Route keys to the save-attachment modal when it's on top of
         // the attachment panel. This block must run before the
         // attachment-panel handler below since the modal layers on top.

@@ -18,6 +18,7 @@ pub mod draft_options_modal;
 pub mod drafts_modal;
 pub mod error_modal;
 pub mod expert_modal;
+pub mod export_modal;
 pub mod help_modal;
 pub mod hint_bar;
 pub mod label_picker;

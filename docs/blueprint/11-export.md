@@ -125,14 +125,12 @@ mxr export THREAD_ID --format mbox > thread.mbox
 
 ## TUI usage
 
-In thread view, press `e` to export. Shows a format picker:
+On a thread, press `E`. The picker asks three things in order. Esc at any step closes it with no file written and nothing copied.
 
-```
-Export thread as:
-  m = Markdown
-  j = JSON
-  l = LLM context (for AI)
-  x = Mbox
+1. Format: `m` Markdown, `j` JSON, `x` Mbox, `l` LLM context. Arrow keys and Enter also pick a format.
+2. Destination: `c` copies the export to the clipboard, `s` saves it to a file.
+3. Path (save only): prefilled with `~/mxr/exports/mxr-thread-<thread_id>.<ext>`, where the extension is `md`, `json`, `mbox` or `txt` (LLM context is plain text). Enter saves. Missing folders are created. A path that is blank or a directory, or a file that already exists, stays in the picker with the reason. An existing file needs a second Enter to be overwritten.
 
-→ Copied to clipboard / Saved to ~/mxr/exports/
-```
+The status line then names the result: `Exported <format> to <path>` or `Copied <format> export to clipboard`. A clipboard failure reports the command that failed, not the content. The clipboard command is `pbcopy` on macOS, `wl-copy` on Linux when `WAYLAND_DISPLAY` is set, and `xclip -selection clipboard` otherwise.
+
+A saved file holds the same bytes as `mxr export THREAD_ID --format <format> --output <path>`. Printing to stdout adds a trailing newline.

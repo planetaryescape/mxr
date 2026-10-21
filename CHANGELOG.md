@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.125](https://github.com/planetaryescape/mxr/compare/v0.6.124...v0.6.125) (2026-10-21)
+
+
+### Features
+
+* retire five settings that never did anything ([#573](https://github.com/planetaryescape/mxr/issues/573)) ([ed00a6b](https://github.com/planetaryescape/mxr/commit/ed00a6b47a0591732206922a9533b822c6ea38da))
+
 ## [0.6.124](https://github.com/planetaryescape/mxr/compare/v0.6.123...v0.6.124) (2026-10-21)
 
 

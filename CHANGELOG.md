@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.123](https://github.com/planetaryescape/mxr/compare/v0.6.122...v0.6.123) (2026-10-21)
+
+
+### Features
+
+* search honours its configured defaults ([#568](https://github.com/planetaryescape/mxr/issues/568)) ([db7d768](https://github.com/planetaryescape/mxr/commit/db7d76804899d40bbc40de4bdc11d2c43130ac76))
+
+
+### Bug Fixes
+
+* archive at once in the web app ([#565](https://github.com/planetaryescape/mxr/issues/565)) ([477206d](https://github.com/planetaryescape/mxr/commit/477206dc043505008ac54b97cc662c8ea5615fef))
+* speed up mode reads by classifying each message once ([#564](https://github.com/planetaryescape/mxr/issues/564)) ([0e5db2e](https://github.com/planetaryescape/mxr/commit/0e5db2e1584fed17aff4444a00a1dbe9e023933e))
+
+
+### Documentation
+
+* fit server labels into the classifier as a surface, not a feature ([3fdd3a8](https://github.com/planetaryescape/mxr/commit/3fdd3a888c281e5693693c0ddb47098ae81b2d26))
+* turn blueprint 32's build order into the release ladder ([3b61579](https://github.com/planetaryescape/mxr/commit/3b61579a3f34203bdacb9954612b05401fa2e25c))
+* write mxr's sorting back to the mail server as two-way labels ([f18741d](https://github.com/planetaryescape/mxr/commit/f18741dbf17b776848a15a840e5d30950489bd41))
+
 ## [0.6.122](https://github.com/planetaryescape/mxr/compare/v0.6.121...v0.6.122) (2026-10-21)
 
 

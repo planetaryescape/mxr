@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET sync_cursor = ?1 WHERE id = ?2 AND sync_cursor IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b7e8e3c75469ab003883787cf87ebdea92def56514653f7f4af4b3b90c44cc16"
+}

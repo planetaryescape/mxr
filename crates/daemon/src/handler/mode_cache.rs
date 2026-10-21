@@ -38,8 +38,11 @@ const SETTLE: Duration = Duration::from_secs(2);
 /// The refresher rebuilds a view for a change at most this often, which
 /// bounds the work if some table is written continuously.
 const MIN_REBUILD: Duration = Duration::from_secs(5);
-/// Views nobody read for this long are dropped instead of rebuilt.
-const ACTIVE: Duration = Duration::from_secs(30 * 60);
+/// Views nobody read for this long are dropped instead of rebuilt. Keeping
+/// a view fresh costs a rebuild every `REFRESH_AGE` (about a second each on
+/// a large mailbox), so this is the burst a client is in use, not the gap
+/// between visits; a client keeps its own last copy for those.
+const ACTIVE: Duration = Duration::from_secs(5 * 60);
 /// Most views kept. Messages' `limit` and Updates' `cut` come from the
 /// client, so the set of keys is otherwise unbounded; the least recently
 /// read view goes first.

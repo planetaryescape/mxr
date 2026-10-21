@@ -34,8 +34,9 @@ impl super::Store {
             sqlx::Error::Decode(Box::new(err))
         })?;
         let aid = account_id.as_str();
+        // An idle sync saves the cursor it started from; leave the row alone.
         sqlx::query!(
-            "UPDATE accounts SET sync_cursor = ? WHERE id = ?",
+            "UPDATE accounts SET sync_cursor = ?1 WHERE id = ?2 AND sync_cursor IS NOT ?1",
             cursor_text,
             aid,
         )

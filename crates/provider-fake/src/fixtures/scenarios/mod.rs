@@ -6,9 +6,9 @@
 //! per email, what the classifier should say. Two kinds exist:
 //!
 //! * The curated demo fixtures (`*_demo.rs`) keep generating exactly the
-//!   mail they always did, so the demo looks the same. [`curated`] states
+//!   mail they always did, so the demo looks the same. `curated` states
 //!   the intended outcome their prose describes, as data.
-//! * Near-miss twins ([`twins`]) are pairs of emails that differ in the one
+//! * Near-miss twins (`twins`) are pairs of emails that differ in the one
 //!   fact that should change the answer. They are not in the 50,000-email
 //!   demo: they would shift its message numbering and the counts its tests
 //!   and the web e2e suite read. [`scenario_seed`] returns the curated mail

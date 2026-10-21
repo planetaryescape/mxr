@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { assistantToast } from "./assistantToast";
 
 import { ReadoutRows } from "./ReadoutRows";
 import {
@@ -138,11 +138,11 @@ function UndoStep({ mutationId }: { mutationId: string }) {
           .then(() => {
             setState("undone");
             void invalidateMailQueries();
-            toast.success("Undone. Tell the assistant if it should know.");
+            assistantToast.success("Undone. Tell the assistant if it should know.");
           })
           .catch((error: unknown) => {
             setState("idle");
-            toast.error("Couldn't undo that", {
+            assistantToast.error("Couldn't undo that", {
               description:
                 error instanceof Error ? error.message : "Its undo window may have passed.",
             });

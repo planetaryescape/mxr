@@ -23,7 +23,7 @@ export const assistantActions: Action[] = [
     tuiNote: "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through",
     run: () => {
       useModals.getState().setCommandPaletteOpen(false);
-      useAssistantUi.getState().toggle();
+      useAssistantUi.getState().toggle("key");
     },
   },
   {
@@ -36,7 +36,7 @@ export const assistantActions: Action[] = [
       useModals.getState().setCommandPaletteOpen(false);
       const ui = useAssistantUi.getState();
       ui.newConversation();
-      ui.setOpen(true);
+      ui.setOpen(true, "key");
     },
   },
 ];

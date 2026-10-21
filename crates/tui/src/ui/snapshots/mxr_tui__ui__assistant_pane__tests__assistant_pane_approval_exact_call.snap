@@ -10,7 +10,7 @@ expression: render(&state)
 "│                                              │"
 "│ ──────────────────────────────────────────── │"
 "│ YOUR CALL                                    │"
-"│ Rule                                         │"
+"│ Make a rule for Acme receipts                │"
 "│ So they file themselves                      │"
 "│ EXACT CALL                                   │"
 "│ mxr_rule {                                   │"

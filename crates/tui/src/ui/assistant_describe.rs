@@ -1,7 +1,6 @@
-//! Words for what the assistant does: a title for each change it asks to
-//! make, the messages a preview names, and its markdown as plain text. The
-//! same reading as the web app's `features/assistant/describe.ts`, so an
-//! approval reads "Archive 3 messages" in both clients.
+//! Reading what the assistant sends: the messages a preview names, a
+//! readout as one line, and its markdown as plain text. A change's title
+//! and warning come from the daemon (docs/blueprint/29), not from here.
 //!
 //! Every string here may come from someone else's email (subjects, senders,
 //! a model's reply about them): it is displayed, never acted on.
@@ -19,81 +18,11 @@ pub fn tool_words(tool: &str) -> String {
     }
 }
 
-fn count(value: &Value, one: &str) -> String {
-    let n = value.as_array().map_or(0, Vec::len);
-    match n {
-        0 => format!("{one}s"),
-        1 => format!("1 {one}"),
-        n => format!("{n} {one}s"),
-    }
-}
-
 fn text(value: &Value, fallback: &str) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Null => fallback.to_string(),
         other => other.to_string(),
-    }
-}
-
-/// The title of an approval.
-pub fn describe_change(tool: &str, args: &Value) -> String {
-    match tool {
-        "mxr_mutate" => {
-            let things = count(&args["message_ids"], "message");
-            match args["action"].as_str().unwrap_or_default() {
-                "archive" => format!("Archive {things}"),
-                "read_and_archive" => format!("Mark {things} read and archive"),
-                "trash" => format!("Move {things} to Trash"),
-                "spam" => format!("Report {things} as spam"),
-                "mark_read" => format!("Mark {things} read"),
-                "mark_unread" => format!("Mark {things} unread"),
-                "star" => format!("Star {things}"),
-                "unstar" => format!("Unstar {things}"),
-                "" => format!("{} {things}", tool_words(tool)),
-                action => format!("{} {things}", tool_words(action)),
-            }
-        }
-        "mxr_send_draft" => "Send a draft".into(),
-        "mxr_archive_submit" => "Archive the reviewed messages".into(),
-        "mxr_move" => {
-            let mode = text(&args["mode"], "another mode");
-            if args.get("sender").is_some_and(|sender| !sender.is_null()) {
-                format!("Send this sender's mail to {mode}")
-            } else {
-                format!("Move an email to {mode}")
-            }
-        }
-        "mxr_todo_set_state" => format!(
-            "{} {}",
-            tool_words(&text(&args["action"], "change")),
-            count(&args["todo_ids"], "to-do")
-        ),
-        "mxr_delete_draft" => "Delete a draft".into(),
-        "mxr_update_draft" => "Replace a draft's content".into(),
-        "mxr_got_it" => "Send a short acknowledgement".into(),
-        "mxr_sorting_rule" => "Save a sorting rule".into(),
-        "mxr_category_rule" => {
-            if args["delete"].as_bool().unwrap_or(false) {
-                "Delete a category rule".into()
-            } else {
-                "Save a category rule".into()
-            }
-        }
-        "mxr_category_create" => format!("Create the category \"{}\"", text(&args["name"], "")),
-        "mxr_category_rename" => {
-            format!("Rename a category to \"{}\"", text(&args["name"], ""))
-        }
-        "mxr_category_delete" => "Delete a category".into(),
-        "mxr_category_assignment_apply" => "Change message categories".into(),
-        "mxr_reading_later" => {
-            if args["later"].as_bool() == Some(false) {
-                "Take items off Later".into()
-            } else {
-                "Put items on Later".into()
-            }
-        }
-        _ => tool_words(tool),
     }
 }
 
@@ -362,32 +291,6 @@ fn link_at(chars: &[char], start: usize) -> Option<(String, String, usize)> {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn describes_changes_in_words() {
-        assert_eq!(
-            describe_change(
-                "mxr_mutate",
-                &json!({"action": "archive", "message_ids": ["a", "b", "c"]})
-            ),
-            "Archive 3 messages"
-        );
-        assert_eq!(
-            describe_change(
-                "mxr_mutate",
-                &json!({"action": "trash", "message_ids": ["a"]})
-            ),
-            "Move 1 message to Trash"
-        );
-        assert_eq!(
-            describe_change("mxr_move", &json!({"mode": "Reading", "sender": "a@b"})),
-            "Send this sender's mail to Reading"
-        );
-        assert_eq!(
-            describe_change("mxr_list_messages", &json!({})),
-            "List messages"
-        );
-    }
 
     #[test]
     fn finds_the_messages_a_preview_names() {

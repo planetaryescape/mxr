@@ -5136,6 +5136,12 @@ export interface components {
                    */
                   title?: string | null;
                   tool: string;
+                  /**
+                   * @description The daemon's warning for a change that can't be put back, "Sends
+                   *     an email. Can't be undone.". Absent for a reversible change and
+                   *     from older daemons, whose clients then work it out themselves.
+                   */
+                  warning?: string | null;
               }
             | {
                   call_id: string;

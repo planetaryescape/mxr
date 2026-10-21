@@ -4,8 +4,8 @@
 //! followed or fetched.
 
 use super::assistant_describe::{
-    answered_with, describe_change, plain_text, plain_text_with_links, preview_draft,
-    preview_messages, readout_line, tool_words,
+    answered_with, plain_text, plain_text_with_links, preview_draft, preview_messages,
+    readout_line, tool_words,
 };
 use super::sanitize::{one_line, strip_control_chars, truncate};
 use crate::app::{AssistantFocus, AssistantPrompt, AssistantState};
@@ -61,14 +61,18 @@ pub fn draw(
     push_wrapped(&mut footer, "", &hint_text(state), width, muted, muted);
 
     let mut card = card_lines(state, width, theme);
+    let warnings = warning_lines(state, width, theme);
     // The card can take half the pane, or all the footer leaves while the
-    // exact call is unfolded; the footer always shows.
+    // exact call is unfolded; the footer always shows. The warning sits
+    // outside that room, so a long preview can't push it off while `y`
+    // still approves.
     let card_room = if state.exact_call_for.is_some() {
         usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
     } else {
         0
     }
-    .max(usize::from(inner.height / 2));
+    .max(usize::from(inner.height / 2))
+    .saturating_sub(warnings.len());
     if card.len() > card_room {
         card.truncate(card_room.saturating_sub(1));
         card.push(Line::from(Span::styled(
@@ -76,7 +80,8 @@ pub fn draw(
             Style::default().fg(theme.text_muted),
         )));
     }
-    let bottom = (footer.len() + card.len()).min(usize::from(inner.height.saturating_sub(2)));
+    let bottom = (footer.len() + card.len() + warnings.len())
+        .min(usize::from(inner.height.saturating_sub(2)));
     let chunks = Layout::vertical([
         Constraint::Min(1),
         Constraint::Length(u16::try_from(bottom).unwrap_or(u16::MAX)),
@@ -97,16 +102,35 @@ pub fn draw(
     };
     frame.render_widget(Paragraph::new(body), chunks[0]);
 
-    let mut bottom_lines = card;
-    bottom_lines.extend(footer);
-    let skip = bottom_lines
-        .len()
-        .saturating_sub(usize::from(chunks[1].height));
     frame.render_widget(
-        Paragraph::new(bottom_lines.into_iter().skip(skip).collect::<Vec<_>>()),
+        Paragraph::new(bottom_block(card, warnings, footer, chunks[1].height)),
         chunks[1],
     );
     max_scroll
+}
+
+/// The card, its warnings and the footer cut to `height` rows from the top.
+/// The warnings go last: while `y` can approve a change that can't be
+/// undone, its warning outlasts the card and the footer's input rows.
+fn bottom_block(
+    card: Vec<Line<'static>>,
+    warnings: Vec<Line<'static>>,
+    footer: Vec<Line<'static>>,
+    height: u16,
+) -> Vec<Line<'static>> {
+    let height = usize::from(height);
+    // The keys' last row always stays, so the pane still says what y does.
+    let keys = usize::from(!footer.is_empty() && height > 1);
+    let warnings: Vec<_> = warnings.into_iter().take(height - keys).collect();
+    let footer_room = height - warnings.len();
+    let footer_skip = footer.len().saturating_sub(footer_room);
+    let card_room = footer_room - (footer.len() - footer_skip);
+    let card_skip = card.len().saturating_sub(card_room);
+    card.into_iter()
+        .skip(card_skip)
+        .chain(warnings)
+        .chain(footer.into_iter().skip(footer_skip))
+        .collect()
 }
 
 fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
@@ -122,7 +146,7 @@ fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
     )];
     if state.auto_approve() {
         spans.push(Span::styled(
-            "· auto-approve on ",
+            "· trusted ",
             Style::default().fg(theme.warning).bold(),
         ));
     }
@@ -606,6 +630,30 @@ pub(crate) fn transcript_lines(
     lines
 }
 
+/// The daemon's warnings for the waiting changes that can't be undone, in
+/// the danger colour. Drawn after the card, right above the keys.
+fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if state.list.is_some() {
+        return lines;
+    }
+    let danger = Style::default().fg(theme.error).bold();
+    // Several waiting changes with the same warning say it once.
+    let mut said = std::collections::HashSet::new();
+    for pending in state.pending() {
+        if let AssistantPendingData::Approval {
+            warning: Some(warning),
+            ..
+        } = pending
+        {
+            if !warning.is_empty() && said.insert(warning.as_str()) {
+                push_wrapped(&mut lines, "", &one_line(warning), width, danger, danger);
+            }
+        }
+    }
+    lines
+}
+
 /// What waits for the user: a change to approve, or questions to answer.
 fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -630,15 +678,17 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 title,
                 preview,
                 preview_error,
+                ..
             } => {
                 lines.push(Line::from(Span::styled("YOUR CALL", label)));
                 push_wrapped(
                     &mut lines,
                     "",
                     &one_line(
-                        &title
-                            .clone()
-                            .unwrap_or_else(|| describe_change(tool, arguments)),
+                        title
+                            .as_deref()
+                            .filter(|title| !title.is_empty())
+                            .unwrap_or("Change waiting for you"),
                     ),
                     width,
                     strong,
@@ -1157,7 +1207,8 @@ mod tests {
                 ),
             ],
             vec![AssistantPendingData::Approval {
-                title: None,
+                title: Some("Archive 3 emails".into()),
+                warning: None,
                 call_id: "call3".into(),
                 tool: "mxr_mutate".into(),
                 arguments: json!({"action": "archive", "message_ids": ["a", "b", "c"]}),
@@ -1176,6 +1227,122 @@ mod tests {
     }
 
     #[test]
+    fn assistant_pane_approval_irreversible() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Send the reply to Ann")],
+            vec![AssistantPendingData::Approval {
+                title: Some("Send a reply to Ann".into()),
+                warning: Some("Sends an email. Can't be undone.".into()),
+                call_id: "call4".into(),
+                tool: "mxr_send_draft".into(),
+                arguments: json!({"draft_id": "d1", "confirm": true}),
+                reason: "You asked me to reply".into(),
+                preview: Some(json!({"draft": {
+                    "to": [{"email": "ann@example.test"}],
+                    "subject": "Re: Lunch",
+                    "body": "Thursday works."
+                }})),
+                preview_error: None,
+            }],
+        ));
+        let screen = render(&state);
+        assert!(
+            screen.contains("Sends an email. Can't be undone."),
+            "{screen}"
+        );
+        insta::assert_snapshot!("assistant_pane_approval_irreversible", screen);
+    }
+
+    #[test]
+    fn a_long_preview_never_pushes_the_warning_off_a_short_pane() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Send the reply to Ann")],
+            vec![AssistantPendingData::Approval {
+                title: Some("Send a reply to Ann".into()),
+                warning: Some("Sends an email. Can't be undone.".into()),
+                call_id: "call6".into(),
+                tool: "mxr_send_draft".into(),
+                arguments: json!({"draft_id": "d1", "confirm": true}),
+                reason: "You asked me to reply".into(),
+                preview: Some(json!({"draft": {
+                    "to": [{"email": "ann@example.test"}],
+                    "subject": "Re: Lunch",
+                    "body": "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\nSeven.\nEight."
+                }})),
+                preview_error: None,
+            }],
+        ));
+        let screen = render(&state);
+        assert!(screen.contains('…'), "the card was cut: {screen}");
+        assert!(
+            screen.contains("Sends an email. Can't be undone."),
+            "{screen}"
+        );
+    }
+
+    #[test]
+    fn the_warning_outlasts_a_footer_that_fills_the_bottom() {
+        let line = |text: &str| Line::from(text.to_string());
+        let kept = bottom_block(
+            vec![line("YOUR CALL"), line("Send a reply")],
+            vec![line("Sends an email. Can't be undone.")],
+            (0..12).map(|n| line(&format!("footer {n}"))).collect(),
+            8,
+        );
+        let text: Vec<String> = kept.iter().map(ToString::to_string).collect();
+        assert_eq!(text.len(), 8, "{text:?}");
+        assert_eq!(text[0], "Sends an email. Can't be undone.");
+        assert_eq!(text[7], "footer 11", "the keys stay last: {text:?}");
+        let tight = bottom_block(
+            vec![],
+            vec![line("w1"), line("w2")],
+            vec![line("input"), line("keys")],
+            2,
+        );
+        let tight: Vec<String> = tight.iter().map(ToString::to_string).collect();
+        assert_eq!(tight, ["w1", "keys"]);
+        let roomy = bottom_block(vec![line("a")], vec![line("w")], vec![line("f")], 5);
+        let roomy: Vec<String> = roomy.iter().map(ToString::to_string).collect();
+        assert_eq!(roomy, ["a", "w", "f"]);
+    }
+
+    #[test]
+    fn a_warning_is_drawn_in_the_danger_colour_above_the_keys() {
+        let theme = Theme::default();
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "bin them")],
+            vec![AssistantPendingData::Approval {
+                title: Some("Move 2 emails to Trash".into()),
+                warning: Some("Can't be undone.".into()),
+                call_id: "call5".into(),
+                tool: "mxr_mutate".into(),
+                arguments: json!({"action": "trash", "message_ids": ["a", "b"]}),
+                reason: "Junk".into(),
+                preview: None,
+                preview_error: None,
+            }],
+        ));
+        let lines = warning_lines(&state, 40, &theme);
+        let warning = lines
+            .iter()
+            .find(|line| line.to_string().contains("Can't be undone."))
+            .expect("the warning is on the card");
+        assert_eq!(warning.spans[0].style.fg, Some(theme.error));
+    }
+
+    #[test]
     fn assistant_pane_approval_exact_call() {
         let mut state = open_state();
         state.focus = AssistantFocus::Pane;
@@ -1184,7 +1351,8 @@ mod tests {
             AssistantStatusData::AwaitingUser,
             vec![user(1, "Make a rule for Acme receipts")],
             vec![AssistantPendingData::Approval {
-                title: None,
+                title: Some("Make a rule for Acme receipts".into()),
+                warning: None,
                 call_id: "call2".into(),
                 tool: "mxr_rule".into(),
                 arguments: json!({"name": "Acme receipts", "query": "from:acme.test"}),
@@ -1453,6 +1621,7 @@ mod tests {
             vec![user(1, "archive them")],
             vec![AssistantPendingData::Approval {
                 title: Some("Archive 14 emails".into()),
+                warning: None,
                 call_id: "call3".into(),
                 tool: "mxr_mutate".into(),
                 arguments: json!({"action": "archive", "message_ids": ["a"]}),
@@ -1527,6 +1696,7 @@ mod tests {
             ],
             vec![AssistantPendingData::Approval {
                 title: Some(hostile.into()),
+                warning: Some(hostile.into()),
                 call_id: "c".into(),
                 tool: "mxr_mutate".into(),
                 arguments: json!({}),

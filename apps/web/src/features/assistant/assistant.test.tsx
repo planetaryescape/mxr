@@ -1,6 +1,16 @@
 /* @vitest-environment jsdom */
 
-import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render as renderPlain,
+  renderHook,
+  screen,
+  within,
+  type RenderOptions,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type {
@@ -9,7 +19,7 @@ import type {
   AssistantItem,
   AssistantPending,
 } from "./api";
-import { describeChange, previewMessages } from "./describe";
+import { previewMessages } from "./describe";
 import { renderMarkdown } from "./markdown";
 import { PendingCards } from "./PendingCards";
 import { orderedOptions } from "./Question";
@@ -28,6 +38,41 @@ const invalidate = vi.fn<() => Promise<void>>();
 vi.mock("@/features/mail-actions/mailQueryInvalidation", () => ({
   invalidateMailQueries: () => invalidate(),
 }));
+
+// Email chips look up where their thread lives; each test gets its own cache.
+const apiFetch = vi.hoisted(() => vi.fn<(path: string, init?: unknown) => Promise<unknown>>());
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  apiFetch,
+}));
+/** What the membership lookups asked for, one entry per request. */
+const lookups = () =>
+  apiFetch.mock.calls.map(
+    ([, init]) => (init as { body: { thread_ids: string[] } }).body.thread_ids,
+  );
+const answerLookups = (threads: unknown[]) =>
+  apiFetch.mockResolvedValue({ kind: "ModeMembership", threads });
+
+function holdLookup() {
+  const held = {} as { promise: Promise<unknown>; resolve: (answer: unknown) => void };
+  held.promise = new Promise((resolve) => (held.resolve = resolve));
+  return held;
+}
+
+function render(ui: ReactElement, options?: RenderOptions) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderPlain(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+    ...options,
+  });
+}
+
+beforeEach(() => {
+  apiFetch.mockReset();
+  answerLookups([]);
+});
 
 const approval: AssistantPending = {
   kind: "approval",
@@ -90,9 +135,29 @@ describe("proof", () => {
     expect(rows.getByText("Out for delivery")).toBeVisible();
   });
 
-  test("an old daemon sends no title: the change is worded locally", () => {
+  test("a change with no title says so plainly, never a tool name", () => {
     cards([{ ...approval, title: undefined } as AssistantPending]);
-    expect(screen.getByRole("heading", { name: "Archive 2 messages" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Change waiting for you" })).toBeVisible();
+  });
+
+  test("shows the daemon's warning, and works one out only when it sends none", () => {
+    const { unmount } = render(
+      <PendingCards
+        pending={[{ ...approval, tool: "mxr_mutate", warning: "From the daemon." }]}
+        busy={false}
+        onDecide={vi.fn<(decision: AssistantDecision) => void>()}
+      />,
+    );
+    expect(screen.getByText("From the daemon.")).toBeVisible();
+    unmount();
+    // An older daemon: no field, so the client's own rule for a trash.
+    cards([{ ...approval, arguments: { action: "trash", message_ids: ["m1"] } }]);
+    expect(screen.getByText("Can't be undone.")).toBeVisible();
+  });
+
+  test("a reversible change shows no warning", () => {
+    cards([approval]);
+    expect(screen.queryByText(/undone/)).toBeNull();
   });
 
   test("has one primary button, Apply, and it approves", () => {
@@ -580,6 +645,16 @@ describe("links to mail", () => {
     expect(writing).toContain("Q1 report");
   });
 
+  test("an app-link marker the model wrote itself is dropped, so an outside link never looks like an email", () => {
+    const html = renderMarkdown(
+      'See <a href="https://evil.test" data-app-link="thread" data-app-link-id="t-1">Q1 report</a>.',
+      { appLinks: true },
+    );
+    expect(html).toContain('href="https://evil.test"');
+    expect(html).toContain('target="_blank"');
+    expect(html).not.toContain("data-app-link");
+  });
+
   test("people and emails are chips, not underlined links, and clicking navigates in the app", () => {
     navigate.mockClear();
     render(
@@ -603,14 +678,89 @@ describe("links to mail", () => {
     fireEvent.click(email);
     expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
   });
+
+  const chipFor = (text: string, modes: unknown[] | null) => {
+    answerLookups(
+      modes === null
+        ? []
+        : [{ thread_id: "t-1234567", in_inbox: false, modes, account_id: "a", subject: "x" }],
+    );
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            seq: 1,
+            text: `See [Q1 report](mxr:thread/t-1234567). ${text}`,
+            created_at: 0,
+          },
+        ]}
+        running={false}
+      />,
+    );
+    return screen.getByRole("link", { name: "Q1 report" });
+  };
+
+  test("an email chip wears the glyph of the mode that holds it", async () => {
+    const chip = chipFor("", [{ mode: "reading", name: "Reading" }]);
+    expect(chip.querySelector(".lucide-mail")).not.toBeNull();
+    await vi.waitFor(() => expect(chip.querySelector(".lucide-newspaper")).not.toBeNull());
+    expect(chip.querySelector(".lucide-mail")).toBeNull();
+  });
+
+  test("a chip for an email no mode knows keeps the mail icon", async () => {
+    const chip = chipFor("", null);
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(chip.querySelector(".lucide-mail")).not.toBeNull();
+  });
+
+  test("every chip in a reply is looked up in one request", async () => {
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            seq: 1,
+            text: "[A](mxr:thread/t-a) and [B](mxr:thread/t-b) and [A again](mxr:thread/t-a)",
+            created_at: 0,
+          },
+        ]}
+        running={false}
+      />,
+    );
+    await vi.waitFor(() => expect(lookups()).toEqual([["t-a", "t-b"]]));
+  });
+
+  test("a re-render while the lookup is out keeps the chip and settles on the glyph", async () => {
+    const held = holdLookup();
+    const answer = (threads: unknown[]) => held.resolve({ kind: "ModeMembership", threads });
+    apiFetch.mockReturnValue(held.promise);
+    const items = [
+      {
+        kind: "assistant" as const,
+        seq: 1,
+        text: "See [Q1 report](mxr:thread/t-1234567).",
+        created_at: 0,
+      },
+    ];
+    const { rerender } = render(<Transcript items={items} running={false} />);
+    rerender(<Transcript items={[...items]} running={false} />);
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    expect(chip.querySelector(".lucide-mail")).not.toBeNull();
+    await act(async () => {
+      answer([{ thread_id: "t-1234567", in_inbox: false, modes: [{ mode: "todo" }] }]);
+    });
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: "Q1 report" }).querySelector(".lucide-list-checks"),
+      ).not.toBeNull(),
+    );
+    expect(lookups()).toHaveLength(1);
+  });
 });
 
 describe("change titles and previews", () => {
-  test("fallback wording for an old daemon, and a preview's messages", () => {
-    expect(describeChange("mxr_mutate", { action: "trash", message_ids: ["a"] })).toBe(
-      "Move 1 message to Trash",
-    );
-    expect(describeChange("mxr_unknown_thing", {})).toBe("Unknown thing");
+  test("a preview's messages", () => {
     expect(previewMessages(approval.kind === "approval" ? approval.preview : null)).toHaveLength(2);
     expect(previewMessages({ nothing: true })).toEqual([]);
   });

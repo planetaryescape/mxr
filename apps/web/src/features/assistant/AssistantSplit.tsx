@@ -8,7 +8,9 @@
 
 import { lazy, Suspense, useState, type ReactNode } from "react";
 
-import { useAssistantUi } from "./assistantStore";
+import { cn } from "@/lib/utils";
+
+import { useAssistantUi, type OpenVia } from "./assistantStore";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane, type SidePaneSize } from "@/hooks/useSplitPane";
@@ -23,9 +25,40 @@ const PANE_SIZE: SidePaneSize = {
   maxSize: "720px",
 };
 
+/** Slides in for a pointer only; a key opens it at once (D134). Reports when the slide is over. */
+function Arrival({
+  via,
+  onSettled,
+  className,
+  children,
+}: {
+  via: OpenVia | null;
+  onSettled: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1",
+        via === "pointer" && "assistant-arrive",
+        className,
+      )}
+      // Children animate too (the live dot); only this wrapper's own slide ends it.
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) onSettled();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function AssistantSplit({ children }: { children: ReactNode }) {
   const open = useAssistantUi((s) => s.open);
   const setOpen = useAssistantUi((s) => s.setOpen);
+  const via = useAssistantUi((s) => s.via);
+  const settle = useAssistantUi((s) => s.settle);
   // Where list and reader stop sharing the screen, the assistant overlays it.
   const drawer = useMediaQuery(SINGLE_PANE_QUERY);
   const beside = open && !drawer;
@@ -56,15 +89,20 @@ export function AssistantSplit({ children }: { children: ReactNode }) {
           className="flex min-h-0 min-w-0 border-l border-border"
         >
           {loaded && beside ? (
-            <Suspense fallback={null}>
-              <AssistantSidebar />
-            </Suspense>
+            <Arrival via={via} onSettled={settle}>
+              <Suspense fallback={null}>
+                <AssistantSidebar />
+              </Suspense>
+            </Arrival>
           ) : null}
         </ResizablePanel>
       </ResizablePanelGroup>
       {open && drawer ? (
         <aside
-          className="assistant-drawer"
+          className={cn("assistant-drawer", via === "pointer" && "assistant-arrive")}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) settle();
+          }}
           aria-label="Assistant"
           onKeyDown={(event) => {
             if (event.key === "Escape" && !(event.target instanceof HTMLTextAreaElement)) {

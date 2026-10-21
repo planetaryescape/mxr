@@ -9,7 +9,7 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, CircleDot, History as HistoryIcon, SquarePen, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { assistantToast } from "./assistantToast";
 
 import { ASSISTANT_SHORTCUT } from "./actions";
 import type { AssistantConversation } from "./api";
@@ -69,7 +69,7 @@ export function AssistantSidebar() {
     setHistory(false);
     send.mutate(
       { conversationId, message, context: viewContext() },
-      { onError: (error) => toast.error(errorText(error)) },
+      { onError: (error) => assistantToast.error(errorText(error)) },
     );
   };
 
@@ -86,7 +86,7 @@ export function AssistantSidebar() {
             data &&
             trust.mutate(
               { id: data.id, enabled },
-              { onError: (error) => toast.error(errorText(error)) },
+              { onError: (error) => assistantToast.error(errorText(error)) },
             )
           }
         />
@@ -152,7 +152,7 @@ export function AssistantSidebar() {
               onDecide={(decision) =>
                 answer.mutate(
                   { id: data.id, decisions: [decision] },
-                  { onError: (error) => toast.error(errorText(error)) },
+                  { onError: (error) => assistantToast.error(errorText(error)) },
                 )
               }
             />

@@ -11,7 +11,7 @@ In the web app the panel reads like a page from a copy desk. Your messages are q
 
 ## Open it
 
-In the web app, press `⌘.` (`Ctrl+.` on Linux and Windows) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. On narrow windows it slides over the page instead. It is closed until you open it, and it remembers whether you left it open.
+In the web app, press `⌘.` (`Ctrl+.` on Linux and Windows) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. Below 1024px wide it opens as a drawer over the page instead. Clicking the button slides the panel in over a fraction of a second; the keyboard shortcut opens it at once, and with reduced motion it only fades. It is closed until you open it, and it remembers whether you left it open.
 
 In the TUI, press `Ctrl-a`; see [In the terminal](#in-the-terminal).
 
@@ -38,7 +38,7 @@ While the pane has the keys, everything you type goes to it, not to the screen b
 | `1`-`9` | With no question waiting, open a numbered link in the latest reply with links: an email opens in the reader, a person in Messages |
 | `Ctrl-c` | Stop a running turn |
 | `N` / `L` | New conversation / past conversations; in the list, `Enter` opens one and `D` deletes it after saying what goes |
-| `T` | Let reversible changes run without asking in this conversation, or stop; the title says "auto-approve on" |
+| `T` | Let reversible changes run without asking in this conversation, or stop; the title says "trusted" |
 | `D` | Delete the conversation, after saying what goes |
 | `e` | Open or fold the steps |
 | `j` / `k` | Scroll the conversation |
@@ -51,7 +51,7 @@ When the assistant wants to change something, the turn pauses and a proof appear
 
 - **The change in words**, such as "Archive 14 emails", and the reason the assistant gave.
 - **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more"), or the draft it would send with its recipients, subject and body.
-- **Can't be undone**, in red above the button, for sending, trash, spam, deleting and rules.
+- **Can't be undone**, in red above the button (in the TUI, in red above the keys), for sending, trash, spam, deleting and rules. mxr itself words it, so the web app, the terminal and `mxr assistant show` say the same thing.
 - **Exact call**, under `x`: the tool and arguments that run if you approve.
 
 **Apply** (`y` in the web app) runs exactly that call, once, and the proof folds into a line such as "Archived 14 emails" with **Undo** where mxr can undo it; the rows it changed in the page beside the assistant wear a thin cyan underline that fades. **Send back with a note** (`n`) runs nothing and tells the assistant why, or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
@@ -78,7 +78,7 @@ Replies appear as the model writes them, set in the reading type, and end with t
 
 Once a turn ends the steps fold into one line such as "3 steps · 14 found · 1 change waiting" (with "· 1 failed" in red), and the line always opens. Open a step to see what it found: the first few emails or people as rows, each of which opens in the app, and how many more there were. **Details** under that shows the exact call and what mxr returned. A reply after steps that failed is followed by a red-ruled note, "These didn't happen, whatever the reply says:", with each failed step's line, so a reply that claims more than happened doesn't stand alone. A step a later retry redid isn't named. A change mxr refused to make, such as one sent without its confirmation, counts as failed. A turn that fails outright shows one plain sentence about what to do next, with the raw error under **Details**. **Stop** ends a running turn; calls it hadn't made yet are not made. Its changes appear in [Activity](/guides/activity-log/) with the source `assistant`. Changes that mxr can undo by id (archiving, read state and stars made in one step) show an **Undo** on their line for about a minute (in the terminal, `mxr assistant` prints the `mxr undo` command); undoing doesn't tell the assistant, so mention it if it matters for what comes next.
 
-Replies link the emails and people they name as chips: a person with their avatar, an email with its subject. An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
+Replies link the emails and people they name as chips: a person with their avatar, an email with its subject and the glyph of the mode that holds it (Reading's newspaper, To do's checklist, and so on). An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
 
 Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `d` deletes it, under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 

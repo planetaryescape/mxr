@@ -245,6 +245,11 @@ pub enum AssistantPendingData {
         /// daemons.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
+        /// The daemon's warning for a change that can't be put back, "Sends
+        /// an email. Can't be undone.". Absent for a reversible change and
+        /// from older daemons, whose clients then work it out themselves.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        warning: Option<String>,
         /// What the change will do, from the tool's own preview.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         preview: Option<serde_json::Value>,

@@ -2,7 +2,7 @@
 source: crates/tui/src/ui/assistant_pane.rs
 expression: render(&state)
 ---
-"╭ Tidy newsletters · auto-approve on ──────────╮"
+"╭ Tidy newsletters · trusted ──────────────────╮"
 "│ │ Archive the Acme receipts                  │"
 "│                                              │"
 "│ ▸ 2 steps, waiting for you                   │"
@@ -14,7 +14,7 @@ expression: render(&state)
 "│                                              │"
 "│ ──────────────────────────────────────────── │"
 "│ YOUR CALL                                    │"
-"│ Archive 3 messages                           │"
+"│ Archive 3 emails                             │"
 "│ They are receipts you already filed          │"
 "│ touches 3 messages:                          │"
 "│ • Your receipt #1  Acme                      │"

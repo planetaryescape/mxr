@@ -91,6 +91,14 @@ describe("check-motion: keyboard-driven rows stay instant (D101)", () => {
     ).toEqual([]);
   });
 
+  test("the assistant's slide needs the pointer guard too (OpenVia)", () => {
+    const open = (body) => `import type { OpenVia } from "./assistantStore";\n${body}`;
+    expect(checkKeyboardInstant(open('<div className="assistant-arrive" />'))).toHaveLength(1);
+    expect(
+      checkKeyboardInstant(open('<div className={cn(via === "pointer" && "assistant-arrive")} />')),
+    ).toEqual([]);
+  });
+
   test("a component with no via prop is not this rule's business", () => {
     expect(checkKeyboardInstant('<div className="transition-opacity" />')).toEqual([]);
   });

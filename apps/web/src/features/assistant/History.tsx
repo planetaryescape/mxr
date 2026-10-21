@@ -6,7 +6,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
+import { assistantToast } from "./assistantToast";
 
 import { assistantKeys, deleteConversation, type AssistantSummary } from "./api";
 import { onBareKey } from "./cardKeys";
@@ -42,7 +42,7 @@ export function History({
       void queryClient.invalidateQueries({ queryKey: assistantKeys.list });
       queryClient.removeQueries({ queryKey: assistantKeys.conversation(id) });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
+      assistantToast.error(error instanceof Error ? error.message : String(error));
     }
   };
   const open = (id: string) => {

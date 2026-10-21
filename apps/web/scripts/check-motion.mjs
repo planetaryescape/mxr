@@ -14,7 +14,7 @@
  * - CSS (outside tokens.css): no literal time in a transition or animation
  *   declaration, and transitions only name transform or opacity.
  * - Keyboard instant (D101, docs/blueprint/27 "Motion"): a component that
- *   receives a `via: "pointer" | "key"` prop (LampVia, LeaveVia) may start a
+ *   receives a `via: "pointer" | "key"` prop (LampVia, LeaveVia, OpenVia) may start a
  *   transition or animation only for a pointer, or for a row `leaving` (whose
  *   fold the caller already decided with `foldsFor`). Repeated keys never
  *   animate.
@@ -117,7 +117,7 @@ export function checkScript(text) {
 
 /** A class that starts motion: a transition or an animation (tw-animate's `animate-in`, a fold). */
 const STARTS_MOTION = token(
-  "[\\w:-]*?(?:transition(?:-[\\w[\\],-]+)?|animate-[\\w-]+|row-fold|todo-fold)",
+  "[\\w:-]*?(?:transition(?:-[\\w[\\],-]+)?|animate-[\\w-]+|row-fold|todo-fold|assistant-arrive)",
 );
 /** What makes it fine: the pointer did it, or the row is already leaving. */
 const POINTER_ONLY = /via\s*(?:===\s*["']pointer["']|!==\s*["']key["'])|\bleaving\b/;
@@ -128,7 +128,7 @@ const POINTER_ONLY = /via\s*(?:===\s*["']pointer["']|!==\s*["']key["'])|\bleavin
  */
 export function checkKeyboardInstant(text) {
   const code = stripComments(text, true);
-  if (!/\b(?:LampVia|LeaveVia)\b/.test(code)) return [];
+  if (!/\b(?:LampVia|LeaveVia|OpenVia)\b/.test(code)) return [];
   const lines = code.split("\n");
   const findings = [];
   lines.forEach((line, index) => {

@@ -396,6 +396,7 @@ fn print_pending(conversation: &AssistantConversationData) {
                 arguments,
                 reason,
                 title,
+                warning,
                 preview,
                 preview_error,
             } => {
@@ -404,6 +405,9 @@ fn print_pending(conversation: &AssistantConversationData) {
                     None => println!("\nWaiting for your approval: {reason}"),
                 }
                 println!("  {tool} {arguments}");
+                if let Some(warning) = warning {
+                    println!("  {warning}");
+                }
                 if let Some(preview) = preview {
                     let messages = preview_messages(preview);
                     if messages.is_empty() {

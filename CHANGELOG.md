@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.122](https://github.com/planetaryescape/mxr/compare/v0.6.121...v0.6.122) (2026-10-21)
+
+
+### Features
+
+* grade the classifier against labelled scenarios with mxr classify eval ([#561](https://github.com/planetaryescape/mxr/issues/561)) ([6e22fa8](https://github.com/planetaryescape/mxr/commit/6e22fa84a171356ba7c4050f6ef0da6123e92ebe))
+
 ## [0.6.121](https://github.com/planetaryescape/mxr/compare/v0.6.120...v0.6.121) (2026-10-21)
 
 

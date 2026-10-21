@@ -782,50 +782,35 @@ first; today every feature parses free text.
 | dead `KindRuleData::WrittenTo`, `todo::complete::looks_done` | removed |
 | — | labels, the scenario corpus, `classify eval`, `now eval`, `classify audit`, `classify report`, rule suggestions, the effects table, attention feedback |
 
-## Build order: fix the date bug, then measure, then rebuild on the measurement
+## Build order: measure first, then ship one usable rung at a time
 
-The two promise extractors that accept model-written dates are a bug
-against settled decisions, so they're fixed first and independently of
-everything else: they adopt the verbatim quote check and `natural_time`.
+Every rung is a release a person can install and use, with its own docs,
+CLI JSON and tests; components such as facts, the resolver or the effects
+queue are built inside the first rung that needs them, never as a stage on
+their own. The ladder, with status as of 21 October 2026:
 
-1. **The scenario corpus and both evals, against today's code.** Rebuild
-   the demo generator from labelled scenarios and twins, convert the
-   curated fixtures, write the attention timelines, and run both evals
-   over today's classifier and Now as the baseline. Nothing else changes.
-   Every later step is checked against this.
-2. **Facts.** One parser per kind of candidate and one sender context.
-   The eval diff must be zero, or every change explained.
-3. **Judgments, the resolver and the stored assessment.** Every
-   projection reads it; every email gets a home; "Why here" comes from
-   the deciding claim.
-4. **Attention evidence on items.** Severity, when the cost lands, effort
-   and value on every item type, from the shared facts.
-5. **Teaching events, labels, uncertainty and reports.** One teaching
-   service for every correction (thread scope included), labels from every
-   event, the four uncertainty kinds, the cap on questions shown, fallback
-   tracking and `classify report`.
-5a. **Gmail is a surface: your sorting shows there, and changing it teaches
-   mxr.** The provider-effects queue (archive on last done moves onto it),
-   the label capability on the Gmail provider, the mirror with revision
-   markers, two-way from the first release through teaching events,
-   consent, the 90-day scope, and server health in the trust surfaces.
-5b. **Synced personal categories**, per category.
-5c. **Outlook categories**, then **5d. IMAP keywords**, each through the
-   same provider capability.
-6. **Teaching rules.** Fact conditions, action rules after the assessment
-   with their provider actions on the effects queue, one planner for every
-   preview, domain scope on `K`, the teaching list, and rule suggestions.
-7. **Now as an attention scheduler.** Can't wait, next best, neglect,
-   the optional time budget and the end state, replacing the fixed
-   sections, plus attention feedback and miss detection. `now eval` gates
-   it.
-8. **The effects table**, applied across features.
-9. **Audit and the redesign skill.**
-10. **The model judge** on the fast tier, measured by the eval before it
-    decides anything.
+| Rung | After it ships, you can… | Builds | Status |
+|---|---|---|---|
+| R0 | trust that a promise's deadline came from the email's own words | the shared due-words check | shipped, v0.6.120 |
+| R0b | re-check dates the old extractors saved, with a preview and undo | `mxr commitments recheck-dates` | in progress |
+| R1 | see how well mxr sorts, per question, with every mismatch | scenario corpus (quick set), `mxr classify eval` | shipped, v0.6.122 |
+| R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | next |
+| R2 | see one home for every email everywhere, with the deciding reason | facts, judges for who and what-for, the resolver, the stored assessment, every projection reading it, fallback, `classify report` | planned |
+| R2b | stop organisations with person-like addresses landing in Messages | the redesign loop on the who judge | planned |
+| R3 | correct once and have it counted | teaching events and service (thread scope), labels, the four uncertainty kinds, `classify eval --set mine`, the effects table in code | planned |
+| R3a | see your sorting in Gmail and teach mxr by changing it there | provider-effects queue, the label capability, the mirror, consent | planned |
+| R3b–d | sync chosen categories; get the same on Outlook, then IMAP | the same capability per provider | planned |
+| R4 | write rules in the classifier's own terms, by domain, from corrections | fact conditions, domain scope on `K`, the teaching list, rule suggestions | planned |
+| R5 | have rules act after sorting and use it | action rules after the assessment, on the effects queue; one planner | planned |
+| R6 | open Now and get the next best thing across modes | attention evidence on items, Can't wait, Next best, neglect, `now eval` | planned |
+| R7 | give Now a time budget and tell it what isn't worth your time | sessions, earned Reading offers, attention feedback, miss detection | planned |
+| R8 | ask mxr to red-team its own sorting | `classify audit`, the redesign skill | only when R3's labels show confident misses worth hunting |
+| R9 | have a model answer what rules can't | fast-tier judge, model-versus-rule disagreement | only when fallback and unknown rates justify it |
 
-Each step ships on its own with docs, CLI JSON and tests, per the repo's
-rules.
+R1b comes before R2 because R2 rewrites placement and 147 labelled emails
+is too thin a regression gate for that. After R2, R2b, R3 and R6 can run in
+parallel: they touch the judges, teaching and Now respectively, and share
+only the assessment R2 fixes.
 
 ### Baseline: today's classifier on the quick set
 

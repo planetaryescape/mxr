@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.119](https://github.com/planetaryescape/mxr/compare/v0.6.118...v0.6.119) (2026-10-21)
+
+
+### Features
+
+* select by pattern, count visual rows, preview bulk confirms ([#554](https://github.com/planetaryescape/mxr/issues/554)) ([70d6852](https://github.com/planetaryescape/mxr/commit/70d685227cb43971812d39b9df466d2a92628183))
+
+
+### Bug Fixes
+
+* report the real cause when a Gmail background token refresh fails ([#550](https://github.com/planetaryescape/mxr/issues/550)) ([c913fb0](https://github.com/planetaryescape/mxr/commit/c913fb0409c825528c14dec48a9f0a917ba6b5f0))
+
+
+### Documentation
+
+* add the 2026-10-20 blueprint implementation audit ([6bbb5df](https://github.com/planetaryescape/mxr/commit/6bbb5dfda24817af0dafb8f5e24e48aed7c765f7))
+* design one classifier and attention system for the modes ([ec94e1f](https://github.com/planetaryescape/mxr/commit/ec94e1f193eab520052c6f182b879a104be3ffba))
+
 ## [0.6.118](https://github.com/planetaryescape/mxr/compare/v0.6.117...v0.6.118) (2026-10-21)
 
 

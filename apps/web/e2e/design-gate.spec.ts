@@ -500,6 +500,16 @@ for (const theme of THEMES) {
               () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
             );
             expect(overflow, `${name} at ${width}px`).toBeLessThanOrEqual(0);
+            // The top bar clips instead of scrolling, so check its last
+            // button is whole: Compose was cut at its right edge at 390px.
+            const compose = await page
+              .getByRole("button", { name: "Compose new email" })
+              .boundingBox();
+            expect(compose, `Compose on ${name}`).not.toBeNull();
+            expect(
+              (compose?.x ?? 0) + (compose?.width ?? 0),
+              `Compose's right edge on ${name} at ${width}px`,
+            ).toBeLessThanOrEqual(width);
             if (name === "settings") {
               await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(
                 width >= 768 ? 1 : 0,

@@ -1148,6 +1148,24 @@ pub struct PendingBulkConfirm {
     pub effect: MutationEffect,
     pub optimistic_effect: Option<MutationEffect>,
     pub status_message: String,
+    pub preview: BulkPreview,
+    /// First preview row on screen; j/k moves it, the modal clamps it.
+    pub preview_scroll: usize,
+}
+
+/// The messages a bulk confirm will act on, in list order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BulkPreview {
+    pub rows: Vec<BulkPreviewRow>,
+    /// Ids in the request that the current list does not show.
+    pub not_in_view: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BulkPreviewRow {
+    pub message_id: MessageId,
+    pub sender: String,
+    pub subject: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

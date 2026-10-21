@@ -686,6 +686,9 @@ pub struct MailboxState {
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
+    /// Digits typed in visual mode, waiting for a j/k. Digits mean tab
+    /// numbers everywhere else.
+    pub visual_count: Option<usize>,
     /// Set by the export picker on confirm; the runner takes it and performs
     /// the daemon request and the write or copy.
     pub pending_export: Option<super::export_modal::PendingExport>,
@@ -792,6 +795,7 @@ impl MailboxState {
             selected_set: HashSet::new(),
             visual_mode: false,
             visual_anchor: None,
+            visual_count: None,
             pending_export: None,
             sidebar_accounts_expanded: true,
             sidebar_sync_throbber: ThrobberState::default(),

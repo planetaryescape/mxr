@@ -1044,6 +1044,18 @@ impl App {
                     self.status_message = Some("Bulk action cancelled".into());
                     None
                 }
+                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                    if let Some(pending) = self.modals.pending_bulk_confirm.as_mut() {
+                        pending.preview_scroll = pending.preview_scroll.saturating_add(1);
+                    }
+                    None
+                }
+                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                    if let Some(pending) = self.modals.pending_bulk_confirm.as_mut() {
+                        pending.preview_scroll = pending.preview_scroll.saturating_sub(1);
+                    }
+                    None
+                }
                 _ => None,
             };
         }
@@ -1453,6 +1465,11 @@ impl App {
                 }
                 return None;
             }
+        }
+
+        // Digits count rows in visual line mode, before they can mean tabs.
+        if let Some(action) = self.visual_count_key(key) {
+            return action;
         }
 
         // Remaps are authoritative only in mail panes, after all modal/text

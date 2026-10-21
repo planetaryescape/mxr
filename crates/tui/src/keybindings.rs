@@ -1,4 +1,4 @@
-use crate::action::Action;
+use crate::action::{Action, PatternKind};
 use mxr_protocol::CalendarInviteActionData;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
@@ -327,6 +327,12 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "move_to_label" => Some(Action::MoveToLabel),
         "route_to_label" => Some(Action::RouteToLabel),
         "toggle_select" => Some(Action::ToggleSelect),
+        "pattern_select_all" => Some(Action::PatternSelect(PatternKind::All)),
+        "pattern_select_none" => Some(Action::PatternSelect(PatternKind::None)),
+        "pattern_select_read" => Some(Action::PatternSelect(PatternKind::Read)),
+        "pattern_select_unread" => Some(Action::PatternSelect(PatternKind::Unread)),
+        "pattern_select_starred" => Some(Action::PatternSelect(PatternKind::Starred)),
+        "pattern_select_thread" => Some(Action::PatternSelect(PatternKind::Thread)),
         // mxr-specific
         "unsubscribe" => Some(Action::Unsubscribe),
         "snooze" => Some(Action::Snooze),
@@ -493,6 +499,12 @@ fn action_display_name(action: &str) -> String {
         "visual_line_mode" => "Visual Line Mode".into(),
         "toggle_fullscreen" => "Full View".into(),
         "toggle_select" => "Toggle Select".into(),
+        "pattern_select_all" => "Select All".into(),
+        "pattern_select_none" => "Select None".into(),
+        "pattern_select_read" => "Select Read".into(),
+        "pattern_select_unread" => "Select Unread".into(),
+        "pattern_select_starred" => "Select Starred".into(),
+        "pattern_select_thread" => "Select Thread".into(),
         "go_inbox" => "Go Inbox".into(),
         "open_desk" => "Desk".into(),
         "open_now" => "Now".into(),
@@ -689,6 +701,13 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("l", "apply_label"),
     ("v", "move_to_label"),
     ("x", "toggle_select"),
+    // Pattern select (`*` then a letter), Gmail-style
+    ("*a", "pattern_select_all"),
+    ("*n", "pattern_select_none"),
+    ("*r", "pattern_select_read"),
+    ("*u", "pattern_select_unread"),
+    ("*s", "pattern_select_starred"),
+    ("*t", "pattern_select_thread"),
     // mxr-specific
     ("D", "unsubscribe"),
     ("b", "flag_reply_later"),
@@ -1055,6 +1074,7 @@ mod tests {
         assert!(action_from_name("snooze").is_some());
         assert!(action_from_name("toggle_reader_mode").is_some());
         assert!(action_from_name("toggle_select").is_some());
+        assert!(action_from_name("pattern_select_unread").is_some());
         assert!(action_from_name("visual_line_mode").is_some());
         assert!(action_from_name("go_inbox").is_some());
         assert!(action_from_name("go_starred").is_some());

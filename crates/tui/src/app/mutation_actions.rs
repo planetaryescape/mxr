@@ -721,11 +721,23 @@ impl App {
                 }
             }
             Action::PatternSelect(pattern) => {
+                // Mutations act on `selected_set` only from the flat mail list
+                // and search results. Anywhere else the selection would show a
+                // count that the next action ignores.
+                if !self.pattern_select_applies() {
+                    self.status_message =
+                        Some("Pattern select works in mail lists and search results".into());
+                    return;
+                }
                 let envelopes = if self.screen == Screen::Search {
                     &self.search.page.results
                 } else {
                     &self.mailbox.envelopes
                 };
+                // A pattern is a new selection. A visual range left open would
+                // overwrite it on the next j/k.
+                self.mailbox.visual_mode = false;
+                self.mailbox.visual_anchor = None;
                 match pattern {
                     PatternKind::All => {
                         self.mailbox.selected_set =
@@ -733,8 +745,6 @@ impl App {
                     }
                     PatternKind::None => {
                         self.mailbox.selected_set.clear();
-                        self.mailbox.visual_mode = false;
-                        self.mailbox.visual_anchor = None;
                     }
                     PatternKind::Read => {
                         self.mailbox.selected_set = envelopes

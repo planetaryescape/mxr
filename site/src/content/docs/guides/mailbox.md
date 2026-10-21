@@ -108,14 +108,18 @@ Two search flows:
 ## Selection and bulk actions
 
 - `x`: toggle one row into selection
-- `V`: visual line selection mode
+- `V`: visual line selection mode. Type a count first to move by that many rows: `V`, `1`, `0`, `j` selects 11 rows
+- `* a`, `* n`: select all or none in the mail list and search results
+- `* r`, `* u`, `* s`, `* t`: select read, unread, starred, or this thread
 - `Esc`: clear selection
+
+Changing the label, view, search or mailbox filter clears the selection, so a later action cannot reach messages you no longer see.
 
 When selection is active:
 
 - Hint bar switches to selection-aware actions
 - Command palette still works
-- Destructive or broad mutations use a confirmation modal first
+- Destructive or broad mutations use a confirmation modal first. The modal lists the messages the action will touch, and `j` / `k` scroll the list. `Enter` or `y` confirms; `Esc` or `n` cancels.
 
 Common bulk actions:
 

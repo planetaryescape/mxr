@@ -56,13 +56,14 @@ pub use messages::{
 };
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,
-    BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, DraftsModalState,
-    ErrorModalState, ExpertModalState, ModalsState, PendingBulkConfirm, PendingPlatformDispatch,
-    PendingUnsubscribeAction, PendingUnsubscribeConfirm, PlatformModalState, ReplyLaterPromptState,
-    ReplyQueueModalState, SaveAttachmentModalState, SavedSearchFormField, SavedSearchFormState,
-    ScreenerModalState, SenderProfileModalState, SenderProfileTab, SnippetsModalState,
-    SnoozePanelState, SnoozePreset, StoredDraftOperation, ThreadSummaryModalState, UserError,
-    UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
+    BriefingModalSubject, BulkPreview, BulkPreviewRow, DraftOptionsField, DraftOptionsModalState,
+    DraftsModalState, ErrorModalState, ExpertModalState, ModalsState, PendingBulkConfirm,
+    PendingPlatformDispatch, PendingUnsubscribeAction, PendingUnsubscribeConfirm,
+    PlatformModalState, ReplyLaterPromptState, ReplyQueueModalState, SaveAttachmentModalState,
+    SavedSearchFormField, SavedSearchFormState, ScreenerModalState, SenderProfileModalState,
+    SenderProfileTab, SnippetsModalState, SnoozePanelState, SnoozePreset, StoredDraftOperation,
+    ThreadSummaryModalState, UserError, UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS,
+    USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
 pub use now::{NowPageState, NowRow};
 pub use reading::{

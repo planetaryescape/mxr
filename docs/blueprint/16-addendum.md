@@ -637,6 +637,12 @@ batch_confirm = "destructive"  # "always" | "destructive" | "never"
 
 **D044**: Vim Visual Line mode. **D045**: Pattern select with `*` prefix. **D046**: Vim count support. **D047**: Configurable batch confirmation.
 
+### Decision note, 2026-10-21
+
+- Counts apply in visual line mode only. Digits are the tab keys `1` to `5` everywhere else, so a count outside visual mode would take a key that already opens a tab. Counted `j` and `k` move the range; any other key drops a pending count.
+- `behavior.batch_confirm` is not built. Multi-message confirmation stays always on, per the preview rule in `AGENTS.md`: a bulk action shows the messages it will touch before it runs.
+- The confirm lists the messages the request will mutate, read from the request itself, in list order. Ids the current list does not show are counted on their own line instead of dropped.
+
 ---
 
 ## A008: IMAP support promoted to first-party in v1

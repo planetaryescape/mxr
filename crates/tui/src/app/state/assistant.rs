@@ -7,6 +7,7 @@ use mxr_protocol::{
     AssistantDeleteData, AssistantItemData, AssistantLinkData, AssistantModelsData,
     AssistantPendingData, AssistantProgressData, AssistantStatusData, Request,
 };
+use std::collections::HashSet;
 use std::time::Instant;
 
 /// Where keys go while the pane is open.
@@ -99,6 +100,8 @@ pub struct AssistantState {
     pub progress: Option<AssistantProgressData>,
     /// When the running turn started, for the elapsed seconds.
     pub started_at: Option<Instant>,
+    /// When the live phrase last changed, for the slow-model note.
+    pub phrase_since: Option<Instant>,
     /// A send is on its way and the daemon has not answered yet.
     pub sending: bool,
     /// A decision, cancel or setting change is on its way.
@@ -115,6 +118,9 @@ pub struct AssistantState {
     /// The approval whose exact call (tool and arguments) is unfolded.
     /// Kept by call id so the next approval starts folded, as on the web.
     pub exact_call_for: Option<String>,
+    /// Waiting approvals whose full message list is unfolded. Kept by call
+    /// id so a new approval starts with its list folded.
+    pub full_list_calls: HashSet<String>,
     /// Settled tool steps are folded to "N steps" unless this is set.
     pub steps_expanded: bool,
     /// Lines scrolled up from the newest; 0 keeps the newest in view.
@@ -193,6 +199,15 @@ impl AssistantState {
             .unwrap_or_default()
     }
 
+    /// Records the running turn's progress. The phrase's clock restarts only
+    /// when the progress changes, so the slow-model note counts from there.
+    pub fn set_progress(&mut self, progress: Option<AssistantProgressData>, now: Instant) {
+        if self.phrase_since.is_none() || progress != self.progress {
+            self.phrase_since = Some(now);
+        }
+        self.progress = progress;
+    }
+
     pub fn auto_approve(&self) -> bool {
         self.conversation
             .as_ref()
@@ -230,6 +245,7 @@ impl AssistantState {
         self.conversation = None;
         self.progress = None;
         self.started_at = None;
+        self.phrase_since = None;
         self.sending = false;
         self.input_sent = None;
         self.busy = false;
@@ -238,6 +254,7 @@ impl AssistantState {
         self.answers.clear();
         self.active_question = 0;
         self.exact_call_for = None;
+        self.full_list_calls.clear();
         self.steps_expanded = false;
         self.scroll_from_bottom = 0;
         self.error = None;

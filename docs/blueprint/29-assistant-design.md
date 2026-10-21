@@ -137,12 +137,12 @@ The same grammar in the terminal, which suits it best:
 │ ▸ 3 steps · 14 found · 1 change waiting              │
 │ I found 14 shipping notices from before 16 Sep,      │
 │ from Amazon [1], DHL [2] and Royal Mail [3].         │
-│ ┌ YOUR CALL ───────────────────────────────────────┐ │
+│ ┌ PROOF ───────────────────────────────────────────┐ │
 │ │ Archive 14 emails                                 │ │
 │ │ Older than a month, nothing pending.              │ │
 │ │ • Your order has shipped  Amazon                  │ │
 │ │ • Delivery scheduled  DHL                         │ │
-│ │   and 12 more                                     │ │
+│ │   and 12 more · a show all                        │ │
 │ └───────────────────────────────────────────────────┘ │
 │ ◌ Archiving 14 emails…                       4s       │
 │ › _                                                   │

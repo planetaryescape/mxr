@@ -501,6 +501,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | `i` | Back to the message box |
 | `y` / `n` | Approve / reject the waiting change |
 | `x` | Show / hide the waiting change's exact call |
+| `a` | Show all / show fewer of the waiting change's messages (when it touches more than six) |
 | `1`–`9`, `o`, `Enter`, `s` | Choose, write your own answer, answer, skip |
 | `Ctrl-c` | Stop a running turn |
 | `N` / `L` | New conversation / past conversations |

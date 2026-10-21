@@ -21,6 +21,12 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Approvals list this many messages, then "and N more".
 const PREVIEW_ROWS: usize = 6;
+/// The key that unfolds and folds a waiting approval's full message list.
+const FULL_LIST_KEY: &str = "a";
+/// After this long on one live phrase the running line names the model, so a
+/// slow local one doesn't look stuck. Matches `SLOW_STEP_SECONDS` in
+/// apps/web/src/features/assistant/wire.ts.
+const SLOW_STEP_SECONDS: u64 = 20;
 /// The message box grows to this many lines, then shows the newest.
 const INPUT_ROWS: usize = 4;
 
@@ -63,10 +69,11 @@ pub fn draw(
     let mut card = card_lines(state, width, theme);
     let warnings = warning_lines(state, width, theme);
     // The card can take half the pane, or all the footer leaves while the
-    // exact call is unfolded; the footer always shows. The warning sits
-    // outside that room, so a long preview can't push it off while `y`
+    // exact call is unfolded or a long approval waits (its list and the key
+    // that opens the rest must show); the footer always shows. The warning
+    // sits outside that room, so a long preview can't push it off while `y`
     // still approves.
-    let card_room = if state.exact_call_for.is_some() {
+    let card_room = if state.exact_call_for.is_some() || !long_approvals(state).is_empty() {
         usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
     } else {
         0
@@ -159,6 +166,23 @@ fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
     Line::from(spans)
 }
 
+/// The call ids of waiting approvals that touch more messages than the
+/// card shows folded.
+fn long_approvals(state: &AssistantState) -> Vec<&str> {
+    state
+        .pending()
+        .iter()
+        .filter_map(|pending| match pending {
+            AssistantPendingData::Approval {
+                call_id,
+                preview: Some(preview),
+                ..
+            } if preview_messages(preview).len() > PREVIEW_ROWS => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The keys that work right now, in the pane's own words.
 pub fn hint_text(state: &AssistantState) -> String {
     match &state.prompt {
@@ -183,7 +207,18 @@ pub fn hint_text(state: &AssistantState) -> String {
         AssistantFocus::Input => format!("Enter send · Alt-Enter new line · Esc keys{stop}"),
         AssistantFocus::Pane => match state.pending().first() {
             Some(AssistantPendingData::Approval { .. }) => {
-                "y approve · n reject · x exact call · i write instead · Esc leave".into()
+                let long = long_approvals(state);
+                let list = if long.is_empty() {
+                    ""
+                } else if long
+                    .iter()
+                    .all(|call| state.full_list_calls.contains(*call))
+                {
+                    " · a show fewer"
+                } else {
+                    " · a show all"
+                };
+                format!("y approve · n reject · x exact call{list} · i write instead · Esc leave")
             }
             Some(AssistantPendingData::Question { questions, .. }) => {
                 let other = questions.iter().any(|question| question.allow_other);
@@ -691,7 +726,7 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 preview_error,
                 ..
             } => {
-                lines.push(Line::from(Span::styled("YOUR CALL", label)));
+                lines.push(Line::from(Span::styled("PROOF", label)));
                 push_wrapped(
                     &mut lines,
                     "",
@@ -723,7 +758,13 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                         ),
                         muted,
                     )));
-                    for message in messages.iter().take(PREVIEW_ROWS) {
+                    let expanded = state.full_list_calls.contains(call_id.as_str());
+                    let shown = if expanded {
+                        messages.len()
+                    } else {
+                        PREVIEW_ROWS
+                    };
+                    for message in messages.iter().take(shown) {
                         let row = format!(
                             "{}  {}",
                             one_line(&message.subject),
@@ -738,10 +779,20 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                         ]));
                     }
                     if messages.len() > PREVIEW_ROWS {
-                        lines.push(Line::from(Span::styled(
-                            format!("  and {} more", messages.len() - PREVIEW_ROWS),
-                            muted,
-                        )));
+                        // The key only works from the pane's own focus.
+                        let key = state.focus == AssistantFocus::Pane;
+                        let text = match (expanded, key) {
+                            (true, true) => format!("  {FULL_LIST_KEY} show fewer"),
+                            (true, false) => "  show fewer".into(),
+                            (false, true) => format!(
+                                "  and {} more · {FULL_LIST_KEY} show all",
+                                messages.len() - PREVIEW_ROWS
+                            ),
+                            (false, false) => {
+                                format!("  and {} more", messages.len() - PREVIEW_ROWS)
+                            }
+                        };
+                        lines.push(Line::from(Span::styled(text, muted)));
                     }
                 } else if let Some(draft) = draft {
                     let to = if draft.to.is_empty() {
@@ -952,7 +1003,10 @@ fn footer_lines(
             .started_at
             .map(|started| format!("  {}s", now.saturating_duration_since(started).as_secs()))
             .unwrap_or_default();
-        let room = width.saturating_sub(elapsed.width() + 2);
+        let slow = slow_note(state, now)
+            .map(|note| format!(" · {note}"))
+            .unwrap_or_default();
+        let room = width.saturating_sub(elapsed.width() + slow.width() + 2);
         lines.push(Line::from(vec![
             Span::styled("◌ ", Style::default().fg(theme.accent)),
             Span::styled(
@@ -960,6 +1014,7 @@ fn footer_lines(
                 Style::default().fg(theme.text_secondary),
             ),
             Span::styled(elapsed, muted),
+            Span::styled(truncate(&slow, width), Style::default().fg(theme.warning)),
         ]));
     }
     if let Some(error) = &state.error {
@@ -1032,6 +1087,15 @@ fn footer_lines(
         }
     }
     lines
+}
+
+/// "<model> is slow on this; <N>s" once the live phrase has lasted long
+/// enough to name the model, as the web's `slowNote` does.
+fn slow_note(state: &AssistantState, now: Instant) -> Option<String> {
+    let model = state.availability.as_ref()?.model.as_deref()?;
+    let seconds = now.saturating_duration_since(state.phrase_since?).as_secs();
+    (seconds >= SLOW_STEP_SECONDS)
+        .then(|| format!("{} is slow on this; {seconds}s", one_line(model)))
 }
 
 fn list_lines(
@@ -1856,5 +1920,139 @@ mod tests {
         assert_eq!(wrap("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrap("a\nb", 10), vec!["a", "b"]);
         assert_eq!(wrap("abcdefgh", 3), vec!["abc", "def", "gh"]);
+    }
+
+    fn approval_of(call_id: &str, messages: usize, warning: Option<&str>) -> AssistantPendingData {
+        let messages: Vec<_> = (1..=messages)
+            .map(|n| json!({"subject": format!("Receipt {n}"), "from": {"name": "Acme"}}))
+            .collect();
+        AssistantPendingData::Approval {
+            title: Some("Archive the receipts".into()),
+            warning: warning.map(Into::into),
+            call_id: call_id.into(),
+            tool: "mxr_mutate".into(),
+            arguments: json!({"action": "archive"}),
+            reason: "They are receipts you already filed".into(),
+            preview: Some(json!({ "messages": messages })),
+            preview_error: None,
+        }
+    }
+
+    fn waiting_on(pending: Vec<AssistantPendingData>) -> AssistantState {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Archive the receipts")],
+            pending,
+        ));
+        state
+    }
+
+    fn render_tall(state: &AssistantState, height: u16) -> String {
+        render_to_string(48, height, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 48, height),
+                state,
+                Instant::now(),
+                &Theme::default(),
+            );
+        })
+    }
+
+    #[test]
+    fn a_long_approval_folds_to_six_with_the_key_to_show_all() {
+        let state = waiting_on(vec![approval_of("call9", 9, None)]);
+        let screen = render(&state);
+        assert!(screen.contains("Receipt 6"), "{screen}");
+        assert!(!screen.contains("Receipt 7"), "{screen}");
+        assert!(screen.contains("and 3 more · a show all"), "{screen}");
+        assert!(
+            screen.contains("a show all"),
+            "the hint names the key: {screen}"
+        );
+    }
+
+    #[test]
+    fn the_key_names_show_all_only_when_the_pane_has_the_keys() {
+        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
+        state.focus = AssistantFocus::Input;
+        let screen = render(&state);
+        assert!(screen.contains("and 3 more"), "{screen}");
+        assert!(!screen.contains("show all"), "{screen}");
+    }
+
+    #[test]
+    fn an_expanded_approval_lists_every_message() {
+        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
+        state.full_list_calls.insert("call9".into());
+        let screen = render_tall(&state, 40);
+        assert!(screen.contains("Receipt 9"), "{screen}");
+        assert!(screen.contains("a show fewer"), "{screen}");
+        assert!(!screen.contains("and 3 more"), "{screen}");
+        insta::assert_snapshot!("assistant_pane_approval_expanded", screen);
+    }
+
+    #[test]
+    fn the_warning_stays_visible_while_the_list_is_expanded_on_a_short_pane() {
+        let mut state = waiting_on(vec![approval_of(
+            "call9",
+            9,
+            Some("Sends an email. Can't be undone."),
+        )]);
+        state.full_list_calls.insert("call9".into());
+        let screen = render_tall(&state, 16);
+        assert!(
+            screen.contains("Sends an email. Can't be undone."),
+            "{screen}"
+        );
+        // The hint wraps on this width, so only its last word is on one row.
+        assert!(screen.contains("fewer"), "{screen}");
+    }
+
+    #[test]
+    fn a_new_approval_starts_folded() {
+        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
+        state.full_list_calls.insert("call9".into());
+        state.conversation.as_mut().unwrap().pending = vec![approval_of("call10", 9, None)];
+        let screen = render(&state);
+        assert!(!screen.contains("Receipt 7"), "{screen}");
+        assert!(screen.contains("and 3 more · a show all"), "{screen}");
+    }
+
+    #[test]
+    fn a_running_line_names_a_slow_model_from_twenty_seconds() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Running,
+            vec![user(1, "Tidy my newsletters")],
+            vec![],
+        ));
+        let now = Instant::now();
+        state.started_at = Some(now);
+        state.progress = Some(AssistantProgressData::Thinking { step: 1 });
+        state.phrase_since = Some(now - std::time::Duration::from_secs(19));
+        let before = render_at(&state, now);
+        assert!(!before.contains("is slow on this"), "{before}");
+
+        state.phrase_since = Some(now - std::time::Duration::from_secs(20));
+        let after = render_at(&state, now);
+        assert!(after.contains("qwen3:8b is slow on this; 20s"), "{after}");
+    }
+
+    fn render_at(state: &AssistantState, now: Instant) -> String {
+        render_to_string(60, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 60, 24),
+                state,
+                now,
+                &Theme::default(),
+            );
+        })
     }
 }

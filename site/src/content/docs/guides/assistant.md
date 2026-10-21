@@ -51,7 +51,7 @@ The assistant also knows what you have open: the screen, the thread in the reade
 When the assistant wants to change something, the turn pauses and a proof appears:
 
 - **The change in words**, such as "Archive 14 emails", and the reason the assistant gave.
-- **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more"), or the draft it would send with its recipients, subject and body.
+- **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more", which opens the full list; `a` in the TUI), or the draft it would send with its recipients, subject and body.
 - **Can't be undone**, in red above the button (in the TUI, in red above the keys), for sending, trash, spam, deleting and rules. mxr itself words it, so the web app, the terminal and `mxr assistant show` say the same thing.
 - **Exact call**, under `x`: the tool and arguments that run if you approve.
 

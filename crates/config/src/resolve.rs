@@ -447,6 +447,11 @@ pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
 /// Warns once per process. Logs key names only, never values.
 fn warn_retired_config_keys_once(contents: &str) {
     static WARNED: std::sync::Once = std::sync::Once::new();
+    // The daemon loads config to pick its log level before the subscriber
+    // exists; warning then would drop the line and use up the once.
+    if !tracing::dispatcher::has_been_set() {
+        return;
+    }
     let Ok(table) = contents.parse::<toml::Table>() else {
         return;
     };

@@ -1179,6 +1179,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 89, name: "activity_sources", kind: MigrationKind::Sql(include_str!("../migrations/089_activity_sources.sql")) },
     Migration { version: 90, name: "assistant_trust_and_summary", kind: MigrationKind::Composite(ASSISTANT_TRUST_AND_SUMMARY_STEPS) },
     Migration { version: 91, name: "todo_microsoft", kind: MigrationKind::Sql(include_str!("../migrations/091_todo_microsoft.sql")) },
+    Migration { version: 92, name: "messages_account_thread_index", kind: MigrationKind::Sql(include_str!("../migrations/092_messages_account_thread_index.sql")) },
 ];
 
 /// The user's choice to let reversible changes run without asking, and the
@@ -1982,7 +1983,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=91).collect::<Vec<_>>(),
+                (83..=92).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

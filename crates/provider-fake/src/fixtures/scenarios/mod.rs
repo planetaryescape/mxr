@@ -279,30 +279,33 @@ mod tests {
             .expect("a valid date")
     }
 
-    /// The first date written out in `text`, if any: an ISO date, a current-era year, a
-    /// day and month ("3 November", "1st of December") or a month and day
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+
+    /// Every date written out in `text`, each as a short canonical token: an
+    /// ISO date ("2026-10-29"), a current-era year ("2026"), a day and month
+    /// ("3 November", also from "1st of December") or a month and day
     /// ("October 14"). A bare month ("tenant news for October") is not a
     /// date a detector can expire; nor are a copyright year or a year inside
     /// a URL path.
-    fn written_date(text: &str) -> Option<String> {
-        const MONTHS: [&str; 12] = [
-            "January",
-            "February",
-            "March",
-            "April",
-            "May",
-            "June",
-            "July",
-            "August",
-            "September",
-            "October",
-            "November",
-            "December",
-        ];
+    fn written_dates(text: &str) -> Vec<String> {
         let chars: Vec<char> = text.chars().collect();
-        let word = |at: usize, len: usize| -> String {
+        let take = |at: usize, len: usize| -> String {
             chars[at..(at + len).min(chars.len())].iter().collect()
         };
+        let mut found = Vec::new();
         for at in 0..chars.len() {
             let before = at.checked_sub(1).map(|i| chars[i]);
             if before.is_some_and(|c| c.is_ascii_digit()) {
@@ -313,7 +316,6 @@ mod tests {
                     .iter()
                     .take_while(|c| c.is_ascii_digit())
                     .collect();
-                let after = chars.get(at + digits.len()).copied();
                 if digits.len() == 4
                     && digits
                         .parse::<u32>()
@@ -321,10 +323,15 @@ mod tests {
                     && before != Some('/')
                     && !(before == Some(' ') && at >= 2 && chars[at - 2] == '©')
                 {
-                    return Some(word(at, 10));
-                }
-                if digits.len() <= 2 {
-                    let mut rest: String = chars[at + digits.len()..].iter().take(14).collect();
+                    let iso = take(at, 10);
+                    let is_iso = iso.len() == 10
+                        && iso.char_indices().all(|(i, c)| match i {
+                            4 | 7 => c == '-',
+                            _ => c.is_ascii_digit(),
+                        });
+                    found.push(if is_iso { iso } else { digits });
+                } else if digits.len() <= 2 {
+                    let mut rest: String = chars[at + digits.len()..].iter().take(16).collect();
                     for suffix in ["st", "nd", "rd", "th"] {
                         if let Some(stripped) = rest.strip_prefix(suffix) {
                             rest = stripped.to_string();
@@ -332,39 +339,44 @@ mod tests {
                         }
                     }
                     let rest = rest.trim_start_matches(" of").trim_start();
-                    if after.is_some() && MONTHS.iter().any(|m| rest.starts_with(m)) {
-                        return Some(word(at, 16));
+                    if let Some(month) = MONTHS.iter().find(|m| rest.starts_with(**m)) {
+                        found.push(format!("{} {month}", digits.trim_start_matches('0')));
                     }
                 }
-            }
-            if before.is_none_or(|c| !c.is_alphabetic()) {
+            } else if before.is_none_or(|c| !c.is_alphabetic()) {
                 for month in MONTHS {
-                    if word(at, month.len()) == month {
-                        let tail: String = chars[at + month.len()..].iter().take(3).collect();
-                        let mut tail = tail.chars();
-                        if tail.next() == Some(' ')
-                            && tail.next().is_some_and(|c| c.is_ascii_digit())
-                        {
-                            return Some(word(at, month.len() + 3));
+                    if take(at, month.len()) == month && chars.get(at + month.len()) == Some(&' ') {
+                        let day: String = chars[at + month.len() + 1..]
+                            .iter()
+                            .take_while(|c| c.is_ascii_digit())
+                            .collect();
+                        if !day.is_empty() {
+                            found.push(format!("{month} {day}"));
                         }
                     }
                 }
             }
         }
-        None
+        found
     }
 
-    /// Everything about an email a detector can read a date from.
+    /// Everything about an email a detector can read a date from: its text,
+    /// headers, its own date and the calendar event's fields.
     fn dated_content(envelope: &Envelope, body: &MessageBody) -> String {
         let calendar = body.metadata.calendar.as_ref();
+        let sent = envelope.date.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         [
+            Some(sent.as_str()),
             Some(envelope.subject.as_str()),
             Some(envelope.snippet.as_str()),
             body.text_plain.as_deref(),
             body.text_html.as_deref(),
+            body.metadata.raw_headers.as_deref(),
             calendar.and_then(|c| c.starts_at.as_deref()),
             calendar.and_then(|c| c.ends_at.as_deref()),
-            body.metadata.raw_headers.as_deref(),
+            calendar.and_then(|c| c.dtstamp.as_deref()),
+            calendar.and_then(|c| c.recurrence_id.as_deref()),
+            calendar.and_then(|c| c.raw_ics.as_deref()),
         ]
         .into_iter()
         .flatten()
@@ -372,13 +384,46 @@ mod tests {
         .join("\n")
     }
 
+    /// Dates the fixtures write out on purpose and that no detector can
+    /// expire, matched on the email's subject and the exact date string.
+    const KNOWN_FIXED_DATES: [(&str, &str); 3] = [
+        // Last year's Airbnb booking (records_demo.rs). A year-less date
+        // resolves forward from the email's own date, which is 400 days
+        // before the seed, so it always lands in the past.
+        ("Booking confirmation - Porto", "14 May"),
+        ("Booking confirmation - Porto", "16 May"),
+        // An essay title in reading_demo.rs: a name, not a deadline.
+        ("New post: Shipping a sync engine", "2026"),
+    ];
+
+    /// Dates written in the same email at both clocks. A date derived from
+    /// the clock differs between them, so one present in both is absolute:
+    /// it will not move with the real date and can expire. Checked per
+    /// date, so a fixed event time beside a moving subject is still caught.
+    fn absolute_dates(
+        base: (&Envelope, &MessageBody),
+        moved: (&Envelope, &MessageBody),
+    ) -> Vec<String> {
+        let (at_moved, subject) = (
+            written_dates(&dated_content(moved.0, moved.1)),
+            &base.0.subject,
+        );
+        written_dates(&dated_content(base.0, base.1))
+            .into_iter()
+            .filter(|date| at_moved.contains(date))
+            .filter(|date| {
+                !KNOWN_FIXED_DATES.iter().any(|(known_subject, known)| {
+                    subject.starts_with(known_subject) && known == date
+                })
+            })
+            .collect()
+    }
+
     /// The post-sync work reads the real clock, so the set cannot be graded
     /// at a faked `now`. This is the check that it never needs to be: build
     /// the set at different clocks (a year away, across a clock change) and
-    /// the labels do not move, and any email whose content is the same at
-    /// two clocks writes no date at all. An absolute date would be the same
-    /// at both and so would show up here; it is what once let an invite
-    /// expire in a fixed week.
+    /// the labels do not move, and no date is written the same way at two
+    /// clocks. It is what once let an invite expire in a fixed week.
     #[test]
     fn scenario_dates_follow_the_seed_clock() {
         let now = at(2026, 10, 21, 12);
@@ -395,56 +440,66 @@ mod tests {
         }
         let moved = seed_at(later);
         assert_eq!(moved.messages.len(), base.messages.len());
-        let mut undated = 0;
-        for ((env_a, body_a), (env_b, body_b)) in base.messages.iter().zip(&moved.messages) {
-            assert_eq!(env_a.provider_id, env_b.provider_id);
-            let (a, b) = (dated_content(env_a, body_a), dated_content(env_b, body_b));
-            if a == b {
-                // One fixture writes a day and month: last year's
-                // Airbnb booking in records_demo.rs ("Check-in: 14 May"),
-                // dated 400 days before the seed. A year-less date resolves
-                // forward from the email's own date, which moves with the
-                // seed, so it always lands in the past and cannot expire or
-                // flip a label. It is demo mail and is left as it is.
-                // The other is an essay title in reading_demo.rs ("Shipping a
-                // sync engine in 2026"): a name, not a deadline.
-                if [
-                    "Booking confirmation - Porto",
-                    "New post: Shipping a sync engine",
-                ]
-                .iter()
-                .any(|known| env_a.subject.starts_with(known))
-                {
-                    continue;
-                }
-                undated += 1;
-                assert_eq!(
-                    written_date(&a),
-                    None,
-                    "{} ({}) is the same 400 days on but writes a date",
-                    env_a.provider_id,
-                    env_a.subject
-                );
-            }
+        let mut dated = 0;
+        for (a, b) in base.messages.iter().zip(&moved.messages) {
+            assert_eq!(a.0.provider_id, b.0.provider_id);
+            assert_eq!(
+                absolute_dates((&a.0, &a.1), (&b.0, &b.1)),
+                Vec::<String>::new(),
+                "{} ({}) writes a date that does not move with the seed clock",
+                a.0.provider_id,
+                a.0.subject
+            );
+            dated += usize::from(!written_dates(&dated_content(&a.0, &a.1)).is_empty());
         }
         assert!(
-            undated > 0,
-            "the check saw no undated email, so it checked nothing"
+            dated > 20,
+            "only {dated} emails carry a date, so the check saw little"
+        );
+    }
+
+    /// The case that slipped past a per-email comparison: the invite's
+    /// subject and body move with the clock but its event start was written
+    /// out. The guard must name that date.
+    #[test]
+    fn a_fixed_event_time_beside_a_moving_subject_is_caught() {
+        let now = at(2026, 10, 21, 12);
+        let (base, moved) = (seed_at(now), seed_at(now + chrono::Duration::days(400)));
+        let invite = |seed: &ScenarioSeed| {
+            seed.messages
+                .iter()
+                .find(|(e, _)| e.subject.starts_with("Invitation: Design review"))
+                .cloned()
+                .expect("the invite twin")
+        };
+        let (mut a, mut b) = (invite(&base), invite(&moved));
+        assert_ne!(a.0.subject, b.0.subject, "the subject moves with the clock");
+        assert_eq!(
+            absolute_dates((&a.0, &a.1), (&b.0, &b.1)),
+            Vec::<String>::new()
+        );
+        for (_, body) in [&mut a, &mut b] {
+            let calendar = body.metadata.calendar.as_mut().expect("an invite");
+            calendar.starts_at = Some("2026-10-29T15:00:00Z".to_string());
+        }
+        assert_eq!(
+            absolute_dates((&a.0, &a.1), (&b.0, &b.1)),
+            vec!["2026-10-29".to_string()]
         );
     }
 
     #[test]
     fn the_date_finder_finds_what_a_detector_would_read() {
-        for dated in [
-            "due 2026-10-29",
-            "2026-10-29T15:00:00Z",
-            "since 2027 Acme",
-            "renews on 3 November for",
-            "on the 1st of December",
-            "Check-in: 14 November",
-            "from October 14",
+        for (text, token) in [
+            ("due 2026-10-29", "2026-10-29"),
+            ("2026-10-29T15:00:00Z", "2026-10-29"),
+            ("© 2027 Acme and since 2027 Acme", "2027"),
+            ("renews on 3 November for", "3 November"),
+            ("on the 1st of December", "1 December"),
+            ("Check-in: 14 November", "14 November"),
+            ("from October 14", "October 14"),
         ] {
-            assert!(written_date(dated).is_some(), "{dated}");
+            assert!(written_dates(text).contains(&token.to_string()), "{text}");
         }
         for plain in [
             "tenant news for October",
@@ -455,7 +510,7 @@ mod tests {
             "Every reader since 2002 shipped the same window",
             "© 2026 Long Reads Weekly",
         ] {
-            assert_eq!(written_date(plain), None, "{plain}");
+            assert_eq!(written_dates(plain), Vec::<String>::new(), "{plain}");
         }
     }
 

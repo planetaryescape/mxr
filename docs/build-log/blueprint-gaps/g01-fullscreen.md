@@ -100,8 +100,11 @@ completed both CLI builds and the signed desktop build. Both attempts failed
 at launch-proof temporary-directory cleanup after all 13 proof rows passed;
 publication did not run. The cleanup ordering and observed error are tracked
 in [the launch-proof issue](../../issues/launch-proof-daemon-cleanup.md).
-The failed-job retry reproduced the error. A narrow cleanup repair is in
-progress; release-please must create a new version for it.
+The failed-job retry reproduced the error. Cleanup repair
+`2957da9aa759dc297e50fea48a282d88272eaf70` now passes its delayed-writer and
+failure-boundary regression tests plus all 13 rows of an isolated launch
+proof. Its daemon and socket are gone after cleanup. Release-please must
+create a new version for the repair; v0.6.116 remains unpublished.
 
 Next: require successful release publication and Homebrew update, verify the
 published install.sh download and the Homebrew binary, and run the isolated

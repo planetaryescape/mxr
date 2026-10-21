@@ -1,6 +1,6 @@
 # Launch-proof cleanup does not wait for daemon exit
 
-Status: open. Reproduced twice in [release v0.6.116](https://github.com/planetaryescape/mxr/actions/runs/39518033868):
+Status: fixed in source; release verification pending. Reproduced twice in [release v0.6.116](https://github.com/planetaryescape/mxr/actions/runs/39518033868):
 job `118954899126` at `2026-10-21T00:08:03Z` and retry job
 `118962649238` at `2026-10-21T00:24:45Z`. Source:
 `v0.6.116`, commit `748d2e9d6b5cba4374d1cd5fbd8ed035b4563d9f`.
@@ -25,14 +25,30 @@ the daemon to exit. The error is consistent with a writer modifying the logs
 directory during removal; the captured evidence does not identify the writer
 or prove a write after SIGTERM.
 
-Wait for the captured daemon PID to exit within a bound before removing the
-temporary root. On timeout, fail with the PID and isolated runtime path and
-retain the directory for diagnosis. Existing bounded process-exit checks are
-in `crates/daemon/tests/cli_journey.rs:1422-1445` and
-`crates/daemon/tests/reset_cli.rs:341-356` at the same SHA.
+The repair is commit `2957da9aa759dc297e50fea48a282d88272eaf70`.
+`scripts/v1_launch_proof_cleanup.sh` sends SIGTERM only to a validated PID,
+waits up to ten seconds for exit, and treats a zombie as stopped. Failed
+process inspection and shutdown timeout retain the runtime. An original proof
+failure keeps its exit status and diagnostic files. The proof's direct IPC
+client also honors `MXR_SOCKET_PATH`, matching the CLI and daemon.
 
-Verify with an owned background-process fixture that delays exit after
-SIGTERM and writes under `data/logs`. Assert that cleanup waits for exit before
-removal, and cover the timeout path. Keep this test independent of provider
-behavior and real mail. If a tagged release needs the repair, ship a new
-release through release-please; preserve the existing tag and assets.
+Run the production helper regression:
+
+```sh
+bash scripts/v1_launch_proof_cleanup_test.sh
+```
+
+The delayed writer confirms the directory remains until shutdown finishes.
+Other cases cover an already-reaped PID, no captured PID, timeout, invalid
+PID, and preserving the original failure status. This test runs in the CI
+Release Gate Scripts job. The helper path also participates in release scope
+selection, with a scope regression test.
+
+The frozen script passed all 13 fake-provider launch-proof rows using the
+previously built candidate debug binary (reports `mxr 0.6.115`, SHA-256
+`e6f5709bfdf0d46882580f9453919961aa7025e32c2a22179766249e1c7f89fd`).
+Its captured daemon exited, socket disappeared, and temporary directory was
+removed. Evidence:
+`/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-blueprint-gaps-20261021/g01-launch-proof-cleanup-runtime/proof-cleanup-final.jsonl`.
+No real mail, keychain or personal daemon was used. The fix needs a new
+release through release-please; preserve the v0.6.116 tag and assets.

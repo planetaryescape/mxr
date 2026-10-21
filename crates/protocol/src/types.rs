@@ -2581,12 +2581,15 @@ pub enum Request {
         conversation_id: String,
     },
     /// Every row a step's stored result lists, up to 500, for a client that
-    /// shows the rest of a step's "and N more". An unknown conversation or
-    /// call is an error; a call with no stored result has no rows. Returns
+    /// shows the rest of a step's "and N more". A call id can repeat across
+    /// a conversation, so `seq` names the assistant message that declared
+    /// the call (the step's `seq`). An unknown conversation or step is an
+    /// error; a step with no stored result has no rows. Returns
     /// `ResponseData::AssistantStepRows`.
     GetAssistantStepRows {
         conversation_id: String,
         call_id: String,
+        seq: i64,
     },
     /// Delete a conversation and its transcript; `dry_run` says what would
     /// go. A running turn must be stopped first. Returns

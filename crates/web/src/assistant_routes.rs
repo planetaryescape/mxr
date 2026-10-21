@@ -140,11 +140,20 @@ async fn get_conversation(
     passthrough(response)
 }
 
+/// Query of `GET /api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows`.
+#[derive(Debug, Deserialize)]
+struct StepRowsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// The `seq` of the assistant message that declared the call.
+    seq: i64,
+}
+
 async fn get_step_rows(
     State(state): State<AppState>,
     headers: HeaderMap,
     AxumPath((conversation_id, call_id)): AxumPath<(String, String)>,
-    Query(query): Query<TokenQuery>,
+    Query(query): Query<StepRowsQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     let response = dispatch(
         &state,
@@ -153,6 +162,7 @@ async fn get_step_rows(
         Request::GetAssistantStepRows {
             conversation_id,
             call_id,
+            seq: query.seq,
         },
     )
     .await?;

@@ -61,7 +61,7 @@ export function Steps({
       ) : null}
       <ul className="space-y-0.5">
         {items.map((item) => (
-          <Step key={item.call_id} item={item} conversationId={conversationId} />
+          <Step key={`${item.seq}:${item.call_id}`} item={item} conversationId={conversationId} />
         ))}
       </ul>
     </div>
@@ -175,7 +175,7 @@ function StepDetails({ item, conversationId }: { item: ToolCallItem; conversatio
       {item.readout ? (
         <ReadoutView
           readout={item.readout}
-          loadRest={() => fetchStepRows(conversationId, item.call_id)}
+          loadRest={() => fetchStepRows(conversationId, item.call_id, item.seq)}
         />
       ) : null}
       <Details item={item} />

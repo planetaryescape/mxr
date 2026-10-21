@@ -101,14 +101,21 @@ fn unwrap(value: &Value) -> Option<&Map<String, Value>> {
 }
 
 /// Every row one step's stored result lists, up to `cap`, and the readout's
-/// total. `None` when the transcript has no call with that id. A step with
-/// no result yet, or one that failed, lists nothing.
+/// total. A step is named by the call id and the `seq` of the assistant
+/// message that declared it, because models and the stream both reuse ids
+/// (`call_0`) across a conversation. Results pair with the latest declaration
+/// before them, as `view.rs` pairs them. `None` when no assistant message at
+/// `seq` declares the call. A step with no result yet, or one that failed,
+/// lists nothing.
 pub(crate) fn step_rows(
     messages: &[AssistantMessageRow],
     call_id: &str,
+    seq: i64,
     cap: usize,
 ) -> Option<(Vec<AssistantReadoutRowData>, Option<u64>)> {
-    let mut known = false;
+    let mut declared = false;
+    // Whether the latest declaration of this id is the step being asked for.
+    let mut ours = false;
     let mut result = None;
     for row in messages {
         let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
@@ -116,17 +123,20 @@ pub(crate) fn step_rows(
         };
         match message {
             ToolChatMessage::Assistant { tool_calls, .. } => {
-                known |= tool_calls.iter().any(|call| call.id == call_id);
+                if tool_calls.iter().any(|call| call.id == call_id) {
+                    ours = row.seq == seq;
+                    declared |= ours;
+                }
             }
             ToolChatMessage::Tool {
                 call_id: id,
                 content,
                 is_error,
-            } if id == call_id => result = Some((content, is_error)),
+            } if ours && id == call_id => result = Some((content, is_error)),
             _ => {}
         }
     }
-    if !known {
+    if !declared {
         return None;
     }
     let Some((content, is_error)) = result else {

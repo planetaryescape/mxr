@@ -129,6 +129,7 @@ export function AssistantSidebar() {
         ) : data && data.items.length > 0 ? (
           <div className="space-y-5">
             <Transcript
+              key={data.id}
               items={data.items}
               running={running}
               conversationId={data.id}

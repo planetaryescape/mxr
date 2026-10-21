@@ -1532,7 +1532,8 @@ fn mail_assistant_get() {}
     summary = "Every row one assistant step's stored result lists, up to 500",
     params(
         ("id" = String, Path, description = "Conversation id"),
-        ("call_id" = String, Path, description = "The step's tool call id")
+        ("call_id" = String, Path, description = "The step's tool call id"),
+        ("seq" = i64, Query, description = "The seq of the assistant message that declared the call")
     ),
     responses(
         (status = 200, description = "The `AssistantStepRows` variant", body = ResponseData),

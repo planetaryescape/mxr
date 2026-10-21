@@ -114,7 +114,9 @@ export function Transcript({
           }
           case "steps":
             return (
-              <li key={`s${block.items[0]?.call_id ?? index}`}>
+              <li
+                key={`s${block.items[0] ? `${block.items[0].seq}:${block.items[0].call_id}` : index}`}
+              >
                 <Steps
                   items={block.items}
                   live={running && isLast}

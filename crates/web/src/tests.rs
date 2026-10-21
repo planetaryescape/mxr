@@ -6389,6 +6389,7 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
             Request::GetAssistantStepRows {
                 conversation_id,
                 call_id,
+                seq: 7,
             } if conversation_id == "c1" && call_id == "call1" => Some(Response::Ok {
                 data: ResponseData::AssistantStepRows {
                     rows: vec![
@@ -6407,13 +6408,11 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
                     total: Some(14),
                 },
             }),
-            Request::GetAssistantStepRows { .. } => Some(Response::Error {
-                message: "no step call9 in assistant conversation c1".into(),
-                kind: Default::default(),
-                code: String::new(),
-                retryable: false,
-                details: None,
-            }),
+            // The daemon's own not-found wording, so the error kind comes from
+            // the same classifier a real daemon error goes through.
+            Request::GetAssistantStepRows { .. } => Some(Response::error(
+                "step call9 at 7 not found in assistant conversation c1",
+            )),
             _ => None,
         },
         None,
@@ -6431,7 +6430,7 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
     let base = format!("http://{addr}/api/v1/mail/assistant/conversations");
 
     let response = client
-        .get(format!("{base}/c1/steps/call1/rows"))
+        .get(format!("{base}/c1/steps/call1/rows?seq=7"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
         .await
@@ -6444,7 +6443,16 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
     assert_eq!(json["rows"][1]["title"], "Invoice 42");
 
     let response = client
-        .get(format!("{base}/c1/steps/call9/rows"))
+        .get(format!("{base}/c1/steps/call9/rows?seq=7"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // seq is required: without it the request never reaches the daemon.
+    let response = client
+        .get(format!("{base}/c1/steps/call1/rows"))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
         .await

@@ -1171,6 +1171,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "seq",
+            "in": "query",
+            "description": "The seq of the assistant message that declared the call",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
           }
         ],
         "responses": {
@@ -30884,10 +30894,11 @@
           },
           {
             "type": "object",
-            "description": "Every row a step's stored result lists, up to 500, for a client that\nshows the rest of a step's \"and N more\". An unknown conversation or\ncall is an error; a call with no stored result has no rows. Returns\n`ResponseData::AssistantStepRows`.",
+            "description": "Every row a step's stored result lists, up to 500, for a client that\nshows the rest of a step's \"and N more\". A call id can repeat across\na conversation, so `seq` names the assistant message that declared\nthe call (the step's `seq`). An unknown conversation or step is an\nerror; a step with no stored result has no rows. Returns\n`ResponseData::AssistantStepRows`.",
             "required": [
               "conversation_id",
               "call_id",
+              "seq",
               "cmd"
             ],
             "properties": {
@@ -30902,6 +30913,10 @@
               },
               "conversation_id": {
                 "type": "string"
+              },
+              "seq": {
+                "type": "integer",
+                "format": "int64"
               }
             }
           },

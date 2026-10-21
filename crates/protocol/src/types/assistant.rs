@@ -492,13 +492,14 @@ mod tests {
         let request = crate::Request::GetAssistantStepRows {
             conversation_id: "c1".into(),
             call_id: "call1".into(),
+            seq: 7,
         };
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["cmd"], "GetAssistantStepRows");
         let back: crate::Request = serde_json::from_value(json).unwrap();
         assert!(matches!(
             back,
-            crate::Request::GetAssistantStepRows { conversation_id, call_id }
+            crate::Request::GetAssistantStepRows { conversation_id, call_id, seq: 7 }
                 if conversation_id == "c1" && call_id == "call1"
         ));
 
@@ -526,7 +527,7 @@ mod tests {
         // An old daemon has no such command, so the web must read the error
         // and keep the step's plain text.
         let unknown = serde_json::from_value::<crate::Request>(json!({
-            "cmd": "GetAssistantStepRowsV2", "conversation_id": "c1", "call_id": "call1",
+            "cmd": "GetAssistantStepRowsV2", "conversation_id": "c1", "call_id": "call1", "seq": 7,
         }));
         assert!(unknown.is_err());
     }

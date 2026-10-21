@@ -5,7 +5,7 @@
  * set as text.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Row } from "@/components/Row";
 import { Avatar } from "@/components/Avatar";
@@ -25,6 +25,11 @@ type Rest = "closed" | "loading" | "open" | "failed";
  * A step's rows. When the step found more than these, "and N more" opens
  * every row the step's result lists; the first click fetches them. Without
  * `loadRest` the count stays plain text.
+ *
+ * The button is the same element in every state, so keyboard focus stays on
+ * it while the rest loads and when it collapses. A response that arrives
+ * after unmount is dropped, so a step that was swapped out never shows rows
+ * fetched for it.
  */
 export function ReadoutRows({
   rows,
@@ -40,6 +45,16 @@ export function ReadoutRows({
 }) {
   const [rest, setRest] = useState<Rest>("closed");
   const [all, setAll] = useState<AssistantStepRows | null>(null);
+  const mounted = useRef(false);
+  // Each click that starts a fetch takes a number; only the latest may land.
+  const request = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, []);
   if (rows.length === 0) return null;
 
   const open = rest === "open" && all !== null;
@@ -47,6 +62,7 @@ export function ReadoutRows({
   const unloaded = all && all.total != null && all.total > all.listed ? all.total - all.listed : 0;
 
   const expand = () => {
+    if (rest === "loading") return;
     if (rest === "open") {
       setRest("closed");
       return;
@@ -56,16 +72,22 @@ export function ReadoutRows({
       return;
     }
     if (!loadRest) return;
+    const id = ++request.current;
     setRest("loading");
     loadRest().then(
       (loaded) => {
+        if (!mounted.current || id !== request.current) return;
         setAll(loaded);
         setRest("open");
       },
-      () => setRest("failed"),
+      () => {
+        if (!mounted.current || id !== request.current) return;
+        setRest("failed");
+      },
     );
   };
 
+  const loading = rest === "loading";
   return (
     <div className="-mx-3">
       <ul aria-label={label} style={COMPACT}>
@@ -76,20 +98,15 @@ export function ReadoutRows({
       </ul>
       {more > 0 && loadRest ? (
         <>
-          {rest === "loading" ? (
-            <p className="type-meta px-3 py-1 text-text-3" role="status">
-              Loading the rest…
-            </p>
-          ) : (
-            <button
-              type="button"
-              aria-expanded={open}
-              onClick={expand}
-              className="type-meta px-3 py-1 text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
-            >
-              {open ? "Show fewer" : `and ${more} more`}
-            </button>
-          )}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-busy={loading}
+            onClick={expand}
+            className="type-meta px-3 py-1 text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
+          >
+            {loading ? "Loading the rest…" : open ? "Show fewer" : `and ${more} more`}
+          </button>
           {rest === "failed" ? (
             <p className="type-meta px-3 py-1 text-danger">{"Couldn't load the rest"}</p>
           ) : null}

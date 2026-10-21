@@ -907,6 +907,7 @@ describe("step rows", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
     fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
   };
+  const STEP_PATH = "/api/v1/mail/assistant/conversations/c1/steps/a/rows?seq=2";
 
   test("and N more opens every row the step found, and Show fewer closes it", async () => {
     apiFetch.mockImplementation(
@@ -919,7 +920,7 @@ describe("step rows", () => {
 
     fireEvent.click(more);
     expect(await screen.findByText("Mail 11")).toBeVisible();
-    expect(stepCalls()).toEqual([["/api/v1/mail/assistant/conversations/c1/steps/a/rows"]]);
+    expect(stepCalls()).toEqual([[STEP_PATH]]);
     const fewer = screen.getByRole("button", { name: "Show fewer" });
     expect(fewer).toHaveAttribute("aria-expanded", "true");
 
@@ -932,14 +933,27 @@ describe("step rows", () => {
     expect(stepCalls()).toHaveLength(1);
   });
 
-  test("while the rest loads, the step says so", async () => {
+  test("while the rest loads, the same button says so and keeps focus", async () => {
     const held = holdLookup();
     apiFetch.mockImplementation(async (path: string) => answerOthers(path) ?? (await held.promise));
     open();
-    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Loading the rest");
+    const more = screen.getByRole("button", { name: "and 7 more" });
+    more.focus();
+    fireEvent.click(more);
+
+    const loading = screen.getByRole("button", { name: "Loading the rest…" });
+    expect(loading).toBe(more);
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(document.activeElement).toBe(more);
+    // A second click while loading starts no second request.
+    fireEvent.click(more);
+    expect(stepCalls()).toHaveLength(1);
+
     await act(async () => held.resolve({ rows: rowsOf(12), listed: 12, total: 12 }));
     expect(await screen.findByText("Mail 11")).toBeVisible();
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer).toBe(more);
+    expect(document.activeElement).toBe(more);
   });
 
   test("when the rest fails, the step keeps its five and says so", async () => {
@@ -963,5 +977,36 @@ describe("step rows", () => {
     fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
     expect(await screen.findByText("Mail 9")).toBeVisible();
     expect(screen.getByText("and 2 more matched that this step didn't load")).toBeVisible();
+  });
+
+  test("a conversation switch folds the steps and drops a late response for the old one", async () => {
+    const held = holdLookup();
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/conversations/c1/steps/")) return held.promise;
+      return answerOthers(path);
+    });
+    const { rerender } = render(
+      <Transcript key="c1" items={[turn[0]!, wide]} running={false} conversationId="c1" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
+    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
+
+    // The sidebar keys the transcript by conversation, so the switch remounts it.
+    rerender(<Transcript key="c2" items={[turn[0]!, wide]} running={false} conversationId="c2" />);
+    expect(screen.getByRole("button", { name: /1 step/ })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
+    expect(screen.getByRole("button", { name: "and 7 more" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    await act(async () => held.resolve({ rows: rowsOf(12), listed: 12, total: 12 }));
+    expect(screen.queryByText("Mail 11")).toBeNull();
+    expect(screen.getByRole("button", { name: "and 7 more" })).toBeVisible();
+    expect(stepCalls().map(([path]) => path)).toEqual([
+      "/api/v1/mail/assistant/conversations/c1/steps/a/rows?seq=2",
+    ]);
   });
 });

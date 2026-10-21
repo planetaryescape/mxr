@@ -64,7 +64,8 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
         Request::GetAssistantStepRows {
             conversation_id,
             call_id,
-        } => step_rows_for(state, conversation_id, call_id).await,
+            seq,
+        } => step_rows_for(state, conversation_id, call_id, *seq).await,
         Request::DeleteAssistantConversation {
             conversation_id,
             dry_run,
@@ -258,20 +259,23 @@ async fn step_rows_for(
     state: &AppState,
     conversation_id: &str,
     call_id: &str,
+    seq: i64,
 ) -> Result<ResponseData, String> {
     state
         .store
         .get_assistant_conversation(conversation_id)
         .await
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("no assistant conversation {conversation_id}"))?;
+        .ok_or_else(|| format!("assistant conversation {conversation_id} not found"))?;
     let messages = state
         .store
         .assistant_messages(conversation_id)
         .await
         .map_err(|error| error.to_string())?;
-    let (rows, total) = step_rows(&messages, call_id, STEP_ROWS)
-        .ok_or_else(|| format!("no step {call_id} in assistant conversation {conversation_id}"))?;
+    // "not found" is what the protocol's error classifier maps to a 404.
+    let (rows, total) = step_rows(&messages, call_id, seq, STEP_ROWS).ok_or_else(|| {
+        format!("step {call_id} at {seq} not found in assistant conversation {conversation_id}")
+    })?;
     Ok(ResponseData::AssistantStepRows {
         listed: rows.len() as u64,
         rows,

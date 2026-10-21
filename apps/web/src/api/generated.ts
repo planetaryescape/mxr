@@ -11773,6 +11773,8 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetAssistantStepRows";
                   conversation_id: string;
+                  /** Format: int64 */
+                  seq: number;
               }
             | {
                   /** @enum {string} */
@@ -16339,7 +16341,10 @@ export interface operations {
     };
     mail_assistant_step_rows: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The seq of the assistant message that declared the call */
+                seq: number;
+            };
             header?: never;
             path: {
                 /** @description Conversation id */

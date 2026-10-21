@@ -65,12 +65,14 @@ export async function fetchConversation(id: string): Promise<AssistantConversati
   return response.conversation;
 }
 
+/** `seq` is the seq of the assistant message that declared the call: call ids repeat. */
 export async function fetchStepRows(
   conversationId: string,
   callId: string,
+  seq: number,
 ): Promise<AssistantStepRows> {
   return apiFetch<AssistantStepRows>(
-    `${BASE}/conversations/${encodeURIComponent(conversationId)}/steps/${encodeURIComponent(callId)}/rows`,
+    `${BASE}/conversations/${encodeURIComponent(conversationId)}/steps/${encodeURIComponent(callId)}/rows?seq=${seq}`,
   );
 }
 

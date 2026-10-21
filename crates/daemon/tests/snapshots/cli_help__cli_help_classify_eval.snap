@@ -1,0 +1,25 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Grade the mail already in this mailbox against labelled scenarios: per question (who sent it, which mode it goes to, whether it makes a to-do, whether it makes a record) how often today's rules agree, and every email they get wrong. Read-only and local. Run `mxr demo` first to get mail with labels
+
+Usage: mxr classify eval [OPTIONS]
+
+Options:
+      --set <SET>
+          Which labelled set to grade against
+
+          Possible values:
+          - quick: The labelled demo mail and every near-miss twin
+
+          [default: quick]
+
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

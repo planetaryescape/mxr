@@ -1116,7 +1116,7 @@ async fn sync_loop_for_account(
 /// swallowed — none of this work blocks the user-facing path, and a
 /// transient failure on one step shouldn't prevent the others from
 /// running.
-async fn post_sync_fanout(
+pub(crate) async fn post_sync_fanout(
     state: Arc<AppState>,
     account_id: AccountId,
     provider: Arc<dyn MailSyncProvider>,

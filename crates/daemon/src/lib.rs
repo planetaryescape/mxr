@@ -818,6 +818,14 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::draft::run(action, to, purpose, account, register, length, format).await?;
         }
+        Some(Command::Classify {
+            action,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::classify::run(action, account, format).await?;
+        }
         Some(Command::Remind {
             message_id,
             account,

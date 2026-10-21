@@ -154,6 +154,50 @@ mxr burn --dry-run
 
 That wipes rebuildable local runtime state only. It does not delete `config.toml` or system credentials by default.
 
+## Measuring the classifier
+
+`mxr classify eval` grades how mxr sorts mail against labelled scenarios
+(blueprint 32). It is read-only and local, and changes no classification.
+
+```bash
+mxr demo
+mxr classify eval --set quick
+mxr classify eval --set quick --format json
+```
+
+For every stored email that a scenario labels, it compares four answers with
+the label: who sent it (`person`, `list`, `machine`, `screened_out`), its home
+(`messages`, `updates`, `reading`, `spam`, `screened_out`), whether a to-do was
+made from it, and whether a record was. It prints the accuracy per question
+and lists every mismatch with the scenario id, provider id, expected answer,
+actual answer and the rule that decided it. Home is the arrivals line's
+destination under today's rules; mail with no arrivals row is placed live by
+the same rules. Labels state what mxr should do, not what it does today, so a
+gap shows up as a mismatch.
+
+The labels live in `crates/provider-fake/src/fixtures/scenarios/`. `curated.rs`
+states the outcome the demo fixtures describe in prose; `twins.rs` builds
+near-miss pairs that differ in the one fact that should change the answer.
+The twins are not in the 50,000-email demo, because they would shift its
+message numbering and the counts its tests read, so `mxr classify eval` on a
+demo reports the labelled demo mail and the twins are graded by the daemon
+test:
+
+```bash
+scripts/cargo-test -p mxr --lib -- handler::tests::classify_eval
+```
+
+That test syncs the whole scenario set, runs the post-sync work (to-dos,
+records, deliveries, arrivals placement) and snapshots the per-question counts
+and the sorted mismatch list. A change to sorting shows up as a snapshot diff:
+review it with `cargo insta review` and accept it only when every changed
+answer is intended. The demo instance also seeds screener decisions and rules,
+so its numbers can differ slightly from the snapshot.
+
+When you add a scenario, state the answer a person would want, not today's
+answer, and put the reasoning in `review` if the label is a judgement call.
+Change `LABEL_SCHEMA_VERSION` when the questions themselves change.
+
 ## Running the daemon
 
 `mxr daemon --foreground` is the canonical manual-test entrypoint. Keep it running in one terminal, then use a second terminal for CLI smoke tests like `mxr status`, `mxr sync --status`, `mxr search`, and the mutation flow you changed.

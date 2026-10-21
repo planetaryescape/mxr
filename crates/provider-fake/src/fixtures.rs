@@ -7,6 +7,7 @@ mod messages_demo;
 mod modes_demo;
 mod reading_demo;
 mod records_demo;
+pub mod scenarios;
 mod subscriptions_demo;
 mod todo_demo;
 mod updates_demo;
@@ -901,56 +902,10 @@ impl DemoFixtureStream {
         self.page(index, 1).pop()
     }
 
-    /// Shipping mail, then To do mail, then the modes' landlord and new
-    /// sender, then Messages' people, then the mail Archive files as
-    /// records, Reading, and Updates, then the receipts that recur as
-    /// subscriptions: the seeded messages at the head of the personal account.
+    /// The seeded messages at the head of the personal account (see
+    /// [`curated_seed_messages`]).
     fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
-        let mut messages = delivery_demo_messages(&self.account_id, &self.self_addr, self.now);
-        messages.extend(todo_demo::todo_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages.extend(modes_demo::modes_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages.extend(messages_demo::messages_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages.extend(records_demo::records_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages.extend(reading_demo::reading_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages.extend(updates_demo::updates_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            &self.cuts,
-            messages.len() + 1,
-        ));
-        messages.extend(subscriptions_demo::subscriptions_demo_messages(
-            &self.account_id,
-            &self.self_addr,
-            self.now,
-            messages.len() + 1,
-        ));
-        messages
+        curated_seed_messages(&self.account_id, &self.self_addr, self.now, &self.cuts)
     }
 
     fn thread_message(
@@ -1110,7 +1065,66 @@ impl DemoFixtureStream {
     }
 }
 
-fn demo_labels(account_id: &AccountId) -> Vec<Label> {
+/// Shipping mail, then To do mail, then the modes' landlord and new
+/// sender, then Messages' people, then the mail Archive files as
+/// records, Reading, and Updates, then the receipts that recur as
+/// subscriptions: the seeded messages at the head of the personal account.
+/// The scenario set labels these, so this order is part of the demo's
+/// contract.
+pub(crate) fn curated_seed_messages(
+    account_id: &AccountId,
+    self_addr: &Address,
+    now: chrono::DateTime<Utc>,
+    cuts: &DemoCuts,
+) -> Vec<(Envelope, MessageBody)> {
+    let mut messages = delivery_demo_messages(account_id, self_addr, now);
+    messages.extend(todo_demo::todo_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages.extend(modes_demo::modes_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages.extend(messages_demo::messages_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages.extend(records_demo::records_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages.extend(reading_demo::reading_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages.extend(updates_demo::updates_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        cuts,
+        messages.len() + 1,
+    ));
+    messages.extend(subscriptions_demo::subscriptions_demo_messages(
+        account_id,
+        self_addr,
+        now,
+        messages.len() + 1,
+    ));
+    messages
+}
+
+pub(crate) fn demo_labels(account_id: &AccountId) -> Vec<Label> {
     vec![
         make_label(account_id, "Inbox", LabelKind::System, "INBOX"),
         make_label(account_id, "Sent", LabelKind::System, "SENT"),

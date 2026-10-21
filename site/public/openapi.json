@@ -11213,6 +11213,164 @@
           }
         }
       },
+      "ClassifyEvalMismatchData": {
+        "type": "object",
+        "description": "One wrong answer.",
+        "required": [
+          "scenario",
+          "provider_id",
+          "question",
+          "expected",
+          "actual"
+        ],
+        "properties": {
+          "actual": {
+            "type": "string",
+            "description": "The answer today's code gave."
+          },
+          "expected": {
+            "type": "string"
+          },
+          "label_review": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the label itself is a judgement call, when it is: a mismatch\nhere may be the label's fault, not the classifier's."
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why today's code answered so: the deciding rule's reason. Empty\nfor to-do and record answers."
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "twin_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The scenario this one is a near-miss twin of."
+          }
+        }
+      },
+      "ClassifyEvalQuestionData": {
+        "type": "object",
+        "description": "Accuracy on one question about an email.",
+        "required": [
+          "question",
+          "evaluated",
+          "correct",
+          "accuracy_percent"
+        ],
+        "properties": {
+          "accuracy_percent": {
+            "type": "number",
+            "format": "double",
+            "description": "`correct / evaluated` as a percentage with one decimal; 0 when\nnothing was evaluated."
+          },
+          "correct": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "evaluated": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Labelled emails present in this mailbox and answerable (an email\nwhose home cannot be worked out is not asked about its home).",
+            "minimum": 0
+          },
+          "question": {
+            "type": "string",
+            "description": "`who`, `home`, `todo` or `record`."
+          }
+        }
+      },
+      "ClassifyEvalSetData": {
+        "type": "string",
+        "description": "Which labelled set to measure. `Full` and `Mine` arrive with the full\ngenerator and with corrections (blueprint 32, build order 1 and 5).",
+        "enum": [
+          "quick"
+        ]
+      },
+      "ClassifyEvalSummaryData": {
+        "type": "object",
+        "required": [
+          "set",
+          "label_schema_version",
+          "labelled_in_set",
+          "present",
+          "placed_live",
+          "not_placed",
+          "unlabelled",
+          "questions",
+          "home_projection"
+        ],
+        "properties": {
+          "home_projection": {
+            "type": "string",
+            "description": "What `home` reads: the arrivals line's current-policy destination."
+          },
+          "label_schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Version of the questions the expectations answer, so a change to\nthem never silently invalidates old labels.",
+            "minimum": 0
+          },
+          "labelled_in_set": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Labelled emails in the set.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A plain sentence when there is nothing to measure."
+          },
+          "not_placed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Present emails whose home could not be worked out at all, so there is\nnone to compare.",
+            "minimum": 0
+          },
+          "placed_live": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Present emails with no arrivals row (history older than 30 days when\nthe account first synced), whose home was worked out live by the same\nrules.",
+            "minimum": 0
+          },
+          "present": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, the ones found in this mailbox.",
+            "minimum": 0
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyEvalQuestionData"
+            }
+          },
+          "set": {
+            "$ref": "#/components/schemas/ClassifyEvalSetData"
+          },
+          "unlabelled": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Stored emails in scope that no scenario labels.",
+            "minimum": 0
+          }
+        }
+      },
       "ClientKind": {
         "type": "string",
         "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` — the most\nrealistic guess for scripts hand-rolled against the socket.",
@@ -27295,6 +27453,34 @@
           },
           {
             "type": "object",
+            "description": "Measure today's classifier against labelled scenarios in the stored\nmail: who sent it, which mode it went to, and whether it made a\nto-do or a record. Local; nothing is changed or sent.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClassifyEval"
+                ]
+              },
+              "set": {
+                "$ref": "#/components/schemas/ClassifyEvalSetData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "reply_all",
@@ -32565,6 +32751,32 @@
               },
               "summary": {
                 "$ref": "#/components/schemas/DraftEvalSummaryData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ClassifyEval`. Mismatches are sorted by\nscenario, then provider id, then question.",
+            "required": [
+              "summary",
+              "mismatches",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ClassifyEval"
+                ]
+              },
+              "mismatches": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ClassifyEvalMismatchData"
+                }
+              },
+              "summary": {
+                "$ref": "#/components/schemas/ClassifyEvalSummaryData"
               }
             }
           },

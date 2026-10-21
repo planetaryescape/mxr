@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 mod arrivals;
 mod assistant;
+mod classify;
 mod desk;
 mod draft_provenance;
 mod freshness;
@@ -24,6 +25,7 @@ mod todos;
 mod updates;
 pub use arrivals::*;
 pub use assistant::*;
+pub use classify::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -1545,6 +1547,15 @@ pub enum Request {
         account_id: Option<AccountId>,
         limit: u32,
     },
+    /// Measure today's classifier against labelled scenarios in the stored
+    /// mail: who sent it, which mode it went to, and whether it made a
+    /// to-do or a record. Local; nothing is changed or sent.
+    ClassifyEval {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        set: ClassifyEvalSetData,
+    },
     PrepareReply {
         message_id: MessageId,
         reply_all: bool,
@@ -2870,6 +2881,7 @@ impl Request {
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
             | Self::DraftEval { .. }
+            | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
@@ -3685,6 +3697,12 @@ pub enum ResponseData {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
     },
+    /// Returned by `Request::ClassifyEval`. Mismatches are sorted by
+    /// scenario, then provider id, then question.
+    ClassifyEval {
+        summary: ClassifyEvalSummaryData,
+        mismatches: Vec<ClassifyEvalMismatchData>,
+    },
     ExportResult {
         content: String,
     },
@@ -4467,6 +4485,7 @@ impl ResponseData {
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
             | Self::DraftEval { .. }
+            | Self::ClassifyEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
             | Self::ArchiveWorkspace { .. }

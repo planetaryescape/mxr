@@ -260,6 +260,33 @@ impl FakeProvider {
         Self::with_dataset(account_id, Dataset::Demo(stream), labels)
     }
 
+    /// The labelled scenario set (the curated demo mail plus near-miss
+    /// twins) for the personal demo account, as of `now`. `mxr classify
+    /// eval` is graded against it.
+    pub fn with_scenario_set(
+        account_id: AccountId,
+        now: chrono::DateTime<chrono::Utc>,
+        updates_cuts: &[String],
+    ) -> Self {
+        let seed = fixtures::scenarios::scenario_seed(
+            &account_id,
+            now,
+            &fixtures::DemoCuts::parse(updates_cuts),
+        );
+        let mut messages = Vec::with_capacity(seed.messages.len());
+        let mut bodies = HashMap::with_capacity(seed.messages.len());
+        for (envelope, body) in seed.messages {
+            bodies.insert(envelope.provider_id.clone(), body);
+            messages.push(envelope);
+        }
+        let labels = fixtures::demo_labels(&account_id);
+        Self::with_dataset(
+            account_id,
+            Dataset::Materialised { messages, bodies },
+            labels,
+        )
+    }
+
     /// Build a provider backed by the generated demo dataset, without
     /// reading `MXR_FAKE_DATASET` / `MXR_FAKE_MESSAGE_COUNT`.
     pub fn with_demo_dataset(account_id: AccountId, message_count: usize) -> Self {

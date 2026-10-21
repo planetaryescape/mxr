@@ -10,6 +10,7 @@ pub mod cadence;
 pub mod cat;
 pub mod categories;
 pub mod chimes;
+pub mod classify;
 pub mod commitments;
 pub mod completions;
 pub mod config;

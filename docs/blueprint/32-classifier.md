@@ -666,6 +666,47 @@ everything else: they adopt the verbatim quote check and `natural_time`.
 Each step ships on its own with docs, CLI JSON and tests, per the repo's
 rules.
 
+### Baseline: today's classifier on the quick set
+
+Step 1's first rung is built: `mxr classify eval --set quick` grades the
+stored mail against labelled scenarios, and a daemon test snapshots the
+result so every later change shows up as a reviewed diff. The labels are in
+`crates/provider-fake/src/fixtures/scenarios/` (147 emails: 99 from the
+curated demo fixtures and 48 from 24 near-miss twin pairs). The twins are
+not in the 50,000-email demo, so on a demo `mxr classify eval` grades the 99
+curated emails and the daemon test grades all 147. Labels state what mxr
+should do. The labels that rest on a judgement call say so in `review` on
+their scenario, and the output marks a mismatch on one.
+
+Measured by `scripts/cargo-test -p mxr --lib -- handler::tests::classify_eval`
+(the snapshot in `crates/daemon/src/handler/tests/snapshots/` is the record):
+
+| Question | Right | Of | Accuracy |
+|---|---|---|---|
+| Who sent it | 131 | 147 | 89.1% |
+| Home | 132 | 147 | 89.8% |
+| To-do aspect | 144 | 147 | 98.0% |
+| Record aspect | 142 | 147 | 96.6% |
+
+39 answers are wrong, on 20 emails. The clusters:
+
+- Senders with no automation cue in the address read as people and land in
+  Messages: the council (a bill and three statements), DocuSign (three
+  emails), Disney+ (a cancellation and three receipts) and a museum's
+  ticket mail. Twelve emails, wrong on both who and home.
+- An opt-out header on mail that is not a newsletter reads as a list: a
+  shop's receipt and an application acknowledgement go to Reading.
+- Content cues move mail between person and machine: a receipt that asks
+  you to confirm an address reads as a person, a colleague's FYI to a group
+  reads as a machine.
+- To-do and record gaps: a card about to expire makes no to-do, a failed
+  gym payment is filed as a record, and the labelled judgement calls
+  (statements as records, a failed payout as a to-do) disagree with the
+  rules.
+
+The numbers are for the labelled set, which was written to find splits,
+not sampled from a mailbox, so they are not a rate of error in real mail.
+
 ## Decisions this rests on
 
 From BK, 21 October 2026:

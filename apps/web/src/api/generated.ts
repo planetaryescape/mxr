@@ -5546,6 +5546,94 @@ export interface components {
             quote: string;
             thread_id?: string | null;
         };
+        /** @description One wrong answer. */
+        ClassifyEvalMismatchData: {
+            /** @description The answer today's code gave. */
+            actual: string;
+            expected: string;
+            /**
+             * @description Why the label itself is a judgement call, when it is: a mismatch
+             *     here may be the label's fault, not the classifier's.
+             */
+            label_review?: string | null;
+            provider_id: string;
+            question: string;
+            /**
+             * @description Why today's code answered so: the deciding rule's reason. Empty
+             *     for to-do and record answers.
+             */
+            reason?: string;
+            scenario: string;
+            /** @description The scenario this one is a near-miss twin of. */
+            twin_of?: string | null;
+        };
+        /** @description Accuracy on one question about an email. */
+        ClassifyEvalQuestionData: {
+            /**
+             * Format: double
+             * @description `correct / evaluated` as a percentage with one decimal; 0 when
+             *     nothing was evaluated.
+             */
+            accuracy_percent: number;
+            /** Format: int32 */
+            correct: number;
+            /**
+             * Format: int32
+             * @description Labelled emails present in this mailbox and answerable (an email
+             *     whose home cannot be worked out is not asked about its home).
+             */
+            evaluated: number;
+            /** @description `who`, `home`, `todo` or `record`. */
+            question: string;
+        };
+        /**
+         * @description Which labelled set to measure. `Full` and `Mine` arrive with the full
+         *     generator and with corrections (blueprint 32, build order 1 and 5).
+         * @enum {string}
+         */
+        ClassifyEvalSetData: "quick";
+        ClassifyEvalSummaryData: {
+            /** @description What `home` reads: the arrivals line's current-policy destination. */
+            home_projection: string;
+            /**
+             * Format: int32
+             * @description Version of the questions the expectations answer, so a change to
+             *     them never silently invalidates old labels.
+             */
+            label_schema_version: number;
+            /**
+             * Format: int32
+             * @description Labelled emails in the set.
+             */
+            labelled_in_set: number;
+            /** @description A plain sentence when there is nothing to measure. */
+            message?: string | null;
+            /**
+             * Format: int32
+             * @description Present emails whose home could not be worked out at all, so there is
+             *     none to compare.
+             */
+            not_placed: number;
+            /**
+             * Format: int32
+             * @description Present emails with no arrivals row (history older than 30 days when
+             *     the account first synced), whose home was worked out live by the same
+             *     rules.
+             */
+            placed_live: number;
+            /**
+             * Format: int32
+             * @description Of those, the ones found in this mailbox.
+             */
+            present: number;
+            questions: components["schemas"]["ClassifyEvalQuestionData"][];
+            set: components["schemas"]["ClassifyEvalSetData"];
+            /**
+             * Format: int32
+             * @description Stored emails in scope that no scenario labels.
+             */
+            unlabelled: number;
+        };
         /**
          * @description Originating client for an IPC request. Carried on the envelope so the
          *     daemon's activity recorder can tag rows with the surface that produced
@@ -10747,6 +10835,12 @@ export interface components {
                   limit: number;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "ClassifyEval";
+                  set?: components["schemas"]["ClassifyEvalSetData"];
+              }
+            | {
                   /** @enum {string} */
                   cmd: "PrepareReply";
                   message_id: components["schemas"]["MessageId"];
@@ -12120,6 +12214,12 @@ export interface components {
                   /** @enum {string} */
                   kind: "DraftEval";
                   summary: components["schemas"]["DraftEvalSummaryData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "ClassifyEval";
+                  mismatches: components["schemas"]["ClassifyEvalMismatchData"][];
+                  summary: components["schemas"]["ClassifyEvalSummaryData"];
               }
             | {
                   content: string;

@@ -7,7 +7,7 @@
     )
 )]
 
-use crate::auth::GmailAuth;
+use crate::auth::{AuthError, GmailAuth};
 use crate::error::GmailError;
 use crate::types::*;
 use async_trait::async_trait;
@@ -136,7 +136,18 @@ impl GmailClient {
             .auth
             .access_token()
             .await
-            .map_err(|e| GmailError::Auth(e.to_string()))?;
+            .map_err(|error| match error {
+                // Typed so the daemon can size its backoff from the hint. It is
+                // reported before any mail request exists, so a send is never
+                // retried because of it.
+                AuthError::RefreshRateLimited { retry_after_secs } => {
+                    GmailError::RateLimited { retry_after_secs }
+                }
+                // Not an authorization failure: keep it out of the "Auth error"
+                // label so sync health does not prescribe signing in again.
+                error @ AuthError::TokenCacheWrite(_) => GmailError::Other(error.into()),
+                other => GmailError::Auth(other.to_string()),
+            })?;
         Ok(format!("Bearer {token}"))
     }
 
@@ -769,6 +780,7 @@ mod urlencoding {
 mod tests {
     use super::*;
     use futures::FutureExt;
+    use mxr_core::MxrError;
     use std::any::Any;
     use std::panic::AssertUnwindSafe;
     use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
@@ -1104,6 +1116,112 @@ mod tests {
             GmailClient::new(GmailAuth::for_test_token("test-token")).with_base_url(server.uri());
 
         client.trash_message("msg-123").await.unwrap();
+    }
+
+    /// Storage holding an expired token; `fail_writes` makes saving a refreshed
+    /// one fail.
+    #[derive(Clone)]
+    struct ExpiredTokens {
+        fail_writes: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl yup_oauth2::storage::TokenStorage for ExpiredTokens {
+        async fn set(
+            &self,
+            _: &[&str],
+            _: yup_oauth2::storage::TokenInfo,
+        ) -> Result<(), yup_oauth2::storage::TokenStorageError> {
+            if self.fail_writes {
+                return Err(yup_oauth2::storage::TokenStorageError::Other(
+                    "disk full".into(),
+                ));
+            }
+            Ok(())
+        }
+
+        async fn get(&self, _: &[&str]) -> Option<yup_oauth2::storage::TokenInfo> {
+            Some(yup_oauth2::storage::TokenInfo {
+                access_token: Some("expired-access".into()),
+                refresh_token: Some("synthetic-refresh".into()),
+                expires_at: Some(std::time::SystemTime::UNIX_EPOCH.into()),
+                id_token: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn token_endpoint_throttle_becomes_a_typed_rate_limit_before_any_mail_request() {
+        let Some(token_server) = start_mock_server().await else {
+            return;
+        };
+        let Some(mail_server) = start_mock_server().await else {
+            return;
+        };
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "120"))
+            .expect(3)
+            .mount(&token_server)
+            .await;
+        let auth = GmailAuth::for_test_storage(
+            Box::new(ExpiredTokens { fail_writes: false }),
+            format!("{}/token", token_server.uri()),
+        );
+        let client = GmailClient::new(auth).with_base_url(mail_server.uri());
+
+        let read = client.get_attachment("msg-1", "att-1").await.unwrap_err();
+        let write = client.trash_message("msg-1").await.unwrap_err();
+        let send = client.send_message("cmF3", None).await.unwrap_err();
+
+        for error in [read, write, send] {
+            assert!(
+                matches!(
+                    error,
+                    GmailError::RateLimited {
+                        retry_after_secs: 120
+                    }
+                ),
+                "{error:?}"
+            );
+            assert!(matches!(
+                MxrError::from(error),
+                MxrError::RateLimited {
+                    retry_after_secs: 120
+                }
+            ));
+        }
+        // The throttle is reported, never retried: three calls, three token
+        // requests, and no mail request (a send included) ever left the client.
+        assert_eq!(token_server.received_requests().await.unwrap().len(), 3);
+        assert!(mail_server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn token_cache_write_failure_is_not_labelled_an_auth_error() {
+        let Some(token_server) = start_mock_server().await else {
+            return;
+        };
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new-access", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&token_server)
+            .await;
+        let auth = GmailAuth::for_test_storage(
+            Box::new(ExpiredTokens { fail_writes: true }),
+            format!("{}/token", token_server.uri()),
+        );
+        let client = GmailClient::new(auth).with_base_url("http://127.0.0.1:9".into());
+
+        let message = MxrError::from(client.trash_message("msg-1").await.unwrap_err()).to_string();
+
+        assert!(
+            message.contains("Local token cache write failed"),
+            "{message}"
+        );
+        assert!(!message.to_ascii_lowercase().contains("auth"), "{message}");
     }
 
     #[tokio::test]

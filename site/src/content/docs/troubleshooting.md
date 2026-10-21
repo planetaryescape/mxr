@@ -51,9 +51,11 @@ mxr logs --level error --since 10m --format json | jq .
 Common causes:
 
 - **Provider rate-limit.** The daemon backs off automatically; just wait. `mxr status --format json` will show `last_error` if it's a rate-limit retry.
+- **Gmail token refresh unavailable.** A timeout, connection or TLS failure, a 5xx, or a token-endpoint reply mxr cannot read (the error names its HTTP status) is retried automatically and never starts a browser sign-in. `mxr status` reports it as "Can't reach" and `mxr doctor` as a network finding. A token-endpoint 429 is reported as rate limited, and the daemon waits the `Retry-After` it sent (capped at five minutes).
+- **Gmail token could not be saved.** `Local token cache write failed` means the refresh worked but the OS keychain or the token directory refused the write. The sign-in is intact, so do not re-authorize: unlock the keychain or fix permissions on the token directory (`MXR_TOKEN_DIR`, default `<data_dir>/tokens`). `mxr doctor` reports it as a storage finding.
 - **Stale Gmail history cursor.** mxr falls back to a full resync automatically. If it doesn't, force one with `mxr doctor --reindex`.
 - **Stale IMAP/SMTP password.** Run `mxr accounts repair <name>`. It re-prompts for password-backed IMAP/SMTP credentials and writes them to `secrets.toml`. The command can run directly from config when the daemon is unavailable, so a broken legacy keychain credential does not block its own repair.
-- **Stale OAuth credential.** Run `mxr accounts reauth <name>` for Gmail or Outlook. OAuth tokens do not use the IMAP/SMTP repair path.
+- **Stale OAuth credential.** When Google rejects the stored grant (`invalid_grant`) status says the account "needs you to sign in again". Run `mxr accounts reauth <name>` for Gmail or Outlook. OAuth tokens do not use the IMAP/SMTP repair path.
 
 ### A sync that runs for hours
 

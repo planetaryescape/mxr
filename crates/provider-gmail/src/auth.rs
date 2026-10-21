@@ -8,11 +8,16 @@ use yup_oauth2::InstalledFlowReturnMethod;
 use crate::auth_refresh::CachedTokenSource;
 use crate::auth_storage::{has_keychain_token_cache, KeychainTokenStorage};
 
+const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
+
 const UNSAFE_TOKEN_REF_CHARS: &[char] = &['\\', ':', '*', '?', '"', '<', '>', '|'];
 
 /// Upper bound on one background token acquisition, including waiting for
-/// another refresh and persisting its result. HTTP uses the tighter bound
-/// below; browser authorization never runs inside `access_token()`.
+/// another refresh. It cannot interrupt the synchronous keychain and disk write
+/// that persists a result: that call returns on its own schedule (see
+/// `a_blocked_cache_write_leaves_the_rest_of_the_runtime_running`). HTTP uses
+/// the tighter bound below; browser authorization never runs inside
+/// `access_token()`.
 const TOKEN_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Per-request bound applied inside yup-oauth2's HTTP client. Keeps each
@@ -34,6 +39,16 @@ pub enum AuthError {
 
     #[error("Token refresh temporarily unavailable: {0}")]
     RefreshUnavailable(String),
+
+    /// The token endpoint answered 429. Not an authorization failure: the grant
+    /// is intact and the caller should wait `retry_after_secs` (bounded).
+    #[error("Token refresh rate limited: retry after {retry_after_secs}s")]
+    RefreshRateLimited { retry_after_secs: u64 },
+
+    /// A refreshed token could not be persisted. The grant and the in-memory
+    /// token are fine; the local keychain or token file is the problem.
+    #[error("Local token cache write failed: {0}")]
+    TokenCacheWrite(String),
 
     #[error("Invalid token_ref: {0}")]
     InvalidTokenRef(String),
@@ -313,6 +328,229 @@ mod tests {
             );
         }
     }
+
+    mod explicit_authorization_handoff {
+        use super::*;
+        use std::future::Future;
+        use std::pin::Pin;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use yup_oauth2::authenticator_delegate::DeviceAuthResponse;
+
+        /// Counts interactive prompts and, for the installed flow, plays the
+        /// browser by calling the local redirect with a synthetic code.
+        #[derive(Clone, Default)]
+        struct Prompts(Arc<AtomicUsize>);
+
+        impl InstalledFlowDelegate for Prompts {
+            fn present_user_url<'a>(
+                &'a self,
+                url: &'a str,
+                need_code: bool,
+            ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+                Box::pin(async move {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                    assert!(!need_code, "HTTPRedirect never asks for a pasted code");
+                    let redirect = url
+                        .split("redirect_uri=")
+                        .nth(1)
+                        .and_then(|rest| rest.split('&').next())
+                        .ok_or("authorization URL has no redirect_uri")?
+                        .replace("localhost", "127.0.0.1");
+                    tokio::spawn(async move {
+                        let _ = reqwest::get(format!("{redirect}/?code=synthetic-code")).await;
+                    });
+                    Ok(String::new())
+                })
+            }
+        }
+
+        impl DeviceFlowDelegate for Prompts {
+            fn present_user_code<'a>(
+                &'a self,
+                _: &'a DeviceAuthResponse,
+            ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+                Box::pin(async move {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                })
+            }
+        }
+
+        async fn mount_authorization(server: &MockServer) {
+            let initial = serde_json::json!({
+                "access_token": "explicit-access",
+                "refresh_token": "explicit-refresh",
+                // Inside yup-oauth2's one-minute margin: already due for refresh.
+                "expires_in": 30,
+                "token_type": "Bearer"
+            });
+            Mock::given(method("POST"))
+                .and(path("/token"))
+                .and(body_string_contains("grant_type=authorization_code"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(initial.clone()))
+                .expect(0..=1)
+                .mount(server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/device"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "device_code": "synthetic-device-code",
+                    "user_code": "SYNTHETIC",
+                    "verification_uri": format!("{}/verify", server.uri()),
+                    "expires_in": 300,
+                    "interval": 1
+                })))
+                .expect(0..=1)
+                .mount(server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/token"))
+                .and(body_string_contains("code=synthetic-device-code"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(initial))
+                .expect(0..=1)
+                .mount(server)
+                .await;
+        }
+
+        async fn authorize_then_refresh(flow: AuthFlow, rotated_refresh_token: Option<&str>) {
+            let server = MockServer::start().await;
+            mount_authorization(&server).await;
+            let mut refreshed = serde_json::json!({
+                "access_token": "refreshed-access",
+                "token_type": "Bearer",
+                "expires_in": 3600
+            });
+            if let Some(token) = rotated_refresh_token {
+                refreshed["refresh_token"] = token.into();
+            }
+            Mock::given(method("POST"))
+                .and(path("/token"))
+                .and(body_string_contains("grant_type=refresh_token"))
+                .and(body_string_contains("refresh_token=explicit-refresh"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(refreshed))
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let tokens = MemoryTokens(Arc::new(Mutex::new(None)));
+            let prompts = Prompts::default();
+            let mut auth = GmailAuth::new("client".into(), "secret".into(), "handoff".into());
+            let mut secret = auth.make_secret();
+            secret.token_uri = format!("{}/token", server.uri());
+            secret.auth_uri = format!("{}/authorize", server.uri());
+            auth.authorize_with_storage(
+                flow,
+                secret,
+                tokens.clone(),
+                Delegates {
+                    installed: Some(Box::new(prompts.clone())),
+                    device: Some(Box::new(prompts.clone())),
+                    device_code_url: Some(format!("{}/device", server.uri())),
+                },
+            )
+            .await
+            .expect("explicit authorization completes against the local endpoint");
+            assert_eq!(prompts.0.load(Ordering::SeqCst), 1);
+            let granted = tokens.get(GMAIL_SCOPES).await.unwrap();
+            assert_eq!(granted.refresh_token.as_deref(), Some("explicit-refresh"));
+            assert!(granted.is_expired());
+
+            let token =
+                tokio::time::timeout(std::time::Duration::from_secs(5), auth.access_token())
+                    .await
+                    .expect("the handoff refreshes without waiting for another prompt")
+                    .unwrap();
+            assert_eq!(token, "refreshed-access");
+            // The refresh-only source reuses the cached token from here on.
+            assert_eq!(auth.access_token().await.unwrap(), "refreshed-access");
+            assert_eq!(prompts.0.load(Ordering::SeqCst), 1, "no second prompt");
+            assert_eq!(
+                tokens
+                    .get(GMAIL_SCOPES)
+                    .await
+                    .unwrap()
+                    .refresh_token
+                    .as_deref(),
+                Some(rotated_refresh_token.unwrap_or("explicit-refresh"))
+            );
+        }
+
+        #[tokio::test]
+        async fn installed_flow_hands_off_and_keeps_an_omitted_refresh_token() {
+            authorize_then_refresh(AuthFlow::Installed, None).await;
+        }
+
+        #[tokio::test]
+        async fn installed_flow_hands_off_and_stores_a_rotated_refresh_token() {
+            authorize_then_refresh(AuthFlow::Installed, Some("rotated-refresh")).await;
+        }
+
+        #[tokio::test]
+        async fn device_flow_hands_off_and_keeps_an_omitted_refresh_token() {
+            authorize_then_refresh(AuthFlow::Device, None).await;
+        }
+
+        #[tokio::test]
+        async fn device_flow_hands_off_and_stores_a_rotated_refresh_token() {
+            authorize_then_refresh(AuthFlow::Device, Some("rotated-refresh")).await;
+        }
+    }
+
+    mod explicit_refresh_token_helper {
+        use super::*;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        async fn error_for(response: ResponseTemplate) -> AuthError {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/token"))
+                .respond_with(response)
+                .expect(1)
+                .mount(&server)
+                .await;
+            GmailAuth::with_refresh_token_at(
+                format!("{}/token", server.uri()),
+                "client".into(),
+                "secret".into(),
+                "synthetic-refresh".into(),
+            )
+            .access_token()
+            .await
+            .unwrap_err()
+        }
+
+        #[tokio::test]
+        async fn rejection_reports_only_the_oauth_code_not_the_description() {
+            let error = error_for(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "invalid_grant",
+                "error_description": "description-must-not-leak"
+            })))
+            .await;
+
+            assert!(matches!(error, AuthError::OAuth2(ref code) if code == "invalid_grant"));
+            assert!(!error.to_string().contains("description-must-not-leak"));
+        }
+
+        #[tokio::test]
+        async fn unreadable_rejection_and_throttle_match_the_background_helper() {
+            let unreadable = error_for(ResponseTemplate::new(400).set_body_string("<html>")).await;
+            assert!(
+                matches!(&unreadable, AuthError::RefreshUnavailable(m) if m.contains("HTTP 400")),
+                "{unreadable:?}"
+            );
+
+            let throttled =
+                error_for(ResponseTemplate::new(429).insert_header("retry-after", "45")).await;
+            assert!(matches!(
+                throttled,
+                AuthError::RefreshRateLimited {
+                    retry_after_secs: 45
+                }
+            ));
+        }
+    }
 }
 
 pub(crate) const GMAIL_SCOPES: &[&str] = &[
@@ -359,6 +597,14 @@ impl AuthFlow {
     }
 }
 
+/// Caller-provided hooks for one explicit authorization.
+struct Delegates {
+    installed: Option<Box<dyn InstalledFlowDelegate>>,
+    device: Option<Box<dyn DeviceFlowDelegate>>,
+    /// Test seam: Google's device-code endpoint when `None`.
+    device_code_url: Option<String>,
+}
+
 /// Bundled OAuth client credentials for mxr.
 /// Users can override these with their own in config.toml (BYOC).
 /// Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET env vars at build time,
@@ -394,13 +640,6 @@ pub struct GmailAuth {
 type TokenFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, AuthError>> + Send>>;
 
-#[derive(serde::Deserialize)]
-struct RefreshTokenResponse {
-    access_token: Option<String>,
-    error: Option<String>,
-    error_description: Option<String>,
-}
-
 impl GmailAuth {
     pub fn new(client_id: String, client_secret: String, token_ref: String) -> Self {
         Self {
@@ -435,6 +674,20 @@ impl GmailAuth {
         client_secret: String,
         refresh_token: String,
     ) -> Self {
+        Self::with_refresh_token_at(
+            GOOGLE_TOKEN_URI.to_string(),
+            client_id,
+            client_secret,
+            refresh_token,
+        )
+    }
+
+    fn with_refresh_token_at(
+        token_uri: String,
+        client_id: String,
+        client_secret: String,
+        refresh_token: String,
+    ) -> Self {
         let token_client_id = client_id.clone();
         let token_client_secret = client_secret.clone();
         // Built once and moved into the closure: this token_fn runs on every
@@ -453,13 +706,14 @@ impl GmailAuth {
                 reqwest::Client::new()
             });
         let token_fn = Box::new(move || {
+            let token_uri = token_uri.clone();
             let client_id = token_client_id.clone();
             let client_secret = token_client_secret.clone();
             let refresh_token = refresh_token.clone();
             let client = token_client.clone();
             Box::pin(async move {
                 let response = client
-                    .post("https://oauth2.googleapis.com/token")
+                    .post(&token_uri)
                     .form(&[
                         ("client_id", client_id.as_str()),
                         ("client_secret", client_secret.as_str()),
@@ -469,24 +723,9 @@ impl GmailAuth {
                     .send()
                     .await
                     .map_err(crate::auth_refresh::refresh_http_error)?;
-                let status = response.status();
-                if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                    return Err(AuthError::RefreshUnavailable(format!("HTTP {status}")));
-                }
-                let body: RefreshTokenResponse = response
-                    .json()
+                crate::auth_refresh::read_refreshed_token(response)
                     .await
-                    .map_err(crate::auth_refresh::refresh_http_error)?;
-
-                if !status.is_success() {
-                    return Err(AuthError::OAuth2(
-                        body.error_description.or(body.error).unwrap_or_else(|| {
-                            format!("token refresh failed with status {status}")
-                        }),
-                    ));
-                }
-
-                body.access_token.ok_or(AuthError::TokenExpired)
+                    .map(|token| token.access_token)
             }) as TokenFuture
         });
 
@@ -498,6 +737,20 @@ impl GmailAuth {
             keychain_service: crate::auth_storage::KEYCHAIN_SERVICE.to_string(),
             token_fn: Some(token_fn),
         }
+    }
+
+    /// Cached-token auth over a caller-supplied storage and a local token endpoint.
+    #[cfg(test)]
+    pub(crate) fn for_test_storage(
+        storage: Box<dyn yup_oauth2::storage::TokenStorage>,
+        token_uri: String,
+    ) -> Self {
+        let mut auth = Self::new("client".into(), "secret".into(), "test".into());
+        let mut secret = auth.make_secret();
+        secret.token_uri = token_uri;
+        auth.use_cached_auth(storage, secret)
+            .expect("test HTTP client builds");
+        auth
     }
 
     #[cfg(test)]
@@ -528,7 +781,7 @@ impl GmailAuth {
             client_id: self.client_id.clone(),
             client_secret: self.client_secret.clone(),
             auth_uri: "https://accounts.google.com/o/oauth2/auth".to_string(),
-            token_uri: "https://oauth2.googleapis.com/token".to_string(),
+            token_uri: GOOGLE_TOKEN_URI.to_string(),
             redirect_uris: vec!["http://localhost".to_string()],
             ..Default::default()
         }
@@ -564,20 +817,53 @@ impl GmailAuth {
             tokio::fs::create_dir_all(parent).await?;
         }
 
+        let storage = KeychainTokenStorage::new_with_service(
+            self.token_ref.clone(),
+            token_path,
+            self.keychain_service.clone(),
+        );
+        self.authorize_with_storage(
+            flow,
+            secret,
+            storage,
+            Delegates {
+                installed: installed_delegate,
+                device: device_delegate,
+                device_code_url: None,
+            },
+        )
+        .await
+    }
+
+    /// Run the explicit flow against `storage`, then install the refresh-only
+    /// source on the same shared cache so later background refreshes never
+    /// prompt again. Split out so tests can supply a fake storage and a local
+    /// token endpoint.
+    async fn authorize_with_storage<S>(
+        &mut self,
+        flow: AuthFlow,
+        secret: yup_oauth2::ApplicationSecret,
+        storage: S,
+        delegates: Delegates,
+    ) -> Result<(), AuthError>
+    where
+        S: yup_oauth2::storage::TokenStorage + Clone + 'static,
+    {
+        let Delegates {
+            installed,
+            device,
+            device_code_url,
+        } = delegates;
+        let cached_secret = secret.clone();
         match flow {
             AuthFlow::Installed => {
-                let storage = KeychainTokenStorage::new_with_service(
-                    self.token_ref.clone(),
-                    token_path.clone(),
-                    self.keychain_service.clone(),
-                );
                 let mut builder = InstalledFlowAuthenticator::with_client(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
                     oauth_hyper_client_builder(),
                 )
                 .with_storage(Box::new(storage.clone()));
-                if let Some(delegate) = installed_delegate {
+                if let Some(delegate) = installed {
                     builder = builder.flow_delegate(delegate);
                 }
                 let auth = builder
@@ -589,15 +875,8 @@ impl GmailAuth {
                     .token(GMAIL_SCOPES)
                     .await
                     .map_err(|e| AuthError::OAuth2(e.to_string()))?;
-
-                self.use_cached_auth(Box::new(storage), self.make_secret())?;
             }
             AuthFlow::Device => {
-                let storage = KeychainTokenStorage::new_with_service(
-                    self.token_ref.clone(),
-                    token_path.clone(),
-                    self.keychain_service.clone(),
-                );
                 // Device-flow polls are flow-fatal in yup-oauth2 (a transport
                 // error aborts the whole authorization), so this path gets
                 // the full 60s per-request bound instead of the 30s used for
@@ -607,7 +886,10 @@ impl GmailAuth {
                     DefaultHyperClientBuilder::default().with_timeout(TOKEN_REFRESH_TIMEOUT);
                 let mut builder = DeviceFlowAuthenticator::with_client(secret, device_client)
                     .with_storage(Box::new(storage.clone()));
-                if let Some(delegate) = device_delegate {
+                if let Some(url) = device_code_url {
+                    builder = builder.device_code_url(url);
+                }
+                if let Some(delegate) = device {
                     builder = builder.flow_delegate(delegate);
                 }
                 let auth = builder
@@ -619,12 +901,10 @@ impl GmailAuth {
                     .token(GMAIL_SCOPES)
                     .await
                     .map_err(|e| AuthError::OAuth2(e.to_string()))?;
-
-                self.use_cached_auth(Box::new(storage), self.make_secret())?;
             }
         }
 
-        Ok(())
+        self.use_cached_auth(Box::new(storage), cached_secret)
     }
 
     pub async fn load_existing(&mut self) -> Result<(), AuthError> {
@@ -646,7 +926,7 @@ impl GmailAuth {
         self.use_cached_auth(Box::new(storage), secret)
     }
 
-    fn use_cached_auth(
+    pub(crate) fn use_cached_auth(
         &mut self,
         storage: Box<dyn yup_oauth2::storage::TokenStorage>,
         secret: yup_oauth2::ApplicationSecret,

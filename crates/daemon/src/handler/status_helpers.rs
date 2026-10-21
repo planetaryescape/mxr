@@ -511,8 +511,23 @@ pub(crate) fn build_doctor_findings(
     }
 
     for line in inputs.recent_errors {
+        // The sync loop logs each failure it also records in sync status, so a
+        // line that carries a status error is the same failure, already reported
+        // above with its account and a more precise severity.
+        let mirrors_sync_status = inputs.sync_statuses.iter().any(|status| {
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|err| !err.is_empty() && line.contains(err))
+        });
+        if mirrors_sync_status {
+            continue;
+        }
         if let Some(finding) = classify_log_line(line) {
-            findings.push(finding);
+            // Repeated retries log the same failure repeatedly.
+            if !findings.contains(&finding) {
+                findings.push(finding);
+            }
         }
     }
 
@@ -537,8 +552,20 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         };
     }
     // The provider's Auth/OAuth wrappers do not mean the grant was rejected:
-    // token-endpoint transport failures are retryable network failures too.
-    let (category, remediation) = if crate::loops::classify_sync_error(err) == "network" {
+    // token-endpoint transport failures are retryable network failures too,
+    // and a refreshed token that could not be saved is a local storage problem.
+    let (category, remediation) = if lower.contains("local token cache write failed") {
+        (
+            DoctorFindingCategory::Storage,
+            vec![
+                "The sign-in is intact; mxr could not save the refreshed token. Check that the OS keychain is unlocked and the mxr token directory is writable.".into(),
+                format!(
+                    "mxr sync --account {} --wait --wait-timeout-secs 120",
+                    shell_words::quote(account)
+                ),
+            ],
+        )
+    } else if crate::loops::classify_sync_error(err) == "network" {
         (
             DoctorFindingCategory::Network,
             vec![
@@ -553,13 +580,22 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         || lower.contains("invalid_grant")
         || lower.contains("token")
         || lower.contains("unauthorized")
+        // Sync health already says "sign in again" for every auth-class failure
+        // (a Gmail 401, an IMAP login the server rejected); doctor must agree.
+        || crate::loops::classify_sync_error(err) == "auth"
     {
-        (
-            DoctorFindingCategory::OAuth,
-            vec![format!(
-                "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
-            )],
-        )
+        // Re-adding the account cannot fix a rejected OAuth client or scope, so
+        // name the real cause first and keep re-authorization as the last step.
+        let mut steps = Vec::new();
+        if lower.contains("invalid_client") || lower.contains("unauthorized_client") {
+            steps.push("The provider rejected the OAuth client, not the sign-in: check the client ID and secret in the account config. For Gmail, a custom client must be a \"Desktop app\" client; for Outlook, check the app registration.".to_string());
+        } else if lower.contains("invalid_scope") {
+            steps.push("The provider rejected the requested scopes: check that the OAuth app may request them. For Gmail, enable the Gmail API and list the gmail.readonly, gmail.modify and gmail.labels scopes on the consent screen; for Outlook, check the app registration's API permissions.".to_string());
+        }
+        steps.push(format!(
+            "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
+        ));
+        (DoctorFindingCategory::OAuth, steps)
     } else if lower.contains("rate") && lower.contains("limit") {
         (
             DoctorFindingCategory::Sync,
@@ -850,6 +886,164 @@ mod tests {
         assert_eq!(
             feature_health_for_observation(runtime.observation(None), default),
             FeatureHealth::Healthy
+        );
+    }
+
+    /// Provider failures as the sync loop records them (`MxrError` display of
+    /// each provider's error), across Gmail, IMAP and SMTP. Sync health and
+    /// doctor must agree on every row, and only a rejected grant or rejected
+    /// credentials may prescribe signing in again.
+    #[test]
+    fn provider_failures_classify_the_same_in_sync_health_and_doctor() {
+        use mxr_protocol::SyncErrorKindData as Kind;
+        const TOKEN_UNAVAILABLE: &str =
+            "Provider error: Auth error: Token refresh temporarily unavailable";
+        let rows: &[(&str, &str, Kind, DoctorFindingCategory, bool)] = &[
+            // Gmail: a genuinely rejected grant, and an expired API session.
+            ("gmail invalid_grant", "Provider error: Auth error: OAuth2 error: invalid_grant", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("gmail invalid_client", "Provider error: Auth error: OAuth2 error: invalid_client", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("gmail invalid_request", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned invalid_request (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail unknown code", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned upstream_failure (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail 401", "Provider error: Authentication expired — re-auth required", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            // Gmail: everything that is not a rejected grant.
+            ("gmail token connection", &format!("{TOKEN_UNAVAILABLE}: token endpoint connection failed"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token tls", &format!("{TOKEN_UNAVAILABLE}: token endpoint TLS handshake failed"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token timeout", &format!("{TOKEN_UNAVAILABLE}: token endpoint request timed out"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token 503", &format!("{TOKEN_UNAVAILABLE}: HTTP 503 Service Unavailable"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token unreadable 4xx", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned an unreadable HTTP 400 response"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token 4xx without code", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned HTTP 403 without an OAuth error code"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail token 429", "Rate limited — retry after 120s", Kind::RateLimited, DoctorFindingCategory::Sync, false),
+            ("gmail cache write", "Provider error: Local token cache write failed: Permission denied (os error 13)", Kind::Store, DoctorFindingCategory::Storage, false),
+            // IMAP: rejected credentials, transport failure inside the login
+            // wrapper, and an XOAUTH2 token fetch wrapped as an auth error.
+            ("imap rejected credentials", "Provider error: Authentication failed: No Response: [AUTHENTICATIONFAILED] Invalid credentials (Failure)", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("imap login connection reset", "Provider error: Authentication failed: Connection reset by peer (os error 54)", Kind::Offline, DoctorFindingCategory::Network, false),
+            ("imap login tls", "Provider error: Authentication failed: TLS handshake failed", Kind::Offline, DoctorFindingCategory::Network, false),
+            ("imap connect", "Provider error: Connection error: tcp connect error: Connection refused (os error 61)", Kind::Offline, DoctorFindingCategory::Network, false),
+            ("imap timeout", "Provider error: Timeout: LOGIN timed out after 30s", Kind::Offline, DoctorFindingCategory::Network, false),
+            ("imap xoauth2 transport", &format!("Provider error: Authentication failed: token fetch failed: {TOKEN_UNAVAILABLE}: token endpoint connection failed"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("imap xoauth2 invalid_grant", "Provider error: Authentication failed: token fetch failed: Auth error: OAuth2 error: invalid_grant", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            // SMTP.
+            ("smtp rejected credentials", "Provider error: SMTP send failed: permanent error (535): 5.7.8 Authentication credentials invalid", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("smtp connection", "Provider error: SMTP send failed: connection error: connection refused", Kind::Offline, DoctorFindingCategory::Network, false),
+        ];
+        for (name, error, kind, category, reauthorizes) in rows {
+            let class = crate::loops::classify_sync_error(error);
+            assert_eq!(
+                Kind::from_failure_class(Some(class)),
+                *kind,
+                "sync health: {name}"
+            );
+            let finding = classify_sync_error("work", error);
+            assert_eq!(finding.category, *category, "doctor category: {name}");
+            assert_eq!(
+                finding
+                    .remediation
+                    .iter()
+                    .any(|step| step.contains("accounts add")),
+                *reauthorizes,
+                "doctor reauthorization advice: {name}: {:?}",
+                finding.remediation
+            );
+            assert!(
+                !finding.remediation.is_empty(),
+                "doctor names a next step: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rejected_client_or_scope_names_the_real_fix_before_reauthorizing() {
+        for (code, expected) in [
+            ("invalid_client", "OAuth client"),
+            ("unauthorized_client", "OAuth client"),
+            ("invalid_scope", "scopes"),
+        ] {
+            let finding = classify_sync_error(
+                "work",
+                &format!("Provider error: Auth error: OAuth2 error: {code}"),
+            );
+            assert!(
+                finding.remediation[0].contains(expected),
+                "{code}: {:?}",
+                finding.remediation
+            );
+            assert!(finding.remediation.last().unwrap().contains("accounts add"));
+        }
+        let grant = classify_sync_error(
+            "work",
+            "Provider error: Auth error: OAuth2 error: invalid_grant",
+        );
+        assert_eq!(grant.remediation.len(), 1);
+    }
+
+    #[test]
+    fn a_local_token_cache_failure_keeps_the_grant_and_names_storage() {
+        let finding = classify_sync_error(
+            "work",
+            "Provider error: Local token cache write failed: Permission denied (os error 13)",
+        );
+
+        assert_eq!(finding.category, DoctorFindingCategory::Storage);
+        let advice = finding.remediation.join("\n");
+        assert!(advice.contains("keychain"), "{advice}");
+        assert!(!advice.contains("accounts add"), "{advice}");
+    }
+
+    #[test]
+    fn a_failure_is_reported_once_when_the_log_mirrors_sync_status() {
+        let error = "Provider error: Auth error: Token refresh temporarily unavailable: token endpoint connection failed";
+        let status = mxr_protocol::AccountSyncStatus {
+            account_id: mxr_core::id::AccountId::new(),
+            account_name: "work".into(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: Some(error.to_string()),
+            failure_class: Some("network".into()),
+            consecutive_failures: 1,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: false,
+            progress: None,
+        };
+        let logged = format!("2026-10-21T10:00:00Z ERROR mxr: Sync error: {error}");
+        let unrelated = "ERROR oauth token expired for another account";
+
+        let findings = build_doctor_findings(DoctorFindingInputs {
+            sync_statuses: &[status],
+            recent_errors: &[
+                logged.clone(),
+                logged,
+                unrelated.to_string(),
+                unrelated.to_string(),
+            ],
+            data_dir_exists: true,
+            database_exists: true,
+            index_exists: true,
+            socket_exists: true,
+            repair_required: false,
+            restart_required: false,
+            semantic_enabled: false,
+            search_worker_stopped: false,
+            data_stats: &mxr_protocol::DoctorDataStats::default(),
+        });
+
+        let network: Vec<_> = findings
+            .iter()
+            .filter(|finding| finding.category == DoctorFindingCategory::Network)
+            .collect();
+        assert_eq!(network.len(), 1, "{findings:?}");
+        assert_eq!(network[0].severity, DoctorFindingSeverity::Error);
+        // A different failure in the log still surfaces, once.
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.message == "OAuth token issue in recent logs")
+                .count(),
+            1,
+            "{findings:?}"
         );
     }
 

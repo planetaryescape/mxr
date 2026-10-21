@@ -151,3 +151,5 @@ Make sure you saved the account after testing. In the TUI: press `t` to test, th
 ### Token expired or revoked
 
 Re-authorize by running `mxr accounts add gmail` again, or in the TUI press `a` on the account to re-authorize.
+
+Only a grant Google rejects (`invalid_grant`) needs this. Network, TLS, rate-limit and unreadable-response failures when mxr refreshes the token in the background retry on their own and never open a browser; see [Troubleshooting](/troubleshooting/).

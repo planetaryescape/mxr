@@ -93,15 +93,9 @@ export const listActions: Action[] = [
     aliases: ["Mod+a"],
   }),
   key("list", "list.select-none", "selectNone", "Select none", "* n", "Select"),
-  key("list", "list.select-read", "selectRead", "Select read", "* r", "Select", {
-    tuiNote: "Web only",
-  }),
-  key("list", "list.select-unread", "selectUnread", "Select unread", "* u", "Select", {
-    tuiNote: "Web only",
-  }),
-  key("list", "list.select-starred", "selectStarred", "Select starred", "* s", "Select", {
-    tuiNote: "Web only",
-  }),
+  key("list", "list.select-read", "selectRead", "Select read", "* r", "Select"),
+  key("list", "list.select-unread", "selectUnread", "Select unread", "* u", "Select"),
+  key("list", "list.select-starred", "selectStarred", "Select starred", "* s", "Select"),
   key("list", "list.escape", "escape", "Clear selection, then close", "Escape", "Select", {
     shortLabel: "Clear",
   }),

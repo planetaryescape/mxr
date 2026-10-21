@@ -1,4 +1,4 @@
-use crate::action::Action;
+use crate::action::{Action, PatternKind};
 use crate::keybindings::{KeyPress, KeybindingConfig, ViewContext};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
@@ -7,6 +7,21 @@ const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
+}
+
+/// `*` + letter: pattern select (A007). The same letters are in the key
+/// table, so `keys.toml` can remap them.
+fn pattern_select_chord(second: char) -> Option<Action> {
+    let kind = match second {
+        'a' => PatternKind::All,
+        'n' => PatternKind::None,
+        'r' => PatternKind::Read,
+        'u' => PatternKind::Unread,
+        's' => PatternKind::Starred,
+        't' => PatternKind::Thread,
+        _ => return None,
+    };
+    Some(Action::PatternSelect(kind))
 }
 
 /// `g` + letter views that are sidebar lenses or modals in the TUI and
@@ -447,6 +462,22 @@ impl InputHandler {
                 Some(Action::RespondInviteWithComment(
                     mxr_protocol::CalendarInviteActionData::Decline,
                 ))
+            }
+
+            (KeyState::Normal, KeyCode::Char('*'), KeyModifiers::NONE) => {
+                self.state = KeyState::WaitingForSecond {
+                    first: '*',
+                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                };
+                None
+            }
+            (
+                KeyState::WaitingForSecond { first: '*', .. },
+                KeyCode::Char(c),
+                KeyModifiers::NONE,
+            ) if pattern_select_chord(c).is_some() => {
+                self.state = KeyState::Normal;
+                pattern_select_chord(c)
             }
 
             (KeyState::WaitingForSecond { .. }, _, _) => {

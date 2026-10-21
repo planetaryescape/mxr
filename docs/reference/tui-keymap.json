@@ -1,5 +1,11 @@
 {
   "archive": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     ",": "RecordsFix",
     "/": "RecordsAsk",
     "1": "OpenTab1",
@@ -85,6 +91,12 @@
   "list": {
     "!": "Spam",
     "#": "Trash",
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",
@@ -190,6 +202,12 @@
     "z z": "CenterCurrent"
   },
   "messages": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     ".": "MessagesAck",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
@@ -274,6 +292,12 @@
     "z z": "CenterCurrent"
   },
   "now": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",
@@ -352,6 +376,12 @@
   "place": {
     "!": "Spam",
     "#": "Trash",
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "+": "MoreFromSender",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
@@ -460,6 +490,12 @@
   "reader": {
     "!": "Spam",
     "#": "Trash",
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",
@@ -565,6 +601,12 @@
     "z z": "CenterCurrent"
   },
   "reading": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",
@@ -654,6 +696,12 @@
     "p": "ScreenerDisposePaperTrail"
   },
   "sidebar": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",
@@ -735,6 +783,12 @@
     "z z": "CenterCurrent"
   },
   "todo": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     ",": "TodoEdit",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
@@ -811,6 +865,12 @@
     "z z": "CenterCurrent"
   },
   "updates": {
+    "* a": "PatternSelect(All)",
+    "* n": "PatternSelect(None)",
+    "* r": "PatternSelect(Read)",
+    "* s": "PatternSelect(Starred)",
+    "* t": "PatternSelect(Thread)",
+    "* u": "PatternSelect(Unread)",
     "/": "OpenGlobalSearch",
     "1": "OpenTab1",
     "2": "OpenTab2",

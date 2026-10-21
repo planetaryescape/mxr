@@ -942,7 +942,7 @@ impl App {
         ids
     }
 
-    pub(super) fn clear_selection(&mut self) {
+    pub(crate) fn clear_selection(&mut self) {
         self.mailbox.selected_set.clear();
         self.mailbox.visual_mode = false;
         self.mailbox.visual_anchor = None;
@@ -960,6 +960,7 @@ impl App {
         } = action;
 
         if count > 1 {
+            let preview = self.bulk_preview(&request);
             self.modals.pending_bulk_confirm = Some(PendingBulkConfirm {
                 title,
                 detail,
@@ -967,6 +968,8 @@ impl App {
                 effect,
                 optimistic_effect,
                 status_message,
+                preview,
+                preview_scroll: 0,
             });
         } else {
             let snapshot = optimistic_effect

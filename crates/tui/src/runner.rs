@@ -4101,6 +4101,9 @@ pub async fn run() -> anyhow::Result<()> {
                             // pending_active_label is None — preserve current label.
                             if app.mailbox.pending_active_label.is_some() {
                                 app.mailbox.active_label = app.mailbox.pending_active_label.take();
+                                // A selection made in the old list while this
+                                // fetch was in flight must not follow into the new one.
+                                app.clear_selection();
                             }
                             restore_mail_list_selection(&mut app, selected_id);
                             app.queue_body_window();

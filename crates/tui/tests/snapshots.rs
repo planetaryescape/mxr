@@ -854,6 +854,8 @@ fn bulk_confirm_snapshot() {
         effect: MutationEffect::RefreshList,
         optimistic_effect: None,
         status_message: "Archiving...".into(),
+        preview: Default::default(),
+        preview_scroll: 0,
     };
 
     let snapshot = render_to_string(100, 20, |frame| {

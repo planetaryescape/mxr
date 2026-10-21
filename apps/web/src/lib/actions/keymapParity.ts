@@ -123,6 +123,11 @@ export const SAME_ACTION: Record<string, string[]> = {
   "list.open": ["OpenSelected"],
   "list.sidebar": ["inline:focus_sidebar"],
   "list.toggle-select": ["ToggleSelect"],
+  "list.select-all": ["PatternSelect(All)"],
+  "list.select-none": ["PatternSelect(None)"],
+  "list.select-read": ["PatternSelect(Read)"],
+  "list.select-unread": ["PatternSelect(Unread)"],
+  "list.select-starred": ["PatternSelect(Starred)"],
   "list.visual": ["VisualLineMode"],
   "list.escape": ["Back"],
   "list.filter": ["OpenMailboxFilter"],
@@ -323,9 +328,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Mail list.
   {
     context: "list",
-    keys: ["* a", "* n", "* r", "* s", "* u", "Mod+a"],
+    keys: ["Mod+a"],
     bound: "web",
-    why: "Web selection chords; the TUI selects with x and V",
+    why: "Cmd+a is the browser's select-all; the TUI selects all with * a",
+  },
+  {
+    context: "*",
+    keys: ["* a", "* n", "* r", "* s", "* t", "* u"],
+    bound: "tui",
+    why: "The web's pattern keys are list-only and it has no thread pattern; outside the TUI's mail list, pattern keys only say where they work",
   },
   {
     context: "list",

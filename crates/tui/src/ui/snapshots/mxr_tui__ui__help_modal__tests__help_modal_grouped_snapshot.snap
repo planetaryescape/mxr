@@ -7,7 +7,7 @@ expression: snapshot
 "      ╭ Help ────────────────────────────────────────────────────────────────────────────────╮      "
 "      │Start Here                                                                           ▲│      "
 "      │Ctrl-p              Open command palette                                             █│      "
-"      │Ctrl-a              Show or hide the assistant                                       █│      "
+"      │Ctrl-a              Show or hide the assistant                                       ║│      "
 "      │gc                  Edit config in $EDITOR                                           ║│      "
 "      │?                   Toggle Help                                                      ║│      "
 "      │Esc                 Back / Close                                                     ║│      "

@@ -153,6 +153,7 @@ mod messages;
 mod moves;
 mod mutations_and_bulk;
 mod now;
+mod pattern_select;
 mod places;
 mod reader_and_diagnostics;
 mod reading;

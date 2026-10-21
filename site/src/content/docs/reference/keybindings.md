@@ -101,7 +101,12 @@ help modal (`?`).
 |-----|--------|
 | `x` | Toggle row selection |
 | `V` | Visual line selection |
-| `Esc` | Clear selection |
+| `* a` / `* n` | Select all / select none (mail list and search results) |
+| `* r` / `* u` / `* s` / `* t` | Select read / unread / starred / this thread |
+| `V`, then a count, then `j` or `k` | Extend the visual selection by that many rows (`V`, `3`, `j` selects 4 rows) |
+| `Esc` | Clear selection; with a count typed, drops the count |
+
+Digits count rows only in visual line mode. Everywhere else `1` to `5` open tabs. Before a multi-message action runs, the confirm lists the messages it will touch, with `j` / `k` to scroll. `Enter` or `y` confirms; `Esc` or `n` cancels.
 
 ### Tabs
 
@@ -659,9 +664,9 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `V` | Visual line mode |  |
 | `* a`, `⌘A / Ctrl+A` | Select all |  |
 | `* n` | Select none |  |
-| `* r` | Select read | Web only |
-| `* u` | Select unread | Web only |
-| `* s` | Select starred | Web only |
+| `* r` | Select read |  |
+| `* u` | Select unread |  |
+| `* s` | Select starred |  |
 | `Esc` | Clear selection, then close |  |
 | `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find |
 

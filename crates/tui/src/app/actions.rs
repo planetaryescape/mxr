@@ -86,6 +86,12 @@ impl App {
     }
 
     pub fn apply(&mut self, action: Action) {
+        let scope = self.list_scope();
+        self.apply_action(action);
+        self.drop_selection_on_view_change(&scope);
+    }
+
+    fn apply_action(&mut self, action: Action) {
         self.recorder.record(&action, &self.screen);
         // Clear status message on any action
         self.status_message = None;

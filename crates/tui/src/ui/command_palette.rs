@@ -1,4 +1,4 @@
-use crate::action::{action_allowed_in_context, Action, UiContext};
+use crate::action::{action_allowed_in_context, Action, PatternKind, UiContext};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -652,6 +652,42 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             label: "Visual Select".into(),
             shortcut: "V".into(),
             action: Action::VisualLineMode,
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select All".into(),
+            shortcut: "* a".into(),
+            action: Action::PatternSelect(PatternKind::All),
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select None".into(),
+            shortcut: "* n".into(),
+            action: Action::PatternSelect(PatternKind::None),
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select Read".into(),
+            shortcut: "* r".into(),
+            action: Action::PatternSelect(PatternKind::Read),
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select Unread".into(),
+            shortcut: "* u".into(),
+            action: Action::PatternSelect(PatternKind::Unread),
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select Starred".into(),
+            shortcut: "* s".into(),
+            action: Action::PatternSelect(PatternKind::Starred),
+            category: "Selection".into(),
+        },
+        PaletteCommand {
+            label: "Select Thread".into(),
+            shortcut: "* t".into(),
+            action: Action::PatternSelect(PatternKind::Thread),
             category: "Selection".into(),
         },
         PaletteCommand {

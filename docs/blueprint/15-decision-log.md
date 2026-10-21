@@ -1134,3 +1134,13 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: BK, 2026-10-16: "I don't think there's a huge cost to a tauri app, the backend is separate and is already there and working, the actual web app that we'd put in the web view is already there and working and mxr web can still work if you wan to open in the browser since it's the same app." The Electron app's cost came from bundling `mxr`, managing the daemon (`bridge-manager.ts`, 675 lines) and its own updater. The shell does none of the three, so what is left is a window, a shortcut and a down page.
 
 **Trade-offs accepted**: A second artifact to build and, from D2, to sign and release. The shell depends on the `/compose/new` deep link, so that route is now a contract. Closing the window hides it rather than quitting, so the shortcut keeps working.
+
+## D143: Web Archive acts at once; the safety record stays behind the scenes
+
+**Chosen**: Pressing `e` (or the Archive button, swipe or hover action) in the web app archives with no dialog. The row folds and the view advances as before, and the toast offers Undo. Under that, the reviewed path is unchanged: preview (server review), retain the review in the local journal, submit bound to the reviewed selection, poll the outcome. An incomplete outcome still reports the recovery error and points to Archive recovery. While an Archive of a message is in flight, a second Archive of it does nothing, so `u` cannot be taken by a duplicate.
+
+**Considered**: The browser `window.confirm` listing the reviewed message ids that #384 (`0153a25a9`) added before every submit. A richer in-app confirmation with subject and sender.
+
+**Why**: BK, 2026-10-21: "No pop-up: e archives at once and the toast offers Undo, as the design chapters describe. The safety record is still kept behind the scenes, so recovery still works." Chapters 26 and 27 make keyboard archive instant, and a native dialog of UUIDs on every `e` contradicted them. The review still binds the submission, and the journal still makes an unknown outcome recoverable, so the dialog added friction rather than safety.
+
+**Trade-offs accepted**: There is no pre-submit cancel in the web app; Undo and Archive recovery are the ways back. This supersedes the browser confirmation from #384 and retires the follow-ups about cancelling review, message details in the confirmation and a second list Archive.

@@ -1997,7 +1997,10 @@ async fn search_defaults_state(
 }
 
 /// Dates of the hits, in result order, read back from the store.
-async fn hit_dates(state: &Arc<AppState>, results: &[mxr_protocol::SearchResultItem]) -> Vec<chrono::DateTime<chrono::Utc>> {
+async fn hit_dates(
+    state: &Arc<AppState>,
+    results: &[mxr_protocol::SearchResultItem],
+) -> Vec<chrono::DateTime<chrono::Utc>> {
     let message_ids = results.iter().map(|r| r.message_id.clone()).collect();
     let msg = IpcMessage {
         expected_workspace: None,
@@ -2063,27 +2066,32 @@ async fn search_without_its_own_page_size_or_sort_uses_daemon_search_defaults() 
     let dates = hit_dates(&state, &results).await;
     let mut oldest_first = dates.clone();
     oldest_first.sort();
-    assert_eq!(dates, oldest_first, "default_sort = date_asc orders oldest first");
+    assert_eq!(
+        dates, oldest_first,
+        "default_sort = date_asc orders oldest first"
+    );
 }
 
 #[tokio::test]
 async fn explicit_limit_and_sort_win_over_daemon_search_defaults() {
     let state = search_defaults_state(3, mxr_config::SortOrder::DateAsc).await;
 
-    let (results, page_limit) = dispatch_search_page(
-        &state,
-        5,
-        Some(mxr_core::types::SortOrder::DateDesc),
-        false,
-    )
-    .await;
+    let (results, page_limit) =
+        dispatch_search_page(&state, 5, Some(mxr_core::types::SortOrder::DateDesc), false).await;
 
-    assert_eq!(results.len(), 5, "an explicit limit above max_results is honoured");
+    assert_eq!(
+        results.len(),
+        5,
+        "an explicit limit above max_results is honoured"
+    );
     assert_eq!(page_limit, Some(5));
     let dates = hit_dates(&state, &results).await;
     let mut newest_first = dates.clone();
     newest_first.sort_by(|a, b| b.cmp(a));
-    assert_eq!(dates, newest_first, "an explicit date_desc sort wins over date_asc");
+    assert_eq!(
+        dates, newest_first,
+        "an explicit date_desc sort wins over date_asc"
+    );
 }
 
 #[tokio::test]
@@ -2102,4 +2110,3 @@ fn search_page_size_from_config_clamps_to_u32_and_never_returns_zero() {
     assert_eq!(search_page_size_from_config(200), 200);
     assert_eq!(search_page_size_from_config(usize::MAX), u32::MAX);
 }
-

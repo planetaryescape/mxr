@@ -35,8 +35,8 @@ pub async fn run(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if triage {
-        let payload = request_triage(&mut client, query, account_id, limit.unwrap_or(50), mode)
-            .await?;
+        let payload =
+            request_triage(&mut client, query, account_id, limit.unwrap_or(50), mode).await?;
         return render_triage(payload, &mut client, format, None, None).await;
     }
     if let Some(group_by) = group_by {

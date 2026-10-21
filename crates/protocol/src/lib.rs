@@ -117,10 +117,22 @@ mod tests {
         // daemon reads the fallback `limit` as its page size, as it always did.
         let legacy: PreConfigLimitRequest = serde_json::from_value(on).unwrap();
         match legacy {
-            PreConfigLimitRequest::Search { query, limit, sort, .. } => {
+            PreConfigLimitRequest::Search {
+                query,
+                limit,
+                offset,
+                account_id,
+                mode,
+                sort,
+                explain,
+            } => {
                 assert_eq!(query, "inbox");
                 assert_eq!(limit, 50);
+                assert_eq!(offset, 0);
+                assert!(account_id.is_none());
+                assert!(mode.is_none());
                 assert_eq!(sort, None);
+                assert!(!explain);
             }
         }
     }

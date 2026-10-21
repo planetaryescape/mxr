@@ -167,6 +167,15 @@ struct Builder {
 }
 
 impl Builder {
+    /// The day `days` from the seed's `now`, as "3 November". Every date a
+    /// detector may read is derived from `now`, never written absolutely,
+    /// so a scenario cannot expire as the real date moves on.
+    fn on(&self, days: i64) -> String {
+        (self.now + Duration::days(days))
+            .format("%-d %B")
+            .to_string()
+    }
+
     /// Build `mail` as inbound mail.
     fn inbound(&mut self, mail: Mail) -> Placed {
         self.put(mail, false)
@@ -359,7 +368,7 @@ fn newsletter_from_a_correspondent(b: &mut Builder) {
         Mail::new(
             "p01-newsletter",
             dana,
-            "Brightwell notes: October",
+            &format!("Brightwell notes: {}", b.now.format("%B")),
             "Hi friends,\n\nThis month at Brightwell: two new workshops and a reading list.\n\nDana",
             10,
         )
@@ -581,7 +590,10 @@ fn role_address_you_never_wrote_to(b: &mut Builder) {
         "p06-billing",
         addr("Kestrel support", "support@kestrelcloud.example"),
         "Billing question",
-        "Hi, I was charged twice in October. Could you check?\n\nAlex",
+        &format!(
+            "Hi, I was charged twice in {}. Could you check?\n\nAlex",
+            b.now.format("%B")
+        ),
         100,
     );
     let reply = b.inbound(
@@ -656,11 +668,12 @@ fn bank_alert_or_friend_reply(b: &mut Builder) {
 
 /// A billing document against marketing that mentions an amount.
 fn billing_document_or_promotion(b: &mut Builder) {
+    let issued = (b.now - Duration::days(1)).format("%Y-%m-%d");
     let invoice = b.inbound(Mail::new(
         "p08-invoice",
         addr("Fernhill Hosting", "accounts@fernhillhosting.example"),
         "Your invoice INV-2041 for £48.00",
-        "Thank you for your order.\nInvoice number: INV-2041\nDate of issue: 2026-10-01\nAmount due: £48.00\nYour invoice is attached; we'll collect it by direct debit.",
+        &format!("Thank you for your order.\nInvoice number: INV-2041\nDate of issue: {issued}\nAmount due: £48.00\nYour invoice is attached; we'll collect it by direct debit."),
         15,
     ));
     b.label(
@@ -694,12 +707,23 @@ fn billing_document_or_promotion(b: &mut Builder) {
 
 /// An invite against the reply to one.
 fn invite_or_invite_reply(b: &mut Builder) {
+    let start = b.now + Duration::days(7);
+    let end = start + Duration::hours(1);
+    let (starts_at, ends_at) = (
+        start.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        end.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    );
+    let when = start.format("%a %H:%M");
     let invite = b.inbound(
         Mail::new(
             "p09-invite",
             addr("Lena Hart", "lena@moorfield.example"),
-            "Invitation: Design review @ Thu 15:00",
-            "Lena Hart invited you to Design review.\nThursday 15:00 to 16:00.",
+            &format!("Invitation: Design review @ {when}"),
+            &format!(
+                "Lena Hart invited you to Design review.\n{} to {}.",
+                start.format("%A %H:%M"),
+                end.format("%H:%M")
+            ),
             11,
         )
         .calendar(CalendarMetadata {
@@ -708,8 +732,8 @@ fn invite_or_invite_reply(b: &mut Builder) {
             component_kind: Some("VEVENT".to_string()),
             uid: Some("design-review-p09@moorfield.example".to_string()),
             sequence: Some(0),
-            starts_at: Some("2026-10-29T15:00:00Z".to_string()),
-            ends_at: Some("2026-10-29T16:00:00Z".to_string()),
+            starts_at: Some(starts_at.clone()),
+            ends_at: Some(ends_at.clone()),
             organizer: Some(CalendarPerson {
                 email: "lena@moorfield.example".to_string(),
                 name: Some("Lena Hart".to_string()),
@@ -734,7 +758,7 @@ fn invite_or_invite_reply(b: &mut Builder) {
         Mail::new(
             "p09-invite-reply",
             addr("Kofi Adeyemi", "kofi@moorfield.example"),
-            "Accepted: Design review @ Thu 15:00",
+            &format!("Accepted: Design review @ {when}"),
             "Kofi Adeyemi has accepted this invitation.",
             9,
         )
@@ -744,8 +768,8 @@ fn invite_or_invite_reply(b: &mut Builder) {
             component_kind: Some("VEVENT".to_string()),
             uid: Some("design-review-p09@moorfield.example".to_string()),
             sequence: Some(0),
-            starts_at: Some("2026-10-29T15:00:00Z".to_string()),
-            ends_at: Some("2026-10-29T16:00:00Z".to_string()),
+            starts_at: Some(starts_at.clone()),
+            ends_at: Some(ends_at.clone()),
             organizer: Some(CalendarPerson {
                 email: "lena@moorfield.example".to_string(),
                 name: Some("Lena Hart".to_string()),
@@ -865,7 +889,10 @@ fn dated_bill_or_statement_ready(b: &mut Builder) {
         "p12-statement",
         addr("Brightgrid Energy", "statements@brightgrid.example"),
         "Your statement is ready",
-        "Hi Alex,\n\nYour October statement is ready to view in your account. Nothing to pay.",
+        &format!(
+            "Hi Alex,\n\nYour {} statement is ready to view in your account. Nothing to pay.",
+            b.now.format("%B")
+        ),
         12,
     ));
     b.label(
@@ -930,6 +957,8 @@ fn verification_code_or_friend_with_a_code(b: &mut Builder) {
 
 /// An out-of-office against the real answer.
 fn out_of_office_or_real_reply(b: &mut Builder) {
+    let back = b.on(10);
+    let renewal = b.on(30);
     let nia = addr("Nia Okoye", "nia@lanternworks.example");
     let asked = b.sent(
         "p14-renewal",
@@ -943,7 +972,7 @@ fn out_of_office_or_real_reply(b: &mut Builder) {
             "p14-renewal",
             nia.clone(),
             "Automatic reply: Contract question",
-            "Hi, I'm away until 3 November with limited access to email. For anything urgent contact my colleague.\n\nNia",
+            &format!("Hi, I'm away until {back} with limited access to email. For anything urgent contact my colleague.\n\nNia"),
             59,
         )
         .header("Auto-Submitted", "auto-replied")
@@ -962,7 +991,7 @@ fn out_of_office_or_real_reply(b: &mut Builder) {
             "p14-renewal",
             nia,
             "Re: Contract question",
-            "Hi Alex,\n\nThe renewal date is the 1st of December.\n\nNia",
+            &format!("Hi Alex,\n\nThe renewal date is {renewal}.\n\nNia"),
             20,
         )
         .reply_to(&asked),
@@ -1160,11 +1189,13 @@ fn comment_notification_or_colleague(b: &mut Builder) {
 
 /// A renewal notice against a card about to expire.
 fn renewal_notice_or_card_expiring(b: &mut Builder) {
+    let renews_on = b.on(14);
+    let card_expires = b.on(10);
     let renews = b.inbound(Mail::new(
         "p19-renews",
         addr("Cloudbox", "billing@cloudbox.example"),
-        "Your Cloudbox subscription renews on 3 November",
-        "Hi Alex,\n\nYour subscription renews on 3 November for £9.99. We'll charge your card on file automatically; there's nothing to do.",
+        &format!("Your Cloudbox subscription renews on {renews_on}"),
+        &format!("Hi Alex,\n\nYour subscription renews on {renews_on} for £9.99. We'll charge your card on file automatically; there's nothing to do."),
         21,
     ));
     b.label(
@@ -1179,7 +1210,7 @@ fn renewal_notice_or_card_expiring(b: &mut Builder) {
         "p19-card",
         addr("Cloudbox", "billing@cloudbox.example"),
         "Your card on file expires soon",
-        "Hi Alex,\n\nThe card we have on file expires on 31 October. Update your payment method before 3 November or your subscription will lapse: https://cloudbox.example/billing",
+        &format!("Hi Alex,\n\nThe card we have on file expires on {card_expires}. Update your payment method before {renews_on} or your subscription will lapse: https://cloudbox.example/billing"),
         20,
     ));
     b.label(
@@ -1271,11 +1302,12 @@ fn forwarded_newsletter_or_publisher(b: &mut Builder) {
 
 /// A booking confirmation against a come-back-and-book nudge.
 fn booking_or_booking_reminder_marketing(b: &mut Builder) {
+    let (check_in, check_out) = (b.on(20), b.on(22));
     let booked = b.inbound(Mail::new(
         "p22-booked",
         addr("Marlow Inn", "reservations@marlowinn.example"),
         "Your booking at Marlow Inn is confirmed",
-        "Booking reference: MI-7712\nCheck-in: 14 November\nCheck-out: 16 November\nTotal £240.00",
+        &format!("Booking reference: MI-7712\nCheck-in: {check_in}\nCheck-out: {check_out}\nTotal £240.00"),
         27,
     ));
     b.label(

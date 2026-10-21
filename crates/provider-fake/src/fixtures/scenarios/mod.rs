@@ -269,6 +269,196 @@ mod tests {
         assert_eq!(expectation_for("not-a-demo-id"), None);
     }
 
+    fn seed_at(now: DateTime<Utc>) -> ScenarioSeed {
+        scenario_seed(&account_id(), now, &DemoCuts::default())
+    }
+
+    fn at(year: i32, month: u32, day: u32, hour: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, 0, 0)
+            .single()
+            .expect("a valid date")
+    }
+
+    /// The first date written out in `text`, if any: an ISO date, a current-era year, a
+    /// day and month ("3 November", "1st of December") or a month and day
+    /// ("October 14"). A bare month ("tenant news for October") is not a
+    /// date a detector can expire; nor are a copyright year or a year inside
+    /// a URL path.
+    fn written_date(text: &str) -> Option<String> {
+        const MONTHS: [&str; 12] = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+        let chars: Vec<char> = text.chars().collect();
+        let word = |at: usize, len: usize| -> String {
+            chars[at..(at + len).min(chars.len())].iter().collect()
+        };
+        for at in 0..chars.len() {
+            let before = at.checked_sub(1).map(|i| chars[i]);
+            if before.is_some_and(|c| c.is_ascii_digit()) {
+                continue;
+            }
+            if chars[at].is_ascii_digit() {
+                let digits: String = chars[at..]
+                    .iter()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+                let after = chars.get(at + digits.len()).copied();
+                if digits.len() == 4
+                    && digits
+                        .parse::<u32>()
+                        .is_ok_and(|year| (2024..=2040).contains(&year))
+                    && before != Some('/')
+                    && !(before == Some(' ') && at >= 2 && chars[at - 2] == '©')
+                {
+                    return Some(word(at, 10));
+                }
+                if digits.len() <= 2 {
+                    let mut rest: String = chars[at + digits.len()..].iter().take(14).collect();
+                    for suffix in ["st", "nd", "rd", "th"] {
+                        if let Some(stripped) = rest.strip_prefix(suffix) {
+                            rest = stripped.to_string();
+                            break;
+                        }
+                    }
+                    let rest = rest.trim_start_matches(" of").trim_start();
+                    if after.is_some() && MONTHS.iter().any(|m| rest.starts_with(m)) {
+                        return Some(word(at, 16));
+                    }
+                }
+            }
+            if before.is_none_or(|c| !c.is_alphabetic()) {
+                for month in MONTHS {
+                    if word(at, month.len()) == month {
+                        let tail: String = chars[at + month.len()..].iter().take(3).collect();
+                        let mut tail = tail.chars();
+                        if tail.next() == Some(' ')
+                            && tail.next().is_some_and(|c| c.is_ascii_digit())
+                        {
+                            return Some(word(at, month.len() + 3));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Everything about an email a detector can read a date from.
+    fn dated_content(envelope: &Envelope, body: &MessageBody) -> String {
+        let calendar = body.metadata.calendar.as_ref();
+        [
+            Some(envelope.subject.as_str()),
+            Some(envelope.snippet.as_str()),
+            body.text_plain.as_deref(),
+            body.text_html.as_deref(),
+            calendar.and_then(|c| c.starts_at.as_deref()),
+            calendar.and_then(|c| c.ends_at.as_deref()),
+            body.metadata.raw_headers.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
+    }
+
+    /// The post-sync work reads the real clock, so the set cannot be graded
+    /// at a faked `now`. This is the check that it never needs to be: build
+    /// the set at different clocks (a year away, across a clock change) and
+    /// the labels do not move, and any email whose content is the same at
+    /// two clocks writes no date at all. An absolute date would be the same
+    /// at both and so would show up here; it is what once let an invite
+    /// expire in a fixed week.
+    #[test]
+    fn scenario_dates_follow_the_seed_clock() {
+        let now = at(2026, 10, 21, 12);
+        let later = now + chrono::Duration::days(400);
+        let before_change = at(2026, 10, 24, 12);
+        let after_change = at(2026, 10, 26, 12);
+        let base = seed_at(now);
+        for other in [later, before_change, after_change] {
+            assert_eq!(
+                seed_at(other).labels,
+                base.labels,
+                "labels moved at {other}"
+            );
+        }
+        let moved = seed_at(later);
+        assert_eq!(moved.messages.len(), base.messages.len());
+        let mut undated = 0;
+        for ((env_a, body_a), (env_b, body_b)) in base.messages.iter().zip(&moved.messages) {
+            assert_eq!(env_a.provider_id, env_b.provider_id);
+            let (a, b) = (dated_content(env_a, body_a), dated_content(env_b, body_b));
+            if a == b {
+                // One fixture writes a day and month: last year's
+                // Airbnb booking in records_demo.rs ("Check-in: 14 May"),
+                // dated 400 days before the seed. A year-less date resolves
+                // forward from the email's own date, which moves with the
+                // seed, so it always lands in the past and cannot expire or
+                // flip a label. It is demo mail and is left as it is.
+                // The other is an essay title in reading_demo.rs ("Shipping a
+                // sync engine in 2026"): a name, not a deadline.
+                if [
+                    "Booking confirmation - Porto",
+                    "New post: Shipping a sync engine",
+                ]
+                .iter()
+                .any(|known| env_a.subject.starts_with(known))
+                {
+                    continue;
+                }
+                undated += 1;
+                assert_eq!(
+                    written_date(&a),
+                    None,
+                    "{} ({}) is the same 400 days on but writes a date",
+                    env_a.provider_id,
+                    env_a.subject
+                );
+            }
+        }
+        assert!(
+            undated > 0,
+            "the check saw no undated email, so it checked nothing"
+        );
+    }
+
+    #[test]
+    fn the_date_finder_finds_what_a_detector_would_read() {
+        for dated in [
+            "due 2026-10-29",
+            "2026-10-29T15:00:00Z",
+            "since 2027 Acme",
+            "renews on 3 November for",
+            "on the 1st of December",
+            "Check-in: 14 November",
+            "from October 14",
+        ] {
+            assert!(written_date(dated).is_some(), "{dated}");
+        }
+        for plain in [
+            "tenant news for October",
+            "Your October statement is ready",
+            "https://platform.demo.mxr.local/2026/10/shipping-a-sync-engine",
+            "Order number: 402-118, tracking 1Z5R89390357567127, +44 20 7946 0102",
+            "Total £1,249.00 on card ending 4417",
+            "Every reader since 2002 shipped the same window",
+            "© 2026 Long Reads Weekly",
+        ] {
+            assert_eq!(written_date(plain), None, "{plain}");
+        }
+    }
+
     #[test]
     fn a_review_covers_real_questions_and_gives_a_reason() {
         let seed = seed();

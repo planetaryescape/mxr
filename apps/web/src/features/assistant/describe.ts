@@ -1,28 +1,9 @@
 /*
- * Words for what the assistant does: a title for each change it asks to
- * make, and the messages a preview names, so an approval reads as "Archive
- * 3 messages" with the three listed rather than a tool call.
+ * Reading what the assistant sends: the messages and draft a preview names.
+ * A change's title and warning come from the daemon (docs/blueprint/29).
  */
 
 type Json = Record<string, unknown>;
-
-/** Each verb around its object, e.g. "Move 3 messages to Trash". */
-const MUTATION_PHRASES: Record<string, (things: string) => string> = {
-  archive: (things) => `Archive ${things}`,
-  read_and_archive: (things) => `Mark ${things} read and archive`,
-  trash: (things) => `Move ${things} to Trash`,
-  spam: (things) => `Report ${things} as spam`,
-  mark_read: (things) => `Mark ${things} read`,
-  mark_unread: (things) => `Mark ${things} unread`,
-  star: (things) => `Star ${things}`,
-  unstar: (things) => `Unstar ${things}`,
-};
-
-function count(value: unknown, one: string): string {
-  const n = Array.isArray(value) ? value.length : 0;
-  if (n === 0) return `${one}s`;
-  return `${n} ${n === 1 ? one : `${one}s`}`;
-}
 
 function asObject(value: unknown): Json {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : {};
@@ -32,50 +13,6 @@ function asObject(value: unknown): Json {
 export function toolWords(tool: string): string {
   const words = tool.replace(/^mxr_/, "").replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-/** The title of an approval card. */
-export function describeChange(tool: string, args: unknown): string {
-  const input = asObject(args);
-  switch (tool) {
-    case "mxr_mutate": {
-      const things = count(input.message_ids, "message");
-      const phrase = MUTATION_PHRASES[String(input.action)];
-      return phrase ? phrase(things) : `${toolWords(String(input.action ?? tool))} ${things}`;
-    }
-    case "mxr_send_draft":
-      return "Send a draft";
-    case "mxr_archive_submit":
-      return "Archive the reviewed messages";
-    case "mxr_move":
-      return input.sender
-        ? `Send this sender's mail to ${String(input.mode ?? "another mode")}`
-        : `Move an email to ${String(input.mode ?? "another mode")}`;
-    case "mxr_todo_set_state":
-      return `${toolWords(String(input.action ?? "change"))} ${count(input.todo_ids, "to-do")}`;
-    case "mxr_delete_draft":
-      return "Delete a draft";
-    case "mxr_update_draft":
-      return "Replace a draft's content";
-    case "mxr_got_it":
-      return "Send a short acknowledgement";
-    case "mxr_sorting_rule":
-      return "Save a sorting rule";
-    case "mxr_category_rule":
-      return input.delete ? "Delete a category rule" : "Save a category rule";
-    case "mxr_category_create":
-      return `Create the category "${String(input.name ?? "")}"`;
-    case "mxr_category_rename":
-      return `Rename a category to "${String(input.name ?? "")}"`;
-    case "mxr_category_delete":
-      return "Delete a category";
-    case "mxr_category_assignment_apply":
-      return "Change message categories";
-    case "mxr_reading_later":
-      return input.later === false ? "Take items off Later" : "Put items on Later";
-    default:
-      return toolWords(tool);
-  }
 }
 
 export interface PreviewMessage {

@@ -366,6 +366,20 @@
   box-shadow: -16px 0 40px -12px rgb(0 0 0 / 0.45);
 }
 
+/*
+ * The assistant opening (docs/blueprint/29 "Arriving and leaving", D134): a
+ * pointer slides it 16px in from the right with a fade; a key opens it at
+ * once, so the class is only ever set for a pointer. Reduced motion keeps
+ * the fade and drops the slide, as the reader does.
+ */
+.assistant-arrive {
+  animation: reader-arrive var(--motion-duration-base) var(--ease-out) both;
+}
+
+:root[data-motion="reduced"] .assistant-arrive {
+  animation: fade-in var(--motion-duration-fast) var(--ease-out) both;
+}
+
 .assistant-prose > * + * {
   margin-top: 0.6em;
 }

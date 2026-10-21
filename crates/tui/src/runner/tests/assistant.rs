@@ -66,7 +66,8 @@ fn conversation(
 
 fn approval() -> AssistantPendingData {
     AssistantPendingData::Approval {
-        title: None,
+        title: Some("Archive 2 emails".into()),
+        warning: None,
         call_id: "call1".into(),
         tool: "mxr_mutate".into(),
         arguments: json!({"action": "archive", "message_ids": ["m1", "m2"]}),
@@ -222,7 +223,7 @@ fn y_approves_the_waiting_change() {
     // Something waits, so the keys went to it rather than the message box.
     assert_eq!(app.assistant.focus, AssistantFocus::Pane);
     let screen = render_to_string(140, 40, |frame| app.draw(frame));
-    assert!(screen.contains("Archive 2 messages"), "{screen}");
+    assert!(screen.contains("Archive 2 emails"), "{screen}");
     assert!(screen.contains("Receipt one"), "{screen}");
     press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
     assert_eq!(

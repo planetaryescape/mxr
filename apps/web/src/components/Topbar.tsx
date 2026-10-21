@@ -269,7 +269,7 @@ function AssistantToggle() {
       size="sm"
       variant="ghost"
       className={cn("h-8 w-8 p-0", open && "bg-muted text-primary")}
-      onClick={toggle}
+      onClick={() => toggle("pointer")}
       aria-pressed={open}
       aria-label="Assistant"
       title={`Assistant (${formatChord("Mod+.")})`}

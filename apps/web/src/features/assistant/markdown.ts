@@ -43,6 +43,8 @@ const SANITIZE = {
 
 /** Marks a link the transcript opens with the router instead of the browser. */
 export const APP_LINK_ATTRIBUTE = "data-app-link";
+/** The thread or person id an app link names, for the chip to look itself up. */
+export const APP_LINK_ID_ATTRIBUTE = "data-app-link-id";
 
 let hooked = false;
 // DOMPurify hooks are global; this is set for the one synchronous sanitize call.
@@ -71,6 +73,10 @@ function hookLinks(): void {
       node.setAttribute("href", linkHref(link));
       // The value says what it links, so the reply can draw a person and an email differently.
       node.setAttribute(APP_LINK_ATTRIBUTE, link.kind);
+      node.setAttribute(
+        APP_LINK_ID_ATTRIBUTE,
+        link.kind === "thread" ? link.thread_id : link.person_id,
+      );
       return;
     }
     node.setAttribute("target", "_blank");
@@ -89,7 +95,10 @@ export function renderMarkdown(text: string, { appLinks: inApp = false } = {}): 
   appLinks = inApp;
   try {
     // ADD_ATTR keeps the marker the hook sets after the allow-list ran.
-    return DOMPurify.sanitize(html, { ...SANITIZE, ADD_ATTR: [APP_LINK_ATTRIBUTE] });
+    return DOMPurify.sanitize(html, {
+      ...SANITIZE,
+      ADD_ATTR: [APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE],
+    });
   } finally {
     appLinks = false;
   }

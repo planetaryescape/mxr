@@ -128,6 +128,20 @@ const proofPending: Json = {
   },
 };
 
+/** A send waiting for approval; the daemon words the warning, so the fixture carries it. */
+const sendPending: Json = {
+  kind: "approval",
+  call_id: "send",
+  tool: "mxr_send_draft",
+  title: "Send a reply to Pat",
+  warning: "Sends an email. Can't be undone.",
+  reason: "You asked me to reply.",
+  arguments: { draft_id: "d1", confirm: true },
+  preview: {
+    draft: { to: [{ email: "pat@example.test" }], subject: "Re: Lunch", body: "Thursday works." },
+  },
+};
+
 const questionPending: Json = {
   kind: "question",
   call_id: "ask",
@@ -166,6 +180,23 @@ export const ASSISTANT_STATES = {
     status: "awaiting_user",
     pending: [proofPending],
   }),
+  sendProof: base(
+    [
+      user,
+      {
+        kind: "tool_call",
+        seq: 2,
+        call_id: "send",
+        tool: "mxr_send_draft",
+        reason: "Reply to Pat.",
+        title: { running: "Sending a reply to Pat", done: "Waiting for you: send a reply to Pat" },
+        arguments: { draft_id: "d1", confirm: true },
+        state: "waiting",
+        created_at: 1_760_000_002,
+      },
+    ],
+    { status: "awaiting_user", pending: [sendPending] },
+  ),
   question: base(
     [
       user,

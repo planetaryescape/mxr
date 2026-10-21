@@ -149,7 +149,9 @@ test("a pointer done folds the row and the light moves to the next row in the sa
   // The row folds within 120ms and the lamp moves immediately to Bravo.
   // If the browser completes the fold before this assert polls, alpha may already be unmounted.
   if ((await alpha.count()) > 0) {
-    await expect(alpha).toHaveClass(/row-fold/).catch(() => {});
+    await expect(alpha)
+      .toHaveClass(/row-fold/)
+      .catch(() => {});
   }
   await expect(todoRow(page, "Bravo task")).toHaveAttribute("data-lit", "true");
   await expect(alpha).toHaveCount(0);
@@ -392,6 +394,100 @@ test("reduced motion: the reader only fades", async ({ page }) => {
     });
   expect(style).toEqual({ name: "fade-in", duration: "0.12s" });
   await expect(mailRows(page).first()).toBeVisible();
+});
+
+// ----- The assistant panel (D134): a click slides it, a key never does -----
+
+const ASSISTANT_PANEL = "#assistant-pane .assistant-arrive, .assistant-drawer.assistant-arrive";
+
+/** How the panel arrived, read the frame it mounts (the slide is short). */
+async function watchAssistantArrival(page: Page): Promise<void> {
+  await page.evaluate((selector) => {
+    const seen: { name: string; duration: string }[] = [];
+    (window as unknown as { __arrivals: typeof seen }).__arrivals = seen;
+    new MutationObserver(() => {
+      for (const node of document.querySelectorAll(selector)) {
+        const computed = getComputedStyle(node);
+        seen.push({ name: computed.animationName, duration: computed.animationDuration });
+      }
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  }, ASSISTANT_PANEL);
+}
+
+/** Mod+. as the page reads it: Cmd where it thinks it is on a Mac, else Ctrl. */
+async function pressModDot(page: Page): Promise<void> {
+  const mac = await page.evaluate(() => /mac|iphone|ipad/i.test(navigator.platform));
+  await page.keyboard.press(`${mac ? "Meta" : "Control"}+.`);
+}
+
+const arrivals = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as unknown as { __arrivals: { name: string; duration: string }[] }).__arrivals[0] ??
+      null,
+  );
+
+test("a click slides the assistant in over 180ms; closing and reopening by key does not", async ({
+  page,
+}) => {
+  await openList(page, "/m/inbox");
+  await watchAssistantArrival(page);
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
+  expect(await arrivals(page)).toEqual({ name: "reader-arrive", duration: "0.18s" });
+  // The slide settles: nothing is left to replay on a remount.
+  await expect(page.locator(".assistant-arrive")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
+  await expect(page.getByLabel("Message the assistant")).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as unknown as { __arrivals: unknown[] }).__arrivals.length = 0;
+  });
+  await pressModDot(page);
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
+  expect(await arrivals(page)).toBeNull();
+});
+
+test("closing mid-slide leaves no stale slide for the next key open", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await watchAssistantArrival(page);
+  const toggle = page.getByRole("button", { name: "Assistant", exact: true });
+  await toggle.click();
+  await toggle.click();
+  await expect(page.getByLabel("Message the assistant")).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as unknown as { __arrivals: unknown[] }).__arrivals.length = 0;
+  });
+  await pressModDot(page);
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
+  expect(await arrivals(page)).toBeNull();
+});
+
+test("a reload with the assistant open does not slide it in", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("mxr:assistant", JSON.stringify({ state: { open: true }, version: 0 }));
+  });
+  await openList(page, "/m/inbox");
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
+  await expect(page.locator(".assistant-arrive")).toHaveCount(0);
+});
+
+test("reduced motion: a click only fades the assistant in", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openList(page, "/m/inbox");
+  await watchAssistantArrival(page);
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
+  expect(await arrivals(page)).toEqual({ name: "fade-in", duration: "0.12s" });
+});
+
+test("below 1024px the drawer slides in for a click", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await openList(page, "/m/inbox");
+  await watchAssistantArrival(page);
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
+  await expect(page.locator(".assistant-drawer")).toBeVisible();
+  expect(await arrivals(page)).toEqual({ name: "reader-arrive", duration: "0.18s" });
 });
 
 test("a dialog's scrim fades in 120ms and its sheet rises over 180ms", async ({ page }) => {

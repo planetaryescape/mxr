@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import type { AssistantDecision, AssistantPending } from "./api";
 import { onBareKey, PENDING_CARD_ATTRIBUTE } from "./cardKeys";
-import { describeChange, previewDraft, previewMessages, type PreviewMessage } from "./describe";
+import { previewDraft, previewMessages, type PreviewMessage } from "./describe";
 import { irreversibleWarning } from "./wire";
 import { Avatar } from "@/components/Avatar";
 import { KeyChip } from "@/components/KeyChip";
@@ -45,8 +45,9 @@ export function Proof({
   }, [busy]);
   const messages = previewMessages(item.preview);
   const draft = messages.length === 0 ? previewDraft(item.preview) : null;
-  const warning = irreversibleWarning(item.tool, item.arguments);
-  const title = item.title || describeChange(item.tool, item.arguments);
+  // The daemon's line; the client's own rule only for a daemon that sends none.
+  const warning = item.warning || irreversibleWarning(item.tool, item.arguments);
+  const title = item.title || "Change waiting for you";
 
   const decide = (decision: AssistantDecision) => {
     if (busy || decided.current) return;

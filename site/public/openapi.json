@@ -9799,6 +9799,13 @@
               },
               "tool": {
                 "type": "string"
+              },
+              "warning": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The daemon's warning for a change that can't be put back, \"Sends\nan email. Can't be undone.\". Absent for a reversible change and\nfrom older daemons, whose clients then work it out themselves."
               }
             }
           },

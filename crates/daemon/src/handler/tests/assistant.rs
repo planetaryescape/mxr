@@ -414,3 +414,135 @@ async fn a_trusted_conversation_stars_without_asking() {
         }
     )));
 }
+
+/// Seeds a conversation whose one step (`call1`) stored a search result,
+/// and whose second step (`call2`) is still waiting for its result.
+async fn seeded_step(fx: &Fixture, id: &str, listed: usize) {
+    let store = &fx.state.store;
+    store
+        .create_assistant_conversation(id, "steps")
+        .await
+        .unwrap();
+    let call = |call_id: &str| ToolCall {
+        id: call_id.into(),
+        name: "mxr_search".into(),
+        arguments: serde_json::json!({}),
+    };
+    let results: Vec<_> = (0..listed)
+        .map(|n| serde_json::json!({"subject": format!("Mail {n}"), "thread_id": format!("t{n}")}))
+        .collect();
+    let messages = [
+        mxr_llm::ToolChatMessage::Assistant {
+            text: String::new(),
+            tool_calls: vec![call("call1"), call("call2")],
+            provider_turn: None,
+        },
+        mxr_llm::ToolChatMessage::Tool {
+            call_id: "call1".into(),
+            content: serde_json::json!({"kind": "Search", "results": results, "total": 14})
+                .to_string(),
+            is_error: false,
+        },
+    ];
+    for message in messages {
+        store
+            .append_assistant_message(id, &serde_json::to_string(&message).unwrap(), None)
+            .await
+            .unwrap();
+    }
+}
+
+async fn step_rows(fx: &Fixture, conversation_id: &str, call_id: &str) -> Response {
+    let reply = handle_request(
+        &fx.state,
+        &IpcMessage {
+            expected_workspace: None,
+            id: 3,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::GetAssistantStepRows {
+                conversation_id: conversation_id.into(),
+                call_id: call_id.into(),
+            }),
+        },
+    )
+    .await;
+    match reply.payload {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_step_hands_over_every_row_its_result_lists() {
+    let fx = Fixture::new().await;
+    seeded_step(&fx, "asst_steps", 12).await;
+
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_steps", "call1").await
+    else {
+        panic!("expected the step's rows");
+    };
+    assert_eq!(rows.len(), 12);
+    assert_eq!(rows[0].title, "Mail 0");
+    assert_eq!(rows[11].title, "Mail 11");
+    assert_eq!(listed, 12);
+    assert_eq!(total, Some(14));
+
+    // A step still running has no result yet, so it has nothing to show.
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_steps", "call2").await
+    else {
+        panic!("expected an empty step");
+    };
+    assert!(rows.is_empty());
+    assert_eq!(listed, 0);
+    assert_eq!(total, None);
+}
+
+#[tokio::test]
+async fn an_unknown_step_or_conversation_is_an_error() {
+    let fx = Fixture::new().await;
+    seeded_step(&fx, "asst_steps", 3).await;
+
+    assert!(matches!(
+        step_rows(&fx, "asst_steps", "call9").await,
+        Response::Error { .. }
+    ));
+    assert!(matches!(
+        step_rows(&fx, "asst_missing", "call1").await,
+        Response::Error { .. }
+    ));
+}
+
+#[tokio::test]
+async fn a_step_hands_over_at_most_500_rows() {
+    let fx = Fixture::new().await;
+    seeded_step(&fx, "asst_big", 600).await;
+
+    let Response::Ok {
+        data:
+            ResponseData::AssistantStepRows {
+                rows,
+                listed,
+                total,
+            },
+    } = step_rows(&fx, "asst_big", "call1").await
+    else {
+        panic!("expected the step's rows");
+    };
+    assert_eq!(rows.len(), 500);
+    assert_eq!(listed, 500);
+    assert_eq!(total, Some(600));
+}

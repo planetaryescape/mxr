@@ -1039,6 +1039,7 @@ pub fn map_request(
         | Request::SetAssistantAutoApprove { .. }
         | Request::ListAssistantConversations { .. }
         | Request::GetAssistantConversation { .. }
+        | Request::GetAssistantStepRows { .. }
         | Request::DeleteAssistantConversation { .. } => {
             skip_activity!(
                 "assistant",

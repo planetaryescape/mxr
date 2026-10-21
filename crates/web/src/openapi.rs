@@ -109,7 +109,7 @@ use utoipa::{
         mail_reading_sources, mail_reading_marginalia_get, mail_reading_marginalia_post,
         mail_reading_marginalia_send, mail_reading_marginalia_sync,
         mail_assistant_availability, mail_assistant_list, mail_assistant_send,
-        mail_assistant_get, mail_assistant_decide, mail_assistant_cancel, mail_assistant_delete,
+        mail_assistant_get, mail_assistant_step_rows, mail_assistant_decide, mail_assistant_cancel, mail_assistant_delete,
         mail_assistant_auto_approve,
         mail_assistant_models,
         mail_assistant_set_model,
@@ -1525,6 +1525,22 @@ fn mail_assistant_send() {}
 )]
 #[allow(dead_code)]
 fn mail_assistant_get() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows",
+    summary = "Every row one assistant step's stored result lists, up to 500",
+    params(
+        ("id" = String, Path, description = "Conversation id"),
+        ("call_id" = String, Path, description = "The step's tool call id")
+    ),
+    responses(
+        (status = 200, description = "The `AssistantStepRows` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_step_rows() {}
 
 #[utoipa::path(
     post,

@@ -350,14 +350,14 @@ const turn: AssistantItem[] = [
 
 describe("transcript", () => {
   test("your words are quoted, not bubbled", () => {
-    render(<Transcript items={turn} running={false} />);
+    render(<Transcript items={turn} running={false} conversationId="c1" />);
     const quote = screen.getByText("tidy shipping mail");
     expect(quote.className).toContain("border-l-2");
     expect(quote.className).not.toContain("bg-");
   });
 
   test("a finished turn folds to one line that opens to wire lines and a readout", () => {
-    render(<Transcript items={turn} running={false} />);
+    render(<Transcript items={turn} running={false} conversationId="c1" />);
     const fold = screen.getByRole("button", { name: /1 step · 14 found/ });
     expect(screen.queryByText("Searched your mail: 14 found")).toBeNull();
     fireEvent.click(fold);
@@ -368,7 +368,7 @@ describe("transcript", () => {
   });
 
   test("no default view shows a tool name or JSON, until Details is opened", () => {
-    const { container } = render(<Transcript items={turn} running={false} />);
+    const { container } = render(<Transcript items={turn} running={false} conversationId="c1" />);
     fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
     fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
     expect(container.textContent).not.toMatch(/mxr_[a-z_]+|\{\s*"/);
@@ -402,7 +402,7 @@ describe("transcript", () => {
       result: '{"answers":[{"selected":["Newsletters and receipts"]}]}',
       created_at: 2,
     };
-    render(<Transcript items={[turn[0]!, asked]} running={false} />);
+    render(<Transcript items={[turn[0]!, asked]} running={false} conversationId="c1" />);
     expect(screen.getByText("Newsletters and receipts").className).toContain("border-l-2");
     expect(screen.queryByRole("button", { name: /1 step/ })).toBeNull();
   });
@@ -434,7 +434,9 @@ describe("transcript", () => {
       created_at: 4,
     };
     const reply = { ...turn[2]!, failed_call_ids: ["b"] } as AssistantItem;
-    render(<Transcript items={[turn[0]!, search, failed, reply]} running={false} />);
+    render(
+      <Transcript items={[turn[0]!, search, failed, reply]} running={false} conversationId="c1" />,
+    );
     expect(screen.getByRole("button", { name: /2 steps.*1 failed/ })).toBeVisible();
     const note = screen.getByRole("note");
     expect(note).toHaveTextContent("These didn't happen, whatever the reply says:");
@@ -442,13 +444,14 @@ describe("transcript", () => {
   });
 
   test("a reply whose steps all worked has no failure note", () => {
-    render(<Transcript items={turn} running={false} />);
+    render(<Transcript items={turn} running={false} conversationId="c1" />);
     expect(screen.queryByRole("note")).toBeNull();
   });
 
   test("the reply carries the model mark, and where it ran when that model is the current one", () => {
     render(
       <Transcript
+        conversationId="c1"
         items={turn}
         running={false}
         provenance={{ model: "gemma4", leavesMachine: false }}
@@ -460,6 +463,7 @@ describe("transcript", () => {
   test("a reply from another model says only which", () => {
     render(
       <Transcript
+        conversationId="c1"
         items={turn}
         running={false}
         provenance={{ model: "gpt-x", leavesMachine: true }}
@@ -477,6 +481,7 @@ describe("transcript", () => {
     } as AssistantItem;
     render(
       <Transcript
+        conversationId="c1"
         items={[turn[0]!, turn[1]!, reply]}
         running={false}
         provenance={{ model: "gemma4", leavesMachine: false }}
@@ -500,20 +505,21 @@ describe("transcript", () => {
         },
       ],
     } as AssistantItem;
-    render(<Transcript items={[turn[0]!, reply]} running={false} />);
+    render(<Transcript items={[turn[0]!, reply]} running={false} conversationId="c1" />);
     const rows = within(screen.getByRole("list", { name: "The emails and people in this reply" }));
     fireEvent.click(rows.getByRole("link", { name: /Nigel Nk/ }));
     expect(navigate).toHaveBeenCalledWith({ href: "/messages?person=person%3An%40x.com" });
   });
 
   test("shows steps as they happen while the turn runs", () => {
-    render(<Transcript items={turn.slice(0, 2)} running />);
+    render(<Transcript items={turn.slice(0, 2)} running conversationId="c1" />);
     expect(screen.getByRole("button", { name: /Searched your mail: 14 found/ })).toBeVisible();
   });
 
   test("a summary marks where earlier messages were folded, and auto-approved steps say so", () => {
     render(
       <Transcript
+        conversationId="c1"
         items={[
           { kind: "user", seq: 1, text: "old", created_at: 1 },
           { kind: "summary", seq: 1, text: "They asked about invoices.", created_at: 2 },
@@ -543,6 +549,7 @@ describe("transcript", () => {
   test("the reply being written shows while the turn runs, and is gone once stored", () => {
     const { rerender } = render(
       <Transcript
+        conversationId="c1"
         items={[{ kind: "user", seq: 1, text: "hi", created_at: 1 }]}
         running
         writing="Looking at **your** mail"
@@ -551,6 +558,7 @@ describe("transcript", () => {
     expect(screen.getByText("your").tagName).toBe("STRONG");
     rerender(
       <Transcript
+        conversationId="c1"
         items={[{ kind: "user", seq: 1, text: "hi", created_at: 1 }]}
         running={false}
         writing={null}
@@ -633,6 +641,7 @@ describe("markdown", () => {
   test("mail text in a reply is text, never markup", () => {
     render(
       <Transcript
+        conversationId="c1"
         running={false}
         items={[
           {
@@ -677,6 +686,7 @@ describe("links to mail", () => {
     navigate.mockClear();
     render(
       <Transcript
+        conversationId="c1"
         running={false}
         items={[
           {
@@ -705,6 +715,7 @@ describe("links to mail", () => {
     );
     render(
       <Transcript
+        conversationId="c1"
         items={[
           {
             kind: "assistant",
@@ -735,6 +746,7 @@ describe("links to mail", () => {
   test("every chip in a reply is looked up in one request", async () => {
     render(
       <Transcript
+        conversationId="c1"
         items={[
           {
             kind: "assistant",
@@ -761,8 +773,8 @@ describe("links to mail", () => {
         created_at: 0,
       },
     ];
-    const { rerender } = render(<Transcript items={items} running={false} />);
-    rerender(<Transcript items={[...items]} running={false} />);
+    const { rerender } = render(<Transcript items={items} running={false} conversationId="c1" />);
+    rerender(<Transcript items={[...items]} running={false} conversationId="c1" />);
     const chip = screen.getByRole("link", { name: "Q1 report" });
     expect(chip.querySelector(".lucide-mail")).not.toBeNull();
     await act(async () => {
@@ -878,5 +890,78 @@ describe("landing", () => {
       vi.advanceTimersByTime(600);
     });
     expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+});
+
+const rowsOf = (count: number) => Array.from({ length: count }, (_, n) => ({ title: `Mail ${n}` }));
+/** Answers every request but the step's rows, which each test answers itself. */
+const answerOthers = (path: string) =>
+  path.includes("/steps/") ? undefined : { kind: "ModeMembership", threads: [] };
+
+describe("step rows", () => {
+  // A step whose result lists 12 emails; the readout shows the first five.
+  const wide: AssistantItem = { ...search, readout: { total: 12, rows: rowsOf(5) } };
+  const stepCalls = () => apiFetch.mock.calls.filter(([path]) => String(path).includes("/steps/"));
+  const open = () => {
+    render(<Transcript items={[turn[0]!, wide]} running={false} conversationId="c1" />);
+    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
+  };
+
+  test("and N more opens every row the step found, and Show fewer closes it", async () => {
+    apiFetch.mockImplementation(
+      async (path: string) => answerOthers(path) ?? { rows: rowsOf(12), listed: 12, total: 12 },
+    );
+    open();
+    expect(screen.queryByText("Mail 7")).toBeNull();
+    const more = screen.getByRole("button", { name: "and 7 more" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(more);
+    expect(await screen.findByText("Mail 11")).toBeVisible();
+    expect(stepCalls()).toEqual([["/api/v1/mail/assistant/conversations/c1/steps/a/rows"]]);
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(fewer);
+    expect(screen.queryByText("Mail 7")).toBeNull();
+    expect(screen.getByRole("button", { name: "and 7 more" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
+    expect(await screen.findByText("Mail 11")).toBeVisible();
+    expect(stepCalls()).toHaveLength(1);
+  });
+
+  test("while the rest loads, the step says so", async () => {
+    const held = holdLookup();
+    apiFetch.mockImplementation(async (path: string) => answerOthers(path) ?? (await held.promise));
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the rest");
+    await act(async () => held.resolve({ rows: rowsOf(12), listed: 12, total: 12 }));
+    expect(await screen.findByText("Mail 11")).toBeVisible();
+  });
+
+  test("when the rest fails, the step keeps its five and says so", async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.includes("/steps/")) throw new Error("the daemon is busy");
+      return answerOthers(path);
+    });
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
+    expect(await screen.findByText("Couldn't load the rest")).toBeVisible();
+    expect(screen.getByText("Mail 4")).toBeVisible();
+    expect(screen.queryByText("Mail 7")).toBeNull();
+    expect(screen.getByRole("button", { name: "and 7 more" })).toBeVisible();
+  });
+
+  test("a total above what the rows list ends the list with a plain line", async () => {
+    apiFetch.mockImplementation(
+      async (path: string) => answerOthers(path) ?? { rows: rowsOf(10), listed: 10, total: 12 },
+    );
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
+    expect(await screen.findByText("Mail 9")).toBeVisible();
+    expect(screen.getByText("and 2 more matched that this step didn't load")).toBeVisible();
   });
 });

@@ -5,11 +5,13 @@
  * set as text.
  */
 
+import { useState } from "react";
+
 import { Row } from "@/components/Row";
 import { Avatar } from "@/components/Avatar";
 import { linkHref, type AssistantLink } from "./links";
 import { APP_LINK_ATTRIBUTE } from "./markdown";
-import type { AssistantItem } from "./api";
+import type { AssistantItem, AssistantStepRows } from "./api";
 
 type ReplyItem = Extract<AssistantItem, { kind: "assistant" }>;
 export type ReadoutRow = NonNullable<ReplyItem["rows"]>[number];
@@ -17,26 +19,89 @@ export type ReadoutRow = NonNullable<ReplyItem["rows"]>[number];
 /** Compact rhythm inside the panel (docs/blueprint/29 "The copy"). */
 const COMPACT = { "--row-height": "44px" } as React.CSSProperties;
 
+type Rest = "closed" | "loading" | "open" | "failed";
+
+/**
+ * A step's rows. When the step found more than these, "and N more" opens
+ * every row the step's result lists; the first click fetches them. Without
+ * `loadRest` the count stays plain text.
+ */
 export function ReadoutRows({
   rows,
   more = 0,
   label,
+  loadRest,
 }: {
   rows: ReadoutRow[];
   /** How many the step found beyond these. */
   more?: number;
   label: string;
+  loadRest?: () => Promise<AssistantStepRows>;
 }) {
+  const [rest, setRest] = useState<Rest>("closed");
+  const [all, setAll] = useState<AssistantStepRows | null>(null);
   if (rows.length === 0) return null;
+
+  const open = rest === "open" && all !== null;
+  const shown = open ? all.rows : rows;
+  const unloaded = all && all.total != null && all.total > all.listed ? all.total - all.listed : 0;
+
+  const expand = () => {
+    if (rest === "open") {
+      setRest("closed");
+      return;
+    }
+    if (all) {
+      setRest("open");
+      return;
+    }
+    if (!loadRest) return;
+    setRest("loading");
+    loadRest().then(
+      (loaded) => {
+        setAll(loaded);
+        setRest("open");
+      },
+      () => setRest("failed"),
+    );
+  };
+
   return (
     <div className="-mx-3">
       <ul aria-label={label} style={COMPACT}>
-        {rows.map((row, index) => (
+        {shown.map((row, index) => (
           // oxlint-disable-next-line react/no-array-index-key -- rows have no id of their own and never reorder
           <ReadoutLine key={index} row={row} />
         ))}
       </ul>
-      {more > 0 ? <p className="type-meta px-3 py-1 text-text-3">and {more} more</p> : null}
+      {more > 0 && loadRest ? (
+        <>
+          {rest === "loading" ? (
+            <p className="type-meta px-3 py-1 text-text-3" role="status">
+              Loading the rest…
+            </p>
+          ) : (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={expand}
+              className="type-meta px-3 py-1 text-text-2 outline-none hover:text-text-1 focus-visible:text-text-1"
+            >
+              {open ? "Show fewer" : `and ${more} more`}
+            </button>
+          )}
+          {rest === "failed" ? (
+            <p className="type-meta px-3 py-1 text-danger">{"Couldn't load the rest"}</p>
+          ) : null}
+        </>
+      ) : more > 0 ? (
+        <p className="type-meta px-3 py-1 text-text-3">and {more} more</p>
+      ) : null}
+      {open && unloaded > 0 ? (
+        <p className="type-meta px-3 py-1 text-text-3">
+          {`and ${unloaded} more matched that this step didn't load`}
+        </p>
+      ) : null}
     </div>
   );
 }

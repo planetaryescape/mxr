@@ -4,9 +4,12 @@
 //! lists (emails, people, to-dos) with where to open each, or its plain
 //! fields when it lists nothing.
 
+use mxr_assistant::{call_state, readable_result, CallState};
+use mxr_llm::ToolChatMessage;
 use mxr_protocol::{
     AssistantLinkData, AssistantReadoutData, AssistantReadoutFactData, AssistantReadoutRowData,
 };
+use mxr_store::AssistantMessageRow;
 use serde_json::{Map, Value};
 
 /// Rows a step shows; the total says how many more there were.
@@ -28,7 +31,14 @@ pub(crate) fn readout(content: &str) -> Option<AssistantReadoutData> {
 /// Everything a result lists, up to [`REPLY_ROWS`], for drawing the rows a
 /// reply names.
 pub(crate) fn listed_rows(content: &str) -> Vec<AssistantReadoutRowData> {
-    readout_capped(content, REPLY_ROWS).map_or_else(Vec::new, |readout| readout.rows)
+    all_rows(content, REPLY_ROWS).map_or_else(Vec::new, |readout| readout.rows)
+}
+
+/// The readout of a result with up to `cap` rows, for a client that shows
+/// a step's rest. Rows are the same ones [`readout`] builds, only more of
+/// them; the total is the readout's own.
+pub(crate) fn all_rows(content: &str, cap: usize) -> Option<AssistantReadoutData> {
+    readout_capped(content, cap)
 }
 
 fn readout_capped(content: &str, row_cap: usize) -> Option<AssistantReadoutData> {
@@ -88,6 +98,45 @@ fn unwrap(value: &Value) -> Option<&Map<String, Value>> {
         }
     }
     Some(object)
+}
+
+/// Every row one step's stored result lists, up to `cap`, and the readout's
+/// total. `None` when the transcript has no call with that id. A step with
+/// no result yet, or one that failed, lists nothing.
+pub(crate) fn step_rows(
+    messages: &[AssistantMessageRow],
+    call_id: &str,
+    cap: usize,
+) -> Option<(Vec<AssistantReadoutRowData>, Option<u64>)> {
+    let mut known = false;
+    let mut result = None;
+    for row in messages {
+        let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
+            continue;
+        };
+        match message {
+            ToolChatMessage::Assistant { tool_calls, .. } => {
+                known |= tool_calls.iter().any(|call| call.id == call_id);
+            }
+            ToolChatMessage::Tool {
+                call_id: id,
+                content,
+                is_error,
+            } if id == call_id => result = Some((content, is_error)),
+            _ => {}
+        }
+    }
+    if !known {
+        return None;
+    }
+    let Some((content, is_error)) = result else {
+        return Some((Vec::new(), None));
+    };
+    if is_error || call_state(&content, is_error) == CallState::Failed {
+        return Some((Vec::new(), None));
+    }
+    let whole = readable_result(&content, usize::MAX);
+    Some(all_rows(&whole, cap).map_or((Vec::new(), None), |readout| (readout.rows, readout.total)))
 }
 
 struct List<'a> {
@@ -363,6 +412,23 @@ mod tests {
                 thread_id: "t1".into()
             })
         );
+    }
+
+    #[test]
+    fn all_rows_returns_every_listed_row_up_to_the_cap() {
+        let results: Vec<_> = (0..12)
+            .map(|n| json!({"subject": format!("s{n}"), "thread_id": format!("t{n}")}))
+            .collect();
+        let whole = json!({"kind": "Search", "results": results, "total": 14}).to_string();
+
+        let out = all_rows(&whole, 500).unwrap();
+        assert_eq!(out.rows.len(), 12);
+        assert_eq!(out.rows[11].title, "s11");
+        assert_eq!(out.total, Some(14));
+
+        let capped = all_rows(&whole, 4).unwrap();
+        assert_eq!(capped.rows.len(), 4);
+        assert_eq!(capped.total, Some(14));
     }
 
     #[test]

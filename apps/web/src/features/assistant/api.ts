@@ -15,6 +15,12 @@ export type AssistantAnswer = Schemas["AssistantAnswerData"];
 export type AssistantProgress = Schemas["AssistantProgressData"];
 export type AssistantViewContext = Schemas["AssistantViewContextData"];
 export type AssistantCallState = Schemas["AssistantCallStateData"];
+/** Every row one step's result lists; `total` can exceed `listed`. */
+export type AssistantStepRows = {
+  rows: Schemas["AssistantReadoutRowData"][];
+  listed: number;
+  total?: number | null;
+};
 
 const BASE = "/api/v1/mail/assistant";
 
@@ -57,6 +63,15 @@ export async function fetchConversation(id: string): Promise<AssistantConversati
     `${BASE}/conversations/${encodeURIComponent(id)}`,
   );
   return response.conversation;
+}
+
+export async function fetchStepRows(
+  conversationId: string,
+  callId: string,
+): Promise<AssistantStepRows> {
+  return apiFetch<AssistantStepRows>(
+    `${BASE}/conversations/${encodeURIComponent(conversationId)}/steps/${encodeURIComponent(callId)}/rows`,
+  );
 }
 
 export async function sendMessage(input: {

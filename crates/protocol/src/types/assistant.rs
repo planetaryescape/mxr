@@ -488,6 +488,50 @@ mod tests {
     }
 
     #[test]
+    fn a_step_rows_request_and_response_round_trip() {
+        let request = crate::Request::GetAssistantStepRows {
+            conversation_id: "c1".into(),
+            call_id: "call1".into(),
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["cmd"], "GetAssistantStepRows");
+        let back: crate::Request = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            back,
+            crate::Request::GetAssistantStepRows { conversation_id, call_id }
+                if conversation_id == "c1" && call_id == "call1"
+        ));
+
+        let response = crate::ResponseData::AssistantStepRows {
+            rows: vec![AssistantReadoutRowData {
+                title: "Quarterly report".into(),
+                detail: None,
+                link: None,
+            }],
+            listed: 1,
+            total: Some(14),
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["kind"], "AssistantStepRows");
+        let back: crate::ResponseData = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            back,
+            crate::ResponseData::AssistantStepRows { rows, listed: 1, total: Some(14) }
+                if rows.len() == 1
+        ));
+    }
+
+    #[test]
+    fn an_older_daemon_fails_a_step_rows_request_it_does_not_know() {
+        // An old daemon has no such command, so the web must read the error
+        // and keep the step's plain text.
+        let unknown = serde_json::from_value::<crate::Request>(json!({
+            "cmd": "GetAssistantStepRowsV2", "conversation_id": "c1", "call_id": "call1",
+        }));
+        assert!(unknown.is_err());
+    }
+
+    #[test]
     fn new_fields_stay_off_the_wire_when_empty() {
         let reply = AssistantItemData::Assistant {
             seq: 1,

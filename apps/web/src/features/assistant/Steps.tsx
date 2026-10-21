@@ -8,7 +8,9 @@
 
 import { useState } from "react";
 import { assistantToast } from "./assistantToast";
+import type { AssistantStepRows } from "./api";
 
+import { fetchStepRows } from "./api";
 import { ReadoutRows } from "./ReadoutRows";
 import {
   foldSummary,
@@ -31,7 +33,15 @@ const TONE: Record<WireTone, string> = {
   quiet: "text-text-3",
 };
 
-export function Steps({ items, live }: { items: ToolCallItem[]; live: boolean }) {
+export function Steps({
+  items,
+  live,
+  conversationId,
+}: {
+  items: ToolCallItem[];
+  live: boolean;
+  conversationId: string;
+}) {
   const settled = !live && items.every((item) => item.state !== "running");
   const [open, setOpen] = useState(false);
   if (settled && !open) {
@@ -51,7 +61,7 @@ export function Steps({ items, live }: { items: ToolCallItem[]; live: boolean })
       ) : null}
       <ul className="space-y-0.5">
         {items.map((item) => (
-          <Step key={item.call_id} item={item} />
+          <Step key={item.call_id} item={item} conversationId={conversationId} />
         ))}
       </ul>
     </div>
@@ -85,7 +95,7 @@ export function mutationIdOf(item: ToolCallItem): string | null {
   return match?.[1] ?? null;
 }
 
-function Step({ item }: { item: ToolCallItem }) {
+function Step({ item, conversationId }: { item: ToolCallItem; conversationId: string }) {
   const [open, setOpen] = useState(false);
   const { glyph, tone } = stepGlyph(item.state);
   const mutationId = mutationIdOf(item);
@@ -120,7 +130,7 @@ function Step({ item }: { item: ToolCallItem }) {
         </button>
         {mutationId ? <UndoStep mutationId={mutationId} /> : null}
       </div>
-      {open ? <StepDetails item={item} /> : null}
+      {open ? <StepDetails item={item} conversationId={conversationId} /> : null}
     </li>
   );
 }
@@ -158,17 +168,28 @@ function UndoStep({ mutationId }: { mutationId: string }) {
 type Readout = NonNullable<ToolCallItem["readout"]>;
 
 /** What a step found, then the exact call under "Details". */
-function StepDetails({ item }: { item: ToolCallItem }) {
+function StepDetails({ item, conversationId }: { item: ToolCallItem; conversationId: string }) {
   return (
     <div className="mt-1 mb-2 ml-5 space-y-2">
       {item.reason ? <p className="type-meta text-text-3">{item.reason}</p> : null}
-      {item.readout ? <ReadoutView readout={item.readout} /> : null}
+      {item.readout ? (
+        <ReadoutView
+          readout={item.readout}
+          loadRest={() => fetchStepRows(conversationId, item.call_id)}
+        />
+      ) : null}
       <Details item={item} />
     </div>
   );
 }
 
-function ReadoutView({ readout }: { readout: Readout }) {
+function ReadoutView({
+  readout,
+  loadRest,
+}: {
+  readout: Readout;
+  loadRest: () => Promise<AssistantStepRows>;
+}) {
   const rows = readout.rows ?? [];
   const facts = readout.facts ?? [];
   const total = readout.total;
@@ -178,7 +199,7 @@ function ReadoutView({ readout }: { readout: Readout }) {
       {total != null ? (
         <p className="type-body text-text-2">{total === 0 ? "Found nothing" : `Found ${total}`}</p>
       ) : null}
-      <ReadoutRows rows={rows} more={more} label="What this step found" />
+      <ReadoutRows rows={rows} more={more} label="What this step found" loadRest={loadRest} />
       {facts.length > 0 ? (
         <dl className="type-meta grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           {facts.map((fact) => (

@@ -131,6 +131,7 @@ export function AssistantSidebar() {
             <Transcript
               items={data.items}
               running={running}
+              conversationId={data.id}
               writing={live.writing}
               provenance={{ model, leavesMachine: availability.data?.leaves_machine ?? false }}
             />

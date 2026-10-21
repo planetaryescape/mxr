@@ -6378,3 +6378,76 @@ fn status_for_protocol(protocol_version: u32) -> ResponseData {
     }
     status
 }
+
+#[tokio::test]
+async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        |request| match request {
+            Request::GetAssistantStepRows {
+                conversation_id,
+                call_id,
+            } if conversation_id == "c1" && call_id == "call1" => Some(Response::Ok {
+                data: ResponseData::AssistantStepRows {
+                    rows: vec![
+                        mxr_protocol::AssistantReadoutRowData {
+                            title: "Quarterly report".into(),
+                            detail: Some("Ann".into()),
+                            link: None,
+                        },
+                        mxr_protocol::AssistantReadoutRowData {
+                            title: "Invoice 42".into(),
+                            detail: None,
+                            link: None,
+                        },
+                    ],
+                    listed: 2,
+                    total: Some(14),
+                },
+            }),
+            Request::GetAssistantStepRows { .. } => Some(Response::Error {
+                message: "no step call9 in assistant conversation c1".into(),
+                kind: Default::default(),
+                code: String::new(),
+                retryable: false,
+                details: None,
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = test_http_client();
+    let base = format!("http://{addr}/api/v1/mail/assistant/conversations");
+
+    let response = client
+        .get(format!("{base}/c1/steps/call1/rows"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["kind"], "AssistantStepRows");
+    assert_eq!(json["listed"], 2);
+    assert_eq!(json["total"], 14);
+    assert_eq!(json["rows"][1]["title"], "Invoice 42");
+
+    let response = client
+        .get(format!("{base}/c1/steps/call9/rows"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert!(!response.status().is_success());
+}

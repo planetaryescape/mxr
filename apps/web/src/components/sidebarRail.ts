@@ -4,17 +4,9 @@
  * entries show without counts, so the sidebar never jumps.
  */
 
-import {
-  Bell,
-  FolderArchive,
-  Inbox,
-  ListTodo,
-  MessagesSquare,
-  Newspaper,
-  Sun,
-  type LucideIcon,
-} from "lucide-react";
+import { Inbox, type LucideIcon } from "lucide-react";
 
+import { MODE_GLYPHS, type ModeGlyphId } from "@/components/ModeMark";
 import { RAIL_PATHS, railCount, type Rail, type RailEntry } from "@/features/modes/rail";
 
 export interface RailNavEntry {
@@ -33,16 +25,6 @@ export interface RailNavEntry {
   /** What the mode is for, for the tooltip. */
   header?: string;
 }
-
-const ICONS: Record<string, LucideIcon> = {
-  now: Sun,
-  messages: MessagesSquare,
-  todo: ListTodo,
-  updates: Bell,
-  reading: Newspaper,
-  archive: FolderArchive,
-  inbox: Inbox,
-};
 
 /** The rail before the daemon answers: same order, keys and paths. */
 const FALLBACK: Pick<RailEntry, "id" | "name" | "key" | "group">[] = [
@@ -64,7 +46,7 @@ export function railNavEntries(rail: Rail | undefined): RailNavEntry[] {
       key: entry.id,
       to: RAIL_PATHS[entry.id] ?? "/now",
       label: entry.name,
-      Icon: ICONS[entry.id] ?? Inbox,
+      Icon: MODE_GLYPHS[entry.id as ModeGlyphId] ?? Inbox,
       shortcut: entry.key,
       group: entry.group,
       count: count?.value,

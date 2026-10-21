@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Bell, FolderArchive, Inbox } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
+import { MODE_GLYPHS } from "@/components/ModeMark";
 import { PageFrame } from "@/components/PageFrame";
 
 /**
@@ -12,13 +13,13 @@ export function FindRoute() {
     <section aria-label="Find" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
       <PageFrame title="Find" purpose="Go straight to a place. Search is in the top bar." />
       <ul className="mt-4 grid gap-1 px-2">
-        <FindLink to="/archive" Icon={FolderArchive} label="Archive">
+        <FindLink to="/archive" Icon={MODE_GLYPHS.archive} label="Archive">
           Receipts, orders, bookings and documents.
         </FindLink>
-        <FindLink to="/updates" Icon={Bell} label="Updates">
+        <FindLink to="/updates" Icon={MODE_GLYPHS.updates} label="Updates">
           Notifications and receipts from services, by sender.
         </FindLink>
-        <FindLink to="/m/inbox" Icon={Inbox} label="Inbox">
+        <FindLink to="/m/inbox" Icon={MODE_GLYPHS.inbox} label="Inbox">
           Everything, newest first.
         </FindLink>
       </ul>
@@ -33,7 +34,7 @@ function FindLink({
   children,
 }: {
   to: string;
-  Icon: typeof Inbox;
+  Icon: LucideIcon;
   label: string;
   children: string;
 }) {

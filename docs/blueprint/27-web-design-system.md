@@ -157,7 +157,7 @@ One anatomy, `Row` (D129), used by every list. A mode supplies the content of ea
 
 ## Reason and model marks
 
-- `ReasonLine` renders "Here because: ..." with the daemon's string. The same component sits under the reader's header.
+- `ReasonLine` renders "Here because: ..." with the daemon's string. On a phone it sits under the person page's header (`PersonPane`), because a phone has no status bar to show the reason. The reader doesn't use it. A mail that isn't from a person shows its place as `WhyHereLine` at the end of the thread, on purpose: it "sits where reading ends, so a late answer never shifts the conversation above it."
 - `ModelMark` renders `model · local` or `model · cloud` in meta beside any model-written text (gists, summaries, the assistant's answers in the reader), with a tooltip naming the model and a link to its provenance (D136).
 
 ## Keys

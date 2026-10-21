@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.120](https://github.com/planetaryescape/mxr/compare/v0.6.119...v0.6.120) (2026-10-21)
+
+
+### Bug Fixes
+
+* date commitments from the email's own due words, not a model date ([#555](https://github.com/planetaryescape/mxr/issues/555)) ([5ac60d8](https://github.com/planetaryescape/mxr/commit/5ac60d86929785dd723a4a3927516238275f2b55))
+* index thread lookups so mode reads stop starving the reader pool ([#556](https://github.com/planetaryescape/mxr/issues/556)) ([af9c952](https://github.com/planetaryescape/mxr/commit/af9c952d7f3b9399453263ebf272aaf9315fae2f))
+
 ## [0.6.119](https://github.com/planetaryescape/mxr/compare/v0.6.118...v0.6.119) (2026-10-21)
 
 

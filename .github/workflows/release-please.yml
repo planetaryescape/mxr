@@ -3,6 +3,10 @@ name: Release Please
 on:
   push:
     branches: [main]
+  # GitHub sometimes drops the push event for a merge to main (three times on
+  # 2026-10-21), which leaves merged fixes with no release PR until the next
+  # push. A manual run recovers without an empty commit.
+  workflow_dispatch:
 
 permissions:
   contents: write

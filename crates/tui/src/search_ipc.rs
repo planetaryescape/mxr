@@ -10,9 +10,9 @@ use mxr_protocol::{Request, Response, ResponseData};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
-/// One user search page. `limit` is only the fallback for a daemon that ignores
-/// `limit_from_config`; a current daemon pages by `[search] max_results`, and
-/// `sort: None` takes `[search] default_sort`.
+/// One user search page. With `limit_from_config`, `limit` is only the
+/// fallback for a daemon that ignores the flag and a current daemon pages by
+/// `[search] max_results`. `sort: None` takes `[search] default_sort`.
 pub(crate) async fn ipc_search_segment(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     query: &str,
@@ -20,6 +20,7 @@ pub(crate) async fn ipc_search_segment(
     sort: Option<SortOrder>,
     limit: u32,
     offset: u32,
+    limit_from_config: bool,
 ) -> Result<SearchResultData, MxrError> {
     if let Some(triage_query) = parse_triage_query(query) {
         return ipc_triage_segment(bg, triage_query, mode, limit, offset).await;
@@ -35,7 +36,7 @@ pub(crate) async fn ipc_search_segment(
             mode: Some(mode),
             sort,
             explain: false,
-            limit_from_config: true,
+            limit_from_config,
         },
     )
     .await

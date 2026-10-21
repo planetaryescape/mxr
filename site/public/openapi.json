@@ -31835,7 +31835,7 @@
                   "null"
                 ],
                 "format": "int32",
-                "description": "The page size the daemon actually used. Set when the request chose\nits own size; older daemons omit it.",
+                "description": "The page size the daemon actually used, which may come from\n`[search] max_results`. Older daemons omit it.",
                 "minimum": 0
               },
               "next_offset": {

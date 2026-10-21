@@ -1527,6 +1527,7 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
             mode: Some(mxr_core::SearchMode::Semantic),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
+            limit_from_config: false,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -1577,6 +1578,7 @@ async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
             mode: Some(mxr_core::SearchMode::Hybrid),
             sort: Some(mxr_core::types::SortOrder::DateDesc),
             explain: true,
+            limit_from_config: false,
         }),
     };
     let resp = handle_request(&state, &msg).await;

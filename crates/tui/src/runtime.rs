@@ -163,6 +163,9 @@ async fn execute_replaceable_request(
                 pending.sort,
                 pending.limit,
                 pending.offset,
+                // The mailbox filter (Ctrl-f) never pages, so a config page size
+                // would hide matches; it keeps its own limit.
+                pending.target == app::SearchTarget::SearchPage,
             )
             .await;
 

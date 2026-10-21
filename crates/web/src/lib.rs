@@ -549,7 +549,8 @@ async fn search(
 
             Ok(Json(json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
-                "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
+                // Omitted, the daemon applied its own `[search] default_sort`.
+                "sort": query.sort.unwrap_or_else(|| "default".to_string()),
                 "mode": query.mode.unwrap_or_default(),
                 "total": response_total,
                 "has_more": has_more,

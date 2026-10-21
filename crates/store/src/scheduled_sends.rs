@@ -72,30 +72,49 @@ impl super::Store {
     }
 
     /// Clear the schedule on a draft, leaving the draft itself intact.
-    pub async fn cancel_scheduled_send(&self, draft_id: &DraftId) -> Result<(), sqlx::Error> {
+    /// Returns whether a pending schedule was cleared: `false` means the
+    /// flusher already claimed it (the send is under way or done) or it
+    /// was never scheduled, so nothing was stopped.
+    pub async fn cancel_scheduled_send(&self, draft_id: &DraftId) -> Result<bool, sqlx::Error> {
         let id = draft_id.as_str();
-        sqlx::query!(r#"UPDATE drafts SET send_at = NULL WHERE id = ?"#, id)
-            .execute(self.writer())
-            .await?;
-        Ok(())
+        let result = sqlx::query!(
+            r#"UPDATE drafts SET send_at = NULL WHERE id = ? AND send_at IS NOT NULL"#,
+            id
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
-    /// Clear `send_at` AND record a send-attempt marker in a single
-    /// transaction, so a crash can never leave the schedule cleared with
-    /// no durable record that a send was attempted. The marker's outcome
-    /// starts NULL and is resolved by `record_scheduled_send_outcome`.
+    /// Claim a due scheduled send: clear `send_at` AND record a send-attempt
+    /// marker in a single transaction, so a crash can never leave the
+    /// schedule cleared with no durable record that a send was attempted.
+    /// The marker's outcome starts NULL and is resolved by
+    /// `record_scheduled_send_outcome`.
+    ///
+    /// Returns `false`, recording nothing, when the schedule is already gone:
+    /// a cancel that landed after the flusher listed the draft wins, and the
+    /// draft must not be sent. Claim and cancel both require `send_at`, so
+    /// exactly one of them takes effect.
     pub async fn clear_send_at_and_record_attempt(
         &self,
         draft_id: &DraftId,
         attempted_at: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<bool, sqlx::Error> {
         let id = draft_id.as_str();
         let ts = attempted_at.timestamp();
         let mut tx = self.writer().begin().await?;
-        sqlx::query("UPDATE drafts SET send_at = NULL WHERE id = ?1")
-            .bind(id.clone())
-            .execute(&mut *tx)
-            .await?;
+        let claimed =
+            sqlx::query("UPDATE drafts SET send_at = NULL WHERE id = ?1 AND send_at IS NOT NULL")
+                .bind(id.clone())
+                .execute(&mut *tx)
+                .await?
+                .rows_affected()
+                > 0;
+        if !claimed {
+            tx.rollback().await?;
+            return Ok(false);
+        }
         sqlx::query(
             "INSERT OR IGNORE INTO scheduled_send_attempts (draft_id, attempted_at, outcome)
              VALUES (?1, ?2, NULL)",
@@ -105,7 +124,7 @@ impl super::Store {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(())
+        Ok(true)
     }
 
     /// Resolve a previously-recorded attempt with its final outcome
@@ -321,9 +340,44 @@ mod tests {
             .schedule_send(&id, anchor() + Duration::hours(1))
             .await
             .unwrap();
-        store.cancel_scheduled_send(&id).await.unwrap();
+        assert!(store.cancel_scheduled_send(&id).await.unwrap());
 
         assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
+        assert!(
+            !store.cancel_scheduled_send(&id).await.unwrap(),
+            "nothing left to cancel"
+        );
+    }
+
+    /// The flusher lists due drafts, then claims each. Undo Send must win
+    /// only if it lands before the claim, and must be told when it did not.
+    #[tokio::test]
+    async fn claim_and_cancel_exclude_each_other() {
+        let store = Store::in_memory().await.unwrap();
+        let at = anchor();
+
+        let cancelled_first = seed_draft(&store).await;
+        store.schedule_send(&cancelled_first, at).await.unwrap();
+        assert!(store.cancel_scheduled_send(&cancelled_first).await.unwrap());
+        assert!(
+            !store
+                .clear_send_at_and_record_attempt(&cancelled_first, at)
+                .await
+                .unwrap(),
+            "a cancelled draft is not claimed"
+        );
+        assert!(store.list_lost_scheduled_sends().await.unwrap().is_empty());
+
+        let claimed_first = seed_draft(&store).await;
+        store.schedule_send(&claimed_first, at).await.unwrap();
+        assert!(store
+            .clear_send_at_and_record_attempt(&claimed_first, at)
+            .await
+            .unwrap());
+        assert!(
+            !store.cancel_scheduled_send(&claimed_first).await.unwrap(),
+            "too late once the flusher has claimed it"
+        );
     }
 
     #[tokio::test]

@@ -3528,10 +3528,13 @@ pub(super) async fn schedule_send(
 ) -> HandlerResult {
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
     let revision = expected_revision.ok_or("Scheduling requires the reviewed draft revision")?;
-    checked_draft(state, draft_id, Some(revision)).await?;
+    let draft = checked_draft(state, draft_id, Some(revision)).await?;
     if state.store.get_draft_status(draft_id).await? != Some(DraftStatus::Draft) {
         return Err("Draft cannot be scheduled while a send is uncertain or completed".into());
     }
+    // The flusher looks the provider up only when it fires; refuse now
+    // rather than accept a send that is bound to fail later.
+    state.send_provider_for_account(&draft.account_id)?;
     state.store.schedule_send(draft_id, send_at).await?;
     Ok(ResponseData::Ack)
 }
@@ -3540,7 +3543,11 @@ pub(super) async fn cancel_scheduled_send(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
-    state.store.cancel_scheduled_send(draft_id).await?;
+    if !state.store.cancel_scheduled_send(draft_id).await? {
+        return Err(
+            "Too late to stop it: this send has already started, or it was not scheduled".into(),
+        );
+    }
     Ok(ResponseData::Ack)
 }
 

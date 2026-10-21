@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE drafts SET send_at = NULL WHERE id = ? AND send_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "b699c5c3a4c515875d9206d7399e94e55de0e24eab3de686fa716cdcc7a5d884"
+}

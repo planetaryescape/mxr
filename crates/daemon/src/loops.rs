@@ -2120,16 +2120,24 @@ pub async fn process_due_scheduled_sends(
         // attempt can't re-fire indefinitely (at-most-once), and a crash
         // mid-send leaves an unresolved marker we can surface at startup
         // rather than a silent loss.
-        if let Err(e) = state
+        match state
             .store
             .clear_send_at_and_record_attempt(&draft_id, now)
             .await
         {
-            tracing::warn!(
-                draft_id = %draft_id,
-                "scheduled-send: failed to clear send_at / record attempt before send: {e}"
-            );
-            continue;
+            Ok(true) => {}
+            Ok(false) => {
+                // Cancelled (Undo Send) after it was listed as due.
+                tracing::debug!(draft_id = %draft_id, "scheduled-send: cancelled before claim");
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    draft_id = %draft_id,
+                    "scheduled-send: failed to clear send_at / record attempt before send: {e}"
+                );
+                continue;
+            }
         }
         let outcome = match crate::handler::send_stored_draft_reviewed(
             state,

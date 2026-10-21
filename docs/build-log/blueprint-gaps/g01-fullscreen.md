@@ -58,9 +58,12 @@ minimal exact `site` override to Vite 8.1.6 let npm update only the Vite lock
 entry. No other package versions changed. The site audit and docs validator
 passed locally. The full Docs Build passed on final PR CI
 `39515274566`, alongside the required Rust checks.
-`apps/web` remains separately tracked in
-`docs/issues/apps-web-vite-launch-editor-advisories.md` because its lockfile
-resolves Vite 7.3.6, also in the advisories' affected range.
+The later release-harness PR enabled the required web audit, which failed
+on `apps/web` Vite 7.3.6 in CI `39522071231`. Commit
+`72f77c20fb56b4feb3eb452b31218202457e4f17` pins Vite 7.3.7; only its package
+record and root constraint changed. The patched network audit reports zero
+vulnerabilities. Required web checks remain pending on the final candidate;
+receipts are in `docs/issues/apps-web-vite-launch-editor-advisories.md`.
 
 ## Review notes
 

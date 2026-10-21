@@ -119,7 +119,9 @@ fn bottom_block(
     height: u16,
 ) -> Vec<Line<'static>> {
     let height = usize::from(height);
-    let warnings: Vec<_> = warnings.into_iter().take(height).collect();
+    // The keys' last row always stays, so the pane still says what y does.
+    let keys = usize::from(!footer.is_empty() && height > 1);
+    let warnings: Vec<_> = warnings.into_iter().take(height - keys).collect();
     let footer_room = height - warnings.len();
     let footer_skip = footer.len().saturating_sub(footer_room);
     let card_room = footer_room - (footer.len() - footer_skip);
@@ -636,13 +638,15 @@ fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Lin
         return lines;
     }
     let danger = Style::default().fg(theme.error).bold();
+    // Several waiting changes with the same warning say it once.
+    let mut said = std::collections::HashSet::new();
     for pending in state.pending() {
         if let AssistantPendingData::Approval {
             warning: Some(warning),
             ..
         } = pending
         {
-            if !warning.is_empty() {
+            if !warning.is_empty() && said.insert(warning.as_str()) {
                 push_wrapped(&mut lines, "", &one_line(warning), width, danger, danger);
             }
         }
@@ -1297,6 +1301,14 @@ mod tests {
         assert_eq!(text.len(), 8, "{text:?}");
         assert_eq!(text[0], "Sends an email. Can't be undone.");
         assert_eq!(text[7], "footer 11", "the keys stay last: {text:?}");
+        let tight = bottom_block(
+            vec![],
+            vec![line("w1"), line("w2")],
+            vec![line("input"), line("keys")],
+            2,
+        );
+        let tight: Vec<String> = tight.iter().map(ToString::to_string).collect();
+        assert_eq!(tight, ["w1", "keys"]);
         let roomy = bottom_block(vec![line("a")], vec![line("w")], vec![line("f")], 5);
         let roomy: Vec<String> = roomy.iter().map(ToString::to_string).collect();
         assert_eq!(roomy, ["a", "w", "f"]);

@@ -8,7 +8,10 @@
 use crate::anthropic::{AnthropicClient, ANTHROPIC_BASE_URL};
 use crate::failure::{AttemptError, ErrorClass};
 use crate::health::{Admission, RouteFailure, RouteHealth, RouteState, RouteView, Ticket};
-use crate::route::{is_claude_model, is_openai_model, ApiKey, ApiKeySource, Route, RouteProvider};
+use crate::route::{
+    is_claude_model, is_openai_model, openai_tools_need_no_reasoning, ApiKey, ApiKeySource, Route,
+    RouteProvider,
+};
 use crate::{
     CallKind, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
     OpenAiCompatibleConfig, OpenAiCompatibleProvider, TextCallback, ToolChatRequest,
@@ -106,7 +109,7 @@ impl RoutedProvider {
         Self {
             anthropic: AnthropicClient::new(&config.anthropic_base_url, config.request_timeout),
             openai: client_for(RouteProvider::OpenAI, &config.openai_base_url)
-                .map(OpenAiCompatibleProvider::with_completion_token_cap),
+                .map(|client| client.for_openai(openai_tools_need_no_reasoning(&config.model))),
             openrouter: client_for(RouteProvider::OpenRouter, &config.openrouter_base_url),
             model: config.model,
             routes: config.routes,

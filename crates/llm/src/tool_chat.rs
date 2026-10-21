@@ -112,16 +112,28 @@ pub(crate) struct OpenAiToolChatBody<'a> {
     pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<&'static str>,
     pub stream: bool,
 }
 
-/// The request in chat-completions form. `completion_token_cap` names the
-/// token cap `max_completion_tokens`, which OpenAI's own API wants.
+/// How OpenAI's own API differs from other chat-completions servers.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct OpenAiDialect {
+    /// Name the token cap `max_completion_tokens`.
+    pub completion_token_cap: bool,
+    /// Send `reasoning_effort: "none"`: these models take tool calls on
+    /// Chat Completions only with reasoning off, and default to medium.
+    pub no_reasoning: bool,
+}
+
+/// The request in chat-completions form.
 pub(crate) fn openai_body<'a>(
     model: &'a str,
     req: &ToolChatRequest,
-    completion_token_cap: bool,
+    dialect: OpenAiDialect,
 ) -> OpenAiToolChatBody<'a> {
+    let completion_token_cap = dialect.completion_token_cap;
     let messages = req
         .messages
         .iter()
@@ -186,6 +198,7 @@ pub(crate) fn openai_body<'a>(
         tools,
         max_tokens: req.max_tokens.filter(|_| !completion_token_cap),
         max_completion_tokens: req.max_tokens.filter(|_| completion_token_cap),
+        reasoning_effort: dialect.no_reasoning.then_some("none"),
         stream: false,
     }
 }
@@ -414,7 +427,8 @@ mod tests {
 
     #[test]
     fn openai_body_carries_tool_calls_as_json_strings_and_tool_results_by_id() {
-        let body = serde_json::to_value(openai_body("m", &request(), false)).unwrap();
+        let body =
+            serde_json::to_value(openai_body("m", &request(), OpenAiDialect::default())).unwrap();
         assert_eq!(body["messages"][2]["content"], Value::Null);
         assert_eq!(
             body["messages"][2]["tool_calls"][0]["function"]["arguments"],
@@ -428,12 +442,24 @@ mod tests {
 
     #[test]
     fn openai_names_the_token_cap_max_completion_tokens_and_others_max_tokens() {
-        let plain = serde_json::to_value(openai_body("m", &request(), false)).unwrap();
+        let plain =
+            serde_json::to_value(openai_body("m", &request(), OpenAiDialect::default())).unwrap();
         assert_eq!(plain["max_tokens"], 100);
         assert!(plain.get("max_completion_tokens").is_none());
-        let openai = serde_json::to_value(openai_body("m", &request(), true)).unwrap();
+        let openai = serde_json::to_value(openai_body(
+            "m",
+            &request(),
+            OpenAiDialect {
+                completion_token_cap: true,
+                no_reasoning: true,
+            },
+        ))
+        .unwrap();
         assert_eq!(openai["max_completion_tokens"], 100);
         assert!(openai.get("max_tokens").is_none());
+        // Other servers get no reasoning field; OpenAI's reasoning models get "none".
+        assert!(plain.get("reasoning_effort").is_none());
+        assert_eq!(openai["reasoning_effort"], "none");
     }
 
     /// A conversation that moved between providers: one turn written by a
@@ -482,7 +508,15 @@ mod tests {
             tools: Vec::new(),
             max_tokens: None,
         };
-        let body = serde_json::to_value(openai_body("gpt-6-luna", &req, true)).unwrap();
+        let body = serde_json::to_value(openai_body(
+            "gpt-6-luna",
+            &req,
+            OpenAiDialect {
+                completion_token_cap: true,
+                no_reasoning: true,
+            },
+        ))
+        .unwrap();
         let messages = body["messages"].as_array().unwrap();
         assert!(!body.to_string().contains("signature"));
         let mut open_calls: Vec<String> = Vec::new();

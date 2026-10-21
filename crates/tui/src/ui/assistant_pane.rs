@@ -89,7 +89,11 @@ pub fn draw(
     .split(inner);
 
     let (body, max_scroll) = if let Some(models) = &state.models {
-        (models_lines(models, width, theme), 0)
+        let (lines, selected) = models_lines(models, width, theme);
+        let height = usize::from(chunks[0].height);
+        // Keep the highlighted row, with its reason, in view.
+        let start = selected.end.saturating_sub(height).min(selected.start);
+        (lines.into_iter().skip(start).take(height).collect(), 0)
     } else if let Some(list) = &state.list {
         (list_lines(list, width, theme), 0)
     } else {
@@ -1084,7 +1088,7 @@ fn models_lines(
     models: &crate::app::AssistantModelsState,
     width: usize,
     theme: &Theme,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, std::ops::Range<usize>) {
     let muted = Style::default().fg(theme.text_muted);
     let mut lines = vec![
         Line::from(Span::styled(
@@ -1102,10 +1106,12 @@ fn models_lines(
             },
             muted,
         )));
-        return lines;
+        return (lines, 0..0);
     };
+    let mut selected_rows = 0..0;
     for (index, choice) in data.choices.iter().enumerate() {
         let selected = index == models.selected;
+        let first_row = lines.len();
         let current = data.current.as_deref() == Some(choice.id.as_str());
         let style = if selected {
             Style::default()
@@ -1131,6 +1137,9 @@ fn models_lines(
         if let Some(reason) = &choice.unavailable_reason {
             push_wrapped(&mut lines, "      ", &one_line(reason), width, muted, muted);
         }
+        if selected {
+            selected_rows = first_row..lines.len();
+        }
     }
     lines.push(Line::default());
     push_wrapped(
@@ -1141,7 +1150,7 @@ fn models_lines(
         muted,
         muted,
     );
-    lines
+    (lines, selected_rows)
 }
 
 fn age(seconds: i64) -> String {

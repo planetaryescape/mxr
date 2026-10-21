@@ -1,12 +1,27 @@
 //! The assistant's model picker over IPC: what it lists, what it refuses,
 //! what a pick changes, and that no key ever shows.
 
-use super::llm_routes::{isolated, send, use_model, LOCAL};
+use super::llm_routes::{isolated, send, LOCAL};
 use super::*;
 use mxr_protocol::{
     AssistantAvailabilityData, AssistantModelChangeData, AssistantModelsData, LlmKeySecret,
     LlmProviderData,
 };
+
+/// A daemon rereads `[llm]` from the file before it changes config, so a
+/// test's setup has to be on disk as well as in memory.
+async fn save(state: &Arc<AppState>, config: mxr_config::MxrConfig) {
+    mxr_config::save_config(&config).unwrap();
+    state.set_config_for_test(config).await;
+}
+
+async fn use_model(state: &Arc<AppState>, model: &str, base_url: &str) {
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    config.llm.model = model.to_string();
+    config.llm.base_url = base_url.to_string();
+    save(state, config).await;
+}
 
 const SECRET: &str = "sk-test-secret-that-must-never-leave-the-daemon";
 
@@ -80,7 +95,7 @@ fn assistant_model_on_disk() -> Option<String> {
 async fn allow_cloud(state: &Arc<AppState>) {
     let mut config = state.config_snapshot();
     config.llm.allow_cloud_relationship_data = true;
-    state.set_config_for_test(config).await;
+    save(state, config).await;
 }
 
 #[test]
@@ -264,6 +279,122 @@ fn a_key_never_appears_in_a_response_a_status_or_a_log_line() {
     });
 }
 
+/// The state a person has with cloud data allowed and an Anthropic key, on
+/// disk as well as in the daemon.
+async fn cloud_allowed_on_disk(state: &Arc<AppState>) {
+    use_model(state, "gemma4", LOCAL).await;
+    allow_cloud(state).await;
+    store_key(state, LlmProviderData::Anthropic).await;
+}
+
+/// What `mxr config set llm.allow_cloud_relationship_data false` writes.
+fn revoke_cloud_on_disk() {
+    let mut on_disk = mxr_config::load_config().unwrap();
+    on_disk.llm.allow_cloud_relationship_data = false;
+    mxr_config::save_config(&on_disk).unwrap();
+}
+
+#[test]
+fn a_revoke_that_reached_the_file_first_stops_the_pick_and_survives_it() {
+    isolated(|state| async move {
+        cloud_allowed_on_disk(&state).await;
+        // The CLI has written the file; its reload request has not arrived.
+        revoke_cloud_on_disk();
+
+        let message = refusal(pick(&state, "claude-haiku-5-5", false).await);
+        assert!(
+            message.contains("llm.allow_cloud_relationship_data"),
+            "{message}"
+        );
+        assert!(!state.config_snapshot().llm.allow_cloud_relationship_data);
+        assert!(
+            !mxr_config::load_config()
+                .unwrap()
+                .llm
+                .allow_cloud_relationship_data
+        );
+        assert_eq!(assistant_model_on_disk(), None);
+    });
+}
+
+#[test]
+fn a_revoke_racing_a_pick_is_never_overwritten_by_the_picks_old_snapshot() {
+    isolated(|state| async move {
+        // Both orders matter, and the interleaving inside a pick (it awaits
+        // while applying config) can differ from run to run.
+        for round in 0..20 {
+            cloud_allowed_on_disk(&state).await;
+            let mut config = state.config_snapshot();
+            config.llm.overrides.assistant = None;
+            save(&state, config).await;
+            let revoke = async {
+                for _ in 0..(round % 4) {
+                    tokio::task::yield_now().await;
+                }
+                revoke_cloud_on_disk();
+                send(&state, Request::ReloadLlmConfig).await
+            };
+            let (_, reload) = tokio::join!(pick(&state, "claude-haiku-5-5", false), revoke);
+            assert!(matches!(reload, Response::Ok { .. }), "{reload:?}");
+
+            assert!(
+                !state.config_snapshot().llm.allow_cloud_relationship_data,
+                "round {round}: the daemon allows cloud again"
+            );
+            assert!(
+                !mxr_config::load_config()
+                    .unwrap()
+                    .llm
+                    .allow_cloud_relationship_data,
+                "round {round}: the file allows cloud again"
+            );
+            // With the setting off, a cloud model for the assistant is blocked.
+            assert!(
+                state
+                    .llm
+                    .feature_block_reason(mxr_llm::LlmFeature::Assistant)
+                    .is_some()
+                    || state.config_snapshot().llm.overrides.assistant.is_none(),
+                "round {round}: the assistant would reach a cloud model"
+            );
+        }
+    });
+}
+
+#[test]
+fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
+    isolated(|state| async move {
+        // The file says AI is on; a restored workspace keeps it off until it
+        // is activated, in memory and in what the daemon applies.
+        use_model(&state, "gemma4", LOCAL).await;
+        state
+            .restore_pending
+            .store(true, std::sync::atomic::Ordering::Release);
+        state.reload_llm_config_from_disk().await.unwrap();
+        assert!(!state.config_snapshot().llm.enabled);
+
+        // The handler stops changes while the workspace is paused...
+        let message = refusal(pick(&state, "gpt-6-luna", false).await);
+        assert!(
+            message.contains("Restored workspace is paused"),
+            "{message}"
+        );
+        // ...and the model change itself would refuse too: choosing a model
+        // doesn't switch AI on, even a local one.
+        for model in ["gemma4:latest", "gpt-6-luna"] {
+            let error = crate::assistant::set_model(&state, model, false)
+                .await
+                .unwrap_err();
+            assert!(error.contains("llm.enabled"), "{error}");
+        }
+
+        assert!(!state.config_snapshot().llm.enabled);
+        assert!(state.config_snapshot().llm.overrides.assistant.is_none());
+        let pinned = state.llm.for_feature(mxr_llm::LlmFeature::Assistant).pin();
+        assert!(!pinned.is_configured());
+    });
+}
+
 #[test]
 fn a_list_naming_an_unknown_id_shows_it_instead_of_failing() {
     isolated(|state| async move {
@@ -306,7 +437,7 @@ fn saving_llm_settings_keeps_the_edited_model_list() {
         use_model(&state, "gemma4", LOCAL).await;
         let mut config = state.config_snapshot();
         config.llm.assistant_models = vec!["gemma4:latest".into(), "claude-haiku-5-5".into()];
-        state.set_config_for_test(config).await;
+        save(&state, config).await;
 
         let Response::Ok {
             data: ResponseData::LlmConfig { config },

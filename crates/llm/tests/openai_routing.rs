@@ -244,6 +244,8 @@ async fn a_tool_chat_turn_carries_the_cap_and_tools_in_openai_form() {
     assert_eq!(response.model, "gpt-6-luna via OpenAI");
     let sent = bodies(&rig.openai).await;
     assert_eq!(sent[0]["max_completion_tokens"], 1000);
+    // GPT-6 Luna takes tool calls only with reasoning off.
+    assert_eq!(sent[0]["reasoning_effort"], "none");
     assert!(sent[0].get("max_tokens").is_none());
     assert_eq!(sent[0]["tools"][0]["function"]["name"], "mxr_search");
 }

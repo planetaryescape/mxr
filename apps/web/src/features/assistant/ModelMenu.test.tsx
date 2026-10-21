@@ -98,6 +98,21 @@ describe("ModelMenu", () => {
     ).toHaveTextContent("Claude Haiku 5.5 · cloud");
   });
 
+  test("while the availability refresh is pending the mark still agrees with the new choice", async () => {
+    api.setModel.mockResolvedValue({ current: "claude-haiku-5-5", choices });
+    wrap(<ModelMenu />);
+    const menu = await openMenu();
+    // The refresh after the pick never answers: the old availability says
+    // gemma4 runs locally.
+    api.fetchAvailability.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Claude Haiku 5.5/ }));
+
+    const mark = await screen.findByRole("button", { name: "Model: Claude Haiku 5.5. Change it" });
+    expect(mark).toHaveTextContent("Claude Haiku 5.5 · cloud");
+    expect(mark).not.toHaveTextContent("local");
+    expect(mark).toHaveAttribute("title", expect.stringContaining("runs off this machine"));
+  });
+
   test("Escape closes the menu", async () => {
     wrap(<ModelMenu />);
     await openMenu();

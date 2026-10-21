@@ -587,6 +587,10 @@ pub struct AppState {
     reload_tx: watch::Sender<u64>,
     runtime_tasks: RuntimeTasks,
     admin_blocking: Arc<Semaphore>,
+    /// Held from snapshot to install by everything that rewrites the
+    /// in-memory config, so one writer's stale snapshot can never replace
+    /// another's change (a revoked cloud-data setting above all).
+    config_write: tokio::sync::Mutex<()>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
     /// Live progress of the sync pass running for each account, plus the
     /// contacts a mid-backfill account still owes the relationship worker.
@@ -885,6 +889,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -1813,6 +1818,13 @@ impl AppState {
     /// outside it (`mxr config set llm.*`, a text editor). What was learned
     /// about the routes is forgotten with the old providers.
     pub async fn reload_llm_config_from_disk(&self) -> std::result::Result<(), String> {
+        let _writing = self.config_write.lock().await;
+        self.sync_llm_from_disk()
+    }
+
+    /// `[llm]` as it is on disk, applied to the running daemon. The caller
+    /// holds `config_write`.
+    fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         if self.is_restore_pending() {
             config.llm.enabled = false;
@@ -1830,8 +1842,33 @@ impl AppState {
     where
         F: FnOnce(&mut mxr_config::MxrConfig),
     {
+        self.try_mutate_config(|config| {
+            mutator(config);
+            Ok(())
+        })
+        .await
+    }
+
+    /// [`Self::mutate_config`] where the change can be refused after seeing
+    /// the config it would apply to. The check and the write share one
+    /// critical section, so what was checked is what is changed.
+    pub async fn try_mutate_config<F>(
+        &self,
+        mutator: F,
+    ) -> std::result::Result<mxr_config::MxrConfig, String>
+    where
+        F: FnOnce(&mut mxr_config::MxrConfig) -> std::result::Result<(), String>,
+    {
+        let _writing = self.config_write.lock().await;
+        // `mxr config set llm.*` writes the file from another process and then
+        // asks this daemon to reload; if that write landed but the request is
+        // still waiting for the lock, this change must start from it, not
+        // overwrite it.
+        if let Err(error) = self.sync_llm_from_disk() {
+            tracing::warn!(%error, "couldn't re-read [llm] before changing config");
+        }
         let mut config = self.config_snapshot();
-        mutator(&mut config);
+        mutator(&mut config)?;
         mxr_config::save_config(&config).map_err(|e| e.to_string())?;
         self.semantic
             .apply_config(config.search.semantic.clone())
@@ -1966,6 +2003,7 @@ impl AppState {
     }
 
     pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
+        let _writing = self.config_write.lock().await;
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         if self.is_restore_pending() {
             config.llm.enabled = false;
@@ -2121,6 +2159,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -2213,6 +2252,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -2331,6 +2371,7 @@ impl AppState {
                 reload_tx,
                 runtime_tasks,
                 admin_blocking,
+                config_write: Default::default(),
                 auth_sessions: ParkingMutex::new(HashMap::new()),
                 sync_runs: ParkingMutex::new(HashMap::new()),
                 next_background_claim: std::sync::atomic::AtomicU64::new(1),

@@ -861,3 +861,49 @@ fn esc_closes_the_picker_and_the_palette_lists_the_command() {
         .iter()
         .any(|command| command.action == Action::OpenAssistantModels));
 }
+
+#[test]
+fn the_picker_scrolls_to_keep_the_highlighted_model_in_view_on_a_short_pane() {
+    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('M'), KeyModifiers::SHIFT);
+    requests(&mut app);
+    // Eight models, each unavailable with a reason that wraps in a narrow pane.
+    let choices = (1..=8)
+        .map(|n| {
+            model_choice(
+                &format!("model-{n}"),
+                &format!("Model {n}"),
+                true,
+                Some("Add a provider key with the command mxr llm key set provider-name now"),
+            )
+        })
+        .collect();
+    app.apply_assistant_result(
+        AssistantCall::Models,
+        Ok(ResponseData::AssistantModels {
+            models: mxr_protocol::AssistantModelsData {
+                current: None,
+                choices,
+            },
+        }),
+    );
+    for number in 1..=8 {
+        let screen = render_to_string(80, 28, |frame| app.draw(frame));
+        assert!(
+            screen.contains(&format!("Model {number}")),
+            "Model {number} fell off the pane:\n{screen}"
+        );
+        assert!(
+            screen.contains("› ") && screen.contains("Esc back"),
+            "the highlight or hint line is gone:\n{screen}"
+        );
+        press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    }
+    // And back up to the first.
+    for _ in 0..8 {
+        press(&mut app, KeyCode::Char('k'), KeyModifiers::NONE);
+    }
+    let screen = render_to_string(80, 28, |frame| app.draw(frame));
+    assert!(screen.contains("Model 1"), "{screen}");
+}

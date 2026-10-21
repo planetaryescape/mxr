@@ -26,16 +26,21 @@ export function ModelMenu() {
 
   const current = models.choices.find((choice) => choice.id === models.current);
   const name = current?.label ?? availability?.model ?? models.current ?? null;
-  const where = availability?.model ? (availability.leaves_machine ? "cloud" : "local") : null;
+  // Where it runs comes from the same choice as its name, so the two can't
+  // disagree while the availability behind them is being refreshed. A model
+  // set by hand in config.toml isn't in the list: availability says.
+  const leavesMachine = current ? current.cloud : availability?.leaves_machine;
+  const modelId = current?.id ?? availability?.model;
+  const where = modelId && leavesMachine !== undefined ? (leavesMachine ? "cloud" : "local") : null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={name ? `Model: ${name}. Change it` : "Choose a model"}
         title={
-          availability?.model
-            ? availability.leaves_machine
-              ? `${availability.model} runs off this machine: your messages and the mail it reads go to its provider`
-              : `${availability.model} runs on this machine: nothing leaves it`
+          modelId && leavesMachine !== undefined
+            ? leavesMachine
+              ? `${modelId} runs off this machine: your messages and the mail it reads go to its provider`
+              : `${modelId} runs on this machine: nothing leaves it`
             : undefined
         }
         className="type-meta -mx-1 inline-flex max-w-full items-center gap-0.5 rounded-sm px-1 text-text-3 outline-none hover:text-text-1 focus-visible:text-text-1 focus-visible:ring-1 focus-visible:ring-signal"

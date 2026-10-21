@@ -113,27 +113,36 @@ pub(crate) fn models(state: &AppState) -> AssistantModelsData {
     models_for(&state.config_snapshot().llm, &LlmKeys::at_default_path())
 }
 
+/// The refusal for `model` against `models`, or `None` when it can be set.
+fn refusal(models: &AssistantModelsData, model: &str) -> Option<String> {
+    let Some(choice) = models.choices.iter().find(|choice| choice.id == model) else {
+        let listed: Vec<&str> = models.choices.iter().map(|c| c.id.as_str()).collect();
+        return Some(format!(
+            "`{model}` isn't one of the assistant's models. Choose one of: {}",
+            listed.join(", ")
+        ));
+    };
+    choice
+        .unavailable_reason
+        .as_ref()
+        .map(|reason| format!("{} can't be used yet. {reason}", choice.label))
+}
+
 /// Set the assistant's model, or with `dry_run` say what would change.
 /// Refuses a model outside the list, and one that can't run now, with what
-/// to do about it.
+/// to do about it. The write re-checks against the config it changes, under
+/// the lock every config writer takes, so a cloud model can't slip in after
+/// the cloud setting was turned off.
 pub(crate) async fn set_model(
     state: &AppState,
     model: &str,
     dry_run: bool,
 ) -> Result<ResponseData, String> {
     let model = model.trim();
-    let config = state.config_snapshot().llm;
     let keys = LlmKeys::at_default_path();
-    let before = models_for(&config, &keys);
-    let Some(choice) = before.choices.iter().find(|choice| choice.id == model) else {
-        let listed: Vec<&str> = before.choices.iter().map(|c| c.id.as_str()).collect();
-        return Err(format!(
-            "`{model}` isn't one of the assistant's models. Choose one of: {}",
-            listed.join(", ")
-        ));
-    };
-    if let Some(reason) = &choice.unavailable_reason {
-        return Err(format!("{} can't be used yet. {reason}", choice.label));
+    let before = models_for(&state.config_snapshot().llm, &keys);
+    if let Some(refusal) = refusal(&before, model) {
+        return Err(refusal);
     }
     let changed = before.current.as_deref() != Some(model);
     let models = if dry_run || !changed {
@@ -144,13 +153,17 @@ pub(crate) async fn set_model(
     } else {
         let id = model.to_string();
         let config = state
-            .mutate_config(move |config| {
+            .try_mutate_config(|config| {
+                if let Some(refusal) = refusal(&models_for(&config.llm, &keys), &id) {
+                    return Err(refusal);
+                }
                 config
                     .llm
                     .overrides
                     .assistant
                     .get_or_insert_with(LlmOverrideConfig::default)
                     .model = Some(id);
+                Ok(())
             })
             .await?;
         tracing::info!(model, "assistant model set");

@@ -192,6 +192,14 @@ pub fn is_openai_model(model: &str) -> bool {
     is_openai_id(model) || model.strip_prefix("openai/").is_some_and(is_openai_id)
 }
 
+/// OpenAI models that take tool calls on Chat Completions only with
+/// `reasoning_effort: "none"` (they default to medium): GPT-6 and GPT-5.x.
+pub fn openai_tools_need_no_reasoning(model: &str) -> bool {
+    let model = model.trim();
+    let model = model.strip_prefix("openai/").unwrap_or(model);
+    model.starts_with("gpt-6") || model.starts_with("gpt-5.")
+}
+
 /// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.
 fn is_openai_id(model: &str) -> bool {
     model
@@ -362,6 +370,21 @@ mod tests {
             }
             // A remote server of the user's own keeps its model names.
             assert_eq!(routes_for_model(id, Endpoint::Remote), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn gpt_6_and_gpt_5_x_need_reasoning_off_for_tool_calls() {
+        for yes in [
+            "gpt-6-luna",
+            "gpt-5.6-terra",
+            "openai/gpt-6-luna",
+            "gpt-5.1",
+        ] {
+            assert!(openai_tools_need_no_reasoning(yes), "{yes}");
+        }
+        for no in ["gpt-4o-mini", "gpt-oss:20b", "claude-haiku-5-5", "gemma4"] {
+            assert!(!openai_tools_need_no_reasoning(no), "{no}");
         }
     }
 

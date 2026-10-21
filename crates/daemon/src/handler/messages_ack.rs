@@ -122,6 +122,31 @@ fn refuse(reason: impl Into<String>) -> HandlerError {
     HandlerError::InvalidRequest(reason.into())
 }
 
+/// Whether the user wrote `message`, judged by its From against the
+/// addresses the account owns now. The stored direction alone is not enough:
+/// a message sent from an alias synced before the alias was registered stays
+/// stored as inbound.
+fn sent_by_you(direction: &str, from: &str, is_self: &dyn Fn(&str) -> bool) -> bool {
+    direction == "outbound" || is_self(from)
+}
+
+/// Got it answers one person who wrote to you. It refuses to answer your own
+/// message, and a reply that would reach more than one address.
+fn ack_addressing_refusal(sent_by_you: bool, reply_to: &[String]) -> Option<String> {
+    if sent_by_you {
+        return Some(
+            "Got it won't reply to a message you sent. Reply by hand if you mean to.".to_string(),
+        );
+    }
+    if reply_to.len() > 1 {
+        return Some(format!(
+            "Got it won't reply to {}: it would go to more than one person. Reply by hand if you mean to.",
+            reply_to.join(", ")
+        ));
+    }
+    None
+}
+
 const CHANGED: &str =
     "The conversation changed since the preview, so nothing was sent. Preview Got it again.";
 
@@ -180,6 +205,7 @@ async fn plan(
             "Already answered: you've written in this conversation since their last message.",
         ));
     }
+    let sent_by_you = sent_by_you(&target.direction, &target.from.email, &is_self);
     let email = target.from.email.to_ascii_lowercase();
     let name = target
         .from
@@ -203,6 +229,13 @@ async fn plan(
             "could not prepare the reply".to_string(),
         ));
     };
+    let reply_addresses: Vec<String> = mxr_mail_parse::parse_address_list(&context.reply_to)
+        .into_iter()
+        .map(|address| address.email)
+        .collect();
+    if let Some(reason) = ack_addressing_refusal(sent_by_you, &reply_addresses) {
+        return Err(refuse(reason));
+    }
     let recipient = context.reply_to.trim().to_ascii_lowercase();
     check_recipient(
         state,
@@ -541,6 +574,50 @@ mod tests {
         let habits = analyse_habits(&mine, &["Ruth Vega"]);
         let (text, _) = ack_text("Ruth", &habits);
         assert!(text.starts_with("Hey Ruth,\n\nGot it, thanks."), "{text}");
+    }
+
+    #[test]
+    fn your_message_stored_as_inbound_still_counts_as_sent_by_you() {
+        // Sent from an alias that was registered after the message synced:
+        // stored direction says inbound, but From is yours now.
+        let is_self = |email: &str| email.eq_ignore_ascii_case("alias@x.com");
+        assert!(sent_by_you("inbound", "Alias@x.com", &is_self));
+        assert!(sent_by_you("outbound", "someone@y.com", &is_self));
+        assert!(!sent_by_you("inbound", "someone@y.com", &is_self));
+    }
+
+    #[test]
+    fn ack_refuses_a_message_you_sent() {
+        let reason = ack_addressing_refusal(true, &["dumi@x.com".to_string()])
+            .expect("own message must be refused");
+        assert!(
+            reason.starts_with("Got it won't reply to a message you sent"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn ack_refuses_a_reply_that_would_reach_more_than_one_person() {
+        let to = ["a@x.com".to_string(), "b@x.com".to_string()];
+        let reason = ack_addressing_refusal(false, &to).expect("two recipients must be refused");
+        assert_eq!(
+            reason,
+            "Got it won't reply to a@x.com, b@x.com: it would go to more than one person. Reply by hand if you mean to."
+        );
+    }
+
+    #[test]
+    fn ack_allows_one_recipient_from_someone_else() {
+        assert_eq!(
+            ack_addressing_refusal(false, &["a@x.com".to_string()]),
+            None
+        );
+    }
+
+    #[test]
+    fn ack_leaves_an_empty_reply_to_for_the_recipient_check() {
+        // check_recipient owns the "no address" refusal, so nothing is added here.
+        assert_eq!(ack_addressing_refusal(false, &[]), None);
     }
 
     #[test]

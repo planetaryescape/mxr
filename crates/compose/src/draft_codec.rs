@@ -267,6 +267,21 @@ mod tests {
     }
 
     #[test]
+    fn reply_to_list_in_to_frontmatter_reads_back_as_one_address_each() {
+        // A reply to several people reaches the compose file as one
+        // comma-joined `to:` string (ComposeKind::Reply copies the daemon's
+        // reply_to into frontmatter.to). Each address must survive as its own.
+        let draft = sample_draft();
+        let rendered = draft_to_compose_file(&draft, "me@example.com").unwrap();
+        let (mut fm, body) = parse_compose_file(&rendered).unwrap();
+        fm.to = "dumi@nottoafrica.com, bob@nottoafrica.com".to_string();
+        let edited = render_compose_file(&fm, &body, None).unwrap();
+        let parsed = apply_edited_compose_file(&draft, &edited, Utc::now()).unwrap();
+        let emails: Vec<&str> = parsed.to.iter().map(|a| a.email.as_str()).collect();
+        assert_eq!(emails, ["dumi@nottoafrica.com", "bob@nottoafrica.com"]);
+    }
+
+    #[test]
     fn format_addresses_renders_name_and_bare() {
         let rendered = format_addresses(&sample_draft().to);
         assert_eq!(
